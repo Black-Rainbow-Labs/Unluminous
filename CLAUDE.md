@@ -125,7 +125,7 @@ first time, exactly as the Windows installer script installs Inno Setup.
 | `unluminous-terminal` | The terminal: the session over a pseudoterminal, the screen the painter reads, the colour palette, the key encoding, the mouse reports, and which shell to start and in what folder. | Any user interface dependency, for the same reason. |
 | `unluminous-git` | Reading and changing a git repository: the status, blame, the log, diffs, branches, and every operation on the Git menu, plus the thread they run on. | Any user interface dependency, and any decision about what a dialog looks like. Its tests build real repositories in a temporary folder and ask git what happened. |
 | `unluminous-dap` | The Debug Adapter Protocol: the `Content-Length` framing, the typed messages, the session state machine, and the thread an adapter is spoken to on. | Any user interface dependency, and any knowledge of *which* adapter to start — where `lldb-dap` lives on this machine is knowledge about the machine, and it lives in `unluminous-app`. Its tests run against scripted adapters with no process. |
-| `unluminous-db` | Reading and changing a database: the PostgreSQL v3 wire protocol, SCRAM-SHA-256, SQLite through `rusqlite`, the values a grid draws, the statements a pending change becomes, and the thread a query runs on. | Any user interface dependency. Its tests run with no window and, for the PostgreSQL half, against a scripted server on `127.0.0.1:0` replaying fixed bytes. |
+| `unluminous-db` | Reading and changing a database: the PostgreSQL v3 wire protocol, SCRAM-SHA-256, SQLite through `rusqlite`, Inillucent through `inillucent-driver`, the vector a search index stores, the values a grid draws, the statements a pending change becomes, and the thread a query runs on. | Any user interface dependency. Its tests run with no window and, for the PostgreSQL half, against a scripted server on `127.0.0.1:0` replaying fixed bytes. |
 | `unluminous-app` | The window: drawing, input, real fonts, the settings on disk, the menus, and the plugin registry. | Editor behaviour, terminal emulation or git plumbing. Those belong in the crates above. |
 | `unluminous-cli` | The command line: the catalogue of commands, the wire format, and the client program. It lives in `unluminous-cli/` beside its own documentation rather than under `crates/`, because the two are read together. | Anything that depends on `unluminous-app`. The dependency points one way, so the client stays a small program with no window, no graphics card and no fonts behind it. |
 
@@ -757,6 +757,90 @@ rather than its label, so the words cannot be searched for at all.
 
 `cargo run -p unluminous-db --example connect -- <url> <PASSWORD_VARIABLE>` is how the real server is
 checked by hand, because a scripted server is evidence about the protocol rather than about a server.
+
+### The third engine is Inillucent, and it is reached through its driver rather than its crates
+
+`task-1814` asks for "our Inillucent db in our ide db explorer plugin" and, in its second sentence,
+"ensure we have ways to see our vectors" — which is the half that is not a driver, because an
+embedding drawn as `3072 bytes: 3f 00 00 00…` has been displayed and has shown nobody anything.
+`tasks/task-1814-inillucent-data-source-tdd.md` is the design.
+
+**It binds to `inillucent-driver`, never to the engine's own crates.** That driver depends on
+`inillucent-engine` and nothing else in that workspace, which is the whole point of it: the
+rearchitecture is still deleting crates underneath, and a consumer holding the driver is unaffected
+by all of it. The C ABI beside it is for the other languages — Rust reaching Rust through a C integer
+would cost a pointer round trip and a `catch_unwind` per call to arrive where it started. It is a
+**`git` dependency pinned to a commit** rather than a path, because Unluminous ships: a release whose
+contents depend on the state of a folder on one machine is not a release.
+
+**Most of the seam was already the right shape.** `items`, `table`, `ddl` and
+`transaction(work, check)` map onto `catalog::Item`, `Table`, the DDL button and `engine::write`
+almost name for name — and the check running *before* the commit is the rule `task-1777` wrote by
+hand, arriving as an argument.
+
+Four things are different from the other two engines, and each is a rule rather than an accident:
+
+- **A connection is made on the thread that will hold it.** `inillucent_driver::Database` is
+  deliberately neither `Send` nor `Sync`, because one file is one buffer pool and the engine is
+  single threaded; a handle that could move between threads would be a second page cache over one set
+  of bytes waiting to happen. So `Worker::open` no longer connects here and moves the connection
+  across — it starts the thread, the thread connects, and `open` waits for its first word back. That
+  keeps the property that mattered (a failure to connect is answered before `open` returns) with
+  nothing moved, and it is one path for all three engines rather than a special case.
+- **There is no Stop button on an Inillucent source.** The driver's capability table reports
+  `cancel: no`, and its note is worth keeping: *"a cancel that set one would return success and do
+  nothing. Do not draw a Stop button."* Absent rather than dimmed, which is the rule that leaves the
+  `F` button off a `.rs` file — and it is read from the driver at run time rather than written down
+  here, so the day the engine grows a cancel the button appears with nothing edited.
+- **A row count is exact.** The engine materialises, so `Rows::total` is what the statement really
+  produced and the grid can say `1-200 of 4,317` and mean it, where the other two are asked for
+  `limit + 1` and answer `200+`. The cost is that a query over a large table costs the whole result.
+- **Read-only is the driver's classification of a statement, not the file being opened read-only.**
+  The capability table says `partial` and says why, and the source's page says so rather than
+  implying `SQLITE_OPEN_READONLY`'s stronger guarantee.
+
+**A vector is drawn as a vector, and the schema is what decides that.** `unluminous-db::vector` is the
+reading — decode, norm, extremes, a summary and JSON — and it is deliberately **permissive**: a PNG's
+first eight bytes decode to two perfectly finite floats, which is a test rather than a claim. Nothing
+is protected by that function and nothing pretends to be. What decides that a column holds a vector is
+a search index's own `%_config`, carried on `catalog::Table::vector_columns`; every other blob stays a
+blob until a person opens it and asks, which makes the reading their question rather than the grid's.
+
+**And a vector is not in `select *`.** It arrives through a *hidden* column, so `select * from docs`
+answers `["title", "body"]` and a grid asking for `*` would show the title and the body of a row whose
+whole point is the embedding beside them. It is asked for by name — which is exactly what
+`select_for` already does for SQLite's rowid, and it is the one line that decides whether "ways to see
+our vectors" is true of the grid at all.
+
+**The cell says the norm before the components, and that order was decided by looking at a picture.**
+It read `8d · [0.0000, 0.1762, 0.3285, …] · |v| 1.000`, and a grid column fits about eighteen
+characters, so what survived was three digits of one component with the norm cut off the end. Any
+three of several hundred components are a sample; the norm is a fact about the row, and on a cosine
+index a value that is not 1.000 says the corpus was stored unnormalised.
+
+**Two kinds the other engines have no use for.** `Kind::Search` is the index itself, drawn with what
+it declared — `768d · exact · cosine · porter`, read from `%_config` rather than parsed out of the
+`CREATE`, so there is no second opinion about what a search table is. `Kind::Shadow` is the five
+tables it keeps its state in, **shown rather than hidden** because they are where the vectors are, and
+marked because they must not be edited: `docs_content` has a perfectly good `INTEGER PRIMARY KEY`, so
+the addressability rule alone would allow a hand-written `UPDATE` that left the index describing
+something the row no longer says, with nothing to report it until a search returned the wrong passage.
+`Table::owned_by` is what makes that a refusal, and it names the object to write to instead.
+
+**What the engine has not built keeps its own words.** `VACUUM` comes back `Unsupported` with
+`feature: "VACUUM"`, and a mistyped name comes back `NotFound` — a distinction the driver was built to
+make, and one an explorer that folded them together would have thrown away. `unluminous-git`'s rule
+about never inventing an error message, applied to a status code.
+
+**Three refusals route rather than puzzle.** A SQLite file added as Inillucent names the import that
+converts one; a `.rdb` added as SQLite is recognised by its first eight bytes; and a data source added
+from a bare path reads the engine off the file, because a person who has a database has a path rather
+than an opinion about which engine wrote it.
+
+`plugins run database vector | search | capabilities | import` is the agent's half. `search` composes
+the statement into a console rather than running it, because `k` decides how deep the retrieval went
+where `LIMIT` only trims what came back, and a search whose depth nobody could see would be a number
+chosen on somebody's behalf.
 
 ## The look is written down, and a new control is measured against it
 
