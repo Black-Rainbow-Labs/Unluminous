@@ -197,7 +197,7 @@ fn a_vector_round_trips_and_is_read_from_the_column_the_schema_names() {
     };
     let vector = crate::vector::Vector::decode(&bytes).expect("a vector");
     assert_eq!(vector.values, [0.5, -0.5, 0.5, 0.5], "byte for byte what was written");
-    assert_eq!(vector.summary(), "4d · [0.5000, -0.5000, 0.5000, …] · |v| 1.000");
+    assert_eq!(vector.summary(), "4d · |v| 1.000 · [0.5000, -0.5000, 0.5000, …]");
 }
 
 #[test]

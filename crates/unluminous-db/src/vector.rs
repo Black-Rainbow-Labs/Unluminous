@@ -101,9 +101,17 @@ impl Vector {
 
     /// What the grid draws in the cell.
     ///
-    /// The three things a person can actually use at that width: how many dimensions, what the first
-    /// few components look like, and the norm. The ellipsis is only there when something was left out,
-    /// so a four-dimension vector reads as the whole of itself rather than as a truncation.
+    /// The three things a person can actually use at that width: how many dimensions, how long the
+    /// vector is, and what its first few components look like. The ellipsis is only there when
+    /// something was left out, so a three-dimension vector reads as the whole of itself rather than
+    /// as a truncation.
+    ///
+    /// **The norm comes before the components, and that order was decided by looking at a picture.**
+    /// It read `8d · [0.0000, 0.1762, 0.3285, …] · |v| 1.000` at first, and in a grid column wide
+    /// enough for about eighteen characters what survived was `8d · [0.0000, 0.1…` - three digits of
+    /// one component, and the number that says whether the whole corpus was stored unnormalised cut
+    /// off the end. The components are the part it is least costly to lose: any three of several
+    /// hundred are a sample, while the norm is a fact about the row.
     pub fn summary(&self) -> String {
         let head: Vec<String> =
             self.values.iter().take(SHOWN).map(|value| format!("{value:.4}")).collect();
@@ -111,7 +119,7 @@ impl Vector {
             true => ", …",
             false => "",
         };
-        format!("{}d · [{}{more}] · |v| {:.3}", self.values.len(), head.join(", "), self.norm())
+        format!("{}d · |v| {:.3} · [{}{more}]", self.values.len(), self.norm(), head.join(", "))
     }
 
     /// The whole vector as JSON, which is what Copy puts on the clipboard.
@@ -180,11 +188,11 @@ mod tests {
     fn the_summary_says_the_three_things_that_fit_in_a_cell() {
         let vector = Vector::decode(&bytes_of(&[0.5, -0.5, 0.5, 0.5])).expect("a vector");
         // Four dimensions and three shown, so one was left out and the ellipsis says so.
-        assert_eq!(vector.summary(), "4d · [0.5000, -0.5000, 0.5000, …] · |v| 1.000");
+        assert_eq!(vector.summary(), "4d · |v| 1.000 · [0.5000, -0.5000, 0.5000, …]");
 
         // A vector no longer than the summary shows is not written as though something were left out.
         let short = Vector::decode(&bytes_of(&[3.0, 4.0])).expect("a vector");
-        assert_eq!(short.summary(), "2d · [3.0000, 4.0000] · |v| 5.000");
+        assert_eq!(short.summary(), "2d · |v| 5.000 · [3.0000, 4.0000]");
         assert!(!short.summary().contains('…'));
     }
 

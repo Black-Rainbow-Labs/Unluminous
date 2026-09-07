@@ -15832,3 +15832,137 @@ fn add_row_puts_a_row_on_the_screen_that_can_be_typed_into() {
         .expect("the row that was typed into is the row that was inserted");
     assert_eq!(id, 5, "and the engine gave it a key, because nothing pretended to supply one");
 }
+
+/// An Inillucent database, written by the engine itself, for the two pictures below.
+///
+/// **No process id in the name**, for the reason `a_database_file` gives: a data source draws where
+/// it points, so a folder that changed between runs would put a different string in an accepted
+/// image every time.
+fn an_inillucent_file(name: &str) -> std::path::PathBuf {
+    let folder = std::env::temp_dir().join(format!("unluminous-inillucent-shot-{name}"));
+    let _ = std::fs::create_dir_all(&folder);
+    let file = folder.join("notes.rdb");
+    let _ = std::fs::remove_file(&file);
+    let database = inillucent_driver::Database::open(&file).expect("a database");
+    let connection = database.connect();
+    connection
+        .execute_batch(
+            "create table member (id integer primary key, name text not null, joined text);
+             insert into member (id, name, joined) values
+               (1, 'Jason', '2026-01-04'), (2, 'Ada', '2026-02-11'), (3, 'Grace', null);
+             create virtual table docs using inillucent_search(title, body, dims = 8, mode = 'exact', metric = 'cosine');",
+        )
+        .expect("a schema");
+    for (nth, (title, body)) in [
+        ("the release process", "how a release is cut, tagged and published"),
+        ("the buffer pool", "frames, version latches and the cooling FIFO"),
+        ("drawing a vector", "an embedding is a blob until something reads it as numbers"),
+    ]
+    .iter()
+    .enumerate()
+    {
+        // A unit vector, so every norm reads 1.000 — which is what makes an unnormalised corpus
+        // visible at a glance in the cell.
+        let mut values = [0.0f32; 8];
+        for (at, slot) in values.iter_mut().enumerate() {
+            *slot = ((nth * 8 + at) as f32 * 0.37).sin();
+        }
+        let length: f32 = values.iter().map(|value| value * value).sum::<f32>().sqrt();
+        let mut bytes = Vec::new();
+        for value in values.iter() {
+            bytes.extend_from_slice(&(value / length).to_le_bytes());
+        }
+        connection
+            .execute(
+                "insert into docs(title, body, vector) values(?1, ?2, ?3)",
+                &[
+                    inillucent_driver::Value::Text((*title).to_owned()),
+                    inillucent_driver::Value::Text((*body).to_owned()),
+                    inillucent_driver::Value::Blob(bytes),
+                ],
+            )
+            .expect("a row with a vector");
+    }
+    database.checkpoint().expect("checkpointed");
+    drop(connection);
+    drop(database);
+    file
+}
+
+/// A window with the Database plugin pointed at an Inillucent database, with the tree showing.
+fn an_inillucent_database(name: &str) -> Harness<'static, UnluminousApp> {
+    let file = an_inillucent_file(name);
+    let mut harness = harness("");
+    did(&mut harness, &format!("plugins run database add-source notes {}", file.display()));
+    did(&mut harness, "plugins pane database/explorer --show");
+    harness.run();
+    harness
+}
+
+/// A search index says what it declared, and the five tables it keeps its state in are marked.
+///
+/// The row is where the four things a person needs before trusting a result live — how wide the
+/// vectors are, whether the answers are exact, which distance they are exact about, and which
+/// analysis produced the terms — because they are what the index *is* rather than something to open.
+#[test]
+fn the_database_tree_says_what_a_search_index_declared() {
+    let mut harness = an_inillucent_database("tree");
+    harness.get_by_label("notes").click();
+    until_the_database_settles(&mut harness);
+    harness.get_by_label("main").click();
+    until_the_database_settles(&mut harness);
+    // The search index is in a folder of its own, second, because on this engine it is what somebody
+    // came to look at.
+    harness.get_by_label("search").click();
+    until_the_database_settles(&mut harness);
+
+    let view = did(&mut harness, "plugins view database");
+    let kinds: Vec<(&str, &str)> = view["tree"][0]["items"][0]["items"]
+        .as_array()
+        .expect("the items of the schema")
+        .iter()
+        .filter_map(|item| Some((item["name"].as_str()?, item["kind"].as_str()?)))
+        .collect();
+    assert!(kinds.contains(&("docs", "search index")), "{kinds:?}");
+    assert!(kinds.contains(&("docs_content", "shadow table")), "{kinds:?}");
+    // And the engine reports what it cannot do, which is what the absent Stop button is drawn from.
+    let capabilities = did(&mut harness, "plugins run database capabilities notes");
+    let cancel = capabilities["capabilities"]
+        .as_array()
+        .expect("the table")
+        .iter()
+        .find(|row| row["name"] == serde_json::json!("cancel"))
+        .expect("the cancel row");
+    assert_eq!(cancel["support"], "no");
+    harness.snapshot(shot("database_inillucent_tree").as_str());
+}
+
+/// A vector is drawn as a vector: its width, the first of its components, and its length.
+///
+/// The cell used to be `32 bytes: 3f 00 00 00…`, which tells somebody the row has *something*. The
+/// norm is in the summary because this engine's distance is cosine, so a corpus stored unnormalised
+/// is visible at a glance rather than after a query nobody thought to run.
+#[test]
+fn a_vector_is_drawn_as_a_vector_rather_than_as_its_bytes() {
+    let mut harness = an_inillucent_database("grid");
+    did(&mut harness, "plugins run database tables main");
+    did(&mut harness, "plugins run database open docs");
+    until_the_database_settles(&mut harness);
+
+    let page = did(&mut harness, "plugins run database result");
+    assert_eq!(page["kind"], "grid");
+    // A search table has no key of its own, so its rows are read rather than changed - the ordinary
+    // addressability rule rather than a special case.
+    assert_eq!(page["editable"], serde_json::json!(false));
+    // **The vector column is in the result at all**, which is the line that decides whether any of
+    // this is true of the grid: it arrives through a hidden column, so `select *` would have left it
+    // out and drawn the title and the body of a row whose whole point is the embedding beside them.
+    let columns: Vec<&str> =
+        page["rows"]["columns"].as_array().expect("columns").iter().filter_map(|column| column["name"].as_str()).collect();
+    assert!(columns.contains(&"vector"), "{columns:?}");
+
+    let read = did(&mut harness, "plugins run database vector 1 vector");
+    assert_eq!(read["dimensions"], serde_json::json!(8));
+    assert!((read["norm"].as_f64().unwrap_or_default() - 1.0).abs() < 1.0e-5, "{read}");
+    harness.snapshot(shot("database_inillucent_vector").as_str());
+}

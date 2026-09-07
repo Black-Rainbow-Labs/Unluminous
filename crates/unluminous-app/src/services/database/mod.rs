@@ -1249,13 +1249,32 @@ impl DatabaseExplorer {
 }
 
 /// Why a grid cannot be edited, in one sentence, or nothing when it can.
+///
+/// **Three reasons rather than one**, because they are different situations and a person acting on
+/// the sentence needs to know which. A view's rows really do belong to something else. A search
+/// index's rows belong to it and simply cannot be addressed - it has no key of its own. And a shadow
+/// table *can* be addressed perfectly well and must not be, which is the one that would otherwise
+/// read as an arbitrary refusal.
 pub fn why_not(grid: &Grid) -> Option<String> {
     if !grid.kind.can_be_changed() {
-        return Some(format!(
-            "`{}` is a {}, and its rows belong to the tables underneath it.",
-            grid.table.name,
-            grid.kind.name()
-        ));
+        // The table knows about ownership, so a shadow table's own sentence - which names the object
+        // to write to instead - wins over anything composed from the kind.
+        if let Some(owned) = grid.table.why_not_changeable() {
+            if grid.table.owned_by.is_some() {
+                return Some(owned);
+            }
+        }
+        return Some(match grid.kind {
+            Kind::Search => format!(
+                "`{}` is a search index, and it has no key of its own - a row here is found by                  searching rather than addressed, so there is no way to name one and change only it.",
+                grid.table.name
+            ),
+            kind => format!(
+                "`{}` is a {}, and its rows belong to the tables underneath it.",
+                grid.table.name,
+                kind.name()
+            ),
+        });
     }
     grid.table.why_not_changeable()
 }
