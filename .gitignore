@@ -35,3 +35,5 @@ reference/
 AuthKey_K2466BV829.p8
 # The signing identity and notarising credentials, which are per machine and partly secret.
 installer/macos/notarize.env
+# The App Store Connect API key notarytool submits with. A private key: never committed.
+installer/macos/*.p8

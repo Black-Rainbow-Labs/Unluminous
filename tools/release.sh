@@ -14,9 +14,15 @@
 #   1. Refuses to run on a dirty checkout. A release built from one is a release nobody can rebuild.
 #   2. Bumps `version` under `[workspace.package]` in Cargo.toml, which is the one place the version is
 #      written down. It reaches Info.plist, the About box and the disk image's name from there.
-#   3. Runs installer/macos/build.sh --install: builds `unluminous` and `unluminous-cli`, signs, makes
-#      Unluminous.app and the disk image, and copies the bundle into /Applications. The rebuild is what
-#      moves the build date the About box shows.
+#   3. Runs installer/macos/build.sh --install --notarize: builds `unluminous` and `unluminous-cli`,
+#      signs, notarises, staples, makes Unluminous.app and the disk image, and copies the bundle into
+#      /Applications. The rebuild is what moves the build date the About box shows.
+#
+#      **Notarising is the default, because the file this step publishes is the one people download.**
+#      A Developer ID signature on its own leaves the warning an unsigned build gets on macOS 10.15
+#      and later; only the notarisation removes it. A release that stopped at signing therefore looked
+#      finished and was not, which is what v0.38.2 shipped as. `--skip-notarize` is for a build that
+#      never leaves this machine; anything published should not use it.
 #   4. Copies the image into releases/.
 #   5. Commits Cargo.toml and Cargo.lock on their own as `Unluminous <version>`, tags `v<version>`, and
 #      pushes the branch and the tag.
@@ -32,6 +38,7 @@
 #   tools/release.sh --notes "task-28: the handoff"
 #   tools/release.sh --skip-install      # build the image but leave /Applications alone
 #   tools/release.sh --skip-publish      # everything up to the tag, and stop before GitHub
+#   tools/release.sh --skip-notarize     # sign but do not send it to Apple: a build for this machine only
 #   tools/release.sh --dry-run           # say what would happen and change nothing
 #
 # **No `gh` and no second credential.** `release.ps1` installs the GitHub CLI with winget the first
@@ -54,6 +61,7 @@ version=""
 notes=""
 skip_install=0
 skip_publish=0
+skip_notarize=0
 dry_run=0
 
 # A while loop rather than `for argument in "$@"`, because the bash macOS ships is 3.2 and that one
@@ -65,8 +73,9 @@ while [ "$#" -gt 0 ]; do
         --notes) notes="${2:-}"; shift ;;
         --skip-install) skip_install=1 ;;
         --skip-publish) skip_publish=1 ;;
+        --skip-notarize) skip_notarize=1 ;;
         --dry-run|--whatif) dry_run=1 ;;
-        -h|--help) sed -n '3,45p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '3,49p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
     shift
@@ -123,7 +132,7 @@ if [ "$dry_run" = 1 ]; then
     echo
     echo "What would happen:"
     echo "  1. Cargo.toml version -> $next"
-    echo "  2. installer/macos/build.sh$([ "$skip_install" = 1 ] || echo ' --install')"
+    echo "  2. installer/macos/build.sh$([ "$skip_install" = 1 ] || echo ' --install')$([ "$skip_notarize" = 1 ] || echo ' --notarize')"
     echo "  3. $image"
     echo "  4. commit \"Unluminous $next\", tag v$next, push $branch"
     [ "$skip_publish" = 1 ] || echo "  5. a GitHub release v$next with the image attached"
@@ -173,6 +182,7 @@ cargo metadata --no-deps --format-version 1 --manifest-path "$manifest" > /dev/n
 step 'Building the disk image, and installing it'
 build=("$repo/installer/macos/build.sh")
 [ "$skip_install" = 1 ] || build+=(--install)
+[ "$skip_notarize" = 1 ] || build+=(--notarize)
 bash "${build[@]}"
 [ -f "$image" ] || die "The disk image was not written to $image."
 echo "Kept $image"
