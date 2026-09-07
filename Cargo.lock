@@ -2225,12 +2225,12 @@ dependencies = [
 [[package]]
 name = "inillucent-base"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 
 [[package]]
 name = "inillucent-catalog"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "inillucent-pool",
@@ -2243,7 +2243,7 @@ dependencies = [
 [[package]]
 name = "inillucent-core"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2258,7 +2258,7 @@ dependencies = [
 [[package]]
 name = "inillucent-driver"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-engine",
 ]
@@ -2266,7 +2266,7 @@ dependencies = [
 [[package]]
 name = "inillucent-engine"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "inillucent-catalog",
@@ -2286,7 +2286,7 @@ dependencies = [
 [[package]]
 name = "inillucent-exec"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "inillucent-pool",
@@ -2299,7 +2299,7 @@ dependencies = [
 [[package]]
 name = "inillucent-ext"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "inillucent-catalog",
@@ -2313,7 +2313,7 @@ dependencies = [
 [[package]]
 name = "inillucent-pool"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "inillucent-vfs",
@@ -2322,7 +2322,7 @@ dependencies = [
 [[package]]
 name = "inillucent-scalar"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "inillucent-sql",
@@ -2332,7 +2332,7 @@ dependencies = [
 [[package]]
 name = "inillucent-search"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "inillucent-core",
@@ -2343,7 +2343,7 @@ dependencies = [
 [[package]]
 name = "inillucent-sql"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "inillucent-value",
@@ -2352,7 +2352,7 @@ dependencies = [
 [[package]]
 name = "inillucent-sqlite-reader"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "inillucent-catalog",
@@ -2367,7 +2367,7 @@ dependencies = [
 [[package]]
 name = "inillucent-storage"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "inillucent-value",
@@ -2377,7 +2377,7 @@ dependencies = [
 [[package]]
 name = "inillucent-transaction"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "inillucent-storage",
@@ -2387,7 +2387,7 @@ dependencies = [
 [[package]]
 name = "inillucent-tree"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "inillucent-pool",
@@ -2398,7 +2398,7 @@ dependencies = [
 [[package]]
 name = "inillucent-txn"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "inillucent-pool",
@@ -2411,7 +2411,7 @@ dependencies = [
 [[package]]
 name = "inillucent-value"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
 ]
@@ -2419,7 +2419,7 @@ dependencies = [
 [[package]]
 name = "inillucent-vfs"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "libc",
@@ -2429,7 +2429,7 @@ dependencies = [
 [[package]]
 name = "inillucent-wal"
 version = "0.1.0"
-source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=4b9efb10d7b159afc418e77da2558a0e39c4a82b#4b9efb10d7b159afc418e77da2558a0e39c4a82b"
+source = "git+https://github.com/jasonmcaffee/inillucent.git?rev=6eaa12d1fc24c89d5dfb2173c2906512722fbe83#6eaa12d1fc24c89d5dfb2173c2906512722fbe83"
 dependencies = [
  "inillucent-base",
  "inillucent-vfs",
