@@ -842,6 +842,22 @@ the statement into a console rather than running it, because `k` decides how dee
 where `LIMIT` only trims what came back, and a search whose depth nobody could see would be a number
 chosen on somebody's behalf.
 
+**Two things only driving the released build found**, and both are the same fault in different
+clothes: a person and an agent looking at one row were shown different things.
+
+- **`result` answered `32 bytes: 00 00 00 00 bf 69 34 3e...` while the cell drew the summary.** The
+  drawing had been taught to read a vector and the data had not, so the half of this repository's own
+  rule that says an agent reaches the same thing by the same path was quietly false for the one column
+  the feature exists for. `rows_value` takes the table's vector columns now.
+- **The read-only sentence depended on the tree having been read.** `plugins run database open docs` on
+  a window nobody has clicked in leaves the grid's `kind` at its default, and the banner then fell back
+  to "has no primary key" - true, and the weaker of the two answers, while the same page's own data
+  said "is a search index". A search index is recognised from its **schema** now, so both say the same
+  thing whichever way the grid was opened.
+
+Neither had a failing test, and neither would have got one: both were only visible by starting the
+installed binary and reading what came back. That is what the release step is for.
+
 ## The look is written down, and a new control is measured against it
 
 `design/style-guide.md` says what a control in Unluminous is built from: the palette is closed, a list row

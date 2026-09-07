@@ -1217,7 +1217,8 @@ impl DatabaseExplorer {
                 "text": console.text,
                 "running": console.running.is_some(),
                 "output": console.output,
-                "result": console.result.as_ref().map(rows_value),
+                // A console result is never a table's rows, so nothing there is a declared vector.
+                "result": console.result.as_ref().map(|rows| rows_value(rows, &[])),
                 "failure": console.failure.as_ref().map(std::string::ToString::to_string),
             }),
             Sheet::Grid(grid) => serde_json::json!({
@@ -1241,7 +1242,7 @@ impl DatabaseExplorer {
                     "column": grid.rows.columns.get(editing.column).map(|column| column.name.clone()),
                     "text": editing.text,
                 })),
-                "rows": rows_value(&grid.rows),
+                "rows": rows_value(&grid.rows, &grid.table.vector_columns),
                 "failure": grid.failure.as_ref().map(std::string::ToString::to_string),
             }),
         }
@@ -1256,17 +1257,27 @@ impl DatabaseExplorer {
 /// table *can* be addressed perfectly well and must not be, which is the one that would otherwise
 /// read as an arbitrary refusal.
 pub fn why_not(grid: &Grid) -> Option<String> {
+    // The table knows about ownership, so a shadow table's own sentence - which names the object to
+    // write to instead - wins over anything composed from the kind.
+    if grid.table.owned_by.is_some() {
+        return grid.table.why_not_changeable();
+    }
+    // **A search index is recognised by its schema rather than by the tree**, because a grid can be
+    // opened without the tree ever having been read: `plugins run database open docs` on a window
+    // nobody has clicked in leaves `kind` at its default, and the released build then explained a
+    // search table with "has no primary key" - true, and the weaker of the two answers. The schema
+    // says what this is whichever way the grid was opened.
+    let is_a_search = grid.kind == Kind::Search || !grid.table.vector_columns.is_empty();
+    if is_a_search && grid.table.key.is_empty() {
+        return Some(format!(
+            "`{}` is a search index, and it has no key of its own: a row here is found by searching rather than addressed, so there is no way to name one and change only it.",
+            grid.table.name
+        ));
+    }
     if !grid.kind.can_be_changed() {
-        // The table knows about ownership, so a shadow table's own sentence - which names the object
-        // to write to instead - wins over anything composed from the kind.
-        if let Some(owned) = grid.table.why_not_changeable() {
-            if grid.table.owned_by.is_some() {
-                return Some(owned);
-            }
-        }
         return Some(match grid.kind {
             Kind::Search => format!(
-                "`{}` is a search index, and it has no key of its own - a row here is found by                  searching rather than addressed, so there is no way to name one and change only it.",
+                "`{}` is a search index, and it has no key of its own: a row here is found by searching rather than addressed, so there is no way to name one and change only it.",
                 grid.table.name
             ),
             kind => format!(
@@ -1280,7 +1291,10 @@ pub fn why_not(grid: &Grid) -> Option<String> {
 }
 
 /// A result as data, bounded, for `plugins view` and for a test.
-fn rows_value(rows: &Rows) -> serde_json::Value {
+fn rows_value(rows: &Rows, vectors: &[String]) -> serde_json::Value {
+    // Which result columns the schema says hold a vector, worked out once rather than per cell.
+    let is_a_vector: Vec<bool> =
+        rows.columns.iter().map(|column| vectors.iter().any(|named| *named == column.name)).collect();
     serde_json::json!({
         "columns": rows.columns.iter().map(|column| serde_json::json!({
             "name": column.name,
@@ -1289,9 +1303,23 @@ fn rows_value(rows: &Rows) -> serde_json::Value {
         })).collect::<Vec<serde_json::Value>>(),
         // Bounded, because an agent handed three thousand rows to learn how many there are stops
         // asking — `task-1704`'s rule about proportionate replies.
-        "rows": rows.rows.iter().take(50).map(|row| row.iter().map(|value| match value {
+        //
+        // **And a vector reads as a vector here too.** Driving the released window found this: the
+        // cell drew `8d · |v| 1.000 · […]` while `result` answered
+        // `32 bytes: 00 00 00 00 bf 69 34 3e…`, so a person and an agent looking at the same row saw
+        // different things — and the agent saw the one that is no use. `plugins run database vector`
+        // gives the components; what belongs here is what the grid is showing.
+        "rows": rows.rows.iter().take(50).enumerate().map(|(_, row)| row.iter().enumerate().map(|(at, value)| match value {
             Value::Null => serde_json::Value::Null,
-            other => serde_json::Value::String(other.display()),
+            other => serde_json::Value::String(
+                match is_a_vector.get(at).copied().unwrap_or(false) {
+                    true => other
+                        .bytes()
+                        .and_then(unluminous_db::Vector::decode)
+                        .map_or_else(|| other.display(), |vector| vector.summary()),
+                    false => other.display(),
+                },
+            ),
         }).collect::<Vec<serde_json::Value>>()).collect::<Vec<Vec<serde_json::Value>>>(),
         "count": rows.rows.len(),
         "more": rows.more,

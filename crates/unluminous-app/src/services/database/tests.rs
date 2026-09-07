@@ -743,6 +743,59 @@ fn a_vector_is_read_as_a_vector_and_an_ordinary_column_is_not() {
 }
 
 #[test]
+fn a_search_index_says_why_it_is_read_only_even_when_the_tree_was_never_read() {
+    // Found by driving the released window. `open docs` on a window nobody has clicked in leaves the
+    // grid's `kind` at its default, so the banner fell back to "has no primary key" - true, and the
+    // weaker of the two answers, while the same page's own data said "is a search index". The schema
+    // is what decides now, so both say the same thing whichever way the grid was opened.
+    let (mut explorer, _) = with_inillucent("why-not");
+    run(&mut explorer, "connect", &["notes"]);
+    settle(&mut explorer);
+    // Deliberately without reading the schema first, which is what the released run did.
+    run(&mut explorer, "open", &["docs"]);
+    settle(&mut explorer);
+
+    let page = value(&mut explorer, "result", &[]);
+    let said = page["why_not_editable"].as_str().unwrap_or_default();
+    assert!(said.contains("is a search index"), "{said}");
+    assert!(said.contains("found by searching"), "{said}");
+    assert!(!said.contains("no primary key"), "the weaker answer is gone: {said}");
+    // And it is one sentence rather than a run of spaces, which the released picture showed.
+    assert!(!said.contains("  "), "no run of spaces in it: {said:?}");
+}
+
+#[test]
+fn an_agent_reading_the_rows_sees_the_same_vector_a_person_does() {
+    // Found by driving the released window rather than by a test: the cell drew
+    // `8d - |v| 1.000 - [...]` while `plugins run database result` answered
+    // `32 bytes: 00 00 00 00 bf 69 34 3e...`, so the two halves of this repository's own rule -
+    // everything a person can do, an agent can do too, through the same path - disagreed about one
+    // row, and the agent had the half that is no use.
+    let (mut explorer, _) = with_inillucent("agent-vector");
+    run(&mut explorer, "connect", &["notes"]);
+    settle(&mut explorer);
+    run(&mut explorer, "open", &["docs"]);
+    settle(&mut explorer);
+
+    let page = value(&mut explorer, "result", &[]);
+    let columns: Vec<String> = page["rows"]["columns"]
+        .as_array()
+        .expect("columns")
+        .iter()
+        .filter_map(|column| column["name"].as_str().map(str::to_owned))
+        .collect();
+    let at = columns.iter().position(|name| name == "vector").expect("the vector column");
+    let cell = page["rows"]["rows"][0][at].as_str().unwrap_or_default();
+    assert!(cell.starts_with("4d"), "the width comes first: {cell}");
+    assert!(cell.contains("|v| 1.000"), "and the norm, which is the fact about the row: {cell}");
+    assert!(!cell.contains("bytes:"), "and not a byte count: {cell}");
+
+    // A column the schema does not call a vector is untouched, whatever it holds.
+    let title = columns.iter().position(|name| name == "title").expect("the title column");
+    assert_eq!(page["rows"]["rows"][0][title].as_str(), Some("release process"));
+}
+
+#[test]
 fn a_search_table_opens_a_console_holding_the_statement_that_searches_it() {
     let (mut explorer, _) = with_inillucent("search");
     run(&mut explorer, "connect", &["notes"]);
