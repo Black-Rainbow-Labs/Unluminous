@@ -8,6 +8,11 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- The command that reads a whole Inillucent database by hand (`task-1814`)
+- The two things driving the released build found (`task-1814`)
+
+## 0.38.0 — 2026-09-07
+
 - The Agent-Chat beat, and how it was caught without a monitor (`task-1811`)
 - Inillucent as a third engine, and a vector drawn as a vector (`task-1814`)
 - Two pictures, and the two things looking at them found (`task-1814`)
