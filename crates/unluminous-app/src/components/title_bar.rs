@@ -68,7 +68,12 @@ impl MenuPlacement {
 pub struct TitleBarOutcome {
     pub close: bool,
     pub minimise: bool,
+    /// Fill the desktop the window is already on. A double click on the bar, and the green button
+    /// everywhere except macOS.
     pub toggle_maximise: bool,
+    /// Go full screen, which on macOS means a space of its own. The green button there, because that
+    /// is what the green button does on that platform; a double click still only maximises.
+    pub toggle_fullscreen: bool,
     /// Something chosen from a menu in the bar.
     pub action: Option<Action>,
 }
@@ -146,6 +151,17 @@ pub fn show(
 
     let buttons_at_left = placement == MenuPlacement::Native;
     let first_centre = first_button(area, placement);
+    // **The three are grey until the pointer is over the group, and then all three take their
+    // colour.** Hovering is asked of the group rather than of each button because colouring only the
+    // one under the pointer leaves the other two grey beside it, which reads as two dead buttons
+    // rather than as one hovered. It is also what macOS itself does. The rect is the three circles
+    // and the room between them, widened by a button so the colour arrives just before the pointer
+    // reaches the first one.
+    let group = Rect::from_center_size(
+        Pos2::new(first_centre.x + BUTTON_STEP, first_centre.y),
+        Vec2::new(2.0 * BUTTON_STEP + 32.0, 24.0),
+    );
+    let lit = ui.rect_contains_pointer(group);
     let buttons: [(Color32, &str); 3] = if buttons_at_left {
         // The order macOS puts them in.
         [(color::close(), "Close"), (color::minimise(), "Minimise"), (color::maximise(), "Maximise")]
@@ -165,7 +181,7 @@ pub fn show(
         let response = ui
             .interact(hit, ui.id().with(("window-button", label)), Sense::CLICK)
             .on_hover_text(label);
-        painter.circle_filled(centre, 6.5, fill);
+        painter.circle_filled(centre, 6.5, if lit { fill } else { color::icon() });
         if response.hovered() {
             painter.circle_stroke(centre, 6.5, Stroke::new(1.0, Color32::from_black_alpha(90)));
         }
@@ -177,6 +193,10 @@ pub fn show(
             match label {
                 "Close" => outcome.close = true,
                 "Minimise" => outcome.minimise = true,
+                // The green button takes the window full screen on macOS, where full screen is a
+                // space of its own, and maximises it everywhere else. `Native` is the macOS
+                // placement, which is what already decides the buttons sit at the left.
+                _ if placement == MenuPlacement::Native => outcome.toggle_fullscreen = true,
                 _ => outcome.toggle_maximise = true,
             }
         }

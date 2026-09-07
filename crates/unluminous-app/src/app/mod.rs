@@ -6802,6 +6802,14 @@ impl UnluminousApp {
             let maximised = ui.input(|input| input.viewport().maximized.unwrap_or(false));
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!maximised));
         }
+        // The green button on macOS. Full screen there is a space of its own, which is what the
+        // button does in every other application on that platform, and it is a different thing from
+        // the maximise a double click on the bar asks for — so the two are two commands rather than
+        // one, and a window can be maximised and not full screen.
+        if outcome.toggle_fullscreen {
+            let fullscreen = ui.input(|input| input.viewport().fullscreen.unwrap_or(false));
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Fullscreen(!fullscreen));
+        }
         if let Some(chosen) = outcome.action {
             action = Some(chosen);
         }

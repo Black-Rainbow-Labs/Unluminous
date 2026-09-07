@@ -469,7 +469,11 @@ pub fn syntax() -> Option<crate::services::plugins::SyntaxTheme> {
 /// Measurements taken from the design.
 pub mod size {
     /// Height of the bar holding the window buttons and the file name.
-    pub const TITLE_BAR: f32 = 50.0;
+    ///
+    /// Fifty left more room above and below the buttons than anything in the bar needed — nothing in
+    /// it is taller than the twenty four point run widget — so the window opened with a band of empty
+    /// colour across the top. Thirty eight keeps seven points clear of the tallest thing in it.
+    pub const TITLE_BAR: f32 = 38.0;
     /// Width of the rail of pane buttons down the far left of the window.
     ///
     /// Narrower than the reference editor's, which is about forty points, because `task-1658` asks for that and

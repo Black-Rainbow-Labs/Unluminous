@@ -27,6 +27,7 @@ use unluminous_app::app::actions::{Action, FoldAction, HighlightColor, RunAction
 use unluminous_app::components::about_dialog::About;
 use unluminous_app::components::title_bar::MenuPlacement;
 use unluminous_app::settings;
+use unluminous_app::theme::size;
 use unluminous_core::{Align, Color, Command, StyleChange};
 
 const WINDOW: [f32; 2] = [1180.0, 740.0];
@@ -942,7 +943,8 @@ fn the_title_bar_names_the_project_and_carries_the_window_buttons_and_the_text_t
     for button in ["Close", "Minimise", "Maximise"] {
         harness.get_by_label(button);
     }
-    let title_bar = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), vec2(WINDOW[0], 50.0));
+    let title_bar =
+        egui::Rect::from_min_size(egui::pos2(0.0, 0.0), vec2(WINDOW[0], size::TITLE_BAR));
     for tool in ["Text options", "Raw Markdown", "Side by side", "Markdown preview"] {
         let at = harness.get_by_label(tool).rect();
         assert!(
@@ -951,6 +953,98 @@ fn the_title_bar_names_the_project_and_carries_the_window_buttons_and_the_text_t
         );
     }
     harness.snapshot(shot("title_bar"));
+}
+
+/// Every window command this frame, as text, whatever kind it is.
+fn viewport_commands(harness: &Harness<'static, UnluminousApp>) -> Vec<String> {
+    harness
+        .output()
+        .viewport_output
+        .values()
+        .flat_map(|viewport| viewport.commands.iter())
+        .map(|command| format!("{command:?}"))
+        .collect()
+}
+
+/// Press and release the primary button at `pos`, `times` over, in one frame.
+///
+/// Two of them inside egui's double click window is what `double_clicked` reads. `click_at` further
+/// down sends one click and moves the pointer first; this one exists because a double click has to be
+/// two presses with nothing between them.
+fn click_repeatedly_at(harness: &mut Harness<'static, UnluminousApp>, pos: egui::Pos2, times: usize) {
+    for _ in 0..times {
+        for pressed in [true, false] {
+            harness.input_mut().events.push(egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: Modifiers::default(),
+            });
+        }
+    }
+    harness.step();
+}
+
+#[test]
+fn the_green_button_goes_full_screen_on_macos_and_maximises_everywhere_else() {
+    // The green button on macOS puts a window in a space of its own, which is what it does in every
+    // other application there. Off macOS the same button still maximises, because that is what the
+    // platform it is drawn for means by it. Two behaviours, so two commands.
+    let mut mac = harness("");
+    mac.state_mut().menu_placement = MenuPlacement::Native;
+    mac.run();
+    mac.get_by_label("Maximise").click();
+    // `step` and not `run`: `run` keeps painting until the window settles, and the commands read
+    // below are the ones a single frame sent, so the frame that handled the click has to be the last.
+    mac.step();
+    let sent = viewport_commands(&mac);
+    assert!(
+        sent.iter().any(|command| command == "Fullscreen(true)"),
+        "the green button should go full screen on macOS, and it sent {sent:?}"
+    );
+    // And it is full screen rather than both: a maximise as well would fill the desktop first and
+    // then leave it, which is the flicker this separation exists to avoid.
+    assert!(
+        !sent.iter().any(|command| command.starts_with("Maximized")),
+        "the green button on macOS should not also maximise, and it sent {sent:?}"
+    );
+
+    let mut windows = harness("");
+    windows.state_mut().menu_placement = MenuPlacement::InWindow;
+    windows.run();
+    windows.get_by_label("Maximise").click();
+    windows.step();
+    let sent = viewport_commands(&windows);
+    assert!(
+        sent.iter().any(|command| command == "Maximized(true)"),
+        "the maximise button should maximise off macOS, and it sent {sent:?}"
+    );
+    assert!(
+        !sent.iter().any(|command| command.starts_with("Fullscreen")),
+        "the maximise button off macOS should not go full screen, and it sent {sent:?}"
+    );
+}
+
+#[test]
+fn a_double_click_on_the_bar_maximises_on_macos_rather_than_going_full_screen() {
+    // What `task-1771` shipped, and what the green button's change had to leave alone: the bar's own
+    // double click fills the desktop the window is already on, macOS included. The point at the
+    // middle of the bar is the draggable room, clear of every control at either end.
+    let mut harness = harness("");
+    harness.state_mut().menu_placement = MenuPlacement::Native;
+    harness.run();
+    let middle = egui::pos2(WINDOW[0] / 2.0, size::TITLE_BAR / 2.0);
+    click_repeatedly_at(&mut harness, middle, 2);
+
+    let sent = viewport_commands(&harness);
+    assert!(
+        sent.iter().any(|command| command.starts_with("Maximized")),
+        "a double click on the bar should maximise, and it sent {sent:?}"
+    );
+    assert!(
+        !sent.iter().any(|command| command.starts_with("Fullscreen")),
+        "a double click must not go full screen, and it sent {sent:?}"
+    );
 }
 
 #[test]
@@ -12109,6 +12203,7 @@ fn window_commands(harness: &Harness<'static, UnluminousApp>) -> Vec<String> {
                 egui::ViewportCommand::Close
                     | egui::ViewportCommand::Minimized(_)
                     | egui::ViewportCommand::Maximized(_)
+                    | egui::ViewportCommand::Fullscreen(_)
                     | egui::ViewportCommand::StartDrag
             )
         })
