@@ -49,6 +49,15 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      # `inillucent` is a private repository, so the token `actions/checkout` uses cannot reach it and
+      # cargo stops at `failed to authenticate when downloading repository` before a single crate is
+      # built. Rewriting github.com fetches to carry a token that can read it is what resolves the
+      # `inillucent-driver` dependency. `shell: bash` because the Windows runners default to
+      # PowerShell, which reads the dots in `url."...".insteadOf` as its own syntax.
+      - name: Reach the private Inillucent repository
+        shell: bash
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.INILLUCENT_TOKEN }}@github.com/".insteadOf "https://github.com/"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
