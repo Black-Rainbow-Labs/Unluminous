@@ -8,6 +8,14 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- The Agent-Chat beat, and how it was caught without a monitor (`task-1811`)
+- Inillucent as a third engine, and a vector drawn as a vector (`task-1814`)
+- Two pictures, and the two things looking at them found (`task-1814`)
+- What the third engine is, written down where the conventions are (`task-1814`)
+- The New Data Source dialog offers a third engine (`task-1814`)
+
+## 0.37.2 — 2026-09-04
+
 - Re-cut the video storyboard for the re-shoot (`task-1811`)
 - Three defects the dry run and the card render found (`task-1811`)
 - An answer with no words in it, above 16 pt (`task-1811`)
