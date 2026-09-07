@@ -6,7 +6,7 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.38.1 — 2026-09-07
 
 - The command that reads a whole Inillucent database by hand (`task-1814`)
 - The two things driving the released build found (`task-1814`)
