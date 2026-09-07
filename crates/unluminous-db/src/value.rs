@@ -58,6 +58,18 @@ impl Value {
         }
     }
 
+    /// The bytes of this cell, when it has some.
+    ///
+    /// The sibling of [`Value::text`], and it exists for the one thing bytes are ever more than
+    /// bytes: an embedding, which the grid asks for when the **schema** says the column holds one.
+    /// See `crate::vector`.
+    pub fn bytes(&self) -> Option<&[u8]> {
+        match self {
+            Value::Bytes(bytes) => Some(bytes),
+            _ => None,
+        }
+    }
+
     /// A cell built from what somebody typed into it.
     ///
     /// Nothing here interprets the text — an empty field is the empty string and NULL is asked for by

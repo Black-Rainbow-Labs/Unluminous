@@ -7,6 +7,9 @@ rust-version.workspace = true
 license.workspace = true
 default-run = "unluminous"
 
+[features]
+diagnostic-allocations = []
+
 [lib]
 name = "unluminous_app"
 path = "src/lib.rs"
@@ -27,6 +30,9 @@ unluminous-chat.workspace = true
 # grid draws, and the thread a query runs on. See `tasks/task-1777-database-plugin-tdd.md` §2 for why
 # the PostgreSQL client is written here rather than taken from `tokio-postgres`.
 unluminous-db.workspace = true
+# Named only to say what `capabilities()` answers with: the type is the driver's, and Unluminous reads
+# the table rather than keeping a copy, so a capability that changes cannot go stale here.
+inillucent-driver.workspace = true
 # The catalogue of command line commands and the wire format, shared with the client so that the
 # two cannot come to disagree about what a command is called. It brings no window with it.
 unluminous-cli.workspace = true
@@ -110,6 +116,10 @@ path = "examples/mermaid_texts.rs"
 [[example]]
 name = "frame_cost"
 path = "examples/frame_cost.rs"
+
+[[example]]
+name = "layout_memory"
+path = "examples/layout_memory.rs"
 
 [dev-dependencies]
 egui_kittest.workspace = true

@@ -8,6 +8,7 @@
 use std::path::Path;
 
 use crate::catalog::{Item, Kind, Table};
+use crate::inillucent;
 use crate::postgres;
 use crate::rows::{Answer, Failure, Rows};
 use crate::source::{Engine, Source};
@@ -19,6 +20,7 @@ use crate::value::Value;
 pub enum Database {
     Postgres(Box<postgres::Session>),
     Sqlite(Box<sqlite::Session>),
+    Inillucent(Box<inillucent::Session>),
 }
 
 /// What can stop a statement that is running, from another thread.
@@ -54,6 +56,10 @@ impl Database {
                 Path::new(&source.database),
                 source.read_only,
             )?))),
+            Engine::Inillucent => Ok(Database::Inillucent(Box::new(inillucent::Session::open(
+                Path::new(&source.database),
+                source.read_only,
+            )?))),
         }
     }
 
@@ -65,6 +71,7 @@ impl Database {
                 false => format!("PostgreSQL {}", session.version()),
             },
             Database::Sqlite(session) => session.version(),
+            Database::Inillucent(session) => session.version(),
         }
     }
 
@@ -72,6 +79,7 @@ impl Database {
         match self {
             Database::Postgres(_) => Engine::Postgres,
             Database::Sqlite(_) => Engine::Sqlite,
+            Database::Inillucent(_) => Engine::Inillucent,
         }
     }
 
@@ -79,7 +87,8 @@ impl Database {
     pub fn is_encrypted(&self) -> bool {
         match self {
             Database::Postgres(session) => session.is_encrypted(),
-            Database::Sqlite(_) => false,
+            // Both are files on this machine, so there is no connection to encrypt.
+            Database::Sqlite(_) | Database::Inillucent(_) => false,
         }
     }
 
@@ -95,6 +104,11 @@ impl Database {
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "database".to_owned())]),
+            Database::Inillucent(session) => Ok(vec![session
+                .file()
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "database".to_owned())]),
         }
     }
 
@@ -102,6 +116,7 @@ impl Database {
         match self {
             Database::Postgres(session) => postgres::introspect::schemas(session),
             Database::Sqlite(session) => Ok(session.schemas()),
+            Database::Inillucent(session) => session.schemas(),
         }
     }
 
@@ -114,6 +129,7 @@ impl Database {
                 Ok(items)
             }
             Database::Sqlite(session) => session.items(),
+            Database::Inillucent(session) => session.items(),
         }
     }
 
@@ -121,6 +137,7 @@ impl Database {
         match self {
             Database::Postgres(session) => postgres::introspect::table(session, schema, name),
             Database::Sqlite(session) => session.table(name),
+            Database::Inillucent(session) => session.table(name),
         }
     }
 
@@ -128,6 +145,7 @@ impl Database {
         match self {
             Database::Postgres(session) => postgres::introspect::ddl(session, schema, name, kind),
             Database::Sqlite(session) => session.ddl(name),
+            Database::Inillucent(session) => session.ddl(name),
         }
     }
 
@@ -136,6 +154,7 @@ impl Database {
         match self {
             Database::Postgres(session) => session.simple(statement, limit),
             Database::Sqlite(session) => session.run(statement, &[], limit),
+            Database::Inillucent(session) => session.run(statement, &[], limit),
         }
     }
 
@@ -144,6 +163,7 @@ impl Database {
         match self {
             Database::Postgres(session) => session.extended(statement, values, limit),
             Database::Sqlite(session) => session.run(statement, values, limit),
+            Database::Inillucent(session) => session.run(statement, values, limit),
         }
     }
 
@@ -160,6 +180,9 @@ impl Database {
             // commits inside that call: a postcondition tested after the commit is a report about
             // something that has already happened rather than a guard against it.
             Database::Sqlite(session) => session.in_one_transaction(work, check),
+            // The driver takes the same check for the same reason, so this is the one engine where
+            // the rule is the client's own rather than something written out here.
+            Database::Inillucent(session) => session.in_one_transaction(work, check),
             Database::Postgres(session) => {
                 session.simple("BEGIN", usize::MAX)?;
                 let mut affected = Vec::with_capacity(work.len());
@@ -196,21 +219,55 @@ impl Database {
                     format!("SET search_path TO {}", crate::catalog::quoted(schema, '"'));
                 session.simple(&statement, usize::MAX).map(|_| ())
             }
-            Database::Sqlite(_) => Ok(()),
+            // One schema, so there is nothing to point at. Inillucent's `ATTACH` gives a connection
+            // more than one, but a connection here lasts one statement — see `inillucent::Session`.
+            Database::Sqlite(_) | Database::Inillucent(_) => Ok(()),
         }
     }
 
-    /// What another thread can stop this connection with.
-    pub fn stopper(&self) -> Stopper {
+    /// What another thread can stop this connection with, when anything can.
+    ///
+    /// **`None` for Inillucent, and that is the capability table arriving in the window.** The engine
+    /// materialises a statement on its first step, so there is no loop in which a cancel flag would be
+    /// read and a Stop button would report success and do nothing. Unluminous draws no control that can
+    /// never apply, so the caller gets nothing to draw one from.
+    pub fn stopper(&self) -> Option<Stopper> {
         match self {
-            Database::Postgres(session) => session.stopper(),
-            Database::Sqlite(session) => Stopper::Sqlite(session.interrupt()),
+            Database::Postgres(session) => Some(session.stopper()),
+            Database::Sqlite(session) => Some(Stopper::Sqlite(session.interrupt())),
+            Database::Inillucent(_) => None,
+        }
+    }
+
+    /// What a search table declared about itself, or `None` when it is not one.
+    ///
+    /// Only Inillucent has search tables; the other two answer `None` rather than being asked whether
+    /// they might, which keeps the question out of the components that draw a tree.
+    pub fn search_index(&mut self, name: &str) -> Answer<Option<crate::SearchIndex>> {
+        match self {
+            Database::Inillucent(session) => session.search_index(name),
+            _ => Ok(None),
+        }
+    }
+
+    /// What this engine does and does not do, as the engine itself reports it.
+    pub fn capabilities(&self) -> &'static [inillucent_driver::Capability] {
+        match self {
+            Database::Inillucent(session) => session.capabilities(),
+            _ => &[],
         }
     }
 
     pub fn close(&mut self) {
-        if let Database::Postgres(session) = self {
-            session.close();
+        match self {
+            Database::Postgres(session) => session.close(),
+            // Folding the log into the file is what makes the next open cheap. A database dropped
+            // without it is not lost — the engine replays its log — so a failure here is not worth
+            // refusing a close over.
+            Database::Inillucent(session) => {
+                let _ = session.checkpoint();
+            }
+            Database::Sqlite(_) => {}
         }
     }
 }

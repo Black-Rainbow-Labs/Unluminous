@@ -1,5 +1,9 @@
 //! Reading and changing a database, with no user interface in it.
 //!
+//! Three engines: PostgreSQL over the wire protocol spoken here, SQLite through `rusqlite`, and
+//! Inillucent through `inillucent-driver` — the first-party engine's own client, which is the one
+//! engine of the three that stores vectors and the reason `vector.rs` exists.
+//!
 //! The sixth crate, and it is arranged the way `unluminous-dap` and `unluminous-chat` are: the wire, the values,
 //! the session and the thread. Its tests run with no window, no graphics card and no fonts — and, for
 //! the PostgreSQL half, against a **scripted server** on `127.0.0.1:0` replaying fixed bytes, which is
@@ -34,18 +38,22 @@
 pub mod catalog;
 pub mod edit;
 pub mod engine;
+pub mod inillucent;
 pub mod postgres;
 pub mod rows;
 pub mod source;
 pub mod sql;
 pub mod sqlite;
 pub mod value;
+pub mod vector;
 pub mod worker;
 
 pub use catalog::{Item, Kind, Table};
 pub use edit::{Change, Pending, Row, Statement};
 pub use engine::Database;
+pub use inillucent::SearchIndex;
 pub use rows::{Answer, Failure, Rows};
 pub use source::{Engine, Secret, Source, SslMode};
 pub use value::{Column, Value};
+pub use vector::Vector;
 pub use worker::{Job, Reply, Worker};

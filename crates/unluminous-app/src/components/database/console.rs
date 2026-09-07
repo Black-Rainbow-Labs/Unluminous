@@ -82,8 +82,10 @@ fn toolbar(
     if crate::components::modal::button(ui, execute, "Execute", !running, true) {
         acts.push(Act::Execute(id));
     }
-    // Stop is absent unless something is running: a control that cannot apply is not drawn.
-    if running && crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Stop", icon::stop) {
+    // Stop is absent unless something is running **and this engine can stop one**: a control that
+    // cannot apply is not drawn, which is the same rule that leaves the `F` button off a `.rs` file.
+    let can_stop = explorer.can_stop(&console.source);
+    if running && can_stop && crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Stop", icon::stop) {
         acts.push(Act::Stop(id));
     }
     let source = console.source.clone();

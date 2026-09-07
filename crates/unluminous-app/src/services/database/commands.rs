@@ -51,6 +51,10 @@ pub const LIST: &[(&'static str, &'static str)] = &[
     ("read-only", "`on` or `off` for a data source. Off by default. It asks the *server* for a session that cannot write, and there is no control for it in the window."),
     ("new-table", "Make a table. `<schema.name> <column>:<type>[:pk][:notnull] …`, or just a name to open the dialog."),
     ("drop-table", "Drop a table, by `schema.name`."),
+    ("vector", "Read one cell of the current grid as a vector: its dimensions, its length, its extremes and its values. Takes a row number from 1 and a column name."),
+    ("search", "Open a console on a search table with the statement that searches it, ready to edit. Takes `schema.table` or just `table`."),
+    ("capabilities", "What a data source's engine does and does not do, as the engine itself reports it. Only Inillucent answers."),
+    ("import", "Read a SQLite database and build an Inillucent one beside it, at the same path with `.rdb` on the end. The source is never written to."),
     ("view", "Everything the pane and the tab are showing, as data."),
 ];
 
@@ -90,6 +94,10 @@ pub fn run(explorer: &mut DatabaseExplorer, command: &str, arguments: &[String])
         "tables" => tables(explorer, &rest),
         "columns" => columns(explorer, &rest),
         "ddl" => ddl(explorer, &rest),
+        "vector" => vector(explorer, &rest),
+        "search" => search(explorer, &rest),
+        "capabilities" => capabilities(explorer, &rest),
+        "import" => import(explorer, &rest),
         "open" => open(explorer, &rest),
         "console" => {
             let name = a_source(explorer, &rest)?;
@@ -294,6 +302,148 @@ fn tables(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, String>
         Some(Ok(Answer::said(names.join(", "))
             .with(serde_json::json!({ "source": named, "schema": wanted, "items": listed }))))
     })
+}
+
+/// Read one cell of the current grid as a vector.
+///
+/// **The figures rather than the bytes**, because an agent handed 3,072 bytes of hex has been handed
+/// the same nothing a person is: what can be acted on is the width, the norm, the extremes and the
+/// values. `values` is the whole vector, so a caller that wants to compare two rows can.
+fn vector(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, String> {
+    let mut words = rest.split_whitespace();
+    let row: usize = words
+        .next()
+        .ok_or("say which row, from 1, and which column: `vector 1 vector`")?
+        .parse()
+        .map_err(|_| "the row is a number from 1".to_owned())?;
+    let column = words.next().ok_or("say which column: `vector 1 vector`")?.to_owned();
+    if row == 0 {
+        return Err("rows are numbered from 1".to_owned());
+    }
+    let page = explorer.pages.get(explorer.current).map(|page| page.id).ok_or("no page is open")?;
+    let Some(Page { sheet: Sheet::Grid(grid), .. }) = explorer.page(page) else {
+        return Err("the page that is showing is a console rather than a grid".to_owned());
+    };
+    let at = grid
+        .rows
+        .columns
+        .iter()
+        .position(|had| had.name == column)
+        .ok_or_else(|| format!("this grid has no column called `{column}`"))?;
+    let (value, _) = grid.cell(row - 1, at);
+    let declared = grid.table.is_a_vector_column(&column);
+    let read = value.bytes().and_then(unluminous_db::Vector::decode);
+    match read {
+        Some(read) => Ok(Answer::said(read.summary()).with(serde_json::json!({
+            "row": row,
+            "column": column,
+            // Whether the *schema* says this column holds vectors, as opposed to a blob that happened
+            // to decode. A caller asking about an ordinary blob gets an answer and this flag says how
+            // much it is worth.
+            "declared": declared,
+            "dimensions": read.dimensions(),
+            "norm": read.norm(),
+            "min": read.smallest(),
+            "max": read.largest(),
+            "mean": read.mean(),
+            "values": read.values,
+        }))),
+        None => Err(format!(
+            "row {row}'s `{column}` does not hold a vector: it is {}.",
+            match value.is_null() {
+                true => "NULL".to_owned(),
+                false => format!("{} bytes that are not a whole number of finite 32-bit floats", value.bytes().map_or(0, <[u8]>::len)),
+            }
+        )),
+    }
+}
+
+/// Open a console holding the statement that searches a search table.
+///
+/// **Composed into a console rather than run**, because `k` and `LIMIT` are different questions - `k`
+/// decides how deep the retrieval went and `LIMIT` only trims what came back - and a search whose
+/// depth nobody could see would be a number chosen on somebody's behalf.
+fn search(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, String> {
+    let (schema, name) = split_a_name(explorer, rest)?;
+    let source = explorer.configuration.chosen.clone();
+    explorer.connect(&source)?;
+    let index = explorer
+        .loaded
+        .get(&source)
+        .and_then(|loaded| loaded.searches.get(&name))
+        .cloned()
+        .ok_or_else(|| {
+            format!("`{name}` is not a search table, or its schema has not been read yet - open `{schema}` first.")
+        })?;
+    let statement = unluminous_db::inillucent::search::search_statement(&name, &index);
+    let id = explorer.open_console(&source)?;
+    if let Some(Page { sheet: Sheet::Console(console), .. }) =
+        explorer.pages.iter_mut().find(|page| page.id == id)
+    {
+        console.text = statement.clone();
+        console.caret = statement.len();
+    }
+    let page = id;
+    let _ = schema;
+    Ok(Answer::said(format!("a search on `{name}`: {}", index.summary())).with(serde_json::json!({
+        "page": page,
+        "table": name,
+        "statement": statement,
+        "dimensions": index.dimensions,
+        "mode": index.mode,
+        "metric": index.metric,
+        "tokenizer": index.tokenizer,
+        "columns": index.columns,
+    })))
+}
+
+/// What a data source's engine says it can and cannot do.
+fn capabilities(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, String> {
+    let name = a_source(explorer, rest)?;
+    explorer.connect(&name)?;
+    let rows = explorer.capabilities(&name);
+    if rows.is_empty() {
+        return Ok(Answer::said(format!(
+            "`{name}` does not report capabilities; only an Inillucent source does."
+        ))
+        .with(serde_json::json!({ "source": name, "capabilities": [] })));
+    }
+    let absent: Vec<&str> = rows
+        .iter()
+        .filter(|entry| entry.support.name() != "yes")
+        .map(|entry| entry.name)
+        .collect();
+    Ok(Answer::said(format!(
+        "{} capabilities; not fully supported: {}",
+        rows.len(),
+        match absent.is_empty() {
+            true => "none".to_owned(),
+            false => absent.join(", "),
+        }
+    ))
+    .with(serde_json::json!({
+        "source": name,
+        "capabilities": rows.iter().map(|entry| serde_json::json!({
+            "name": entry.name,
+            "support": entry.support.name(),
+            "note": entry.note,
+        })).collect::<Vec<serde_json::Value>>(),
+    })))
+}
+
+/// Read a SQLite database and build an Inillucent one beside it.
+fn import(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, String> {
+    let path = rest.trim();
+    if path.is_empty() {
+        return Err("say which SQLite file to import".to_owned());
+    }
+    let made = unluminous_db::inillucent::Session::import(std::path::Path::new(path))
+        .map_err(|why| why.to_string())?;
+    let _ = explorer;
+    Ok(Answer::said(format!("built {}", made.display())).with(serde_json::json!({
+        "source": path,
+        "database": made.to_string_lossy(),
+    })))
 }
 
 fn columns(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, String> {
@@ -723,7 +873,7 @@ pub fn a_new_table(explorer: &DatabaseExplorer, source: &str, schema: &str) -> T
         columns: vec![ColumnForm {
             name: "id".to_owned(),
             type_name: match engine {
-                unluminous_db::source::Engine::Sqlite => "INTEGER".to_owned(),
+                unluminous_db::source::Engine::Sqlite | unluminous_db::source::Engine::Inillucent => "INTEGER".to_owned(),
                 unluminous_db::source::Engine::Postgres => "integer".to_owned(),
             },
             in_key: true,

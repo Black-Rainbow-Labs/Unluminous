@@ -101,7 +101,7 @@ impl Configuration {
             values.set(&at("engine"), source.engine.name());
             values.set(&at("read_only"), source.read_only.to_string());
             match source.engine {
-                Engine::Sqlite => values.set(&at("file"), &source.database),
+                Engine::Sqlite | Engine::Inillucent => values.set(&at("file"), &source.database),
                 Engine::Postgres => {
                     values.set(&at("host"), &source.host);
                     values.set(&at("port"), source.port.to_string());
@@ -178,7 +178,9 @@ fn one(values: &Values, index: usize) -> Result<Source, String> {
     let mut source = Source { name, engine, ..Source::default() };
     source.read_only = values.flag(&at("read_only")).unwrap_or(DEFAULT_READ_ONLY);
     match engine {
-        Engine::Sqlite => {
+        // Both of these are a file on this machine rather than a server, so there is no host, no
+        // port, no user and nowhere for a password to live.
+        Engine::Sqlite | Engine::Inillucent => {
             source.database = values.text(&at("file")).unwrap_or_default().to_owned();
             source.host = String::new();
             source.port = 0;

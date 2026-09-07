@@ -62,6 +62,13 @@ md-5 = "0.10"
 base64 = "0.22"
 getrandom = "0.3"
 native-tls = "0.2"
+# The Inillucent engine, reached through **its own driver** rather than through its internals. The
+# driver depends on `inillucent-engine` and nothing else in that workspace, which is the whole point of
+# it: the engine's rearchitecture is still moving crates underneath, and a consumer holding the driver
+# is unaffected by all of it. Pinned to a commit rather than named by path, because a release built
+# from whatever a sibling folder happens to hold on one machine is not a release —
+# `tasks/task-1814-inillucent-data-source-tdd.md` §1.
+inillucent-driver = { git = "https://github.com/jasonmcaffee/inillucent.git", rev = "4b9efb10d7b159afc418e77da2558a0e39c4a82b" }
 url = "2.5"
 percent-encoding = "2.3"
 mime_guess = "2.0"

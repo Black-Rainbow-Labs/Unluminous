@@ -20,6 +20,14 @@ fn a_database(name: &str) -> PathBuf {
     let _ = std::fs::create_dir_all(&folder);
     let file = folder.join("test.db");
     let _ = std::fs::remove_file(&file);
+    // **And the configuration the last run left in this folder**, which is not tidiness: the folder is
+    // named after the process id, and a process id is unique at one moment rather than over time.
+    // Windows reuses them freely, so a run that landed on a number an earlier run had would open an
+    // explorer that already knew about `library` — and
+    // `renaming_a_data_source_takes_its_pages_and_its_tree_with_it`, which renames `test` to
+    // `library`, failed with "there is already a data source called `library`". A test that passes or
+    // fails on which process id it was given is a test nobody can act on.
+    let _ = std::fs::remove_file(folder.join("sources.conf"));
     let connection = rusqlite::Connection::open(&file).expect("a database");
     connection
         .execute_batch(
@@ -395,6 +403,7 @@ fn a_grids_statement_asks_for_one_more_row_than_it_keeps() {
             name: "member".to_owned(),
             columns: Vec::new(),
             key: vec!["id".to_owned()],
+            ..unluminous_db::Table::default()
         },
         kind: unluminous_db::Kind::Table,
         where_clause: "name like 'A%'".to_owned(),
@@ -477,6 +486,7 @@ fn a_cell_shows_what_is_pending_on_it_rather_than_what_was_read() {
             name: "member".to_owned(),
             columns: rows.columns.clone(),
             key: vec!["id".to_owned()],
+            ..unluminous_db::Table::default()
         },
         kind: unluminous_db::Kind::Table,
         where_clause: String::new(),
@@ -594,3 +604,230 @@ fn a_url_a_person_could_type_is_what_comes_back_out() {
     assert_eq!(url, "postgres://postgres@localhost:5432/ai?sslmode=prefer");
     assert_eq!(Source::parse("ai", url).expect("read back").database, "ai");
 }
+
+// ---------------------------------------------------------------------------------------------
+// task-1814: the third engine.
+//
+// The fixture is a real Inillucent database, built by the engine itself, and every test below
+// drives the provider the same way the buttons do. What is worth testing here is not that a
+// `SELECT` works — `crates/unluminous-db/src/inillucent/tests.rs` covers the engine seam — but the
+// four things the window does with this engine that it does with neither of the others: it draws a
+// search index's own declaration, it draws a vector as a vector, it refuses to draw a Stop button,
+// and it says what the engine cannot do rather than letting somebody find out.
+// ---------------------------------------------------------------------------------------------
+
+/// An Inillucent database with a search table in it, in a folder of this test's own.
+fn an_inillucent_database(name: &str) -> PathBuf {
+    let folder =
+        std::env::temp_dir().join(format!("unluminous-database-inillucent-{name}-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&folder);
+    let file = folder.join("test.rdb");
+    let _ = std::fs::remove_file(&file);
+    let _ = std::fs::remove_file(folder.join("sources.conf"));
+    let database = inillucent_driver::Database::open(&file).expect("a database");
+    let connection = database.connect();
+    connection
+        .execute_batch(
+            "create table member (id integer primary key, name text not null, note text);
+             insert into member (id, name, note) values (1, 'Jason', null), (2, 'Ada', '');
+             create virtual table docs using inillucent_search(title, body, dims = 4, mode = 'exact', metric = 'cosine');",
+        )
+        .expect("a schema");
+    let mut vector = Vec::new();
+    for value in [0.5f32, -0.5, 0.5, 0.5] {
+        vector.extend_from_slice(&value.to_le_bytes());
+    }
+    connection
+        .execute(
+            "insert into docs(title, body, vector) values(?1, ?2, ?3)",
+            &[
+                inillucent_driver::Value::Text("release process".to_owned()),
+                inillucent_driver::Value::Text("how the release is cut".to_owned()),
+                inillucent_driver::Value::Blob(vector),
+            ],
+        )
+        .expect("a row with a vector");
+    database.checkpoint().expect("checkpointed");
+    drop(connection);
+    drop(database);
+    file
+}
+
+/// An explorer with one Inillucent data source on it.
+fn with_inillucent(name: &str) -> (DatabaseExplorer, PathBuf) {
+    let file = an_inillucent_database(name);
+    let folder = file.parent().expect("a folder").to_path_buf();
+    let mut explorer = DatabaseExplorer::new();
+    explorer.open(&Context { folder: Some(folder), ..Context::default() }).expect("opened");
+    explorer
+        .command("add-source", &["notes".to_owned(), file.to_string_lossy().into_owned()])
+        .expect("added");
+    (explorer, file)
+}
+
+#[test]
+fn a_database_file_is_added_as_the_engine_that_wrote_it() {
+    // A person who has a database has a path, not an opinion about which engine wrote it, so the
+    // first eight bytes decide and nobody is asked a question the file already answers.
+    let (mut explorer, _) = with_inillucent("engine");
+    let sources = value(&mut explorer, "sources", &[]);
+    let engine = sources
+        .as_array()
+        .and_then(|sources| sources.iter().find(|source| source["name"] == serde_json::json!("notes")))
+        .and_then(|source| source["engine"].as_str())
+        .unwrap_or_default();
+    assert_eq!(engine, "inillucent");
+}
+
+#[test]
+fn the_tree_draws_a_search_index_with_what_it_declared() {
+    let (mut explorer, _) = with_inillucent("tree");
+    run(&mut explorer, "connect", &["notes"]);
+    settle(&mut explorer);
+    explorer.toggle_source("notes");
+    settle(&mut explorer);
+    explorer.toggle_schema("notes", "main");
+    settle(&mut explorer);
+    // A folder is opened before its rows are drawn, which is the tree's own laziness rather than
+    // anything to do with this engine - a database with four thousand tables is why.
+    explorer.toggle_folder("notes", "main", "search");
+    explorer.toggle_folder("notes", "main", "shadow");
+    settle(&mut explorer);
+
+    let drawn = crate::components::database::tree::lines(&explorer);
+    let declared = drawn.iter().find_map(|line| match &line.what {
+        crate::components::database::tree::What::Item { name, kind, declared, .. }
+            if name == "docs" && *kind == unluminous_db::Kind::Search =>
+        {
+            Some(declared.clone())
+        }
+        _ => None,
+    });
+    assert_eq!(
+        declared.as_deref(),
+        Some("4d · exact · cosine · porter"),
+        "the four things worth knowing before trusting a result, on the row itself"
+    );
+    // And the five shadow tables are shown rather than hidden, because that is where the vectors
+    // are — but as their own kind, so nobody edits one thinking it is a table of their own.
+    let shadows = drawn
+        .iter()
+        .filter(|line| {
+            matches!(&line.what,
+                crate::components::database::tree::What::Item { kind, .. } if *kind == unluminous_db::Kind::Shadow)
+        })
+        .count();
+    assert_eq!(shadows, 5, "config, content, delta, gen and state");
+}
+
+#[test]
+fn a_vector_is_read_as_a_vector_and_an_ordinary_column_is_not() {
+    let (mut explorer, _) = with_inillucent("vector");
+    run(&mut explorer, "connect", &["notes"]);
+    settle(&mut explorer);
+    run(&mut explorer, "open", &["docs"]);
+    settle(&mut explorer);
+
+    let read = value(&mut explorer, "vector", &["1", "vector"]);
+    assert_eq!(read["dimensions"], serde_json::json!(4));
+    assert_eq!(read["declared"], serde_json::json!(true), "the schema says this column holds one");
+    assert_eq!(read["values"], serde_json::json!([0.5, -0.5, 0.5, 0.5]));
+    // The norm is what says a corpus was stored unnormalised, so it is answered rather than left to
+    // be worked out.
+    assert!((read["norm"].as_f64().unwrap_or_default() - 1.0).abs() < 1.0e-6);
+
+    // Asking about a column that is not a vector says so rather than answering with something.
+    let refused =
+        explorer.command("vector", &["1".to_owned(), "title".to_owned()]).expect_err("refused");
+    assert!(refused.contains("does not hold a vector"), "{refused}");
+}
+
+#[test]
+fn a_search_table_opens_a_console_holding_the_statement_that_searches_it() {
+    let (mut explorer, _) = with_inillucent("search");
+    run(&mut explorer, "connect", &["notes"]);
+    settle(&mut explorer);
+    explorer.toggle_source("notes");
+    settle(&mut explorer);
+    explorer.toggle_schema("notes", "main");
+    settle(&mut explorer);
+
+    let opened = value(&mut explorer, "search", &["docs"]);
+    let statement = opened["statement"].as_str().unwrap_or_default().to_owned();
+    // `k` is on the face of it, because it decides how deep the retrieval went where `LIMIT` only
+    // trims what came back — and a search whose depth nobody could see would be a number chosen on
+    // somebody's behalf.
+    assert!(statement.contains("match 'your query here'"), "{statement}");
+    assert!(statement.contains("and k = 10"), "{statement}");
+    assert!(statement.contains("order by rank"), "{statement}");
+    assert_eq!(opened["dimensions"], serde_json::json!(4));
+
+    // And the composed shape is one the engine really answers.
+    run(&mut explorer, "query", &["select title, rank from docs where docs match 'release' order by rank limit 3"]);
+    settle(&mut explorer);
+    let rows = value(&mut explorer, "result", &[]);
+    assert_eq!(rows["result"]["rows"][0][0], serde_json::json!("release process"));
+}
+
+#[test]
+fn there_is_no_stop_button_for_an_engine_that_cannot_stop_a_statement() {
+    // The capability table arriving in the window. `cancel` reports `no`, so the control is absent
+    // rather than dimmed — Unluminous's rule for a control that can never apply.
+    let (mut explorer, _) = with_inillucent("stop");
+    run(&mut explorer, "connect", &["notes"]);
+    settle(&mut explorer);
+    assert!(!explorer.can_stop("notes"));
+
+    let (mut sqlite, _) = opened("stoppable");
+    run(&mut sqlite, "connect", &["test"]);
+    settle(&mut sqlite);
+    assert!(sqlite.can_stop("test"), "SQLite has sqlite3_interrupt, so its button is drawn");
+}
+
+#[test]
+fn the_engine_reports_what_it_cannot_do_rather_than_leaving_it_to_be_discovered() {
+    let (mut explorer, _) = with_inillucent("capabilities");
+    run(&mut explorer, "connect", &["notes"]);
+    settle(&mut explorer);
+    let reported = value(&mut explorer, "capabilities", &["notes"]);
+    let rows = reported["capabilities"].as_array().cloned().unwrap_or_default();
+    assert!(rows.len() > 20, "the whole table: {}", rows.len());
+    let cancel = rows.iter().find(|row| row["name"] == serde_json::json!("cancel"));
+    assert_eq!(cancel.map(|row| row["support"].clone()), Some(serde_json::json!("no")));
+    // Every row carries a sentence, because a column of yes and no with nothing to read is a table
+    // that gets copied into a comment and goes stale.
+    assert!(rows.iter().all(|row| !row["note"].as_str().unwrap_or_default().is_empty()));
+}
+
+#[test]
+fn a_sqlite_file_added_as_inillucent_is_told_where_to_go() {
+    // The refusal that routes. The driver's own words for a SQLite file are that neither meta page
+    // is readable, which is true and names neither what the file is nor what would read it.
+    let (mut explorer, file) = with_inillucent("routing");
+    // A plain SQLite database of this test's own rather than `a_database`'s: that one declares a
+    // column called `left`, which SQLite accepts and the Inillucent importer refuses - reporting it
+    // as `database disk image is malformed`, which is a wrong diagnosis of a perfectly good file.
+    // Filed as an engine defect rather than worked around here; this test is about the routing.
+    let sqlite = file.parent().expect("a folder").join("legacy.db");
+    let _ = std::fs::remove_file(&sqlite);
+    {
+        let plain = rusqlite::Connection::open(&sqlite).expect("a database");
+        plain
+            .execute_batch("create table note (id integer primary key, body text); insert into note values (1, 'one');")
+            .expect("a schema");
+    }
+    explorer
+        .command("add-source", &["legacy".to_owned(), format!("inillucent://{}", sqlite.display())])
+        .expect("added");
+    let refused = explorer.connect("legacy").expect_err("refused");
+    assert!(refused.contains("is a SQLite database"), "{refused}");
+    assert!(refused.contains("import"), "and where to go: {refused}");
+
+    // And the import really builds one, without touching the original.
+    let before = std::fs::read(&sqlite).expect("the original");
+    let made = value(&mut explorer, "import", &[&sqlite.to_string_lossy()]);
+    let built = made["database"].as_str().unwrap_or_default().to_owned();
+    assert!(std::path::Path::new(&built).exists(), "{built}");
+    assert_eq!(std::fs::read(&sqlite).expect("the original"), before, "the source is untouched");
+}
+

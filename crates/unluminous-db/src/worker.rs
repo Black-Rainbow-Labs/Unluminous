@@ -35,6 +35,8 @@ pub enum Job {
     Items { schema: String },
     Describe { schema: String, table: String },
     Ddl { schema: String, table: String, kind: Kind },
+    /// What a search table declared about itself. Only Inillucent has any; the others answer `None`.
+    SearchIndex { name: String },
     UseSchema { name: String },
     /// Everything pending on a grid, written as one transaction or not at all.
     Write { statements: Vec<Statement> },
@@ -50,6 +52,11 @@ pub enum Reply {
     Items(Vec<Item>),
     Table(Table),
     Text(String),
+    /// A search table's declaration, or `None` when the named thing is not one.
+    ///
+    /// Boxed because it is much the largest variant and every other reply would otherwise be the size
+    /// of this one.
+    Search(Box<Option<crate::SearchIndex>>),
     /// How many rows each statement of a write changed.
     Written(Vec<u64>),
     Done,
@@ -68,7 +75,16 @@ pub struct Worker {
     jobs: Sender<(u64, Job)>,
     answers: Receiver<Answered>,
     /// What can stop a statement that is running, from this thread.
+    ///
+    /// `None` from the moment the connection is closed - and, for Inillucent, from the moment it is
+    /// opened, because that engine has no way to stop a statement at all. The two are told apart by
+    /// `can_stop` so that a refusal says which it is.
     stopper: Arc<Mutex<Option<Stopper>>>,
+    /// Whether this engine can stop a statement that is already running.
+    ///
+    /// Read from the engine rather than assumed, and it is what the pane draws its Stop button from -
+    /// or does not: Unluminous's rule is that a control which can never apply is absent.
+    can_stop: bool,
     next: AtomicU64,
     thread: Option<JoinHandle<()>>,
     /// What the server called itself when the connection opened.
@@ -89,13 +105,33 @@ impl std::fmt::Debug for Worker {
     }
 }
 
+/// What the worker's own thread reports once it has connected.
+///
+/// Everything about a connection that the caller needs and that can safely leave the thread: what the
+/// server called itself, whether the link is encrypted, which engine answered, and what can stop a
+/// statement - which is `None` for an engine that cannot stop one.
+struct Opened {
+    version: String,
+    encrypted: bool,
+    engine: crate::source::Engine,
+    stopper: Option<Stopper>,
+}
+
 impl Worker {
-    /// Open the connection **on this thread**, then hand it to a new one.
+    /// Open the connection **on the thread that will hold it**, and wait here for the answer.
     ///
-    /// Connecting is what fails — a wrong password, a server that is not there, a certificate that
-    /// will not verify — and it is the one thing the caller has to be told about straight away, so it
-    /// happens before the thread exists rather than being reported through the channel as the first
-    /// answer to a job nobody sent.
+    /// Connecting is what fails - a wrong password, a server that is not there, a certificate that
+    /// will not verify - and it is the one thing the caller has to be told about straight away. That
+    /// used to mean connecting on *this* thread and moving the connection across; it cannot any more,
+    /// and the reason is worth writing down because it is a property of an engine rather than an
+    /// inconvenience.
+    ///
+    /// **The Inillucent engine is single threaded and one file is one buffer pool, so its `Database`
+    /// is neither `Send` nor `Sync` by construction.** A handle that could be moved between threads
+    /// would be a second page cache over one set of bytes waiting to happen, and the driver refuses to
+    /// let it compile rather than documenting that nobody should. So the connection is *made* where it
+    /// will live, and this function waits for the first word back - which keeps the property that
+    /// matters (a failure to connect is answered before `open` returns) without moving anything.
     ///
     /// `wake` is called whenever an answer is put on the channel. Without it a query that finished
     /// while nobody was moving the pointer would sit there unseen, which is `Context::wake`'s own
@@ -105,16 +141,34 @@ impl Worker {
         password: Option<&str>,
         wake: Option<Arc<dyn Fn() + Send + Sync>>,
     ) -> Answer<Worker> {
-        let mut database = Database::connect(source, password)?;
-        let version = database.version();
-        let encrypted = database.is_encrypted();
-        let engine = database.engine();
-        let stopper = Arc::new(Mutex::new(Some(database.stopper())));
         let (jobs, take_a_job) = mpsc::channel::<(u64, Job)>();
         let (answer, answers) = mpsc::channel::<Answered>();
+        // What the thread reports once it has tried to connect: everything the caller needs to know
+        // about a connection it will never itself touch.
+        let (opened, was_opened) = mpsc::channel::<Answer<Opened>>();
+        let source_to_open = source.clone();
+        let password = password.map(str::to_owned);
         let thread = std::thread::Builder::new()
             .name(format!("unluminous-db {}", source.name))
             .spawn(move || {
+                let mut database = match Database::connect(&source_to_open, password.as_deref()) {
+                    Ok(database) => database,
+                    Err(why) => {
+                        let _ = opened.send(Err(why));
+                        return;
+                    }
+                };
+                let report = Opened {
+                    version: database.version(),
+                    encrypted: database.is_encrypted(),
+                    engine: database.engine(),
+                    stopper: database.stopper(),
+                };
+                if opened.send(Ok(report)).is_err() {
+                    // Nobody waited for the answer, so there is nobody to serve.
+                    database.close();
+                    return;
+                }
                 while let Ok((ticket, job)) = take_a_job.recv() {
                     if matches!(job, Job::Close) {
                         database.close();
@@ -133,15 +187,27 @@ impl Worker {
                 database.close();
             })
             .map_err(|why| Failure::said(format!("a thread for this connection could not be started: {why}")))?;
+        let report = match was_opened.recv() {
+            Ok(report) => report?,
+            // The thread ended without saying anything, which it only does by panicking - and a panic
+            // inside the engine is not something to answer with silence.
+            Err(_) => {
+                return Err(Failure::said(
+                    "this connection's thread stopped before it said whether it had connected.",
+                ))
+            }
+        };
+        let can_stop = report.engine.can_stop_a_statement();
         Ok(Worker {
             jobs,
             answers,
-            stopper,
+            stopper: Arc::new(Mutex::new(report.stopper)),
+            can_stop,
             next: AtomicU64::new(1),
             thread: Some(thread),
-            version,
-            encrypted,
-            engine,
+            version: report.version,
+            encrypted: report.encrypted,
+            engine: report.engine,
             outstanding: std::cell::Cell::new(0),
         })
     }
@@ -177,12 +243,41 @@ impl Worker {
     /// stopper is a separate value: PostgreSQL opens a second connection and SQLite calls
     /// `sqlite3_interrupt`, and neither needs the connection this thread cannot borrow.
     pub fn stop(&self) -> Answer<()> {
+        if !self.can_stop {
+            // Said rather than silently doing nothing, because an agent asking for this deserves the
+            // reason: the engine materialises a statement on its first step, so there is no loop in
+            // which a flag would be read.
+            return Err(Failure::said(format!(
+                "a statement running on {} cannot be stopped once it has started, so there is nothing                  to ask.",
+                self.engine.name()
+            )));
+        }
         match self.stopper.lock() {
             Ok(held) => match held.as_ref() {
                 Some(stopper) => stopper.stop(),
                 None => Err(Failure::said("this connection has already been closed.")),
             },
             Err(_) => Err(Failure::said("this connection's stopper cannot be reached.")),
+        }
+    }
+
+    /// Whether a statement that is running can be stopped at all.
+    ///
+    /// The pane asks before it draws a Stop button, and does not draw one when the answer is no.
+    pub fn can_stop(&self) -> bool {
+        self.can_stop
+    }
+
+    /// What this engine says it does and does not do.
+    ///
+    /// Empty for every engine that reports no such thing, which today is both of the other two. It is
+    /// answered without going near the connection's thread because the table is a property of the
+    /// build rather than of the file - which is also what makes it safe to ask while a statement is
+    /// running.
+    pub fn capabilities(&self) -> &'static [inillucent_driver::Capability] {
+        match self.engine {
+            crate::source::Engine::Inillucent => inillucent_driver::CAPABILITIES,
+            _ => &[],
         }
     }
 }
@@ -226,6 +321,9 @@ fn run(database: &mut Database, job: Job) -> Answer<Reply> {
         Job::Items { schema } => database.items(&schema).map(Reply::Items),
         Job::Describe { schema, table } => database.table(&schema, &table).map(Reply::Table),
         Job::Ddl { schema, table, kind } => database.ddl(&schema, &table, kind).map(Reply::Text),
+        Job::SearchIndex { name } => {
+            database.search_index(&name).map(|index| Reply::Search(Box::new(index)))
+        }
         Job::UseSchema { name } => database.use_schema(&name).map(|_| Reply::Done),
         Job::Write { statements } => {
             let work: Vec<(String, Vec<Value>)> =

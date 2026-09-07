@@ -46,7 +46,127 @@ pub fn show(explorer: &mut DatabaseExplorer, ctx: &egui::Context, look: &Look<'_
         Modal::Preview { page } => preview(explorer, ctx, page),
         Modal::Ddl { title, text } => reading(explorer, ctx, &format!("DDL — {title}"), &text),
         Modal::NewTable(form) => new_table(explorer, ctx, look, form),
+        Modal::Vector { title, vector } => vector_modal(explorer, ctx, look, &title, &vector),
     }
+}
+
+/// One cell's vector: the figures, every component as a bar, and the numbers.
+///
+/// **The bars are the point.** Everything else here could be read off the summary in the cell, but
+/// nobody can tell whether an embedding is sensible from four decimal places of its first three
+/// components - what says so is the shape: whether it is dense or sparse, centred or offset, and
+/// whether one component dwarfs the rest. A row of bars answers all three at a glance and costs one
+/// line each.
+fn vector_modal(
+    explorer: &mut DatabaseExplorer,
+    ctx: &egui::Context,
+    look: &Look<'_>,
+    title: &str,
+    vector: &unluminous_db::Vector,
+) -> (Vec<Request>, bool) {
+    let mut requests = Vec::new();
+    let mut close = false;
+    let mut copy = false;
+    let numbers = numbered(vector);
+    let (_, escaped) = modal::show(ctx, "unluminous-database-vector", 640.0, 470.0, |ui, area| {
+        if modal::header(ui, area, &format!("Vector - {title}")) {
+            close = true;
+        }
+        let body = modal::body(area);
+        let scale = look.scale();
+        let figures = format!(
+            "{} dimensions   |v| {:.4}   min {:.4}   max {:.4}   mean {:.4}",
+            vector.dimensions(),
+            vector.norm(),
+            vector.smallest(),
+            vector.largest(),
+            vector.mean()
+        );
+        let line = 18.0 * scale;
+        super::text(
+            ui.painter(),
+            Pos2::new(body.left(), body.top() + line * 0.5),
+            &figures,
+            color::text(),
+            look.font_size * 0.85,
+            body.width(),
+        );
+        // The strip, and then the numbers under it.
+        let strip = Rect::from_min_size(
+            Pos2::new(body.left(), body.top() + line * 1.4),
+            Vec2::new(body.width(), 96.0 * scale),
+        );
+        draw_the_components(ui.painter(), strip, vector, look);
+        let rest = Rect::from_min_max(Pos2::new(body.left(), strip.bottom() + 8.0 * scale), body.max);
+        modal::monospaced(ui, rest, "database-vector-numbers", &numbers);
+        match modal::footer(ui, area, &[("Copy", true), ("Done", true)]) {
+            Some(0) => copy = true,
+            Some(1) => close = true,
+            _ => {}
+        }
+    });
+    if copy {
+        // JSON rather than the engine's bytes, because what somebody does next with a copied
+        // embedding is paste it into something that reads numbers.
+        requests.push(Request::Copy(vector.as_json()));
+    }
+    if close || escaped {
+        explorer.modal = None;
+    }
+    (requests, close || escaped)
+}
+
+/// Every component as a bar, on a zero line.
+///
+/// **One bar per pixel column when there are more components than pixels**, taking the largest
+/// magnitude in each bucket rather than sampling one of them: a sampled strip of a 768-dimension
+/// vector hides exactly the outlier somebody is looking for, and drawing 768 bars into 400 pixels
+/// draws most of them on top of each other anyway.
+fn draw_the_components(painter: &egui::Painter, area: Rect, vector: &unluminous_db::Vector, look: &Look<'_>) {
+    painter.rect_filled(area, egui::CornerRadius::same(4), look.palette.field);
+    if vector.values.is_empty() {
+        return;
+    }
+    let middle = area.center().y;
+    painter.line_segment(
+        [Pos2::new(area.left(), middle), Pos2::new(area.right(), middle)],
+        egui::Stroke::new(1.0, color::text_faint().gamma_multiply(0.5)),
+    );
+    let largest = vector
+        .values
+        .iter()
+        .fold(0.0f32, |so_far, value| so_far.max(value.abs()))
+        .max(f32::MIN_POSITIVE);
+    let room = (area.width() - 8.0).max(1.0);
+    let buckets = (vector.values.len() as f32).min(room.floor()).max(1.0) as usize;
+    let per = (vector.values.len() as f32 / buckets as f32).max(1.0);
+    let width = room / buckets as f32;
+    let height = area.height() * 0.5 - 6.0;
+    for bucket in 0..buckets {
+        let from = (bucket as f32 * per) as usize;
+        let to = (((bucket + 1) as f32 * per) as usize).min(vector.values.len()).max(from + 1);
+        let value = vector.values[from..to]
+            .iter()
+            .fold(0.0f32, |so_far, value| match value.abs() > so_far.abs() { true => *value, false => so_far });
+        let tall = (value / largest) * height;
+        let x = area.left() + 4.0 + bucket as f32 * width + width * 0.5;
+        painter.line_segment(
+            [Pos2::new(x, middle), Pos2::new(x, middle - tall)],
+            egui::Stroke::new((width * 0.8).clamp(1.0, 3.0), color::accent()),
+        );
+    }
+}
+
+/// The numbers, indexed, so a person can find the component they are looking at in the strip.
+fn numbered(vector: &unluminous_db::Vector) -> String {
+    let mut out = String::new();
+    for (at, value) in vector.values.iter().enumerate() {
+        if at > 0 && at % 6 == 0 {
+            out.push('\n');
+        }
+        out.push_str(&format!("{at:>5}: {value:>11.6}   "));
+    }
+    out
 }
 
 /// What the New Data Source dialog reported.
@@ -145,7 +265,7 @@ fn fields(ui: &mut egui::Ui, body: Rect, top: f32, form: &mut SourceForm) -> f32
     // Two buttons rather than a dropdown, because there are two engines and which one is chosen can
     // then be seen without opening anything — the rule the three line spacings already keep.
     let engines = labelled(ui, body, pen, "Engine");
-    for (index, engine) in [Engine::Postgres, Engine::Sqlite].into_iter().enumerate() {
+    for (index, engine) in [Engine::Postgres, Engine::Sqlite, Engine::Inillucent].into_iter().enumerate() {
         let button = Rect::from_min_size(
             Pos2::new(engines.left() + index as f32 * 96.0, engines.top()),
             Vec2::new(90.0, engines.height()),
@@ -153,10 +273,11 @@ fn fields(ui: &mut egui::Ui, body: Rect, top: f32, form: &mut SourceForm) -> f32
         let name = match engine {
             Engine::Postgres => "PostgreSQL",
             Engine::Sqlite => "SQLite",
+            Engine::Inillucent => "Inillucent",
         };
         if crate::components::controls::choice_button(ui, button, name, form.source.engine == engine) {
             form.source.engine = engine;
-            if engine == Engine::Sqlite {
+            if engine.is_a_file() {
                 form.source.host = String::new();
                 form.source.port = 0;
             } else if form.source.port == 0 {
@@ -168,7 +289,7 @@ fn fields(ui: &mut egui::Ui, body: Rect, top: f32, form: &mut SourceForm) -> f32
     pen += FIELD + GAP;
 
     match form.source.engine {
-        Engine::Sqlite => {
+        Engine::Sqlite | Engine::Inillucent => {
             // The field and a picker beside it. A path is often quicker pasted or typed than walked
             // to, and an agent cannot press a Browse button at all, so the field is not replaced by
             // the picker - `rfd` is the same dialog `Open File` and `Open Folder` already use.
@@ -485,7 +606,7 @@ fn a_first_column(engine: Engine) -> ColumnForm {
     ColumnForm {
         name: "id".to_owned(),
         type_name: match engine {
-            Engine::Sqlite => "INTEGER".to_owned(),
+            Engine::Sqlite | Engine::Inillucent => "INTEGER".to_owned(),
             Engine::Postgres => "integer".to_owned(),
         },
         in_key: true,

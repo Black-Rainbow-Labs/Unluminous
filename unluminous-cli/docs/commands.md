@@ -2728,7 +2728,21 @@ unluminous-cli plugins run database query select count(*) from member
 unluminous-cli plugins run database new-table public.shelf id:integer:pk title:text:notnull
 unluminous-cli plugins run database set 1 title Kind of Green
 unluminous-cli plugins run database submit
+unluminous-cli plugins run database add-source notes C:/jason/notes.rdb
+unluminous-cli plugins run database capabilities notes --json
+unluminous-cli plugins run database search docs
+unluminous-cli plugins run database vector 1 vector --json
+unluminous-cli plugins run database import C:/jason/legacy.db
 ```
+
+The last four are the Inillucent engine's. `capabilities` is what that engine says it does and does
+not do, reported by the engine rather than written down here - a statement it has not built refuses
+with `unsupported` and names the construct, which is a different answer from a mistyped table name
+and an agent should treat it as one. `search` opens a console holding the statement that searches a
+search table, ready to edit, because `k` decides how deep the retrieval went and `LIMIT` only trims
+what came back. `vector` reads one cell as an embedding - its width, its length, its extremes and its
+values - because 3,072 bytes of hex is the same nothing to an agent that it is to a person. `import`
+reads a SQLite database and builds an Inillucent one beside it, never writing to the original.
 
 ### plugins view
 

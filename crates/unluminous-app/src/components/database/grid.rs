@@ -99,7 +99,12 @@ fn toolbar(
     if crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Reload", icon::rerun) {
         acts.push(Act::Reload(id));
     }
-    if running && crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Stop", icon::stop) {
+    // Absent rather than dimmed when the engine cannot stop a statement at all - see
+    // `DatabaseExplorer::can_stop`.
+    if running
+        && explorer.can_stop(&grid.source)
+        && crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Stop", icon::stop)
+    {
         acts.push(Act::Stop(id));
     }
     if editable {
@@ -415,9 +420,21 @@ fn one_row(
         } else if response.hovered() {
             painter.rect_filled(cell.shrink(1.0), egui::CornerRadius::same(3), look.palette.control);
         }
-        draw_a_value(&painter, look, cell, &value, column.numeric, deleted, scale);
+        // **The schema decides**, never the bytes: a column is drawn as a vector because the table it
+        // is in declared one there. See `unluminous_db::vector`.
+        let vector = match grid.table.is_a_vector_column(&column.name) {
+            true => value.bytes().and_then(unluminous_db::Vector::decode),
+            false => None,
+        };
+        draw_a_value(&painter, look, cell, &value, column.numeric, deleted, scale, vector.as_ref());
         response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &format!("{} row {}", column.name, at + 1))
+            // The summary rather than the byte count, so what a person reads and what an agent reads
+            // back through the accessibility tree are the same words.
+            let said = match &vector {
+                Some(vector) => format!("{} row {}: {}", column.name, at + 1, vector.summary()),
+                None => format!("{} row {}", column.name, at + 1),
+            };
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &said)
         });
         if response.clicked() {
             acts.push(Act::ChooseCell(id, at, index));
@@ -426,7 +443,14 @@ fn one_row(
         // it, as it always did, so the two gestures do not fight: choosing is what Delete row and
         // Set NULL act on.
         if response.double_clicked() {
-            acts.push(Act::EditCell(id, at, index));
+            // **A vector opens rather than being typed into.** There is nothing sensible to type into
+            // 768 little-endian floats, and the cell is the one place in the grid where the summary
+            // is deliberately not the whole value - so the gesture that would have opened an editor
+            // opens what the summary is a summary of.
+            match vector.is_some() {
+                true => acts.push(Act::ShowVector(id, at, index)),
+                false => acts.push(Act::EditCell(id, at, index)),
+            }
         }
     }
     acts
@@ -507,6 +531,7 @@ fn cell_editor(
 /// **NULL is drawn as a dim `NULL` and never as text**, because a grid that showed NULL and the empty
 /// string the same way is a grid nobody could trust — which is the reason `unluminous_db::Value` keeps them
 /// apart all the way from the wire.
+#[allow(clippy::too_many_arguments)]
 fn draw_a_value(
     painter: &egui::Painter,
     look: &Look<'_>,
@@ -515,6 +540,7 @@ fn draw_a_value(
     numeric: bool,
     deleted: bool,
     scale: f32,
+    vector: Option<&unluminous_db::Vector>,
 ) {
     let size = look.monospace_size * 0.95;
     let room = cell.width() - 12.0 * scale;
@@ -523,9 +549,14 @@ fn draw_a_value(
         (false, true) => color::text_faint(),
         (false, false) => color::text(),
     };
-    let said = match value.is_null() {
-        true => "NULL".to_owned(),
-        false => value.display().replace(['\n', '\r'], "⏎"),
+    let said = match (value.is_null(), vector) {
+        (true, _) => "NULL".to_owned(),
+        // An embedding drawn as a byte count says the row has something, which the reader knew. What
+        // is worth a cell's width is how wide it is, roughly what is in it, and its length - the last
+        // because the engine's distance is cosine, so a norm that is not 1.000 is a corpus stored
+        // unnormalised and visible at a glance.
+        (false, Some(vector)) => vector.summary(),
+        (false, None) => value.display().replace(['\n', '\r'], "⏎"),
     };
     let at = match numeric && !value.is_null() {
         // A number is right-aligned, which is the one piece of formatting the type decides.
@@ -645,7 +676,7 @@ pub fn rows_only(ui: &mut egui::Ui, look: &Look<'_>, area: Rect, rows: &Rows, id
                         continue;
                     }
                     let value = rows.rows.get(at).and_then(|row| row.get(index)).cloned().unwrap_or_default();
-                    draw_a_value(&painter, look, cell, &value, column.numeric, false, scale);
+                    draw_a_value(&painter, look, cell, &value, column.numeric, false, scale, None);
                 }
             }
         });

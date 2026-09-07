@@ -68,6 +68,8 @@ enum Wanted {
     Ddl { name: String, show: bool },
     Rows { page: u64 },
     Written { page: u64 },
+    /// What a search table declared about itself, asked for as soon as one is seen in a schema.
+    Search { name: String },
     Nothing,
 }
 
@@ -91,6 +93,12 @@ pub struct Loaded {
     /// `(schema, folder)` — `tables`, `views`, `routines` and the rest.
     pub open_folders: BTreeSet<(String, String)>,
     pub open_tables: BTreeSet<(String, String)>,
+    /// What each search table declared about itself, by name.
+    ///
+    /// Only Inillucent puts anything here. It is what the tree draws under a search index -
+    /// `768d - exact - cosine - porter` - so that the four things worth knowing before trusting a
+    /// result are on the screen rather than in a `%_config` somebody would have to go and read.
+    pub searches: BTreeMap<String, unluminous_db::SearchIndex>,
     /// What went wrong reading this source, if anything.
     pub problem: Option<String>,
 }
@@ -295,6 +303,12 @@ pub enum Modal {
     Ddl { title: String, text: String },
     /// Making a table: a name, its columns, and the statement they compose.
     NewTable(TableForm),
+    /// One cell's vector, drawn and written out.
+    ///
+    /// The grid's cell says `768d - [0.0231, -0.0114, 0.0518, ...] - |v| 1.000`, which is what fits
+    /// where it is. This is what that is a summary of: the figures, every component as a bar, and the
+    /// numbers themselves.
+    Vector { title: String, vector: unluminous_db::Vector },
 }
 
 /// The fields of the New Data Source dialog.
@@ -857,6 +871,38 @@ impl DatabaseExplorer {
         Ok(format!("sent to `{source}`"))
     }
 
+    /// What a source's engine says it does and does not do.
+    ///
+    /// Empty for every engine but Inillucent, which is the only one that reports such a thing — and
+    /// it is read from the driver rather than kept here, because a capability list nobody checks
+    /// decays into claims that were true once. That is the failure the driver's own two-way probe
+    /// exists to prevent, and copying the table into Unluminous would reintroduce it one layer up.
+    ///
+    /// @param source - the data source's name
+    pub fn capabilities(&self, source: &str) -> &'static [inillucent_driver::Capability] {
+        match self.connections.get(source) {
+            Some(connection) => connection.worker.capabilities(),
+            None => &[],
+        }
+    }
+
+    /// Whether a statement running on this source could be stopped at all.
+    ///
+    /// **What the Stop button is drawn from, and Inillucent answers no**: that engine materialises a
+    /// statement on its first step, so there is no loop in which a cancel flag would be read and a
+    /// button would report success while doing nothing. Unluminous's rule is that a control which can
+    /// never apply is absent rather than dimmed, so the button is not drawn at all. The answer comes
+    /// from the driver's own capability table rather than from a list here, so the day the engine
+    /// grows a cancel the button appears without anybody editing this.
+    ///
+    /// @param source - the data source's name
+    pub fn can_stop(&self, source: &str) -> bool {
+        self.configuration
+            .source(source)
+            .map(|source| source.engine.can_stop_a_statement())
+            .unwrap_or(true)
+    }
+
     /// Stop whatever the page's data source is doing.
     pub fn stop(&mut self, id: u64) -> Result<(), String> {
         let Some(page) = self.page(id) else { return Err("no such page.".to_owned()) };
@@ -945,7 +991,27 @@ impl DatabaseExplorer {
                 loaded.problem = None;
             }
             (Wanted::Items { schema }, Ok(Reply::Items(items))) => {
+                // A search index's own declaration is asked for as soon as one is seen, because the
+                // tree draws it under the row and a folder that filled in a beat later would flicker.
+                // There are rarely more than one or two, and an engine with none asks nothing.
+                let searches: Vec<String> = items
+                    .iter()
+                    .filter(|item| item.kind == Kind::Search)
+                    .map(|item| item.name.clone())
+                    .collect();
                 self.loaded.entry(source.to_owned()).or_default().items.insert(schema, items);
+                for name in searches {
+                    self.ask(
+                        source,
+                        Job::SearchIndex { name: name.clone() },
+                        Wanted::Search { name },
+                    );
+                }
+            }
+            (Wanted::Search { name }, Ok(Reply::Search(index))) => {
+                if let Some(index) = *index {
+                    self.loaded.entry(source.to_owned()).or_default().searches.insert(name, index);
+                }
             }
             (Wanted::Describe { schema, name, then }, Ok(Reply::Table(table))) => {
                 let asked = schema.clone();
@@ -1116,6 +1182,7 @@ impl DatabaseExplorer {
                 Modal::Source(_) => "source",
                 Modal::Preview { .. } => "preview",
                 Modal::Ddl { .. } => "ddl",
+                Modal::Vector { .. } => "vector",
                 Modal::NewTable(_) => "new-table",
             }),
             // What the New Table dialog is about to send, from `unluminous_db::sql::create_table` — the
@@ -1247,10 +1314,21 @@ pub fn select_for(grid: &Grid, engine: Engine, limit: usize, at: usize) -> Strin
             .key
             .first()
             .is_some_and(|name| unluminous_db::sqlite::ROWID_ALIASES.contains(&name.as_str()));
-    let columns = match by_rowid {
+    let mut columns = match by_rowid {
         true => format!("{}, *", grid.table.key[0]),
         false => "*".to_owned(),
     };
+    // **A vector is not in `select *` either**, and for the same reason the rowid is not: on a search
+    // table the vector arrives through a *hidden* column, so a grid that asked for `*` would show the
+    // title and the body of a row whose whole point is the embedding beside them. Measured against
+    // the engine: `select * from docs` answers `["title", "body"]`, and naming the column is what puts
+    // it back. This is the one line that decides whether the ticket's "ways to see our vectors" is
+    // true of the grid at all.
+    for column in &grid.table.vector_columns {
+        if grid.table.columns.iter().any(|had| had.name == *column) {
+            columns.push_str(&format!(", {}", unluminous_db::catalog::quoted(column, '"')));
+        }
+    }
     let mut statement = format!("select {columns} from {}", grid.table.qualified('"'));
     if !grid.where_clause.trim().is_empty() {
         statement.push_str(&format!(" where {}", grid.where_clause.trim()));

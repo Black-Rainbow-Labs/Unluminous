@@ -183,12 +183,12 @@ pub struct Statement {
     pub what: String,
 }
 
-/// `$1` for PostgreSQL and `?1` for SQLite, which is the one place the two differ in a statement this
-/// composes.
+/// `$1` for PostgreSQL and `?1` for the two that speak SQLite's dialect, which is the one place the
+/// engines differ in a statement this composes.
 fn placeholder(engine: crate::source::Engine, at: usize) -> String {
     match engine {
         crate::source::Engine::Postgres => format!("${at}"),
-        crate::source::Engine::Sqlite => format!("?{at}"),
+        crate::source::Engine::Sqlite | crate::source::Engine::Inillucent => format!("?{at}"),
     }
 }
 
@@ -334,6 +334,7 @@ mod tests {
             name: "member".to_owned(),
             columns: vec![Column::new("id", "int4"), Column::new("name", "text")],
             key: vec!["id".to_owned()],
+            ..Table::default()
         }
     }
 

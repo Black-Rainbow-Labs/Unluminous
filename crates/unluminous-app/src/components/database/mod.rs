@@ -70,6 +70,8 @@ pub enum Act {
     Copy(String),
     /// Which page of the workspace is showing.
     ShowPage(u64),
+    /// Open the vector in a cell, which is what a double click on one does.
+    ShowVector(u64, usize, usize),
     ClosePage(u64),
     /// A console.
     Execute(u64),
@@ -202,6 +204,21 @@ pub fn apply(explorer: &mut DatabaseExplorer, acts: Vec<Act>) -> Vec<Request> {
             }
             Act::OpenMenu(at, aimed) => explorer.menu = Some((at, aimed)),
             Act::Copy(text) => requests.push(Request::Copy(text)),
+            Act::ShowVector(id, row, column) => {
+                // Read from the cell rather than carried on the act, so what opens is what the grid
+                // is drawing at the moment it is asked - the same rule the DDL modal keeps.
+                if let Some(Page { sheet: Sheet::Grid(grid), .. }) = explorer.page(id) {
+                    let name = grid.rows.columns.get(column).map(|column| column.name.clone());
+                    let (value, _) = grid.cell(row, column);
+                    let title = match name {
+                        Some(name) => format!("{} row {}", name, row + 1),
+                        None => format!("row {}", row + 1),
+                    };
+                    if let Some(vector) = value.bytes().and_then(unluminous_db::Vector::decode) {
+                        explorer.modal = Some(Modal::Vector { title, vector });
+                    }
+                }
+            }
             Act::ShowPage(id) => {
                 if let Some(at) = explorer.pages.iter().position(|page| page.id == id) {
                     explorer.current = at;

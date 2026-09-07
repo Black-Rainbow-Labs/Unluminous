@@ -38,7 +38,19 @@ pub enum What {
     Problem { source: String, said: String },
     Schema { source: String, name: String, open: bool },
     Folder { source: String, schema: String, name: String, count: usize, open: bool },
-    Item { source: String, schema: String, name: String, kind: Kind, open: bool },
+    Item {
+        source: String,
+        schema: String,
+        name: String,
+        kind: Kind,
+        open: bool,
+        /// What a search index declared about itself, drawn after its name.
+        ///
+        /// Empty for everything else. It is on the row rather than a level below it because it is not
+        /// a thing to open - it is what the row *is*, and a person deciding whether to trust a result
+        /// wants it in front of them rather than one press away.
+        declared: String,
+    },
     Column { name: String, type_name: String, in_key: bool, not_null: bool },
     /// A schema that has been opened and has nothing in it, which is different from one still loading.
     Empty { said: String },
@@ -101,7 +113,9 @@ fn folders(
 ) {
     let Some(loaded) = explorer.loaded.get(source) else { return };
     // The order the folders appear in, which is the reference editor's: what somebody looks for most, first.
-    for folder in ["tables", "views", "routines", "sequences", "indexes"] {
+    // `search` sits second because on an Inillucent database it is what somebody came to look at, and
+    // `shadow` sits last because it is the search index's own plumbing rather than somewhere to work.
+    for folder in ["tables", "search", "views", "routines", "sequences", "indexes", "shadow"] {
         let inside: Vec<&unluminous_db::Item> = items
             .iter()
             .filter(|item| item.kind.folder() == folder)
@@ -139,6 +153,11 @@ fn folders(
                     name: item.name.clone(),
                     kind: item.kind,
                     open: item_open,
+                    declared: loaded
+                        .searches
+                        .get(&item.name)
+                        .map(unluminous_db::SearchIndex::summary)
+                        .unwrap_or_default(),
                 },
             });
             if !item_open {
@@ -496,6 +515,11 @@ fn after(painter: &egui::Painter, line: &Line, at: Pos2, look: &Look<'_>, right:
         What::Folder { count, .. } => {
             text(painter, at, &count.to_string(), color::text_faint(), size, room);
         }
+        // A search index says what it is: how wide its vectors are, whether its answers are exact,
+        // which distance they are exact about, and which analysis produced its terms.
+        What::Item { declared, .. } if !declared.is_empty() => {
+            text(painter, at, declared, color::text_faint(), size, room);
+        }
         What::Column { type_name, not_null, .. } => {
             let said = match not_null {
                 true => format!("{type_name} not null"),
@@ -526,6 +550,9 @@ fn mark(line: &Line) -> Option<fn(&egui::Painter, Pos2, egui::Color32)> {
         What::Item { kind, .. } => Some(match kind {
             Kind::Routine => icon::run,
             Kind::Sequence => icon::clock,
+            // A search index is drawn with the mark the window already uses for finding something,
+            // which is what it is: `icon::table` would make it one more table in a list of tables.
+            Kind::Search => icon::magnifier,
             _ => icon::table,
         }),
         What::Column { in_key: true, .. } => Some(icon::key),

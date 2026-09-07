@@ -25,6 +25,11 @@ getrandom.workspace = true
 # a data source is checked against are then the certificates every other program on this machine
 # trusts, which is the argument `ureq` is already chosen on.
 native-tls.workspace = true
+# Inillucent, through the driver that exists for exactly this consumer. Reaching past it into
+# `inillucent-engine` would bind this crate to the half of that workspace still being deleted, and the
+# C ABI beside it is for other languages: Rust reaching Rust through a C integer would cost a pointer
+# round trip and a `catch_unwind` per call to arrive where it started.
+inillucent-driver.workspace = true
 
 [dev-dependencies]
 # The scripted server in `tests/scripted_server.rs` plays a real server's half of the SCRAM exchange,
