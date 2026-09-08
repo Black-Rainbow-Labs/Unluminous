@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- A cluster holds no copy of its text, and the document is the one owner (`task-1839`)
+
 ## 0.38.4 — 2026-09-07
 
 - No ticketed work; a rebuild of the version before it.
