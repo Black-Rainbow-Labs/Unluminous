@@ -117,23 +117,25 @@ prepare_notarising() {
     fi
     need xcrun
 
-    # The profile is stored the first time, from an App Store Connect API key or from an app-specific
-    # password, so that the values are looked up once and never again. After that the profile's name is
-    # the only thing needed.
-    if [ -n "${NOTARY_PROFILE:-}" ] && ! xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
-        if [ -n "${NOTARY_KEY:-}" ] && [ -n "${NOTARY_KEY_ID:-}" ] && [ -n "${NOTARY_ISSUER:-}" ]; then
-            echo "  storing the profile $NOTARY_PROFILE from the API key $NOTARY_KEY_ID"
-            if [ ! -f "$NOTARY_KEY" ]; then
-                echo "NOTARY_KEY points at $NOTARY_KEY, which is not there." >&2
-                exit 1
-            fi
-            xcrun notarytool store-credentials "$NOTARY_PROFILE" \
-                --key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER" >/dev/null
-        elif [ -n "${NOTARY_APPLE_ID:-}" ] && [ -n "${NOTARY_TEAM_ID:-}" ] && [ -n "${NOTARY_PASSWORD:-}" ]; then
-            echo "  storing the profile $NOTARY_PROFILE from the app-specific password"
-            xcrun notarytool store-credentials "$NOTARY_PROFILE" \
-                --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" --password "$NOTARY_PASSWORD" >/dev/null
+    # **The API key is used directly, and the stored profile is only a shortcut.** It was the other way
+    # round: a profile was stored on the first run and used from then on. That put a keychain *write* in
+    # the middle of every release on a machine whose profile had gone — and `notarytool
+    # store-credentials` cannot write to a locked login keychain from a non-interactive shell. It fails
+    # with `An error occurred while accessing the keychain. User interaction is not allowed.` **after**
+    # printing `Success. Credentials validated.`, which is the confusing part: the credentials are
+    # perfectly good and only the storing is refused. Measured on this machine after the rename, where
+    # the profile the old name had stored was gone.
+    #
+    # An API key needs no keychain at all, so it is tried first. The profile is still honoured when it is
+    # already there, because somebody who set one up should not have to keep the `.p8` around.
+    if [ -n "${NOTARY_KEY:-}" ] && [ -n "${NOTARY_KEY_ID:-}" ] && [ -n "${NOTARY_ISSUER:-}" ]; then
+        if [ ! -f "$NOTARY_KEY" ]; then
+            echo "NOTARY_KEY points at $NOTARY_KEY, which is not there." >&2
+            exit 1
         fi
+        notary_credentials=(--key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER")
+        echo "  with the App Store Connect API key $NOTARY_KEY_ID"
+        return
     fi
 
     if [ -n "${NOTARY_PROFILE:-}" ] && xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
