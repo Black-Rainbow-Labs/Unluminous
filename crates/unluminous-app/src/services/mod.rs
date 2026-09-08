@@ -7,6 +7,9 @@ pub mod agent_chat;
 // The Agent-Tasks plugin: the first plugin that draws. `agent_tasks::AgentTasks` is the
 // `plugin_ui::UiProvider` the manifest names, and everything under it is testable with no window.
 pub mod agent_tasks;
+// Allocation counters, compiled in only by the `diagnostic-allocations` feature. A release build
+// keeps the system allocator and reads zeroes, which is what makes it safe to ask from a frame.
+pub mod allocation_trace;
 pub mod breakpoint_store;
 pub mod browser;
 // Borrowing the terminal's console so that `--version` and `--help` can be read, which on

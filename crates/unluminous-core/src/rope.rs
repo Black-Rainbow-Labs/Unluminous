@@ -386,6 +386,31 @@ impl Node {
         }
     }
 
+    /// Visits the borrowed pieces of `range` in document order without joining them into a string.
+    fn for_each_slice(&self, range: Range<usize>, visit: &mut impl FnMut(&str)) {
+        if range.is_empty() {
+            return;
+        }
+        match self {
+            Self::Leaf { text, .. } => visit(&text[range]),
+            Self::Internal { children, infos } => {
+                let mut start = 0;
+                for (child, info) in children.iter().zip(infos) {
+                    let end = start + info.bytes;
+                    let from = range.start.max(start);
+                    let to = range.end.min(end);
+                    if from < to {
+                        child.for_each_slice((from - start)..(to - start), visit);
+                    }
+                    start = end;
+                    if start >= range.end {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     /// The raw byte at `idx`, without going through a `&str` slice.
     fn byte_at(&self, idx: usize) -> u8 {
         match self {
@@ -619,6 +644,13 @@ impl Rope {
 
     pub fn for_each_chunk(&self, f: impl FnMut(&str)) {
         self.root.for_each_chunk(f);
+    }
+
+    /// Visits the borrowed pieces of a byte range without allocating a joined string.
+    pub fn for_each_slice(&self, range: Range<usize>, mut visit: impl FnMut(&str)) {
+        assert!(range.end <= self.len_bytes(), "slice past the end of the text");
+        assert!(self.is_char_boundary(range.start) && self.is_char_boundary(range.end));
+        self.root.for_each_slice(range, &mut visit);
     }
 
     /// True when `byte_idx` sits on a character boundary.

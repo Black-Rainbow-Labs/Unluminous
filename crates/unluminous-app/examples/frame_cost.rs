@@ -14,7 +14,7 @@
 use std::time::Instant;
 
 use unluminous_app::services::text_renderer::TextRenderer;
-use unluminous_core::{layout, relayout, Command, Document, Layout};
+use unluminous_core::{layout, relayout, Command, Document, Layout, LayoutTextView, Rope};
 
 /// Run `body` `runs` times and give back the mean in milliseconds.
 fn timed(runs: usize, mut body: impl FnMut()) -> f64 {
@@ -28,26 +28,27 @@ fn timed(runs: usize, mut body: impl FnMut()) -> f64 {
 }
 
 /// Every glyph the painter would collect for the whole of a layout, which is what it used to do.
-fn collect_every_glyph(renderer: &TextRenderer, laid: &Layout) -> usize {
-    collect_glyphs(renderer, &laid.lines)
+fn collect_every_glyph(renderer: &TextRenderer, text: &Rope, laid: &Layout) -> usize {
+    collect_glyphs(renderer, text, laid, &laid.lines)
 }
 
 /// The same, for the lines that fall inside a window `height` points tall at `scroll`.
-fn collect_visible_glyphs(renderer: &TextRenderer, laid: &Layout, scroll: f32, height: f32) -> usize {
+fn collect_visible_glyphs(renderer: &TextRenderer, text: &Rope, laid: &Layout, scroll: f32, height: f32) -> usize {
     let visible = laid.visible_lines(scroll, scroll + height);
-    collect_glyphs(renderer, &laid.lines[visible])
+    collect_glyphs(renderer, text, laid, &laid.lines[visible])
 }
 
-fn collect_glyphs(renderer: &TextRenderer, lines: &[unluminous_core::PlacedLine]) -> usize {
+fn collect_glyphs(renderer: &TextRenderer, text: &Rope, laid: &Layout, lines: &[unluminous_core::PlacedLine]) -> usize {
+    let view = LayoutTextView::new(laid, text);
     let mut placed = 0usize;
     for line in lines {
         for run in &line.runs {
-            for cluster in &run.clusters {
-                for character in cluster.text.chars() {
+            for cluster in line.run_clusters(run) {
+                view.for_each_character(cluster, |character| {
                     if renderer.glyph(character, &run.style).is_some() {
                         placed += 1;
                     }
-                }
+                });
             }
         }
     }
@@ -104,15 +105,15 @@ fn main() {
     });
     println!("  layout, whole document:  {ms:8.2} ms");
 
-    let every = collect_every_glyph(&renderer, &laid);
+    let every = collect_every_glyph(&renderer, document.text(), &laid);
     let ms = timed(10, || {
-        std::hint::black_box(collect_every_glyph(&renderer, &laid));
+        std::hint::black_box(collect_every_glyph(&renderer, document.text(), &laid));
     });
     println!("  glyphs, whole document:  {ms:8.2} ms  ({every} glyphs)");
 
-    let visible = collect_visible_glyphs(&renderer, &laid, 0.0, view_height);
+    let visible = collect_visible_glyphs(&renderer, document.text(), &laid, 0.0, view_height);
     let ms = timed(200, || {
-        std::hint::black_box(collect_visible_glyphs(&renderer, &laid, 0.0, view_height));
+        std::hint::black_box(collect_visible_glyphs(&renderer, document.text(), &laid, 0.0, view_height));
     });
     println!("  glyphs, one screenful:   {ms:8.2} ms  ({visible} glyphs)");
 
@@ -160,14 +161,14 @@ fn main() {
     // and nothing is coloured: the frame is the selection rectangles and a screenful of glyphs.
     let ms = timed(500, || {
         std::hint::black_box(laid.selection_rects_in(onscreen.clone(), 0..end / 2));
-        std::hint::black_box(collect_visible_glyphs(&renderer, &laid, 0.0, view_height));
+        std::hint::black_box(collect_visible_glyphs(&renderer, document.text(), &laid, 0.0, view_height));
     });
     println!("  dragging a selection:    {ms:8.2} ms  ({:.0} frames a second)", 1000.0 / ms);
 
     // Scrolling, and dragging the window: nothing about the document changes at all, so the frame is
     // a screenful of glyphs and nothing else.
     let ms = timed(500, || {
-        std::hint::black_box(collect_visible_glyphs(&renderer, &laid, 4000.0, view_height));
+        std::hint::black_box(collect_visible_glyphs(&renderer, document.text(), &laid, 4000.0, view_height));
     });
     println!("  scrolling or dragging:   {ms:8.2} ms  ({:.0} frames a second)", 1000.0 / ms);
 
@@ -187,7 +188,7 @@ fn main() {
             width,
             &unluminous_core::folding::Hidden::none(),
         );
-        std::hint::black_box(collect_visible_glyphs(&renderer, &carried, 0.0, view_height));
+        std::hint::black_box(collect_visible_glyphs(&renderer, document.text(), &carried, 0.0, view_height));
     });
     println!("  typing a letter:         {ms:8.2} ms  ({:.0} frames a second)", 1000.0 / ms);
 
@@ -217,7 +218,7 @@ fn main() {
                 width,
                 &unluminous_core::folding::Hidden::none(),
             );
-            std::hint::black_box(collect_visible_glyphs(&renderer, &carried, 0.0, view_height));
+            std::hint::black_box(collect_visible_glyphs(&renderer, document.text(), &carried, 0.0, view_height));
         });
         println!("  typing, whole file read: {ms:8.2} ms  ({:.0} frames a second)", 1000.0 / ms);
 
@@ -256,7 +257,7 @@ fn main() {
                 width,
                 &unluminous_core::folding::Hidden::none(),
             );
-            std::hint::black_box(collect_visible_glyphs(&renderer, &carried, 0.0, view_height));
+            std::hint::black_box(collect_visible_glyphs(&renderer, document.text(), &carried, 0.0, view_height));
         });
         println!(
             "  typing, coloured again:  {ms:8.2} ms  ({:.0} frames a second, {scanned} tokens read)",

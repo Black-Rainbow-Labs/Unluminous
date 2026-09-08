@@ -2096,6 +2096,86 @@ Unluminous that gets that back. Zed benchmarks at about 222 MB. Do not go lookin
 the order they would be done. The scripts that produced every number are in
 `_agent_output/task-1805-performance/`.
 
+## A cluster holds no copy of its text, and the document is the one owner
+
+`task-1805` measured an idle window. `task-1813` measured what a window is *holding*, and found the
+largest item in it: opening one 538 KB file added **58.7 MB** of working set and **64.1 MB** of
+private bytes, and ten ordinary code tabs added **112.7 MB**. The reason was in the layout. Every
+`PlacedCluster` owned a copy of its own grapheme, so a file with 527,000 clusters in it held 527,000
+copies of text the rope already had, and the public layout containers came to **40.82 MB** on their
+own.
+
+**So a cluster is now a byte range, and the painter reads the letters out of the rope.** It holds a
+`u32` start and end, an x, an advance and a byte of flags — 20 bytes where it was 48 — and
+`LayoutTextView` is the one place a layout and the document that owns its text are put back together.
+That seam is the whole point: without it, document slicing leaks into the painter, the gutter, the
+preview and every test, and the next consumer added is the one that slices it wrongly.
+
+Three things came out of it and each is a rule.
+
+**The flags are computed while the text is in hand and never recovered afterwards.** Layout is
+already looking at each grapheme to shape it, so `is_blank` and `is_tab` are decided there. A painter
+that asked the rope "is this whitespace" would be reading text to answer a question layout had
+already answered, which is the duplication coming back in a different shape.
+
+**A run names a range of its line's clusters rather than owning a vector of them.** `PlacedRun` is 16
+bytes where it was 64, and the clusters of a line are one contiguous array, so a line with six style
+runs in it is one allocation rather than seven. The style is an `Arc<CharStyle>` shared between every
+run that has the same formatting, because a `CharStyle` owns a family name and a file coloured into
+63,000 runs was 63,000 copies of the word `Consolas`.
+
+**Compaction happens at exactly two points, and both are off the input path**: the first full layout
+of a file, and the moment a tab is displaced by another — which is the one instant a layout is both
+complete and cold. It is deliberately *not* a sweep of every hidden tab on every switch: that walks
+every line of every hidden layout, for ever, to find nothing. A visible file never pauses to shrink,
+and an edited one keeps its editing headroom.
+
+**Measured, on the same corpus, against a release build of the commit before it:**
+
+| | before | after | the ticket asked for |
+|---|---:|---:|---:|
+| One 538 KB file, working set | 58.7 MB | **29.5 MB** | 35 MB or less |
+| One 538 KB file, private bytes | 64.1 MB | **29.8 MB** | 40 MB or less |
+| Ten code tabs, working set | 112.7 MB | **51.6 MB** | 65 MB or less |
+| Public layout containers | 40.82 MB | **12.06 MB** | — |
+| Laying the whole file out | 67.48 ms | **43.66 ms** | — |
+| Typing a letter | 6.40 ms | **5.78 ms** | no regression |
+| Scrolling | 0.03 ms | **0.07 ms** | 1 ms or less |
+| Warm control readiness | 559 ms | **540 ms** | no regression |
+
+Reading a screenful of glyphs out of the rope costs **0.09 ms** where an owned copy cost 0.04. That
+is the price of the whole change and it is paid once a frame, so it is left alone: `task-1813` sets
+the bar at 0.25 ms median before a phase is worth optimising, and slicing the rope once per run
+instead of once per cluster is the thing to do the day it crosses it. **The capacity control,
+the flat layout arrays and the frame-loop cleanup in that design were not built**, because it says
+in as many words to apply them only if the textless representation misses the targets. It did not.
+
+**Three diagnostics were built first, and are what any later claim here has to go through.**
+`cargo run --release -p unluminous-app --example layout_memory -- <file>` reports element sizes,
+lengths, capacities and accounted heap for a real file. `tools/measure-release-resources.ps1` drives
+a release build through the fixed ten-file corpus and reports the increases above. And
+`--features diagnostic-allocations` puts a counting allocator behind the frame trace, so an
+allocation can be attributed to a phase — off by default, where it reads zeroes and the system
+allocator is untouched, because an instrument in a hot path may cost nothing when it is not asked
+for.
+
+Two of them are about the measurement rather than the code, and both are why the first numbers were
+wrong. The harness runs on a **corpus folder of its own** rather than on the checkout, because a
+project Unluminous has been used in remembers what was open in it — this one's
+`.unluminous/plugin-tabs.txt` names the Database plugin's tab, so the editing area was drawing that,
+no file was ever laid out, and opening the reference file moved the working set by 5.9 MB. And a
+state is measured **settled**, because a window that has only just answered is still growing, and a
+baseline taken there makes every increase measured from it read small.
+
+**Cached tab switching is a counter rather than a promise.** A hidden tab keeps its whole layout, and
+`task-1813` refuses to evict one because the reference file costs 43 ms to rebuild. That the switch
+back really does rebuild nothing is the sort of thing no state in the window could be asked about, so
+`UnluminousApp::layouts_built()` counts real layouts — the shape `DebugState::reads` already has —
+and `showing_a_tab_that_was_already_laid_out_does_not_lay_it_out_again` is the test.
+
+`tasks/task-1813-performance-review-tdd.md` is the design, and the raw runs are in
+`_agent_output/task-1839-layout-memory/`.
+
 ## The Markdown preview is a document, which is what makes it read like one
 
 `task-1685` reported four things: tables were not drawn, the preview could not be selected or copied,
@@ -3532,6 +3612,10 @@ trade that away to be a shade nearer a screenshot.
   one's startup, a grammar set deep-cloned three times a frame, and shells started before the window
   was shown — what the memory turned out to be and why none of it is Unluminous's, and the five
   things weighed and rejected with the numbers for each.
+- `tasks/task-1813-performance-review-tdd.md` — what a window is *holding*: the retained layout
+  that was the largest item in it, the duplicated cluster text and the document-backed painter that
+  replaced it, the allocator swap and the forced high-performance adapter that were both measured and
+  rejected, and why hidden tabs keep their layouts.
 - `tasks/task-1666-performance-tdd.md` — why a frame cost 818 ms and now costs 20: the eight faults
   that were found, what each was worth, the two revisions a document counts, the incremental layout
   and why its fingerprint is derived rather than reported, and what was deliberately not done.

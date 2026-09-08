@@ -102,6 +102,16 @@ impl Cached {
     fn fresh() -> Self {
         Self { stale: true, ..Self::default() }
     }
+
+    /// Releases the growth headroom of a completed layout once its tab has been put away.
+    ///
+    /// A visible file must never pause for this, and an edited one must keep its editing headroom,
+    /// so it is asked for at exactly two points: the first full layout of a file, and the moment a
+    /// tab is displaced by another. Both are off the input path.
+    fn compact_layouts(&mut self) {
+        self.layout.compact_capacity();
+        self.preview_layout.compact_capacity();
+    }
 }
 
 /// A place in a view that is to stay where it is while the text is laid out again.
@@ -828,9 +838,20 @@ impl OpenFiles {
 
     /// Show the tab at `index`, if there is one there, putting the keyboard in its pane.
     pub fn show(&mut self, index: usize) {
-        if index < self.files.len() {
-            self.focus = self.files[index].pane;
-            self.stamp(index);
+        if index >= self.files.len() {
+            return;
+        }
+        let pane = self.files[index].pane;
+        let displaced = self.showing_in(pane).filter(|displaced| *displaced != index);
+        self.focus = pane;
+        self.stamp(index);
+        // The one moment a layout is both complete and cold: the tab that was showing in this pane
+        // has just been put behind another, and will not be laid out again until it is shown. That
+        // is the cache boundary `tasks/task-1813-performance-review-tdd.md` section 3 asks for, and
+        // it is deliberately the *displaced* tab rather than a sweep of every hidden one - a sweep
+        // walks every line of every hidden layout on every tab switch, for ever, to find nothing.
+        if let Some(displaced) = displaced {
+            self.files[displaced].cached.compact_layouts();
         }
     }
 

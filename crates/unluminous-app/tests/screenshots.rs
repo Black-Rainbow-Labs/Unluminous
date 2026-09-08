@@ -458,7 +458,7 @@ fn clicking_a_file_in_the_explorer_opens_it_in_the_editor() {
     // Two lines: the heading, and the empty one after the line break at the end of the file.
     assert_eq!(lines.len(), 2, "the file should have been laid out, got {}", lines.len());
     assert!(
-        lines[0].runs.iter().any(|run| !run.clusters.is_empty()),
+        lines[0].runs.iter().any(|run| !lines[0].run_clusters(run).is_empty()),
         "and the first line should hold the characters of the file"
     );
     harness.snapshot(shot("file_opened"));
@@ -1641,7 +1641,7 @@ fn the_preview_lays_out_headings_taller_than_body_text() {
     let body = layout
         .lines
         .iter()
-        .find(|line| line.runs.iter().any(|run| run.clusters.len() > 20))
+        .find(|line| line.runs.iter().any(|run| line.run_clusters(run).len() > 20))
         .map(|line| line.height)
         .expect("one line of body text");
     assert!(heading > body, "the heading line ({heading}) should be taller than a body line ({body})");
@@ -16060,4 +16060,36 @@ fn a_vector_is_drawn_as_a_vector_rather_than_as_its_bytes() {
     assert_eq!(read["dimensions"], serde_json::json!(8));
     assert!((read["norm"].as_f64().unwrap_or_default() - 1.0).abs() < 1.0e-5, "{read}");
     harness.snapshot(shot("database_inillucent_vector").as_str());
+}
+
+/// **Switching back to a tab that has already been laid out lays nothing out.**
+///
+/// A hidden tab keeps its whole layout so that coming back to it is instant, which is the reason
+/// `tasks/task-1813-performance-review-tdd.md` section 4 refuses to evict one: the 538 KB reference
+/// file costs 64 ms to lay out from scratch, so a switch that rebuilt it would be a visible stall.
+/// Compacting the displaced tab's capacity must not quietly cost that, and a counter is the only
+/// thing that can tell the two apart - nothing else in the window would look any different.
+#[test]
+fn showing_a_tab_that_was_already_laid_out_does_not_lay_it_out_again() {
+    let folder = sample_folder();
+    let mut harness = harness("");
+    harness.state_mut().open_path_permanently(&folder.join("readme.md")).expect("the file opens");
+    harness.run();
+    let first = harness.state().files.active_index();
+    harness.state_mut().open_path_permanently(&folder.join("notes.txt")).expect("the file opens");
+    harness.run();
+    let laid_out = harness.state().layouts_built();
+    assert!(laid_out > 0, "opening two files lays them out");
+
+    // Back to the first, which is hidden and was compacted when the second displaced it.
+    harness.state_mut().files.show(first);
+    harness.run();
+    assert_eq!(
+        harness.state().layouts_built(),
+        laid_out,
+        "showing a cached tab reused its layout instead of building another"
+    );
+    // And it is really the file that is showing, so nothing was skipped by showing the wrong tab.
+    assert_eq!(harness.state().document().text().to_string(), "# Unluminous\n");
+    assert!(!harness.state().layout().lines.is_empty(), "with its lines still in place");
 }

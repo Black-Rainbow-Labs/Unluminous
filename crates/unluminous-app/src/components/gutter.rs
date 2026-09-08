@@ -678,7 +678,8 @@ mod tests {
             paragraph: 0,
             last_in_paragraph: true,
             runs: Vec::new(),
-            empty_style: unluminous_core::CharStyle::default(),
+            clusters: Vec::new(),
+            empty_style: std::sync::Arc::new(unluminous_core::CharStyle::default()),
         }
     }
 

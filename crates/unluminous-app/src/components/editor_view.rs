@@ -5,7 +5,7 @@
 //! glyph out of the atlas, so the whole visible document is a single mesh.
 
 use egui::{Color32, Mesh, Pos2, Rect, Sense, Shape, Stroke, Vec2};
-use unluminous_core::{Align, Command, Document, IndentUnit, Layout, Rope, Selection, StyleChange};
+use unluminous_core::{Align, Command, Document, IndentUnit, Layout, LayoutTextView, Rope, Selection, StyleChange};
 
 use crate::services::text_renderer::TextRenderer;
 use crate::theme::color;
@@ -390,7 +390,7 @@ pub fn paint(
     }
 
     paint_highlights(ui, document, layout, text_origin, visible.clone());
-    paint_text(ui, renderer, layout, text_origin);
+    paint_text(ui, renderer, document.text(), layout, text_origin);
 
     // Under the word, over the text: a rule a point tall at the bottom of the word's own box, in
     // the accent colour, which is what a link looks like everywhere and is what says the click
@@ -603,8 +603,9 @@ pub fn fold_badges(
 ///
 /// The Markdown preview uses this. It has no document behind it, only a layout, because it is produced from
 /// the source rather than edited.
-pub fn paint_text(ui: &egui::Ui, renderer: &TextRenderer, layout: &Layout, text_origin: Pos2) -> usize {
+pub fn paint_text(ui: &egui::Ui, renderer: &TextRenderer, text: &Rope, layout: &Layout, text_origin: Pos2) -> usize {
     let painter = ui.painter();
+    let text_view = LayoutTextView::new(layout, text);
     let to_screen = |x: f32, y: f32| Pos2::new(text_origin.x + x, text_origin.y + y);
     // Only the lines that fall inside what is being drawn into. The whole document used to be
     // collected and handed to egui as one mesh, which culls a mesh only against its bounding box —
@@ -635,8 +636,8 @@ pub fn paint_text(ui: &egui::Ui, renderer: &TextRenderer, layout: &Layout, text_
                 // Text is always painted fully opaque. The transparency slider fades the background
                 // behind it and must never make the writing hard to read.
                 let color = Color32::from_rgb(run.style.color.r, run.style.color.g, run.style.color.b);
-                for cluster in &run.clusters {
-                    for character in cluster.text.chars() {
+                for cluster in line.run_clusters(run) {
+                    text_view.for_each_character(cluster, |character| {
                         // A rule is drawn rather than lettered, which is what
                         // `design/style-guide.md` already says about an icon. A box-drawing glyph
                         // cannot tile: its ink is an em box, the line it sits on is taller than
@@ -654,10 +655,10 @@ pub fn paint_text(ui: &egui::Ui, renderer: &TextRenderer, layout: &Layout, text_
                                 line.height,
                                 color,
                             );
-                            continue;
+                            return;
                         }
                         let Some(glyph) = renderer.glyph(character, &run.style) else {
-                            continue; // a space, or a character this font has no shape for
+                            return; // a space, or a character this font has no shape for
                         };
                         // Snap the glyph to whole pixels. A glyph is drawn at exactly the size it was
                         // rasterised at, so landing it on a fraction of a pixel would resample it and
@@ -665,7 +666,7 @@ pub fn paint_text(ui: &egui::Ui, renderer: &TextRenderer, layout: &Layout, text_
                         let at = to_screen(cluster.x + glyph.offset.x, baseline + glyph.offset.y);
                         let at = Pos2::new(at.x.round(), at.y.round());
                         placed.push((Rect::from_min_size(at, glyph.size), glyph.uv, color));
-                    }
+                    });
                 }
             }
         }
@@ -931,25 +932,26 @@ mod tests {
     /// Draw into a context with no window and no graphics card behind it, and give back what the
     /// painter reported. egui's context is all on the processor: a texture handed to it is a delta to
     /// be uploaded later, so nothing here needs a device.
-    fn painted(clip: Rect, laid: &Layout, origin: Pos2) -> usize {
+    fn painted(clip: Rect, text: &Rope, laid: &Layout, origin: Pos2) -> usize {
         let renderer = TextRenderer::new();
         let context = egui::Context::default();
         let mut placed = 0;
         let output = context.run_ui(egui::RawInput::default(), |ui| {
             let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(clip));
             inner.set_clip_rect(clip);
-            placed = paint_text(&inner, &renderer, laid, origin);
+            placed = paint_text(&inner, &renderer, text, laid, origin);
         });
         output.drop_without_applying_deltas();
         placed
     }
 
-    fn a_long_document(lines: usize) -> Layout {
+    fn a_long_document(lines: usize) -> (Rope, Layout) {
         let text: String = (0..lines).map(|i| format!("line number {i} of the document\n")).collect();
         let rope = Rope::from_str(&text);
         let spans = StyleSpans::new(rope.len_bytes(), CharStyle::default());
         let paragraphs = ParagraphStyles::new(rope.len_lines());
-        layout(&rope, &spans, &paragraphs, &TextRenderer::new(), 900.0)
+        let laid = layout(&rope, &spans, &paragraphs, &TextRenderer::new(), 900.0);
+        (rope, laid)
     }
 
     /// **Painting costs a screenful, not a document.**
@@ -960,12 +962,12 @@ mod tests {
     /// sixty times a second. Before this was fixed, this test reported every glyph in the file.
     #[test]
     fn painting_a_long_document_costs_a_screenful() {
-        let laid = a_long_document(5000);
-        let every = laid.lines.iter().flat_map(|line| line.runs.iter()).map(|run| run.clusters.len()).sum::<usize>();
+        let (rope, laid) = a_long_document(5000);
+        let every = laid.lines.iter().map(|line| line.clusters().count()).sum::<usize>();
         assert!(every > 100_000, "the fixture is meant to be far larger than one screen");
 
         let window = Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(900.0, 700.0));
-        let placed = painted(window, &laid, Pos2::new(0.0, 0.0));
+        let placed = painted(window, &rope, &laid, Pos2::new(0.0, 0.0));
         assert!(placed > 0, "the top of the document is on the screen, so something is drawn");
         assert!(
             placed < every / 20,
@@ -977,11 +979,11 @@ mod tests {
     /// Scrolled a long way down, the same is true and the glyphs drawn are the ones down there.
     #[test]
     fn painting_a_document_scrolled_down_costs_the_same_screenful() {
-        let laid = a_long_document(5000);
+        let (rope, laid) = a_long_document(5000);
         let window = Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(900.0, 700.0));
-        let every = laid.lines.iter().flat_map(|line| line.runs.iter()).map(|run| run.clusters.len()).sum::<usize>();
-        let top = painted(window, &laid, Pos2::new(0.0, 0.0));
-        let scrolled = painted(window, &laid, Pos2::new(0.0, -20_000.0));
+        let every = laid.lines.iter().map(|line| line.clusters().count()).sum::<usize>();
+        let top = painted(window, &rope, &laid, Pos2::new(0.0, 0.0));
+        let scrolled = painted(window, &rope, &laid, Pos2::new(0.0, -20_000.0));
         assert!(scrolled > 0, "there is text at that depth");
         assert!(scrolled < every / 20, "and it is still one screenful, not {every} glyphs");
         // Within a line or two of each other, because the same amount of window is being filled.
@@ -994,8 +996,8 @@ mod tests {
     /// scissor rectangle.
     #[test]
     fn a_document_scrolled_past_the_window_paints_nothing() {
-        let laid = a_long_document(200);
+        let (rope, laid) = a_long_document(200);
         let window = Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(900.0, 700.0));
-        assert_eq!(painted(window, &laid, Pos2::new(0.0, -1_000_000.0)), 0);
+        assert_eq!(painted(window, &rope, &laid, Pos2::new(0.0, -1_000_000.0)), 0);
     }
 }

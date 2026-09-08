@@ -38,7 +38,7 @@ pub use highlights::{Highlight, Highlights, Rgba};
 pub use imports::Context as ImportContext;
 pub use incremental::{Dirt as SyntaxDirt, Tokens as IncrementalTokens};
 pub use layout::{
-    layout, relayout, Anchor, Caret, ClusterText, Layout, PlacedCluster, PlacedLine, PlacedRun,
+    layout, relayout, Anchor, Caret, Layout, LayoutTextView, PlacedCluster, PlacedLine, PlacedRun,
     Rect,
 };
 pub use metrics::{FixedMetrics, FontMetrics, LineMetrics, ScaledMetrics};

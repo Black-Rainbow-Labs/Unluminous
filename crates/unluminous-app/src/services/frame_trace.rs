@@ -47,7 +47,8 @@ struct Recording {
     began: Instant,
     /// The end of the previous mark, which is where the next phase's time is measured from.
     since: Instant,
-    phases: Vec<(&'static str, f64)>,
+    phases: Vec<(&'static str, f64, crate::services::allocation_trace::Snapshot)>,
+    allocations: crate::services::allocation_trace::Snapshot,
     /// How long between the last frame ending and this one starting: egui's own work, the graphics
     /// card, and the wait. Absent on the first frame, which has nothing before it.
     outside: Option<f64>,
@@ -97,7 +98,13 @@ pub fn begin() {
     let outside = ENDED.with(|ended| ended.borrow().map(|at| elapsed(at, now)));
     FRAME.with(|frame| {
         *frame.borrow_mut() =
-            Some(Recording { began: now, since: now, phases: Vec::with_capacity(24), outside });
+            Some(Recording {
+                began: now,
+                since: now,
+                phases: Vec::with_capacity(24),
+                allocations: crate::services::allocation_trace::snapshot(),
+                outside,
+            });
     });
 }
 
@@ -112,7 +119,9 @@ pub fn phase(name: &'static str) {
     let now = Instant::now();
     FRAME.with(|frame| {
         if let Some(recording) = frame.borrow_mut().as_mut() {
-            recording.phases.push((name, elapsed(recording.since, now)));
+            let allocations = crate::services::allocation_trace::snapshot();
+            recording.phases.push((name, elapsed(recording.since, now), allocations.since(recording.allocations)));
+            recording.allocations = allocations;
             recording.since = now;
         }
     });
@@ -133,8 +142,11 @@ pub fn end() {
         line.push_str(&format!(" outside {outside:.3}"));
     }
     line.push_str(" |");
-    for (name, took) in &recording.phases {
+    for (name, took, allocations) in &recording.phases {
         line.push_str(&format!(" {name} {took:.3}"));
+        if allocations.allocations > 0 {
+            line.push_str(&format!(" allocs={} bytes={}", allocations.allocations, allocations.bytes));
+        }
     }
     if let Ok(mut writer) = sink.lock() {
         let _ = writeln!(writer, "{line}");

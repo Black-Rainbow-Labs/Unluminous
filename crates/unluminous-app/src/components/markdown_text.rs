@@ -216,6 +216,7 @@ pub fn show_with(
     crate::components::editor_view::paint_text(
         &clipped,
         renderer,
+        &rendered.text,
         &rendered.layout,
         Pos2::new(area.left(), area.top() - scroll),
     );

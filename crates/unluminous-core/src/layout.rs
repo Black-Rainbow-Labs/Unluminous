@@ -14,6 +14,7 @@
 //! is where that step goes.
 
 use std::ops::Range;
+use std::sync::Arc;
 
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -37,115 +38,96 @@ impl Rect {
     }
 }
 
-/// The text of one grapheme cluster.
-///
-/// Nearly every cluster in nearly every document is one to four bytes, and layout makes one of these
-/// for every grapheme in the file — so a `String` here was a heap allocation per letter, and laying
-/// out a file the size of `app/mod.rs` made a hundred and sixteen thousand of them. Up to
-/// [`ClusterText::INLINE`] bytes are held in the value itself, which is every cluster anybody
-/// writes; a longer one spills to the heap, so nothing is ever truncated.
-///
-/// It dereferences to `str` and compares against one, so everything that read a `String` here still
-/// reads it the same way.
-#[derive(Clone)]
-pub enum ClusterText {
-    Inline { bytes: [u8; ClusterText::INLINE], len: u8 },
-    Long(Box<str>),
-}
-
-impl ClusterText {
-    /// How many bytes fit without touching the heap. Twenty-two is what leaves this the same size a
-    /// `String` was, and it is far past the longest grapheme cluster in ordinary writing — a family
-    /// emoji with four members and three joiners is twenty-five, and that spills.
-    pub const INLINE: usize = 22;
-
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Inline { bytes, len } => {
-                // Safe because the only way to build one is from a `&str`, which is valid UTF-8.
-                std::str::from_utf8(&bytes[..*len as usize]).unwrap_or("")
-            }
-            Self::Long(text) => text,
-        }
-    }
-}
-
-impl From<&str> for ClusterText {
-    fn from(text: &str) -> Self {
-        if text.len() <= Self::INLINE {
-            let mut bytes = [0u8; Self::INLINE];
-            bytes[..text.len()].copy_from_slice(text.as_bytes());
-            Self::Inline { bytes, len: text.len() as u8 }
-        } else {
-            Self::Long(text.into())
-        }
-    }
-}
-
-impl std::ops::Deref for ClusterText {
-    type Target = str;
-
-    fn deref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl std::fmt::Debug for ClusterText {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(self.as_str(), f)
-    }
-}
-
-impl PartialEq for ClusterText {
-    fn eq(&self, other: &Self) -> bool {
-        self.as_str() == other.as_str()
-    }
-}
-
-impl PartialEq<str> for ClusterText {
-    fn eq(&self, other: &str) -> bool {
-        self.as_str() == other
-    }
-}
-
-impl PartialEq<&str> for ClusterText {
-    fn eq(&self, other: &&str) -> bool {
-        self.as_str() == *other
-    }
-}
-
 /// One grapheme cluster, placed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlacedCluster {
-    /// The text of the cluster, which is what the painter asks the font for.
-    pub text: ClusterText,
-    /// Where the cluster came from in the document, so a click can be turned back into an offset.
-    pub bytes: Range<usize>,
+    /// Compact document byte bounds; an editor document is deliberately far below four gigabytes.
+    start: u32,
+    end: u32,
     /// Left edge, relative to the left edge of the text area.
     pub x: f32,
     pub advance: f32,
+    /// Properties layout already learned while it had the grapheme text.
+    flags: u8,
 }
 
 impl PlacedCluster {
+    const BLANK: u8 = 1;
+    const TAB: u8 = 2;
+
+    /// Builds the compact retained form while the source grapheme is already available.
+    fn new(text: &str, bytes: Range<usize>, advance: f32) -> Self {
+        let mut flags = 0;
+        if text.chars().all(char::is_whitespace) {
+            flags |= Self::BLANK;
+        }
+        if text == "\t" {
+            flags |= Self::TAB;
+        }
+        let start = u32::try_from(bytes.start).expect("a document offset fits in 32 bits");
+        let end = u32::try_from(bytes.end).expect("a document offset fits in 32 bits");
+        Self { start, end, x: 0.0, advance, flags }
+    }
+
+    /// True when the cluster is whitespace and can be used as a wrapping or justification gap.
+    pub fn is_blank(&self) -> bool {
+        self.flags & Self::BLANK != 0
+    }
+
+    /// True when the cluster is a tab, retained separately for future tab-stop painting.
+    pub fn is_tab(&self) -> bool {
+        self.flags & Self::TAB != 0
+    }
+
+    /// Where the cluster came from in the document, for painting and hit testing.
+    pub fn bytes(&self) -> Range<usize> {
+        self.start as usize..self.end as usize
+    }
+
+    /// Moves retained offsets after an incremental edit above this unchanged cluster.
+    fn move_bytes(&mut self, shift: impl Fn(usize) -> usize) {
+        self.start = u32::try_from(shift(self.start as usize)).expect("a document offset fits in 32 bits");
+        self.end = u32::try_from(shift(self.end as usize)).expect("a document offset fits in 32 bits");
+    }
+
     pub fn right(&self) -> f32 {
         self.x + self.advance
+    }
+}
+
+/// Pairs retained layout geometry with the document that owns its text.
+pub struct LayoutTextView<'a> {
+    pub layout: &'a Layout,
+    text: &'a Rope,
+}
+
+impl<'a> LayoutTextView<'a> {
+    /// Creates the single document-backed access point used by layout consumers.
+    pub fn new(layout: &'a Layout, text: &'a Rope) -> Self {
+        Self { layout, text }
+    }
+
+    /// Visits a cluster's characters without allocating or duplicating retained source text.
+    pub fn for_each_character(&self, cluster: &PlacedCluster, mut visit: impl FnMut(char)) {
+        let bytes = cluster.bytes();
+        debug_assert!(bytes.end <= self.text.len_bytes());
+        debug_assert!(self.text.is_char_boundary(bytes.start));
+        debug_assert!(self.text.is_char_boundary(bytes.end));
+        self.text.for_each_slice(bytes, |part| part.chars().for_each(&mut visit));
     }
 }
 
 /// A stretch of one line that shares a single style.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlacedRun {
-    pub style: CharStyle,
-    pub clusters: Vec<PlacedCluster>,
+    pub style: Arc<CharStyle>,
+    clusters: Range<u32>,
 }
 
 impl PlacedRun {
-    pub fn left(&self) -> f32 {
-        self.clusters.first().map(|c| c.x).unwrap_or(0.0)
-    }
-
-    pub fn right(&self) -> f32 {
-        self.clusters.last().map(PlacedCluster::right).unwrap_or(0.0)
+    /// The cluster indexes this style covers in its line's contiguous cluster array.
+    fn cluster_range(&self) -> Range<usize> {
+        self.clusters.start as usize..self.clusters.end as usize
     }
 }
 
@@ -174,8 +156,9 @@ pub struct PlacedLine {
     /// True when this is the last line of its paragraph, which justified alignment needs to know.
     pub last_in_paragraph: bool,
     pub runs: Vec<PlacedRun>,
+    pub clusters: Vec<PlacedCluster>,
     /// The style to use for a caret sitting on an otherwise empty line.
-    pub empty_style: CharStyle,
+    pub empty_style: Arc<CharStyle>,
 }
 
 impl PlacedLine {
@@ -197,25 +180,33 @@ impl PlacedLine {
         if bytes == 0 {
             return;
         }
-        for run in &mut self.runs {
-            for cluster in &mut run.clusters {
-                cluster.bytes = shift(cluster.bytes.start)..shift(cluster.bytes.end);
-            }
+        for cluster in &mut self.clusters {
+            cluster.move_bytes(shift);
         }
     }
 
-    fn clusters(&self) -> impl Iterator<Item = &PlacedCluster> {
-        self.runs.iter().flat_map(|run| run.clusters.iter())
+    pub fn clusters(&self) -> impl Iterator<Item = &PlacedCluster> {
+        self.clusters.iter()
+    }
+
+    /// Retained cluster slots, exposed for the opt-in layout-memory diagnostic.
+    pub fn cluster_capacity(&self) -> usize {
+        self.clusters.capacity()
+    }
+
+    /// The clusters belonging to one of this line's style runs.
+    pub fn run_clusters(&self, run: &PlacedRun) -> &[PlacedCluster] {
+        &self.clusters[run.cluster_range()]
     }
 
     /// Left edge of the first cluster, which alignment moves around.
     pub fn left(&self) -> f32 {
-        self.runs.first().map(PlacedRun::left).unwrap_or(0.0)
+        self.clusters.first().map(|cluster| cluster.x).unwrap_or(0.0)
     }
 
     /// Right edge of the last cluster.
     pub fn right(&self) -> f32 {
-        self.runs.last().map(PlacedRun::right).unwrap_or(self.left())
+        self.clusters.last().map(PlacedCluster::right).unwrap_or(self.left())
     }
 }
 
@@ -478,6 +469,7 @@ struct Buffers<'a> {
     runs: Vec<(Range<usize>, &'a CharStyle)>,
     clusters: Vec<(usize, PlacedCluster)>,
     breaks: Vec<Range<usize>>,
+    styles: Vec<Arc<CharStyle>>,
 }
 
 impl Default for Buffers<'_> {
@@ -487,8 +479,19 @@ impl Default for Buffers<'_> {
             runs: Vec::new(),
             clusters: Vec::new(),
             breaks: Vec::new(),
+            styles: Vec::new(),
         }
     }
+}
+
+/// Reuses one retained style allocation across every run with the same formatting.
+fn retained_style(styles: &mut Vec<Arc<CharStyle>>, style: &CharStyle) -> Arc<CharStyle> {
+    if let Some(retained) = styles.iter().find(|retained| retained.as_ref() == style) {
+        return Arc::clone(retained);
+    }
+    let retained = Arc::new(style.clone());
+    styles.push(Arc::clone(&retained));
+    retained
 }
 
 /// The runs of formatting covering `bytes`, found by binary search over the whole document's spans.
@@ -661,19 +664,14 @@ fn lay_out_paragraph<'a>(
             let start = run_bytes.start + offset;
             buffers.clusters.push((
                 run_index,
-                PlacedCluster {
-                    text: ClusterText::from(cluster),
-                    bytes: start..start + cluster.len(),
-                    x: 0.0,
-                    advance: metrics.advance(cluster, style),
-                },
+                PlacedCluster::new(cluster, start..start + cluster.len(), metrics.advance(cluster, style)),
             ));
         }
     }
 
     let empty_style = match buffers.runs.first() {
-        Some((_, style)) => (*style).clone(),
-        None => style_at(spans, bytes.start),
+        Some((_, style)) => retained_style(&mut buffers.styles, style),
+        None => retained_style(&mut buffers.styles, &style_at(spans, bytes.start)),
     };
 
     if buffers.clusters.is_empty() {
@@ -691,6 +689,7 @@ fn lay_out_paragraph<'a>(
             paragraph,
             last_in_paragraph: true,
             runs: Vec::new(),
+            clusters: Vec::new(),
             empty_style,
         });
         work.y += height;
@@ -757,6 +756,7 @@ fn lay_out_paragraph<'a>(
 
         // Place the clusters, grouping neighbouring clusters that share a run into one PlacedRun.
         let mut placed_runs: Vec<PlacedRun> = Vec::new();
+        let mut placed_clusters: Vec<PlacedCluster> = Vec::with_capacity(slice.len());
         let mut pen = offset;
         for (run_index, cluster) in slice.iter_mut() {
             cluster.x = pen;
@@ -767,12 +767,17 @@ fn lay_out_paragraph<'a>(
             let style = buffers.runs[*run_index].1;
             // Compared by looking at the style rather than by cloning it first. Cloning allocated a
             // family name for every cluster in the document purely to throw it away again.
-            let same_run = placed_runs.last().is_some_and(|last| &last.style == style);
+            let same_run = placed_runs.last().is_some_and(|last| last.style.as_ref() == style);
             if same_run {
-                placed_runs.last_mut().expect("checked").clusters.push(cluster.clone());
+                placed_clusters.push(cluster.clone());
+                placed_runs.last_mut().expect("checked").clusters.end += 1;
             } else {
-                placed_runs
-                    .push(PlacedRun { style: style.clone(), clusters: vec![cluster.clone()] });
+                let start = u32::try_from(placed_clusters.len()).expect("a line's clusters fit in 32 bits");
+                placed_clusters.push(cluster.clone());
+                placed_runs.push(PlacedRun {
+                    style: retained_style(&mut buffers.styles, style),
+                    clusters: start..start + 1,
+                });
             }
         }
 
@@ -799,8 +804,8 @@ fn lay_out_paragraph<'a>(
         // letters whatever it asked for.
         let height = (natural * paragraph_style.line_spacing).max(paragraph_style.min_height);
 
-        let start = slice.first().map(|(_, c)| c.bytes.start).unwrap_or(bytes.start);
-        let end = slice.last().map(|(_, c)| c.bytes.end).unwrap_or(bytes.start);
+        let start = slice.first().map(|(_, c)| c.start as usize).unwrap_or(bytes.start);
+        let end = slice.last().map(|(_, c)| c.end as usize).unwrap_or(bytes.start);
 
         work.lines.push(PlacedLine {
             y: work.y,
@@ -814,6 +819,7 @@ fn lay_out_paragraph<'a>(
             paragraph,
             last_in_paragraph,
             runs: placed_runs,
+            clusters: placed_clusters,
             empty_style: empty_style.clone(),
         });
         work.y += height;
@@ -824,10 +830,21 @@ fn lay_out_paragraph<'a>(
 
 /// True when a cluster is whitespace, which is where a line may be broken.
 fn is_blank(cluster: &PlacedCluster) -> bool {
-    cluster.text.chars().all(char::is_whitespace)
+    cluster.is_blank()
 }
 
 impl Layout {
+    /// Releases growth headroom when a completed layout crosses into a cold cache entry.
+    pub fn compact_capacity(&mut self) {
+        for line in &mut self.lines {
+            line.clusters.shrink_to_fit();
+            line.runs.shrink_to_fit();
+        }
+        self.lines.shrink_to_fit();
+        self.fingerprints.shrink_to_fit();
+        self.starts.shrink_to_fit();
+    }
+
     /// Which line holds a document offset. An offset on a line break belongs to the earlier line.
     ///
     /// A binary search rather than a walk: the lines are in order and their ends do not decrease, so
@@ -952,8 +969,8 @@ impl Layout {
         };
         consider(line.bytes.start, line.left());
         for cluster in line.clusters() {
-            consider(cluster.bytes.start, cluster.x);
-            consider(cluster.bytes.end, cluster.right());
+            consider(cluster.start as usize, cluster.x);
+            consider(cluster.end as usize, cluster.right());
         }
         best
     }
@@ -966,9 +983,9 @@ impl Layout {
         };
         let mut x = line.left();
         for cluster in line.clusters() {
-            if offset >= cluster.bytes.end {
+            if offset >= cluster.end as usize {
                 x = cluster.right();
-            } else if offset > cluster.bytes.start {
+            } else if offset > cluster.start as usize {
                 x = cluster.x;
             }
         }
@@ -1055,7 +1072,7 @@ impl Layout {
             let mut left = line.right();
             let mut right = line.left();
             for cluster in line.clusters() {
-                if cluster.bytes.start >= from && cluster.bytes.end <= to {
+                if cluster.start as usize >= from && cluster.end as usize <= to {
                     left = left.min(cluster.x);
                     right = right.max(cluster.right());
                 }
@@ -1102,8 +1119,9 @@ impl Layout {
                 if !run.style.underline && !run.style.strikethrough {
                     continue;
                 }
-                let left = run.left();
-                let width = run.right() - left;
+                let clusters = line.run_clusters(run);
+                let left = clusters.first().map(|cluster| cluster.x).unwrap_or(0.0);
+                let width = clusters.last().map(PlacedCluster::right).unwrap_or(left) - left;
                 if width <= 0.0 {
                     continue;
                 }
@@ -1161,11 +1179,18 @@ mod tests {
         (rope, spans, paragraphs)
     }
 
-    fn line_texts(layout: &Layout) -> Vec<String> {
+    fn line_texts(layout: &Layout, text: &Rope) -> Vec<String> {
+        let view = LayoutTextView::new(layout, text);
         layout
             .lines
             .iter()
-            .map(|line| line.runs.iter().flat_map(|r| r.clusters.iter()).map(|c| c.text.as_str()).collect())
+            .map(|line| {
+                let mut result = String::new();
+                for cluster in line.clusters() {
+                    view.for_each_character(cluster, |character| result.push(character));
+                }
+                result
+            })
             .collect()
     }
 
@@ -1500,22 +1525,16 @@ mod tests {
         }
     }
 
-    /// The cluster text holds an ordinary letter without touching the heap, which is the whole reason
-    /// it is not a `String`, and it still holds a long one correctly.
+    /// A cluster retains only geometry, its source range and compact paint flags.
     #[test]
-    fn a_cluster_holds_an_ordinary_letter_without_the_heap() {
-        for text in ["a", "\u{00e9}", "\t", "\u{1F600}", "e\u{0301}"] {
-            let cluster = ClusterText::from(text);
-            assert!(matches!(cluster, ClusterText::Inline { .. }), "{text:?} should fit inline");
-            assert_eq!(cluster.as_str(), text);
-            assert_eq!(cluster, text);
-        }
-        let long = "a".repeat(ClusterText::INLINE + 1);
-        let cluster = ClusterText::from(long.as_str());
-        assert!(matches!(cluster, ClusterText::Long(_)), "a cluster too long to fit spills");
-        assert_eq!(cluster.as_str(), long);
-        assert_eq!(ClusterText::from("ab"), ClusterText::from("ab"));
-        assert_ne!(ClusterText::from("ab"), ClusterText::from("ac"));
+    fn a_cluster_holds_no_copy_of_its_text() {
+        let letter = PlacedCluster::new("a", 0..1, 10.0);
+        let tab = PlacedCluster::new("\t", 1..2, 10.0);
+        assert!(!letter.is_blank());
+        assert!(!letter.is_tab());
+        assert!(tab.is_blank());
+        assert!(tab.is_tab());
+        assert!(std::mem::size_of::<PlacedCluster>() <= 32);
     }
 
     #[test]
@@ -1532,6 +1551,15 @@ mod tests {
         assert_eq!(result.height, 20.0);
     }
 
+    /// Document-backed painting preserves a grapheme whose characters straddle rope leaves.
+    #[test]
+    fn layout_text_view_reads_a_grapheme_across_rope_leaves() {
+        let source = format!("{}e\u{0301}", "a".repeat(511));
+        let (rope, spans, paragraphs) = fixture(&source);
+        let result = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 10_000.0);
+        assert_eq!(line_texts(&result, &rope), vec![source]);
+    }
+
     #[test]
     fn an_empty_document_still_has_a_line_for_the_caret() {
         let (rope, spans, paragraphs) = fixture("");
@@ -1546,7 +1574,7 @@ mod tests {
     fn each_line_break_starts_a_new_line() {
         let (rope, spans, paragraphs) = fixture("one\ntwo\nthree");
         let result = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 1000.0);
-        assert_eq!(line_texts(&result), vec!["one", "two", "three"]);
+        assert_eq!(line_texts(&result, &rope), vec!["one", "two", "three"]);
         assert_eq!(result.lines[0].y, 0.0);
         assert_eq!(result.lines[1].y, 20.0);
         assert_eq!(result.lines[2].y, 40.0);
@@ -1568,14 +1596,14 @@ mod tests {
         // Width 65 fits six clusters. "the quick" would need nine, so it breaks after "the ".
         let (rope, spans, paragraphs) = fixture("the quick brown fox");
         let result = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 65.0);
-        let texts = line_texts(&result);
+        let texts = line_texts(&result, &rope);
         assert!(texts.len() > 1, "it should wrap, got {texts:?}");
         for line in &result.lines {
             let trimmed = line
                 .runs
                 .iter()
-                .flat_map(|r| r.clusters.iter())
-                .filter(|c| !c.text.chars().all(char::is_whitespace))
+                .flat_map(|r| line.run_clusters(r).iter())
+                .filter(|c| !c.is_blank())
                 .map(|c| c.advance)
                 .sum::<f32>();
             assert!(trimmed <= 65.0, "line wider than the width: {trimmed}");
@@ -1593,7 +1621,7 @@ mod tests {
         let (rope, spans, paragraphs) = fixture("abcdefghij");
         let result = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 35.0);
         assert!(result.lines.len() >= 3, "a 100 wide word in a 35 wide line needs three lines");
-        let rejoined: String = line_texts(&result).join("");
+        let rejoined: String = line_texts(&result, &rope).join("");
         assert_eq!(rejoined, "abcdefghij", "no characters lost");
     }
 
@@ -1626,8 +1654,8 @@ mod tests {
             let right = line
                 .runs
                 .iter()
-                .flat_map(|r| r.clusters.iter())
-                .filter(|c| !c.text.chars().all(char::is_whitespace))
+                .flat_map(|r| line.run_clusters(r).iter())
+                .filter(|c| !c.is_blank())
                 .map(PlacedCluster::right)
                 .fold(0.0_f32, f32::max);
             assert!((right - 90.0).abs() < 0.01, "a justified line should reach the full width, got {right}");
@@ -1655,8 +1683,8 @@ mod tests {
         assert_eq!(result.lines.len(), 1);
         let line = &result.lines[0];
         assert_eq!(line.runs.len(), 2, "one run at 16 point and one at 32");
-        assert_eq!(line.runs[0].clusters[0].advance, 8.0, "16 point is 8 wide");
-        assert_eq!(line.runs[1].clusters[0].advance, 16.0, "32 point is 16 wide");
+        assert_eq!(line.run_clusters(&line.runs[0])[0].advance, 8.0, "16 point is 8 wide");
+        assert_eq!(line.run_clusters(&line.runs[1])[0].advance, 16.0, "32 point is 16 wide");
         assert_eq!(line.height, 40.0, "the tallest run sets the line height: 32 * 1.25");
         assert_eq!(line.baseline, 32.0, "the baseline follows the tallest ascent");
     }
@@ -1671,9 +1699,13 @@ mod tests {
         assert!(!line.runs[0].style.bold);
         assert!(line.runs[1].style.bold);
         assert!(!line.runs[2].style.bold);
-        let bold: String = line.runs[1].clusters.iter().map(|c| c.text.as_str()).collect();
+        let view = LayoutTextView::new(&result, &rope);
+        let mut bold = String::new();
+        for cluster in line.run_clusters(&line.runs[1]) {
+            view.for_each_character(cluster, |character| bold.push(character));
+        }
         assert_eq!(bold, "bold");
-        assert_eq!(line.runs[1].left(), 60.0, "six clusters before it");
+        assert_eq!(line.run_clusters(&line.runs[1])[0].x, 60.0, "six clusters before it");
     }
 
     #[test]
@@ -1813,9 +1845,9 @@ mod tests {
         let (rope, spans, paragraphs) = fixture("e\u{0301}x");
         let result = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 500.0);
         let clusters: Vec<&PlacedCluster> =
-            result.lines[0].runs.iter().flat_map(|r| r.clusters.iter()).collect();
+            result.lines[0].runs.iter().flat_map(|run| result.lines[0].run_clusters(run)).collect();
         assert_eq!(clusters.len(), 2, "two clusters, not four bytes");
-        assert_eq!(clusters[0].bytes, 0..3);
+        assert_eq!(clusters[0].bytes(), 0..3);
         assert_eq!(clusters[1].x, 10.0);
     }
 
@@ -2067,4 +2099,91 @@ def");
         assert_eq!(again, open, "opening it again gives back exactly what was there before");
     }
 
+    /// The corpus the retained byte ranges are held to: a range that is out of bounds, off a
+    /// character boundary or out of order is a panic in the painter rather than a wrong picture, so
+    /// it is asserted for every shape of text rather than trusted.
+    const RANGE_CORPUS: [&str; 8] = [
+        "plain ascii words on a line\nand a second line\n",
+        "\ttabbed\tby\tcolumns\n\t\tdeeper\n",
+        "e\u{0301}toile\u{0301} combining marks a\u{0300}e\u{0302}i\u{0303}\n",
+        "\u{05D0}\u{05D1}\u{05D2} shalom \u{0627}\u{0644}\u{0639}\u{0631}\u{0628}\u{064A}\u{0629}\n",
+        "emoji \u{1F600}\u{1F469}\u{200D}\u{1F4BB} and \u{1F1EC}\u{1F1E7} flags\n",
+        "a family \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466} is longer than the old inline case\n",
+        "mixed \u{4E16}\u{754C} ascii \u{1F600} \u{0301} \t end\n",
+        "",
+    ];
+
+    /// Every retained range is inside the document, on character boundaries, and in reading order.
+    #[test]
+    fn every_retained_byte_range_is_in_bounds_and_on_a_character_boundary() {
+        for source in RANGE_CORPUS {
+            let (rope, spans, paragraphs) = fixture(source);
+            let result = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 120.0);
+            for line in &result.lines {
+                let mut previous = 0;
+                for cluster in line.clusters() {
+                    let bytes = cluster.bytes();
+                    assert!(bytes.start <= bytes.end, "{source:?} has a reversed range {bytes:?}");
+                    assert!(bytes.end <= rope.len_bytes(), "{source:?} has {bytes:?} past the end");
+                    assert!(rope.is_char_boundary(bytes.start), "{source:?} starts off a boundary");
+                    assert!(rope.is_char_boundary(bytes.end), "{source:?} ends off a boundary");
+                    assert!(bytes.start >= previous, "{source:?} went backwards at {bytes:?}");
+                    previous = bytes.end;
+                }
+                // And the clusters a run names are inside the line that owns them.
+                for run in &line.runs {
+                    assert!(!line.run_clusters(run).is_empty() || line.clusters.is_empty());
+                }
+            }
+        }
+    }
+
+    /// Reading the retained ranges out of the document gives back the text that was laid out, which
+    /// is the whole claim of holding no copy of it. A grapheme longer than the old inline case is in
+    /// the corpus deliberately: that is the one the removed `ClusterText` had a heap branch for.
+    #[test]
+    fn the_document_reads_back_exactly_what_was_laid_out() {
+        for source in RANGE_CORPUS {
+            let (rope, spans, paragraphs) = fixture(source);
+            let result = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 120.0);
+            let rejoined: String = line_texts(&result, &rope).join("");
+            let expected: String = source.chars().filter(|c| *c != '\n').collect();
+            assert_eq!(rejoined, expected, "{source:?} lost or gained characters");
+        }
+    }
+
+    /// Compaction releases growth headroom and changes nothing anybody can see. It is asked for at a
+    /// cache boundary, so a layout that came back different afterwards would be a tab that redrew
+    /// wrongly the moment it was shown again.
+    #[test]
+    fn compacting_a_layout_releases_capacity_and_changes_nothing_else() {
+        let source: String = (0..200).map(|i| format!("line number {i} of a document\n")).collect();
+        let (rope, spans, paragraphs) = fixture(&source);
+        let before = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 200.0);
+        let mut after = before.clone();
+        after.compact_capacity();
+        assert_eq!(after, before, "compaction is a change of capacity and of nothing else");
+        assert_eq!(after.lines.capacity(), after.lines.len());
+        let headroom: usize = before.lines.iter().map(|line| line.runs.capacity() - line.runs.len()).sum();
+        assert!(headroom > 0, "the fixture is meant to have headroom to release");
+        for line in &after.lines {
+            assert_eq!(line.runs.capacity(), line.runs.len(), "a compacted line keeps no run headroom");
+            assert_eq!(line.cluster_capacity(), line.clusters().count());
+        }
+    }
+
+    /// A compacted layout is still what the next keystroke builds on, which is what makes it safe to
+    /// compact a tab that is only hidden rather than closed.
+    #[test]
+    fn a_compacted_layout_is_still_a_base_for_an_incremental_relayout() {
+        let source: String = (0..200).map(|i| format!("line number {i} of a document\n")).collect();
+        let (rope, spans, paragraphs) = fixture(&source);
+        let metrics = FixedMetrics::default();
+        let mut compacted = layout(&rope, &spans, &paragraphs, &metrics, 200.0);
+        compacted.compact_capacity();
+        let edited = format!("X{source}");
+        let (rope, spans, paragraphs) = fixture(&edited);
+        let carried = relayout(compacted, &rope, &spans, &paragraphs, &metrics, 200.0, &Hidden::none());
+        assert_eq!(carried, layout(&rope, &spans, &paragraphs, &metrics, 200.0));
+    }
 }

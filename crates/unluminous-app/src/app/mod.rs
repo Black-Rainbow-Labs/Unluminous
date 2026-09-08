@@ -555,6 +555,15 @@ pub fn hold_the_keyboard(ui: &mut egui::Ui) {
 pub struct UnluminousApp {
     /// The files that are open, one to a tab, and which of them is showing.
     pub files: OpenFiles,
+    /// How many times a file has actually been laid out, which is the one way to tell a tab switch
+    /// that reused a cached layout from one that rebuilt it.
+    ///
+    /// `refresh_layout` returns early whenever the text, the folds and the width are all unchanged,
+    /// so switching back to a tab that has already been laid out costs nothing - but that is a thing
+    /// no state in the window could otherwise be asked about, and
+    /// `tasks/task-1813-performance-review-tdd.md` makes it an acceptance threshold. A counter is
+    /// what turns it into a test, which is the shape `DebugState::reads` already has.
+    layouts_built: u64,
     /// Set when a plugin asked for another frame, which a pane with a terminal in it does while that
     /// terminal is printing. Read and cleared once at the end of the frame.
     pub(crate) plugin_wants_a_repaint: bool,
@@ -1009,6 +1018,7 @@ impl UnluminousApp {
         let tree = FileTree::new(&folder);
         crate::services::frame_trace::mark("file-tree");
         Self {
+            layouts_built: 0,
             plugin_wants_a_repaint: false,
             plugin_wants_copied: None,
             plugins_ticked_at: None,
@@ -6562,6 +6572,14 @@ impl UnluminousApp {
         self.plugins.renders("mermaid")
     }
 
+    /// How many times any file has been laid out since the window opened.
+    ///
+    /// Read by a test to prove that showing a tab which has already been laid out does not lay it
+    /// out again. See the field.
+    pub fn layouts_built(&self) -> u64 {
+        self.layouts_built
+    }
+
     /// The diagrams the preview is drawing, for a test.
     pub fn preview_diagrams(&self) -> &[PlacedDiagram] {
         &self.files.active().cached.preview_diagrams
@@ -6590,13 +6608,15 @@ impl UnluminousApp {
         {
             return;
         }
+        self.layouts_built += 1;
         let index = self.files.active_index();
         let hidden = self.hidden_paragraphs(index);
         // What was laid out last time is handed over rather than thrown away: `relayout` keeps every
         // paragraph whose text and formatting are unchanged, so typing a letter costs the paragraph
         // it was typed into instead of the file.
         let previous = std::mem::take(&mut self.files.active_mut().cached.layout);
-        let laid = relayout(
+        let first_layout = previous.lines.is_empty();
+        let mut laid = relayout(
             previous,
             self.document().text(),
             self.document().chars(),
@@ -6605,6 +6625,9 @@ impl UnluminousApp {
             width,
             &hidden,
         );
+        if first_layout {
+            laid.compact_capacity();
+        }
         let cached = &mut self.files.active_mut().cached;
         cached.stale = false;
         cached.layout = laid;
@@ -9418,7 +9441,8 @@ impl UnluminousApp {
             color::text_selection(),
             2.0,
         );
-        editor_view::paint_text(&painter_ui, &self.renderer, self.preview_layout(), origin);
+        let preview = self.files.active().cached.preview.as_ref().expect("preview was refreshed");
+        editor_view::paint_text(&painter_ui, &self.renderer, &preview.text, self.preview_layout(), origin);
         self.paint_the_pictures(&painter_ui, origin);
         self.paint_the_diagrams(&painter_ui, origin, text_width);
         // Drawn last, at the position the frame settled on rather than the one it opened with.
