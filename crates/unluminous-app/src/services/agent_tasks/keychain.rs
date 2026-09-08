@@ -110,18 +110,40 @@ fn write_through_the_tool(name: &str, secret: &str) -> Result<(), String> {
         .stdin
         .as_mut()
         .ok_or_else(|| "the keychain tool took no input".to_owned())?
-        .write_all(secret.as_bytes())
+        .write_all(what_the_tool_reads(secret).as_bytes())
         .map_err(|problem| format!("the secret could not be handed over: {problem}"))?;
     let finished = running
         .wait_with_output()
         .map_err(|problem| format!("the keychain tool did not finish: {problem}"))?;
-    match finished.status.success() {
+    let said = String::from_utf8_lossy(&finished.stderr);
+    // **The exit status is not enough on macOS.** `security add-generic-password` prompts for the value
+    // and then for a confirmation, and when the two do not match it prints `passwords don't match` and
+    // exits **0** — so a write that stored nothing was reported as having worked, and the Settings page
+    // said the key was set when the keychain held no entry. Measured; it is what
+    // `a_secret_round_trips_through_the_machines_own_store` was failing on. So the tool's own words are
+    // read as well as its status, which is `quill-git`'s rule about never inventing an error message
+    // applied to a tool that lies with its status.
+    let refused = said.contains("don't match") || said.contains("could not be");
+    match finished.status.success() && !refused {
         true => Ok(()),
         // The tool's own words, which name the entry and never the value.
-        false => Err(format!(
-            "the keychain refused it: {}",
-            String::from_utf8_lossy(&finished.stderr).trim()
-        )),
+        false => Err(format!("the keychain refused it: {}", said.trim())),
+    }
+}
+
+/// What the writing tool expects on its standard input for one secret.
+///
+/// **Twice on macOS**, because `security add-generic-password -w` with no value on the command line
+/// prompts `password data for new item:` and then `retype password for new item:`. One copy answers the
+/// first prompt, the second prompt reads end-of-file as an empty string, and the tool says the two do not
+/// match. The value stays out of the process list either way, which is the reason it goes on standard
+/// input rather than as an argument.
+///
+/// Once everywhere else: `secret-tool store` reads the value and stops.
+fn what_the_tool_reads(secret: &str) -> String {
+    match cfg!(target_os = "macos") {
+        true => format!("{secret}\n{secret}\n"),
+        false => secret.to_owned(),
     }
 }
 
@@ -359,6 +381,28 @@ mod tests {
         // launches its agents with their own credentials, which is what they do anyway.
         assert_eq!(read("unluminous-agent-tasks-no-such-entry-ever"), None);
         assert!(!is_set("unluminous-agent-tasks-no-such-entry-ever"));
+    }
+
+    /// What the writing tool is handed for one secret, which on macOS is the value twice.
+    ///
+    /// A unit test rather than a round trip, because the round trip needs a real keychain and this is the
+    /// arithmetic that was wrong: `security add-generic-password -w` prompts for the value and then for a
+    /// confirmation, so one copy left the second prompt reading end-of-file and the tool answered
+    /// `passwords don't match` — while exiting 0, which is why nothing noticed.
+    #[test]
+    fn the_writing_tool_is_handed_the_value_as_many_times_as_it_asks() {
+        let handed = what_the_tool_reads("hunter2");
+        match cfg!(target_os = "macos") {
+            true => {
+                assert_eq!(handed, "hunter2\nhunter2\n", "macOS prompts twice, so it is answered twice");
+                assert_eq!(handed.matches("hunter2").count(), 2);
+            }
+            false => assert_eq!(handed, "hunter2", "secret-tool reads the value once and stops"),
+        }
+        // A secret holding a newline would break the confirmation on macOS, and `is_a_safe_name` guards
+        // the *name* rather than the value — so this is worth knowing about rather than asserting away.
+        // What matters here is that nothing is added around it: no quoting, no trailing space.
+        assert!(handed.starts_with("hunter2"));
     }
 
     /// A secret written to the machine's own store comes back, and then is gone.

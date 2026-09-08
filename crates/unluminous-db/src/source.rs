@@ -288,10 +288,10 @@ impl Source {
             return parse_postgres(name, rest);
         }
         if let Some(rest) = text.strip_prefix("sqlite://") {
-            return Ok(Source::sqlite(name, rest.trim_start_matches('/')));
+            return Ok(Source::sqlite(name, path_from_url(rest)));
         }
         if let Some(rest) = text.strip_prefix("inillucent://") {
-            return Ok(Source::inillucent(name, rest.trim_start_matches('/')));
+            return Ok(Source::inillucent(name, path_from_url(rest)));
         }
         if text.contains("://") {
             let scheme = text.split("://").next().unwrap_or_default();
@@ -337,6 +337,25 @@ impl Source {
 }
 
 /// `postgres://user@host:port/database?sslmode=…`, with the scheme already taken off.
+/// The file path in a `sqlite://` or `inillucent://` URL.
+///
+/// **An absolute path keeps its leading slash.** This trimmed every leading `/`, which turns the
+/// ordinary spelling of an absolute path — `inillucent:///Users/me/bookshop.rdb`, three slashes, two for
+/// the scheme and one for the root — into the relative `Users/me/bookshop.rdb`. The source was then
+/// opened against the process's working directory, so a data source added by URL pointed at nothing and
+/// the failure named a path with no root on it, which is a message that reads like a typo in the URL.
+///
+/// One slash is the root and is kept; a second is the empty authority a URL is allowed to have, and is
+/// what is dropped. So `sqlite:///tmp/a.db` and `sqlite://tmp/a.db` both mean what they look like: the
+/// first absolute, the second relative.
+fn path_from_url(rest: &str) -> &str {
+    match rest.starts_with("//") {
+        // `//x` is an empty authority followed by the path `/x`, so one of the two goes.
+        true => &rest[1..],
+        false => rest,
+    }
+}
+
 fn parse_postgres(name: &str, rest: &str) -> Answer<Source> {
     let mut source = Source { name: name.to_owned(), engine: Engine::Postgres, ..Source::default() };
     let (authority, query) = match rest.split_once('?') {

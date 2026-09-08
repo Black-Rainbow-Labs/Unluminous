@@ -148,18 +148,54 @@ fi
 
 # Everything GitHub needs is checked here, before anything is changed, so a missing credential cannot
 # leave a pushed tag with no release behind it.
+#
+# **The credential is checked against this repository, not just against `/user`.** Asking `/user` only
+# proves a token is a token. This machine has two GitHub accounts in play — `~/.gitconfig` routes
+# github.com through `gh auth git-credential`, and that `gh` is logged in as an account which cannot see
+# `jasonmcaffee/unluminous` — so `git credential fill` sometimes answers with a token that authenticates
+# perfectly and gets 404 on the repository. Measured: `/user` 200 and `/repos/jasonmcaffee/unluminous`
+# 404, from the same token, in the same second. A release using it would push the tag and then fail to
+# create the release, which is the one outcome the check above exists to prevent.
 token=""
 if [ "$skip_publish" != 1 ]; then
-    token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+    # Every credential worth trying, in order of preference: an explicit one, then the keychain asked
+    # directly, then whatever the ordinary helper chain answers with. The keychain comes before the chain
+    # because the chain is the thing that can answer with the wrong account.
+    candidates=()
+    [ -n "${GH_TOKEN:-}" ] && candidates+=("$GH_TOKEN")
+    [ -n "${GITHUB_TOKEN:-}" ] && candidates+=("$GITHUB_TOKEN")
+    from_keychain="$(printf 'protocol=https\nhost=github.com\n\n' \
+        | git -c credential.helper=osxkeychain credential fill 2>/dev/null \
+        | sed -nE 's/^password=(.*)$/\1/p' | head -1)"
+    [ -n "$from_keychain" ] && candidates+=("$from_keychain")
+    from_chain="$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill 2>/dev/null \
+        | sed -nE 's/^password=(.*)$/\1/p' | head -1)"
+    [ -n "$from_chain" ] && candidates+=("$from_chain")
+
+    [ "${#candidates[@]}" -gt 0 ] || die "No GitHub credential is stored for github.com. Push once, or set GH_TOKEN, and run this again."
+
+    who=""
+    for candidate in "${candidates[@]}"; do
+        # The repository, because that is what the release is created on. A token that cannot read it
+        # cannot write a release to it either.
+        code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $candidate" \
+            -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$slug")"
+        if [ "$code" = "200" ]; then
+            token="$candidate"
+            who="$(curl -sS -H "Authorization: Bearer $token" -H 'Accept: application/vnd.github+json' \
+                https://api.github.com/user | sed -nE 's/.*"login"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -1)"
+            break
+        fi
+    done
+
     if [ -z "$token" ]; then
-        token="$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill 2>/dev/null | sed -nE 's/^password=(.*)$/\1/p' | head -1)"
+        echo "None of the GitHub credentials on this machine can see $slug." >&2
+        echo "Tried ${#candidates[@]}: the environment, the keychain, and the helper chain." >&2
+        echo "\`gh auth status\` may be logged in as a different account — this repository is private to" >&2
+        echo "the account that owns it. Set GH_TOKEN to a token with \`repo\` on $slug and run this again." >&2
+        exit 1
     fi
-    [ -n "$token" ] || die "No GitHub credential is stored for github.com. Push once, or set GH_TOKEN, and run this again."
-    # Asked before anything is changed, and it prints nothing but the login it belongs to.
-    who="$(curl -sS -H "Authorization: Bearer $token" -H 'Accept: application/vnd.github+json' \
-        https://api.github.com/user | sed -nE 's/.*"login"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -1)"
-    [ -n "$who" ] || die "The stored GitHub credential was refused by api.github.com. Run \`git credential reject\` and push once to store a working one."
-    echo "GitHub: authenticated as $who"
+    echo "GitHub: authenticated as $who, and $slug is visible to it"
 fi
 
 step "Setting the version to $next"

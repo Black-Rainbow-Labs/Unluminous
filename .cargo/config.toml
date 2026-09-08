@@ -1,0 +1,16 @@
+# Cargo settings for this checkout.
+#
+# **Fetch git dependencies with the real `git` program.** `inillucent-driver` comes from a private
+# repository, and cargo's own git client cannot authenticate to it: GitHub replies 404, cargo reports
+# `revision <sha> not found`, and the build stops before compiling anything. `git` itself gets there, so
+# this hands the fetching to it. Cargo's own error message suggests this setting by name.
+#
+# It is checked in rather than left as an environment variable somebody has to know about, because a
+# fresh clone should build with `cargo build` and nothing else.
+[net]
+git-fetch-with-cli = true
+
+# There is a second half to this on a machine with two GitHub accounts, and it cannot live here: cargo's
+# configuration has no `[credential]` section, so naming a git credential helper is not something this
+# file can do. `tools/credentials.sh` is that half — a line to source, or two words to add to
+# `~/.gitconfig` once — and `tools/release.sh` and `installer/macos/build.sh` both handle it themselves.

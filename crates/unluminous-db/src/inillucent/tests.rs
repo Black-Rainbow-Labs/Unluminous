@@ -120,9 +120,63 @@ fn a_source_reads_the_engine_off_the_file_rather_than_asking_anybody() {
     let read = Source::parse("db", &sqlite.to_string_lossy()).expect("a source");
     assert_eq!(read.engine, Engine::Sqlite);
     // And the scheme is still a way to say so outright.
+    //
+    // **The leading slash of an absolute path survives.** This asserted `tmp/whatever.rdb` — the bug it
+    // was pinning: every leading `/` was trimmed, so `inillucent:///tmp/x.rdb`, which is the ordinary
+    // spelling of an absolute path in a URL, became a path relative to whatever directory the process
+    // happened to be in. A source added that way pointed at nothing, and the refusal named a rootless
+    // path, which reads like a typo in the URL rather than like a fault in Unluminous.
     let named = Source::parse("db", "inillucent:///tmp/whatever.rdb").expect("a source");
     assert_eq!(named.engine, Engine::Inillucent);
-    assert_eq!(named.database, "tmp/whatever.rdb");
+    assert_eq!(named.database, "/tmp/whatever.rdb");
+}
+
+/// The three spellings of a path in a `sqlite://` or `inillucent://` URL, and what each one means.
+///
+/// Two slashes after the scheme is an empty authority and a relative path; three is an empty authority
+/// and an absolute one. Both are ordinary, both appear in the wild, and before `path_from_url` they were
+/// read as the same thing — which is what made an absolute path unusable.
+#[test]
+fn a_url_keeps_an_absolute_path_absolute_and_a_relative_one_relative() {
+    use crate::source::{Engine, Source};
+    for scheme in ["sqlite", "inillucent"] {
+        let absolute = Source::parse("db", &format!("{scheme}:///Users/me/data.db")).expect("a source");
+        assert_eq!(
+            absolute.database, "/Users/me/data.db",
+            "{scheme}:///… is an absolute path and keeps its root"
+        );
+
+        let relative = Source::parse("db", &format!("{scheme}://data/local.db")).expect("a source");
+        assert_eq!(
+            relative.database, "data/local.db",
+            "{scheme}://… with no third slash is relative, and gains no root"
+        );
+
+        // A Windows path in a URL has no leading slash to lose, and must not gain one either.
+        let windows = Source::parse("db", &format!("{scheme}://C:/data/local.db")).expect("a source");
+        assert_eq!(windows.database, "C:/data/local.db");
+
+        // The engine is what the scheme said whichever spelling was used.
+        let wanted = match scheme {
+            "sqlite" => Engine::Sqlite,
+            _ => Engine::Inillucent,
+        };
+        assert_eq!(absolute.engine, wanted);
+        assert_eq!(relative.engine, wanted);
+    }
+}
+
+/// A path with no scheme at all is left exactly as it was typed.
+///
+/// The commonest way a source is added — `plugins run database add-source name /path/to/file` — goes
+/// through the same parser, and it must not be touched by the URL handling beside it.
+#[test]
+fn a_bare_path_is_not_rewritten() {
+    use crate::source::Source;
+    for path in ["/Users/me/data.db", "data/local.db", "./beside.rdb"] {
+        let read = Source::parse("db", path).expect("a source");
+        assert_eq!(read.database, path, "a bare path is the path");
+    }
 }
 
 #[test]
