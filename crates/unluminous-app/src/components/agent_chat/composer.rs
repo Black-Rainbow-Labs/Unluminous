@@ -51,7 +51,9 @@ const GAP: f32 = 8.0;
 pub fn height(parts: &Parts<'_>, look: &Look<'_>, width: f32) -> f32 {
     let scale = look.scale();
     let mut total = PILL + GAP + prompt_height(parts, look, width);
-    if parts.session.chat.usage.total() > 0 || parts.problem.is_some() {
+    // The row is the token counter and nothing else now, so it appears when there is a count to show. A
+    // failure has a toast of its own — see [`used`].
+    if parts.session.chat.usage.total() > 0 {
         total += USED + GAP * 0.5;
     }
     if !parts.attachments.is_empty() {
@@ -89,7 +91,7 @@ pub fn show(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect
     ));
     pen += (PILL + GAP) * scale;
 
-    if parts.session.chat.usage.total() > 0 || parts.problem.is_some() {
+    if parts.session.chat.usage.total() > 0 {
         used(
             &parts,
             ui,
@@ -224,20 +226,26 @@ fn pill(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Ve
     acts
 }
 
-/// What the server said this conversation has cost, and whatever went wrong before a request.
+/// What the server said this conversation has cost.
+///
+/// **The tokens, and not the failure.** This row used to be given `problem` when there was one, in the red
+/// the close button is drawn in — one monospace line, centred, cut to the pane's width. `task-1848` shows
+/// what that looks like with a real server error in it: `HTTP 500: server_error: the current` and then
+/// nothing, which reads as a drawing fault rather than as a message. A sentence of any length needs room to
+/// wrap and something to dismiss it with, and `components::toast` is where a failure goes now.
+///
+/// So this row is the tokens in and the tokens out, always, which is the one thing here that is genuinely a
+/// number and genuinely fits.
 fn used(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) {
     let painter = ui.painter_at(area);
-    let (said, tint) = match parts.problem {
-        Some(problem) => (problem.to_owned(), crate::theme::color::close()),
-        None => (
-            format!(
-                "in {} · out {}",
-                thousands(parts.session.chat.usage.input),
-                thousands(parts.session.chat.usage.output)
-            ),
-            look.palette.text_faint,
+    let (said, tint) = (
+        format!(
+            "in {} · out {}",
+            thousands(parts.session.chat.usage.input),
+            thousands(parts.session.chat.usage.output)
         ),
-    };
+        look.palette.text_faint,
+    );
     let font = egui::FontId::monospace(look.font_size * 0.68);
     let galley = painter.layout(said, font, tint, area.width());
     let at = Pos2::new(

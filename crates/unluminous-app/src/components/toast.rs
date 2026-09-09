@@ -37,9 +37,11 @@ pub const LIFE: std::time::Duration = std::time::Duration::from_secs(6);
 
 /// How many are drawn at once, oldest first to go.
 ///
-/// A turn that fails every round would otherwise fill the window with the same sentence. Four is what
-/// fits above the status bar at the default font size without reaching the middle of the window.
-pub const LIMIT: usize = 4;
+/// **Two**, and it was four. Measured against a real failing endpoint, four cards of three lines each
+/// reached from the status bar up over the composer — so the control that would fix what was wrong was
+/// behind the complaint about it. A repeat is counted rather than stacked now ([`Toasts::say`]), so two is
+/// two genuinely different things to read, which is as much as anybody reads at once.
+pub const LIMIT: usize = 2;
 
 /// How wide one is, and how far in from the window's edge the stack sits.
 const WIDTH: f32 = 320.0;
@@ -94,6 +96,8 @@ impl Kind {
 pub struct Notice {
     pub text: String,
     pub kind: Kind,
+    /// How many times this same sentence has been raised, drawn as `× 3` when it is more than one.
+    pub count: u32,
     /// When it was raised, which is what [`LIFE`] is measured from. `None` in a test that is asserting on
     /// the list rather than on time.
     pub at: Option<std::time::Instant>,
@@ -110,6 +114,12 @@ pub struct Toasts {
 
 impl Toasts {
     /// Raise one. The oldest goes when there are more than [`LIMIT`].
+    ///
+    /// **The same sentence twice is one notice, counted.** Measured with a real failing endpoint: eight
+    /// sends against a server answering `HTTP 500` each raised a card, four were drawn, and they stacked up
+    /// over the composer — so the control that would let somebody change what was wrong was behind the
+    /// complaint about it. A repeat is the commonest shape a failure takes, because whatever caused it is
+    /// still true, and four copies of one sentence carry no more than one does.
     pub fn say(&mut self, text: impl Into<String>, kind: Kind) {
         let text = text.into();
         // An empty notice is nothing to read, and a provider that returns an empty failure string
@@ -117,7 +127,19 @@ impl Toasts {
         if text.trim().is_empty() {
             return;
         }
-        self.notices.push(Notice { text, kind, at: Some(std::time::Instant::now()) });
+        // The newest of the same kind and words: its count goes up and its clock starts again, so a repeat
+        // of a confirmation stays as long as a fresh one would.
+        if let Some(same) = self
+            .notices
+            .iter_mut()
+            .rev()
+            .find(|notice| notice.kind == kind && notice.text == text)
+        {
+            same.count += 1;
+            same.at = Some(std::time::Instant::now());
+            return;
+        }
+        self.notices.push(Notice { text, kind, count: 1, at: Some(std::time::Instant::now()) });
         while self.notices.len() > LIMIT {
             self.notices.remove(0);
         }
@@ -183,8 +205,13 @@ pub fn show(ui: &mut egui::Ui, area: Rect, toasts: &Toasts, look_font: f32) -> O
         let painter = ui.painter().clone();
         // Measured before it is placed, because a two line sentence makes a taller card and the one
         // above it has to move up by that much. `layout` is the same wrapping the painter will do.
+        // `× 3` after the sentence when it has happened more than once — see [`Toasts::say`].
+        let said = match notice.count {
+            0 | 1 => notice.text.clone(),
+            many => format!("{}  × {many}", notice.text),
+        };
         let wrapped = painter.layout(
-            notice.text.clone(),
+            said,
             FontId::proportional(look_font - 1.0),
             color::text(),
             WIDTH - PAD * 2.0 - EDGE - CROSS - 6.0,
@@ -252,7 +279,7 @@ mod tests {
 
     /// A notice with no instant, so a test asserting on the list is not asserting on the clock.
     fn timeless(text: &str, kind: Kind) -> Notice {
-        Notice { text: text.to_owned(), kind, at: None }
+        Notice { text: text.to_owned(), kind, count: 1, at: None }
     }
 
     #[test]
@@ -261,12 +288,14 @@ mod tests {
         toasts.notices.push(Notice {
             text: "could not send".to_owned(),
             kind: Kind::Problem,
+            count: 1,
             // Long past its life, which a `Done` notice would be dropped for.
             at: Some(std::time::Instant::now() - LIFE - std::time::Duration::from_secs(1)),
         });
         toasts.notices.push(Notice {
             text: "saved".to_owned(),
             kind: Kind::Done,
+            count: 1,
             at: Some(std::time::Instant::now() - LIFE - std::time::Duration::from_secs(1)),
         });
         toasts.forget_the_stale_ones();
@@ -282,6 +311,43 @@ mod tests {
         toasts.say("saved", Kind::Done);
         toasts.forget_the_stale_ones();
         assert_eq!(toasts.len(), 1, "it has not had its time yet");
+    }
+
+    #[test]
+    fn the_same_sentence_twice_is_one_notice_with_a_count() {
+        let mut toasts = Toasts::default();
+        for _ in 0..8 {
+            toasts.say("HTTP 500: server_error", Kind::Problem);
+        }
+        assert_eq!(toasts.len(), 1, "eight identical failures are one card, not eight");
+        assert_eq!(toasts.notices()[0].count, 8, "and it says how many");
+
+        // A different sentence is a different notice, and the same words of a different kind are too — but
+        // only `LIMIT` are kept, so the third pushes the first out. That is the cap doing its job.
+        toasts.say("HTTP 500: server_error", Kind::Done);
+        assert_eq!(toasts.len(), 2, "the same words of a different kind are a second notice");
+        toasts.say("something else went wrong", Kind::Problem);
+        assert_eq!(toasts.len(), LIMIT, "never more than the limit");
+        assert_eq!(
+            toasts.notices().last().expect("the newest").text,
+            "something else went wrong"
+        );
+    }
+
+    #[test]
+    fn a_repeated_confirmation_gets_its_time_back() {
+        let mut toasts = Toasts::default();
+        toasts.notices.push(Notice {
+            text: "saved".to_owned(),
+            kind: Kind::Done,
+            count: 1,
+            at: Some(std::time::Instant::now() - LIFE - std::time::Duration::from_secs(1)),
+        });
+        // Saying it again is a fresh event: it should not vanish the instant it is raised.
+        toasts.say("saved", Kind::Done);
+        toasts.forget_the_stale_ones();
+        assert_eq!(toasts.len(), 1, "the repeat restarted its clock");
+        assert_eq!(toasts.notices()[0].count, 2);
     }
 
     #[test]

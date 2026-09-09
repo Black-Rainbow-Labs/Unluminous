@@ -3364,6 +3364,34 @@ every screenshot test each time the clock ticked. `components::about_dialog` is 
 and it takes them as text rather than reading them, because a picture that changes every build cannot
 be a screenshot test.
 
+## Driving the real window must never steal the person's focus
+
+**Never activate an Unluminous window to drive it.** No `osascript … set frontmost`, no `open -a` without
+`-g`, nothing that brings a window to the front. `tools/drive-a-window.sh` starts one with `open -g`, which
+launches it without taking the keyboard, and everything after that is `unluminous-cli --instance <pid> …`.
+
+`task-1848` is where this was learned, and it was learned the wrong way round: an hour of driving the real
+window used `set frontmost` before nearly every command, on the belief that a backgrounded window stops
+answering and cannot be photographed. Measured, both halves are false — ten `status` calls to a window that
+was not in front all answered, and `window screenshot` of a window launched with `open -g`, which had never
+been frontmost at all, wrote a correct 1938 by 1133 picture. The activation bought nothing and took the
+focus out of whatever the person was typing into, once per command, for an hour. **That is the fault**, and
+it is worse than whatever it was meant to work around: a test that makes the machine unusable while it runs
+is a test nobody can be in the room for.
+
+Two things make the activation *look* necessary, and neither is a reason for it:
+
+- **An idle window draws about twice a second**, because of `app::HEARTBEAT`, so a command can wait up to
+  half a second for the frame that answers it. That is a wait, not a failure; the default timeout is
+  fifteen seconds.
+- **The window really does stop drawing sometimes**, for minutes, with requests queued — the open fault
+  `services::wake` records. Activating it recovers that, which is what made the habit look like it worked.
+  The answer to that fault is the wake escalation, not the pointer.
+
+`tools/windows-input.ps1` is the Windows equivalent for keyboard and mouse input, and it has its own rule
+about never leaving a key held down. The same principle: a script that drives the real window has to leave
+the machine as it found it.
+
 ## Tests
 
 Four layers, and a change should leave all four green:

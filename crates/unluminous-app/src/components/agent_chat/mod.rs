@@ -47,6 +47,17 @@ pub const RADIUS: f32 = 18.0;
 pub const HEADER: f32 = 32.0;
 /// Between two rows of the conversation, from `ChatConversation.module.css`'s own `gap: 14px`.
 pub const GAP: f32 = 14.0;
+/// How far in from the card's edge the conversation's own rows sit.
+///
+/// **Two points, where it used to be the card's full ten.** `task-1848`: "the margin on the sides of the
+/// messages is too large. It should be much smaller." The card keeps [`INNER`] for its header and its
+/// composer, which are controls and want room round them, and the conversation is given nearly the whole
+/// width — a message is text to read, and every point spent on margin here is a point taken off the line
+/// length twice over, because a bubble is then capped at a share of what is left.
+///
+/// Not zero: a bubble's own shadow reaches a little past its edge, and at zero the right-hand one was
+/// clipped by the card.
+pub const LIST_INSET: f32 = 2.0;
 
 /// What the drawing reported, applied by [`pane`] once everything has been drawn.
 #[derive(Debug, Clone, PartialEq)]
@@ -133,9 +144,12 @@ fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
         Pos2::new(inner.left(), inner.bottom() - composer_height),
         Vec2::new(inner.width(), composer_height),
     );
+    // The conversation is given back most of the card's side padding — see [`LIST_INSET`]. The header and
+    // the composer keep `inner`, because a control wants room round it and a paragraph does not.
+    let side = (INNER - LIST_INSET) * scale;
     let body = Rect::from_min_max(
-        Pos2::new(inner.left(), header_rect.bottom() + 4.0 * scale),
-        Pos2::new(inner.right(), composer_rect.top() - 4.0 * scale),
+        Pos2::new(inner.left() - side, header_rect.bottom() + 4.0 * scale),
+        Pos2::new(inner.right() + side, composer_rect.top() - 4.0 * scale),
     );
     if body.height() > 20.0 {
         // The two lists are drawn **over** the conversation rather than in a popup, because egui keeps
@@ -339,7 +353,18 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     if jump {
         // What stickiness will not do is go *back* to the bottom once somebody has scrolled away, and
         // sending, opening a conversation and starting a new one all have to.
-        scroller = scroller.vertical_scroll_offset(f32::MAX);
+        //
+        // **A finite offset, not `f32::MAX`.** `task-1848` reported pressing Enter scrolling the
+        // conversation to the *top*. `vertical_scroll_offset` is written straight into `state.offset.y`
+        // before the pass and is only clamped against `max_offset` at the end of it, so for the whole of
+        // the pass every piece of arithmetic that reads the offset — the bar's handle, the fade areas,
+        // `paint_fade_areas_impl` — is working with 3.4e38. What it is asked for now is past the bottom of
+        // the conversation as it was last frame and therefore lands at the bottom once clamped, while
+        // being an ordinary number all the way through.
+        //
+        // `scrolled` is where the conversation was left, measured at the end of the previous frame, and
+        // one pane's height past it is further than any single message can have added.
+        scroller = scroller.vertical_scroll_offset(parts.state.scrolled.max(0.0) + area.height());
     } else if let Some(offset) = parts.state.scroll_to.take() {
         // A zoom moved everything, so the point that was under the pointer is put back under it. The same
         // one-shot shape, worked out by `AgentChat::zoomed`. `task-1771`.
@@ -369,6 +394,9 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     });
     // Where the conversation was left, so a zoom can put it back where it was. See `PaneState::scrolled`.
     parts.state.scrolled = scrolled.state.offset.y;
+    // And how far it could be scrolled, so `plugins view agent-chat` can answer whether it is at the
+    // bottom. Never negative: a conversation shorter than the pane has nowhere to go.
+    parts.state.scrollable = (scrolled.content_size.y - area.height()).max(0.0);
     look.chrome.unclip();
     acts
 }

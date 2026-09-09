@@ -397,6 +397,11 @@ pub struct PaneState {
     /// `jump_to_bottom` beside it already uses. Worked out in `AgentChat::zoomed`, which is what the
     /// window calls when the pane's zoom changes.
     pub scrolled: f32,
+    /// How far the conversation *could* be scrolled: its content height less the room it is drawn in.
+    ///
+    /// Kept beside `scrolled` so that "is it at the bottom" is answerable as data — `scrolled` alone says
+    /// nothing without the maximum to compare it against. `task-1848`.
+    pub scrollable: f32,
     pub scroll_to: Option<f32>,
     /// How big each of those is, read out of the picture's own header.
     ///
@@ -902,6 +907,19 @@ impl AgentChat {
         let replies = self.client.take();
         let anything = !replies.is_empty();
         for reply in replies {
+            // **A turn that failed raises a notice**, so the reason is on the screen rather than only in
+            // the message's own `failure`. `task-1848` reported the server's own `HTTP 500: the current
+            // context does not logits computation` as something that had to be found by reading the
+            // conversation back as data — the pane showed an answer with no words in it and said nothing
+            // about why. The server's words are carried verbatim, which is `unluminous_git`'s rule about
+            // never inventing an error message.
+            if let unluminous_chat::Reply::Failed(why) = &reply {
+                self.asking.push(Request::Notice {
+                    text: why.clone(),
+                    kind: crate::components::toast::Kind::Problem,
+                });
+                self.problem = Some(why.clone());
+            }
             self.session.reply(reply);
             self.dirty = true;
         }
@@ -1072,6 +1090,12 @@ impl AgentChat {
             "state": self.session.state().name(),
             "model": self.session.model,
             "round": self.session.round(),
+            // Where the conversation is scrolled to, and how far it *can* be scrolled, so that "is it at
+            // the bottom" is a question something other than a screenshot can answer. `task-1848` reported
+            // pressing Enter scrolling to the top, and on a machine where `window screenshot` does not
+            // work there was no way to check it from outside the window at all.
+            "scrolled": self.ui.scrolled,
+            "scrollable": self.ui.scrollable,
             "tools": self.configuration.tools,
             "stream": self.configuration.stream,
             "streaming": self.session.is_busy(),

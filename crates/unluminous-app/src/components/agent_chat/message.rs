@@ -41,11 +41,17 @@ const RADIUS: f32 = 14.0;
 const CORNER: f32 = 5.0;
 /// How much of the row a bubble may take, by who said it.
 ///
-/// The reference's own `max-width: 75%` and `85%`, which is what makes an answer read as speech
-/// rather than as a container that happens to hold words. An earlier version used 80 and 96, and at
-/// 96 the assistant bubble filled the pane and the alignment stopped saying anything.
-const USER_SHARE: f32 = 0.75;
-const MODEL_SHARE: f32 = 0.85;
+/// The reference's own are `75%` and `85%`, which is what makes an answer read as speech rather than as a
+/// container that happens to hold words — and those are the figures for a page the width of a browser.
+/// **In a pane they leave too little.** `task-1848` reports the margins as too large, and a share is the
+/// other half of that: at 85% of a 420 point pane less the card's padding, an answer had about 340 points
+/// of line, and the eye runs out of words before the end of the sentence.
+///
+/// So 82 and 94 in a pane. Still short of the full width, because the alignment has to keep saying who
+/// spoke: an earlier version used 96 and at 96 the assistant bubble filled the pane and the alignment
+/// stopped meaning anything. The difference between 94 and the user's 82 is what carries it now.
+const USER_SHARE: f32 = 0.82;
+const MODEL_SHARE: f32 = 0.94;
 /// How wide a report is: a tool block, a failure, the thinking. Nearly the whole row, because none of
 /// them is speech.
 const BLOCK_SHARE: f32 = 0.98;
