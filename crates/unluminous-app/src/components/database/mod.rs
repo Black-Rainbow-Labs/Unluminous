@@ -110,13 +110,54 @@ pub fn pane(explorer: &mut DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>)
     let area = ui.available_rect_before_wrap();
     let mut acts = Vec::new();
     if area.width() > 40.0 && area.height() > 40.0 {
-        acts = tree::show(explorer, ui, look, area);
+        // **The tree and the workspace, one above the other.** `task-1848`: "Database query view should be
+        // part of the database pane, rather than a separate tab." So the pane is split — the tree on top
+        // and the consoles and grids under it — rather than the tree alone with its workspace somewhere
+        // else entirely.
+        //
+        // Split only when there is room for both to be worth drawing. Below `TREE_ALONE` the pane is the
+        // tree and nothing else, because a console in eighty points of height is a console nobody can read
+        // a result in, and half of a useful thing is worse than one whole one. That is the same judgement
+        // `components/agent_tasks/ticket_modal.rs` makes about its two columns.
+        let (tree_at, workspace_at) = match area.height() >= TREE_ALONE {
+            true => {
+                let tree_height = (area.height() * TREE_SHARE).clamp(120.0, area.height() - 160.0);
+                (
+                    Rect::from_min_size(area.min, Vec2::new(area.width(), tree_height)),
+                    Some(Rect::from_min_max(
+                        Pos2::new(area.min.x, area.min.y + tree_height),
+                        area.max,
+                    )),
+                )
+            }
+            false => (area, None),
+        };
+        acts = tree::show(explorer, ui, look, tree_at);
+        if let Some(workspace_at) = workspace_at {
+            // The divider between them, drawn rather than dragged: a second draggable split inside a pane
+            // that is itself resized by a divider would be two handles a few points apart, and
+            // `components::splitter` is the window's one answer to a draggable edge.
+            ui.painter().rect_filled(
+                Rect::from_min_size(workspace_at.min, Vec2::new(workspace_at.width(), 1.0)),
+                0,
+                crate::theme::color::divider(),
+            );
+            acts.extend(workspace::show(explorer, ui, look, workspace_at.shrink2(Vec2::new(0.0, 1.0))));
+        }
         // After the rows, so the popup is over them and takes the pointer first — the rule
         // `components::resize_edges` gives for anything added last.
         acts.extend(tree::menu(explorer, ui, look));
     }
     apply(explorer, acts)
 }
+
+/// How much of the pane the tree takes when the workspace is drawn under it, and the height below which
+/// the pane is the tree alone.
+///
+/// A third, so the consoles and the grids get the two thirds they need: a result is the thing somebody
+/// opened the pane to read, and the tree is how they got to it.
+const TREE_SHARE: f32 = 0.34;
+const TREE_ALONE: f32 = 360.0;
 
 /// Draw the workspace tab, and act on what was pressed.
 pub fn tab(explorer: &mut DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {

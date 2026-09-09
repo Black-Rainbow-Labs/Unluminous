@@ -2025,20 +2025,28 @@ mod tests {
     /// them is the provider. A pane is still something a manifest may ask for — `a_manifest_may_contribute_a_pane`
     /// below is what keeps the reader honest about that, since no bundled plugin asks for one any more.
     #[test]
-    fn the_agent_tasks_plugin_contributes_a_tab_a_menu_and_a_page_and_no_pane() {
+    fn the_agent_tasks_plugin_contributes_a_pane_a_menu_and_a_page_and_no_tab() {
         let (plugins, problems) = Plugins::load(None);
         assert!(problems.is_empty(), "{problems:?}");
         let board = plugins.get("agent-tasks").expect("the agent-tasks plugin");
         assert_eq!(board.kind, Kind::Ui);
         assert_eq!(board.contributions.provider.as_deref(), Some("agent-tasks"));
-        assert!(board.contributions.pane.is_none(), "the board is a tab and nothing else");
-        assert!(board.contributions.tab.is_some());
+        // **A pane and no tab**, which is `task-1848`: "Agent tasks should be its own pane, rather than a
+        // tab." This test asserted the opposite, because `task-28` had moved it the other way; it is
+        // changed rather than deleted, so the shape stays pinned either way round.
+        let pane = board.contributions.pane.as_ref().expect("the board is a pane");
+        assert!(board.contributions.tab.is_none(), "and not a tab as well");
+        assert!(
+            pane.width >= 600.0,
+            "wide enough for four lanes rather than the 420 a side pane starts at: {}",
+            pane.width
+        );
         assert!(board.contributions.menu.is_some());
         assert!(board.contributions.page.is_some());
         assert!(!board.limitations.is_empty(), "it says what it does not do");
         assert!(
-            board.limitations.contains("no pane"),
-            "and it says the board has no pane, since that is a control somebody may look for: {}",
+            board.limitations.contains("is a pane"),
+            "and it says the board is a pane, since that decides where somebody looks for it: {}",
             board.limitations
         );
     }
@@ -2106,23 +2114,19 @@ language.extensions = .aa
         let (mut plugins, problems) = Plugins::load(None);
         assert!(problems.is_empty(), "{problems:?}");
         let surfaces = plugins.surfaces();
-        // Agent-Tasks contributes a tab and no pane, which `task-28` asked for: a board narrow enough
-        // to need sideways scrolling to see its second lane is a board nobody reads. Agent-Chat
-        // contributes a pane and no tab, which `task-1767` asked for: a conversation is a column.
-        // Agent-Chat contributes a pane and no tab and Database contributes both, which is what each
-        // ticket asked for: a conversation is a column, a board is a page, and a database is a tree
-        // down one side with its consoles and grids in the middle.
-        assert_eq!(surfaces.panes.len(), 2, "two plugins ask for a pane");
+        // **All three contribute a pane and none contributes a tab**, which is `task-1848`: the board and
+        // the database's query console were both asked for as panes rather than as surfaces in the editing
+        // area. A conversation is a column, a board is four lanes, and a database is a tree with its
+        // consoles under it — and each of those is a shape a pane can be given by dragging it, which is
+        // what `task-1697`'s docking bought and what makes this one manifest line rather than a rewrite.
+        assert_eq!(surfaces.panes.len(), 3, "every plugin that draws asks for a pane");
         assert!(surfaces.pane("agent-chat/chat").is_some());
         assert!(surfaces.pane("database/explorer").is_some());
-        assert!(surfaces.pane("agent-tasks/board").is_none());
+        assert!(surfaces.pane("agent-tasks/board").is_some());
         assert!(surfaces.pane("agent-chat/nothing").is_none());
-        assert_eq!(surfaces.tabs.len(), 2, "two plugins ask for a tab");
-        assert_eq!(surfaces.tabs[0].plugin, "agent-tasks");
-        assert_eq!(surfaces.tabs[0].provider, "agent-tasks");
-        assert_eq!(surfaces.tabs[0].key("board"), "agent-tasks/board");
-        assert!(surfaces.tab("agent-tasks/board").is_some());
-        assert!(surfaces.tab("database/workspace").is_some());
+        assert!(surfaces.tabs.is_empty(), "and nothing contributes a tab any more");
+        assert!(surfaces.tab("agent-tasks/board").is_none());
+        assert!(surfaces.tab("database/workspace").is_none());
         assert_eq!(surfaces.menus.len(), 3);
         assert_eq!(surfaces.pages.len(), 3);
         // Switching one off withdraws every contribution of that plugin at once, which is the rule
@@ -2134,8 +2138,8 @@ language.extensions = .aa
         plugins.set_enabled(None, "agent-tasks", true);
         plugins.set_enabled(None, "agent-chat", true);
         plugins.set_enabled(None, "database", true);
-        assert_eq!(plugins.surfaces().tabs.len(), 2, "and switching it back on is one frame too");
-        assert_eq!(plugins.surfaces().panes.len(), 2);
+        assert_eq!(plugins.surfaces().panes.len(), 3, "and switching it back on is one frame too");
+        assert!(plugins.surfaces().tabs.is_empty());
     }
 
     /// Every plugin that ships carries a mark, whatever kind of plugin it is.

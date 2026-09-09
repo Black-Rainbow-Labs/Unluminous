@@ -190,9 +190,10 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
             ui,
             inner,
             pen,
-            "Off unless you say so. On, the model is offered Unluminous's whole command catalogue as \
+            "On unless you turn it off. The model is offered Unluminous's whole command catalogue as \
              tools, so it can open a file, read the git status or run a search — through exactly the \
-             code a menu entry runs. The same switch is the first button in the composer.",
+             code a menu entry runs. The commands that run a program of the model's choosing are the \
+             switch below, and that one is off. The same switch is the first button in the composer.",
         );
 
         let row = Rect::from_min_size(Pos2::new(inner.left(), pen), Vec2::new(inner.width(), 22.0));
@@ -255,7 +256,15 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
         }
     }
     pen = crate::components::modal::note(ui, inner, pen, "How many conversations are kept.");
-    let _ = pen;
+
+    // **This is what makes the page scroll**, and it was `let _ = pen;` — the height was tracked all the
+    // way down and then thrown away. Every row here is painted at an absolute position and allocates
+    // nothing, so without this the scrolling area is told the contents are zero tall and has nothing to
+    // scroll: `task-1848` reported the Endpoints list cut off mid-row with four endpoints configured and
+    // no way to reach the fifth. It is the same call, for the same reason, that
+    // `components/agent_tasks/settings_page.rs` ends with.
+    let drew = (pen + PAD - area.min.y).max(0.0);
+    ui.allocate_space(Vec2::new(area.width(), drew));
 
     if changed {
         *chat.configuration_mut() = configuration;

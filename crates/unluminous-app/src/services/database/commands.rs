@@ -19,8 +19,7 @@ use crate::services::plugin_ui::{Answer, UiProvider};
 
 /// Every command, with the one line `plugins show database` prints for each.
 pub const LIST: &[(&'static str, &'static str)] = &[
-    ("open-pane", "Show the data source tree."),
-    ("open-tab", "Show the workspace: the consoles and the row editors."),
+    ("open-pane", "Show the pane: the data source tree, with the consoles and the row editors under it."),
     ("sources", "Every data source: where it points, whether it is connected, and where its password is. Never the password."),
     ("add-source", "Add one. Takes a name and a `postgres://…` URL, or a name and the path of a SQLite file, and optionally the NAME of an environment variable holding the password."),
     ("remove-source", "Take one away, by name."),
@@ -63,6 +62,9 @@ pub fn run(explorer: &mut DatabaseExplorer, command: &str, arguments: &[String])
     let rest = arguments.join(" ");
     let rest = rest.trim().to_owned();
     match command {
+        // `open-tab` is still accepted and does the same thing, because it is a name that was in the
+        // catalogue and something may have written it down. `task-1848` folded the workspace into the pane,
+        // so there is one surface and both names reach it.
         "open-pane" | "open-tab" => Ok(Answer::said("the database plugin")),
         "sources" => sources(explorer),
         "add-source" => add_source(explorer, &rest),

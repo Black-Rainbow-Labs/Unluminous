@@ -48,6 +48,9 @@ pub mod splitter;
 pub mod status_bar;
 pub mod terminal_panel;
 pub mod text_menu;
+// Dismissible notices over the bottom right of the window: what a plugin sends when somebody has to
+// see it, rather than the status bar's running commentary.
+pub mod toast;
 pub mod text_tools;
 pub mod title_bar;
 pub mod value_tooltip;

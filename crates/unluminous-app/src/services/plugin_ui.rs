@@ -363,8 +363,24 @@ impl std::fmt::Debug for ChromeSlot {
 pub enum Request {
     /// Open a file in a tab, which is what a provider does when a ticket names one.
     OpenFile(PathBuf),
-    /// Say something in the status bar, which is where every honest miss in Unluminous is reported.
+    /// Say something in the status bar, which is where a running commentary belongs.
+    ///
+    /// The right place for "opening the board in a tab" and for a refusal about a file nobody is waiting
+    /// on. The **wrong** place for the one thing somebody pressed a button for and is watching, which is
+    /// what [`Request::Notice`] is: `task-1848` reported a chat send that failed as "nothing happens, no
+    /// error", because the refusal was a sentence in the smallest text at the far bottom edge of the
+    /// window, replaced by whatever was reported next.
     Message(String),
+    /// Put a dismissible notice over the bottom right of the window, because somebody has to see it.
+    ///
+    /// A `Problem` stays until it is dismissed and a `Done` fades; `components::toast` says why that
+    /// asymmetry is the whole point. Use this for the failure of something a person asked for, and
+    /// `Message` for everything else — a provider that made every message a notice would be a provider
+    /// whose notices nobody reads.
+    Notice {
+        text: String,
+        kind: crate::components::toast::Kind,
+    },
     /// Show this plugin's own tab in the editing area.
     ShowTab,
     /// Show or hide this plugin's pane.

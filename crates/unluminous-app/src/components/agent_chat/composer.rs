@@ -147,13 +147,24 @@ fn pill(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Ve
             Act::ToggleTools,
         ));
     }
-    tools.push((
-        "Attach a picture",
-        icon::image,
-        !parts.attachments.is_empty(),
-        look.palette.board_accent,
-        Act::Attach,
-    ));
+    // **No button that opens a file dialog.** `task-1848`: "get rid of the file picker icon, just allow
+    // drag and drop or paste". Both of those already work and neither needs a control drawn for it, and
+    // the placeholder below says so, which is what stops a removed button being a lost feature.
+    //
+    // A picture that *is* attached still lights the pill, so there is something on the screen saying one
+    // is waiting to go — that is what the button's lit state used to say and it has to survive it.
+    if !parts.attachments.is_empty() {
+        tools.push((
+            "Attached picture",
+            icon::image,
+            true,
+            look.palette.board_accent,
+            // Pressing it takes the newest attachment away, which is the only thing left for it to do
+            // now that it is not how one is chosen. Each attachment also has its own cross on the strip
+            // above the composer; this is the quick way to undo the one just dropped.
+            Act::Detach(parts.attachments.last().map(|one| one.id).unwrap_or_default()),
+        ));
+    }
     if !an_agent {
         tools.push((
             "Stream",
@@ -350,7 +361,15 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
             egui::TextEdit::multiline(parts.draft)
                 .id(prompt_id)
                 .frame(egui::Frame::NONE)
-                .hint_text(egui::RichText::new("Ask anything…").color(look.palette.text_faint))
+                // **The placeholder names the two ways a picture goes up**, because the button that used
+                // to do it is gone: `task-1848` asked for it to go and for drag and drop and paste to be
+                // the routes. A control removed with nothing said in its place is a feature nobody finds.
+                // It says it only while nothing is attached, so it is a hint rather than a label.
+                .hint_text(egui::RichText::new(match parts.attachments.is_empty() {
+                    true => "Ask anything… or drop or paste a picture",
+                    false => "Ask anything…",
+                })
+                .color(look.palette.text_faint))
                 .desired_width(field.width())
                 .desired_rows(rows)
                 .font(egui::FontId::proportional(look.font_size * 0.9))

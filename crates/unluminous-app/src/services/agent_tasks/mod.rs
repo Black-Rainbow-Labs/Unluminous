@@ -2625,7 +2625,11 @@ impl UiProvider for AgentTasks {
             //
             // `open-pane` was the other one and it is gone with the pane: `task-28` asked for the board to be
             // a tab and nothing else, and the manifest no longer contributes a pane for it to show.
-            "open-tab" => Ok(Answer::said("opening the board in a tab")),
+            // The window is what shows a pane; the provider's part is to accept the command, because
+            // `run_plugin_command` only acts on one the provider answered. `task-1848` moved the board from
+            // a tab to a pane, and this line said `open-tab` — so its own menu entry ran, was refused, and
+            // the pane never appeared.
+            "open-pane" => Ok(Answer::said("showing the board")),
             "view" => {
                 let view = View::parse(argument(0)).ok_or_else(|| {
                     format!(
@@ -3155,7 +3159,7 @@ impl UiProvider for AgentTasks {
                 "Read the open ticket's description or one of its comments as markdown or as its source: \
                  `show description markdown`, `show comment 12 raw`.",
             ),
-            ("open-tab", "Open the board as a tab in the editing area."),
+            ("open-pane", "Show the board's pane."),
             ("view", "Show one of board, backlog, completed or epics."),
             ("task", "One ticket, with its todos and its comments."),
             ("new-task", "Create a ticket in New, with the rest of the line as its title."),

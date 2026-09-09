@@ -66,7 +66,7 @@ pub struct Configuration {
     /// Which one is used, by name. Empty means the first.
     pub chosen: String,
     pub stream: bool,
-    /// Whether Unluminous's own commands are offered to the model. Off unless somebody says so.
+    /// Whether Unluminous's own commands are offered to the model. On unless somebody turns it off.
     pub tools: bool,
     /// Whether the commands that run a program of the model's choosing are among them.
     ///
@@ -95,11 +95,22 @@ impl Default for Configuration {
             providers: Provider::defaults(),
             chosen: String::new(),
             stream: true,
-            // **Off**, which is the precedent the page this pane copies already set: its own robot
-            // button is titled "UI controls (let the agent operate the studio)" and is off unless
-            // pressed. A pane that could edit files the moment it was opened would be a pane nobody
-            // dares open.
-            tools: false,
+            // **On**, and the reasoning that made it off is narrowed rather than abandoned.
+            //
+            // `task-1767` turned it off because the other end of a URL is a server, and Unluminous's
+            // catalogue includes commands that run a program. What ships as the chosen provider is
+            // `claude` or `codex`, which run a program the person already trusts with this machine, hold
+            // their own credentials, and are offered **no** Unluminous tools at all — so the switch was
+            // defending against the case that is not the common one, and a chat pane in an editor that
+            // cannot read the project it is beside is a pane that answers about nothing.
+            //
+            // `task-1848` asks for this outright. What keeps it safe is the second switch below, not this
+            // one: reading the project, opening a tab and running a query are things this pane should do,
+            // and running an arbitrary command line is not.
+            tools: true,
+            // **Still off**, and this is the half that must not move. `tools::RUNS_A_PROGRAM` is
+            // `terminal send`, `run add`, `run start`, `debug install` and `launch`, which between them
+            // will run any command line at all on this machine.
             shell: false,
             tool_limit: DEFAULT_TOOL_LIMIT,
             permission: unluminous_chat::Permission::default(),
@@ -1432,6 +1443,55 @@ impl UiProvider for AgentChat {
 }
 
 #[cfg(test)]
+mod tests_task_1848 {
+    use super::*;
+
+    /// Unluminous's own commands are offered unless somebody turned them off.
+    ///
+    /// `task-1848` asks for this outright. A configuration written before the default moved has no `tools`
+    /// line at all, so it takes the new default — which is the intent: absent means "never chosen", and
+    /// that is what a default is for.
+    #[test]
+    fn tools_are_offered_unless_somebody_turned_them_off() {
+        assert!(Configuration::default().tools, "on by default");
+
+        let folder = std::env::temp_dir().join(format!("unluminous-chat-tools-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder");
+
+        // A file from before the default moved: it says nothing about tools.
+        std::fs::write(folder.join("settings.conf"), "stream = true\n").expect("a file");
+        assert!(Configuration::read(&folder).0.tools, "a file that never chose takes the new default");
+
+        // And a file that did choose is obeyed, both ways.
+        std::fs::write(folder.join("settings.conf"), "tools = false\n").expect("a file");
+        assert!(!Configuration::read(&folder).0.tools, "somebody turned it off, so it is off");
+        std::fs::write(folder.join("settings.conf"), "tools = true\n").expect("a file");
+        assert!(Configuration::read(&folder).0.tools);
+
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// The second switch is the one that must not move.
+    ///
+    /// `tools::RUNS_A_PROGRAM` is `terminal send`, `run add`, `run start`, `debug install` and `launch`,
+    /// which between them will run any command line at all on this machine. That is what `chat.shell`
+    /// gates, and turning the first switch on is not a reason to turn this one on.
+    #[test]
+    fn the_shell_switch_is_still_off_by_default() {
+        assert!(!Configuration::default().shell);
+
+        let folder = std::env::temp_dir().join(format!("unluminous-chat-shell-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder");
+        std::fs::write(folder.join("settings.conf"), "tools = true\n").expect("a file");
+        assert!(
+            !Configuration::read(&folder).0.shell,
+            "a file that turned the tools on has said nothing about the shell"
+        );
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1564,12 +1624,14 @@ mod tests {
         assert!(prompt.contains("Unluminous"), "{prompt}");
         assert!(prompt.contains("/p/src/main.rs"), "{prompt}");
         assert!(prompt.contains("Be terse."), "{prompt}");
+        // **Tools are on by default now** — `task-1848` — so the prompt mentions them, and it is turning
+        // them *off* that has to take the sentence away.
+        assert!(prompt.contains("tools you have been given"), "tools are offered by default: {prompt}");
+        chat.configuration.tools = false;
         assert!(
-            !prompt.contains("tools you have been given"),
-            "tools are off by default"
+            !chat.system_prompt().contains("tools you have been given"),
+            "and a person who turned them off is not told about them"
         );
-        chat.configuration.tools = true;
-        assert!(chat.system_prompt().contains("tools you have been given"));
     }
 
     #[test]
@@ -1828,7 +1890,8 @@ mod tests {
             "a chat's count is not drawn beside its pane's name"
         );
         assert_eq!(view["conversation"]["messages"][0]["text"], "hello");
-        assert_eq!(view["tools"], false);
+        // On by default since `task-1848`, and what the view reports is the setting rather than a constant.
+        assert_eq!(view["tools"], true);
         assert!(view["provider"]["name"].is_string());
     }
 }

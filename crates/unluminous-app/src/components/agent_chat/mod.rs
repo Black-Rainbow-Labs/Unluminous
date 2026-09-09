@@ -59,8 +59,6 @@ pub enum Act {
     Choose(String),
     ToggleTools,
     ToggleStream,
-    /// Ask for a picture, which opens the platform's own file picker.
-    Attach,
     /// A picture dropped on the pane.
     Dropped(std::path::PathBuf),
     /// Ctrl/Cmd+V in the composer: ask the window for whatever picture is on the clipboard.
@@ -641,8 +639,17 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
     for act in acts {
         match act {
             Act::Send => {
+                // **A notice rather than the status bar.** `task-1848` reported this as "nothing happens,
+                // no error": every reason `send` refuses — nothing typed, no endpoint configured, a
+                // program that is not installed, a key that is not set — went to the status bar, which is
+                // a sentence in the smallest text at the far bottom edge of the window, replaced by
+                // whatever was reported next. It is the one control on this pane and the person is looking
+                // straight at it.
                 if let Err(problem) = chat.send() {
-                    requests.push(Request::Message(problem));
+                    requests.push(Request::Notice {
+                        text: problem,
+                        kind: crate::components::toast::Kind::Problem,
+                    });
                 }
             }
             Act::Stop => chat.stop(),
@@ -652,8 +659,13 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
             }
             Act::Starter(prompt) => chat.draft = prompt.to_owned(),
             Act::Dropped(path) => {
+                // Same reason as `Act::Send`: a picture that could not be attached is a thing somebody
+                // just did, and they are watching the pane rather than the status bar.
                 if let Err(problem) = chat.attach(&path) {
-                    requests.push(Request::Message(problem));
+                    requests.push(Request::Notice {
+                        text: problem,
+                        kind: crate::components::toast::Kind::Problem,
+                    });
                 }
             }
             Act::Paste => requests.push(Request::ClipboardPicture {
@@ -701,16 +713,6 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
                     false => "No tools are offered.".to_owned(),
                 }));
             }
-            // The picker is the platform's, and `rfd` is how Unluminous already opens one. It blocks the
-            // frame it is opened in, exactly as `File -> Open` does.
-            Act::Attach => match pick_a_picture() {
-                Some(path) => {
-                    if let Err(problem) = chat.attach(&path) {
-                        requests.push(Request::Message(problem));
-                    }
-                }
-                None => {}
-            },
             Act::Detach(id) => chat.remove_attachment(id),
             Act::Copy(text) if !text.is_empty() => requests.push(Request::Copy(text)),
             Act::Copy(_) => {}
@@ -834,18 +836,6 @@ fn dropped_pictures(ui: &egui::Ui, area: Rect) -> Vec<std::path::PathBuf> {
             })
             .collect()
     })
-}
-
-/// The platform's own picture picker.
-///
-/// `rfd`, which is what `File -> Open` already uses, so a plugin does not bring a second file dialog.
-/// The filter is the four kinds both APIs accept, because offering a `.txt` here would offer
-/// something that is refused by the server rather than by Unluminous.
-fn pick_a_picture() -> Option<std::path::PathBuf> {
-    rfd::FileDialog::new()
-        .add_filter("Pictures", &["png", "jpg", "jpeg", "gif", "webp"])
-        .set_title("Attach a picture")
-        .pick_file()
 }
 
 #[cfg(test)]

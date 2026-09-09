@@ -634,6 +634,11 @@ pub struct UnluminousApp {
     pub focus: Focus,
     /// Something to say in the status bar, such as what version this is.
     pub message: Option<String>,
+    /// The dismissible notices, over the bottom right of the window.
+    ///
+    /// Beside `message` rather than inside a plugin, because every provider reports through the same
+    /// `Request` and a notice has to outlive the pane that raised it. `components::toast` says why.
+    pub toasts: crate::components::toast::Toasts,
     /// Set when the window has been asked to close, which a test can check instead of the window going.
     pub closing: bool,
     /// Where the settings are kept. Absent until [`Self::load_settings`] is called, which the released
@@ -1054,6 +1059,7 @@ impl UnluminousApp {
             recent: Vec::new(),
             focus: Focus::Editor,
             message: None,
+            toasts: crate::components::toast::Toasts::default(),
             closing: false,
             store: None,
             unsaved_settings: false,
@@ -1977,7 +1983,10 @@ impl UnluminousApp {
                 };
                 self.show_the_plugin_pane(pane, showing);
             }
-            Action::PluginTab { ref tab } => self.open_the_plugin_tab(&tab.clone()),
+            // Toggles, because this is what the rail button and the menu entry both run. The command line's
+            // `--open` and `--close` reach `open_the_plugin_tab` and `close_tab` directly, so a named
+            // switch still does exactly what it says.
+            Action::PluginTab { ref tab } => self.toggle_the_plugin_tab(&tab.clone()),
             Action::PluginCommand { ref plugin, ref command } => {
                 let (plugin, command) = (plugin.clone(), command.clone());
                 // The answer is already in the status bar; the menu has nothing else to do with it.
@@ -4050,6 +4059,13 @@ impl UnluminousApp {
                 }
             }
             Request::Message(said) => self.message = Some(said),
+            // The status bar as well as the toast, so a notice is still in the one place a person looks
+            // for the last thing that happened — and so a screenshot of the status bar keeps saying what
+            // it said before this existed.
+            Request::Notice { text, kind } => {
+                self.message = Some(text.clone());
+                self.toasts.say(text, kind);
+            }
             Request::ShowTab => {
                 let key = self
                     .plugin_ui
@@ -4140,6 +4156,27 @@ impl UnluminousApp {
         self.unsaved_settings = true;
     }
 
+    /// Show a plugin's tab, or close it when it is the one showing.
+    ///
+    /// **What a rail button does**, and `task-1848` is the report: "I can't untoggle it to hide it. It
+    /// should always open/close." `open_the_plugin_tab` only ever opened — a tab already open was *shown*,
+    /// and no path closed one — so the button could be pressed once and then did nothing anybody could
+    /// see, which is the one button in that rail that did not behave like the rest of the row.
+    ///
+    /// Three states and three answers, which is what makes it read correctly rather than merely toggle:
+    /// not open at all, so open it; open behind another tab, so **show** it, because pressing the button
+    /// for something you cannot see means "bring it here"; and open and showing, so close it. A plugin tab
+    /// holds no text, so closing one asks nothing and saves nothing.
+    pub fn toggle_the_plugin_tab(&mut self, tab: &str) {
+        if let Some(index) = self.files.index_of_plugin_tab(tab) {
+            if self.files.active_index() == index {
+                self.close_tab(index);
+                return;
+            }
+        }
+        self.open_the_plugin_tab(tab);
+    }
+
     /// Whether the tab that is showing belongs to a plugin rather than holding a file.
     ///
     /// One question, asked by the title bar's text tools and by the `View` menu, so the two cannot
@@ -4151,6 +4188,11 @@ impl UnluminousApp {
     }
 
     /// Open a plugin's own tab in the editing area, or show it if it is already open.
+    ///
+    /// **Opening, not toggling.** `unluminous-cli plugins tab <key> --open` reaches this, and a command
+    /// called `--open` that closed a tab would be a command that did the opposite of its name; `--close`
+    /// is the other switch. What toggles is the rail button, through
+    /// [`Self::toggle_the_plugin_tab`] — see `task-1848`.
     ///
     /// A contributed tab is a `Document` with a `PluginTab` beside it, which is exactly what a picture
     /// tab is: the four questions the window asks a tab — is it modified, can it be saved, has it a
@@ -6699,6 +6741,17 @@ impl UnluminousApp {
         // Before any button is drawn, so that on the very first frame the focus is here and not on the
         // first thing in the title bar.
         hold_the_keyboard(ui);
+        // Escape dismisses the newest notice, and it is asked **before** the maximised pane below,
+        // because a notice is the newer thing on the screen and Escape everywhere in Unluminous puts away
+        // the most recent thing first. One at a time rather than all of them: somebody with three
+        // failures should read three. Consumed, so nothing drawn later reads the same press.
+        if !self.toasts.is_empty()
+            && !a_modal_has_the_keyboard(ui.ctx())
+            && !text_box_has_the_keyboard(ui.ctx())
+            && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            self.toasts.dismiss_the_newest();
+        }
         // Escape puts a maximised pane back, which is the other half of `task-1771`'s double click. Here,
         // before anything reads the frame's keys, and **consumed** rather than merely read: Escape already
         // means "give the keyboard back" to the explorer and "leave the terminal", and a key that did two
@@ -6900,7 +6953,13 @@ impl UnluminousApp {
                 .filter_map(|slot| {
                     let pane = self.plugin_ui.pane(slot)?;
                     Some(activity_bar::PluginButton {
-                        label: pane.label.clone(),
+                        // **`<label> pane`, because a plugin names its menu after itself.** Every plugin
+                        // that draws puts its own name in the menu bar, so a rail button called
+                        // `Agent-Tasks` is the second control of that name in the window and a test asking
+                        // for one finds two — which is what `no_two_controls_in_the_rail_share_a_name`
+                        // catches. `Terminal tile`, `Run tile` and `Version Control` are the same rule
+                        // already applied to Unluminous's own three, for the same reason.
+                        label: format!("{} pane", pane.label),
                         icon: pane.icon.clone(),
                         on: self.plugin_ui.is_visible(slot),
                         bottom: pane.group == crate::services::plugins::RailGroup::Bottom,
@@ -6921,12 +6980,14 @@ impl UnluminousApp {
                 .map(|surface| {
                     let key = surface.key(&surface.what.id);
                     activity_bar::PluginButton {
-                        // **Not the tab's own label.** A plugin that contributes a tab usually names its
-                        // menu the same thing, so a button called `Agent-Tasks` would be the second
-                        // control of that name in the window and a test asking for one would find two —
-                        // which is exactly what happened. `Terminal tile`, `Run tile` and
-                        // `Version Control` are the same rule already applied in the rail below.
-                        label: format!("{} tab", surface.what.label),
+                        // **The tab's own label, and the manifest is what makes it distinct.**
+                        // `<label> tab` was chosen when this button was added, to avoid two controls
+                        // called `Agent-Tasks` — the plugin's menu and this. `task-1848` reports the
+                        // result as unreadable: `Database` and `Database tab` are a distinction nobody
+                        // can act on. So the tab says what it *is* — `tab.label = Query Console` — and
+                        // the collision goes away because the two names are genuinely different things.
+                        // `no_two_controls_in_the_rail_share_a_name` is what keeps that true.
+                        label: surface.what.label.clone(),
                         icon: surface.what.icon.clone(),
                         // Lit when that tab is the one showing, which is what the pill means for every
                         // other button in the rail.
@@ -7755,6 +7816,19 @@ impl UnluminousApp {
         }
         if settings_outcome.changed || self.settings != before {
             self.apply_settings(&before);
+        }
+
+        // The notices, over every pane and under a modal. Before the resize grips so a cross near the
+        // window's corner is still pressable — the grips take the outermost few points and are added
+        // after everything, so anything that must be clickable there goes first.
+        //
+        // The stale ones are forgotten here rather than on a timer: this runs once a frame, and a window
+        // that is drawing is a window somebody is looking at. A `Problem` is never dropped by this — only
+        // a person takes one of those away, which is `components::toast`'s whole point.
+        self.toasts.forget_the_stale_ones();
+        if let Some(dismissed) = crate::components::toast::show(ui, full, &self.toasts, self.settings.font_size)
+        {
+            self.toasts.dismiss(dismissed);
         }
 
         // The eight places the window itself is resized from, added last so they sit over every pane:
