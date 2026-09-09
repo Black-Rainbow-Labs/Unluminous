@@ -81,6 +81,27 @@ state read back through `unluminous-cli`, rather than against what the agent sai
 when you add a feature. A feature nobody has watched an agent use is a feature nobody knows is
 reachable in practice.
 
+## This repository belongs to the personal GitHub account, and `gh` is the other one
+
+`jasonmcaffee` owns `unluminous` and `inillucent`. The `gh` on this machine is logged in as
+`Jason-McAffee`, a work account which **cannot see either of them** — so every `gh` command about this
+repository answers as though it does not exist, because GitHub returns **404** rather than 403 for a
+private repository the caller cannot see.
+
+`~/.gitconfig` routes github.com by repository owner, so ordinary `git` commands are already correct and
+need nothing. `tools/release.sh` publishes through `curl` against `api.github.com` with a token it checks
+against this repository first, for the same reason. `tools/credentials.sh` says which account answers for
+which repository and exits non-zero if one is unreachable; run it when something 404s that should not.
+
+**Never add a `credential.https://github.com.helper` to this checkout's own `.git/config`.** It overrides
+the owner routing for everything reached from inside the folder, so a work repository fetched from here
+would get the personal token. Two checkouts had one, from before the routing existed, and both were
+cleaned; the symptom was a credential fault wearing the costume of a missing commit.
+
+`inillucent-driver` is a git dependency on a private repository, so `.cargo/config.toml` sets
+`net.git-fetch-with-cli`: cargo's own git client cannot authenticate to one at all, and the failure it
+reports is `revision <sha> not found`.
+
 ## Finishing a task means releasing it
 
 **When the work is done and verified, run the release. Do not ask first — run it.** On macOS and
