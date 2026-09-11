@@ -121,28 +121,44 @@ impl Live {
     /// `edges` is every connection carrying lines, as pairs of node ids. Answers what was sent, which
     /// is what a test asserts on and what the status bar says nothing about — a pipe that reported
     /// itself would report several times a second.
+    ///
+    /// **A source is read once and what it said goes down every wire out of it.** Reading it once an
+    /// edge would move the anchor on the first one and leave every later edge with nothing, so a
+    /// terminal wired to two others fed only whichever happened to be first — which is the whole
+    /// point of the anchor working, applied to the wrong loop. Found by the `task-1904` review.
     pub fn carry_the_pipes(&mut self, now: f64, edges: &[(NodeId, NodeId)]) -> Vec<(NodeId, String)> {
         if edges.is_empty() || now - self.read_at < f64::from(PIPE_INTERVAL) {
             return Vec::new();
         }
         self.read_at = now;
         let mut sent = Vec::new();
-        for (from, to) in edges {
-            let Some(source) = self.terminals.get(from) else { continue };
-            if !self.terminals.contains_key(to) {
+        let mut sources: Vec<NodeId> = edges.iter().map(|(from, _)| *from).collect();
+        sources.sort_unstable();
+        sources.dedup();
+        for from in sources {
+            let targets: Vec<NodeId> = edges
+                .iter()
+                .filter(|(source, _)| *source == from)
+                .map(|(_, to)| *to)
+                .filter(|to| self.terminals.contains_key(to))
+                .collect();
+            if targets.is_empty() {
                 continue;
             }
+            let Some(source) = self.terminals.get(&from) else { continue };
             let tail = pipe::lines_of(&source.written_text(Some(pipe::TAIL)));
-            let tap = self.taps.entry(*from).or_insert_with(|| Tap::following(&tail));
+            let tap = self.taps.entry(from).or_insert_with(|| Tap::following(&tail));
             let lines = tap.take(&tail);
             for line in lines {
-                if let Some(target) = self.taps.get_mut(to) {
-                    target.sent(&line);
+                for to in &targets {
+                    if let Some(target) = self.taps.get_mut(to) {
+                        target.sent(&line);
+                    }
+                    if let Some(session) = self.terminals.get(to) {
+                        session.send(format!("{line}\r").into_bytes());
+                    }
+                    sent.push((*to, line.clone()));
                 }
-                if let Some(session) = self.terminals.get(to) {
-                    session.send(format!("{line}\r").into_bytes());
-                }
-                sent.push((*to, line));
             }
         }
         sent
@@ -298,6 +314,41 @@ mod tests {
         let mut live = Live::default();
         assert!(live.carry_the_pipes(10.0, &[]).is_empty());
         assert_eq!(live.read_at, 0.0, "a canvas with no pipes on it does no reading");
+    }
+
+    /// A detached session, which is what the terminal's own tests use: the same emulator over fixed
+    /// bytes, with no shell behind it, so what it holds is the same on every run.
+    fn a_terminal(live: &mut Live, node: NodeId, wrote: &str) {
+        let size = unluminous_terminal::session::Size::new(24, 80);
+        let mut session = unluminous_terminal::Session::detached(size);
+        session.feed(wrote.as_bytes());
+        live.start_terminal(node, session);
+    }
+
+    #[test]
+    fn what_one_terminal_wrote_goes_down_every_wire_out_of_it() {
+        // The `task-1904` review's first finding: reading the source once **an edge** moved its
+        // anchor on the first one, so a terminal wired to two others fed whichever happened to be
+        // first and the other got nothing at all.
+        let mut live = Live::default();
+        a_terminal(&mut live, 1, "");
+        a_terminal(&mut live, 2, "");
+        a_terminal(&mut live, 3, "");
+        live.follow_from_here(1);
+
+        if let Some(session) = live.terminal_mut(1) {
+            session.feed(b"cargo test
+");
+        }
+        let sent = live.carry_the_pipes(10.0, &[(1, 2), (1, 3)]);
+        let lines: Vec<(NodeId, String)> = sent.into_iter().filter(|(_, line)| line == "cargo test").collect();
+        let mut reached: Vec<NodeId> = lines.iter().map(|(to, _)| *to).collect();
+        reached.sort_unstable();
+        assert_eq!(reached, vec![2, 3], "both wires carried the line");
+
+        // And it is sent exactly once down each, which is what the anchor is for.
+        let again = live.carry_the_pipes(20.0, &[(1, 2), (1, 3)]);
+        assert!(again.is_empty(), "nothing new was written, so nothing was sent");
     }
 
     #[test]

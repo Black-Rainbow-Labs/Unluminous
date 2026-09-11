@@ -67,17 +67,22 @@ pub fn load(root: &Path) -> Space {
 }
 
 /// Write a project's canvases, making `.unluminous` if it is not there.
-pub fn save(root: &Path, space: &Space) {
+///
+/// **It says whether it wrote.** A write that quietly failed and was treated as a write is a canvas
+/// somebody arranged and lost: nothing marks it as needing writing again, so the next thing to happen
+/// is the window closing. Found by the `task-1904` review.
+pub fn save(root: &Path, space: &Space) -> Result<(), String> {
     let folder = project_state::folder(root);
-    if std::fs::create_dir_all(&folder).is_err() {
-        return;
-    }
+    std::fs::create_dir_all(&folder)
+        .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
     let mut values = Values::new();
     write(space, root, &mut values);
-    let _ = std::fs::write(
-        path(root),
+    let file = path(root);
+    std::fs::write(
+        &file,
         values.to_text_headed("Unluminous: the Base of Infinite Space in this project."),
-    );
+    )
+    .map_err(|problem| format!("{} could not be written: {problem}", file.display()))
 }
 
 /// Turn a canvas into values.
@@ -361,6 +366,15 @@ mod tests {
             .expect("the editor node came back");
         let State::Editor(editor) = &editor.state else { panic!("it is an editor") };
         assert_eq!(editor.path, Some(moved.join("src").join("main.rs")));
+    }
+
+    #[test]
+    fn a_canvas_written_to_a_folder_that_cannot_be_made_says_so_rather_than_pretending() {
+        // A path under a file rather than under a folder, which no platform will make a directory in.
+        let file = std::env::temp_dir().join("unluminous-space-not-a-folder");
+        std::fs::write(&file, "not a folder").expect("write the file");
+        let refusal = save(&file, &Space::new()).expect_err("it cannot be written there");
+        assert!(refusal.contains("could not be"), "{refusal}");
     }
 
     #[test]

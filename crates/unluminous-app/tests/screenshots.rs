@@ -16689,6 +16689,39 @@ fn a_tab_opened_while_a_node_has_the_keyboard_goes_to_the_editing_area() {
     assert_eq!(harness.state().files.at(on_the_node).path(), Some(folder.join("readme.md").as_path()));
 }
 
+/// A view chosen from the strip has everything behind its nodes running.
+///
+/// The `task-1904` review's second finding: choosing a view changed the model and nothing else, so a
+/// terminal on it had no session, a browser no page and an editor no file. It is asked rather than
+/// told — `catch_the_space_up` notices that the view showing is not the one it last brought to life —
+/// which is `follow_the_open_file`'s rule, so the next way of changing a view cannot forget.
+#[test]
+fn choosing_a_view_starts_what_is_on_it() {
+    use unluminous_app::services::space::Kind;
+    let folder = sample_folder();
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+
+    // A second view with an editor node on it, pointed at a file.
+    did(&mut harness, "space new-view Reading");
+    let made = did(&mut harness, "space add editor --x 40 --y 40");
+    let node = made["node"].as_u64().expect("a node id");
+    did(&mut harness, &format!("space editor {node} readme.md"));
+    harness.run();
+    assert!(harness.state().files.tab_in_node(node).is_some());
+
+    // Away to the first view, which closes the node's tab because the node is not on it.
+    did(&mut harness, "space open-view Main");
+    harness.run();
+
+    // And back. Without the fix the node came back empty and said so.
+    did(&mut harness, "space open-view Reading");
+    harness.run();
+    let index = harness.state().files.tab_in_node(node).expect("the node has its file again");
+    assert_eq!(harness.state().files.at(index).path(), Some(folder.join("readme.md").as_path()));
+    assert_eq!(harness.state().space.space.current().nodes[0].kind(), Kind::Editor);
+}
+
 /// The canvas is written down when it changes and read back when the project opens.
 #[test]
 fn a_canvas_comes_back_when_the_project_is_opened_again() {

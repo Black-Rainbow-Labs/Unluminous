@@ -7935,7 +7935,8 @@ impl UnluminousApp {
         // And the canvas, which says for itself whether anything on it changed - `task-1904`. Written
         // at the end of a frame on which something moved rather than on every frame, or dragging a
         // node would write a file sixty times a second.
-        self.write_the_space_if_it_changed();
+        let now = ui.input(|input| input.time);
+        self.write_the_space_if_it_changed(now);
         // And what is marked in its files, on exactly the same terms.
         let settled = !ui.input(|input| input.pointer.any_down());
         self.remember_the_marks(settled);
@@ -7969,9 +7970,7 @@ impl UnluminousApp {
         // the address it was left on. Both are asked for once, on the second frame, because starting
         // a pseudoconsole before the window is shown is a fifth of the time before anything appears.
         if self.frames == 1 && self.remembers_this_project() {
-            self.start_the_canvass_terminals();
-            self.open_the_canvass_browsers();
-            self.open_the_canvass_editors();
+            self.bring_the_current_view_to_life();
         }
         self.frames += 1;
         crate::services::frame_trace::phase("rest");
@@ -10679,7 +10678,9 @@ impl eframe::App for UnluminousApp {
         // Every program a node started, killed rather than dropped - `Live::forget`'s own note, and
         // `task-1769`'s 119 orphaned shells.
         self.space.live.stop_everything();
-        self.write_the_space_if_it_changed();
+        // `f64::MAX` so a write that failed a moment ago is still tried: this is the last chance
+        // there is, and the two second wait exists for a window that is still drawing.
+        self.write_the_space_if_it_changed(f64::MAX);
         self.write_settings();
         self.remember_the_project();
     }

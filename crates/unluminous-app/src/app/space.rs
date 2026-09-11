@@ -32,6 +32,9 @@ use crate::app::cli::{done, lines, no, ok, unknown, Outcome};
 use crate::components::space::{self as space_view, add_modal};
 use crate::services::space::{live::Live, store, Kind, Node, NodeId, Pipe, Space, State};
 
+/// How long to wait before writing `space.conf` again after a write failed, in seconds.
+const RETRY_A_FAILED_WRITE: f64 = 2.0;
+
 /// What is being dragged on the canvas right now.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum Gesture {
@@ -66,6 +69,17 @@ pub struct SpaceState {
     /// Where a right click menu is open, and which menu it is.
     pub menu: Option<(Pos2, Menu)>,
     pub in_hand: InHand,
+    /// Which view's nodes have been brought to life.
+    ///
+    /// **Derived rather than fired from each of the places a view changes**, which is
+    /// `follow_the_open_file`'s own rule: a list of the places that have to remember to start a
+    /// view's terminals is a list whose next entry is the one that forgets. The `task-1904` review
+    /// found exactly that — the strip of views changed the model and nothing else, so a view chosen
+    /// from it had no sessions, no pages and no files behind its nodes.
+    pub brought_to_life: Option<crate::services::space::ViewId>,
+    /// When a write of `space.conf` last failed, so a broken disk is not written to sixty times a
+    /// second while the canvas stays marked as needing writing.
+    pub write_failed_at: Option<f64>,
     /// The rectangle the canvas body had last frame.
     ///
     /// What a command with no place of its own puts a node at — `space add` with no `--x` — and what
@@ -85,6 +99,8 @@ impl Default for SpaceState {
             adding: None,
             menu: None,
             in_hand: InHand::default(),
+            brought_to_life: None,
+            write_failed_at: None,
             body: Rect::ZERO,
         }
     }
@@ -628,6 +644,19 @@ impl UnluminousApp {
         });
     }
 
+    /// Start everything behind the view that is showing that is not running.
+    ///
+    /// One call rather than three at each of the places a view changes. `catch_the_space_up` asks it
+    /// whenever the current view is not the one it last brought to life, so a view chosen from the
+    /// strip, from the command line, by duplicating one or by deleting the one that was showing all
+    /// arrive here without any of them having to remember.
+    pub fn bring_the_current_view_to_life(&mut self) {
+        self.start_the_canvass_terminals();
+        self.open_the_canvass_browsers();
+        self.open_the_canvass_editors();
+        self.space.brought_to_life = Some(self.space.space.current_id());
+    }
+
     /// Start a session behind every terminal node on the view that is showing that has none.
     ///
     /// **What a project comes back with.** `services::project_state` says of the terminal tile that
@@ -896,6 +925,16 @@ impl UnluminousApp {
     /// is a **pipe**, because reading one is a poll on a clock and nothing else will wake the window
     /// to do it.
     pub(crate) fn catch_the_space_up(&mut self, now: f64) -> bool {
+        // The view that is showing has everything behind it running, whichever way it came to be
+        // showing. Asked rather than told - see `bring_the_current_view_to_life`. Not on the first
+        // frame, because starting a pseudoconsole before the window is shown is a fifth of the time
+        // before anything appears, which is `start_the_restored_terminals`' own measurement.
+        if self.frames > 0
+            && self.remembers_this_project()
+            && self.space.brought_to_life != Some(self.space.space.current_id())
+        {
+            self.bring_the_current_view_to_life();
+        }
         self.space.live.catch_up();
         let carrying: Vec<(NodeId, NodeId)> = self
             .space
@@ -915,17 +954,43 @@ impl UnluminousApp {
     /// The ticket asks for views "saved on edit". Written at the end of a frame on which something
     /// changed rather than on every frame, because a canvas being dragged would otherwise write a file
     /// sixty times a second.
-    pub(crate) fn write_the_space_if_it_changed(&mut self) {
+    pub(crate) fn write_the_space_if_it_changed(&mut self, now: f64) {
         if !self.space.space.is_dirty() || !self.remembers_this_project() {
             return;
         }
-        store::save(self.tree.root(), &self.space.space);
-        self.space.space.written();
+        // A write that failed leaves the canvas marked as needing writing, so the next change tries
+        // again — but not on every frame, because a disk that is full or read only would then be
+        // written to sixty times a second and the status bar would say so as often.
+        if let Some(at) = self.space.write_failed_at {
+            if now - at < RETRY_A_FAILED_WRITE {
+                return;
+            }
+        }
+        match store::save(self.tree.root(), &self.space.space) {
+            Ok(()) => {
+                self.space.space.written();
+                self.space.write_failed_at = None;
+            }
+            Err(problem) => {
+                // The first failure is said once. After that the canvas is still dirty and will be
+                // tried again, quietly, rather than filling the status bar with the same sentence.
+                if self.space.write_failed_at.is_none() {
+                    self.message = Some(problem);
+                }
+                self.space.write_failed_at = Some(now);
+            }
+        }
     }
 
     /// Read a project's canvases when a window opens on it.
+    ///
+    /// The model only. What is behind the nodes is started on the second frame, by
+    /// [`Self::bring_the_current_view_to_life`], for the reason `start_the_restored_terminals`
+    /// records: a pseudoconsole opened before the window is shown is a fifth of the time before
+    /// anything appears.
     pub(crate) fn restore_the_space(&mut self) {
         self.space.space = store::load(self.tree.root());
+        self.space.brought_to_life = None;
     }
 
     // ------------------------------------------------------------------------------- commands
@@ -974,7 +1039,7 @@ impl UnluminousApp {
                 match self.space.space.duplicate_view(id) {
                     Some(copy) => {
                         self.space.space.show_view(copy);
-                        self.start_the_canvass_terminals();
+                        self.bring_the_current_view_to_life();
                         self.message = Some("The view was duplicated.".to_owned());
                     }
                     None => self.message = Some("There is no such view.".to_owned()),
@@ -1069,6 +1134,9 @@ impl UnluminousApp {
         }
         self.space.live.forget_all(&nodes);
         self.space.space.delete_view(id);
+        // Deleting the view that was showing moves to another one, which has to be brought to life
+        // like any other view somebody chose.
+        self.bring_the_current_view_to_life();
     }
 
     /// Start the chosen terminal node's program again.
@@ -1100,6 +1168,7 @@ impl UnluminousApp {
     fn act_on_the_view_bar(&mut self, outcome: crate::components::space::BarOutcome) {
         if let Some(id) = outcome.show {
             self.space.space.show_view(id);
+            self.bring_the_current_view_to_life();
         }
         if outcome.add {
             self.run_a_space_action(SpaceAction::NewView);
@@ -1296,7 +1365,7 @@ impl UnluminousApp {
             "open-view" => match self.a_named_view(request) {
                 Ok(id) => {
                     self.space.space.show_view(id);
-                    self.start_the_canvass_terminals();
+                    self.bring_the_current_view_to_life();
                     done(request, format!("Showing {}.", self.space.space.current().name))
                 }
                 Err(outcome) => outcome,
@@ -1331,7 +1400,7 @@ impl UnluminousApp {
                 match self.space.space.duplicate_view(id) {
                     Some(copy) => {
                         self.space.space.show_view(copy);
-                        self.start_the_canvass_terminals();
+                        self.bring_the_current_view_to_life();
                         ok(
                             request,
                             format!("Copied it to {}.", self.space.space.current().name),

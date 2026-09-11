@@ -189,16 +189,28 @@ impl Space {
     /// `unluminous_terminal::Tabs::names`' rule: two things called the same thing cannot be told
     /// apart, and a command line that names one by its name would reach whichever came first.
     fn unused_name(&self, name: &str) -> String {
+        self.unused_name_apart_from(name, None)
+    }
+
+    /// The same, ignoring one view — which is the view being renamed, and is not a conflict with
+    /// itself.
+    fn unused_name_apart_from(&self, name: &str, apart_from: Option<ViewId>) -> String {
         let wanted = match name.trim() {
             "" => "View",
             other => other,
         };
-        if !self.views.iter().any(|view| view.name.eq_ignore_ascii_case(wanted)) {
+        let taken = |tried: &str| {
+            self.views
+                .iter()
+                .filter(|view| Some(view.id) != apart_from)
+                .any(|view| view.name.eq_ignore_ascii_case(tried))
+        };
+        if !taken(wanted) {
             return wanted.to_owned();
         }
         (2..)
             .map(|number| format!("{wanted} {number}"))
-            .find(|tried| !self.views.iter().any(|view| view.name.eq_ignore_ascii_case(tried)))
+            .find(|tried| !taken(tried))
             .unwrap_or_else(|| wanted.to_owned())
     }
 
@@ -211,13 +223,21 @@ impl Space {
         true
     }
 
+    /// Call a view something else.
+    ///
+    /// **A view is not a conflict with itself.** `unused_name` walks every view, so renaming `Main` to
+    /// `Main` found `Main` and answered `Main 2` — which meant opening Rename and pressing the button
+    /// without editing anything renamed the view. Found by the `task-1904` review.
     pub fn rename_view(&mut self, id: ViewId, name: &str) -> bool {
-        let unused = self.unused_name(name);
-        let Some(view) = self.views.iter_mut().find(|view| view.id == id) else { return false };
-        if view.name == unused {
+        let Some(at) = self.views.iter().position(|view| view.id == id) else { return false };
+        if self.views[at].name == name.trim() {
             return true;
         }
-        view.name = unused;
+        let unused = self.unused_name_apart_from(name, Some(id));
+        if self.views[at].name == unused {
+            return true;
+        }
+        self.views[at].name = unused;
         self.dirty = true;
         true
     }
@@ -742,7 +762,26 @@ mod tests {
         let names: Vec<&str> = space.views().iter().map(|view| view.name.as_str()).collect();
         assert_eq!(names, vec!["Main", "Main 2", "Main 3"]);
         space.rename_view(space.views()[2].id, "Main");
-        assert_eq!(space.views()[2].name, "Main 4");
+        assert_eq!(space.views()[2].name, "Main 3", "the first spelling nothing else has taken");
+    }
+
+    #[test]
+    fn renaming_a_view_to_the_name_it_already_has_changes_nothing() {
+        // A view is not a conflict with itself. Without that, opening Rename and pressing the button
+        // without editing anything renamed `Main` to `Main 2` — which the `task-1904` review found,
+        // and which is the one rename nobody would ever expect to change anything.
+        let mut space = a_canvas();
+        space.written();
+        assert!(space.rename_view(space.current_id(), "Main"));
+        assert_eq!(space.current().name, "Main");
+        assert!(!space.is_dirty(), "and nothing was changed, so nothing has to be written");
+
+        // Case is still what it was typed as, and a second view called the same thing is still
+        // numbered.
+        space.rename_view(space.current_id(), "Rendering");
+        assert_eq!(space.current().name, "Rendering");
+        let second = space.add_view("Rendering");
+        assert_eq!(space.view(second).expect("it is there").name, "Rendering 2");
     }
 
     #[test]
