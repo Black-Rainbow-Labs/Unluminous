@@ -8,6 +8,10 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- Say that no screenshot Unluminous takes contains a web page (`task-1904`)
+
+## 0.39.0 — 2026-09-10
+
 - Six of the reported issues, and two faults found proving them (`task-1848`)
 - The Base of Infinite Space, a canvas of nodes wired together (`task-1904`)
 - The four things the review found (`task-1904`)
