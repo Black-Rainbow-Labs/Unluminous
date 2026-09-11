@@ -1210,6 +1210,15 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         area: "space",
+        verb: "manage",
+        summary: "Open the modal that lists every canvas in this project, with a search box over it. What it lists is this project's views — `space views` is the same list as data. A canvas belongs to the project it was made in, because its nodes name that project's files, so the modal's last button opens another project in a window of its own rather than pretending to open its canvas here.",
+        arguments: NO_ARGUMENTS,
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli space manage"],
+        local: false,
+    },
+    Command {
+        area: "space",
         verb: "views",
         summary: "Every view this project's canvas has, with which one is showing and how many nodes each holds.",
         arguments: NO_ARGUMENTS,

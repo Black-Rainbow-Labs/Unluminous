@@ -254,7 +254,17 @@ impl Space {
         for node in &source.nodes {
             let fresh = self.take_an_id();
             renamed.push((node.id, fresh));
-            nodes.push(Node { id: fresh, ..node.clone() });
+            let mut copy = Node { id: fresh, ..node.clone() };
+            // **A copy is a second node, so it is not on the original's conversation.** `task-1906` gives a
+            // terminal node running an agent a session id it is handed with `--session-id` and resumed onto
+            // with `--resume`, and cloning the state cloned that too — so a duplicated view held two nodes
+            // both resuming one conversation, which is two agents writing into one thread. The copy starts a
+            // fresh one, which is the same reasoning this function already applies to the node's own id: a
+            // copy is a second thing, and keeping the id would make one node live on two canvases.
+            if let State::Terminal(terminal) = &mut copy.state {
+                terminal.session.clear();
+            }
+            nodes.push(copy);
         }
         let renamed_id = |was: NodeId| -> Option<NodeId> {
             renamed.iter().find(|(old, _)| *old == was).map(|(_, new)| *new)
@@ -533,6 +543,33 @@ impl Space {
         self.dirty = false;
     }
 
+    /// Whether two canvases hold the same thing, ignoring whether either needs writing.
+    ///
+    /// **What is compared is what is written down**, which is why `View::chosen` is left out beside `dirty`:
+    /// which node has the keyboard is not in `space.conf` at all, so a canvas whose only difference is that is
+    /// a canvas the file already describes. Bringing a view to life chooses the node it opened, which is right
+    /// and is not a change to save.
+    ///
+    /// `dirty` is a field of `Space`, so a copy taken while it was clean can never be `==` to the same canvas
+    /// once anything has marked it — which makes the derived comparison useless for the one question worth
+    /// asking with it: *did that really change anything?* This is what `bring_the_current_view_to_life` asks,
+    /// so a window that opened a project and touched nothing does not rewrite `space.conf`.
+    pub fn holds_the_same_as(&self, other: &Space) -> bool {
+        if self.current != other.current || self.next != other.next {
+            return false;
+        }
+        if self.views.len() != other.views.len() {
+            return false;
+        }
+        self.views.iter().zip(other.views.iter()).all(|(mine, theirs)| {
+            mine.id == theirs.id
+                && mine.name == theirs.name
+                && mine.camera == theirs.camera
+                && mine.nodes == theirs.nodes
+                && mine.edges == theirs.edges
+        })
+    }
+
     /// Mark it as changed, for a caller that changed something through a field rather than a method.
     pub fn touch(&mut self) {
         self.dirty = true;
@@ -618,12 +655,26 @@ fn node_as_json(node: &Node) -> serde_json::Value {
                     .collect::<Vec<_>>()
                     .into(),
             );
+            map.insert("scroll".into(), folder.scroll.into());
         }
         State::Editor(editor) => {
-            if let Some(path) = &editor.path {
+            // `path` is the file that is showing and `paths` is every tab. Both, because an agent asking
+            // "what is in this node" wants the list and one asking "what am I looking at" wants the one —
+            // and `path` is what every caller written before `task-1906` reads.
+            if let Some(path) = editor.showing() {
                 map.insert("path".into(), path.display().to_string().into());
             }
+            map.insert(
+                "paths".into(),
+                editor
+                    .paths
+                    .iter()
+                    .map(|path| serde_json::Value::from(path.display().to_string()))
+                    .collect::<Vec<_>>()
+                    .into(),
+            );
             map.insert("caret".into(), editor.caret.into());
+            map.insert("scroll".into(), editor.scroll.into());
         }
     }
     value
@@ -734,6 +785,46 @@ mod tests {
         assert_eq!(wire.from, made.nodes[0].id);
         assert_eq!(wire.to, made.nodes[1].id);
         assert_eq!(made.nodes[0].at, Pos2::new(10.0, 20.0), "and it is in the same place");
+    }
+
+    /// A copied terminal node is not on the original's conversation.
+    ///
+    /// `task-1906` gives an agent node a session id it is handed with `--session-id` and resumed onto with
+    /// `--resume`. `duplicate_view` clones a node's state, so the copy carried that id too — and a duplicated
+    /// view then held two nodes both resuming one conversation, which is two agents writing into one thread.
+    /// It is the same reasoning this function already applies to a node's own id: a copy is a second thing.
+    #[test]
+    fn a_copied_agent_node_starts_its_own_conversation() {
+        let mut space = a_canvas();
+        let agent = space.add_node(Kind::Terminal, Pos2::ZERO, None);
+        space.change(agent, |state| {
+            if let State::Terminal(terminal) = state {
+                terminal.command = "claude".to_owned();
+                terminal.session = "the-original-conversation".to_owned();
+            }
+        });
+        let copy = space.duplicate_view(space.current_id()).expect("there is a view to copy");
+
+        let made = space.view(copy).expect("it was just made");
+        let copied = made.nodes.first().expect("the node was copied");
+        match &copied.state {
+            State::Terminal(terminal) => {
+                assert_eq!(terminal.command, "claude", "it still runs the same program");
+                assert!(
+                    terminal.session.is_empty(),
+                    "the copy is resuming {:?}, which the original is already on",
+                    terminal.session,
+                );
+            }
+            other => panic!("{other:?}"),
+        }
+        // And the original keeps its own, which is the half that would be worse to lose.
+        match &space.current().node(agent).expect("it is there").state {
+            State::Terminal(terminal) => {
+                assert_eq!(terminal.session, "the-original-conversation");
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]

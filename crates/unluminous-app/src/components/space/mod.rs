@@ -22,6 +22,7 @@
 //! glyphs. At 1.0, which is the default and where somebody reads code, it is exact.
 
 pub mod add_modal;
+pub mod manager;
 
 use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Vec2};
 
@@ -61,8 +62,12 @@ pub struct BarOutcome {
     pub zoom: i32,
     /// The reading between them was pressed, which puts the zoom back to one.
     pub reset_zoom: bool,
+    /// The row saying how many views are not listed was pressed, which opens the manager.
+    pub manage: bool,
 }
 
+/// How much room the overflow row takes, when there is one.
+const MORE_ROW: f32 = 68.0;
 /// How much room the zoom controls take at the right hand end of the bar, before the plus.
 ///
 /// The bar already kept 30 points clear for the plus, so this is what the chips now stop before instead.
@@ -90,12 +95,16 @@ pub fn view_bar(
         egui::Stroke::new(1.0, color::divider()),
     );
     let mut pen = area.left() + 8.0;
+    let mut drawn = 0usize;
     for view in views {
         let width = chip_width(&painter, &view.name);
         let chip = Rect::from_min_size(Pos2::new(pen, area.top() + 4.0), Vec2::new(width, area.height() - 9.0));
-        if chip.right() > area.right() - 30.0 - ZOOM_CONTROLS {
+        // **Room kept for the overflow row as well**, because a bar that filled itself to the edge and then
+        // said "3 more" off the end of itself would be the fault it is there to fix.
+        if chip.right() > area.right() - 30.0 - ZOOM_CONTROLS - MORE_ROW {
             break;
         }
+        drawn += 1;
         let on = view.id == current;
         let response = ui.interact(chip, ui.id().with(("space-view", view.id)), Sense::click());
         if on {
@@ -122,6 +131,35 @@ pub fn view_bar(
     let plus = Rect::from_center_size(Pos2::new(area.right() - 18.0, area.center().y), Vec2::splat(22.0));
     if crate::components::controls::icon_button(ui, plus, "New view", icon::plus) {
         outcome.add = true;
+    }
+    // **How many are not listed, and a way to see them.** `view_bar` has always broken out of its loop when
+    // a chip would not fit, so past about six views the rest were not merely hard to reach — they were not
+    // drawn at all and nothing said so. `task-1906`.
+    let left_out = manager::not_showing(views.len(), drawn);
+    if left_out > 0 {
+        let row = Rect::from_min_size(
+            Pos2::new(pen, area.top() + 4.0),
+            Vec2::new(MORE_ROW - 6.0, area.height() - 9.0),
+        );
+        let response = ui.interact(row, ui.id().with("space-views-more"), Sense::click());
+        if response.hovered() {
+            ui.painter_at(area).rect_filled(row, CornerRadius::same(6), color::control());
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        let said = format!("+{left_out} more");
+        ui.painter_at(area).text(
+            row.center(),
+            Align2::CENTER_CENTER,
+            &said,
+            FontId::proportional(11.0),
+            color::text_dim(),
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Spaces, {said}"))
+        });
+        if response.clicked() {
+            outcome.manage = true;
+        }
     }
     show_the_zoom_controls(ui, area, zoom, &mut outcome);
     outcome
@@ -371,13 +409,22 @@ pub struct NodeOutcome {
     pub moved: Option<Vec2>,
     /// An edge or a corner is being dragged: which, and how far, in world points.
     pub resized: Option<(Grip, Vec2)>,
-    /// A wire is being pulled out of the output port; where its free end is, in world points.
+    /// A wire is being pulled out of the output port; where its free end is, in **world** points.
+    ///
+    /// World rather than screen, because what it is compared against is a node's rectangle — see
+    /// `settle_the_wire_in_the_air`, which asks the model which node the free end is over. The two position
+    /// fields in this value are in **different spaces**, and nothing said so until `task-1906`, which is how
+    /// the menu came to be opened at a world point.
     pub wiring: Option<Pos2>,
     /// The close cross was pressed.
     pub closed: bool,
     /// The font buttons were pressed: -1 or 1. A terminal node only.
     pub font_step: i32,
-    /// The header was right clicked: where the pointer was, in screen points.
+    /// The header was right clicked: where the pointer was, in **screen** points.
+    ///
+    /// Screen rather than world, because what it is handed to is `egui::Popup`, which places a menu on the
+    /// window's own layer. See [`wiring`](Self::wiring) for the other half of the pair, and
+    /// `show_the_header` for where the conversion happens.
     pub menu: Option<Pos2>,
 }
 
@@ -465,7 +512,23 @@ fn show_the_header(
         outcome.chose = true;
     }
     if response.secondary_clicked() {
-        outcome.menu = response.interact_pointer_pos().or_else(|| response.hover_pos());
+        // **Converted here, because this is where the position leaves the node's layer.** A `Response`'s
+        // pointer position is in the layer's *own* coordinates, and a node's layer carries a `TSTransform`
+        // with the camera in it — so what is read here is a **world** point, while `egui::Popup` places a
+        // menu in **screen** points. At the default camera the two differ by exactly the node's own place on
+        // the canvas, so a node near the origin looked right and one at `(700, 460)` opened its menu that far
+        // down and left of itself. `task-1906`.
+        //
+        // `layer_transform_to_global` rather than the camera, so a menu cannot drift from the drawing even
+        // if the two ever came apart — and it is the inverse of the call `show_the_ports` already makes,
+        // which is what makes the pair legible.
+        outcome.menu = response
+            .interact_pointer_pos()
+            .or_else(|| response.hover_pos())
+            .map(|at| match ui.ctx().layer_transform_to_global(ui.layer_id()) {
+                Some(out) => out * at,
+                None => at,
+            });
     }
     if response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
@@ -805,6 +868,106 @@ mod tests {
         assert!((left.width() - 12.0).abs() < 0.01);
         let corner = grip_rect(rect, Grip::BottomRight, 6.0);
         assert_eq!(corner.center(), rect.right_bottom());
+    }
+
+    /// A node's menu is reported in screen points, so it opens where the pointer is.
+    ///
+    /// `task-1906`: *"the modal popup is way too the left bottom of the node. it should appear where i
+    /// clicked."* The header read `interact_pointer_pos`, which is in the **layer's** own coordinates, and a
+    /// node's layer carries the camera — so a node at `(700, 460)` reported that as a screen point and
+    /// `egui::Popup` opened the menu that far down and left of it.
+    ///
+    /// The measurement is the value the component reports, read out of a context with no window and no
+    /// graphics card, which is what `editor_view`'s own painting tests use.
+    #[test]
+    fn a_nodes_menu_is_reported_where_the_pointer_is_on_the_screen() {
+        let mut space = Space::new();
+        // A node well away from the canvas's origin, which is the case that showed the fault.
+        let id = space.add_node(Kind::Folder, Pos2::new(700.0, 460.0), None);
+        let node = space.current().node(id).expect("it is there").clone();
+        // The pane, and a camera looking at the world origin — so world and screen differ by the pane's own
+        // corner plus the node's place.
+        let pane = Rect::from_min_size(Pos2::new(36.0, 216.0), Vec2::new(1100.0, 500.0));
+        let camera = Camera::default();
+        let on_screen = camera.rect_to_screen(pane.min, node.rect());
+        // A right click a little in from the header's left edge, in screen points, which is what a person's
+        // pointer really is.
+        let pressed = Pos2::new(on_screen.left() + 40.0, on_screen.top() + 8.0);
+
+        let context = egui::Context::default();
+        let chrome = crate::services::vello_canvas::Chrome::off();
+        let look = Look {
+            opacity: 1.0,
+            page: color::editor(),
+            card: color::code_panel(),
+            header: color::explorer(),
+            chrome: &chrome,
+        };
+        let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(1400.0, 900.0));
+        // **Three passes, and the click is on the last.** egui answers about a widget from the rectangles the
+        // *previous* pass recorded, so the first two put the header in the widget list and settle the pointer
+        // over it; the third is the one that presses. A secondary click needs the release as well as the
+        // press, which is what `Node::click_button` in the test harness sends too.
+        let passes = [
+            vec![egui::Event::PointerMoved(pressed)],
+            vec![egui::Event::PointerMoved(pressed)],
+            vec![
+                egui::Event::PointerMoved(pressed),
+                egui::Event::PointerButton {
+                    pos: pressed,
+                    button: egui::PointerButton::Secondary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::default(),
+                },
+                egui::Event::PointerButton {
+                    pos: pressed,
+                    button: egui::PointerButton::Secondary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::default(),
+                },
+            ],
+        ];
+        let mut reported = None;
+        for events in passes {
+            let input =
+                egui::RawInput { events, screen_rect: Some(screen), ..Default::default() };
+            let output = context.run_ui(input, |ui| {
+                let layer = egui::LayerId::new(egui::Order::Background, egui::Id::new("probe-node"));
+                ui.ctx().set_transform_layer(
+                    layer,
+                    egui::emath::TSTransform::new(pane.min.to_vec2(), camera.zoom),
+                );
+                let mut node_ui = ui.new_child(
+                    egui::UiBuilder::new().layer_id(layer).max_rect(node.rect()),
+                );
+                let framing = Framing {
+                    chosen: false,
+                    keyboard: false,
+                    on_screen,
+                    visible: pane,
+                    wire_is_looking: false,
+                    landing: None,
+                    fallback_title: "a folder",
+                };
+                let outcome = frame(&mut node_ui, &node, framing, look);
+                if outcome.menu.is_some() {
+                    reported = outcome.menu;
+                }
+            });
+            output.drop_without_applying_deltas();
+        }
+
+        let reported = reported.expect("the header reported a right click");
+        assert!(
+            (reported - pressed).length() < 2.0,
+            "the menu was reported at {reported:?} and the pointer was at {pressed:?}",
+        );
+        // And it is nowhere near the world point, which is what it used to answer with.
+        let world = Pos2::new(node.at.x + 40.0, node.at.y + 8.0);
+        assert!(
+            (reported - world).length() > 100.0,
+            "the menu is still being reported in world points, at {reported:?}",
+        );
     }
 
     #[test]

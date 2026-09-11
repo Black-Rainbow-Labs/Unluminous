@@ -17253,7 +17253,8 @@ fn a_node_agents_environment_points_at_the_command_that_orients_it() {
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
     harness.run();
-    let settings = harness.state().space_terminal_settings(node).expect("a terminal node");
+    let settings =
+        harness.state().space_terminal_settings(node, "a-fresh-id").expect("a terminal node");
     let named = |name: &str| {
         settings.env.iter().find(|(held, _)| held == name).map(|(_, value)| value.clone())
     };
@@ -17384,6 +17385,508 @@ fn the_modifier_wheel_over_a_folder_node_zooms_it_without_also_scrolling_it() {
         "and one gesture must not also scroll the rows"
     );
     let _ = std::fs::remove_dir_all(&many);
+}
+
+/// A node whose file has been deleted since comes back without it, and keeps the rest.
+///
+/// `project_state`'s rule for the panes — a path that is no longer a file is dropped rather than refused — and
+/// a node has to keep it: the whole of that module is written so a project opens rather than complaining.
+#[test]
+fn a_node_whose_file_has_gone_comes_back_without_it() {
+    use unluminous_app::services::space::State;
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screenshot-gone-file");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().restore_project();
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space editor {node} readme.md"));
+    did(&mut harness, &format!("space editor {node} notes.txt"));
+    for _ in 0..4 {
+        harness.run();
+    }
+    let space = harness.state().space.space.clone();
+    unluminous_app::services::space::store::save(&folder, &space).expect("written");
+    drop(harness);
+
+    // One of the two files is gone, which is what a checkout, a rebase or somebody's own `rm` does.
+    std::fs::remove_file(folder.join("notes.txt")).expect("the file goes");
+
+    let mut second = harness_in(&folder);
+    second.state_mut().restore_project();
+    for _ in 0..8 {
+        second.run();
+    }
+    let open: Vec<std::path::PathBuf> = second
+        .state()
+        .files
+        .tabs_in_node(node)
+        .into_iter()
+        .filter_map(|index| second.state().files.at(index).path().map(std::path::Path::to_path_buf))
+        .collect();
+    assert!(
+        open.iter().any(|path| path.ends_with("readme.md")),
+        "the file that is still there should be open, and the node holds {open:?}",
+    );
+    assert!(
+        !open.iter().any(|path| path.ends_with("notes.txt")),
+        "the file that has gone should not be, and the node holds {open:?}",
+    );
+    // And the canvas still has its node, rather than the whole thing having been refused.
+    match &second.state().space.space.current().node(node).expect("the node").state {
+        State::Editor(_) => {}
+        other => panic!("{other:?}"),
+    }
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Switching views and back does not take a tab off a node.
+///
+/// Found by driving the installed build: a canvas whose two views each had an editor node naming the same
+/// file lost that tab from one of them, because `OpenFiles::open`'s rule is that a file already open is
+/// *shown* rather than opened twice — so `open_in_a_space_node` **moves** the tab, and bringing a view to life
+/// stole the file from the node on the view being left. Measured: three paths on one node became two after
+/// switching away and back. `task-1906`.
+#[test]
+fn switching_views_does_not_take_a_tab_off_a_node() {
+    use unluminous_app::services::space::State;
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screenshot-two-views");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().restore_project();
+    did(&mut harness, "space show");
+    let here = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space editor {here} readme.md"));
+    did(&mut harness, &format!("space editor {here} notes.txt"));
+    // A second view whose own editor node names one of the same files, which is what somebody working on one
+    // file across two canvases really does.
+    did(&mut harness, "space new-view Second");
+    let there = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space editor {there} notes.txt"));
+    for _ in 0..4 {
+        harness.run();
+    }
+
+    // Back to the first, which is where the tab used to disappear.
+    did(&mut harness, "space open-view Main");
+    for _ in 0..6 {
+        harness.run();
+    }
+    let node = harness
+        .state()
+        .space
+        .space
+        .current()
+        .node(here)
+        .expect("the node is on the view that is showing")
+        .clone();
+    match &node.state {
+        State::Editor(state) => {
+            assert_eq!(
+                state.paths.len(),
+                2,
+                "the node was left holding two files and came back holding {:?}",
+                state.paths,
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// The space manager lists every canvas in the project, and opening one shows it.
+///
+/// `task-1906`: *"i need a space/view manager modal so i can open other saved spaces/tabs."* `view_bar` has
+/// always broken out of its loop when a chip would not fit, so past about six views the rest were not merely
+/// hard to reach — they were not drawn and nothing said so.
+#[test]
+fn the_space_manager_lists_every_canvas_and_opens_one() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    did(&mut harness, "space new-view Rendering");
+    did(&mut harness, "space new-view Notes");
+    did(&mut harness, "space open-view Main");
+    harness.run();
+
+    did(&mut harness, "space manage");
+    harness.run();
+    // Every view is a row, found by name, and the one showing says so.
+    for name in ["Main", "Rendering", "Notes"] {
+        harness.get_by_label(&format!("Space: {name}"));
+    }
+
+    // Opening one shows it, which is what the modal is for. `Enter` on the highlighted row rather than a
+    // double click, because the harness cannot synthesise one — and the arrow keys are the path a person
+    // reaches for in a list they are searching anyway.
+    harness.key_press(egui::Key::ArrowDown);
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(harness.state().space.space.current().name, "Rendering");
+    // And the modal is closed, because opening a space is finishing with the list.
+    assert!(harness.state().space.managing.is_none());
+}
+
+/// A picture of the manager, and of it with a name typed into its search box.
+#[test]
+fn the_space_manager() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    for name in ["Rendering", "Notes", "Scratch"] {
+        did(&mut harness, &format!("space new-view {name}"));
+    }
+    did(&mut harness, "space open-view Main");
+    did(&mut harness, "space add terminal --x 40 --y 30");
+    did(&mut harness, "space manage");
+    harness.run();
+    harness.snapshot(shot("space_manager").as_str());
+
+    harness.get_by_label("Find a space").type_text("no");
+    harness.run();
+    harness.snapshot(shot("space_manager_filtered").as_str());
+}
+
+/// An agent node is given a conversation id, and comes back resumed onto it.
+///
+/// `task-1906`: *"terminal session should still have claude-code open with same session."* `Terminal::session`
+/// round tripped through `space.conf` since `task-1904` and nothing ever put a value in one, so the whole
+/// resume path was reachable only from a hand edited file.
+///
+/// **The id is one Unluminous gives, not one it reads back**, which is `services::agent_tasks`' own answer to
+/// the same problem: a first run is `claude --session-id <uuid>` and a later one `claude --resume <uuid>`, so
+/// the id is one Claude answers to rather than one parsed out of somebody else's stream.
+#[test]
+fn an_agent_node_is_started_on_the_session_it_was_left_on() {
+    use unluminous_app::services::space::State;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    // A node naming an agent that takes an id. It will not start — there is no `claude` on a test's PATH —
+    // and that is the point: what is asserted is the command line and the id, with no process behind it.
+    let node = did(&mut harness, "space add terminal --x 40 --y 30 --command claude")["node"]
+        .as_u64()
+        .expect("id");
+    harness.run();
+
+    // **A first run is given an id**, and it is written down.
+    let first = match &harness.state().space.space.current().node(node).expect("the node").state {
+        State::Terminal(terminal) => terminal.session.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert!(!first.is_empty(), "a first run of an agent node was given no conversation id");
+    let line = harness
+        .state()
+        .space_terminal_settings(node, "a-fresh-id")
+        .expect("a terminal node builds a command line");
+    let said = line.args.join(" ");
+    // **A run that is not a resume asks for a fresh id**, which is what `Restart` means and what the real path
+    // does: `new_session_id()` on every start, and only a resume reuses what was recorded. The id it is handed
+    // is the id it asks for, which is the half the node then writes down.
+    assert!(
+        said.contains("--session-id") && said.contains("a-fresh-id"),
+        "a run that is not a resume should ask for the id it was handed, and asks {said:?}",
+    );
+
+    // **Coming back, the same node resumes that conversation** rather than beginning another.
+    let resumed = harness
+        .state()
+        .space_terminal_settings_resuming(node)
+        .expect("a terminal node builds a command line");
+    let said = resumed.args.join(" ");
+    assert!(
+        said.contains("--resume") && said.contains(&first),
+        "a restored node should resume the conversation it was on, and asks {said:?}",
+    );
+    assert!(!said.contains("--session-id"), "and not both at once: {said:?}");
+}
+
+/// A shell node is given no conversation, because a shell has none and would refuse the argument.
+#[test]
+fn a_shell_node_is_given_no_session() {
+    use unluminous_app::services::space::State;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add terminal --x 40 --y 30")["node"].as_u64().expect("id");
+    harness.run();
+    match &harness.state().space.space.current().node(node).expect("the node").state {
+        State::Terminal(terminal) => {
+            assert!(terminal.session.is_empty(), "a shell was handed a conversation id");
+        }
+        other => panic!("{other:?}"),
+    }
+    let line = harness.state().space_terminal_settings(node, "a-fresh-id").expect("a command line");
+    let said = line.args.join(" ");
+    assert!(!said.contains("--session-id"), "a shell would refuse to start: {said:?}");
+}
+
+/// Everything a node was left holding comes back: its tabs, which was showing, and where it was read.
+///
+/// `task-1906`: *"If I close unluminous and open back up, my spaces should be in the same state."* Three
+/// fields were written to `space.conf` and read back from it since `task-1904`, and nothing ever put a value
+/// in one — so a canvas came back with its nodes in the right places and its file at the top with the caret
+/// at byte zero. And `Editor::path` was one path, where a node holds a strip of tabs since `task-1905`.
+#[test]
+fn everything_a_node_was_left_holding_comes_back() {
+    use unluminous_app::services::space::{Kind, State};
+    // **A folder of its own, because this test makes the window write into it.** `restore_project` is what
+    // turns writing on — `remembers_this_project` — and `sample_folder` is shared behind a `OnceLock` by
+    // every test that wants a project. Writing a `space.conf` into it left a canvas of nodes in a fixture
+    // other tests copy, and `a_split_project_opens_split_again` then restored three editor node tabs it had
+    // never opened. That is `task-1654`'s rule about a shared fixture, and this is what breaking it looks
+    // like.
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screenshot-node-state");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().restore_project();
+    did(&mut harness, "space show");
+    let editor = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space editor {editor} readme.md"));
+    did(&mut harness, &format!("space editor {editor} notes.txt"));
+    did(&mut harness, &format!("space editor {editor} program.rs"));
+    // The one in the middle is what is being read, part way down.
+    let tabs = harness.state().files.tabs_in_node(editor);
+    let middle = tabs[1];
+    harness.state_mut().files.show(middle);
+    harness.state_mut().files.at_mut(middle).document.apply(
+        unluminous_core::Command::PlaceCaret { offset: 3, extend: false },
+    );
+    let folder_node = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(700.0, 30.0));
+    for _ in 0..4 {
+        harness.run();
+    }
+    // The folder node's scroll is read back off its own `ScrollArea` every frame, so it is set after the
+    // frames for the same reason the editor's is: the sample folder has seven rows and nothing to scroll.
+    harness.state_mut().space.live.scroll_to(folder_node, 120.0);
+    // **The scroll is set after the frames**, because the editing area clamps a tab's scroll to what its
+    // document is tall enough to need — and the sample files are two lines, so drawing puts a made up scroll
+    // straight back to zero. What is asserted below is that the number reaches `space.conf`, which is the
+    // half `task-1906` adds; that the editor keeps a scroll a document can hold is `task-1672`'s.
+    harness.state_mut().files.at_mut(middle).scroll = 42.0;
+    harness.state_mut().note_where_the_nodes_are_reading();
+
+    // Written down, which is what closing the window does.
+    let space = harness.state().space.space.clone();
+    unluminous_app::services::space::store::save(&folder, &space).expect("written");
+
+    // And read back, which is what opening it again does.
+    let back = unluminous_app::services::space::store::load(&folder);
+    let node = back.current().node(editor).expect("the editor node came back");
+    match &node.state {
+        State::Editor(state) => {
+            assert_eq!(state.paths.len(), 3, "every tab came back, not one of them");
+            assert_eq!(state.showing, 1, "and the one that was showing is the one showing");
+            assert_eq!(state.caret, 3, "at the caret it was left at");
+            assert!((state.scroll - 42.0).abs() < 1.0, "and scrolled where it was: {}", state.scroll);
+            assert!(state.showing().is_some_and(|path| path.ends_with("notes.txt")), "{state:?}");
+        }
+        other => panic!("{other:?}"),
+    }
+    let node = back.current().node(folder_node).expect("the folder node came back");
+    match &node.state {
+        State::Folder(state) => {
+            assert!((state.scroll - 120.0).abs() < 1.0, "its rows came back scrolled: {}", state.scroll);
+        }
+        other => panic!("{other:?}"),
+    }
+
+    // **And a second window really opens it**, which is the half reading the file back cannot check.
+    // Measured on the installed build: `space.conf` held three paths before a restart and none after it,
+    // because `note_where_the_nodes_are_reading` derives what it writes from the live state and ran on the
+    // frames before the canvas had been brought to life — so it wrote the empty list over the saved one.
+    drop(harness);
+    let mut second = harness_in(&folder);
+    second.state_mut().restore_project();
+    // **And opening a project changes nothing about the canvas, so nothing is written.** Bringing a view to
+    // life opens each of a node's tabs in turn and every one of those calls `remember_a_nodes_tabs`, which
+    // compares the tabs open *so far* against the whole saved list — so the first path made that comparison
+    // say the list had changed, and `Space::change` marks the canvas dirty whatever the closure did. A window
+    // that opened this project and touched nothing therefore rewrote `space.conf` with byte-identical
+    // content, which is the rule `Space::is_dirty` exists to keep. The Codex Sol review found it.
+    second.state_mut().bring_the_current_view_to_life();
+    assert!(
+        !second.state().space.space.is_dirty(),
+        "opening a project asked for space.conf to be written again, having changed nothing in it",
+    );
+    // **And a folder node's rows come back where they were scrolled to.** This is the assertion that was
+    // missing, and the fault it was hiding is the sort only a restart shows: `Folder::scroll` was written to
+    // `space.conf` and read back out of it while **nothing put the number anywhere the drawing reads**, so
+    // the rows came back at the top — and then the first idle frame compared the saved 120 against the live
+    // 0, decided they had moved, and wrote the zero over the file. One restart lost the number and every
+    // later one had nothing left to lose.
+    //
+    // It is asked before the frames for the reason the number is set after them above: the sample folder has
+    // seven rows, so drawing clamps a scroll to what there is to scroll and would put any value back to zero.
+    // What is being checked is that bringing a view to life hands the saved number over at all.
+    second.state_mut().bring_the_current_view_to_life();
+    assert!(
+        (second.state().space.live.scroll_of(folder_node) - 120.0).abs() < 1.0,
+        "the folder node's rows came back at {} rather than where they were scrolled to",
+        second.state().space.live.scroll_of(folder_node),
+    );
+    for _ in 0..8 {
+        second.run();
+    }
+    // **And the file it wrote still names them.** This is the assertion the fault was hiding behind: the
+    // window came up, wrote an empty tab list over the saved one on its first frames, and only *then* opened
+    // the tabs — so reading the canvas in memory looked right while the file on disk had been emptied. A
+    // third window would then have opened nothing at all.
+    let after = unluminous_app::services::space::store::load(&folder);
+    match &after.current().node(editor).expect("the node is in the file").state {
+        State::Editor(state) => {
+            assert_eq!(
+                state.paths.len(),
+                3,
+                "the window wrote an empty tab list over the three it had been given",
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+    let node = second
+        .state()
+        .space
+        .space
+        .current()
+        .node(editor)
+        .expect("the editor node is on the restored canvas")
+        .clone();
+    match &node.state {
+        State::Editor(state) => {
+            assert_eq!(state.paths.len(), 3, "a second window opened the node's three tabs");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(
+        second.state().files.tabs_in_node(editor).len(),
+        3,
+        "and they are really open on the node rather than only named in the file",
+    );
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// The last thing done on a view is recorded even when the same frame switched away from it.
+///
+/// What `note_where_the_nodes_are_reading` writes down is derived from the live state, and it only ever walks
+/// the view that is **showing**. So a frame that both moved something and switched view — a wheel and a chip in
+/// one input frame — left that movement unrecorded, because by the next frame the old view was no longer the
+/// one being walked. `task-1906`, found by the Codex Sol review.
+#[test]
+fn what_was_done_on_a_view_is_kept_when_the_same_frame_switches_away() {
+    use unluminous_app::services::space::State;
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screenshot-view-switch");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().restore_project();
+    did(&mut harness, "space show");
+    let first = harness.state().space.space.current_id();
+    let editor = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space editor {editor} readme.md"));
+    did(&mut harness, &format!("space editor {editor} notes.txt"));
+    // A second view to switch to.
+    did(&mut harness, "space new-view");
+    let second = harness.state().space.space.current_id();
+    assert_ne!(first, second);
+    did(&mut harness, &format!("space open-view {first}"));
+    for _ in 0..6 {
+        harness.run();
+    }
+
+    // The caret is moved and the view is switched **with no frame in between**, which is what one input frame
+    // holding both looks like from the model's side.
+    let tabs = harness.state().files.tabs_in_node(editor);
+    let showing = tabs[1];
+    harness.state_mut().files.show(showing);
+    harness.state_mut().files.at_mut(showing).document.apply(
+        unluminous_core::Command::PlaceCaret { offset: 5, extend: false },
+    );
+    harness.state_mut().space.space.show_view(second);
+    for _ in 0..4 {
+        harness.run();
+    }
+
+    // And the caret it was left at is what the view it was left on records.
+    let kept = harness
+        .state()
+        .space
+        .space
+        .view(first)
+        .expect("the view is still there")
+        .nodes
+        .iter()
+        .find(|node| node.id == editor)
+        .map(|node| node.state.clone())
+        .expect("the node is still on it");
+    match kept {
+        State::Editor(held) => {
+            assert_eq!(
+                held.caret, 5,
+                "the last thing done on a view was lost because the same frame switched away from it",
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// A canvas that nothing changed is not written again, however many frames go by.
+///
+/// `task-1906` fills in three fields from the live state every frame — a node's caret, its two scrolls and its
+/// list of tabs — and `Space::change` marks the canvas dirty **whatever the closure did**. So asking inside
+/// the closure would write `space.conf` sixty times a second, which is the one thing `Space::is_dirty` exists
+/// to prevent. The comparison happens before `change` is called, and this is what says so.
+#[test]
+fn a_canvas_nothing_changed_is_not_written_again() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let editor = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space editor {editor} readme.md"));
+    harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(700.0, 30.0));
+    for _ in 0..4 {
+        harness.run();
+    }
+
+    // Written down, so the canvas is clean.
+    harness.state_mut().space.space.written();
+    assert!(!harness.state().space.space.is_dirty());
+    // And a run of frames with nobody touching anything leaves it clean.
+    for _ in 0..6 {
+        harness.run();
+        assert!(
+            !harness.state().space.space.is_dirty(),
+            "an idle canvas asked to be written again, which is a file written sixty times a second",
+        );
+    }
+}
+
+/// A folder node's rows carry the same icons the panel draws.
+///
+/// `task-1906`: *"In folder view, I don't see the same icons i see next to the files i do in the main folder
+/// pane. e.g. rust icon for rust files isn't showing to the left."* The node was handed a placeholder that
+/// answered `Decoration::default()` for every row, so no plugin icon and no git colour ever reached one —
+/// `task-1904` asked for the node to have the panel's own style and functionality, and this was the one
+/// place it did not.
+#[test]
+fn a_folder_nodes_rows_carry_the_same_icons_the_panel_draws() {
+    use unluminous_app::services::space::Kind;
+    let folder = sample_folder();
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(20.0, 20.0));
+    did(&mut harness, &format!("space size {node} --width 320 --height 380"));
+    harness.run();
+
+    // The Rust plugin claims `.rs` and ships an icon, so `program.rs` has one — which is the row the report
+    // names. The map is what the component is handed, so that is what is asserted: a texture cannot be read
+    // back out of a picture.
+    let decorations = harness.state_mut().decorations_for_a_folder_node_for_a_test(node);
+    let rust = folder.join("program.rs");
+    let for_rust = decorations.get(&rust).expect("program.rs is a row in the node");
+    assert!(for_rust.icon.is_some(), "a .rs row should carry the Rust plugin's own icon");
+
+    // And a file no plugin claims has none rather than a wrong one, which is what makes the line above mean
+    // something.
+    let plain = folder.join("notes.txt");
+    if let Some(for_plain) = decorations.get(&plain) {
+        assert!(for_plain.icon.is_none(), "no plugin claims .txt, so there is no icon to draw");
+    }
+    // Beside the panel showing the same folder, which is the comparison the report makes.
+    harness.run();
+    harness.snapshot(shot("space_folder_node_icons").as_str());
 }
 
 /// A folder node scrolls with the wheel, and the canvas behind it does not move.

@@ -2439,19 +2439,32 @@ fn owner_is_gone(recorded: Option<&str>) -> bool {
 /// because Unluminous has none and adding one to name a session would be a dependency for a string. Two ids
 /// made in the same nanosecond by the same process would collide; the claim is a guarded update, so a
 /// collision is refused rather than silently sharing a conversation.
-fn new_session_id() -> String {
+/// A fresh conversation id.
+///
+/// **`pub` since `task-1906`, because a terminal node on the canvas needs one too** — a node running
+/// `claude` is given `--session-id <uuid>` on its first run and `--resume <uuid>` after a restart, which is
+/// exactly what a ticket's agent is given. One generator rather than a second copy of the same arithmetic.
+pub fn new_session_id() -> String {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|since| since.as_nanos())
         .unwrap_or(0);
     let here = &nanos as *const u128 as usize;
+    // **A counter, so two ids made in one process are never the same one.** The clock is the only thing that
+    // varies between two calls, and a nanosecond is not long enough to rely on: `task-1906` gives every
+    // terminal node on a canvas an id, and bringing a view to life asks for them in a loop. A ticket's agent
+    // was protected by the guarded claim that writes it down — a collision there is refused — and a canvas
+    // node has no such guard, so it would have shared a conversation in silence. The Codex Sol review found
+    // it. One counter here answers it for both callers rather than a second guard beside the first.
+    static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let count = MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     format!(
         "{:08x}-{:04x}-4{:03x}-8{:03x}-{:012x}",
         (nanos >> 64) as u32 ^ here as u32,
         (nanos >> 48) as u16,
         (nanos >> 32) as u16 & 0x0fff,
         (nanos >> 16) as u16 & 0x0fff,
-        nanos as u64 & 0xffff_ffff_ffff
+        (nanos as u64 ^ count.rotate_left(24)) & 0xffff_ffff_ffff
     )
 }
 
@@ -3443,6 +3456,36 @@ fn card_json(task: &Task) -> serde_json::Value {
 #[cfg(test)]
 mod tests_task_28 {
     use super::*;
+
+    /// Two conversation ids made one after another are never the same id.
+    ///
+    /// The clock is the only thing that varies between two calls, and a nanosecond is not long enough to rely
+    /// on. `task-1906` gives every terminal node on a canvas an id and asks for them in a loop while bringing a
+    /// view to life, so two nodes would have shared one conversation in silence — a ticket's agent was
+    /// protected by the guarded claim that writes its id down, and a canvas node has no such guard. Found by
+    /// the Codex Sol review.
+    #[test]
+    fn two_conversation_ids_made_in_a_row_are_different() {
+        let many: Vec<String> = (0..2000).map(|_| new_session_id()).collect();
+        let distinct: std::collections::HashSet<&String> = many.iter().collect();
+        assert_eq!(
+            distinct.len(),
+            many.len(),
+            "two of {} ids made in a row are the same conversation",
+            many.len(),
+        );
+        // And they are still the shape both agents accept, which is what the arithmetic is for.
+        for id in many.iter().take(5) {
+            let parts: Vec<&str> = id.split('-').collect();
+            assert_eq!(parts.len(), 5, "{id}");
+            assert_eq!(
+                parts.iter().map(|part| part.len()).collect::<Vec<_>>(),
+                vec![8, 4, 4, 4, 12],
+                "{id}",
+            );
+            assert!(id.chars().all(|at| at.is_ascii_hexdigit() || at == '-'), "{id}");
+        }
+    }
 
     /// `task-28`: "We don't need a Schedule field."
     ///

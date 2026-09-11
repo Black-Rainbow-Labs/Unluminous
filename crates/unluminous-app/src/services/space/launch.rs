@@ -79,6 +79,73 @@ pub fn words(command: &str) -> Vec<String> {
     crate::services::run_configurations::split_command(command)
 }
 
+/// Whether this command is an agent Unluminous can hand a conversation id to and get it back.
+///
+/// **The id is one Unluminous chooses and gives, not one it reads back**, which is
+/// `services::agent_tasks`' own answer to the same problem and the reason it works there: a first run is
+/// `claude --session-id <uuid>` and a later one is `claude --resume <uuid>`, so the id is one Claude *answers
+/// to* rather than one Unluminous hopes to parse out of somebody else's stream.
+///
+/// **Codex is not on the list, and `agent::why_it_cannot_resume` is why**: it names its own sessions, so an
+/// id here would be a marker rather than something it answers to, and a restored Codex node begins a new
+/// conversation. A shell is not on it either — a `zsh` handed a `--session-id` is a shell that refuses to
+/// start, which is the failure this question exists to avoid. `task-1906`.
+pub fn takes_a_session(command: &str) -> bool {
+    let Some(program) = words(command).first().cloned() else { return false };
+    let named = std::path::Path::new(&program)
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    named == "claude"
+}
+
+/// The two arguments that decide which conversation an agent is on.
+///
+/// Named here rather than spelled in the two places that read them, because a command carrying one already
+/// must not be given a second — see `session_for`.
+const SESSION_ARGUMENTS: [&str; 2] = ["--session-id", "--resume"];
+
+/// Whether the command a person typed already says which conversation to be on.
+///
+/// A node's command is somebody's own words, so `claude --resume abc` is a perfectly ordinary thing to find
+/// there — and appending `--session-id <fresh>` to it hands Claude two conflicting instructions about which
+/// conversation this is. Whatever it then does, the node has recorded an id that is not the one in use, which
+/// is the failure the whole of `task-1906`'s session half exists to prevent.
+pub fn already_names_a_session(command: &str) -> bool {
+    words(command).iter().any(|word| SESSION_ARGUMENTS.contains(&word.as_str()))
+}
+
+/// What a terminal node's command becomes, and which conversation id the node should write down.
+///
+/// **One function rather than a condition in each of two places.** The command line is built where a command
+/// line is built and the id is written down where the canvas is changed, and those are deliberately different
+/// functions — but *which* id was put on the command line is one fact, and asking it twice is how the two
+/// came apart: a node with no session, started with `resume` true, was given a fresh `--session-id` and then
+/// recorded nothing, because the recording asked `!resume` instead of asking what had been sent. Claude then
+/// answered to an id the node had already forgotten, so the next restart resumed nothing.
+///
+/// `held` is what the node has recorded and `fresh` is the id this run would use if it needs one. The answer
+/// is the words to append and the id to write down, and they cannot disagree because they are one value.
+pub fn session_for(command: &str, held: &str, resume: bool, fresh: &str) -> (String, Option<String>) {
+    if command.trim().is_empty() || !takes_a_session(command) {
+        return (String::new(), None);
+    }
+    // **A command that already says which conversation it is on is left exactly as it is.** Two lifecycle
+    // arguments are worse than none: the node would record an id that is not the one Claude used.
+    if already_names_a_session(command) {
+        return (String::new(), None);
+    }
+    match (held.trim(), resume) {
+        // One recorded and a resume asked for: that conversation, and it stays recorded.
+        (recorded, true) if !recorded.is_empty() => {
+            (format!(" --resume {recorded}"), Some(recorded.to_owned()))
+        }
+        // Everything else is a conversation beginning: nothing recorded at all, or `Restart`, which means a
+        // fresh one on purpose. Either way the id given is the id written down.
+        _ => (format!(" --session-id {fresh}"), Some(fresh.to_owned())),
+    }
+}
+
 /// What a node's command starts, or a sentence saying what was looked for.
 ///
 /// An empty command is the machine's own shell, which is what a node opens with.
@@ -104,6 +171,103 @@ pub fn resolve(command: &str, shell: Option<String>) -> Result<Launch, String> {
 
 #[cfg(test)]
 mod tests {
+    /// What is put on the command line is what is written down, in every combination.
+    ///
+    /// The pair has to agree, and it used to be asked as two separate questions: the command line asked what
+    /// the node had recorded, and the recording asked whether this was a resume. Those are different
+    /// questions, and the case where they disagree is a real one — `Resume session` on a node that has never
+    /// run passes `resume` true with an empty session, which sent a fresh `--session-id` and wrote nothing
+    /// down. `task-1906`.
+    #[test]
+    fn what_the_command_line_says_about_the_conversation_is_what_the_node_records() {
+        use super::session_for;
+
+        // A first run: given an id, and that id is what is recorded.
+        let (words, recorded) = session_for("claude", "", false, "fresh-one");
+        assert_eq!(words, " --session-id fresh-one");
+        assert_eq!(recorded.as_deref(), Some("fresh-one"));
+
+        // A restore: resumed onto what it was on, and it stays on it.
+        let (words, recorded) = session_for("claude", "was-on-this", true, "fresh-one");
+        assert_eq!(words, " --resume was-on-this");
+        assert_eq!(recorded.as_deref(), Some("was-on-this"));
+
+        // `Restart`, which means a conversation beginning on purpose: a fresh id, and it replaces the old one.
+        let (words, recorded) = session_for("claude", "was-on-this", false, "fresh-one");
+        assert_eq!(words, " --session-id fresh-one");
+        assert_eq!(recorded.as_deref(), Some("fresh-one"));
+
+        // **The case that was wrong.** `Resume session` on a node that has never run: there is nothing to
+        // resume, so it is given one — and the id it was given has to be the id it records, or Claude answers
+        // to an id the node has forgotten.
+        let (words, recorded) = session_for("claude", "", true, "fresh-one");
+        assert_eq!(words, " --session-id fresh-one");
+        assert_eq!(
+            recorded.as_deref(),
+            Some("fresh-one"),
+            "the node was given an id and would have written down nothing",
+        );
+
+        // A shell and Codex are handed nothing at all and record nothing, whatever is asked.
+        for command in ["zsh", "codex", "", "  "] {
+            for resume in [true, false] {
+                let (words, recorded) = session_for(command, "was-on-this", resume, "fresh-one");
+                assert!(words.is_empty(), "{command:?} was handed {words:?}");
+                assert_eq!(recorded, None, "{command:?} recorded {recorded:?}");
+            }
+        }
+    }
+
+    /// A command that already says which conversation it is on is left exactly as it is.
+    ///
+    /// A node's command is somebody's own words, so `claude --resume abc` is an ordinary thing to find there.
+    /// Appending a second lifecycle argument hands Claude two conflicting instructions, and whichever it
+    /// obeys, the node has recorded an id that is not the one in use. `task-1906`.
+    #[test]
+    fn a_command_that_already_names_a_conversation_is_left_alone() {
+        use super::{already_names_a_session, session_for};
+
+        assert!(already_names_a_session("claude --resume abc"));
+        assert!(already_names_a_session("claude --session-id abc"));
+        assert!(!already_names_a_session("claude"));
+        assert!(!already_names_a_session("claude --print"));
+
+        for command in ["claude --resume abc", "claude --session-id abc"] {
+            for held in ["", "was-on-this"] {
+                for resume in [true, false] {
+                    let (words, recorded) = session_for(command, held, resume, "fresh-one");
+                    assert!(
+                        words.is_empty(),
+                        "{command:?} would have been started as {command}{words}",
+                    );
+                    assert_eq!(
+                        recorded, None,
+                        "{command:?} would have recorded {recorded:?}, which is not what it is on",
+                    );
+                }
+            }
+        }
+    }
+
+    /// Which commands take a conversation id, and which deliberately do not.
+    ///
+    /// `task-1906`: a `zsh` handed a `--session-id` is a shell that refuses to start, and Codex names its own
+    /// sessions — `agent::why_it_cannot_resume` is the sentence a person reads about that.
+    #[test]
+    fn only_an_agent_that_answers_to_an_id_is_given_one() {
+        use super::takes_a_session;
+        assert!(takes_a_session("claude"));
+        assert!(takes_a_session("claude --dangerously-skip-permissions"), "with its own arguments");
+        assert!(takes_a_session("/Users/somebody/.local/bin/claude"), "named by its full path");
+        assert!(takes_a_session("CLAUDE"), "however it is spelled");
+        // The ones that must not be given one.
+        assert!(!takes_a_session("codex"), "Codex names its own sessions");
+        assert!(!takes_a_session("zsh"), "a shell has no conversation");
+        assert!(!takes_a_session("pwsh -NoLogo"));
+        assert!(!takes_a_session(""), "and a node with no command runs the machine's own shell");
+        assert!(!takes_a_session("   "));
+    }
+
     use super::*;
     use std::path::PathBuf;
 

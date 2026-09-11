@@ -66,6 +66,8 @@ pub struct SpaceState {
     pub gesture: Gesture,
     /// The add modal, while it is open.
     pub adding: Option<add_modal::State>,
+    /// The space manager, while it is open — `task-1906`.
+    pub managing: Option<crate::components::space::manager::State>,
     /// Where a right click menu is open, and which menu it is.
     pub menu: Option<(Pos2, Menu)>,
     pub in_hand: InHand,
@@ -97,6 +99,7 @@ impl Default for SpaceState {
             visible: false,
             gesture: Gesture::None,
             adding: None,
+            managing: None,
             menu: None,
             in_hand: InHand::default(),
             brought_to_life: None,
@@ -682,8 +685,16 @@ impl UnluminousApp {
         let opacity = self.settings.opacity;
         let scroll = self.wheel_over_a_folder_node(ui, node, has_the_pointer);
         let node_zoom = space_view::folder_zoom_of(node);
+        // **The icons and the git colours, before the borrow.** `task-1904` asked for a node to have the
+        // same style and functionality as the panel, and this was the one place it did not: the closure was
+        // a placeholder answering `default()`, so a `.rs` file had no Rust icon and a modified file no
+        // colour. `task-1906` is the report. See `decorations_for_a_folder_node` for why it is a map built
+        // first rather than a question asked per row.
+        let decorations = self.decorations_for_a_folder_node(ui.ctx(), node.id);
         let outcome = {
-            let decorate = |_: &std::path::Path| crate::components::explorer::Decoration::default();
+            let decorate = |path: &std::path::Path| -> crate::components::explorer::Decoration {
+                decorations.get(path).cloned().unwrap_or_default()
+            };
             let Some(tree) = self.space.live.tree_mut(node.id) else { return };
             let mut filter = match &node.state {
                 State::Folder(folder) => folder.filter.clone(),
@@ -1067,6 +1078,59 @@ impl UnluminousApp {
         }
     }
 
+    /// The icons and the git colours for one folder node's rows.
+    ///
+    /// **Built before the node is drawn**, because [`UnluminousApp::plugin_icon`] takes `&mut self` — it
+    /// caches the texture it decodes in `services::icons` — and the node loop is holding `self` for the
+    /// whole of the frame.
+    ///
+    /// **A map rather than a question per row**, which is the panel's own reason: it used to search a list
+    /// as each row was drawn, comparing paths, so a project with four hundred rows open did a hundred and
+    /// sixty thousand path comparisons every frame.
+    ///
+    /// **Only the rows that are showing.** `FileTree::rows` is what the explorer draws, so a folder nobody
+    /// has opened out costs nothing.
+    ///
+    /// **And git is asked about the window's own repository**, which answers nothing for a path outside it.
+    /// A folder node can be rooted anywhere — `task-1905` gave it `Choose Folder...` — and a second
+    /// repository per node would be a second working tree for `unluminous-git` to run the machine's real
+    /// git on. A node pointed at somebody else's checkout is a node showing files git here knows nothing
+    /// about, which is the honest answer rather than a wrong one.
+    fn decorations_for_a_folder_node(
+        &mut self,
+        ctx: &egui::Context,
+        node: NodeId,
+    ) -> std::collections::HashMap<std::path::PathBuf, crate::components::explorer::Decoration> {
+        let Some(tree) = self.space.live.tree(node) else {
+            return std::collections::HashMap::new();
+        };
+        let rows: Vec<std::path::PathBuf> =
+            tree.rows().iter().map(|row| row.entry.path.clone()).collect();
+        rows.into_iter()
+            .map(|path| {
+                let icon = self.plugin_icon(ctx, Some(&path));
+                let tint = self
+                    .git
+                    .as_ref()
+                    .and_then(|git| git.state_of(&path))
+                    .map(crate::app::git_colour);
+                (path, crate::components::explorer::Decoration { tint, icon })
+            })
+            .collect()
+    }
+
+    /// [`Self::decorations_for_a_folder_node`] by name, for a test.
+    ///
+    /// A `TextureHandle` cannot be read back out of a picture, so what a test asserts on is the map the
+    /// component is handed.
+    pub fn decorations_for_a_folder_node_for_a_test(
+        &mut self,
+        node: NodeId,
+    ) -> std::collections::HashMap<std::path::PathBuf, crate::components::explorer::Decoration> {
+        let ctx = self.context.clone().expect("a window has a context");
+        self.decorations_for_a_folder_node(&ctx, node)
+    }
+
     /// Give a folder node a tree of its own, the first time it is drawn.
     fn make_sure_a_node_has_a_tree(&mut self, node: &Node) {
         if self.space.live.has_a_tree(node.id) {
@@ -1080,6 +1144,64 @@ impl UnluminousApp {
             tree.expand(open);
         }
         self.space.live.put_a_tree(node.id, tree);
+    }
+
+    /// Write down which files a File Editor node holds and which was showing, so they come back.
+    ///
+    /// **Derived rather than reported**, which is `follow_the_open_file`'s rule: a list of the places that
+    /// have to remember to write this down — opening a file, closing a tab, dragging one in, dragging one out
+    /// — is a list whose next entry is the one that forgets. `task-1906`.
+    pub(crate) fn remember_a_nodes_tabs(&mut self, node: NodeId) {
+        let open_here: Vec<std::path::PathBuf> = self
+            .files
+            .tabs_in_node(node)
+            .into_iter()
+            .filter_map(|index| self.files.at(index).path().map(std::path::Path::to_path_buf))
+            .collect();
+        // **A file this node was left holding that another node has open is kept in the record.** One file is
+        // open once — `OpenFiles::open`'s rule — so two nodes naming the same path cannot both hold it, and
+        // whichever view is showing gets it. Forgetting it on the node that lost it would mean coming back to
+        // a node with fewer tabs than it was left with, every time a view was switched. `task-1906`.
+        let was = match self.space.space.current().node(node).map(|found| &found.state) {
+            Some(State::Editor(editor)) => editor.paths.clone(),
+            _ => Vec::new(),
+        };
+        let mut paths = open_here.clone();
+        for path in was {
+            if paths.contains(&path) {
+                continue;
+            }
+            // Only a file another **node** has; one that has simply been closed is gone on purpose.
+            let held_elsewhere = self
+                .files
+                .index_of(&path)
+                .and_then(|index| self.files.at(index).home.node())
+                .is_some_and(|held| held != node);
+            if held_elsewhere {
+                paths.push(path);
+            }
+        }
+        let showing = self
+            .files
+            .tab_in_node(node)
+            .and_then(|index| self.files.at(index).path().map(std::path::Path::to_path_buf))
+            .and_then(|path| paths.iter().position(|other| *other == path))
+            .unwrap_or(0);
+        // Compared before `change`, for the reason `note_where_the_nodes_are_reading` records: `change`
+        // marks the canvas dirty whatever the closure did.
+        let changed = match self.space.space.current().node(node).map(|node| &node.state) {
+            Some(State::Editor(editor)) => editor.paths != paths || editor.showing != showing,
+            _ => false,
+        };
+        if !changed {
+            return;
+        }
+        self.space.space.change(node, |state| {
+            if let State::Editor(editor) = state {
+                editor.paths = paths;
+                editor.showing = showing;
+            }
+        });
     }
 
     /// Write down which folders a folder node has open, so they come back.
@@ -1101,10 +1223,60 @@ impl UnluminousApp {
     /// strip, from the command line, by duplicating one or by deleting the one that was showing all
     /// arrive here without any of them having to remember.
     pub fn bring_the_current_view_to_life(&mut self) {
+        // **What the canvas said before it was brought to life**, so restoring it can be told from changing
+        // it. Bringing a view to life opens each of a node's tabs in turn, and every one of those calls
+        // `remember_a_nodes_tabs`, which compares the tabs open *so far* against the whole saved list: the
+        // first path makes that comparison say the list changed, `Space::change` marks the canvas dirty
+        // whatever the closure did, and the later calls put the list back without clearing the mark. So a
+        // window that opened a project and touched nothing rewrote `space.conf` with byte-identical content,
+        // which is the rule `Space::is_dirty` exists to keep. A comparison here is the cheapest place to
+        // answer it, because it is the one place that knows the whole of the restore is over.
+        let before = match self.space.space.is_dirty() {
+            true => None,
+            false => Some(self.space.space.clone()),
+        };
         self.start_the_canvass_terminals();
         self.open_the_canvass_browsers();
         self.open_the_canvass_editors();
+        self.scroll_the_canvass_folders();
+        // A restore that really changed the canvas — a node whose file has gone, a terminal given a fresh
+        // conversation id — is still dirty and is still written, which is what those cases need.
+        if let Some(before) = before {
+            if before.holds_the_same_as(&self.space.space) {
+                self.space.space.written();
+            }
+        }
         self.space.brought_to_life = Some(self.space.space.current_id());
+    }
+
+    /// Put every folder node's saved scroll back where it was.
+    ///
+    /// **The fourth of the four, and it was missing.** The other three each turn something written down into
+    /// something running; a folder node's rows are already drawn from its own state, so its scroll looked as
+    /// though it needed nothing — and `Folder::scroll` was written to `space.conf` and read back out of it
+    /// while nothing ever put the number anywhere the drawing reads. Where the rows are scrolled to lives in
+    /// `Live::scrolls` rather than on the node, because a node registers no `AreaState` and so can never take
+    /// the wheel itself; the window reads the wheel and answers with `View::scroll_to`, which is the same
+    /// pair the panel's own zoom drives.
+    ///
+    /// It is worse than a scroll that came back at the top, which is what made it worth finding: the first
+    /// idle frame after a restart compared the saved 120 against the live 0, decided the rows had moved, and
+    /// wrote the zero over the file. So one restart lost the number and every later one had nothing to lose.
+    pub(crate) fn scroll_the_canvass_folders(&mut self) {
+        let scrolls: Vec<(NodeId, f32)> = self
+            .space
+            .space
+            .current()
+            .nodes
+            .iter()
+            .filter_map(|node| match &node.state {
+                State::Folder(folder) if folder.scroll > 0.5 => Some((node.id, folder.scroll)),
+                _ => None,
+            })
+            .collect();
+        for (node, scroll) in scrolls {
+            self.space.live.scroll_to(node, scroll);
+        }
     }
 
     /// Start a session behind every terminal node on the view that is showing that has none.
@@ -1129,7 +1301,22 @@ impl UnluminousApp {
             .filter(|node| !self.space.live.has_a_terminal(*node))
             .collect();
         for node in waiting {
-            if let Err(problem) = self.start_a_space_terminal(node, false) {
+            // **A node that already has a conversation is resumed onto it.** `task-1906`: *"terminal session
+            // should still have claude-code open with same session."* `Resume session` on the node's own menu
+            // is what asks for this by hand; a restored node asks for it by itself, because coming back is
+            // exactly the case it was written for. A node with no session recorded starts fresh, which is
+            // every shell and every agent that cannot take an id.
+            let resume = self
+                .space
+                .space
+                .current()
+                .node(node)
+                .and_then(|found| match &found.state {
+                    State::Terminal(terminal) => Some(!terminal.session.trim().is_empty()),
+                    _ => None,
+                })
+                .unwrap_or(false);
+            if let Err(problem) = self.start_a_space_terminal(node, resume) {
                 self.message = Some(problem);
             }
         }
@@ -1142,20 +1329,71 @@ impl UnluminousApp {
     /// since been deleted is left empty rather than refusing, which is the rule the whole of
     /// `project_state` keeps.
     pub(crate) fn open_the_canvass_editors(&mut self) {
-        let waiting: Vec<(NodeId, std::path::PathBuf)> = self
+        // **Every tab, and then the one that was showing.** `task-1906`: a node holds a strip of tabs since
+        // `task-1905`, and opening one path brought one of them back. The caret and the scroll follow the file
+        // that was showing, which is the one thing a node deliberately keeps less of than a pane — see §7 of
+        // the design.
+        let waiting: Vec<(NodeId, Vec<std::path::PathBuf>, usize, usize, f32)> = self
             .space
             .space
             .current()
             .nodes
             .iter()
             .filter_map(|node| match &node.state {
-                State::Editor(editor) => editor.path.clone().map(|path| (node.id, path)),
+                State::Editor(editor) if !editor.paths.is_empty() => Some((
+                    node.id,
+                    editor.paths.clone(),
+                    editor.showing,
+                    editor.caret,
+                    editor.scroll,
+                )),
                 _ => None,
             })
-            .filter(|(node, _)| self.files.tab_in_node(*node).is_none())
+            .filter(|(node, ..)| self.files.tabs_in_node(*node).is_empty())
             .collect();
-        for (node, path) in waiting {
-            let _ = self.open_in_a_space_node(node, &path);
+        for (node, paths, showing, caret, scroll) in waiting {
+            for path in &paths {
+                // **A file already living on another node is left where it is.** `OpenFiles::open`'s rule is
+                // that a file already open is *shown* rather than opened twice — two `Document`s over one path
+                // would be two windows on one file — so `open_in_a_space_node` **moves** the tab. Bringing a
+                // view to life therefore stole a file from a node on the view being left, and the tab
+                // vanished from the canvas somebody came back to. Measured on the installed build: three
+                // paths on one node became two after switching views and back. `task-1906`.
+                //
+                // The path stays written down on both nodes, which is right: it is what each was left
+                // holding, and whichever view is showing opens the ones it can. Nothing is lost, and no node
+                // takes a file out of another.
+                if let Some(open) = self.files.index_of(path) {
+                    if self.files.at(open).home.node().is_some_and(|held| held != node) {
+                        continue;
+                    }
+                }
+                let _ = self.open_in_a_space_node(node, path);
+            }
+            // The one that was showing, and where in it the reader was.
+            let wanted = paths.get(showing.min(paths.len().saturating_sub(1))).cloned();
+            if let Some(wanted) = wanted {
+                if let Some(index) = self.files.index_of(&wanted) {
+                    self.files.show(index);
+                    let end = self.files.at(index).document.text().len_bytes();
+                    self.files
+                        .at_mut(index)
+                        .document
+                        .apply(unluminous_core::Command::PlaceCaret {
+                            offset: caret.min(end),
+                            extend: false,
+                        });
+                    self.files.at_mut(index).scroll = scroll.max(0.0);
+                }
+            }
+            // **Written down again once the right tab is showing.** Opening the tabs one at a time shows each
+            // as it arrives, and every `open_in_a_space_node` calls `remember_a_nodes_tabs` — so by the end of
+            // the loop above the node has recorded the **last** path as the one showing rather than the one it
+            // was left on. The line above then shows the right one, and nothing told the record. It corrected
+            // itself on the next idle frame, so the tab a person saw was right; what was wrong was that a
+            // window which opened a project and touched nothing had a canvas needing to be written, which is
+            // the rule `Space::is_dirty` exists to keep.
+            self.remember_a_nodes_tabs(node);
         }
     }
 
@@ -1189,7 +1427,25 @@ impl UnluminousApp {
         let Some(found) = self.space.space.current().node(node).cloned() else {
             return Err(format!("There is no node {node}."));
         };
-        let settings = self.space_terminal_settings_for(&found, resume)?;
+        // The id this run will use, chosen before the command line is built and written down after it
+        // starts — so a node comes back on the conversation it was on rather than on a new one.
+        let session_wanted = crate::services::agent_tasks::new_session_id();
+        // What the command line will really say about the conversation, asked once and both used and written
+        // down from the one answer.
+        let decided = crate::services::space::launch::session_for(
+            &match &found.state {
+                State::Terminal(terminal) => terminal.command.clone(),
+                _ => String::new(),
+            },
+            &match &found.state {
+                State::Terminal(terminal) => terminal.session.clone(),
+                _ => String::new(),
+            },
+            resume,
+            &session_wanted,
+        )
+        .1;
+        let settings = self.space_terminal_settings_for(&found, resume, &session_wanted)?;
         let parts = space_view::parts_of(&found);
         let font = space_view::font_size_of(&found, self.settings.terminal_font_size);
         let cell = self.renderer.cell_metrics(font);
@@ -1199,6 +1455,30 @@ impl UnluminousApp {
             Ok(session) => {
                 self.space.live.start_terminal(node, session);
                 self.space.live.follow_from_here(node);
+                // **Written down once it really started**, so a node whose program would not start is not
+                // left claiming a conversation nothing is on.
+                //
+                // **And it records what was really sent**, which is `session_for`'s whole reason for
+                // answering with both halves. This used to ask `!resume`, which is not the same question: a
+                // node with no session started with `resume` true — which is what `Resume session` on the
+                // node's own menu does to a node that has never run — was given a fresh `--session-id` and
+                // then recorded nothing, so Claude answered to an id the node had already forgotten and the
+                // next restart resumed nothing. Asking the value that built the command line cannot disagree
+                // with it.
+                if let Some(id) = decided {
+                    if Some(&id)
+                        != self.space.space.current().node(node).and_then(|node| match &node.state {
+                            State::Terminal(terminal) => Some(&terminal.session),
+                            _ => None,
+                        })
+                    {
+                        self.space.space.change(node, |state| {
+                            if let State::Terminal(terminal) = state {
+                                terminal.session = id;
+                            }
+                        });
+                    }
+                }
                 Ok(())
             }
             Err(problem) => Err(format!("The program would not start: {problem}")),
@@ -1214,6 +1494,7 @@ impl UnluminousApp {
         &self,
         found: &Node,
         resume: bool,
+        session_wanted: &str,
     ) -> Result<unluminous_terminal::session::SessionSettings, String> {
         let State::Terminal(terminal) = &found.state else {
             return Err("That node is not a terminal.".to_owned());
@@ -1222,10 +1503,22 @@ impl UnluminousApp {
         let folder = terminal.folder.clone().unwrap_or_else(|| self.tree.root().to_path_buf());
         // **Resolved before it is spawned**, which is what makes `codex` work at all on Windows — see
         // `services::space::launch` for the three files npm installs and which of them can be started.
+        // **An agent that takes a conversation id is given one, and gets the same one back.** `task-1906`:
+        // *"terminal session should still have claude-code open with same session."* A node with a session id
+        // already recorded is resumed onto it; one without is *given* a fresh one, which goes on the command
+        // line as `--session-id` so Claude answers to it afterwards. See `launch::takes_a_session`, and
+        // `agent::why_it_cannot_resume` for the agent this cannot be done for.
+        //
+        // The id is chosen here and written down by the caller, because this function builds a command line
+        // and does not change the canvas — `run_cli`'s own split.
         let mut command = terminal.command.clone();
-        if resume && !terminal.session.is_empty() && !command.trim().is_empty() {
-            command = format!("{command} --resume {}", terminal.session);
-        }
+        let (words, _) = crate::services::space::launch::session_for(
+            &command,
+            &terminal.session,
+            resume,
+            session_wanted,
+        );
+        command.push_str(&words);
         let launch = crate::services::space::launch::resolve(&command, self.settings.shell())?;
         Ok(unluminous_terminal::session::SessionSettings {
             shell: launch.program,
@@ -1267,12 +1560,32 @@ impl UnluminousApp {
     }
 
     /// The same, for a node named by its id, which is what a test asks.
+    ///
+    /// **`fresh` is the id a first run would be given**, and it is the caller's rather than made up here. It
+    /// used to reuse whatever the node had already recorded, which is a command line nothing builds: the real
+    /// path asks `agent_tasks::new_session_id()` every time and only a *resume* reuses the recorded one — so a
+    /// helper that promised "the command line the node would really build" described one no run produces. The
+    /// Codex Sol review found it, and the fix is to make the caller say which run it is asking about, because
+    /// that is the thing the two differ on.
     pub fn space_terminal_settings(
+        &self,
+        node: NodeId,
+        fresh: &str,
+    ) -> Option<unluminous_terminal::session::SessionSettings> {
+        let found = self.space.space.current().node(node)?.clone();
+        self.space_terminal_settings_for(&found, false, fresh).ok()
+    }
+
+    /// The same, as a **restored** node builds it: resuming the conversation it was left on.
+    ///
+    /// What `start_the_canvass_terminals` asks for on a node that has a session recorded, which is the half
+    /// `task-1906` adds and the half a test cannot reach by starting a process.
+    pub fn space_terminal_settings_resuming(
         &self,
         node: NodeId,
     ) -> Option<unluminous_terminal::session::SessionSettings> {
         let found = self.space.space.current().node(node)?.clone();
-        self.space_terminal_settings_for(&found, false).ok()
+        self.space_terminal_settings_for(&found, true, "a-session-for-a-test").ok()
     }
 
     /// Send a browser node to an address.
@@ -1350,11 +1663,7 @@ impl UnluminousApp {
             return Err(format!("{} did not open.", path.display()));
         };
         self.files.move_to_node(index, node);
-        self.space.space.change(node, |state| {
-            if let State::Editor(editor) = state {
-                editor.path = Some(path.to_path_buf());
-            }
-        });
+        self.remember_a_nodes_tabs(node);
         self.focus = Focus::Space;
         self.space.space.choose(Some(node));
         Ok(())
@@ -1467,9 +1776,50 @@ impl UnluminousApp {
             && self.remembers_this_project()
             && self.space.brought_to_life != Some(self.space.space.current_id())
         {
+            // **The view being left is written down before the new one is brought to life.** What
+            // `note_where_the_nodes_are_reading` records is derived from the live state and it only ever walks
+            // the view that is *showing*, so a frame that both moved something and switched view — a wheel and
+            // a chip in one input frame, or a drag that ended on `Duplicate View` — left the last movement
+            // unrecorded: by the next frame the old view was no longer the one being walked. There is nowhere
+            // else to ask it. `show_view` is in `services`, which cannot reach the live state, and there are
+            // seven callers of it — which is `follow_the_open_file`'s rule about a list whose next entry is the
+            // one that forgets. This is the one place that knows the view has changed, so it is the one place
+            // that asks. The Codex Sol review found it.
+            //
+            // It is the *old* view that is walked, because `brought_to_life` still names it: the guard above
+            // is what says a switch has happened and nothing has moved yet.
+            if let Some(leaving) = self.space.brought_to_life {
+                if self.space.space.view(leaving).is_some() {
+                    let showing = self.space.space.current_id();
+                    // Showing a view marks the canvas dirty, and going back to the one that is really showing
+                    // is not a change to write — so whether it needed writing is put back as it was found,
+                    // leaving only whatever the recording itself had to say.
+                    let was_dirty = self.space.space.is_dirty();
+                    self.space.space.show_view(leaving);
+                    self.space.space.written();
+                    self.note_where_the_nodes_are_reading();
+                    let recorded = self.space.space.is_dirty();
+                    self.space.space.show_view(showing);
+                    match was_dirty || recorded {
+                        true => self.space.space.touch(),
+                        false => self.space.space.written(),
+                    }
+                }
+            }
             self.bring_the_current_view_to_life();
         }
         self.space.live.catch_up();
+        // **Only once the view that is showing has been brought to life.** What this writes down is derived
+        // from the live state, and before the nodes have been started that state is *empty* — so on the frames
+        // between a project opening and its canvas coming alive it wrote an empty tab list over the saved one
+        // and a canvas came back with its editor nodes blank. Measured on the installed build: `space.conf`
+        // held three paths before the restart and none after it. `task-1906`.
+        //
+        // The same guard the line above uses, which is the honest one: `brought_to_life` is the view whose
+        // nodes really are running, and reading a node's state before that is reading nothing.
+        if self.space.brought_to_life == Some(self.space.space.current_id()) {
+            self.note_where_the_nodes_are_reading();
+        }
         let carrying: Vec<(NodeId, NodeId)> = self
             .space
             .space
@@ -1481,6 +1831,70 @@ impl UnluminousApp {
             .collect();
         self.space.live.carry_the_pipes(now, &carrying);
         !carrying.is_empty()
+    }
+
+    /// Take down where each node's own file and rows are being read, so they come back there.
+    ///
+    /// **Derived rather than reported**, which is `follow_the_open_file`'s rule and the reason this is one
+    /// function rather than a line at each of the places a caret or a scroll can move: a list of the places
+    /// that have to remember to write it down is a list whose next entry is the one that forgets. `task-1906`
+    /// is the report — the three fields it fills in were written to `space.conf` and read back from it since
+    /// `task-1904`, and nothing ever put a value in one.
+    ///
+    /// **Only when the number changed**, because `Space::change` marks the canvas dirty and a canvas that
+    /// wrote `space.conf` on every frame of a scroll would write a file sixty times a second — which is
+    /// `Space::is_dirty`'s whole reason for existing.
+    pub fn note_where_the_nodes_are_reading(&mut self) {
+        let nodes: Vec<(NodeId, Kind)> = self
+            .space
+            .space
+            .current()
+            .nodes
+            .iter()
+            .map(|node| (node.id, node.kind()))
+            .collect();
+        for (node, kind) in nodes {
+            match kind {
+                Kind::Editor => {
+                    self.remember_a_nodes_tabs(node);
+                    let Some(index) = self.files.tab_in_node(node) else { continue };
+                    let caret = self.files.at(index).document.selection().head;
+                    let scroll = self.files.at(index).scroll;
+                    // **Compared before `change` is called, not inside it.** `Space::change` marks the canvas
+                    // dirty whatever the closure did, so asking inside would write `space.conf` on every
+                    // frame — which is the one thing `is_dirty` exists to prevent.
+                    let moved = match &self.space.space.current().node(node).map(|node| &node.state) {
+                        Some(State::Editor(editor)) => {
+                            editor.caret != caret || (editor.scroll - scroll).abs() > 0.5
+                        }
+                        _ => false,
+                    };
+                    if moved {
+                        self.space.space.change(node, |state| {
+                            if let State::Editor(editor) = state {
+                                editor.caret = caret;
+                                editor.scroll = scroll;
+                            }
+                        });
+                    }
+                }
+                Kind::Folder => {
+                    let scroll = self.space.live.scroll_of(node);
+                    let moved = match &self.space.space.current().node(node).map(|node| &node.state) {
+                        Some(State::Folder(folder)) => (folder.scroll - scroll).abs() > 0.5,
+                        _ => false,
+                    };
+                    if moved {
+                        self.space.space.change(node, |state| {
+                            if let State::Folder(folder) = state {
+                                folder.scroll = scroll;
+                            }
+                        });
+                    }
+                }
+                Kind::Terminal | Kind::Browser => {}
+            }
+        }
     }
 
     /// Write the canvas down when something about it has changed.
@@ -1552,6 +1966,10 @@ impl UnluminousApp {
                 let size = self.space.body.size();
                 self.space.space.current_mut().camera.fit(bounds, size, 32.0);
                 self.space.space.touch();
+            }
+            SpaceAction::Manage => {
+                self.show_a_panel(dock::Panel::Space, true);
+                self.space.managing = Some(crate::components::space::manager::State::default());
             }
             SpaceAction::NewView => {
                 let id = self.space.space.add_view("View");
@@ -1776,6 +2194,9 @@ impl UnluminousApp {
             self.space.space.current_mut().camera.zoom_by(outcome.zoom, body.min, body.center());
             self.space.space.touch();
         }
+        if outcome.manage {
+            self.run_a_space_action(SpaceAction::Manage);
+        }
         if outcome.reset_zoom {
             let body = self.space.body;
             self.space.space.current_mut().camera.zoom_to(1.0, body.min, body.center());
@@ -1898,6 +2319,54 @@ impl UnluminousApp {
         }
     }
 
+    /// The rows the space manager draws: every view of this project's canvas.
+    ///
+    /// Built here rather than in the component, because a component draws and does not reach into the
+    /// window's state — the rule `explorer::Decoration` states and `manager::Row` follows.
+    fn rows_for_the_space_manager(&self) -> Vec<crate::components::space::manager::Row> {
+        let current = self.space.space.current_id();
+        self.space
+            .space
+            .views()
+            .iter()
+            .map(|view| crate::components::space::manager::Row {
+                id: view.id,
+                name: view.name.clone(),
+                nodes: view.nodes.len(),
+                connections: view.edges.len(),
+                showing: view.id == current,
+            })
+            .collect()
+    }
+
+    /// Draw the space manager, when it is open.
+    pub(crate) fn show_the_space_manager(&mut self, ui: &mut egui::Ui) {
+        let Some(mut state) = self.space.managing.take() else { return };
+        let rows = self.rows_for_the_space_manager();
+        let outcome = crate::components::space::manager::show(ui.ctx(), &mut state, &rows);
+        if let Some(view) = outcome.show {
+            self.space.space.show_view(view);
+            self.bring_the_current_view_to_life();
+        }
+        if outcome.add {
+            self.run_a_space_action(SpaceAction::NewView);
+        }
+        // **Another project is another window**, which is §3.2's answer: a canvas names its own project's
+        // files, so opening one here would be a canvas of nodes pointing somewhere else. `Action::OpenFolder`
+        // is the same native dialog and the same `launcher::open_window` every other route uses.
+        if outcome.open_a_project {
+            let ctx = ui.ctx().clone();
+            self.run_action(crate::app::actions::Action::OpenFolder, &ctx);
+        }
+        if let Some((at, view)) = outcome.menu {
+            self.space.in_hand.view = Some(view);
+            self.space.menu = Some((at, Menu::View));
+        }
+        if !outcome.closed {
+            self.space.managing = Some(state);
+        }
+    }
+
     /// Draw the add modal, when it is open.
     pub(crate) fn show_the_space_modal(&mut self, ui: &mut egui::Ui) {
         let Some(mut state) = self.space.adding.take() else { return };
@@ -1966,6 +2435,10 @@ impl UnluminousApp {
             "here" => self.cli_space_here(request),
             "view" => ok(request, "The canvas.", self.space.space.as_json()),
             "list" => self.cli_space_list(request),
+            "manage" => {
+                self.run_a_space_action(SpaceAction::Manage);
+                done(request, "The space manager is open.")
+            }
             "views" => self.cli_space_views(request),
             "open-view" => match self.a_named_view(request) {
                 Ok(id) => {

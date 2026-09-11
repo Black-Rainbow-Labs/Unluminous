@@ -183,6 +183,13 @@ pub struct Folder {
     pub root: Option<std::path::PathBuf>,
     pub expanded: Vec<std::path::PathBuf>,
     pub filter: String,
+    /// How far down its rows are scrolled, in the node's own points.
+    ///
+    /// **Written down, unlike the panel's**, because `task-1906` asks for a canvas to come back as it was and
+    /// a list scrolled somewhere else is a list that moved while nobody was looking. `Live::scrolls` is where
+    /// it lives while the window is open — a value that is read back off the `ScrollArea` every frame — and
+    /// this is what survives the window closing.
+    pub scroll: f32,
     /// How much bigger or smaller than its usual size this node draws its rows.
     ///
     /// A multiplier rather than a point size, because the explorer has none of its own: its rows, its
@@ -195,16 +202,31 @@ pub struct Folder {
 impl Default for Folder {
     /// Written by hand for the zoom, which is 1.0 rather than nothing.
     fn default() -> Self {
-        Self { root: None, expanded: Vec::new(), filter: String::new(), zoom: 1.0 }
+        Self { root: None, expanded: Vec::new(), filter: String::new(), scroll: 0.0, zoom: 1.0 }
     }
 }
 
-/// An editor node: which file, and where it was being read.
+/// An editor node: which files, which one was showing, and where it was being read.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Editor {
-    pub path: Option<std::path::PathBuf>,
-    /// Where the caret was, as a byte offset, which is what every offset in Unluminous is.
+    /// Every file open in this node, in the order the tabs are drawn.
+    ///
+    /// **A list since `task-1906`**, because `task-1905` gave a node a strip of tabs and one path brought
+    /// back one of them. It is the shape `open-files.txt` already has for the panes, and it is written the
+    /// same way: one line, relative to the project wherever the path is inside it.
+    pub paths: Vec<std::path::PathBuf>,
+    /// Which of them was showing, as an index into [`Editor::paths`].
+    ///
+    /// Out of range is treated as the first, which is what a hand edited file can ask for.
+    pub showing: usize,
+    /// Where the caret was in the file that was showing, as a byte offset, which is what every offset in
+    /// Unluminous is.
+    ///
+    /// **The file that was showing and not one per tab.** `open-files.txt` already holds a caret per tab for
+    /// the panes, and a second list here would be a second thing to keep in step — see §7 of
+    /// `tasks/task-1906-space-state-and-manager-tdd.md`.
     pub caret: usize,
+    /// How far the file that was showing was scrolled.
     pub scroll: f32,
     /// How big this node's letters are, or `0.0` to follow `appearance.font.size`.
     ///
@@ -217,7 +239,14 @@ pub struct Editor {
 
 impl Default for Editor {
     fn default() -> Self {
-        Self { path: None, caret: 0, scroll: 0.0, font_size: 0.0 }
+        Self { paths: Vec::new(), showing: 0, caret: 0, scroll: 0.0, font_size: 0.0 }
+    }
+}
+
+impl Editor {
+    /// The file that was showing, when this node had one.
+    pub fn showing(&self) -> Option<&std::path::Path> {
+        self.paths.get(self.showing.min(self.paths.len().saturating_sub(1))).map(|path| path.as_path())
     }
 }
 

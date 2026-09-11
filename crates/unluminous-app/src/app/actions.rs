@@ -780,6 +780,11 @@ pub enum SpaceAction {
     /// Open the modal that asks which node to add.
     OpenAddModal,
     NewView,
+    /// Open the modal that lists every canvas in this project — `task-1906`.
+    ///
+    /// A command whose whole job is to put a control in front of somebody, which is `OpenAddModal`'s shape
+    /// and is what makes it reachable from `action list` and testable without a synthesised click.
+    Manage,
     RenameView,
     DuplicateView,
     DeleteView,
@@ -817,6 +822,7 @@ impl SpaceAction {
             "fit" => SpaceAction::Fit,
             "add" => SpaceAction::OpenAddModal,
             "new-view" => SpaceAction::NewView,
+            "manage" => SpaceAction::Manage,
             "rename-view" => SpaceAction::RenameView,
             "duplicate-view" => SpaceAction::DuplicateView,
             "delete-view" => SpaceAction::DeleteView,
@@ -840,6 +846,7 @@ impl SpaceAction {
             SpaceAction::Fit => "fit".to_owned(),
             SpaceAction::OpenAddModal => "add".to_owned(),
             SpaceAction::NewView => "new-view".to_owned(),
+            SpaceAction::Manage => "manage".to_owned(),
             SpaceAction::RenameView => "rename-view".to_owned(),
             SpaceAction::DuplicateView => "duplicate-view".to_owned(),
             SpaceAction::DeleteView => "delete-view".to_owned(),
@@ -1930,6 +1937,7 @@ pub fn space_menu(state: &MenuState) -> Vec<Entry> {
         ));
     }
     entries.push(Entry::Separator);
+    entries.push(Entry::item("Spaces...", Action::Space(SpaceAction::Manage)));
     entries.push(Entry::item("New View", Action::Space(SpaceAction::NewView)));
     entries.push(Entry::item("Rename View...", Action::Space(SpaceAction::RenameView)));
     entries.push(Entry::item("Duplicate View", Action::Space(SpaceAction::DuplicateView)));

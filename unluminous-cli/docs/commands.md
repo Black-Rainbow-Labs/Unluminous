@@ -1488,6 +1488,18 @@ The nodes on the view that is showing, one a line: id, kind, title, place, size,
 unluminous-cli space list
 ```
 
+### space manage
+
+```
+unluminous-cli space manage
+```
+
+Open the modal that lists every canvas in this project, with a search box over it. What it lists is this project's views — `space views` is the same list as data. A canvas belongs to the project it was made in, because its nodes name that project's files, so the modal's last button opens another project in a window of its own rather than pretending to open its canvas here.
+
+```sh
+unluminous-cli space manage
+```
+
 ### space views
 
 ```

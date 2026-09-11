@@ -139,16 +139,20 @@ fn write_a_node(node: &Node, key: &str, root: &Path, values: &mut Values) {
             if let Some(at) = &folder.root {
                 values.set(&format!("{key}.root"), written(root, at));
             }
-            let expanded: Vec<String> =
-                folder.expanded.iter().map(|path| written(root, path)).collect();
-            values.set_or_clear(&format!("{key}.expanded"), &expanded.join("|"));
+            write_a_list(values, &format!("{key}.expanded"), &folder.expanded, root);
             if (folder.zoom - 1.0).abs() > 0.001 {
                 values.set(&format!("{key}.zoom"), format!("{:.2}", folder.zoom));
             }
+            if folder.scroll > 0.5 {
+                values.set(&format!("{key}.scroll"), format!("{:.1}", folder.scroll));
+            }
         }
         State::Editor(editor) => {
-            if let Some(file) = &editor.path {
-                values.set(&format!("{key}.path"), written(root, file));
+            // **Every tab, `|` separated**, which is `Folder::expanded`'s own shape and `open-files.txt`'s.
+            // `task-1906`: a node holds a strip of tabs since `task-1905`, and one path brought one back.
+            write_a_list(values, &format!("{key}.paths"), &editor.paths, root);
+            if editor.showing > 0 {
+                values.set(&format!("{key}.showing"), editor.showing.to_string());
             }
             values.set(&format!("{key}.caret"), editor.caret.to_string());
             values.set(&format!("{key}.scroll"), format!("{:.1}", editor.scroll));
@@ -156,6 +160,46 @@ fn write_a_node(node: &Node, key: &str, root: &Path, values: &mut Values) {
                 values.set(&format!("{key}.font"), format!("{:.0}", editor.font_size));
             }
         }
+    }
+}
+
+/// A list of paths, one numbered key each.
+///
+/// **A `|` is a legal character in a filename.** Both of these lists were one value with the paths joined by
+/// `|`, which is the shape `Folder::expanded` arrived with — and `/project/a|b.rs` then came back as two paths
+/// that do not exist, so a node lost a tab and a tree lost an open folder. The Codex Sol review found it.
+///
+/// Numbered keys are the shape this repository already writes a list in: `run-configurations.conf` numbers its
+/// configurations `run.N.*` and `files.panes` numbers its panes, precisely so no character in a value can be
+/// the separator. `count` is written as well, so the reader stops where the writer stopped rather than at the
+/// first gap.
+fn write_a_list(values: &mut Values, key: &str, paths: &[std::path::PathBuf], root: &Path) {
+    values.set(&format!("{key}.count"), paths.len().to_string());
+    for (index, path) in paths.iter().enumerate() {
+        values.set(&format!("{key}.{index}"), written(root, path));
+    }
+}
+
+/// The paths under a numbered list, or the older `|` separated value where a file was written by an earlier
+/// version.
+///
+/// The fallback is the rule `Layout::read_from` keeps about a settings file written before the panels could be
+/// moved: a `space.conf` on somebody's disk goes on opening. It is only read when there is no `count`, so a
+/// list that is genuinely empty is not filled in from a stale value.
+fn read_a_list(values: &Values, key: &str, root: &Path) -> Vec<std::path::PathBuf> {
+    match values.number(&format!("{key}.count")) {
+        Some(many) => (0..many.max(0.0) as usize)
+            .filter_map(|index| values.text(&format!("{key}.{index}")))
+            .filter(|part| !part.trim().is_empty())
+            .map(|part| project_state::absolute(root, Path::new(part)))
+            .collect(),
+        None => values
+            .text(key)
+            .unwrap_or_default()
+            .split('|')
+            .filter(|part| !part.trim().is_empty())
+            .map(|part| project_state::absolute(root, Path::new(part)))
+            .collect(),
     }
 }
 
@@ -265,14 +309,9 @@ fn read_a_node(values: &Values, key: &str, root: &Path) -> Option<Node> {
             root: values
                 .text(&format!("{key}.root"))
                 .map(|at| project_state::absolute(root, Path::new(at))),
-            expanded: values
-                .text(&format!("{key}.expanded"))
-                .unwrap_or_default()
-                .split('|')
-                .filter(|part| !part.trim().is_empty())
-                .map(|part| project_state::absolute(root, Path::new(part)))
-                .collect(),
+            expanded: read_a_list(values, &format!("{key}.expanded"), root),
             filter: String::new(),
+            scroll: values.number(&format!("{key}.scroll")).unwrap_or(0.0).max(0.0),
             // A zoom a person set is worth coming back with — it is how big they wanted this node's rows,
             // which is what `panes.<panel>.zoom` is for the panel. `task-1905`.
             zoom: match values.number(&format!("{key}.zoom")).unwrap_or(0.0) {
@@ -281,9 +320,18 @@ fn read_a_node(values: &Values, key: &str, root: &Path) -> Option<Node> {
             },
         }),
         Kind::Editor => State::Editor(Editor {
-            path: values
-                .text(&format!("{key}.path"))
-                .map(|file| project_state::absolute(root, Path::new(file))),
+            // **`paths` first, and the older `path` after it.** A `space.conf` written before `task-1906`
+            // names one file under `path`, and reading it as the node's one tab is what makes a canvas
+            // written by the previous version open unchanged — the rule `Layout::read_from` keeps about a
+            // settings file written before the panels could be moved.
+            paths: match read_a_list(values, &format!("{key}.paths"), root) {
+                found if !found.is_empty() => found,
+                _ => values
+                    .text(&format!("{key}.path"))
+                    .map(|file| vec![project_state::absolute(root, Path::new(file))])
+                    .unwrap_or_default(),
+            },
+            showing: values.number(&format!("{key}.showing")).unwrap_or(0.0).max(0.0) as usize,
             caret: values.number(&format!("{key}.caret")).unwrap_or(0.0).max(0.0) as usize,
             scroll: values.number(&format!("{key}.scroll")).unwrap_or(0.0),
             // `0.0` means "follow `appearance.font.size`", which is the convention a terminal node's own
@@ -325,7 +373,7 @@ mod tests {
         });
         space.change(editor, |state| {
             if let State::Editor(editor) = state {
-                editor.path = Some(project.join("src").join("main.rs"));
+                editor.paths = vec![project.join("src").join("main.rs")];
                 editor.caret = 4821;
             }
         });
@@ -378,6 +426,119 @@ mod tests {
         assert_eq!(now.edges[0].to, was.edges[0].to);
     }
 
+    /// A hand edited file cannot ask for a tab that is not there.
+    ///
+    /// `showing` is an index into `paths`, and `space.conf` is a text file a person can edit — so an index past
+    /// the end, or one on a canvas whose node has no tabs at all, has to answer with something rather than
+    /// panicking. `Editor::showing()` is the one place that is decided, which is why the readers all go
+    /// through it. `task-1906`.
+    #[test]
+    fn a_showing_index_past_the_end_is_the_last_tab_rather_than_a_panic() {
+        use crate::services::space::node::Editor;
+        let one = std::path::PathBuf::from("/a/one.rs");
+        let two = std::path::PathBuf::from("/a/two.rs");
+
+        let held = Editor { paths: vec![one.clone(), two.clone()], showing: 1, ..Editor::default() };
+        assert_eq!(held.showing(), Some(two.as_path()));
+
+        // Past the end, which a hand edited file can ask for.
+        let held = Editor { paths: vec![one.clone(), two.clone()], showing: 99, ..Editor::default() };
+        assert_eq!(held.showing(), Some(two.as_path()), "the last one rather than nothing");
+
+        // And a node with no tabs at all answers with nothing rather than reaching into an empty list.
+        let held = Editor { paths: Vec::new(), showing: 3, ..Editor::default() };
+        assert_eq!(held.showing(), None);
+    }
+
+    /// A `|` in a filename is a character, not a separator.
+    ///
+    /// Both lists a node writes — its tabs and its open folders — were one value with the paths joined by
+    /// `|`, and `|` is legal in a Unix filename. So `a|b.rs` came back as two paths that do not exist, and the
+    /// node quietly lost a tab. They are numbered keys now, which is what `run-configurations.conf` already
+    /// does with a list for exactly this reason. `task-1906`, found by the Codex Sol review.
+    #[test]
+    fn a_pipe_in_a_filename_is_part_of_the_name_rather_than_a_separator() {
+        use crate::services::space::node::{Editor, Folder};
+        let project = Path::new("/projects/thing");
+        let awkward = project.join("a|b.rs");
+        let ordinary = project.join("plain.rs");
+
+        let mut space = a_canvas(project);
+        let editor = space.add_node(Kind::Editor, egui::Pos2::ZERO, None);
+        space.change(editor, |state| {
+            if let State::Editor(held) = state {
+                *held = Editor {
+                    paths: vec![awkward.clone(), ordinary.clone()],
+                    ..Editor::default()
+                };
+            }
+        });
+        let folder = space.add_node(Kind::Folder, egui::Pos2::ZERO, None);
+        space.change(folder, |state| {
+            if let State::Folder(held) = state {
+                *held = Folder { expanded: vec![project.join("with|a|pipe")], ..Folder::default() };
+            }
+        });
+
+        let mut values = Values::new();
+        write(&space, project, &mut values);
+        let back = read(&Values::parse(&values.to_text_headed("x")), project);
+
+        match &back.current().node(editor).expect("the node came back").state {
+            State::Editor(held) => {
+                assert_eq!(
+                    held.paths,
+                    vec![awkward, ordinary],
+                    "the name with a pipe in it came back as two paths that do not exist",
+                );
+            }
+            other => panic!("{other:?}"),
+        }
+        match &back.current().node(folder).expect("the node came back").state {
+            State::Folder(held) => {
+                assert_eq!(held.expanded, vec![project.join("with|a|pipe")]);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// A `space.conf` written by the version before this one still opens.
+    ///
+    /// The lists were `|` separated values, so a file already on somebody's disk names its paths that way.
+    /// This is the rule `Layout::read_from` keeps about a settings file written before the panels could be
+    /// moved: the older spelling is read, and only the newer one is written.
+    #[test]
+    fn a_canvas_written_the_older_way_still_opens() {
+        let project = Path::new("/projects/thing");
+        let text = "\
+space.current = 1
+space.view.0.id = 1
+space.view.0.name = Main
+space.view.0.node.0.id = 2
+space.view.0.node.0.kind = editor
+space.view.0.node.0.paths = one.rs|two.rs
+space.view.0.node.1.id = 3
+space.view.0.node.1.kind = folder
+space.view.0.node.1.expanded = src|src/deeper
+";
+        let back = read(&Values::parse(text), project);
+        match &back.current().node(2).expect("the editor node").state {
+            State::Editor(held) => {
+                assert_eq!(held.paths, vec![project.join("one.rs"), project.join("two.rs")]);
+            }
+            other => panic!("{other:?}"),
+        }
+        match &back.current().node(3).expect("the folder node").state {
+            State::Folder(held) => {
+                assert_eq!(
+                    held.expanded,
+                    vec![project.join("src"), project.join("src").join("deeper")],
+                );
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
     #[test]
     fn a_path_inside_the_project_is_written_relative_so_a_project_that_moves_still_opens() {
         let project = Path::new("/projects/thing");
@@ -398,7 +559,7 @@ mod tests {
             .find(|node| node.kind() == Kind::Editor)
             .expect("the editor node came back");
         let State::Editor(editor) = &editor.state else { panic!("it is an editor") };
-        assert_eq!(editor.path, Some(moved.join("src").join("main.rs")));
+        assert_eq!(editor.paths, vec![moved.join("src").join("main.rs")]);
     }
 
     #[test]

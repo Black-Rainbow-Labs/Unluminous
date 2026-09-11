@@ -7580,6 +7580,7 @@ impl UnluminousApp {
             self.show_the_space(ui);
         }
         self.show_the_space_modal(ui);
+        self.show_the_space_manager(ui);
         if let Some(chosen) = self.show_the_space_menu(ui) {
             action = Some(chosen);
         }
