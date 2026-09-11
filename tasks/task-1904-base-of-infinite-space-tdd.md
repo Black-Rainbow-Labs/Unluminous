@@ -290,9 +290,20 @@ discovered:
   is open. A native child painted over a pane it is no longer inside is the visible fault here.
 
 A connected terminal's agent drives it with `space browser <node> go|back|forward|reload|url`, and
-`space browser <node> shot` writes a screenshot of the node's rectangle to a file and answers with the
-path — the ticket's *"see screenshots"*. It is `window screenshot`'s own code given a rectangle rather
-than a second capture path.
+`space browser <node> shot` writes a picture of the node's rectangle to a file and answers with the
+path. It is `window screenshot`'s own code given a rectangle rather than a second capture path.
+
+**And it photographs the node rather than the page, which is a limitation rather than a fault and is
+said where the command is.** A rendered page is a native child window that the operating system
+composites on top of Unluminous's own surface, and `ViewportCommand::Screenshot` captures that surface
+— so no picture taken from inside Unluminous contains a page, and `window screenshot` has never
+contained one either. Measured on a live 0.39.0: the same `unluminous://` page in the editing area's
+own browser tab, at full height, comes back as an empty rectangle while twenty four `msedgewebview2`
+processes are running and the page is on the screen. What `shot` is for is the node, its address bar
+and where it sits on the canvas; `url` answers where it is, and an agent that has to read what a page
+*says* has its own tools for that. A picture that really contained the page would need a capture of
+the desktop rather than of the surface, which is a platform specific path on both platforms and is
+§14's business rather than this ticket's.
 
 ### 8.3 Folder View
 

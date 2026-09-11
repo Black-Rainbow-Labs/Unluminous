@@ -1783,7 +1783,7 @@ unluminous-cli space font 7 --smaller
 unluminous-cli space browser <node> <command> [--url <address>] [--from <node>] [--path <file>]
 ```
 
-Drive a browser node: `go` to an address, `back`, `forward`, `reload`, `url` to read where it is, and `shot` to write a picture of the node to a file. A window renders one page at a time, so the node acted on is shown first.
+Drive a browser node: `go` to an address, `back`, `forward`, `reload`, `url` to read where it is, and `shot` to write a picture of the node to a file. A window renders one page at a time, so the node acted on is shown first. **`shot` photographs the node as Unluminous drew it and not the page inside it**: a rendered page is a native child window the operating system composites on top, and no picture taken from inside Unluminous contains one. Use it to see the node, its address bar and where it is on the canvas; use `url` to read the address, and the agent's own tools to read what a page says.
 
 - `node` — The browser node's id.
 - `command` — go, back, forward, reload, url or shot.

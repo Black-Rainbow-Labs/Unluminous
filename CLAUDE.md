@@ -662,6 +662,15 @@ toolbar and say the page is showing in another node, which is the sentence `brow
 says for a second rendered tab in another pane. The canvas's tabs are reconciled in the same list the
 editing area's are, in `raw_input_hook`, for the same reason.
 
+**And no screenshot Unluminous takes contains a page.** A rendered page is a native child window the
+operating system composites on top of the surface `ViewportCommand::Screenshot` captures, so `window
+screenshot` has never held one and `space browser <node> shot` does not either — what it photographs is
+the node, its address bar and where it is on the canvas. Measured on 0.39.0 rather than assumed: the
+same `unluminous://` page in the editing area's own browser tab, at full height, comes back as an empty
+rectangle while two dozen `msedgewebview2` processes are running. A picture that really held the page
+would be a capture of the **desktop** rather than of the surface, which is what
+`documentation/overview.md` was taken with and is a platform specific path on both platforms.
+
 **The canvas is written when it changes and not on every frame.** `Space::is_dirty` is set by every
 mutation and cleared by the write, so dragging a node writes `.unluminous/space.conf` once at the end
 rather than sixty times a second — which is the one thing this deliberately does not copy from
