@@ -149,6 +149,16 @@ fi
 # Everything GitHub needs is checked here, before anything is changed, so a missing credential cannot
 # leave a pushed tag with no release behind it.
 #
+# **And the credential is *asked for* with the repository path on it.** `~/.gitconfig` routes github.com by
+# repository owner — a longer `credential.<url>` section wins, so `credential "https://github.com/jasonmcaffee"`
+# names the keychain and the bare `credential "https://github.com"` names `gh` for everything else. A
+# `git credential fill` carrying only `host=github.com` cannot match the longer section, so it is answered by
+# `gh`, which is logged in as the account that cannot see this repository. Measured: the same keychain, asked
+# with `path=jasonmcaffee/unluminous`, answers with a token that gets **200** on the repository, and asked
+# without it answers with one that gets **404** — which is why `git push` worked while this refused, and why
+# the message said to set `GH_TOKEN` on a machine that already had a perfectly good credential. The pathless
+# forms are still tried, last, for a machine whose routing is by host alone.
+#
 # **The credential is checked against this repository, not just against `/user`.** Asking `/user` only
 # proves a token is a token. This machine has two GitHub accounts in play — `~/.gitconfig` routes
 # github.com through `gh auth git-credential`, and that `gh` is logged in as an account which cannot see
@@ -164,13 +174,24 @@ if [ "$skip_publish" != 1 ]; then
     candidates=()
     [ -n "${GH_TOKEN:-}" ] && candidates+=("$GH_TOKEN")
     [ -n "${GITHUB_TOKEN:-}" ] && candidates+=("$GITHUB_TOKEN")
-    from_keychain="$(printf 'protocol=https\nhost=github.com\n\n' \
+    from_keychain="$(printf 'protocol=https\nhost=github.com\npath=%s\n\n' "$slug" \
         | git -c credential.helper=osxkeychain credential fill 2>/dev/null \
         | sed -nE 's/^password=(.*)$/\1/p' | head -1)"
     [ -n "$from_keychain" ] && candidates+=("$from_keychain")
-    from_chain="$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill 2>/dev/null \
+    from_chain="$(printf 'protocol=https\nhost=github.com\npath=%s\n\n' "$slug" \
+        | git credential fill 2>/dev/null \
         | sed -nE 's/^password=(.*)$/\1/p' | head -1)"
     [ -n "$from_chain" ] && candidates+=("$from_chain")
+    # And the same two without a path, last, so a machine whose routing is by host alone still works.
+    for bare in \
+        "$(printf 'protocol=https\nhost=github.com\n\n' \
+            | git -c credential.helper=osxkeychain credential fill 2>/dev/null \
+            | sed -nE 's/^password=(.*)$/\1/p' | head -1)" \
+        "$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill 2>/dev/null \
+            | sed -nE 's/^password=(.*)$/\1/p' | head -1)"
+    do
+        [ -n "$bare" ] && candidates+=("$bare")
+    done
 
     [ "${#candidates[@]}" -gt 0 ] || die "No GitHub credential is stored for github.com. Push once, or set GH_TOKEN, and run this again."
 
