@@ -8,6 +8,13 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- The second round of reported issues, and task-1848's last four sections (`task-1905`)
+- A canvas comes back in the state it was left in, and a manager to find one (`task-1906`)
+- The design for six more reports about the canvas (`task-1907`)
+- The remaining sections of the design (`task-1907`)
+
+## 0.39.1 — 2026-09-10
+
 - Say that no screenshot Unluminous takes contains a web page (`task-1904`)
 
 ## 0.39.0 — 2026-09-10
