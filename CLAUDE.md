@@ -610,6 +610,77 @@ test asks for `Todos` and the drawing is what shouts. And a sprint or an epic is
 line **by its name**, because that is what is on the screen: `split_off_a_name` takes the longest run of
 arguments that names one, so `sprint-rename August 2nd Half September` needs no id.
 
+## The canvas is a fifth panel, and a node is where a tab can live
+
+`task-1904` asks for a new view called the **Base of Infinite Space**: an infinite canvas holding a
+terminal, a web page, a folder tree and a file editor, wired together so an agent running in a
+terminal node can drive what it is connected to. `tasks/task-1904-base-of-infinite-space-tdd.md` is
+the design and Chordical's own node graph is the picture it is measured against, redrawn in the dark
+neumorphism the board is in.
+
+**It is core rather than a plugin, and the ticket says why**: *"since we'll have so many similar
+components, it probably makes sense to have this be core functionality"*. The stronger reason is that
+three of its four node kinds need something a provider cannot reach — `OpenFiles`, a `Document`, and
+the one native browser child the window owns. What it keeps from the plugin shape is everything
+`pane.*` buys: `app::dock::Panel` gained a fifth variant, `Panel::Space`, so the rail button, the four
+`Move to` rows, the drop bands, the divider and `Cmd`+`Shift`+`M` all arrived with no code of their
+own. `settings::Panes` said of itself that "a fifth panel would be a fifth arm here and nowhere else",
+and it was.
+
+**A zoom costs a matrix, not a relayout.** Each node draws into an `egui` layer of its own carrying a
+`TSTransform` with the camera in it, made a sublayer of the pane's so it is composited directly above
+it. A terminal keeps its cell count and an editor keeps its line breaks while the canvas is scaled,
+which is what "buttery smooth" has to mean. The cost is stated rather than hidden: a layer's mesh is
+tessellated at its own scale and then scaled, so text at a zoom other than 1.0 is scaled pixels. At
+1.0, the default and where somebody reads code, it is exact. Two things follow from the layers. A
+node's decoration is recorded in **screen** points into the pane's own `Chrome`, because that canvas is
+rasterised once underneath every node layer, so the Gaussians are drawn at the size they are seen at.
+And a node's contents are clipped clear of `components::resize_edges` — a sublayer is above the pane,
+so without that a node against the window's edge would take the drag that resizes the window, which is
+the one place the "added last" rule cannot reach.
+
+**`OpenFile::pane` became `OpenFile::home`**, and that one change is what makes a File Editor node the
+editing area rather than a second editor. `Home` is `Pane(usize)` or `Node(u64)`, `OpenFiles::focus` is
+one too, and the canvas borrows the focus exactly as the pane loop does — so `files.active()` answers
+with the node's file while the node has the keyboard, and the gutter, the folds, the breakpoints, git
+blame, `Ctrl+F`, go to definition, `editor text` and `tab save` all work with nothing duplicated.
+`OpenFiles`'s two invariants are explicitly about the **panes** now: a tab living on a node is in no
+pane, cannot leave one empty and is not renumbered into one. `move_to_node` leaves a fresh untitled tab
+behind when it takes the last one, which is `close`'s own promise.
+
+**A connection grants control, and carries text only when it is asked to.** `space browser`, `space
+folder`, `space editor` and `space send` all take `--from`, and a node that is not wired to its target
+is refused with the list of what it *is* wired to; a command with no `--from` is the window's own agent
+and may reach everything. Each terminal node's environment carries `UNLUMINOUS_SPACE_NODE`, so an agent
+started in one knows which node it is without being told. `Edge::pipe` is off unless somebody turns it
+on, because a shell's output is its prompt and its escape sequences as well as its answers — and **a
+line that arrived through a pipe is never sent back out**, which is the one rule that stops two
+terminals wired both ways looping for ever. `services::space::pipe` is that rule and its test.
+
+**One browser node renders at a time**, because a window has one native child view: the others draw the
+toolbar and say the page is showing in another node, which is the sentence `browser_view::show` already
+says for a second rendered tab in another pane. The canvas's tabs are reconciled in the same list the
+editing area's are, in `raw_input_hook`, for the same reason.
+
+**The canvas is written when it changes and not on every frame.** `Space::is_dirty` is set by every
+mutation and cleared by the write, so dragging a node writes `.unluminous/space.conf` once at the end
+rather than sixty times a second — which is the one thing this deliberately does not copy from
+`project_state`, which writes every frame. What comes back is a canvas, not a moment: a terminal node
+returns as a fresh session running the same command in the same folder, which is `project_state`'s own
+promise about the terminal tile, with the agent's session id added so a node can offer to resume the
+conversation.
+
+**A frame is asked for by a pipe, never by a session that exists.** A terminal that prints wakes the
+window itself, through the waker its session was started with; asking for a frame because a session is
+running would keep an idle window drawing for as long as a shell sat at its prompt, and it is what made
+the first screenshot test panic on `Harness::run exceeded max_steps`. What genuinely needs a frame is
+reading a pipe, which is a poll on a clock.
+
+`unluminous-cli space` is the agent's half — twenty three commands, every one of them going through the
+same function the pointer does. The MCP grouped schema grew from 18,511 tokens to 20,365 to hold it,
+which is the largest single move that number has made and is recorded beside the others in
+`mcp::tools`.
+
 ## A colour is a question, and the list of names is still closed
 
 `task-1776` asks for themes, and the thing in the way was that `theme::color` was forty `const`s read
@@ -3713,6 +3784,11 @@ trade that away to be a shade nearer a screenshot.
   things `epaint` cannot draw of the picture, the `Decor`/`Chrome`/`Canvas` seam, the five plugin
   architecture changes, and the cost — what was measured, what was kept, what was rejected, and the one
   lever that cannot be pulled while epaint shares the crate.
+- `tasks/task-1904-base-of-infinite-space-tdd.md` — the Base of Infinite Space: why the canvas is a
+  fifth core panel rather than a plugin, how a zoom costs a matrix rather than a relayout and what
+  that costs in return, the two coordinate systems a node is drawn in, `OpenFile::home` and what it
+  buys a File Editor node, what a connection means and the echo rule that stops two terminals looping,
+  why one browser node renders at a time, and the six things deliberately left out.
 - `tasks/task-1767-agent-chat-tdd.md` — the chat pane: how the picture it is measured against was
   rebuilt out of the ai-service LLM chat page's own CSS rather than photographed, why the streaming
   client is a crate of its own with a scripted server behind its tests, the two wire shapes and the

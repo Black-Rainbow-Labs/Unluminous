@@ -78,6 +78,10 @@ impl Action {
             // from what it moves — the rule the whole file keeps.
             Action::Dock { panel, side } => format!("dock-{}-{}", panel.name(), side.name()),
             Action::ResetPanelLayout => "reset-panel-layout".to_owned(),
+            // The canvas's own actions, `task-1904`. One name a variant, spelled the way every other
+            // name here is, so `unluminous-cli action run space-add-terminal` works the day the entry
+            // is written.
+            Action::Space(what) => format!("space-{}", what.name()),
             Action::Run(what) => format!("run-{}", what.name()),
             Action::Debug(what) => format!("debug-{}", what.name()),
             Action::CloseTab => "close-tab".to_owned(),
@@ -133,6 +137,11 @@ impl Action {
             // entry, and it would be a worse escape hatch if it could not name the thing to run.
             let named = path.as_ref().map(|named| named.to_string_lossy().to_string());
             return RunAction::from_name(rest, named).map(Action::Run);
+        }
+        // The canvas's own, `task-1904`. Before `debug-`, which is only an ordering on the page:
+        // no name is a prefix of another's, because every area's prefix is its own word.
+        if let Some(rest) = name.strip_prefix("space-") {
+            return crate::app::actions::SpaceAction::from_name(rest).map(Action::Space);
         }
         if let Some(rest) = name.strip_prefix("debug-") {
             // The argument names a **configuration** here rather than a file, exactly as it does for

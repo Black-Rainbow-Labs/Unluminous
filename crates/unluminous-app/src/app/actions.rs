@@ -130,6 +130,12 @@ pub enum Action {
     Dock { panel: crate::app::dock::Panel, side: crate::app::dock::Side },
     /// Put every panel back where a new Unluminous has it.
     ResetPanelLayout,
+    /// Something about the Base of Infinite Space — `task-1904`.
+    ///
+    /// One variant carrying a second enum rather than a dozen variants here, because every one of them
+    /// is about the canvas and `Action` is already long enough that a reader scrolls it. `GitAction`
+    /// set the precedent and `run_action` dispatches the same way.
+    Space(SpaceAction),
     /// Anything on the Run menu, or on the run widget in the title bar.
     Run(RunAction),
     /// Anything on the Run menu's debug half, the debug tile or the gutter's own menu.
@@ -749,6 +755,93 @@ pub fn key_name(key: egui::Key) -> &'static str {
     }
 }
 
+/// What a canvas command is about — `task-1904`.
+///
+/// **Every entry is about the node, the wire or the view that is in hand**, which is
+/// `actions::tab_menu`'s rule restated: a right click chooses what it was over *before* the menu is
+/// drawn, so the entries are parameterless and the `View` menu, the keyboard and `unluminous-cli
+/// action run` can all ask for them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpaceAction {
+    /// Show or hide the canvas.
+    Toggle,
+    /// Put a node of this kind on the canvas, in the middle of what is showing.
+    Add(crate::services::space::Kind),
+    /// Move the camera so every node is on the screen at once.
+    Fit,
+    /// Open the modal that asks which node to add.
+    OpenAddModal,
+    NewView,
+    RenameView,
+    DuplicateView,
+    DeleteView,
+    RenameNode,
+    CloseNode,
+    /// Start the chosen terminal node's program again, in the same folder.
+    RestartNode,
+    /// Start it again as `--resume <session>`, for an agent that named one.
+    ResumeSession,
+    /// Take away the connection that was right clicked.
+    Disconnect,
+    /// Turn the connection that was right clicked into one that carries lines, or back.
+    CarryLines(bool),
+}
+
+impl SpaceAction {
+    /// The action a name reads back as, which is what `action run space-add-terminal` needs.
+    ///
+    /// Written beside [`Self::name`] rather than in `action_names.rs`, because the two are inverses
+    /// of each other and a test asserts that they are: a pair kept in two files is a pair that comes
+    /// apart.
+    pub fn from_name(name: &str) -> Option<SpaceAction> {
+        if let Some(kind) = name.strip_prefix("add-") {
+            return crate::services::space::Kind::from_name(kind).map(SpaceAction::Add);
+        }
+        Some(match name {
+            "toggle" => SpaceAction::Toggle,
+            "fit" => SpaceAction::Fit,
+            "add" => SpaceAction::OpenAddModal,
+            "new-view" => SpaceAction::NewView,
+            "rename-view" => SpaceAction::RenameView,
+            "duplicate-view" => SpaceAction::DuplicateView,
+            "delete-view" => SpaceAction::DeleteView,
+            "rename-node" => SpaceAction::RenameNode,
+            "close-node" => SpaceAction::CloseNode,
+            "restart-node" => SpaceAction::RestartNode,
+            "resume-session" => SpaceAction::ResumeSession,
+            "disconnect" => SpaceAction::Disconnect,
+            "carry-lines" => SpaceAction::CarryLines(true),
+            "stop-carrying-lines" => SpaceAction::CarryLines(false),
+            _ => return None,
+        })
+    }
+
+    /// The name the command line calls this, after `space-`.
+    pub fn name(self) -> String {
+        match self {
+            SpaceAction::Toggle => "toggle".to_owned(),
+            SpaceAction::Add(kind) => format!("add-{}", kind.name()),
+            SpaceAction::Fit => "fit".to_owned(),
+            SpaceAction::OpenAddModal => "add".to_owned(),
+            SpaceAction::NewView => "new-view".to_owned(),
+            SpaceAction::RenameView => "rename-view".to_owned(),
+            SpaceAction::DuplicateView => "duplicate-view".to_owned(),
+            SpaceAction::DeleteView => "delete-view".to_owned(),
+            SpaceAction::RenameNode => "rename-node".to_owned(),
+            SpaceAction::CloseNode => "close-node".to_owned(),
+            SpaceAction::RestartNode => "restart-node".to_owned(),
+            SpaceAction::ResumeSession => "resume-session".to_owned(),
+            SpaceAction::Disconnect => "disconnect".to_owned(),
+            SpaceAction::CarryLines(on) => {
+                match on {
+                    true => "carry-lines".to_owned(),
+                    false => "stop-carrying-lines".to_owned(),
+                }
+            }
+        }
+    }
+}
+
 /// One row of a menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entry {
@@ -873,6 +966,18 @@ pub struct MenuState {
     pub line_numbers: bool,
     pub terminal_visible: bool,
     pub terminal_tabs: usize,
+    /// Whether the Base of Infinite Space is showing — `task-1904`.
+    pub space_visible: bool,
+    /// What the chosen node is, when one is chosen, and whether it has a session to resume.
+    ///
+    /// The menu is about the node in hand, so the rows that cannot apply to it are absent: `Restart`
+    /// and `Resume session` mean nothing on a web page, which is Unluminous's rule that a control
+    /// which cannot apply is not drawn at all.
+    pub space_node: Option<(crate::services::space::Kind, bool)>,
+    /// Whether the connection in hand carries lines, which is what ticks its row.
+    pub space_pipe: bool,
+    /// How many views the canvas has, which is what dims `Delete View` on the last one.
+    pub space_views: usize,
     /// True when the folder that is open is in a git repository. With none, every git entry is
     /// dimmed rather than absent, so the menu does not change shape depending on where you are.
     pub in_repository: bool,
@@ -1669,6 +1774,20 @@ fn view_menu(state: &MenuState) -> Menu {
                 Action::ToggleDebugTile,
             )
             .checked(state.debug_tile_visible),
+            // The Base of Infinite Space — `task-1904`. One row that shows it and a submenu for the
+            // things somebody looks for in a menu once the canvas is in front of them. It is a
+            // submenu rather than eight more rows for `task-1686`'s reason: a submenu here is drawn
+            // inline, and this menu is already long enough to scroll in a small window.
+            Entry::item(
+                if state.space_visible {
+                    "Hide Base of Infinite Space"
+                } else {
+                    "Base of Infinite Space"
+                },
+                Action::Space(SpaceAction::Toggle),
+            )
+            .checked(state.space_visible),
+            Entry::Submenu { name: "Base of Infinite Space".to_owned(), entries: space_menu(state) },
             // The one row of `task-1697` that is worth a place in the bar. Moving a panel is a drag,
             // or its own right click menu, or `unluminous-cli panel dock`; putting them all back is the
             // thing somebody looks for in a menu, because by then they have lost one.
@@ -1734,6 +1853,85 @@ pub fn terminal_tab_menu() -> Vec<Entry> {
         Entry::item("Close", Action::CloseTerminalTab),
         Entry::Separator,
         Entry::item("New Terminal Tab", Action::NewTerminalTab),
+    ]
+}
+
+/// What the `View -> Base of Infinite Space` submenu holds — `task-1904`.
+///
+/// The rows that are about one node are here too, and are **dimmed** rather than absent when nothing
+/// is chosen: a submenu that changed shape as a node was clicked would be a submenu whose rows moved
+/// under the pointer. A row that could never apply to the chosen node is a different question and is
+/// absent — see [`space_node_menu`].
+pub fn space_menu(state: &MenuState) -> Vec<Entry> {
+    let mut entries = vec![
+        Entry::item("Add Node...", Action::Space(SpaceAction::OpenAddModal)),
+        Entry::item("Fit Everything in View", Action::Space(SpaceAction::Fit)),
+        Entry::Separator,
+    ];
+    for kind in crate::services::space::Kind::ALL {
+        entries.push(Entry::item(
+            &format!("Add {}", kind.label()),
+            Action::Space(SpaceAction::Add(kind)),
+        ));
+    }
+    entries.push(Entry::Separator);
+    entries.push(Entry::item("New View", Action::Space(SpaceAction::NewView)));
+    entries.push(Entry::item("Rename View...", Action::Space(SpaceAction::RenameView)));
+    entries.push(Entry::item("Duplicate View", Action::Space(SpaceAction::DuplicateView)));
+    entries.push(
+        Entry::item("Delete View", Action::Space(SpaceAction::DeleteView))
+            .enabled(state.space_views > 1),
+    );
+    entries.push(Entry::Separator);
+    entries.push(
+        Entry::item("Rename Node...", Action::Space(SpaceAction::RenameNode))
+            .enabled(state.space_node.is_some()),
+    );
+    entries.push(
+        Entry::item("Close Node", Action::Space(SpaceAction::CloseNode))
+            .enabled(state.space_node.is_some()),
+    );
+    entries
+}
+
+/// What a node's own right click menu holds.
+///
+/// `Restart` and `Resume session` are **absent** on a node that is not a terminal rather than dimmed,
+/// which is Unluminous's rule for a control that can never apply — the `F` button is not drawn for a
+/// `.rs` file for the same reason. `Resume session` is absent again when the node's program never
+/// named a conversation, because there is nothing to resume.
+pub fn space_node_menu(state: &MenuState) -> Vec<Entry> {
+    let mut entries = vec![Entry::item("Rename...", Action::Space(SpaceAction::RenameNode))];
+    if let Some((crate::services::space::Kind::Terminal, session)) = state.space_node {
+        entries.push(Entry::item("Restart", Action::Space(SpaceAction::RestartNode)));
+        if session {
+            entries.push(Entry::item("Resume Session", Action::Space(SpaceAction::ResumeSession)));
+        }
+    }
+    entries.push(Entry::Separator);
+    entries.push(Entry::item("Close", Action::Space(SpaceAction::CloseNode)));
+    entries
+}
+
+/// What a connection's own right click menu holds.
+pub fn space_wire_menu(state: &MenuState) -> Vec<Entry> {
+    vec![
+        Entry::item("Carry Lines", Action::Space(SpaceAction::CarryLines(!state.space_pipe)))
+            .checked(state.space_pipe),
+        Entry::Separator,
+        Entry::item("Disconnect", Action::Space(SpaceAction::Disconnect)),
+    ]
+}
+
+/// What a view's own chip holds, which is the four things the ticket asks for by name.
+pub fn space_view_menu(state: &MenuState) -> Vec<Entry> {
+    vec![
+        Entry::item("Rename...", Action::Space(SpaceAction::RenameView)),
+        Entry::item("Duplicate", Action::Space(SpaceAction::DuplicateView)),
+        Entry::Separator,
+        Entry::item("Delete", Action::Space(SpaceAction::DeleteView)).enabled(state.space_views > 1),
+        Entry::Separator,
+        Entry::item("New View", Action::Space(SpaceAction::NewView)),
     ]
 }
 

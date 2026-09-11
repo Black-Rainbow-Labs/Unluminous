@@ -112,6 +112,12 @@ pub struct ProjectState {
     pub editor_visible: bool,
     /// True when the terminal tile was showing.
     pub terminal_visible: bool,
+    /// True when the Base of Infinite Space was showing - `task-1904`.
+    ///
+    /// False for a file that does not mention it, which is every file written before this: a canvas
+    /// nobody has opened is one nobody asked for, and opening a project into one would be the window
+    /// deciding something it was never told.
+    pub space_visible: bool,
     /// How many terminal tabs there were. The shells themselves cannot be brought back — what a
     /// program was doing when the window closed is gone — so what is restored is the same number of
     /// fresh shells in the project's own folder, which is what a person means by "my terminals were
@@ -201,6 +207,9 @@ pub fn load(root: &Path) -> ProjectState {
     if let Some(on) = values.flag("terminal.visible") {
         state.terminal_visible = on;
     }
+    if let Some(on) = values.flag("space.visible") {
+        state.space_visible = on;
+    }
     if let Some(on) = values.flag("run.visible") {
         state.run_visible = on;
     }
@@ -275,6 +284,7 @@ pub fn save(root: &Path, state: &ProjectState) {
     values.set("explorer.visible", flag(state.explorer_visible));
     values.set("editor.visible", flag(state.editor_visible));
     values.set("terminal.visible", flag(state.terminal_visible));
+    values.set("space.visible", flag(state.space_visible));
     values.set("terminal.tabs", state.terminal_tabs.to_string());
 
     if let Some(place) = state.window.filter(WindowPlace::is_sensible) {
@@ -538,6 +548,7 @@ mod tests {
             expanded_folders: vec![root.join("chapters")],
             explorer_visible: false,
             editor_visible: true,
+            space_visible: true,
             terminal_visible: true,
             terminal_tabs: 2,
             terminal_tab_names: vec!["build".to_owned(), String::new()],

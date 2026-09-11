@@ -81,6 +81,24 @@ pub struct Decoration {
     pub icon: Option<egui::TextureHandle>,
 }
 
+/// Where this tree is being drawn.
+///
+/// `task-1904` puts the folder panel on the canvas as a **Folder View node**, and the ticket asks for
+/// the "exact same style and functionality". So this is one component with one argument rather than a
+/// second tree: everything about a row - the icons, the disclosure marks, the right click menu, the
+/// drag that moves a file, the keyboard - is the same code, and what changes is only the furniture
+/// that belongs to a *panel*.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Host {
+    /// The window's own panel: the heading strip that is also the dock handle, the project's row, and
+    /// the button that puts the panel away.
+    #[default]
+    Panel,
+    /// A node on the canvas, which has a header of its own to be moved and closed by, so none of that
+    /// furniture is drawn.
+    Node,
+}
+
 /// What the window tells the explorer about itself.
 ///
 /// A struct rather than six more arguments, because the list had reached the length at which a
@@ -115,6 +133,8 @@ pub struct View<'a> {
     /// applied to a list. The window works it out, because the window is what knows where the pointer was
     /// and what the zoom was before it changed; this component only obeys.
     pub scroll_to: Option<f32>,
+    /// Whether this is the window's panel or a node on the canvas - `task-1904`.
+    pub host: Host,
 }
 
 impl View<'_> {
@@ -184,6 +204,23 @@ pub fn show(
     let painter = ui.painter_at(area);
     painter.rect_filled(area, CornerRadius::ZERO, crate::theme::faded(color::explorer(), view.opacity));
 
+    // **A node has none of the panel's furniture**, because it has a header of its own to be moved
+    // and closed by. Everything below this block is the same code for both - `task-1904`.
+    let heading = match view.host {
+        Host::Panel => view.at(36.0),
+        Host::Node => view.at(6.0),
+    };
+    // Read again after the rows, as the drop target for the project's own row, so it is worked out
+    // here rather than inside the block below. A node has no such row, and `Rect::NOTHING` is a
+    // rectangle no pointer is ever inside.
+    let heading_hit = match view.host {
+        Host::Panel => Rect::from_min_max(
+            Pos2::new(area.left(), area.top() + view.at(8.0)),
+            Pos2::new(area.right() - view.at(34.0), area.top() + view.at(36.0)),
+        ),
+        Host::Node => Rect::NOTHING,
+    };
+    if view.host == Host::Panel {
     // The heading strip is the handle this panel is carried to another edge by — `task-1697`, and
     // it is what the ask means by "the top bar". Added **first**, so the project's own row and the
     // hide button, which are added after it, take the points they cover: egui gives a pointer to the
@@ -230,10 +267,6 @@ pub fn show(
     // one folder in the tree that has no row of its own to right click. It takes no left click:
     // there is nothing to open or close about the root, which is always shown. It is a drop target,
     // though, because moving something back to the top of the project has to be possible.
-    let heading_hit = Rect::from_min_max(
-        Pos2::new(area.left(), area.top() + view.at(8.0)),
-        Pos2::new(area.right() - view.at(34.0), area.top() + view.at(36.0)),
-    );
     let heading_response =
         ui.interact(heading_hit, ui.id().with("explorer-heading"), Sense::click());
     if heading_response.secondary_clicked() {
@@ -280,10 +313,11 @@ pub fn show(
             outcome.hide = true;
         }
     }
+    }
 
     // The filter box.
     let filter_rect = Rect::from_min_size(
-        Pos2::new(area.left() + view.at(12.0), area.top() + view.at(36.0)),
+        Pos2::new(area.left() + view.at(12.0), area.top() + heading),
         Vec2::new(area.width() - view.at(24.0), view.at(24.0)),
     );
     painter.rect(
@@ -329,7 +363,12 @@ pub fn show(
 
     // The rows: either the tree, or a flat list of what matches the filter.
     let list_top = filter_rect.bottom() + view.at(12.0);
-    let footer_top = area.bottom() - view.at(size::EXPLORER_FOOTER);
+    let footer_top = match view.host {
+        Host::Panel => area.bottom() - view.at(size::EXPLORER_FOOTER),
+        // A node has no footer: the strip that counts the project's files belongs to the panel, and a
+        // node is as tall as somebody dragged it.
+        Host::Node => area.bottom(),
+    };
     let list_rect = Rect::from_min_max(Pos2::new(area.left(), list_top), Pos2::new(area.right(), footer_top));
     let filtering = !filter.trim().is_empty();
 

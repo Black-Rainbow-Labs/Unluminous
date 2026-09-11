@@ -117,5 +117,10 @@
 
 {"id":"s26-chat","area":"chat","name":"Configure and read the agent chat pane",
  "expect":"Uses the chat area to open the pane, say which providers are configured and read the transcript back, rather than saying it cannot see the pane.",
- "prompts":["Open the agent chat pane on the right, tell me which providers are configured, and read back whatever is in the transcript."]}
+ "prompts":["Open the agent chat pane on the right, tell me which providers are configured, and read back whatever is in the transcript."]},
+
+{"id":"s27-space","area":"space","name":"Wire a terminal to a browser on the canvas and drive it",
+ "expect":"Uses the space area to open the canvas, add two nodes, connect them, then drive the browser as the terminal node with --from and read the address back, rather than opening a tab or shelling out.",
+ "prompts":["Open the Base of Infinite Space, put a terminal node and a web browser node on it, and connect the terminal to the browser.",
+            "Now, acting as that terminal node, send the browser to https://example.com/ and tell me what address it ended up on."]}
 ]

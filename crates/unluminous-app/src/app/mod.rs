@@ -43,6 +43,7 @@ pub mod files;
 pub mod folding;
 pub mod git;
 pub mod hover_value;
+pub mod space;
 pub mod symbols;
 
 use std::collections::HashMap;
@@ -303,6 +304,12 @@ pub enum Focus {
     Explorer,
     /// The terminal. Typing goes to the program running in it, and Tab and Escape go with it.
     Terminal,
+    /// The Base of Infinite Space. Typing goes to whichever node is chosen - `task-1904`.
+    ///
+    /// A sixth holder rather than a flag on the canvas, for the reason `Focus::Plugin` is a fifth: `Focus`
+    /// is the one value that says who has the keyboard, and a canvas that kept its own would leave the
+    /// editing area holding the keys as well, so one press would reach both.
+    Space,
     /// A plugin's own pane or tab. Typing goes to whatever it has that takes keys.
     ///
     /// A fifth holder rather than a flag on the plugin, because `Focus` is the one value that says who has the
@@ -580,6 +587,11 @@ pub struct UnluminousApp {
     /// The last project and open file every provider was told about, so it is told only when it
     /// changes. See `tell_the_plugins_what_is_showing`.
     told_the_plugins: Option<(Option<PathBuf>, Option<PathBuf>)>,
+    /// The Base of Infinite Space: the canvas, what is running on it, and what is being dragged.
+    ///
+    /// `task-1904`. Core rather than a plugin because three of its four node kinds need `OpenFiles`, a
+    /// `Document` and the one native browser child, and a provider can reach none of the three.
+    pub space: space::SpaceState,
     /// One canvas per plugin surface that draws decoration `egui` cannot.
     ///
     /// The soft shadows, inset shadows and gradients of `services::vello_canvas`, rasterised only on the
@@ -1028,6 +1040,7 @@ impl UnluminousApp {
             plugin_wants_copied: None,
             plugins_ticked_at: None,
             plugin_ui: plugin_panes::PluginUi::default(),
+            space: space::SpaceState::default(),
             told_the_plugins: None,
             canvases: crate::services::vello_canvas::Canvases::default(),
             files: OpenFiles::new(document),
@@ -1379,6 +1392,11 @@ impl UnluminousApp {
                 .map(|index| state.terminal_tab_names.get(index).cloned().unwrap_or_default())
                 .collect();
         }
+        // The canvases this project was left with - `task-1904`. Read here rather than at startup,
+        // so a test neither reads nor writes a person's `.unluminous` folder; `restore_project` is
+        // called from `main.rs` and by nothing else.
+        self.restore_the_space();
+        self.space.visible = state.space_visible;
         self.written_project = Some(self.project_state());
     }
 
@@ -1404,7 +1422,7 @@ impl UnluminousApp {
                 continue;
             };
             open_files.push(path.to_path_buf());
-            file_panes.push(file.pane);
+            file_panes.push(file.home.pane().unwrap_or(0));
             // Where each tab was left, so a project opens at the line it was being read at rather
             // than at the top of every file — `task-1693`.
             file_scrolls.push(file.scroll);
@@ -1434,6 +1452,7 @@ impl UnluminousApp {
                 None => self.editor_visible,
             },
             terminal_visible: self.was_showing(dock::Panel::Terminal, self.terminal.visible),
+            space_visible: self.was_showing(dock::Panel::Space, self.space.visible),
             terminal_tabs: self.terminal.tabs.count(),
             // The names a person typed, and nothing else: `Tabs::names` would give back
             // `powershell.exe 2` for a tab nobody has named, which is a name the next run would
@@ -1458,7 +1477,7 @@ impl UnluminousApp {
     ///
     /// What a project remembers is the arrangement a person chose, and maximising is not one: it is every
     /// other panel put away for as long as one pane fills the window. See [`Maximised`].
-    fn was_showing(&self, panel: dock::Panel, now: bool) -> bool {
+    pub(crate) fn was_showing(&self, panel: dock::Panel, now: bool) -> bool {
         match self.maximised.as_ref() {
             Some(was) => was.panels[panel.index()],
             None => now,
@@ -1898,6 +1917,28 @@ impl UnluminousApp {
     /// What the menus need to know about the window.
     pub fn menu_state(&self) -> MenuState {
         MenuState {
+            space_visible: self.was_showing(dock::Panel::Space, self.space.visible),
+            space_node: self.space.chosen().and_then(|node| {
+                self.space.space.current().node(node).map(|found| {
+                    let session = match &found.state {
+                        crate::services::space::State::Terminal(terminal) => {
+                            !terminal.session.is_empty()
+                        }
+                        _ => false,
+                    };
+                    (found.kind(), session)
+                })
+            }),
+            space_pipe: self.space.in_hand.wire.is_some_and(|edge| {
+                self.space
+                    .space
+                    .current()
+                    .edges
+                    .iter()
+                    .any(|other| other.id == edge && other.pipe == crate::services::space::Pipe::Lines)
+            }),
+            space_views: self.space.space.views().len(),
+
             plugin_menus: self
                 .plugin_ui
                 .surfaces()
@@ -2345,6 +2386,7 @@ impl UnluminousApp {
             // `unluminous-cli panel dock --position` is what says it in a script.
             Action::Dock { panel, side } => self.dock_the_panel(panel, side, None),
             Action::ResetPanelLayout => self.reset_the_panel_layout(),
+            Action::Space(what) => self.run_a_space_action(what),
             Action::Debug(what) => self.debug_a_configuration(what),
             Action::ToggleRunTile => {
                 let showing = !self.run.visible;
@@ -4298,6 +4340,14 @@ impl UnluminousApp {
             self.act_on_a_plugin_request(&plugin, request, ctx);
         }
         self.tell_the_plugins_what_is_showing();
+        // The canvas, on exactly the same terms and for the same reason - `task-1904`. A terminal
+        // node that printed while its node was scrolled off the canvas, or while the canvas was put
+        // away, must not lose what it printed, and a pipe between two of them has to be read whether
+        // anybody is looking or not.
+        let now = ctx.input(|input| input.time);
+        if self.catch_the_space_up(now) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(120));
+        }
     }
 
     /// Tell every open provider which project is open and which file is showing.
@@ -4474,6 +4524,7 @@ impl UnluminousApp {
         showing[dock::Panel::Terminal.index()] = self.terminal.visible;
         showing[dock::Panel::Run.index()] = self.run.visible;
         showing[dock::Panel::Debug.index()] = self.debug_panel.visible;
+        showing[dock::Panel::Space.index()] = self.space.visible;
         // And whichever panes the plugins that are switched on are showing. A slot with no plugin in it
         // is never showing, so it takes no room and gets `Rect::ZERO`.
         for (slot, visible) in self.plugin_ui.visible().into_iter().enumerate() {
@@ -4522,8 +4573,10 @@ impl UnluminousApp {
                         self.show_the_plugin_pane(&key, false);
                     }
                 }
-                // The explorer is a list and never competes with anything.
-                dock::Panel::Explorer => {}
+                // The explorer is a list and never competes with anything, and neither is the
+                // canvas: it holds several grids inside itself deliberately, so the rule about a
+                // strip holding one does not apply to it - `task-1904`.
+                dock::Panel::Explorer | dock::Panel::Space => {}
             }
         }
     }
@@ -4736,7 +4789,7 @@ impl UnluminousApp {
     /// What the terminal calls to have the window drawn again when new output arrives.
     ///
     /// The terminal knows nothing about egui: it is given a function, and this is the function.
-    fn waker(&self) -> unluminous_terminal::session::Waker {
+    pub(crate) fn waker(&self) -> unluminous_terminal::session::Waker {
         match &self.context {
             Some(context) => {
                 let context = context.clone();
@@ -6091,6 +6144,16 @@ impl UnluminousApp {
                     self.message = Some(format!("Terminal tab {index} is called {name}"));
                 }
             }
+            Purpose::RenameSpaceNode(node) => {
+                if self.space.space.title_node(node, name.trim()) {
+                    self.message = Some(format!("That node is called {name}"));
+                }
+            }
+            Purpose::RenameSpaceView(view) => {
+                if self.space.space.rename_view(view, name.trim()) {
+                    self.message = Some(format!("That view is called {name}"));
+                }
+            }
         }
     }
 
@@ -6941,6 +7004,7 @@ impl UnluminousApp {
                 git_open: self.git.as_ref().is_some_and(|git| git.panel.open),
                 in_repository: self.repository_controls_apply(),
                 terminal_visible: self.terminal.visible,
+                space_visible: self.space.visible,
                 run_visible: self.run.visible,
                 debug_visible: self.debug_panel.visible,
             };
@@ -7110,6 +7174,7 @@ impl UnluminousApp {
                         opacity: self.settings.opacity,
                         zoom: self.panes.zoom_of(dock::Panel::Explorer),
                         scroll_to: self.explorer_scroll_to.take(),
+                        host: explorer::Host::Panel,
                     },
                     &decorate,
                 )
@@ -7181,6 +7246,12 @@ impl UnluminousApp {
         // any pane is drawn, and only while the explorer has the keyboard, so `Delete` can never
         // mean two things at once.
         if let Some(chosen) = self.route_the_explorer_keys(ui) {
+            action = Some(chosen);
+        }
+        // And the canvas's, in the same place and for the same reason - `task-1904`. A folder node
+        // has a cursor of its own, and `Escape` there means "give the keyboard back" exactly as it
+        // does in the explorer and in the terminal.
+        if let Some(chosen) = self.route_the_space_keys(ui) {
             action = Some(chosen);
         }
         // And the copy, when what is selected is in a preview rather than in a document. Before the
@@ -7347,6 +7418,16 @@ impl UnluminousApp {
         // other modal in Unluminous is drawn: `components::modal` places it, drags it and resizes it, and it has to
         // be above the panes including the plugin's own.
         self.show_the_plugin_modals(ui);
+
+        // The Base of Infinite Space - `task-1904`. Drawn where the plugin panes are for the same
+        // reason: it is laid out by the same arithmetic as every other panel and cannot overlap one.
+        if self.space.visible {
+            self.show_the_space(ui);
+        }
+        self.show_the_space_modal(ui);
+        if let Some(chosen) = self.show_the_space_menu(ui) {
+            action = Some(chosen);
+        }
 
         // The terminal.
         if self.terminal.visible {
@@ -7851,6 +7932,10 @@ impl UnluminousApp {
         // What is open in this project is written down for next time, on the same terms as the
         // settings: once the pointer is up, and only when something has actually changed.
         self.remember_the_project();
+        // And the canvas, which says for itself whether anything on it changed - `task-1904`. Written
+        // at the end of a frame on which something moved rather than on every frame, or dragging a
+        // node would write a file sixty times a second.
+        self.write_the_space_if_it_changed();
         // And what is marked in its files, on exactly the same terms.
         let settled = !ui.input(|input| input.pointer.any_down());
         self.remember_the_marks(settled);
@@ -7877,6 +7962,16 @@ impl UnluminousApp {
                 0 => ui.ctx().request_repaint(),
                 _ => self.start_the_restored_terminals(),
             }
+        }
+        // And the canvas's own, on the same frame and for the same reason - `task-1904`. A terminal
+        // node comes back as a fresh shell running the same command in the same folder, which is what
+        // `project_state` already promises about the terminal tile, and a browser node comes back on
+        // the address it was left on. Both are asked for once, on the second frame, because starting
+        // a pseudoconsole before the window is shown is a fifth of the time before anything appears.
+        if self.frames == 1 && self.remembers_this_project() {
+            self.start_the_canvass_terminals();
+            self.open_the_canvass_browsers();
+            self.open_the_canvass_editors();
         }
         self.frames += 1;
         crate::services::frame_trace::phase("rest");
@@ -8155,7 +8250,7 @@ impl UnluminousApp {
     /// The pointer is asked for as `hover_pos().or(latest_pos())` for the reason the editing area records:
     /// `egui` reports no pointer at all on a frame whose only input is a wheel event, so a gesture gated on
     /// the hover alone is a gesture thrown away.
-    fn zoom_over_a_panel(&mut self, ui: &egui::Ui, panel: dock::Panel, area: Rect) {
+    pub(crate) fn zoom_over_a_panel(&mut self, ui: &egui::Ui, panel: dock::Panel, area: Rect) {
         if self.zoom_taken || area.width() < 1.0 || area.height() < 1.0 {
             return;
         }
@@ -8199,6 +8294,17 @@ impl UnluminousApp {
                 }
                 self.settings.terminal_font_size = size;
                 self.unsaved_settings = true;
+            }
+            // **The canvas's zoom is its camera's.** A pane multiplier on top of a camera would be
+            // two numbers meaning one thing, which is the same reason the three tiles walk the
+            // terminal's font size instead of having one - `task-1904`. The keys zoom about the
+            // middle of the canvas, because the keyboard has no pointer; the wheel zooms about the
+            // pointer, in `take_the_canvas_input`.
+            dock::Panel::Space => {
+                let body = self.space.body;
+                let about = body.center();
+                self.space.space.current_mut().camera.zoom_by(steps, body.min, about);
+                self.space.space.touch();
             }
             dock::Panel::Explorer | dock::Panel::Plugin(_) => {
                 let was = self.panes.zoom_of(panel);
@@ -8333,7 +8439,7 @@ impl UnluminousApp {
     /// change: hiding the maximised pane left a body with nothing in it at all, and showing a second one
     /// left two panes up with the menu still offering `Restore Pane`. The arrangement comes back first and
     /// the toggle then means what it has always meant. Found by the `task-1771` review.
-    fn leave_the_maximised_pane(&mut self) {
+    pub(crate) fn leave_the_maximised_pane(&mut self) {
         if self.maximised.is_some() && !self.settling_the_maximise {
             self.restore_the_maximised_pane();
         }
@@ -8346,12 +8452,18 @@ impl UnluminousApp {
         self.tile_with_the_keyboard = tile;
     }
 
-    fn show_a_panel(&mut self, panel: dock::Panel, showing: bool) {
+    pub(crate) fn show_a_panel(&mut self, panel: dock::Panel, showing: bool) {
         match panel {
             dock::Panel::Explorer => self.explorer_visible = showing,
             dock::Panel::Terminal => self.show_the_terminal_tile(showing),
             dock::Panel::Run => self.show_the_run_tile(showing),
             dock::Panel::Debug => self.show_the_debug_tile(showing),
+            dock::Panel::Space => {
+                self.space.visible = showing;
+                if !showing && matches!(self.focus, Focus::Space) {
+                    self.focus = Focus::Editor;
+                }
+            }
             dock::Panel::Plugin(slot) => {
                 if let Some(key) = self.plugin_ui.pane_key(slot as usize) {
                     self.show_the_plugin_pane(&key, showing);
@@ -8388,6 +8500,7 @@ impl UnluminousApp {
         match self.focus {
             Focus::Editor => None,
             Focus::Explorer => Some(dock::Panel::Explorer),
+            Focus::Space => Some(dock::Panel::Space),
             Focus::Terminal => Some(self.tile_with_the_keyboard),
             Focus::Plugin => {
                 let plugin = self.plugin_with_the_keyboard.as_deref()?;
@@ -8405,6 +8518,11 @@ impl UnluminousApp {
         match panel {
             dock::Panel::Terminal | dock::Panel::Run | dock::Panel::Debug => {
                 self.settings.terminal_font_size = settings::Settings::new().terminal_font_size;
+            }
+            dock::Panel::Space => {
+                let body = self.space.body;
+                self.space.space.current_mut().camera.zoom_to(1.0, body.min, body.center());
+                self.space.space.touch();
             }
             dock::Panel::Explorer | dock::Panel::Plugin(_) => {
                 let was = self.panes.zoom_of(panel);
@@ -8707,7 +8825,7 @@ impl UnluminousApp {
     ///
     /// Each panel says this as it is drawn and none of them can act on it, because where a panel
     /// lands depends on where every *other* panel ended up — see [`Self::settle_the_panel_drag`].
-    fn note_a_panel_grab(&mut self, panel: dock::Panel, grab: crate::components::dock::Grab) {
+    pub(crate) fn note_a_panel_grab(&mut self, panel: dock::Panel, grab: crate::components::dock::Grab) {
         if let Some(at) = grab.carrying {
             self.panel_drag = Some(PanelDrag { panel, at, dropped: grab.dropped });
         }
@@ -9382,7 +9500,7 @@ impl UnluminousApp {
     /// The one place a `Decor` list becomes pixels, so the pane, the tab and the settings page cannot
     /// disagree about when there is decoration. A list that is empty, or a surface too big to rasterise,
     /// leaves the slot as the `Noop` it was — which draws nothing rather than a blank rectangle.
-    fn paint_the_chrome(
+    pub(crate) fn paint_the_chrome(
         &mut self,
         ui: &egui::Ui,
         slot: egui::layers::ShapeIdx,
@@ -9996,7 +10114,7 @@ impl UnluminousApp {
         editor_view::SymbolPointer { word: hover.map(|hover| hover.word) }
     }
 
-    fn show_editor(&mut self, ui: &mut egui::Ui, area: Rect, focused: bool) -> bool {
+    pub(crate) fn show_editor(&mut self, ui: &mut egui::Ui, area: Rect, focused: bool) -> bool {
         // What this file could fold and what of it is folded, read before anything is drawn: the
         // cache wants `&mut self` and every component here is handed what it draws.
         let index = self.files.active_index();
@@ -10513,10 +10631,22 @@ impl eframe::App for UnluminousApp {
     /// to re-enter. It uses the placements the last frame drew, which is where the views already are,
     /// and a frame that changes them draws before the next one is reconciled.
     fn raw_input_hook(&mut self, ctx: &egui::Context, _raw_input: &mut egui::RawInput) {
-        if self.files.iter().all(|file| file.browser.is_none()) && !self.browser.has_views() {
+        let on_the_canvas = self.space.live.browsers().count();
+        if self.files.iter().all(|file| file.browser.is_none())
+            && on_the_canvas == 0
+            && !self.browser.has_views()
+        {
             return;
         }
-        let tabs: Vec<BrowserTab> = self.files.iter().filter_map(|file| file.browser.clone()).collect();
+        // **The canvas's browser nodes are in the same list**, because a window has one native child
+        // view and it is pointed at whichever tab is showing - a node's page and a tab's page are two
+        // claims on the same one. `task-1904`.
+        let tabs: Vec<BrowserTab> = self
+            .files
+            .iter()
+            .filter_map(|file| file.browser.clone())
+            .chain(self.space.live.browsers().cloned())
+            .collect();
         let occluded = self.browser_is_occluded(ctx);
         let placements = self.browser_placements.clone();
         let settled = self.browser.reconcile(&tabs, &placements, occluded, ctx.clone());
@@ -10546,6 +10676,10 @@ impl eframe::App for UnluminousApp {
     /// wait for it.
     fn on_exit(&mut self) {
         self.run.kill_everything();
+        // Every program a node started, killed rather than dropped - `Live::forget`'s own note, and
+        // `task-1769`'s 119 orphaned shells.
+        self.space.live.stop_everything();
+        self.write_the_space_if_it_changed();
         self.write_settings();
         self.remember_the_project();
     }

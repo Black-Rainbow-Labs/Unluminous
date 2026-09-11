@@ -1226,6 +1226,37 @@ pub fn table(painter: &egui::Painter, centre: Pos2, color: Color32) {
     );
 }
 
+/// Two nodes with a wire between them, which is what the Base of Infinite Space is - `task-1904`.
+///
+/// Drawn rather than lettered, as every mark in Unluminous is. Two rounded rectangles at opposite
+/// corners and a curve between them, which is the picture the ticket's own capture is of: what a
+/// person recognises about a node graph is the wire, not the boxes.
+pub fn space(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.2, color);
+    let left = Rect::from_min_size(Pos2::new(centre.x - 7.0, centre.y - 6.0), egui::Vec2::new(6.0, 5.0));
+    let right = Rect::from_min_size(Pos2::new(centre.x + 1.0, centre.y + 1.0), egui::Vec2::new(6.0, 5.0));
+    painter.rect_stroke(left, CornerRadius::same(1), stroke, egui::StrokeKind::Inside);
+    painter.rect_stroke(right, CornerRadius::same(1), stroke, egui::StrokeKind::Inside);
+    // The wire: out of the right hand edge of one and into the left hand edge of the other, with the
+    // horizontal handles every wire on the canvas is drawn with.
+    let from = Pos2::new(left.right(), left.center().y);
+    let to = Pos2::new(right.left(), right.center().y);
+    let steps = 10;
+    let mut last = from;
+    for step in 1..=steps {
+        let t = step as f32 / steps as f32;
+        let u = 1.0 - t;
+        let x = u * u * u * from.x
+            + 3.0 * u * u * t * (from.x + 4.0)
+            + 3.0 * u * t * t * (to.x - 4.0)
+            + t * t * t * to.x;
+        let y = u * u * u * from.y + 3.0 * u * u * t * from.y + 3.0 * u * t * t * to.y + t * t * t * to.y;
+        let at = Pos2::new(x, y);
+        painter.line_segment([last, at], stroke);
+        last = at;
+    }
+}
+
 /// An undo arrow, in the shape every icon button takes.
 ///
 /// `undo_redo` already draws one and takes a direction; this is that with the direction bound, so it

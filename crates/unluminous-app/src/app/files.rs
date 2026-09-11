@@ -146,6 +146,49 @@ pub struct PluginTab {
     pub label: String,
 }
 
+/// Where a tab lives.
+///
+/// The editing area is a row of panes and a tab is in one of them, which is what `task-1664` settled
+/// and what [`OpenFiles`] is arranged around. `task-1904` adds a second kind of place: a **File Editor
+/// node** on the Base of Infinite Space is a tab too, with its own document, its own gutter, its own
+/// folds and breakpoints and its own place in the undo history.
+///
+/// It is one value with two cases rather than a pane number and an optional node id, because a tab is
+/// in exactly one place and two fields that have to agree are two fields that can stop agreeing. The
+/// invariants [`OpenFiles`] keeps - panes numbered without gaps, no pane empty - are about the panes,
+/// so a tab living on a node is simply not counted by either of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Home {
+    /// In the editing area, in this pane, counting from the left.
+    Pane(usize),
+    /// On the canvas, in the File Editor node with this id.
+    Node(u64),
+}
+
+impl Default for Home {
+    fn default() -> Self {
+        Home::Pane(0)
+    }
+}
+
+impl Home {
+    /// Which pane, when it is in one at all.
+    pub fn pane(self) -> Option<usize> {
+        match self {
+            Home::Pane(pane) => Some(pane),
+            Home::Node(_) => None,
+        }
+    }
+
+    /// Which node, when it is on one.
+    pub fn node(self) -> Option<u64> {
+        match self {
+            Home::Node(node) => Some(node),
+            Home::Pane(_) => None,
+        }
+    }
+}
+
 pub struct OpenFile {
     pub document: Document,
     /// Rendered web content, when this tab belongs to the embedded browser rather than the editor.
@@ -209,8 +252,8 @@ pub struct OpenFile {
     /// moving about: the Markdown preview scrolls like text, and a diagram is panned and zoomed like
     /// a picture.
     pub diagram: crate::components::diagram_view::View,
-    /// Which pane this tab is in, counting from the left. See [`OpenFiles`].
-    pub pane: usize,
+    /// Where this tab lives: a pane of the editing area, or a node on the canvas. See [`Home`].
+    pub home: Home,
     /// When this tab was last shown, from `OpenFiles`' own counter. The tab showing in a pane is the
     /// one in it with the highest stamp.
     pub shown_at: u64,
@@ -250,7 +293,7 @@ impl OpenFile {
             coloured_revision: None,
             syntax_tokens: unluminous_core::IncrementalTokens::default(),
             diagram: crate::components::diagram_view::View::default(),
-            pane: 0,
+            home: Home::Pane(0),
             shown_at: 0,
             cached: Cached::fresh(),
             disk: None,
@@ -406,8 +449,19 @@ pub struct OpenFiles {
     files: Vec<OpenFile>,
     /// How many panes the editing area is divided into. Never less than one.
     panes: usize,
-    /// Which pane has the keyboard. Always less than `panes`.
-    focus: usize,
+    /// Where the keyboard is: a pane of the editing area, or a File Editor node on the canvas.
+    ///
+    /// **A `Home` rather than a pane number**, so that `active()` answers with the node's file while a
+    /// node has the keys - which is what makes `editor text`, `tab save`, the gutter, the folds and
+    /// four hundred lines of `show_editor` work on a node with no second implementation.
+    focus: Home,
+    /// The last pane the keyboard was in.
+    ///
+    /// A memory of a past value rather than a second opinion about the present one, which is the
+    /// distinction `app::Maximised` already draws: two dozen callers want a pane **number**, and while
+    /// the keyboard is on a node there is no true answer to give them. Set whenever `focus` becomes a
+    /// pane, and never read to decide where a key press goes.
+    last_pane: usize,
     /// Each pane's share of the editing area's width, in the same order. Sums to one.
     ///
     /// A fraction rather than a measurement so that opening the project on a screen of another size
@@ -420,7 +474,14 @@ pub struct OpenFiles {
 impl OpenFiles {
     /// One tab, holding `document`, in one pane.
     pub fn new(document: Document) -> Self {
-        Self { files: vec![OpenFile::new(document)], panes: 1, focus: 0, widths: vec![1.0], clock: 0 }
+        Self {
+            files: vec![OpenFile::new(document)],
+            panes: 1,
+            focus: Home::Pane(0),
+            last_pane: 0,
+            widths: vec![1.0],
+            clock: 0,
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -437,7 +498,7 @@ impl OpenFiles {
     /// derived rather than stored. Nothing outside this file had to learn about panes to go on
     /// asking it.
     pub fn active_index(&self) -> usize {
-        self.showing_in(self.focus).unwrap_or(0)
+        self.showing_at(self.focus).unwrap_or(0)
     }
 
     pub fn active(&self) -> &OpenFile {
@@ -489,9 +550,72 @@ impl OpenFiles {
         self.panes
     }
 
-    /// Which pane has the keyboard.
+    /// Which pane has the keyboard, or last had it while it is on a node.
     pub fn focused_pane(&self) -> usize {
+        self.last_pane
+    }
+
+    /// Where the keyboard is.
+    pub fn focus(&self) -> Home {
         self.focus
+    }
+
+    /// Put it back where it was, whatever kind of place that was.
+    ///
+    /// What the pane loop restores with. `focus_pane(keyboard)` would drag a keyboard living on a
+    /// canvas node back into the editing area on every frame.
+    pub fn restore_focus(&mut self, home: Home) {
+        self.focus = home;
+        if let Home::Pane(pane) = home {
+            self.last_pane = pane.min(self.panes.saturating_sub(1));
+        }
+    }
+
+    /// Put the keyboard in a File Editor node, so `active()` answers with its file.
+    pub fn focus_node(&mut self, node: u64) {
+        self.focus = Home::Node(node);
+    }
+
+    /// The tab in a File Editor node, if it has one.
+    pub fn tab_in_node(&self, node: u64) -> Option<usize> {
+        self.files.iter().position(|file| file.home == Home::Node(node))
+    }
+
+    /// Every tab living on a node, which is what closing a canvas has to close.
+    pub fn tabs_on_nodes(&self) -> Vec<usize> {
+        self.files
+            .iter()
+            .enumerate()
+            .filter(|(_, file)| file.home.node().is_some())
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    /// Move a tab onto a node, taking it out of whatever pane it was in.
+    ///
+    /// **A file already open is moved rather than copied**, which is `OpenFiles::open`'s own rule and
+    /// the reason `Split Right` moves a tab: two `Document`s over one path would be two windows on one
+    /// file, and whichever was saved second would win.
+    pub fn move_to_node(&mut self, index: usize, node: u64) -> bool {
+        if index >= self.files.len() {
+            return false;
+        }
+        self.files[index].home = Home::Node(node);
+        self.stamp(index);
+        self.focus = Home::Node(node);
+        // **The editing area always has a tab**, which is the promise `close` already keeps and the
+        // one thing moving a tab onto a node could break: the window starts with one untitled tab,
+        // `open` reuses an empty one, and a node that took it would leave pane zero with nothing to
+        // draw. A fresh untitled tab is what stands in its place, exactly as closing the last tab
+        // leaves one.
+        if !self.files.iter().any(|file| file.home.pane().is_some()) {
+            self.files.push(OpenFile::new(Document::new()));
+            self.panes = 1;
+            self.last_pane = 0;
+            self.widths = vec![1.0];
+        }
+        self.tidy();
+        true
     }
 
     /// Put the keyboard in a pane. A number past the end is refused rather than clamped, so a
@@ -500,22 +624,28 @@ impl OpenFiles {
         if pane >= self.panes {
             return false;
         }
-        self.focus = pane;
+        self.focus = Home::Pane(pane);
+        self.last_pane = pane;
         true
     }
 
     /// The keyboard to the next pane, wrapping round at the right hand end.
     pub fn next_pane(&mut self) {
-        self.focus = (self.focus + 1) % self.panes;
+        self.focus_pane((self.last_pane + 1) % self.panes);
     }
 
     pub fn previous_pane(&mut self) {
-        self.focus = (self.focus + self.panes - 1) % self.panes;
+        self.focus_pane((self.last_pane + self.panes - 1) % self.panes);
     }
 
-    /// Which pane a tab is in.
+    /// Which pane a tab is in. Zero for a tab living on a canvas node, which is in none.
     pub fn pane_of(&self, index: usize) -> usize {
-        self.files.get(index).map(|file| file.pane).unwrap_or(0)
+        self.files.get(index).and_then(|file| file.home.pane()).unwrap_or(0)
+    }
+
+    /// Where a tab lives.
+    pub fn home_of(&self, index: usize) -> Home {
+        self.files.get(index).map(|file| file.home).unwrap_or_default()
     }
 
     /// The tabs in one pane, as indices into the open files, in the order they are drawn.
@@ -523,17 +653,22 @@ impl OpenFiles {
         self.files
             .iter()
             .enumerate()
-            .filter(|(_, file)| file.pane == pane)
+            .filter(|(_, file)| file.home == Home::Pane(pane))
             .map(|(index, _)| index)
             .collect()
     }
 
     /// Which tab is showing in `pane`: the one in it that was shown most recently.
     pub fn showing_in(&self, pane: usize) -> Option<usize> {
+        self.showing_at(Home::Pane(pane))
+    }
+
+    /// The same question about any home: which of the tabs living there was shown most recently.
+    pub fn showing_at(&self, home: Home) -> Option<usize> {
         self.files
             .iter()
             .enumerate()
-            .filter(|(_, file)| file.pane == pane)
+            .filter(|(_, file)| file.home == home)
             .max_by_key(|(_, file)| file.shown_at)
             .map(|(index, _)| index)
     }
@@ -599,21 +734,21 @@ impl OpenFiles {
     /// on the right: the next file they open lands in it, because opening a file always lands in
     /// the pane with the keyboard.
     pub fn split_right(&mut self) {
-        let pane = self.focus;
+        let pane = self.last_pane;
         let alone = self.tabs_in(pane).len() < 2;
         let showing = self.showing_in(pane);
         self.add_pane_after(pane);
         let new = pane + 1;
         if alone {
             let mut fresh = OpenFile::new(Document::new());
-            fresh.pane = new;
+            fresh.home = Home::Pane(new);
             let at = showing.map(|index| index + 1).unwrap_or(self.files.len()).min(self.files.len());
             self.files.insert(at, fresh);
-            self.focus = new;
+            self.focus_pane(new);
             self.stamp(at);
         } else if let Some(index) = showing {
-            self.files[index].pane = new;
-            self.focus = new;
+            self.files[index].home = Home::Pane(new);
+            self.focus_pane(new);
             self.stamp(index);
         }
         self.tidy();
@@ -621,7 +756,7 @@ impl OpenFiles {
 
     /// Move the tab that is showing into the pane beside it. `false` when there is no pane that way.
     pub fn move_tab(&mut self, right: bool) -> bool {
-        let pane = self.focus;
+        let pane = self.last_pane;
         let target = if right { pane + 1 } else { pane.checked_sub(1).unwrap_or(usize::MAX) };
         if target >= self.panes {
             return false;
@@ -629,8 +764,8 @@ impl OpenFiles {
         let Some(index) = self.showing_in(pane) else {
             return false;
         };
-        self.files[index].pane = target;
-        self.focus = target;
+        self.files[index].home = Home::Pane(target);
+        self.focus_pane(target);
         self.stamp(index);
         // The pane it left may now be empty, in which case `tidy` removes it and the panes after it
         // are renumbered — including the one the tab has just been put into.
@@ -656,7 +791,7 @@ impl OpenFiles {
         if index >= self.files.len() || pane >= self.panes {
             return false;
         }
-        let from = self.files[index].pane;
+        let from = self.pane_of(index);
         let within = self.tabs_in(from).iter().position(|at| *at == index).unwrap_or(0);
         let mut position = position;
         if from == pane {
@@ -666,13 +801,13 @@ impl OpenFiles {
             if within == position {
                 // Dropped where it already is. Showing it is still right — a person who picked a tab
                 // up and put it back plainly means to be looking at it — but nothing moves.
-                self.focus = pane;
+                self.focus_pane(pane);
                 self.stamp(index);
                 return true;
             }
         }
         let mut file = self.files.remove(index);
-        file.pane = pane;
+        file.home = Home::Pane(pane);
         // Where in the vector: at the tab that is to come after it, or after the last one when it is
         // going on the end. Worked out after the removal, so the indices are the ones being inserted
         // into rather than the ones that were there a moment ago.
@@ -682,7 +817,7 @@ impl OpenFiles {
             None => targets.last().map(|index| index + 1).unwrap_or(self.files.len()),
         };
         self.files.insert(at, file);
-        self.focus = pane;
+        self.focus_pane(pane);
         self.stamp(at);
         self.tidy();
         true
@@ -694,12 +829,12 @@ impl OpenFiles {
         if self.panes < 2 {
             return false;
         }
-        let pane = self.focus;
+        let pane = self.last_pane;
         let target = if pane > 0 { pane - 1 } else { 1 };
-        for file in self.files.iter_mut().filter(|file| file.pane == pane) {
-            file.pane = target;
+        for file in self.files.iter_mut().filter(|file| file.home == Home::Pane(pane)) {
+            file.home = Home::Pane(target);
         }
-        self.focus = target;
+        self.focus_pane(target);
         self.tidy();
         true
     }
@@ -710,9 +845,11 @@ impl OpenFiles {
             return false;
         }
         for file in &mut self.files {
-            file.pane = 0;
+            if file.home.pane().is_some() {
+                file.home = Home::Pane(0);
+            }
         }
-        self.focus = 0;
+        self.focus_pane(0);
         self.tidy();
         true
     }
@@ -728,20 +865,22 @@ impl OpenFiles {
         let most = panes.iter().copied().max().map(|highest| highest + 1).unwrap_or(1);
         self.panes = most.max(1);
         for (file, pane) in self.files.iter_mut().zip(panes) {
-            file.pane = (*pane).min(most.saturating_sub(1));
+            file.home = Home::Pane((*pane).min(most.saturating_sub(1)));
         }
         self.widths = if widths.len() == self.panes {
             widths.to_vec()
         } else {
             vec![1.0 / self.panes as f32; self.panes]
         };
-        self.focus = focus.min(self.panes.saturating_sub(1));
+        let focus = focus.min(self.panes.saturating_sub(1));
+        self.focus = Home::Pane(focus);
+        self.last_pane = focus;
         self.tidy();
     }
 
     /// Which pane each tab is in, in tab order, for the project's state file.
     pub fn panes_of_tabs(&self) -> Vec<usize> {
-        self.files.iter().map(|file| file.pane).collect()
+        self.files.iter().map(|file| file.home.pane().unwrap_or(0)).collect()
     }
 
     /// Add an empty pane after `pane`, dividing that pane's share of the width in half.
@@ -750,8 +889,10 @@ impl OpenFiles {
     /// either side of it have no reason to move when the third of four is split.
     fn add_pane_after(&mut self, pane: usize) {
         for file in &mut self.files {
-            if file.pane > pane {
-                file.pane += 1;
+            if let Home::Pane(at) = file.home {
+                if at > pane {
+                    file.home = Home::Pane(at + 1);
+                }
             }
         }
         let share = self.widths.get(pane).copied().unwrap_or(1.0) / 2.0;
@@ -770,7 +911,8 @@ impl OpenFiles {
     fn tidy(&mut self) {
         if self.files.is_empty() {
             self.panes = 1;
-            self.focus = 0;
+            self.focus = Home::Pane(0);
+            self.last_pane = 0;
             self.widths = vec![1.0];
             return;
         }
@@ -783,7 +925,7 @@ impl OpenFiles {
         let mut carried = 0.0;
         for pane in 0..self.panes {
             let width = self.widths.get(pane).copied().unwrap_or(0.0);
-            if self.files.iter().any(|file| file.pane == pane) {
+            if self.files.iter().any(|file| file.home == Home::Pane(pane)) {
                 renumbered[pane] = Some(widths.len());
                 widths.push(width + carried);
                 carried = 0.0;
@@ -795,10 +937,13 @@ impl OpenFiles {
             // Every pane number on every tab is out of range, which a hand edited state file could
             // ask for. One pane holding everything is the answer that cannot be wrong.
             for file in &mut self.files {
-                file.pane = 0;
+                if file.home.pane().is_some() {
+                    file.home = Home::Pane(0);
+                }
             }
             self.panes = 1;
-            self.focus = 0;
+            self.focus = Home::Pane(0);
+            self.last_pane = 0;
             self.widths = vec![1.0];
             return;
         }
@@ -807,16 +952,23 @@ impl OpenFiles {
             widths[last] += carried;
         }
         for file in &mut self.files {
-            file.pane = renumbered.get(file.pane).copied().flatten().unwrap_or(0);
+            if let Home::Pane(pane) = file.home {
+                file.home = Home::Pane(renumbered.get(pane).copied().flatten().unwrap_or(0));
+            }
         }
         self.panes = widths.len();
         // The pane that had the keyboard may have gone, in which case the keyboard goes to the pane
         // that took its place, which is the one now standing where it stood.
-        self.focus = renumbered
-            .get(self.focus)
+        self.last_pane = renumbered
+            .get(self.last_pane)
             .copied()
             .flatten()
-            .unwrap_or_else(|| self.focus.min(self.panes - 1));
+            .unwrap_or_else(|| self.last_pane.min(self.panes - 1));
+        // The keyboard follows only when it was in a pane. A keyboard living on a canvas node stays
+        // there: nothing that happened to the panes is about it.
+        if self.focus.pane().is_some() {
+            self.focus = Home::Pane(self.last_pane);
+        }
         let total: f32 = widths.iter().sum();
         self.widths = if total > 0.0 && total.is_finite() {
             widths.iter().map(|width| width / total).collect()
@@ -841,9 +993,12 @@ impl OpenFiles {
         if index >= self.files.len() {
             return;
         }
-        let pane = self.files[index].pane;
-        let displaced = self.showing_in(pane).filter(|displaced| *displaced != index);
-        self.focus = pane;
+        let home = self.files[index].home;
+        let displaced = self.showing_at(home).filter(|displaced| *displaced != index);
+        self.focus = home;
+        if let Home::Pane(pane) = home {
+            self.last_pane = pane;
+        }
         self.stamp(index);
         // The one moment a layout is both complete and cold: the tab that was showing in this pane
         // has just been put behind another, and will not be laid out again until it is shown. That
@@ -866,7 +1021,7 @@ impl OpenFiles {
     }
 
     fn step(&mut self, forwards: bool) {
-        let tabs = self.tabs_in(self.focus);
+        let tabs = self.tabs_in(self.last_pane);
         if tabs.is_empty() {
             return;
         }
@@ -974,7 +1129,7 @@ impl OpenFiles {
         file.transient = !permanent;
         match self.reuse(permanent) {
             Some(index) => {
-                file.pane = self.files[index].pane;
+                file.home = self.files[index].home;
                 self.files[index] = file;
                 self.show(index);
                 index
@@ -990,7 +1145,10 @@ impl OpenFiles {
     /// first file in a fresh window — or in a pane that has just been split off — does not leave an
     /// empty tab beside it.
     fn reuse(&self, permanent: bool) -> Option<usize> {
-        let mine = |file: &OpenFile| file.pane == self.focus;
+        // The pane the keyboard is in, or the one it was last in while the canvas holds it. A tab
+        // living on a node is never reused for a file somebody opened: a node shows what it was given.
+        let pane = Home::Pane(self.last_pane.min(self.panes.saturating_sub(1)));
+        let mine = |file: &OpenFile| file.home == pane;
         let transient = self.files.iter().position(|file| mine(file) && file.transient);
         let empty = self.files.iter().position(|file| {
             mine(file)
@@ -1007,10 +1165,18 @@ impl OpenFiles {
     }
 
     /// Put a tab into the pane that has the keyboard, after the tab showing in it.
+    /// Put a tab into the pane that has the keyboard, after the tab showing in it.
+    ///
+    /// **Into a pane, never onto a canvas node.** A node holds one thing, put there deliberately by
+    /// [`Self::move_to_node`]; a tab opened while the canvas has the keyboard is a tab somebody asked
+    /// for in the editing area, and landing it on a node would hide it behind what the node was
+    /// already showing with no way to reach it. Measured on a live window: `browser open` while a File
+    /// Editor node had the keys put the page inside that node and drew neither.
     fn insert_beside_the_open_tab(&mut self, mut file: OpenFile) -> usize {
-        file.pane = self.focus;
+        let home = Home::Pane(self.last_pane.min(self.panes.saturating_sub(1)));
+        file.home = home;
         let at = self
-            .showing_in(self.focus)
+            .showing_at(home)
             .map(|index| index + 1)
             .unwrap_or(self.files.len())
             .min(self.files.len());
@@ -1031,18 +1197,26 @@ impl OpenFiles {
         if index >= self.files.len() {
             return;
         }
-        let pane = self.files[index].pane;
+        let home = self.files[index].home;
         self.files.remove(index);
-        if self.files.is_empty() {
+        // **Only the tabs in panes count**, because the window always has an editing area and a tab
+        // living on a canvas node is not in it. Closing the last pane tab while a node still holds one
+        // leaves a fresh untitled tab, exactly as closing the last tab of all always has.
+        if !self.files.iter().any(|file| file.home.pane().is_some()) {
             self.files.push(OpenFile::new(Document::new()));
             self.panes = 1;
-            self.focus = 0;
+            self.focus = Home::Pane(0);
+            self.last_pane = 0;
             self.widths = vec![1.0];
+            self.tidy();
             return;
         }
-        // The keyboard stays in the pane the tab was closed in while it still has tabs; `tidy` moves
-        // it along when the pane has gone.
-        self.focus = pane;
+        // The keyboard stays where the tab was closed while that place still has tabs; `tidy` moves it
+        // along when the pane has gone.
+        self.focus = home;
+        if let Home::Pane(pane) = home {
+            self.last_pane = pane;
+        }
         self.tidy();
     }
 
@@ -1243,7 +1417,11 @@ mod tests {
             assert!(!files.tabs_in(pane).is_empty(), "pane {pane} is empty");
         }
         for file in files.iter() {
-            assert!(file.pane < files.pane_count(), "a tab is in pane {} of {}", file.pane, files.pane_count());
+            // A tab living on a canvas node is in no pane at all and is not counted by either
+            // invariant - `task-1904`. That is what makes a File Editor node possible without a
+            // second `OpenFiles`.
+            let Some(pane) = file.home.pane() else { continue };
+            assert!(pane < files.pane_count(), "a tab is in pane {pane} of {}", files.pane_count());
         }
         assert_eq!(files.pane_widths().len(), files.pane_count(), "one width a pane");
         let total: f32 = files.pane_widths().iter().sum();

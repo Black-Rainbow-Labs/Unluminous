@@ -40,7 +40,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use egui::ViewportCommand;
+use egui::{Rect, ViewportCommand};
 use serde_json::{json, Map, Value};
 
 use unluminous_cli::protocol::{code, Reply, Request};
@@ -104,7 +104,13 @@ pub enum Waiting {
     /// what the window really looked like at that instant, and it is not what anybody wanted to be
     /// shown. Settling first costs a quarter of a second and makes the picture the answer to "what
     /// does it look like now" rather than "what did it look like on the way there".
-    Screenshot { path: PathBuf, until: Instant, settled: Instant, asked: bool },
+    /// A picture of the window, or of one rectangle of it.
+    ///
+    /// `crop` is `task-1904`'s: *"see screenshots"* of a browser node means a picture of that node
+    /// rather than of the whole window, and cutting the window's own picture is the honest way to
+    /// take one - a native child view is composited by the operating system, so nothing inside
+    /// Unluminous can render it on its own.
+    Screenshot { path: PathBuf, until: Instant, settled: Instant, asked: bool, crop: Option<Rect> },
     /// Some text on a terminal tab's screen.
     ///
     /// `tab` is the tab the wait was asked about, resolved to a number when the request arrived,
@@ -177,12 +183,12 @@ impl Waiting {
 }
 
 /// Answer it now, with a sentence and some data.
-fn ok(request: &Request, message: impl Into<String>, result: Value) -> Outcome {
+pub(crate) fn ok(request: &Request, message: impl Into<String>, result: Value) -> Outcome {
     Outcome::Reply(Reply::done(&request.command, message, result))
 }
 
 /// Refuse it, with a code a caller can match on and a sentence a person can read.
-fn no(request: &Request, code: &str, message: impl Into<String>) -> Outcome {
+pub(crate) fn no(request: &Request, code: &str, message: impl Into<String>) -> Outcome {
     Outcome::Reply(Reply::failed(&request.command, code, message))
 }
 
@@ -232,12 +238,17 @@ fn either(names: &[String]) -> String {
 }
 
 /// Nothing but a sentence, which is what most commands that change something answer with.
-fn done(request: &Request, message: impl Into<String>) -> Outcome {
+pub(crate) fn done(request: &Request, message: impl Into<String>) -> Outcome {
     ok(request, message, Value::Null)
 }
 
 /// A reply whose data is a list of lines the client prints as they are.
-fn lines(request: &Request, message: impl Into<String>, lines: Vec<String>, extra: Value) -> Outcome {
+pub(crate) fn lines(
+    request: &Request,
+    message: impl Into<String>,
+    lines: Vec<String>,
+    extra: Value,
+) -> Outcome {
     let mut result = match extra {
         Value::Object(map) => map,
         _ => Map::new(),
@@ -333,7 +344,7 @@ impl UnluminousApp {
         picture: Option<&egui::ColorImage>,
     ) -> Option<Reply> {
         match waiting {
-            Waiting::Screenshot { path, settled, asked, .. } => {
+            Waiting::Screenshot { path, settled, asked, crop, .. } => {
                 if !*asked {
                     if Instant::now() < *settled {
                         ctx.request_repaint();
@@ -345,6 +356,14 @@ impl UnluminousApp {
                     return None;
                 }
                 let picture = picture?;
+                let cut;
+                let picture = match crop {
+                    Some(area) => {
+                        cut = cut_out(picture, *area, ctx.pixels_per_point());
+                        &cut
+                    }
+                    None => picture,
+                };
                 Some(match write_png(picture, path) {
                     Ok(()) => Reply::done(
                         &request.command,
@@ -659,6 +678,7 @@ impl UnluminousApp {
             "highlight" => self.cli_highlight(request, verb),
             "fold" => self.cli_fold(request, verb),
             "panel" => self.cli_panel(request, verb),
+            "space" => self.cli_space(request, verb, ctx),
             "terminal" => self.cli_terminal(request, verb),
             "run" => self.cli_run(request, verb),
             "debug" => self.cli_debug(request, verb),
@@ -1266,7 +1286,7 @@ impl UnluminousApp {
     }
 
     /// The path argument called `name`, resolved.
-    fn cli_path_argument(&self, request: &Request, name: &str) -> Option<PathBuf> {
+    pub(crate) fn cli_path_argument(&self, request: &Request, name: &str) -> Option<PathBuf> {
         request.text(name).map(|text| self.cli_path(&text))
     }
 }
@@ -1322,6 +1342,30 @@ fn screenshot_from(ctx: &egui::Context) -> Option<egui::ColorImage> {
 }
 
 /// Write a captured frame to a PNG.
+/// The part of a picture inside `area`, which is in **points** while a picture is in pixels.
+///
+/// One function rather than the arithmetic at the call site, because the two units are exactly the
+/// thing that is easy to get wrong: a display at two pixels a point makes a 400 point node an 800
+/// pixel picture, and a crop that forgot would cut out its top left quarter.
+pub(crate) fn cut_out(image: &egui::ColorImage, area: Rect, pixels_per_point: f32) -> egui::ColorImage {
+    let scale = pixels_per_point.max(0.01);
+    let left = (area.left() * scale).round().max(0.0) as usize;
+    let top = (area.top() * scale).round().max(0.0) as usize;
+    let right = ((area.right() * scale).round().max(0.0) as usize).min(image.size[0]);
+    let bottom = ((area.bottom() * scale).round().max(0.0) as usize).min(image.size[1]);
+    if right <= left || bottom <= top {
+        return image.clone();
+    }
+    let width = right - left;
+    let height = bottom - top;
+    let mut pixels = Vec::with_capacity(width * height);
+    for row in top..bottom {
+        let from = row * image.size[0] + left;
+        pixels.extend_from_slice(&image.pixels[from..from + width]);
+    }
+    egui::ColorImage { size: [width, height], pixels, source_size: egui::Vec2::new(width as f32, height as f32) }
+}
+
 fn write_png(image: &egui::ColorImage, path: &Path) -> std::io::Result<()> {
     if let Some(folder) = path.parent() {
         if !folder.as_os_str().is_empty() {
@@ -1560,6 +1604,7 @@ impl UnluminousApp {
                     until: waits_for(request, "timeout", SCREENSHOT_WAIT),
                     settled: Instant::now() + SETTLE,
                     asked: false,
+                    crop: None,
                 })
             }
             "focus" => {
@@ -2117,7 +2162,11 @@ impl UnluminousApp {
                 "browser": file.is_browser(),
                 "transient": file.transient,
                 "viewMode": view_mode_name(file.view_mode),
-                "pane": file.pane,
+                "pane": file.home.pane(),
+                // Which canvas node this tab lives in, when it lives on one rather than in a
+                // pane - `task-1904`. Absent for an ordinary tab, which is what a reader of this
+                // answer already means by "in the editing area".
+                "node": file.home.node(),
             }))
             .collect::<Vec<Value>>())
     }
@@ -2518,7 +2567,7 @@ impl UnluminousApp {
     }
 }
 
-fn unknown(request: &Request) -> Outcome {
+pub(crate) fn unknown(request: &Request) -> Outcome {
     no(
         request,
         code::UNKNOWN_COMMAND,

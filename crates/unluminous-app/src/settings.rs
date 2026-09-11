@@ -67,6 +67,18 @@ pub const RUN_WIDTH_MIN: f32 = TERMINAL_WIDTH_MIN;
 pub const DEBUG_WIDTH: f32 = 520.0;
 pub const DEBUG_WIDTH_MIN: f32 = 300.0;
 
+/// And the Base of Infinite Space, `task-1904`'s canvas, which is a panel like the four above.
+///
+/// It starts along the bottom and it starts **larger than any of them**, because what it holds is
+/// terminals, file editors and web pages rather than a list or one character grid: 560 points is a
+/// terminal of about twenty five rows with a node's own header above it and room to see a second node
+/// beside it. The smallest is what a canvas stops being one below — a single node at its own smallest
+/// size, with the view bar above it.
+pub const SPACE_HEIGHT: f32 = 560.0;
+pub const SPACE_MIN: f32 = 200.0;
+pub const SPACE_WIDTH: f32 = 900.0;
+pub const SPACE_WIDTH_MIN: f32 = 320.0;
+
 /// The widest a panel read out of the settings file is believed.
 ///
 /// **Not a limit on dragging any more.** It was 900 points and it was one, and `task-1771` reported the
@@ -833,6 +845,10 @@ pub struct Panes {
     pub debug_height: f32,
     /// How wide the debug tile is as a column.
     pub debug_width: f32,
+    /// How tall the Base of Infinite Space is in a strip — `task-1904`.
+    pub space_height: f32,
+    /// How wide it is as a column.
+    pub space_width: f32,
     /// How much bigger or smaller the explorer draws everything in it than it does by default.
     ///
     /// `task-1771`: every pane is zoomable with `Ctrl`/`Cmd` and the wheel. The explorer has no font size
@@ -880,6 +896,8 @@ impl Panes {
             run_width: RUN_WIDTH,
             debug_height: DEBUG_HEIGHT,
             debug_width: DEBUG_WIDTH,
+            space_height: SPACE_HEIGHT,
+            space_width: SPACE_WIDTH,
             explorer_zoom: DEFAULT_ZOOM,
             plugin_zooms: [DEFAULT_ZOOM; crate::app::dock::PLUGIN_PANES],
             plugin_widths: [PLUGIN_PANE_WIDTH; crate::app::dock::PLUGIN_PANES],
@@ -946,6 +964,12 @@ impl Panes {
         if let Some(width) = values.number("panes.debug.width") {
             panes.debug_width = width.clamp(DEBUG_WIDTH_MIN, PANEL_MAX_WIDTH);
         }
+        if let Some(height) = values.number("panes.space.height") {
+            panes.space_height = height.max(SPACE_MIN);
+        }
+        if let Some(width) = values.number("panes.space.width") {
+            panes.space_width = width.clamp(SPACE_WIDTH_MIN, PANEL_MAX_WIDTH);
+        }
         panes.dock = crate::app::dock::Layout::read_from(values);
         if let Some(fraction) = values.number("panes.preview.fraction") {
             panes.preview_fraction = fraction.clamp(0.15, 0.85);
@@ -990,6 +1014,8 @@ impl Panes {
         values.set("panes.terminal.width", format!("{:.0}", self.terminal_width));
         values.set("panes.run.width", format!("{:.0}", self.run_width));
         values.set("panes.debug.width", format!("{:.0}", self.debug_width));
+        values.set("panes.space.height", format!("{:.0}", self.space_height));
+        values.set("panes.space.width", format!("{:.0}", self.space_width));
         values.set("panes.preview.fraction", format!("{:.3}", self.preview_fraction));
         values.set("panes.find.split", format!("{:.3}", self.find_split));
         values.set("panes.references.split", format!("{:.3}", self.references_split));
@@ -1007,6 +1033,7 @@ impl Panes {
             Panel::Terminal => self.terminal_width,
             Panel::Run => self.run_width,
             Panel::Debug => self.debug_width,
+            Panel::Space => self.space_width,
             Panel::Plugin(slot) => self.plugin_widths[(slot as usize).min(self.plugin_widths.len() - 1)],
         }
     }
@@ -1019,6 +1046,7 @@ impl Panes {
             Panel::Terminal => self.terminal_height,
             Panel::Run => self.run_height,
             Panel::Debug => self.debug_height,
+            Panel::Space => self.space_height,
             Panel::Plugin(slot) => self.plugin_heights[(slot as usize).min(self.plugin_heights.len() - 1)],
         }
     }
@@ -1032,6 +1060,7 @@ impl Panes {
             Panel::Terminal => self.terminal_width = width,
             Panel::Run => self.run_width = width,
             Panel::Debug => self.debug_width = width,
+            Panel::Space => self.space_width = width,
             Panel::Plugin(slot) => {
                 let at = (slot as usize).min(self.plugin_widths.len() - 1);
                 self.plugin_widths[at] = width;
@@ -1047,6 +1076,7 @@ impl Panes {
             Panel::Terminal => self.terminal_height = height,
             Panel::Run => self.run_height = height,
             Panel::Debug => self.debug_height = height,
+            Panel::Space => self.space_height = height,
             Panel::Plugin(slot) => {
                 let at = (slot as usize).min(self.plugin_heights.len() - 1);
                 self.plugin_heights[at] = height;
@@ -1090,6 +1120,7 @@ impl Panes {
             Panel::Terminal => TERMINAL_WIDTH_MIN,
             Panel::Run => RUN_WIDTH_MIN,
             Panel::Debug => DEBUG_WIDTH_MIN,
+            Panel::Space => SPACE_WIDTH_MIN,
             Panel::Plugin(_) => PLUGIN_PANE_MIN_WIDTH,
         }
     }
@@ -1113,6 +1144,7 @@ impl Panes {
             Panel::Terminal => TERMINAL_MIN,
             Panel::Run => RUN_MIN,
             Panel::Debug => DEBUG_MIN,
+            Panel::Space => SPACE_MIN,
             Panel::Plugin(_) => PLUGIN_PANE_MIN_HEIGHT,
         }
     }
@@ -1393,6 +1425,8 @@ mod tests {
             run_width: 440.0,
             debug_height: 340.0,
             debug_width: 560.0,
+            space_height: 620.0,
+            space_width: 820.0,
             dock,
             preview_fraction: 0.3,
             find_split: 0.6,

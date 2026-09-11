@@ -44,6 +44,8 @@ pub mod run_panel;
 pub mod run_widget;
 pub mod scrollbar;
 pub mod settings_dialog;
+/// The Base of Infinite Space — `task-1904`.
+pub mod space;
 pub mod splitter;
 pub mod status_bar;
 pub mod terminal_panel;

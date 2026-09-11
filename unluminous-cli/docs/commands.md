@@ -1421,6 +1421,418 @@ Put every panel back where a new Unluminous has it: the explorer down the left, 
 unluminous-cli panel reset
 ```
 
+## space — the Base of Infinite Space: a canvas of terminals, web pages, folder trees and file editors, wired together
+
+The Base of Infinite Space is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `space browser`, `space folder`, `space editor` and `space send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `space view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.
+
+### space show
+
+```
+unluminous-cli space show
+```
+
+Show the Base of Infinite Space, the canvas of nodes, and give it the keyboard.
+
+```sh
+unluminous-cli space show
+```
+
+### space hide
+
+```
+unluminous-cli space hide
+```
+
+Put the canvas away. Everything running on it keeps running.
+
+```sh
+unluminous-cli space hide
+```
+
+### space view
+
+```
+unluminous-cli space view
+```
+
+The whole canvas as data: every view, every node with its kind, its title, where it is and how big it is, and every connection. This is what to read before acting on a node, because everything else here names one by the id this prints.
+
+```sh
+unluminous-cli space view --json
+```
+
+### space list
+
+```
+unluminous-cli space list
+```
+
+The nodes on the view that is showing, one a line: id, kind, title, place, size, and what each is connected to.
+
+```sh
+unluminous-cli space list
+```
+
+### space views
+
+```
+unluminous-cli space views
+```
+
+Every view this project's canvas has, with which one is showing and how many nodes each holds.
+
+```sh
+unluminous-cli space views
+```
+
+### space open-view
+
+```
+unluminous-cli space open-view <view>
+```
+
+Show one of the canvas's views. A view is named by the name on its chip or by its id.
+
+- `view` — The view's name, or its id.
+
+```sh
+unluminous-cli space open-view Rendering
+```
+
+### space new-view
+
+```
+unluminous-cli space new-view [name]
+```
+
+Make another view and show it. A name already in use is numbered rather than refused.
+
+- `name` (optional) — What to call it. `View` when it is not given.
+
+```sh
+unluminous-cli space new-view Rendering
+```
+
+### space rename-view
+
+```
+unluminous-cli space rename-view <view> <name>
+```
+
+Call a view something else.
+
+- `view` — The view's name, or its id.
+- `name` — What to call it.
+
+```sh
+unluminous-cli space rename-view Main Rendering
+```
+
+### space duplicate-view
+
+```
+unluminous-cli space duplicate-view <view>
+```
+
+Copy a view, its nodes, its connections and its camera under new ids, and show the copy. The nodes are copies: a terminal on the copy is a second terminal rather than a second drawing of one.
+
+- `view` — The view's name, or its id.
+
+```sh
+unluminous-cli space duplicate-view Main
+```
+
+### space delete-view
+
+```
+unluminous-cli space delete-view <view>
+```
+
+Throw a view away, stopping every program on it. Refused on the last one, because a canvas always has a view.
+
+- `view` — The view's name, or its id.
+
+```sh
+unluminous-cli space delete-view Rendering
+```
+
+### space add
+
+```
+unluminous-cli space add <kind> [--x <points>] [--y <points>] [--width <points>] [--height <points>] [--title <text>] [--command <text>] [--url <address>] [--root <path>] [--path <path>]
+```
+
+Put a node on the view that is showing and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with UNLUMINOUS_SPACE_NODE set to its id so an agent started in it knows which node it is.
+
+- `kind` — terminal, browser, folder or editor.
+
+- `--x <points>` — Where to put it, in canvas points. The middle of what is showing when it is not given.
+- `--y <points>` — The same, down the canvas.
+- `--width <points>` — How wide, in canvas points.
+- `--height <points>` — How tall.
+- `--title <text>` — What the header says. Empty means call it after what it holds.
+- `--command <text>` — A terminal node: the program to run instead of the shell.
+- `--url <address>` — A browser node: the page to open.
+- `--root <path>` — A folder node: which folder to show. The project when it is not given.
+- `--path <path>` — An editor node: which file to open.
+
+```sh
+unluminous-cli space add terminal --command claude
+unluminous-cli space add browser --url https://example.com/
+unluminous-cli space add editor --path src/main.rs --x 900 --y 40
+```
+
+### space move
+
+```
+unluminous-cli space move <node> [--x <points>] [--y <points>]
+```
+
+Move a node to a place on the canvas, in canvas points.
+
+- `node` — The node's id, from `space list`.
+
+- `--x <points>` — Where its left hand edge goes.
+- `--y <points>` — Where its top edge goes.
+
+```sh
+unluminous-cli space move 7 --x 320 --y 180
+```
+
+### space size
+
+```
+unluminous-cli space size <node> [--width <points>] [--height <points>]
+```
+
+Resize a node. It is never made smaller than its kind allows, and the reply says what size it really came out.
+
+- `node` — The node's id.
+
+- `--width <points>` — How wide.
+- `--height <points>` — How tall.
+
+```sh
+unluminous-cli space size 7 --width 900 --height 520
+```
+
+### space title
+
+```
+unluminous-cli space title <node> <title>
+```
+
+Call a node something else. An empty name puts it back to being called after what it holds.
+
+- `node` — The node's id.
+- `title` — What the header says. Everything after it on the line belongs to it.
+
+```sh
+unluminous-cli space title 7 the agent
+```
+
+### space remove
+
+```
+unluminous-cli space remove <node>
+```
+
+Take a node off the canvas, stopping whatever was running in it. A file editor node's tab is closed, which writes it first if it was edited.
+
+- `node` — The node's id.
+
+```sh
+unluminous-cli space remove 7
+```
+
+### space focus
+
+```
+unluminous-cli space focus <node>
+```
+
+Choose a node, bring it to the front and give it the keyboard.
+
+- `node` — The node's id.
+
+```sh
+unluminous-cli space focus 7
+```
+
+### space connect
+
+```
+unluminous-cli space connect <from> <to> [--pipe <lines>]
+```
+
+Wire one node's output to another's input. A connection is what lets an agent in a terminal node act on the node it is wired to; with `--pipe lines` it also types each line the first node's program writes into the second node's terminal.
+
+- `from` — The node the wire leaves.
+- `to` — The node it arrives at.
+
+- `--pipe <lines>` — Carry text as well as permission. Only into a terminal node, because only a terminal has an input to type into.
+
+```sh
+unluminous-cli space connect 7 9
+unluminous-cli space connect 7 9 --pipe lines
+```
+
+### space disconnect
+
+```
+unluminous-cli space disconnect <connection>
+```
+
+Take a connection away, by its id from `space connections`.
+
+- `connection` — The connection's id.
+
+```sh
+unluminous-cli space disconnect 12
+```
+
+### space connections
+
+```
+unluminous-cli space connections [--from <node>]
+```
+
+Every connection on the view that is showing: its id, which node it leaves, which it arrives at, and whether it carries lines. `--from` narrows it to one node's own, which is what an agent in a terminal node asks to find out what it may act on.
+
+- `--from <node>` — Only the connections leaving this node.
+
+```sh
+unluminous-cli space connections --from 7
+```
+
+### space camera
+
+```
+unluminous-cli space camera [--x <points>] [--y <points>] [--zoom <factor>] [--fit]
+```
+
+Pan and zoom the canvas. With `--fit` it moves so that every node is on the screen at once, which is how to find something that has been dragged out of sight.
+
+- `--x <points>` — The canvas point drawn at the top left corner.
+- `--y <points>` — The same, down the canvas.
+- `--zoom <factor>` — How many screen points one canvas point is, from 0.25 to 2.5.
+- `--fit` — Put every node on the screen at once.
+
+```sh
+unluminous-cli space camera --fit
+unluminous-cli space camera --zoom 0.5
+```
+
+### space send
+
+```
+unluminous-cli space send <node> <text> [--from <node>]
+```
+
+Type a line into a terminal node and press Enter. `--from` says which node is asking, and a node may only send to a node it is wired to; with no `--from` it is the window's own and may reach any of them.
+
+- `node` — The terminal node to type into.
+- `text` — The line to type. Everything after it on the line belongs to it.
+
+- `--from <node>` — Which node is asking. It must be wired to the one it names.
+
+```sh
+unluminous-cli space send 9 cargo test
+unluminous-cli space send 9 cargo test --from 7
+```
+
+### space restart
+
+```
+unluminous-cli space restart <node> [--resume]
+```
+
+Start a terminal node's program again in the same folder. With `--resume` it starts the agent on the conversation it named, which Claude takes and Codex does not.
+
+- `node` — The terminal node's id.
+
+- `--resume` — Start the agent on the session it named, rather than a fresh one.
+
+```sh
+unluminous-cli space restart 7 --resume
+```
+
+### space font
+
+```
+unluminous-cli space font <node> [--size <points>] [--bigger] [--smaller] [--reset]
+```
+
+How big a terminal node's letters are. The ticket this canvas comes from asks for a size a node keeps for itself, so a node that has been given one follows it and one that has not follows `terminal.font.size`. With no flag at all it answers the size the node is drawn at.
+
+- `node` — The terminal node's id.
+
+- `--size <points>` — Any size from 6 to 96, which is what `terminal.font.size` itself takes.
+- `--bigger` — One step up the list the Settings window offers.
+- `--smaller` — One step down it.
+- `--reset` — Follow the terminal's own setting again.
+
+```sh
+unluminous-cli space font 7 --size 16
+unluminous-cli space font 7 --smaller
+```
+
+### space browser
+
+```
+unluminous-cli space browser <node> <command> [--url <address>] [--from <node>] [--path <file>]
+```
+
+Drive a browser node: `go` to an address, `back`, `forward`, `reload`, `url` to read where it is, and `shot` to write a picture of the node to a file. A window renders one page at a time, so the node acted on is shown first.
+
+- `node` — The browser node's id.
+- `command` — go, back, forward, reload, url or shot.
+
+- `--url <address>` — Where to go, for `go`.
+- `--from <node>` — Which node is asking. It must be wired to the one it names.
+- `--path <file>` — Where to write the picture, for `shot`.
+
+```sh
+unluminous-cli space browser 9 go --url https://example.com/ --from 7
+unluminous-cli space browser 9 url
+```
+
+### space folder
+
+```
+unluminous-cli space folder <node> <command> [--path <path>] [--from <node>]
+```
+
+Drive a folder node: `expand` and `collapse` a folder in it, `select` a row, `open` a file into the editing area, `root` to point it at another folder, and `rows` to read what it is showing.
+
+- `node` — The folder node's id.
+- `command` — expand, collapse, select, open, root or rows.
+
+- `--path <path>` — Which row, or which folder for `root`.
+- `--from <node>` — Which node is asking. It must be wired to the one it names.
+
+```sh
+unluminous-cli space folder 11 expand --path crates/unluminous-app --from 7
+unluminous-cli space folder 11 rows
+```
+
+### space editor
+
+```
+unluminous-cli space editor <node> <path> [--from <node>]
+```
+
+Put a file in a file editor node. A file already open somewhere else is moved into the node rather than opened twice, because two tabs on one file would be two documents over one path.
+
+- `node` — The editor node's id.
+- `path` — The file, relative to the project or absolute.
+
+- `--from <node>` — Which node is asking. It must be wired to the one it names.
+
+```sh
+unluminous-cli space editor 13 src/main.rs --from 7
+```
+
 ## terminal — the shells along the bottom
 
 `terminal send` types into the shell and presses Enter; `terminal read --wait-for` is how to wait for what it did. Both take `--tab` to name a tab other than the one showing, and naming a tab does not show it, so a build in one tab and a dev server in another can each be spoken to without the other being disturbed.
@@ -2728,21 +3140,7 @@ unluminous-cli plugins run database query select count(*) from member
 unluminous-cli plugins run database new-table public.shelf id:integer:pk title:text:notnull
 unluminous-cli plugins run database set 1 title Kind of Green
 unluminous-cli plugins run database submit
-unluminous-cli plugins run database add-source notes C:/jason/notes.rdb
-unluminous-cli plugins run database capabilities notes --json
-unluminous-cli plugins run database search docs
-unluminous-cli plugins run database vector 1 vector --json
-unluminous-cli plugins run database import C:/jason/legacy.db
 ```
-
-The last four are the Inillucent engine's. `capabilities` is what that engine says it does and does
-not do, reported by the engine rather than written down here - a statement it has not built refuses
-with `unsupported` and names the construct, which is a different answer from a mistyped table name
-and an agent should treat it as one. `search` opens a console holding the statement that searches a
-search table, ready to edit, because `k` decides how deep the retrieval went and `LIMIT` only trims
-what came back. `vector` reads one cell as an embedding - its width, its length, its extremes and its
-values - because 3,072 bytes of hex is the same nothing to an agent that it is to a person. `import`
-reads a SQLite database and builds an Inillucent one beside it, never writing to the original.
 
 ### plugins view
 

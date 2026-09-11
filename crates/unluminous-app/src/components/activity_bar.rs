@@ -61,6 +61,8 @@ pub struct RailState {
     /// the Git menu already follows.
     pub in_repository: bool,
     pub terminal_visible: bool,
+    /// True when the Base of Infinite Space is showing - `task-1904`.
+    pub space_visible: bool,
     /// True when the run tile is the one showing at the bottom of the window.
     pub run_visible: bool,
     /// True when the debug tile is the one showing along the bottom.
@@ -154,7 +156,7 @@ pub fn show_with(
         bool,
         Action,
         Option<crate::app::dock::Panel>,
-    ); 3] = [
+    ); 4] = [
         (
             "Project",
             icon::folder,
@@ -189,6 +191,17 @@ pub fn show_with(
             // The commit panel is a modal rather than a docked panel, so it has no side to be moved
             // to and its button opens no menu.
             None,
+        ),
+        (
+            // The Base of Infinite Space - `task-1904`. In the **top** group, because the rail's two
+            // groups say what a panel *is*: the bottom one holds the things that are a character
+            // grid, and a canvas is a surface with several of them inside it rather than one.
+            "Base of Infinite Space",
+            icon::space,
+            state.space_visible,
+            true,
+            Action::Space(crate::app::actions::SpaceAction::Toggle),
+            Some(crate::app::dock::Panel::Space),
         ),
     ];
     for (index, (name, draw, on, enabled, action, panel)) in top.into_iter().enumerate() {
@@ -257,7 +270,7 @@ pub fn show_with(
     // The plugins' buttons, after Unluminous's own in whichever group each manifest named. A button that
     // would not fit is not drawn: the rail is as tall as the window and a button half off the end reads
     // as a fault rather than as a full rail.
-    let mut top_next = 3;
+    let mut top_next = 4;
     let mut bottom_next = 3;
     for button in plugins {
         let centre = match button.bottom {

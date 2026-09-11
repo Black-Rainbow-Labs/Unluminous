@@ -1282,13 +1282,19 @@ mod tests {
         //            reach past `editor replace` for its own `edit` three times running
         //   18,511   the sentence telling a caller what the `plugins` tool renamed, without which
         //            two plugins were unreachable
+        //   20,365   `task-1904`'s whole `space` area - twenty three commands for the Base of
+        //            Infinite Space. It is one area rather than a handful of verbs added to an
+        //            existing one, so the cost is the largest single move this number has made;
+        //            `mcp serve --areas` is what an agent that does not need the canvas uses, and
+        //            leaving the canvas unreachable from an agent would have been the one thing
+        //            this repository's first rule does not allow.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
         // the areas it needs and leaves the rest out — the same catalogue at 4,491 tokens for
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
-        assert!(grouped.len() / 4 < 19_000, "grouped MCP schema exceeded budget: {} bytes", grouped.len());
+        assert!(grouped.len() / 4 < 21_000, "grouped MCP schema exceeded budget: {} bytes", grouped.len());
         for command in commands() {
             assert!(
                 grouped.contains(command.verb),
