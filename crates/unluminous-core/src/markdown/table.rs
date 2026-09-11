@@ -229,7 +229,7 @@ fn rule(widths: &[usize], left: char, middle: char, right: char) -> Vec<Span> {
         text.push_str(&"\u{2500}".repeat(width + 2));
     }
     text.push(right);
-    vec![Span { text, bold: false, italic: false, strike: false, kind: Kind::Quiet }]
+    vec![Span { text, bold: false, italic: false, strike: false, kind: Kind::Quiet, target: None }]
 }
 
 /// The lines one row of cells is drawn on: as many as its tallest cell needs.
@@ -246,6 +246,7 @@ fn row_lines(row: &[Vec<Span>], widths: &[usize], alignments: &[Column]) -> Vec<
         italic: false,
         strike: false,
         kind: Kind::Quiet,
+        target: None,
     };
 
     let mut lines = Vec::with_capacity(height);

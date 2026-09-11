@@ -193,6 +193,25 @@ pub struct OpenFile {
     pub document: Document,
     /// Rendered web content, when this tab belongs to the embedded browser rather than the editor.
     pub browser: Option<crate::services::browser::BrowserTab>,
+    /// What is in the browser toolbar's address field, for a tab that holds a page.
+    ///
+    /// On the tab rather than in `egui`'s memory, which is the same reason `space::node::Browser` keeps
+    /// its own: a tab that is not showing is not drawn, and a half-typed address must not go with it.
+    /// Never written to `open-files.txt` — what a project comes back with is the page, not what somebody
+    /// was part way through typing. `task-1905`.
+    pub typed_address: String,
+    /// Whether what is in the address bar is the person's rather than the page's. See
+    /// `components::browser_view::Toolbar::editing`.
+    pub editing_address: bool,
+    /// What size this tab's document was last given, when something other than the window's own setting
+    /// gave it one.
+    ///
+    /// **On the tab rather than on the node**, which is the fault the Codex Sol review of `task-1905` found:
+    /// keyed on the node, a second tab shown in the same node was never restyled — the node's cache already
+    /// held the wanted size — and a tab dragged back into a pane kept the node's size for ever. It is the
+    /// document that carries a base style, so it is the document that has to remember what it was given.
+    /// `None` for a tab nothing has resized, which is what a pane's tab always is.
+    pub sized_at: Option<f32>,
     pub view_mode: ViewMode,
     /// How far the source is scrolled.
     pub scroll: f32,
@@ -276,6 +295,9 @@ impl OpenFile {
         Self {
             document,
             browser: None,
+            typed_address: String::new(),
+            editing_address: false,
+            sized_at: None,
             view_mode: ViewMode::Raw,
             scroll: 0.0,
             preview_scroll: 0.0,
@@ -576,9 +598,25 @@ impl OpenFiles {
         self.focus = Home::Node(node);
     }
 
-    /// The tab in a File Editor node, if it has one.
+    /// Which tab is **showing** in a File Editor node, if it has one.
+    ///
+    /// `showing_at` rather than `position`, which is the same function `showing_in` answers the same
+    /// question about a pane with: the one in it that was shown most recently. `task-1905` gives a node a
+    /// strip of tabs, and "the first tab that lives here" is only the same answer while a node holds one.
     pub fn tab_in_node(&self, node: u64) -> Option<usize> {
-        self.files.iter().position(|file| file.home == Home::Node(node))
+        self.showing_at(Home::Node(node))
+    }
+
+    /// Every tab living in one File Editor node, in the order they were opened.
+    ///
+    /// What the node's own strip draws, and it is `tabs_in_pane`'s twin.
+    pub fn tabs_in_node(&self, node: u64) -> Vec<usize> {
+        self.files
+            .iter()
+            .enumerate()
+            .filter(|(_, file)| file.home == Home::Node(node))
+            .map(|(index, _)| index)
+            .collect()
     }
 
     /// Every tab living on a node, which is what closing a canvas has to close.
@@ -600,6 +638,8 @@ impl OpenFiles {
         if index >= self.files.len() {
             return false;
         }
+        // A tab moved into a node **joins** whatever is there rather than replacing it — `task-1905`
+        // asks for several tabs on a node, and `stamp` below is what makes this the one showing.
         self.files[index].home = Home::Node(node);
         self.stamp(index);
         self.focus = Home::Node(node);
@@ -791,10 +831,15 @@ impl OpenFiles {
         if index >= self.files.len() || pane >= self.panes {
             return false;
         }
-        let from = self.pane_of(index);
-        let within = self.tabs_in(from).iter().position(|at| *at == index).unwrap_or(0);
+        // **A tab coming from a node is not already in a pane**, and `pane_of` answers `0` for one — so
+        // dragging the first tab out of a node into pane zero took the "dropped where it already is" branch
+        // below and nothing moved. `task-1905`.
+        let from = self.files[index].home.pane();
+        let within = from
+            .map(|from| self.tabs_in(from).iter().position(|at| *at == index).unwrap_or(0))
+            .unwrap_or(0);
         let mut position = position;
-        if from == pane {
+        if from == Some(pane) {
             if within < position {
                 position -= 1;
             }
@@ -819,6 +864,56 @@ impl OpenFiles {
         self.files.insert(at, file);
         self.focus_pane(pane);
         self.stamp(at);
+        self.tidy();
+        true
+    }
+
+    /// Move a tab into a File Editor **node**, at `position` along that node's own strip.
+    ///
+    /// [`Self::drag_tab`]'s twin, and the two are apart because a pane and a node are two kinds of home:
+    /// `drag_tab` refuses a pane number past the end, and a node is named by an id rather than counted.
+    /// What they share is the one subtlety — `position` counts the target's tabs **as they are on the
+    /// screen now**, including the tab being carried when it is already there, so a move further along its
+    /// own strip has one subtracted from it here rather than at every call. `task-1905`.
+    pub fn drag_tab_to_node(&mut self, index: usize, node: u64, position: usize) -> bool {
+        if index >= self.files.len() {
+            return false;
+        }
+        let home = Home::Node(node);
+        let already = self.files[index].home == home;
+        let mut position = position;
+        if already {
+            let within =
+                self.tabs_in_node(node).iter().position(|at| *at == index).unwrap_or(0);
+            if within < position {
+                position -= 1;
+            }
+            if within == position {
+                // Dropped where it already is. Showing it is still right — a person who picked a tab up
+                // and put it back plainly means to be looking at it — but nothing moves.
+                self.focus_node(node);
+                self.stamp(index);
+                return true;
+            }
+        }
+        let mut file = self.files.remove(index);
+        file.home = home;
+        let targets = self.tabs_in_node(node);
+        let at = match targets.get(position) {
+            Some(index) => *index,
+            None => targets.last().map(|index| index + 1).unwrap_or(self.files.len()),
+        };
+        self.files.insert(at, file);
+        self.focus_node(node);
+        self.stamp(at);
+        // **The editing area always has a tab**, which is `move_to_node`'s own promise and the one thing
+        // dragging the last tab out of a pane could break.
+        if !self.files.iter().any(|file| file.home.pane().is_some()) {
+            self.files.push(OpenFile::new(Document::new()));
+            self.panes = 1;
+            self.last_pane = 0;
+            self.widths = vec![1.0];
+        }
         self.tidy();
         true
     }
@@ -1021,7 +1116,14 @@ impl OpenFiles {
     }
 
     fn step(&mut self, forwards: bool) {
-        let tabs = self.tabs_in(self.last_pane);
+        // **Whichever home has the keyboard**, which since `task-1905` may be a File Editor node rather than
+        // a pane. `last_pane` is where the keyboard was last in the *editing area*, so with a node focused
+        // Next Tab walked an unrelated pane's tabs — the Codex Sol review of `task-1905` found it. `focus` is
+        // the one value that says where the keyboard is, so it is the one thing asked.
+        let tabs = match self.focus {
+            Home::Node(node) => self.tabs_in_node(node),
+            Home::Pane(_) => self.tabs_in(self.last_pane),
+        };
         if tabs.is_empty() {
             return;
         }
@@ -1762,4 +1864,101 @@ mod tests {
     fn names_in(files: &OpenFiles, pane: usize) -> Vec<String> {
         files.tabs_in(pane).into_iter().map(|index| files.at(index).name()).collect()
     }
+    /// Next Tab walks the tabs of whichever home has the keyboard, including a node's.
+    ///
+    /// Found by the Codex Sol review of `task-1905`: `step` read `last_pane`, which is where the keyboard was
+    /// last in the *editing area* — so with a File Editor node focused, Next Tab moved an unrelated pane's
+    /// tabs and the node's did not change.
+    #[test]
+    fn next_tab_walks_the_tabs_of_whichever_home_has_the_keyboard() {
+        let mut files = OpenFiles::new(Document::new());
+        files.open(Document::new(), true);
+        // **Moved one at a time and looked up again**, because `move_to_node` can insert a fresh untitled
+        // tab to keep the editing area's promise, and every index after it shifts.
+        let one = files.open(Document::new(), true);
+        files.move_to_node(one, 7);
+        let two = files.open(Document::new(), true);
+        files.move_to_node(two, 7);
+        assert_eq!(files.tabs_in_node(7).len(), 2, "two tabs are on the node");
+
+        // The keyboard in the node: Next Tab stays inside it.
+        files.focus_node(7);
+        let before = files.active_index();
+        assert!(files.home_of(before).node() == Some(7), "the node's tab is showing");
+        files.next();
+        let after = files.active_index();
+        assert_ne!(after, before, "it moved");
+        assert_eq!(files.home_of(after).node(), Some(7), "and stayed on the node");
+
+        // The keyboard in a pane: it walks that pane's, and never the node's.
+        files.focus_pane(0);
+        for _ in 0..4 {
+            files.next();
+            assert!(files.home_of(files.active_index()).pane().is_some(), "stayed in the panes");
+        }
+    }
+
+    /// Four thousand random moves keep every invariant this file states.
+    ///
+    /// `task-1905` gave a tab a third kind of home — a File Editor node — and added
+    /// [`OpenFiles::drag_tab_to_node`] beside `drag_tab`. Both remove from the vector and insert into it,
+    /// which is where an index goes stale, and both can take the last tab out of a pane. The three
+    /// invariants are the ones this file already promises: the editing area always has a tab, the panes are
+    /// numbered `0..panes` with none empty, and `active_index` is in range.
+    ///
+    /// A walk rather than a case, because the interesting states are the ones nobody would think to write
+    /// down: a node's last tab dragged into a pane that then has to be renumbered, a tab dropped where it
+    /// already is, a close that empties a pane. The sequence is deterministic, so a failure is reproducible
+    /// — which is `mermaid::layered`'s rule about anything a picture rests on.
+    #[test]
+    fn a_long_run_of_random_moves_keeps_every_invariant() {
+        let mut files = OpenFiles::new(Document::new());
+        for _ in 0..6 {
+            files.open(Document::new(), true);
+        }
+        files.split_right();
+        files.split_right();
+        let mut seed: u64 = 0x1234_5678;
+        let mut next = || {
+            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            (seed >> 33) as usize
+        };
+        for step in 0..4000 {
+            let count = files.len();
+            assert!(count > 0, "every tab was closed at step {step}");
+            let index = next() % count;
+            match next() % 4 {
+                0 => {
+                    let pane = next() % 4;
+                    let position = next() % 4;
+                    files.drag_tab(index, pane, position);
+                }
+                1 => {
+                    let node = 100 + (next() % 3) as u64;
+                    let position = next() % 4;
+                    files.drag_tab_to_node(index, node, position);
+                }
+                2 => {
+                    let node = 100 + (next() % 3) as u64;
+                    files.move_to_node(index, node);
+                }
+                _ => files.close(index),
+            }
+            assert!(
+                files.iter().any(|file| file.home.pane().is_some()),
+                "the editing area was left with no tab at step {step}",
+            );
+            let panes = files.pane_count();
+            for pane in 0..panes {
+                assert!(!files.tabs_in(pane).is_empty(), "pane {pane} is empty at step {step}");
+            }
+            for file in files.iter() {
+                if let Home::Pane(pane) = file.home {
+                    assert!(pane < panes, "a tab is in pane {pane} of {panes} at step {step}");
+                }
+            }
+            assert!(files.active_index() < files.len(), "nothing is showing at step {step}");
+        }
+    }
+
 }

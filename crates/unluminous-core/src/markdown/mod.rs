@@ -180,6 +180,26 @@ pub struct Preview {
     pub panels: Vec<PreviewPanel>,
     /// Where the inline code is, so a chip can be drawn behind each piece.
     pub code_spans: Vec<Range<usize>>,
+    /// Where the links are and where each one goes, in the order they appear.
+    ///
+    /// `task-1848` asks that a link be openable with `Ctrl/Cmd+Click`. The window has a byte offset when
+    /// somebody clicks — `Layout::offset_at` — and this is what turns one into an address, which is the
+    /// same shape `code_spans` already has and for the same reason: this crate says which bytes, and the
+    /// window decides what to do about them.
+    ///
+    /// The ranges do not overlap and are in ascending order, so the one under a click is a binary search.
+    pub links: Vec<PreviewLink>,
+}
+
+/// A link in a preview: the bytes its words occupy, and where it goes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreviewLink {
+    /// The bytes of `Preview::text` the link's label occupies.
+    pub bytes: Range<usize>,
+    /// The address as the document wrote it, with a reference definition already resolved and a title
+    /// already dropped. It is **not** checked or resolved here: whether an address is one the window will
+    /// open is the window's decision, and `unluminous-core` has no network and no browser.
+    pub target: String,
 }
 
 impl Preview {
@@ -194,6 +214,7 @@ impl Preview {
             diagrams: Vec::new(),
             panels: Vec::new(),
             code_spans: Vec::new(),
+            links: Vec::new(),
         }
     }
 }
@@ -266,6 +287,7 @@ struct Writer<'a> {
     diagrams: Vec<PreviewDiagram>,
     panels: Vec<PreviewPanel>,
     code_spans: Vec<Range<usize>>,
+    links: Vec<PreviewLink>,
     /// The style ordinary text is in right now, which a quote bends for its whole subtree.
     base: CharStyle,
     /// How many quotes deep the walk is, which decides whether a heading keeps the quiet colour.
@@ -286,6 +308,7 @@ impl<'a> Writer<'a> {
             diagrams: Vec::new(),
             panels: Vec::new(),
             code_spans: Vec::new(),
+            links: Vec::new(),
             base: options.base.clone(),
             quoted: 0,
             options,
@@ -426,6 +449,16 @@ impl<'a> Writer<'a> {
             self.push(&span.text, style);
             if span.kind == SpanKind::Code && self.out.len() > from {
                 self.code_spans.push(from..self.out.len());
+            }
+            // A link's bytes and where it goes, collected here rather than in a pass of its own so that
+            // what is recorded is exactly the text that was written — a label with emphasis in it is
+            // several spans, and each gets its own entry, which is right: the window is asking "is the
+            // byte under the pointer part of a link", and every byte of the label answers yes.
+            if let (SpanKind::Link, Some(target)) = (span.kind, span.target.as_deref()) {
+                if self.out.len() > from {
+                    self.links
+                        .push(PreviewLink { bytes: from..self.out.len(), target: target.to_owned() });
+                }
             }
         }
         self.end_line(paragraph);
@@ -672,6 +705,7 @@ impl<'a> Writer<'a> {
             diagrams: self.diagrams,
             panels: self.panels,
             code_spans: self.code_spans,
+            links: self.links,
         }
     }
 }

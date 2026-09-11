@@ -598,7 +598,15 @@ fn a_claim_whose_worker_is_gone_is_struck_and_the_board_says_why() {
 #[test]
 #[ignore = "reads the board on this machine: run with --ignored"]
 fn the_board_on_this_machine_opens_and_can_be_claimed_on() {
-    let real = Store::default_path();
+    // The place a released Unluminous puts it, which is the plugin's own folder under this person's
+    // settings folder. `Store::default_path_in` takes the folder rather than deciding it, so that a window
+    // pointed at a store of its own keeps its board there — see its own comment for the fault that was —
+    // and this test is the one place that really does want the person's own.
+    let real = Store::default_path_in(
+        &unluminous_app::services::store::folder_for_this_person()
+            .join("plugins")
+            .join("agent-tasks"),
+    );
     if !real.exists() {
         eprintln!("skipped: there is no board at {}", real.display());
         return;

@@ -82,13 +82,19 @@ pub fn words(command: &str) -> Vec<String> {
 /// What a node's command starts, or a sentence saying what was looked for.
 ///
 /// An empty command is the machine's own shell, which is what a node opens with.
+/// **Looked for on the shell profile's `PATH`**, which is what `services::login_shell` reads. A node
+/// running `claude` is a node running a program installed under the home folder, and an Unluminous started
+/// from the Dock has `PATH=/usr/bin:/bin:/usr/sbin:/sbin` — so without this it could not be found at all,
+/// which is the first of the two failures `login_shell`'s own module comment measured. `task-1905`.
 pub fn resolve(command: &str, shell: Option<String>) -> Result<Launch, String> {
     let mut words = words(command);
     if words.is_empty() {
         return Ok(Launch::the_shell(shell));
     }
     let named = words.remove(0);
-    let Some(found) = unluminous_chat::provider::program(&named) else {
+    let environment =
+        unluminous_chat::Environment::from(crate::services::login_shell::for_a_child());
+    let Some(found) = unluminous_chat::provider::program(&named, &environment) else {
         return Err(format!(
             "{named} is not installed, or is in a folder that is not on the PATH Unluminous searched."
         ));

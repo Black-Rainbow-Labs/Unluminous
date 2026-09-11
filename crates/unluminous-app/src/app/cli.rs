@@ -3999,6 +3999,19 @@ impl UnluminousApp {
             ),
             None => (Vec::new(), Vec::new()),
         };
+        // The links and where each one goes. Reported for the same reason the code chips are: what a
+        // person can see is what a script can read — and this is the only way an agent can find out what
+        // a document links to without reading the source and parsing it a second time.
+        let links = match self.files.active().cached.preview.as_ref() {
+            Some(preview) => preview
+                .links
+                .iter()
+                .map(|link| {
+                    json!({ "from": link.bytes.start, "to": link.bytes.end, "target": link.target })
+                })
+                .collect::<Vec<Value>>(),
+            None => Vec::new(),
+        };
         ok(
             request,
             String::new(),
@@ -4008,6 +4021,7 @@ impl UnluminousApp {
                 "diagrams": diagrams,
                 "panels": panels,
                 "code": code_spans,
+                "links": links,
             }),
         )
     }
@@ -7548,8 +7562,91 @@ impl UnluminousApp {
                 )
             }
             "action" => self.cli_git_action(request),
+            "branches" => self.cli_git_branches(request),
+            "switch" => self.cli_git_switch(request),
             _ => unknown(request),
         }
+    }
+
+    /// The branches, which is what the title bar's branch button lists.
+    ///
+    /// Read from the snapshot the git worker already keeps rather than by running a git command, which is
+    /// what the widget itself reads — so the two cannot disagree about what is checked out.
+    fn cli_git_branches(&mut self, request: &Request) -> Outcome {
+        self.refresh_repository();
+        let Some(git) = &self.git else {
+            return no(request, code::NOT_APPLICABLE, "This folder is not in a git repository.");
+        };
+        let current = git.snapshot.status.branch.clone();
+        let rows: Vec<String> = git
+            .snapshot
+            .branches
+            .iter()
+            .map(|branch| match branch.current {
+                true => format!("* {}", branch.name),
+                false => format!("  {}", branch.name),
+            })
+            .collect();
+        let branches: Vec<Value> = git
+            .snapshot
+            .branches
+            .iter()
+            .map(|branch| {
+                json!({
+                    "name": branch.name,
+                    "current": branch.current,
+                    "remote": branch.remote,
+                    "upstream": branch.upstream,
+                })
+            })
+            .collect();
+        lines(
+            request,
+            match &current {
+                Some(name) => format!("on {name}, {} branches", branches.len()),
+                None => format!("{} branches, with no branch checked out", branches.len()),
+            },
+            rows,
+            json!({ "current": current, "branches": branches }),
+        )
+    }
+
+    /// Move to a branch, which is what a row of the title bar's branch flyout does.
+    ///
+    /// A branch this repository has no such branch for is refused **by name** rather than handed to git,
+    /// because git's own message for one is about a pathspec — it reads `did not match any file(s) known
+    /// to git`, which is a sentence about the wrong thing entirely for somebody who misspelled a branch.
+    fn cli_git_switch(&mut self, request: &Request) -> Outcome {
+        let Some(name) = request.text("branch") else {
+            return no(request, code::USAGE, "Say which branch to move to.");
+        };
+        self.refresh_repository();
+        let Some(git) = &self.git else {
+            return no(request, code::NOT_APPLICABLE, "This folder is not in a git repository.");
+        };
+        if git.snapshot.status.branch.as_deref() == Some(name.as_str()) {
+            return ok(request, format!("Already on {name}."), json!({ "branch": name }));
+        }
+        let known = git.snapshot.branches.iter().any(|branch| branch.name == name);
+        if !known && !git.snapshot.branches.is_empty() {
+            return no(
+                request,
+                code::NOT_FOUND,
+                format!("There is no branch called {name}. `git branches` lists them."),
+            );
+        }
+        self.run_git(GitAction::Switch(name.clone()));
+        if request.has("wait") {
+            return Outcome::Hold(Waiting::Git {
+                until: waits_for(request, "wait", DEFAULT_WAIT),
+                answer: GitAnswer::GitStatus,
+            });
+        }
+        ok(
+            request,
+            format!("Asked git to move to {name}. `git status` says what came back."),
+            json!({ "asked": name }),
+        )
     }
 
     fn cli_git_action(&mut self, request: &Request) -> Outcome {

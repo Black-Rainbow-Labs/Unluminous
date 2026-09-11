@@ -364,6 +364,37 @@ pub fn plus(painter: &egui::Painter, centre: Pos2, color: Color32) {
     );
 }
 
+/// A circle with a plus in it, for the canvas's zoom in button.
+///
+/// **Drawn rather than lettered**, which is `design/style-guide.md`'s rule and the reason the eleven
+/// box-drawing characters in a Markdown table are painted: a glyph's ink is an em box, so a `+` set as
+/// text does not centre in a control and a circle round it cannot be made to fit. `task-1905` asks for
+/// *"classic - + buttons with cirlces around them"*, and this is that.
+pub fn zoom_in(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    zoom_mark(painter, centre, color, true);
+}
+
+/// The same with a minus in it.
+pub fn zoom_out(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    zoom_mark(painter, centre, color, false);
+}
+
+/// The circle and the one or two strokes inside it.
+fn zoom_mark(painter: &egui::Painter, centre: Pos2, color: Color32, plus: bool) {
+    let stroke = Stroke::new(1.3, color);
+    painter.circle_stroke(centre, 6.5, stroke);
+    painter.line_segment(
+        [Pos2::new(centre.x - 3.2, centre.y), Pos2::new(centre.x + 3.2, centre.y)],
+        stroke,
+    );
+    if plus {
+        painter.line_segment(
+            [Pos2::new(centre.x, centre.y - 3.2), Pos2::new(centre.x, centre.y + 3.2)],
+            stroke,
+        );
+    }
+}
+
 /// An arrow pointing into a corner, for the button that hides the explorer.
 pub fn collapse(painter: &egui::Painter, centre: Pos2, color: Color32) {
     collapse_at(painter, centre, color, 1.0);

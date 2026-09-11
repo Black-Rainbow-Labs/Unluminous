@@ -42,6 +42,7 @@
 pub mod agent;
 pub mod base64;
 pub mod client;
+pub mod environment;
 pub mod model;
 pub mod provider;
 pub mod session;
@@ -50,6 +51,7 @@ pub mod wire;
 
 pub use agent::{Ask, Permission, PERMISSIONS};
 pub use client::Client;
+pub use environment::Environment;
 pub use model::{Conversation, Message, Part, Role, ToolCall, Usage};
 pub use provider::{Provider, Wire};
 pub use session::{Session, State};

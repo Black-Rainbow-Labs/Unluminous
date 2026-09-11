@@ -64,7 +64,7 @@ impl MenuPlacement {
 }
 
 /// What the user asked the window to do.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct TitleBarOutcome {
     pub close: bool,
     pub minimise: bool,
@@ -76,6 +76,30 @@ pub struct TitleBarOutcome {
     pub toggle_fullscreen: bool,
     /// Something chosen from a menu in the bar.
     pub action: Option<Action>,
+    /// Where the branch widget goes: after the project's name, which is the only control here whose
+    /// position depends on how long another control's text turned out to be.
+    ///
+    /// The bar reports it rather than drawing it, for the reason it reports `tools_rect` and `run_rect`
+    /// rather than drawing those: a control added to the `Ui` before the bar's own drag area sits
+    /// underneath it and is never pressed, so the window draws all three over the top afterwards.
+    ///
+    /// `Rect::NOTHING` when there is no branch widget, which is what `Rect::default()` cannot be —
+    /// `egui::Rect` has no `Default`, deliberately, because an all-zeroes rectangle is a real rectangle
+    /// at the origin rather than an absent one.
+    pub branch_rect: Rect,
+}
+
+impl Default for TitleBarOutcome {
+    fn default() -> Self {
+        Self {
+            close: false,
+            minimise: false,
+            toggle_maximise: false,
+            toggle_fullscreen: false,
+            action: None,
+            branch_rect: Rect::NOTHING,
+        }
+    }
 }
 
 /// Where the middle of the first window button is.
@@ -138,6 +162,7 @@ pub fn show(
     menus: &[Menu],
     tools_width: f32,
     run_width: f32,
+    branch_width: f32,
 ) -> TitleBarOutcome {
     let mut outcome = TitleBarOutcome::default();
     let painter = ui.painter_at(area);
@@ -248,6 +273,21 @@ pub fn show(
             );
             name_from += galley.size().x;
         }
+    }
+
+    // The branch widget, after the project's name. `name_from` has just been advanced past whatever the
+    // name really took, which is why this is reported from here rather than worked out by the window: the
+    // name is laid out with the real fonts and cut to the room available, so how much of the bar it used
+    // is not something arithmetic outside this function can know.
+    outcome.branch_rect = Rect::from_min_max(
+        Pos2::new(name_from + 12.0, area.top()),
+        Pos2::new((name_from + 12.0 + branch_width).min(name_to), area.bottom()),
+    );
+    if branch_width > 0.0 && outcome.branch_rect.width() > 0.0 {
+        // The drag area stops before it, so pressing the branch button never begins a drag of the
+        // window behind it — which is what the same lines below already do for the tools and the run
+        // widget.
+        name_from = outcome.branch_rect.right();
     }
 
     // Dragging anywhere else on the bar moves the window, which is what a title bar is for. It stops

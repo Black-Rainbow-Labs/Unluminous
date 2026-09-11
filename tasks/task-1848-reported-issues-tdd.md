@@ -276,28 +276,32 @@ for and it is reversible — a pane dragged to the bottom edge is as wide as the
 Two different controls, and the report has identified which is which precisely.
 
 `components::splitter` — the divider between panes — uses `ResizeHorizontal` and `ResizeVertical`, the
-double-headed arrows, and it works. `components::resize_edges` — the window's own eight grips — uses
-`ResizeWest`, `ResizeEast`, `ResizeNorth` and the four corners, which macOS draws as an arrow against a
-bar. Those are the ones that show and do nothing.
+double-headed arrows. `components::resize_edges` — the window's own eight grips — used `ResizeWest`,
+`ResizeEast`, `ResizeNorth` and `ResizeSouth`, which macOS draws as an arrow against a bar. Those are the
+ones that showed and appeared to do nothing.
 
-**Why they do nothing is worth naming, because it decides the fix.** A window edge grip sends
-`ViewportCommand::BeginResize`, which hands the drag to the window manager. `resize_edges.rs` already
-records that on Windows a refused resize latches a flag inside winit and wedges the window — which is why
-the grips are absent while maximised. On macOS the operating system draws its own resize region at the
-window's edge, and an undecorated window still gets it; so Unluminous's own grips are a second answer to
-a question the platform has already answered, and the cursor they set is what the report sees.
+**The two controls overlap, which is why one of them looked broken.** A pane divider that reaches the
+window's edge is a few points from the window's own grip there, and the grips are added to the `Ui`
+**last** so they win where the two want the same point. So the one-way arrow marked the window's edge and
+the double-headed one marked the divider, a person aiming at the divider got the edge, and the drag went
+to the window manager instead of moving the divider — which reads exactly as "shows and does nothing".
 
-**The grips stay on Windows and go on macOS**, and the cursor is the reason rather than the mechanism:
-- On macOS the window is resized by dragging its edge, by the platform, and Unluminous draws nothing.
-- On Windows there is no such region on an undecorated window, so the grips are what makes the window
-  resizable at all and they stay exactly as they are.
+**So the cursor changes and the mechanism does not.** All four edges set the double-headed arrow that the
+divider beside them already sets: a window edge does move in two directions, so it is the truthful glyph
+either way, and the two controls no longer advertise themselves as different things. The corners keep
+their diagonals, which are unambiguous and have nothing else at a corner to be confused with.
 
-That is `CLAUDE.md`'s absent-control rule applied to a control whose job the platform is already doing.
+**The grips themselves stay, on both platforms**, and an earlier draft of this section was wrong to
+propose removing them on macOS. Unluminous's window has no operating system frame — the rounded corners and
+the transparency need the decorations off — so there is no platform-drawn resize region at its edge:
+`task-1658` measured exactly that, a window that could be resized from the top, where the title bar drag
+happened to land on something the platform still handled, "and from nowhere else". Taking the grips away
+would take resizing away.
 
 ### What proves it
 
-- `the_window_draws_no_resize_grips_on_macos` and `the_window_draws_its_own_grips_on_windows` — one
-  test, two `cfg`s, so neither platform's answer can be changed without the other being considered.
+- `the_window_edges_use_the_double_headed_cursors` — the four edges, asserted by name, so a change back
+  to a one-way arrow fails.
 - The existing `typing_a_space_after_a_tab_or_an_arrow_key_cannot_close_or_minimise_the_window` must
   still pass, because the grips are part of what it walks.
 

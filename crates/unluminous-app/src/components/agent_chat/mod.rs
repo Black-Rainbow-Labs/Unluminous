@@ -593,7 +593,7 @@ fn provider_list(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Re
     let scale = look.scale();
     let row = look.row_height * scale + 12.0 * scale;
     let mut pen = area.top() + 4.0 * scale;
-    for provider in &parts.configuration.providers {
+    for (index, provider) in parts.configuration.providers.iter().enumerate() {
         let rect = Rect::from_min_size(Pos2::new(area.left(), pen), Vec2::new(area.width(), row));
         if rect.bottom() > area.bottom() {
             break;
@@ -635,8 +635,11 @@ fn provider_list(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Re
             look.palette.text_strong,
         );
         // What is wrong with it, if anything, rather than a row that silently will not work when it
-        // is pressed. `Provider::why_not` is the same sentence the composer shows.
-        let (said, tint) = match provider.why_not() {
+        // is pressed. The same sentence the composer shows, and it is **handed over** rather than asked
+        // for here: `Provider::why_not` walks `PATH` for a row that runs a program, and since
+        // `task-1905` it also reads the shell profile — neither of which is a component's to do once a
+        // row once a frame. See `Parts::readiness`.
+        let (said, tint) = match parts.readiness.get(index).cloned().flatten() {
             Some(why) => (why, crate::theme::color::close()),
             None => (
                 format!("{} · {}", provider.model, provider.wire.name()),

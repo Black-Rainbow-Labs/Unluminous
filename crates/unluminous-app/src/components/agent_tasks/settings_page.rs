@@ -80,8 +80,12 @@ fn rows(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Reque
         reveal: true,
     });
     outcome.act(&mut requests, &where_it_is);
+    // A board in memory has no file to show anybody, so there is nothing to reveal — which is a
+    // window with no settings folder rather than anything a person sees.
     if outcome.revealed {
-        requests.push(Request::Reveal(configuration.database_path()));
+        if let Some(path) = board.database_path() {
+            requests.push(Request::Reveal(path));
+        }
     }
 
     let project = configuration.project.clone().map(|path| path.display().to_string()).unwrap_or_default();

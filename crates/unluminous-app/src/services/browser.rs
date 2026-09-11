@@ -244,6 +244,14 @@ pub enum BrowserCommand {
     Back,
     Forward,
     Reload,
+    /// An address was typed into the toolbar's own field and entered.
+    ///
+    /// `task-1905`: *"I need a url address bar and back/forward and reload buttons at the top."* A
+    /// browser node had no way to be given an address at all except from the command line, and this is
+    /// what the field reports. The window resolves it the way it resolves every other address, through
+    /// `BrowserLocation::parse`, because handing typed text straight to the view is what a live window
+    /// refused with "Class not registered".
+    Go(String),
 }
 
 /// Something the embedded engine reported back to the application.
@@ -378,6 +386,15 @@ impl BrowserHost {
         self.native.reload()
     }
 
+    /// How big the tab that is showing draws its page.
+    ///
+    /// A window has one native view, so only the tab it is pointed at can be zoomed — which is why a
+    /// node's zoom is remembered in `space::live::Live` and applied again when the view moves to it.
+    pub fn zoom(&self, id: u64, factor: f64) -> Result<(), String> {
+        self.for_the_showing_tab(id)?;
+        self.native.zoom(factor)
+    }
+
     /// Refuse to drive a tab that the one native view is not pointed at.
     fn for_the_showing_tab(&self, id: u64) -> Result<(), String> {
         match self.showing() == Some(id) {
@@ -418,7 +435,12 @@ fn choose(placements: &[BrowserPlacement], occluded: bool) -> Option<&BrowserPla
     if occluded {
         return None;
     }
-    placements.iter().find(|placement| placement.focused).or_else(|| placements.first())
+    // **The last rather than the first when nothing is focused.** A placement is pushed as its owner is
+    // drawn, and both the pane loop and the canvas's node loop draw **back to front** — so the first is the
+    // one furthest behind. With two browser nodes overlapping and the keyboard somewhere else entirely, the
+    // one underneath took the native view and painted above the one on top of it, because a native child
+    // composites over everything egui draws. The Codex Sol review of `task-1905` found it.
+    placements.iter().find(|placement| placement.focused).or_else(|| placements.last())
 }
 
 impl Default for BrowserHost {
@@ -798,6 +820,18 @@ mod native {
             let view = self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
             view.webview.reload().map_err(|problem| format!("The browser could not reload: {problem}"))
         }
+
+        /// How big the page is drawn.
+        ///
+        /// **The engine's number rather than Unluminous's drawing.** `task-1905` asks that the modifier
+        /// wheel over a node zoom that node, and for a browser node the thing that decides how big a page
+        /// is is the page's own zoom — nothing Unluminous paints is involved.
+        pub fn zoom(&self, factor: f64) -> Result<(), String> {
+            let view = self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
+            view.webview
+                .zoom(factor)
+                .map_err(|problem| format!("The browser could not be zoomed: {problem}"))
+        }
     }
 
     /// Allow ordinary web navigation and Unluminous's one local resource origin.
@@ -897,12 +931,39 @@ mod native {
         pub fn navigate(&self, _url: &str) -> Result<(), String> { Err(UNSUPPORTED.to_owned()) }
         /// Refuse reloading for the same reason.
         pub fn reload(&self) -> Result<(), String> { Err(UNSUPPORTED.to_owned()) }
+        /// And zooming, which is the engine's own number.
+        pub fn zoom(&self, _factor: f64) -> Result<(), String> { Err(UNSUPPORTED.to_owned()) }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The one native view goes to the topmost placement, not the backmost.
+    ///
+    /// A placement is pushed as its owner is drawn, and both the pane loop and the canvas's node loop draw
+    /// back to front — so `placements.first()` is the thing furthest *behind*. With two browser nodes
+    /// overlapping and the keyboard elsewhere, the one underneath took the view and painted above the one on
+    /// top of it, because a native child composites over everything egui draws. Found by the Codex Sol review
+    /// of `task-1905`.
+    #[test]
+    fn the_native_view_goes_to_the_topmost_placement() {
+        let placed = |id: u64, focused: bool| BrowserPlacement {
+            id,
+            area: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(100.0, 100.0)),
+            focused,
+        };
+        // Back to front: 1 was drawn first and 2 is on top.
+        let both = [placed(1, false), placed(2, false)];
+        assert_eq!(choose(&both, false).map(|one| one.id), Some(2), "the one on top");
+        // A focused placement still wins, wherever it is in the order: that is somebody's own choice.
+        let focused_behind = [placed(1, true), placed(2, false)];
+        assert_eq!(choose(&focused_behind, false).map(|one| one.id), Some(1));
+        // And nothing renders while a modal, a popup or a menu is over it.
+        assert!(choose(&both, true).is_none());
+        assert!(choose(&[], false).is_none());
+    }
 
     /// A unique folder under the process temp directory for one resource test.
     fn fixture(name: &str) -> PathBuf {

@@ -330,6 +330,27 @@ pub fn labelled_flyout<T>(
     width: f32,
     contents: impl FnOnce(&mut egui::Ui) -> T,
 ) -> Option<T> {
+    labelled_flyout_with_icon(ui, area, name, label, None, width, contents)
+}
+
+/// The same, with a drawn mark in front of the word.
+///
+/// **`flyout` is the wrong helper for a button that carries a word**, and that is what this exists to
+/// stop being rediscovered: `flyout` draws its icon at `area.center()`, which is right for the square
+/// icon buttons it was written for and puts the mark on top of the word on a button wide enough to hold
+/// one. Measured — `components::branch_widget` drew `main` with the branch icon over the middle of it.
+///
+/// So the mark goes at a fixed offset from the left and the word starts clear of it, and a caller passing
+/// `None` gets exactly what `labelled_flyout` always drew.
+pub fn labelled_flyout_with_icon<T>(
+    ui: &mut egui::Ui,
+    area: Rect,
+    name: &str,
+    label: &str,
+    mark: Option<fn(&egui::Painter, Pos2, Color32)>,
+    width: f32,
+    contents: impl FnOnce(&mut egui::Ui) -> T,
+) -> Option<T> {
     let response = ui
         .interact(area, ui.id().with(("labelled-flyout", name)), Sense::click())
         .on_hover_text(name);
@@ -343,9 +364,17 @@ pub fn labelled_flyout<T>(
         painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::control());
     }
     let tint = if open { color::text_strong() } else { color::text_control() };
+    // The word starts after the mark when there is one, and where it always did when there is not.
+    let words_from = match mark {
+        Some(draw) => {
+            draw(painter, Pos2::new(area.left() + 11.0, area.center().y), tint);
+            area.left() + 22.0
+        }
+        None => area.left() + 9.0,
+    };
     let galley = painter.layout_no_wrap(label.to_owned(), egui::FontId::proportional(12.5), tint);
     painter.galley(
-        Pos2::new(area.left() + 9.0, area.center().y - galley.size().y / 2.0),
+        Pos2::new(words_from, area.center().y - galley.size().y / 2.0),
         galley,
         tint,
     );
@@ -466,14 +495,7 @@ pub fn menu_rows(ui: &mut egui::Ui, entries: &[Entry], indent: f32) -> Option<Ac
     // egui puts `item_spacing.y` between every row, so a count of row heights alone comes out short
     // by a third and the menu is decided to fit when it does not.
     let gap = ui.spacing().item_spacing.y;
-    let height: f32 = entries
-        .iter()
-        .map(|entry| match entry {
-            Entry::Separator => 8.0 + gap,
-            Entry::Item { .. } => 24.0 + gap,
-            Entry::Submenu { entries, .. } => 22.0 + gap + entries.len() as f32 * (24.0 + gap),
-        })
-        .sum();
+    let height = tall(entries, gap);
     if height > room {
         return egui::ScrollArea::vertical()
             .max_height(room)
@@ -511,6 +533,25 @@ fn rows(ui: &mut egui::Ui, entries: &[Entry], indent: f32) -> Option<Action> {
         }
     }
     chosen
+}
+
+/// How tall a run of entries is drawn, in points, counting the gap egui puts between rows.
+///
+/// **It recurses, because a submenu can hold a submenu.** `task-1848` put every plugin's entries under one
+/// `Plugins` menu, so the rows under that heading are themselves headings with rows beneath them — and a
+/// measurement that counted a submenu's entries as plain rows undercounted by a heading and a gap for each
+/// one nested. Undercounting here is not a cosmetic fault: it is what decides whether the menu is given a
+/// `ScrollArea`, so a menu measured as fitting when it does not is a menu whose last entries cannot be
+/// reached at all.
+fn tall(entries: &[Entry], gap: f32) -> f32 {
+    entries
+        .iter()
+        .map(|entry| match entry {
+            Entry::Separator => 8.0 + gap,
+            Entry::Item { .. } => 24.0 + gap,
+            Entry::Submenu { entries, .. } => 22.0 + gap + tall(entries, gap),
+        })
+        .sum()
 }
 
 /// One row of a menu: a tick when it is switched on, its name, and its keyboard shortcut on the right.
@@ -569,7 +610,14 @@ pub fn menu_row(
 
 /// A heading inside a menu, which is what a menu inside a menu is drawn as inside the window.
 pub fn menu_heading(ui: &mut egui::Ui, name: &str, indent: f32) {
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 22.0), Sense::hover());
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), 22.0), Sense::hover());
+    // **A heading has a name too**, which `task-1848` is what made necessary: with every plugin's entries
+    // moved under one `Plugins` menu, the plugin's own name is a heading rather than a menu in the bar —
+    // so without this there is no way to ask whether `Agent-Tasks` is on the screen at all. It is a label
+    // rather than a button, because a heading takes no clicks; `CLAUDE.md`'s rule is that a control with
+    // no name cannot be tested, and a heading is what a submenu's title is drawn as here.
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, name));
     let painter = ui.painter();
     let label =
         painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(11.0), color::text_dim());

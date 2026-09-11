@@ -32,6 +32,14 @@
 //! does not involve Unluminous storing one. What is written down is the *name of the place the key is*,
 //! exactly as Agent-Tasks writes down the name of a keychain entry. A local endpoint names neither,
 //! because llama.cpp wants no key.
+//!
+//! ## And the environment it is read from is handed over
+//!
+//! Which environment is not this crate's business either: see [`crate::environment`]. An Unluminous
+//! started from the Dock has launchd's dozen variables, so the key a person exported from their
+//! `~/.zshrc` is not in this process at all — `task-1905`.
+
+use crate::environment::Environment;
 
 /// Which protocol something speaks.
 ///
@@ -215,9 +223,11 @@ impl Provider {
     ///
     /// Checked before a request rather than after one, so a URL with a typo in it is a sentence in
     /// the pane rather than a connection refused thirty seconds later.
-    pub fn why_not(&self) -> Option<String> {
+    /// `environment` is the environment the key is read from and the program looked for on. It is
+    /// **given rather than read** — see [`crate::environment`] for why, which is `task-1905`'s report.
+    pub fn why_not(&self, environment: &Environment) -> Option<String> {
         if self.wire.is_a_program() {
-            return self.why_the_program_will_not_run();
+            return self.why_the_program_will_not_run(environment);
         }
         if self.url.trim().is_empty() {
             return Some(format!(
@@ -234,14 +244,19 @@ impl Provider {
         if self.model.trim().is_empty() {
             return Some(format!("`{}` names no model.", self.name));
         }
-        if self.wants_a_key() && self.key().is_none() {
+        if self.wants_a_key() && self.key(environment).is_none() {
             return Some(match self.key_env.is_empty() {
                 true => format!(
                     "`{}` reads its key from the keychain entry `{}`, and there is nothing in it.",
                     self.name, self.key_entry
                 ),
+                // **Where it looked**, which is both places now: this window, and the shell profile
+                // Unluminous reads at startup. The old wording said "Set it and start Unluminous again",
+                // which was advice about a value read once from this process — and on an Unluminous
+                // started from the Dock, launchd's dozen variables are all this process ever has.
+                // `task-1905`. Still the name of the variable and never its value.
                 false => format!(
-                    "`{}` reads its key from ${}, and this window has no such variable. Set it and start Unluminous again.",
+                    "`{}` reads its key from ${}, and neither this window nor your shell profile has one. Export it from your shell profile and start Unluminous again.",
                     self.name, self.key_env
                 ),
             });
@@ -254,7 +269,7 @@ impl Provider {
     /// Checked before the child is spawned, so a machine with no `codex` on it says so in the pane
     /// rather than answering with the operating system's own words about a file not being found —
     /// which is `task-1692`'s rule for a missing debug adapter, kept for a missing agent.
-    fn why_the_program_will_not_run(&self) -> Option<String> {
+    fn why_the_program_will_not_run(&self, environment: &Environment) -> Option<String> {
         let named = self.command.trim();
         if named.is_empty() {
             return Some(format!(
@@ -262,7 +277,7 @@ impl Provider {
                 self.name
             ));
         }
-        match program(named) {
+        match program(named, environment) {
             Some(_) => None,
             None => Some(format!(
                 "`{named}` is not installed, or is not on this window's PATH. Install it and start Unluminous again."
@@ -276,9 +291,9 @@ impl Provider {
     }
 
     /// Where the program really is, or `None` when nothing of that name can be found.
-    pub fn program_path(&self) -> Option<std::path::PathBuf> {
+    pub fn program_path(&self, environment: &Environment) -> Option<std::path::PathBuf> {
         match self.wire.is_a_program() {
-            true => program(self.command.trim()),
+            true => program(self.command.trim(), environment),
             false => None,
         }
     }
@@ -296,26 +311,20 @@ impl Provider {
     /// Read at the moment of use and never held, which is `keychain::read`'s own rule: the value is
     /// in this process for as long as it takes to put it in a header. The environment is asked first
     /// because it is the one that answers on every platform.
-    pub fn key(&self) -> Option<String> {
-        let named = self.key_env.trim();
-        if !named.is_empty() {
-            if let Ok(value) = std::env::var(named) {
-                let value = value.trim().to_owned();
-                if !value.is_empty() {
-                    return Some(value);
-                }
-            }
+    pub fn key(&self, environment: &Environment) -> Option<String> {
+        if let Some(value) = crate::environment::variable_of(environment, &self.key_env) {
+            return Some(value);
         }
         let entry = self.key_entry.trim();
         match entry.is_empty() {
             true => None,
-            false => read_a_keychain_entry(entry),
+            false => read_a_keychain_entry(entry, environment),
         }
     }
 
     /// Whether a key is there, for a settings page that says `set` or `not set` and never the value.
-    pub fn has_a_key(&self) -> bool {
-        self.key().is_some()
+    pub fn has_a_key(&self, environment: &Environment) -> bool {
+        self.key(environment).is_some()
     }
 
     /// The headers this endpoint's requests carry, key included.
@@ -323,12 +332,12 @@ impl Provider {
     /// Built here rather than in `client.rs` so that the difference between the two APIs'
     /// authentication — a bearer token against an `x-api-key` and a version — is in the file that
     /// knows what an endpoint is.
-    pub fn headers(&self) -> Vec<(String, String)> {
+    pub fn headers(&self, environment: &Environment) -> Vec<(String, String)> {
         let mut headers = vec![("content-type".to_owned(), "application/json".to_owned())];
         match self.wire {
             // The two OpenAI shapes authenticate the same way; only their bodies differ.
             Wire::OpenAi | Wire::Responses => {
-                if let Some(key) = self.key() {
+                if let Some(key) = self.key(environment) {
                     headers.push(("authorization".to_owned(), format!("Bearer {key}")));
                 }
             }
@@ -336,7 +345,7 @@ impl Provider {
             // rather than something to answer with a guess.
             Wire::ClaudeCli | Wire::CodexCli => {}
             Wire::Anthropic => {
-                if let Some(key) = self.key() {
+                if let Some(key) = self.key(environment) {
                     headers.push(("x-api-key".to_owned(), key));
                 }
                 // Required, and it is a date rather than a number. Pinned rather than tracked: a
@@ -361,7 +370,7 @@ impl Provider {
 /// for Git Bash. Found first, it was handed to `CreateProcess`, which answered *"%1 is not a valid
 /// Win32 application. (os error 193)"*, and the pane reported that a perfectly working agent could
 /// not be started. Measured against the real `codex` on this machine.
-pub fn program(name: &str) -> Option<std::path::PathBuf> {
+pub fn program(name: &str, environment: &Environment) -> Option<std::path::PathBuf> {
     let name = name.trim();
     if name.is_empty() {
         return None;
@@ -373,8 +382,8 @@ pub fn program(name: &str) -> Option<std::path::PathBuf> {
     }
     let named_with_an_extension = std::path::Path::new(name).extension().is_some();
     let extensions: Vec<String> = match cfg!(windows) && !named_with_an_extension {
-        true => std::env::var("PATHEXT")
-            .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_owned())
+        true => crate::environment::variable_of(environment, "PATHEXT")
+            .unwrap_or_else(|| ".COM;.EXE;.BAT;.CMD".to_owned())
             .split(';')
             .map(|one| one.trim().to_owned())
             .filter(|one| !one.is_empty())
@@ -384,7 +393,7 @@ pub fn program(name: &str) -> Option<std::path::PathBuf> {
     // A bare name on Windows is only ever the extensions; everywhere else, and for a name that
     // carries its own extension, it is the file itself.
     let bare_is_a_program = !cfg!(windows) || named_with_an_extension;
-    let path = std::env::var_os("PATH")?;
+    let path = crate::environment::path_of(environment)?;
     for folder in std::env::split_paths(&path) {
         for extension in &extensions {
             let with = folder.join(format!("{name}{extension}"));
@@ -426,8 +435,13 @@ fn absolute(path: std::path::PathBuf) -> std::path::PathBuf {
 /// rules. This crate cannot call that module (it is in `unluminous-app`, which depends on this one), so
 /// the two lines are here; the doctrine, and the note that Windows has no keychain, live there.
 ///
+/// **Both are resolved on the `PATH` this was given** rather than spawned by bare name. `security` is in
+/// `/usr/bin`, which launchd's own `PATH` happens to have, so it worked by luck; `secret-tool` is
+/// wherever the machine put it. A program looked up by name is whichever one that machine finds first,
+/// which is the `tar` fault `services::debuggers` records — `task-1905`.
+///
 /// Nothing is printed or logged. A read that fails answers `None` and says nothing about why.
-fn read_a_keychain_entry(name: &str) -> Option<String> {
+fn read_a_keychain_entry(name: &str, environment: &Environment) -> Option<String> {
     if !name
         .chars()
         .all(|one| one.is_ascii_alphanumeric() || matches!(one, '-' | '.' | '_'))
@@ -436,7 +450,8 @@ fn read_a_keychain_entry(name: &str) -> Option<String> {
     }
     #[cfg(target_os = "macos")]
     let mut command = {
-        let mut command = std::process::Command::new("security");
+        let found = program("security", environment)?;
+        let mut command = std::process::Command::new(found);
         command.args([
             "find-generic-password",
             "-s",
@@ -449,13 +464,14 @@ fn read_a_keychain_entry(name: &str) -> Option<String> {
     };
     #[cfg(target_os = "linux")]
     let mut command = {
-        let mut command = std::process::Command::new("secret-tool");
+        let found = program("secret-tool", environment)?;
+        let mut command = std::process::Command::new(found);
         command.args(["lookup", "service", "unluminous-agent-chat", "account", name]);
         command
     };
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
-        let _ = name;
+        let _ = (name, environment);
         None
     }
     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -502,7 +518,7 @@ mod tests {
         assert_eq!(defaults[2].wire, Wire::OpenAi);
         assert!(!defaults[2].is_a_program());
         assert!(!defaults[2].wants_a_key());
-        assert_eq!(defaults[2].why_not(), None);
+        assert_eq!(defaults[2].why_not(&nothing()), None);
     }
 
     #[test]
@@ -522,17 +538,22 @@ mod tests {
         }
     }
 
+    /// The environment a test that is not about the environment hands over.
+    fn nothing() -> Environment {
+        Environment::empty()
+    }
+
     #[test]
     fn a_url_with_a_typo_in_it_is_a_sentence_rather_than_a_connection_refused() {
         let mut provider = Provider::defaults()[2].clone();
         provider.url = "127.0.0.1:8080/v1/chat/completions".to_owned();
-        let why = provider.why_not().expect("a refusal");
+        let why = provider.why_not(&nothing()).expect("a refusal");
         assert!(why.contains("http://"), "{why}");
         provider.url = String::new();
-        assert!(provider.why_not().expect("a refusal").contains("no URL"));
+        assert!(provider.why_not(&nothing()).expect("a refusal").contains("no URL"));
         provider.url = "http://127.0.0.1:8080/v1/chat/completions".to_owned();
         provider.model = String::new();
-        assert!(provider.why_not().expect("a refusal").contains("no model"));
+        assert!(provider.why_not(&nothing()).expect("a refusal").contains("no model"));
     }
 
     /// An endpoint of `wire`, which is what a person configuring one gets.
@@ -549,38 +570,45 @@ mod tests {
         }
     }
 
+    /// A missing key names the variable it would have come from, and a key **in the environment this
+    /// was handed** is found.
+    ///
+    /// `task-1905`: this used to set the variable on the process, which is the one arrangement that
+    /// cannot fail — a test process has the person's environment already, so the code under test was
+    /// handed the very thing it could not read on an Unluminous started from the Dock. It fails on the
+    /// code as it was, because `key()` could not be given an environment at all.
     #[test]
     fn a_missing_key_names_the_variable_it_would_have_come_from() {
-        // The refusal has to say what to do about it, which is `task-1692`'s rule for a missing
-        // debug adapter applied to a missing key.
         let mut provider = endpoint(Wire::Anthropic, "https://api.anthropic.com/v1/messages");
         provider.key_env = "UNLUMINOUS_A_VARIABLE_NOTHING_SETS".to_owned();
-        let why = provider.why_not().expect("a refusal");
+        let why = provider.why_not(&nothing()).expect("a refusal");
         assert!(why.contains("UNLUMINOUS_A_VARIABLE_NOTHING_SETS"), "{why}");
-        assert!(!provider.has_a_key());
-        // And with the variable set it goes away, and the key reaches the headers.
-        std::env::set_var("UNLUMINOUS_A_VARIABLE_NOTHING_SETS", "secret-value");
-        assert_eq!(provider.why_not(), None);
-        assert!(provider.has_a_key());
-        let headers = provider.headers();
+        // And it says where it looked, which is both places rather than only this window.
+        assert!(why.contains("shell profile"), "{why}");
+        assert!(!provider.has_a_key(&nothing()));
+
+        // With the variable in the environment it was given, the refusal goes away and the key reaches
+        // the headers — without this process ever having had it.
+        let profile = Environment::from([("UNLUMINOUS_A_VARIABLE_NOTHING_SETS", "secret-value")]);
+        assert_eq!(provider.why_not(&profile), None);
+        assert!(provider.has_a_key(&profile));
+        let headers = provider.headers(&profile);
         assert!(headers
             .iter()
             .any(|(name, value)| name == "x-api-key" && value == "secret-value"));
         assert!(headers.iter().any(|(name, _)| name == "anthropic-version"));
-        std::env::remove_var("UNLUMINOUS_A_VARIABLE_NOTHING_SETS");
     }
 
     #[test]
     fn the_two_shapes_authenticate_the_way_their_own_apis_do() {
-        std::env::set_var("UNLUMINOUS_TEST_OPENAI_KEY", "sk-test");
+        let profile = Environment::from([("UNLUMINOUS_TEST_OPENAI_KEY", "sk-test")]);
         let mut provider = endpoint(Wire::Responses, "https://api.openai.com/v1/responses");
         provider.key_env = "UNLUMINOUS_TEST_OPENAI_KEY".to_owned();
-        let headers = provider.headers();
+        let headers = provider.headers(&profile);
         assert!(headers
             .iter()
             .any(|(name, value)| name == "authorization" && value == "Bearer sk-test"));
         assert!(!headers.iter().any(|(name, _)| name == "x-api-key"));
-        std::env::remove_var("UNLUMINOUS_TEST_OPENAI_KEY");
     }
 
     #[test]
@@ -588,11 +616,37 @@ mod tests {
         // Because that is what an unset key looks like in a shell that exported it and then cleared
         // it, and a request sent with an empty bearer token fails with a message about the token
         // rather than about the configuration.
-        std::env::set_var("UNLUMINOUS_TEST_EMPTY_KEY", "   ");
+        let blank = Environment::from([("UNLUMINOUS_TEST_EMPTY_KEY", "   ")]);
         let mut provider = endpoint(Wire::Anthropic, "https://api.anthropic.com/v1/messages");
         provider.key_env = "UNLUMINOUS_TEST_EMPTY_KEY".to_owned();
-        assert!(!provider.has_a_key());
-        assert!(provider.why_not().is_some());
-        std::env::remove_var("UNLUMINOUS_TEST_EMPTY_KEY");
+        assert!(!provider.has_a_key(&blank));
+        assert!(provider.why_not(&blank).is_some());
+    }
+
+    /// A program is looked for on the `PATH` this was given, not on the one this process has.
+    ///
+    /// `task-1905`: the other half of the same fault. `claude` lives in `~/.local/bin`, which is not on
+    /// the `PATH` an Unluminous started from the Dock has, so a perfectly working agent could not be
+    /// found. `login_shell::look_up` takes a `PATH` for exactly this reason: so a test can hand in a
+    /// folder it made.
+    #[test]
+    fn a_program_is_looked_for_on_the_path_it_was_given() {
+        let folder = std::env::temp_dir().join("unluminous-chat-path-test");
+        let _ = std::fs::create_dir_all(&folder);
+        let name = if cfg!(windows) { "an-agent.cmd" } else { "an-agent" };
+        let made = folder.join(name);
+        std::fs::write(&made, "").expect("a file to find");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&made, std::fs::Permissions::from_mode(0o755));
+        }
+
+        let given = Environment::from([("PATH", folder.to_string_lossy().as_ref())]);
+        assert_eq!(program(name, &given), Some(made.clone()), "on the PATH it was handed");
+        // And nothing of that name is on this process's own, which is what makes the line above mean
+        // something.
+        assert_eq!(program(name, &Environment::of_this_process()), None);
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }

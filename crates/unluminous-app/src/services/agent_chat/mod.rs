@@ -424,6 +424,14 @@ pub struct Parts<'a> {
     pub attachments: &'a [Attachment],
     pub history: &'a [Summary],
     pub problem: Option<&'a str>,
+    /// Why each endpoint cannot answer, or `None` where it can, in the order the providers are in.
+    ///
+    /// **Handed over rather than asked for**, which is [`AgentChat::readiness`]'s own reason: for a row
+    /// that runs a program the question is a walk of `PATH` and a directory listing per folder, so the
+    /// endpoint list asking each row once a frame is a frame broken by the file system. It is also the
+    /// only way the component can know: since `task-1905` the answer depends on the shell profile, which
+    /// is `unluminous-app`'s to read and not a component's.
+    pub readiness: &'a [Option<String>],
 }
 
 impl std::fmt::Debug for PaneState {
@@ -527,6 +535,8 @@ impl AgentChat {
     /// The pane's own pieces, split so that the drawing can read the conversation while it writes
     /// into the draft.
     pub fn parts(&mut self) -> Parts<'_> {
+        // Before the borrows below, because it needs `&mut self` to refresh its own cache.
+        let _ = self.readiness();
         Parts {
             session: &self.session,
             configuration: &self.configuration,
@@ -535,6 +545,7 @@ impl AgentChat {
             attachments: &self.attachments,
             history: &self.history,
             problem: self.problem.as_deref(),
+            readiness: &self.readiness,
         }
     }
 
@@ -584,6 +595,21 @@ impl AgentChat {
         self.configuration.write(folder)
     }
 
+    /// The environment the pane answers out of: the person's own shell profile.
+    ///
+    /// **The one place `unluminous-chat` and `services::login_shell` are joined**, so a second reader
+    /// cannot come to a different answer about the same key. An Unluminous started from the Dock has
+    /// launchd's dozen variables and `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, so a key exported from
+    /// `~/.zshrc` is not in this process at all and neither is `~/.local/bin` — which is what
+    /// `task-1905` reports and what `login_shell`'s own module comment records from measuring it twice.
+    ///
+    /// `for_a_child()` is the same value the Agent-Tasks board's agents, the run tile's programs and the
+    /// debug adapters are all started with, so there is one reading of the profile behind four consumers.
+    /// It is an `OnceLock` read after the first call, so this costs a vector rather than a shell.
+    pub fn the_environment() -> unluminous_chat::Environment {
+        unluminous_chat::Environment::from(crate::services::login_shell::for_a_child())
+    }
+
     /// Why each endpoint cannot answer, or `None` where it can — worked out at most every
     /// [`READINESS`] rather than every frame.
     ///
@@ -596,11 +622,13 @@ impl AgentChat {
             .readiness_taken
             .is_none_or(|at| at.elapsed() >= READINESS);
         if stale || self.readiness.len() != self.configuration.providers.len() {
+            // Built once for the whole list rather than once a row: it allocates the profile.
+            let environment = Self::the_environment();
             self.readiness = self
                 .configuration
                 .providers
                 .iter()
-                .map(Provider::why_not)
+                .map(|provider| provider.why_not(&environment))
                 .collect();
             self.readiness_taken = Some(std::time::Instant::now());
         }
@@ -725,7 +753,7 @@ impl AgentChat {
         let Some(provider) = self.provider().cloned() else {
             return Err("no endpoint is configured. Settings -> Agent-Chat is where they go.".to_owned());
         };
-        if let Some(why) = provider.why_not() {
+        if let Some(why) = provider.why_not(&Self::the_environment()) {
             self.problem = Some(why.clone());
             return Err(why);
         }
@@ -754,7 +782,7 @@ impl AgentChat {
     /// nobody pressed a button for: a key cleared out of the environment while a turn was running
     /// would otherwise be a request that fails at the far end rather than a sentence in the pane.
     fn dispatch(&mut self, provider: &Provider) {
-        if let Some(why) = provider.why_not() {
+        if let Some(why) = provider.why_not(&Self::the_environment()) {
             self.problem = Some(why.clone());
             self.session.reply(unluminous_chat::Reply::Failed(why));
             return;
@@ -776,7 +804,7 @@ impl AgentChat {
             self.configuration.stream,
         );
         self.client
-            .send(provider, body.to_string(), self.configuration.stream);
+            .send(provider, body.to_string(), self.configuration.stream, &Self::the_environment());
     }
 
     /// What one turn asks a command-line agent.
@@ -824,6 +852,10 @@ impl AgentChat {
             session,
             pictures,
             permission: self.configuration.permission,
+            // **The person's own shell profile**, so the agent is found where they installed it and
+            // starts logged in — the two faults `login_shell` records from measuring them, both of
+            // which `task-1905` would have hit next.
+            environment: Self::the_environment(),
         }
     }
 
@@ -1085,7 +1117,7 @@ impl AgentChat {
                 "wire": one.wire.name(),
                 "url": one.url,
                 "model": one.model,
-                "key": one.has_a_key(),
+                "key": one.has_a_key(&Self::the_environment()),
             })),
             "state": self.session.state().name(),
             "model": self.session.model,
@@ -1330,12 +1362,12 @@ impl UiProvider for AgentChat {
                     // commonest reason a row cannot answer and a path is what says so.
                     "runs_a_program": one.is_a_program(),
                     "command": one.command,
-                    "program": one.program_path().map(|path| path.display().to_string()),
+                    "program": one.program_path(&Self::the_environment()).map(|path| path.display().to_string()),
                     "url": one.url,
                     "model": one.model,
                     "key_env": one.key_env,
-                    "key": one.has_a_key(),
-                    "why_not": one.why_not(),
+                    "key": one.has_a_key(&Self::the_environment()),
+                    "why_not": one.why_not(&Self::the_environment()),
                 })).collect::<Vec<serde_json::Value>>(),
             }))),
             "use" => {

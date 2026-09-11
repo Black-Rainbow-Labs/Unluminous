@@ -44,7 +44,7 @@ pub use layout::{
 pub use metrics::{FixedMetrics, FontMetrics, LineMetrics, ScaledMetrics};
 pub use markdown::{
     CodeHighlighter, Options as PreviewOptions, PanelKind, Preview, PreviewColors, PreviewDiagram,
-    PreviewImage, PreviewPanel,
+    PreviewImage, PreviewLink, PreviewPanel,
 };
 pub use rope::Rope;
 pub use scroll_sync::{preview_y_for_source_y, source_y_for_preview_y};

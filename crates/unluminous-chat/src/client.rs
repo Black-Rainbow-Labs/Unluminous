@@ -129,7 +129,16 @@ impl Client {
     ///
     /// Whatever was in flight is abandoned first: its generation is passed and its stop flag is set,
     /// so its thread stops at its next read and nothing it says afterwards is acted on.
-    pub fn send(&mut self, provider: &Provider, body: String, stream: bool) -> u64 {
+    ///
+    /// `environment` is where the key comes from — **given rather than read**, which is
+    /// [`crate::environment`]'s reason and `task-1905`'s report.
+    pub fn send(
+        &mut self,
+        provider: &Provider,
+        body: String,
+        stream: bool,
+        environment: &crate::environment::Environment,
+    ) -> u64 {
         self.stop();
         let generation = self.newest.fetch_add(1, Ordering::SeqCst) + 1;
         // A flag of its own for this request, so stopping *this* one later cannot also be read by a
@@ -140,7 +149,9 @@ impl Client {
         let to = self.to.clone();
         let wake = self.wake.clone();
         let url = provider.url.clone();
-        let headers = provider.headers();
+        // Read here, on the frame's own thread, rather than inside the worker: a key is in this process
+        // for as long as it takes to put it in a header, which is `Provider::key`'s own rule.
+        let headers = provider.headers(environment);
         let wire = provider.wire;
         std::thread::Builder::new()
             .name(format!("unluminous-chat {generation}"))
@@ -717,8 +728,9 @@ data: [DONE]\n\n";
         one.url = first;
         let mut two = provider;
         two.url = second;
-        let older = client.send(&one, "{}".to_owned(), true);
-        let newer = client.send(&two, "{}".to_owned(), true);
+        let nothing = crate::Environment::empty();
+        let older = client.send(&one, "{}".to_owned(), true, &nothing);
+        let newer = client.send(&two, "{}".to_owned(), true, &nothing);
         assert!(newer > older);
         // Wait for the second to finish, then take: nothing from the first can be in what comes out.
         let mut said = Vec::new();

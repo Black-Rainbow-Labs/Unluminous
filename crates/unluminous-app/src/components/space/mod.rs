@@ -57,7 +57,16 @@ pub struct BarOutcome {
     pub add: bool,
     /// A view was right clicked: where the pointer was, and which one.
     pub menu: Option<(Pos2, ViewId)>,
+    /// The zoom buttons were pressed: -1 or 1, in notches.
+    pub zoom: i32,
+    /// The reading between them was pressed, which puts the zoom back to one.
+    pub reset_zoom: bool,
 }
+
+/// How much room the zoom controls take at the right hand end of the bar, before the plus.
+///
+/// The bar already kept 30 points clear for the plus, so this is what the chips now stop before instead.
+const ZOOM_CONTROLS: f32 = 116.0;
 
 /// The strip of views along the top of the canvas: one chip a view, the current one lit, and a plus.
 ///
@@ -65,7 +74,14 @@ pub struct BarOutcome {
 /// new, clone/duplicate"*. The four of those that are about one view are on its right click menu, which
 /// is where the explorer, the tabs and every panel in Unluminous already put the things that are about
 /// one row.
-pub fn view_bar(ui: &mut egui::Ui, area: Rect, views: &[View], current: ViewId, look: Look<'_>) -> BarOutcome {
+pub fn view_bar(
+    ui: &mut egui::Ui,
+    area: Rect,
+    views: &[View],
+    current: ViewId,
+    zoom: f32,
+    look: Look<'_>,
+) -> BarOutcome {
     let mut outcome = BarOutcome::default();
     let painter = ui.painter_at(area);
     painter.rect_filled(area, CornerRadius::ZERO, crate::theme::faded(color::toolbar(), look.opacity));
@@ -77,7 +93,7 @@ pub fn view_bar(ui: &mut egui::Ui, area: Rect, views: &[View], current: ViewId, 
     for view in views {
         let width = chip_width(&painter, &view.name);
         let chip = Rect::from_min_size(Pos2::new(pen, area.top() + 4.0), Vec2::new(width, area.height() - 9.0));
-        if chip.right() > area.right() - 30.0 {
+        if chip.right() > area.right() - 30.0 - ZOOM_CONTROLS {
             break;
         }
         let on = view.id == current;
@@ -107,7 +123,80 @@ pub fn view_bar(ui: &mut egui::Ui, area: Rect, views: &[View], current: ViewId, 
     if crate::components::controls::icon_button(ui, plus, "New view", icon::plus) {
         outcome.add = true;
     }
+    show_the_zoom_controls(ui, area, zoom, &mut outcome);
     outcome
+}
+
+/// The two zoom buttons and the reading between them, at the right hand end of the bar.
+///
+/// `task-1905` asks for *"classic - + buttons with cirlces around them"* at the top right, and the top
+/// right of the canvas **is** the right hand end of this bar: a floating control over the ground would be
+/// drawn under every node that happened to be there, because a node's layer is a sublayer composited
+/// above the pane's.
+///
+/// Both buttons **dim at the ends of the ladder** rather than disappearing, because a zoom that cannot go
+/// further is a control that will apply again the moment the other one is pressed. That is the dimmed half
+/// of Unluminous's absent-control rule.
+fn show_the_zoom_controls(ui: &mut egui::Ui, area: Rect, zoom: f32, outcome: &mut BarOutcome) {
+    let middle = area.center().y;
+    let mut right = area.right() - 34.0;
+    let out = Rect::from_center_size(Pos2::new(right - 11.0, middle), Vec2::splat(22.0));
+    // At the bottom of the ladder there is nowhere further out to go.
+    let can_zoom_out = zoom > crate::services::space::node::MIN_ZOOM + 0.001;
+    if dimmable_icon_button(ui, out, "Zoom out", icon::zoom_out, can_zoom_out) {
+        outcome.zoom = -1;
+    }
+    right = out.left() - 2.0;
+    // The reading, which is a button: pressing it puts the zoom back to one, which is the
+    // `Reset Font Size` gesture every other zoom in Unluminous has.
+    let said = format!("{}%", (zoom * 100.0).round());
+    let reading = Rect::from_min_max(Pos2::new(right - 46.0, area.top() + 4.0), Pos2::new(right, area.bottom() - 5.0));
+    let response = ui.interact(reading, ui.id().with("space-zoom-reading"), Sense::click());
+    if response.hovered() {
+        ui.painter_at(area).rect_filled(reading, CornerRadius::same(6), color::control());
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    ui.painter_at(area).text(
+        reading.center(),
+        Align2::CENTER_CENTER,
+        &said,
+        FontId::proportional(11.0),
+        color::text_dim(),
+    );
+    // The number is in the name, so a test reads the zoom out of the accessibility tree rather than out
+    // of a picture.
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Reset zoom, {said}"))
+    });
+    if response.clicked() {
+        outcome.reset_zoom = true;
+    }
+    right = reading.left() - 2.0;
+    let into = Rect::from_center_size(Pos2::new(right - 11.0, middle), Vec2::splat(22.0));
+    let can_zoom_in = zoom < crate::services::space::node::MAX_ZOOM - 0.001;
+    if dimmable_icon_button(ui, into, "Zoom in", icon::zoom_in, can_zoom_in) {
+        outcome.zoom = 1;
+    }
+}
+
+/// An icon button that is drawn quiet and answers nothing when it cannot apply.
+///
+/// `controls::icon_button` has no dimmed form, and the two here need one: a control at the end of its
+/// ladder is dimmed rather than absent, because it applies again the moment the other one is pressed.
+fn dimmable_icon_button(
+    ui: &mut egui::Ui,
+    area: Rect,
+    name: &str,
+    drawing: fn(&egui::Painter, Pos2, Color32),
+    enabled: bool,
+) -> bool {
+    if enabled {
+        return crate::components::controls::icon_button(ui, area, name, drawing);
+    }
+    let response = ui.interact(area, ui.id().with((name, "dimmed")), Sense::hover());
+    drawing(&ui.painter_at(area), area.center(), color::text_faint());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, false, name));
+    false
 }
 
 /// How wide a view's chip is: its name with room either side, floored so a one letter name is a target.
@@ -300,6 +389,13 @@ pub struct Framing<'a> {
     pub keyboard: bool,
     /// The rectangle this node covers on the screen, for the decoration and the grips.
     pub on_screen: Rect,
+    /// The canvas's own body, in screen points.
+    ///
+    /// Kept apart from [`Framing::on_screen`] because that one is also what the scale is worked out from,
+    /// and a rectangle cut to the pane would make a node hanging off the edge think it had been zoomed.
+    /// What it is **for** is the grips: a node dragged past the canvas's edge must not offer a resize band
+    /// out there, over the window's rail.
+    pub visible: Rect,
     /// True while a wire is in the air looking for an input port.
     pub wire_is_looking: bool,
     /// Which node that wire would land on, so a port lights up while it is the one.
@@ -480,8 +576,20 @@ fn show_the_grips(ui: &mut egui::Ui, node: &Node, framing: Framing<'_>, outcome:
     // The reach is measured in **screen** points and converted, so a canvas zoomed out to a quarter
     // still has grips somebody can hit.
     let reach = GRIP_REACH / scale;
+    // **The grips are cut to the canvas**, so a node hanging past its edge offers no resize band out
+    // there. Every other part of a node is clipped by its own layer or by the decoration's canvas, both of
+    // which are already the pane; a grip is an `interact` rather than a drawing, and an interaction is not
+    // clipped by either. `task-1905`.
+    let inside = framing.visible;
     for grip in Grip::ALL {
         let area = grip_rect(rect, grip, reach);
+        let on_screen = Rect::from_min_max(
+            framing.on_screen.min + (area.min - rect.min) * scale,
+            framing.on_screen.min + (area.max - rect.min) * scale,
+        );
+        if !on_screen.intersects(inside) {
+            continue;
+        }
         let response = ui.interact(area, ui.id().with(("space-grip", node.id, grip.name())), Sense::drag());
         if response.hovered() || response.dragged() {
             ui.ctx().set_cursor_icon(grip.cursor());
@@ -543,11 +651,17 @@ pub fn node_name(node: &Node, fallback: &str) -> String {
 
 /// Where a node's contents are clipped to, in world points.
 ///
-/// The pane, converted, **shrunk by the window's own resize grips** wherever it touches the edge of the
-/// window. A node layer is moved directly above the pane's at the end of the frame, so without this a
-/// node docked against the window's edge would take the drag that resizes the window — which is the
-/// one place `components::resize_edges`'s "added last" rule cannot reach, since it is added last within
-/// a layer rather than above one.
+/// **The pane**, converted, and shrunk by the window's own resize grips wherever the pane touches the
+/// edge of the window. A node layer is moved directly above the pane's at the end of the frame, so
+/// without this a node docked against the window's edge would take the drag that resizes the window —
+/// which is the one place `components::resize_edges`'s "added last" rule cannot reach, since it is added
+/// last within a layer rather than above one.
+///
+/// **`pane.intersect(inside)` and not the other way round**, which is what this always meant to be: the
+/// pane is the ceiling and the grips take a little more off it. `task-1905` reported a folder node drawn
+/// over the window's rail, and this is why every part of a node that reaches left of the canvas was drawn
+/// there — the rail is inside the *window*, so shrinking the window by six points does not exclude it.
+/// The clip has to be the pane's own rectangle first.
 pub fn clip_for_nodes(pane: Rect, window: Rect, camera: &Camera) -> Rect {
     let inside = window.shrink(crate::components::resize_edges::EDGE);
     let cut = pane.intersect(inside);
@@ -570,6 +684,27 @@ pub fn font_size_of(node: &Node, fallback: f32) -> f32 {
             terminal.font_size
         }
         _ => fallback,
+    }
+}
+
+/// The size an editor node's letters are set in, which is the window's own setting unless the node has
+/// been given one of its own.
+///
+/// The same shape as [`font_size_of`] for a terminal, and for the same reason: `0.0` means "follow the
+/// setting", so a node nobody has zoomed follows `appearance.font.size` and one that has been zoomed keeps
+/// its own. `task-1905`.
+pub fn editor_font_size_of(node: &Node, fallback: f32) -> f32 {
+    match &node.state {
+        crate::services::space::State::Editor(editor) if editor.font_size > 0.0 => editor.font_size,
+        _ => fallback,
+    }
+}
+
+/// How much bigger or smaller than its usual size a folder node draws its rows.
+pub fn folder_zoom_of(node: &Node) -> f32 {
+    match &node.state {
+        crate::services::space::State::Folder(folder) if folder.zoom > 0.0 => folder.zoom,
+        _ => 1.0,
     }
 }
 

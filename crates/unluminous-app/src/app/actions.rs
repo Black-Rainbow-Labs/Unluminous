@@ -620,6 +620,14 @@ pub enum GitAction {
     Continue,
     Abort,
     Branches,
+    /// Move to the branch named. It carries its name because it comes from a list rather than from a
+    /// menu entry — `components::branch_widget`'s flyout, and `unluminous-cli git switch`, which both
+    /// reach `unluminous_git::Request::Switch` through `run_action` like everything else.
+    ///
+    /// It is **not** on any menu, and it is the one `GitAction` that is not: a menu entry per branch
+    /// would be a menu whose entries are somebody's repository, and `action list` is built by walking
+    /// the real menus, so it would also make the command line's list change with the checkout.
+    Switch(String),
     NewBranch,
     NewTag,
     ResetHead,
@@ -777,6 +785,13 @@ pub enum SpaceAction {
     DeleteView,
     RenameNode,
     CloseNode,
+    /// Ask for the folder a Folder View node shows.
+    ///
+    /// `task-1905`: *"I need to be able to click the top bar and see an option to pick the source/base
+    /// folder, so i can have multiple nodes with different root folders."* It is on the node's own right
+    /// click menu, which is where `actions::tab_menu`'s rule puts the things that are about one thing, and
+    /// it is **absent** on every other kind for the reason `Restart` is.
+    ChooseFolder,
     /// Start the chosen terminal node's program again, in the same folder.
     RestartNode,
     /// Start it again as `--resume <session>`, for an agent that named one.
@@ -807,6 +822,7 @@ impl SpaceAction {
             "delete-view" => SpaceAction::DeleteView,
             "rename-node" => SpaceAction::RenameNode,
             "close-node" => SpaceAction::CloseNode,
+            "choose-folder" => SpaceAction::ChooseFolder,
             "restart-node" => SpaceAction::RestartNode,
             "resume-session" => SpaceAction::ResumeSession,
             "disconnect" => SpaceAction::Disconnect,
@@ -829,6 +845,7 @@ impl SpaceAction {
             SpaceAction::DeleteView => "delete-view".to_owned(),
             SpaceAction::RenameNode => "rename-node".to_owned(),
             SpaceAction::CloseNode => "close-node".to_owned(),
+            SpaceAction::ChooseFolder => "choose-folder".to_owned(),
             SpaceAction::RestartNode => "restart-node".to_owned(),
             SpaceAction::ResumeSession => "resume-session".to_owned(),
             SpaceAction::Disconnect => "disconnect".to_owned(),
@@ -993,6 +1010,13 @@ pub struct MenuState {
     pub panes: usize,
     /// Which pane has the keyboard, which is what dims `Move Left` at the left hand end.
     pub pane: usize,
+    /// True when the tab that is showing lives on a **File Editor node** rather than in a pane.
+    ///
+    /// Every row `split_menu` holds is about the editing area's row of panes, so on a node's tab none of
+    /// them can ever apply — and Unluminous's rule is that such a control is **absent** rather than dimmed,
+    /// which is what keeps the `F` button off a `.rs` file. The Codex Sol review of `task-1905` found the
+    /// menu offering `Split Right` and `Move Right` on a node's tab, where they changed an unrelated pane.
+    pub tab_is_on_a_node: bool,
     /// How many tabs are in the pane that has the keyboard, which is what decides whether the tab
     /// entries can be used and what `Split Right` will do.
     pub tabs_in_pane: usize,
@@ -1069,29 +1093,56 @@ pub fn menus(state: &MenuState) -> Vec<Menu> {
         run_menu(state),
         git_menu(state),
     ];
-    // Then one menu per plugin that contributed one, in the order the plugins are listed. **After**
-    // Unluminous's own seven, so `Unluminous`, `File`, `Edit`, `Find`, `View`, `Run` and `Git` never
-    // move: a menu bar whose entries shift when a plugin is installed is a menu bar somebody's hand
+    // Then **one** `Plugins` menu holding a submenu per plugin, in the order the plugins are listed.
+    // `task-1848`: "Plugins menu items at the top should be moved to a Plugins menu item, which lists
+    // each plugin, and has sub menus for their options."
+    //
+    // Three plugins used to put three menus in the bar beside Unluminous's own seven, and a fourth plugin
+    // made it eleven — so the bar's width was decided by how many plugins happened to be switched on, and
+    // `Git` moved every time one was. One menu means the bar is the same width whatever loads, which is
+    // the same argument the comment below makes about Unluminous's own seven never moving.
+    //
+    // It is added **after** those seven, so `Unluminous`, `File`, `Edit`, `Find`, `View`, `Run` and `Git`
+    // never move: a menu bar whose entries shift when a plugin is installed is a menu bar somebody's hand
     // has to relearn.
     //
-    // A plugin cannot add an entry to one of the six. VS Code allows that through about forty named
+    // **Absent when nothing contributed one**, which is Unluminous's rule for a control that cannot apply —
+    // an empty `Plugins` menu would be a menu that opens onto nothing.
+    //
+    // A plugin cannot add an entry to one of the seven. VS Code allows that through about forty named
     // anchors with `when` expressions, which is the largest part of its contribution model and the
     // hardest to keep tested. `tasks/ui-plugin-architecture.md` §10 records what adding anchors would
     // take; it changes nothing here.
-    found.extend(state.plugin_menus.iter().map(plugin_menu));
+    if !state.plugin_menus.is_empty() {
+        found.push(Menu {
+            name: PLUGINS_MENU.to_owned(),
+            // A submenu is drawn **inline**, which `task-1686` records as the reason the Edit menu once
+            // grew taller than the window. A menu of menus is what keeps this short: what the bar shows
+            // is one row per plugin, and the depth is paid only by whoever opens one.
+            entries: state
+                .plugin_menus
+                .iter()
+                .map(|menu| Entry::Submenu {
+                    name: menu.name.clone(),
+                    entries: plugin_entries(&menu.plugin, &menu.items),
+                })
+                .collect(),
+        });
+    }
     found
 }
 
-/// One plugin's menu, turned from what its manifest said into the entries the menu bar draws.
+/// The one menu every plugin's entries live under. Named here rather than written out at each of the
+/// places that look for it — the menu bar, `action list` and the tests — because a name spelled twice is
+/// a name that can disagree with itself.
+pub const PLUGINS_MENU: &str = "Plugins";
+
+/// One plugin's entries, turned from what its manifest said into the rows the menu bar draws.
 ///
 /// **No entry carries a shortcut.** Unluminous has a test that no two menu items claim one key equivalent,
 /// because two items claiming one chord is a real fault on macOS, and a manifest that could claim
 /// `Cmd+S` would be able to break that test from outside the repository. A plugin's command is reachable
 /// from its menu, from its own pane and from the command line, which is three ways.
-fn plugin_menu(menu: &PluginMenu) -> Menu {
-    Menu { name: menu.name.clone(), entries: plugin_entries(&menu.plugin, &menu.items) }
-}
-
 fn plugin_entries(
     plugin: &str,
     items: &[crate::services::plugins::MenuItem],
@@ -1830,9 +1881,13 @@ pub fn tab_menu(state: &MenuState) -> Vec<Entry> {
     let mut entries = vec![
         Entry::item("Close", Action::CloseTab).enabled(state.open_files > 1),
         Entry::item("Select Opened File", Action::SelectOpenFile),
-        Entry::Separator,
     ];
-    entries.extend(split_menu(state));
+    // **The split rows are absent on a node's tab**, because every one of them is about the editing area's
+    // row of panes — see `MenuState::tab_is_on_a_node`.
+    if !state.tab_is_on_a_node {
+        entries.push(Entry::Separator);
+        entries.extend(split_menu(state));
+    }
     entries
 }
 
@@ -1907,6 +1962,11 @@ pub fn space_node_menu(state: &MenuState) -> Vec<Entry> {
         if session {
             entries.push(Entry::item("Resume Session", Action::Space(SpaceAction::ResumeSession)));
         }
+    }
+    // **Which folder this node shows**, `task-1905`, and absent on every other kind because a terminal
+    // and a web page have no folder to choose.
+    if let Some((crate::services::space::Kind::Folder, _)) = state.space_node {
+        entries.push(Entry::item("Choose Folder...", Action::Space(SpaceAction::ChooseFolder)));
     }
     entries.push(Entry::Separator);
     entries.push(Entry::item("Close", Action::Space(SpaceAction::CloseNode)));
@@ -2279,6 +2339,52 @@ mod tests {
                 Entry::Separator => None,
             })
             .collect()
+    }
+
+    /// The split rows are absent on a node's tab, because every one of them is about the panes.
+    ///
+    /// Found by the Codex Sol review of `task-1905`: the menu offered `Split Right` and `Move Right` on a
+    /// tab living on a File Editor node, where pressing them changed an unrelated pane's tab. Unluminous's
+    /// rule is that a control which can never apply is absent.
+    #[test]
+    fn a_node_tabs_menu_offers_nothing_about_the_panes() {
+        let in_a_pane = MenuState { open_files: 3, panes: 2, ..MenuState::default() };
+        let rows = names(&tab_menu(&in_a_pane));
+        assert!(rows.iter().any(|row| row == "Split Right"), "{rows:?}");
+
+        let on_a_node =
+            MenuState { open_files: 3, panes: 2, tab_is_on_a_node: true, ..MenuState::default() };
+        let rows = names(&tab_menu(&on_a_node));
+        for absent in ["Split Right", "Move Right", "Move Left", "Unsplit", "Unsplit All"] {
+            assert!(!rows.iter().any(|row| row == absent), "{absent} is offered on a node: {rows:?}");
+        }
+        // And what a tab's menu is actually for is still there.
+        assert!(rows.iter().any(|row| row == "Close"), "{rows:?}");
+        assert!(rows.iter().any(|row| row == "Select Opened File"), "{rows:?}");
+    }
+
+    /// `Choose Folder...` is on a Folder View node's menu and on no other kind's.
+    ///
+    /// `task-1905`: the report asks for it, and Unluminous's rule is that a control which can never apply is
+    /// **absent** rather than dimmed — a terminal and a web page have no folder to choose, which is the
+    /// same reading that keeps `Restart` off a browser node.
+    #[test]
+    fn choosing_a_folder_is_offered_on_a_folder_node_and_on_no_other_kind() {
+        use crate::services::space::Kind;
+        for kind in Kind::ALL {
+            let state = MenuState { space_node: Some((kind, false)), ..MenuState::default() };
+            let rows = names(&space_node_menu(&state));
+            let offered = rows.iter().any(|row| row == "Choose Folder...");
+            assert_eq!(
+                offered,
+                kind == Kind::Folder,
+                "a {} node offered {rows:?}",
+                kind.name()
+            );
+        }
+        // And with no node chosen at all there is nothing to choose a folder for.
+        let rows = names(&space_node_menu(&MenuState::default()));
+        assert!(!rows.iter().any(|row| row == "Choose Folder..."));
     }
 
     fn find(menus: &[Menu], menu: &str) -> Menu {
@@ -3021,4 +3127,106 @@ mod tests {
         );
     }
 
+}
+
+#[cfg(test)]
+mod plugins_menu_tests {
+    use super::*;
+    use crate::services::plugins::MenuItem;
+
+    fn a_plugin(id: &str, menu: &str) -> PluginMenu {
+        PluginMenu {
+            plugin: id.to_owned(),
+            name: menu.to_owned(),
+            items: vec![
+                MenuItem::Command { command: "open-pane".into(), label: format!("Show {menu}") },
+                MenuItem::Separator,
+                MenuItem::Command { command: "reload".into(), label: "Reload".into() },
+            ],
+        }
+    }
+
+    fn with(plugins: Vec<PluginMenu>) -> Vec<Menu> {
+        menus(&MenuState { plugin_menus: plugins, ..Default::default() })
+    }
+
+    fn named(menus: &[Menu], name: &str) -> Option<Menu> {
+        menus.iter().find(|menu| menu.name == name).cloned()
+    }
+
+    /// `task-1848`: "Plugins menu items at the top should be moved to a Plugins menu item, which lists
+    /// each plugin, and has sub menus for their options."
+    #[test]
+    fn every_plugins_menu_is_a_submenu_of_one_plugins_menu() {
+        let bar = with(vec![
+            a_plugin("agent-chat", "Agent-Chat"),
+            a_plugin("agent-tasks", "Agent-Tasks"),
+            a_plugin("database", "Database"),
+        ]);
+        assert!(named(&bar, "Agent-Chat").is_none(), "no plugin takes a menu of its own");
+        assert!(named(&bar, "Database").is_none(), "no plugin takes a menu of its own");
+
+        let plugins = named(&bar, PLUGINS_MENU).expect("there should be a Plugins menu");
+        let rows: Vec<&str> = plugins
+            .entries
+            .iter()
+            .map(|entry| match entry {
+                Entry::Submenu { name, .. } => name.as_str(),
+                other => panic!("every row under Plugins is a submenu, not {other:?}"),
+            })
+            .collect();
+        assert_eq!(rows, ["Agent-Chat", "Agent-Tasks", "Database"], "in the order the plugins load");
+    }
+
+    /// The reason for the change rather than a restatement of it: the bar's width was being decided by
+    /// how many plugins happened to be switched on, so `Git` moved whenever one was installed.
+    #[test]
+    fn the_menu_bar_has_the_same_number_of_menus_however_many_plugins_load() {
+        let one = with(vec![a_plugin("database", "Database")]);
+        let three = with(vec![
+            a_plugin("agent-chat", "Agent-Chat"),
+            a_plugin("agent-tasks", "Agent-Tasks"),
+            a_plugin("database", "Database"),
+        ]);
+        assert_eq!(one.len(), three.len(), "one Plugins menu whatever is under it");
+        let names = |bar: &[Menu]| bar.iter().map(|menu| menu.name.clone()).collect::<Vec<_>>();
+        assert_eq!(names(&one), names(&three), "and the bar reads the same either way");
+    }
+
+    /// Unluminous's rule for a control that cannot apply. An empty `Plugins` menu opens onto nothing.
+    #[test]
+    fn there_is_no_plugins_menu_when_no_plugin_contributed_one() {
+        assert!(named(&with(vec![]), PLUGINS_MENU).is_none());
+    }
+
+    /// The entries have to keep carrying the plugin that declared them, or the extra level of nesting
+    /// would be a level at which a chosen row asks the wrong plugin.
+    #[test]
+    fn every_plugin_command_is_still_reachable_and_names_its_own_plugin() {
+        let bar = with(vec![a_plugin("database", "Database"), a_plugin("agent-chat", "Agent-Chat")]);
+        let plugins = named(&bar, PLUGINS_MENU).expect("there should be a Plugins menu");
+
+        let mut found = Vec::new();
+        fn walk(entries: &[Entry], found: &mut Vec<(String, String)>) {
+            for entry in entries {
+                match entry {
+                    Entry::Item { action: Action::PluginCommand { plugin, command }, .. } => {
+                        found.push((plugin.clone(), command.clone()));
+                    }
+                    Entry::Submenu { entries, .. } => walk(entries, found),
+                    _ => {}
+                }
+            }
+        }
+        walk(&plugins.entries, &mut found);
+        assert_eq!(
+            found,
+            [
+                ("database".to_owned(), "open-pane".to_owned()),
+                ("database".to_owned(), "reload".to_owned()),
+                ("agent-chat".to_owned(), "open-pane".to_owned()),
+                ("agent-chat".to_owned(), "reload".to_owned()),
+            ]
+        );
+    }
 }

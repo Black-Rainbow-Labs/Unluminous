@@ -70,6 +70,20 @@ fn properties(preview: &Preview, source: &str) {
     for span in &preview.code_spans {
         assert!(span.end <= preview.text.len_bytes(), "a chip outside the text, for {source:?}");
     }
+    // The links, which the window turns into an address by binary searching for the byte under a click.
+    // One outside the text, or a list out of order, is what makes that search answer wrongly rather than
+    // not at all — so both are asserted for every case in the battery.
+    let mut previous = 0;
+    for link in &preview.links {
+        assert!(
+            link.bytes.end <= preview.text.len_bytes(),
+            "a link outside the text, for {source:?}"
+        );
+        assert!(link.bytes.start < link.bytes.end, "an empty link, for {source:?}");
+        assert!(link.bytes.start >= previous, "the links are out of order, for {source:?}");
+        assert!(!link.target.is_empty(), "a link with nowhere to go, for {source:?}");
+        previous = link.bytes.end;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -529,4 +543,101 @@ fn odd_documents_do_not_bring_anything_down() {
     for source in odd {
         preview(source);
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The links, which `task-1848` asks be openable with `Ctrl/Cmd+Click`.
+// ---------------------------------------------------------------------------------------------
+
+/// The range is the label's bytes and the target is the address, so the window can turn a click into
+/// something to open without reading the source again.
+#[test]
+fn a_link_in_a_preview_reports_its_range_and_its_target() {
+    let page = preview("see [the docs](https://example.com/a) for more");
+    assert_eq!(page.links.len(), 1);
+    let link = &page.links[0];
+    assert_eq!(link.target, "https://example.com/a");
+    let text = page.text.to_string();
+    assert_eq!(&text[link.bytes.clone()], "the docs", "the range is the words, not the address");
+}
+
+/// A title is what a browser shows on hover and is not part of the address. `References` already drops
+/// one from a reference definition, so a link written either way has to answer the same thing.
+#[test]
+fn a_titled_destination_reports_the_address_without_the_title() {
+    let page = preview(r#"[a](https://example.com "the title")"#);
+    assert_eq!(page.links[0].target, "https://example.com");
+}
+
+/// An address in angle brackets may hold a space, which is the only reason the brackets exist.
+#[test]
+fn an_angle_bracketed_destination_keeps_its_spaces_and_loses_its_brackets() {
+    let page = preview("[a](<https://example.com/a b>)");
+    assert_eq!(page.links[0].target, "https://example.com/a b");
+}
+
+/// A reference is resolved here rather than by the window, which has no reference table.
+#[test]
+fn a_reference_link_reports_what_the_definition_said() {
+    let page = preview("[the docs][docs]\n\n[docs]: https://example.com/ref");
+    assert_eq!(page.links[0].target, "https://example.com/ref");
+    let collapsed = preview("[docs]\n\n[docs]: https://example.com/ref");
+    assert_eq!(collapsed.links[0].target, "https://example.com/ref");
+}
+
+/// A bare address is its own target, which is what GFM makes of one.
+#[test]
+fn a_bare_address_is_a_link_to_itself() {
+    let page = preview("go to https://example.com/bare now");
+    assert_eq!(page.links.len(), 1);
+    assert_eq!(page.links[0].target, "https://example.com/bare");
+    let text = page.text.to_string();
+    assert_eq!(&text[page.links[0].bytes.clone()], "https://example.com/bare");
+}
+
+/// An email autolink becomes a `mailto:`, which is what every reader does with one — and it is the
+/// window's refusal of anything but `http` and `https` that decides whether it opens.
+#[test]
+fn an_email_autolink_becomes_a_mailto() {
+    let page = preview("<someone@example.com>");
+    assert_eq!(page.links[0].target, "mailto:someone@example.com");
+}
+
+/// A label with emphasis inside it is several spans, and every byte of it has to answer "yes, a link",
+/// or the half in bold would not open.
+#[test]
+fn a_label_with_emphasis_in_it_is_a_link_all_the_way_across() {
+    let page = preview("[**bold** and plain](https://example.com/e)");
+    let text = page.text.to_string();
+    let covered: usize = page.links.iter().map(|link| link.bytes.len()).sum();
+    assert_eq!(covered, "bold and plain".len(), "every byte of the label is part of the link");
+    for link in &page.links {
+        assert_eq!(link.target, "https://example.com/e");
+        assert!(text.get(link.bytes.clone()).is_some());
+    }
+}
+
+/// A reference nothing defines is left as the text it was written as, which is what CommonMark says and
+/// what a reader wants — so there is nothing to open, rather than a link to nowhere.
+#[test]
+fn a_broken_reference_is_not_a_link() {
+    let page = preview("[the docs][missing]");
+    assert!(page.links.is_empty());
+    assert_eq!(page.text.to_string().trim(), "[the docs][missing]");
+}
+
+/// A picture is its alt text in the quiet colour, and is not something to open: `preview_images` already
+/// refuses an address with a scheme in it, and a click that fetched one would be the same reach.
+#[test]
+fn a_picture_is_not_a_link() {
+    let page = preview("![a picture](https://example.com/p.png)");
+    assert!(page.links.is_empty());
+}
+
+/// A link written inside a fence is code, so its bytes are code and there is nothing to open. The
+/// inline pass never runs over a fence's contents, which is what makes this true by construction.
+#[test]
+fn a_link_inside_a_fenced_block_is_not_a_link() {
+    let page = preview("```\n[a](https://example.com)\n```");
+    assert!(page.links.is_empty());
 }

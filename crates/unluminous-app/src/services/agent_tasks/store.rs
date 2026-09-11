@@ -105,16 +105,22 @@ impl Store {
         &self.path
     }
 
-    /// The default place the board lives: inside the plugin's own folder under the settings folder.
+    /// The default place the board lives: **inside the folder the plugin was handed**, which is
+    /// `~/Library/Application Support/Unluminous/plugins/agent-tasks/board.sqlite3` on macOS for a window
+    /// that read the person's own settings, and the matching folder on the other two platforms.
     ///
-    /// `~/Library/Application Support/Unluminous/plugins/agent-tasks/board.sqlite3` on macOS, and the
-    /// matching folder on the other two platforms, which is what `store::folder_for_this_person`
-    /// already decides for the settings themselves.
-    pub fn default_path() -> PathBuf {
-        crate::services::store::folder_for_this_person()
-            .join("plugins")
-            .join("agent-tasks")
-            .join(FILE)
+    /// **It takes the folder rather than asking `store::folder_for_this_person` itself**, and that is a
+    /// fault `task-1848` found rather than an arrangement. `plugin_panes::Context::folder` is the plugin's
+    /// own folder under whichever store the window is using, and `AgentTasks::set_context` records it — so
+    /// a window pointed at a store of its own has a plugin folder of its own. Asking the person's settings
+    /// folder here threw that away: **a test that gave the window a temporary store still opened the real
+    /// board**, added sprints, epics and tickets to it, and asserted against `task-1` keys that only hold
+    /// on an empty one. Measured: five screenshot tests were writing to
+    /// `~/Library/Application Support/Unluminous/plugins/agent-tasks/board.sqlite3` and failing as soon as
+    /// anybody had used the board, which breaks `CLAUDE.md`'s rule that a test must not read or write the
+    /// settings of the person running it.
+    pub fn default_path_in(folder: &Path) -> PathBuf {
+        folder.join(FILE)
     }
 
     fn create(&self) -> Result<(), String> {

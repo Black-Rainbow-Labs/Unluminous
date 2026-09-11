@@ -188,6 +188,29 @@ struct Drawn {
     directory: bool,
 }
 
+/// Where the filter box is drawn, given the panel's rectangle.
+///
+/// **A function rather than four numbers inline**, because a test needs the answer: the position was
+/// spelled out in `the_filter_box_puts_its_words_on_the_same_line_as_the_magnifier` as a copy of this
+/// arithmetic, and a copy of an arithmetic is a copy that goes stale — it did, the day the explorer
+/// moved down the window, and the test then reported that the words were in the wrong place while they
+/// were exactly in the middle of the field the component really drew.
+pub fn filter_field(area: Rect, view: &View, heading: f32) -> Rect {
+    Rect::from_min_size(
+        Pos2::new(area.left() + view.at(12.0), area.top() + heading),
+        Vec2::new(area.width() - view.at(24.0), view.at(24.0)),
+    )
+}
+
+/// How far down the panel the filter box starts, which is how tall the heading above it is. A node has
+/// none of the panel's furniture — `task-1904` — so its filter box is near its own top.
+pub fn heading_height(view: &View) -> f32 {
+    match view.host {
+        Host::Panel => view.at(36.0),
+        Host::Node => view.at(6.0),
+    }
+}
+
 /// Draw the explorer into `area`.
 ///
 /// `filter` is the text in the filter box and `view` is everything the window knows that changes
@@ -206,10 +229,7 @@ pub fn show(
 
     // **A node has none of the panel's furniture**, because it has a header of its own to be moved
     // and closed by. Everything below this block is the same code for both - `task-1904`.
-    let heading = match view.host {
-        Host::Panel => view.at(36.0),
-        Host::Node => view.at(6.0),
-    };
+    let heading = heading_height(&view);
     // Read again after the rows, as the drop target for the project's own row, so it is worked out
     // here rather than inside the block below. A node has no such row, and `Rect::NOTHING` is a
     // rectangle no pointer is ever inside.
@@ -316,10 +336,7 @@ pub fn show(
     }
 
     // The filter box.
-    let filter_rect = Rect::from_min_size(
-        Pos2::new(area.left() + view.at(12.0), area.top() + heading),
-        Vec2::new(area.width() - view.at(24.0), view.at(24.0)),
-    );
+    let filter_rect = filter_field(area, &view, heading);
     painter.rect(
         filter_rect,
         CornerRadius::same(size::CONTROL_CORNER),
@@ -379,7 +396,14 @@ pub fn show(
     let mut released = false;
 
     let mut list = ui.new_child(egui::UiBuilder::new().max_rect(list_rect));
-    list.set_clip_rect(list_rect);
+    // **Intersected, never replaced.** `Ui::set_clip_rect` is an assignment, so writing `list_rect`
+    // threw away whatever clip this component was given — and in a folder node on the canvas that clip
+    // is the one `components::space::clip_for_nodes` worked out to keep a node's contents off the
+    // window's own rail and resize grips. The rows were the only part of the explorer that escaped,
+    // because everything else here paints through `ui.painter_at`, which intersects. `task-1905`; it is
+    // the form `components::terminal_panel::grid` already writes, which is why a terminal node never
+    // did this.
+    list.set_clip_rect(ui.painter().clip_rect().intersect(list_rect));
     let mut rows_area = egui::ScrollArea::vertical().id_salt("explorer-rows");
     if let Some(offset) = view.scroll_to {
         rows_area = rows_area.vertical_scroll_offset(offset.max(0.0));
@@ -930,4 +954,76 @@ fn allocate_row(ui: &mut egui::Ui, height: f32) -> Rect {
     let width = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
     rect
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A component draws inside the clip it was given, and never widens it.
+    ///
+    /// `task-1905` is the report — *"folder view node is going over the top of the left bar with icons,
+    /// but terminal node isn't"* — and the cause was one call: `Ui::set_clip_rect` **replaces**, so
+    /// writing the list's own rectangle threw away the clip a folder node had been given, which is the
+    /// one `components::space::clip_for_nodes` worked out to keep a node's contents off the window's own
+    /// rail and resize grips. Everything else in this file paints through `ui.painter_at`, which
+    /// intersects, so the rows were the only part that escaped.
+    ///
+    /// The measurement is the clip every shape was actually painted with, read back out of the
+    /// tessellated output. A context with no window and no graphics card behind it is what
+    /// `editor_view`'s own painting tests use and for the same reason: egui's context is all on the
+    /// processor.
+    #[test]
+    fn the_explorer_never_paints_outside_the_clip_it_was_given() {
+        let folder = std::env::temp_dir().join("unluminous-explorer-clip-test");
+        let _ = std::fs::create_dir_all(&folder);
+        for number in 0..40 {
+            let _ = std::fs::write(folder.join(format!("file-{number:02}.txt")), "x");
+        }
+        let mut tree = crate::services::file_tree::FileTree::new(folder.clone());
+        tree.reload();
+
+        // The rectangle the component is given is deliberately wider and taller than the clip, which is
+        // exactly a folder node dragged so that part of it is over the rail.
+        let given = Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(300.0, 400.0));
+        let clip = Rect::from_min_size(Pos2::new(40.0, 20.0), Vec2::new(200.0, 300.0));
+
+        let context = egui::Context::default();
+        let mut filter = String::new();
+        let output = context.run_ui(egui::RawInput::default(), |ui| {
+            let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(given));
+            inner.set_clip_rect(clip);
+            let view = View {
+                current: None,
+                selected: None,
+                keyboard: false,
+                unsaved: false,
+                reveal: false,
+                reveal_selected: false,
+                opacity: 1.0,
+                zoom: 1.0,
+                scroll_to: None,
+                host: Host::Node,
+            };
+            let decorate = |_: &Path| Decoration::default();
+            let _ = show(&mut inner, given, &mut tree, &mut filter, view, &decorate);
+        });
+        let shapes = output.shapes.clone();
+        output.drop_without_applying_deltas();
+
+        assert!(!shapes.is_empty(), "nothing was drawn, so this measures nothing");
+        for shape in &shapes {
+            // A clip that is empty is a shape that will not be drawn at all, which is fine.
+            if !shape.clip_rect.is_positive() {
+                continue;
+            }
+            assert!(
+                clip.contains_rect(shape.clip_rect.intersect(clip))
+                    && shape.clip_rect.intersect(clip) == shape.clip_rect,
+                "a shape was painted with the clip {:?}, which reaches outside the {clip:?} it was given",
+                shape.clip_rect,
+            );
+        }
+        let _ = std::fs::remove_dir_all(&folder);
+    }
 }

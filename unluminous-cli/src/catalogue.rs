@@ -302,7 +302,7 @@ pub fn area_note(area: &'static str) -> &'static str {
         "pane" => "The editing area can be split into panes side by side, each with its own tabs, which is the reference editor's split view. `pane split` moves the tab that is showing into a new pane on the right — it moves rather than copies, because two tabs on one file would be two documents over one path. A pane holding only that tab keeps it and the new pane opens empty, ready for the next file: opening a file always lands in the pane that has the keyboard.",
         "editor" => "Use this tool first for project-symbol work. If asked to find every place a name is used, call `references` with `name`; if asked where a name is defined, call `definition`; if asked to rename it everywhere, call `rename` with `name`, `new-name` and `apply: true`. Do not begin those jobs with grep, file search, reads or file edits. Unluminous's native answers combine unsaved live open tabs with the project index, distinguish code from comments and strings, and apply a role-aware project rename as one undo step per open file while safely rewriting closed files. Lines and columns count from 1.",
         "fold" => "A block that can be collapsed is a function, an `if`, a bracket that spans lines, a run of comments, an indented section, or a Markdown heading — worked out from the file itself, so nothing has to be written into it. Collapsing one hides its lines; the line numbers of everything still showing are unchanged, so `fold list` and `editor caret --line` speak the same language whatever is folded. `fold others` is the one to notice: it collapses everything that does not hold a marked passage, which is how to leave only the four places you care about on the screen.",
-        "space" => "The Base of Infinite Space is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `space browser`, `space folder`, `space editor` and `space send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `space view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.",
+        "space" => "If `UNLUMINOUS_SPACE_NODE` is set in your environment you are running inside a node on this canvas, and `space here` is the first thing to run: it says which node you are, which nodes you are wired to, and the command that drives each of them. **`unluminous-cli` is not on your PATH** - it lives inside the application - so run it as `\"$UNLUMINOUS_CLI\" --instance $UNLUMINOUS_INSTANCE <command>`, which are both set in your environment. You may act on the nodes you are wired to and no others, so every command you send carries `--from <your node>`. The Base of Infinite Space is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `space browser`, `space folder`, `space editor` and `space send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `space view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.",
         "panel" => "Unluminous has four panels — the explorer, the terminal, the run tile and the debug tile — and each of them can be docked to any edge of the window, which is what dragging its header does. A side holds an ordered row of panels laid out left to right, so `panel dock terminal left --position 1` puts the terminal beside the explorer rather than in place of it. The terminal, run and debug tiles all draw a character grid and two grids in one strip would be two half-sized grids, so showing one puts away the other tiles **on its own side** — move one somewhere else and they are both showing at once. `panel list` says where everything is, including the rectangle each occupies, which is what to read before working out where a click lands.",
         "highlight" => "A highlight is a colour behind a passage of text. It stays there until it is cleared, in this file and next time the project is opened, and it moves with the text as the file is edited. These work on a file whether it is open or not, so `highlight apply` can mark twenty passages across twenty files in one call.",
         "terminal" => "`terminal send` types into the shell and presses Enter; `terminal read --wait-for` is how to wait for what it did. Both take `--tab` to name a tab other than the one showing, and naming a tab does not show it, so a build in one tab and a dev server in another can each be spoken to without the other being disturbed.",
@@ -794,7 +794,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "editor",
         verb: "preview",
-        summary: "Read the preview of the tab that is showing: a Markdown page as plain text with where its pictures and diagrams are, or, for a Mermaid file, what the diagram came out as.",
+        summary: "Read the preview of the tab that is showing: a Markdown page as plain text with where its pictures, diagrams and links are, or, for a Mermaid file, what the diagram came out as. Under `--json` each link reports the bytes of its words and the address it goes to, with a reference definition already resolved, so a document's links can be read without parsing its source.",
         arguments: NO_ARGUMENTS,
         flags: NO_FLAGS,
         examples: &["unluminous-cli editor preview --json"],
@@ -1179,6 +1179,19 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         area: "space",
+        verb: "here",
+        summary: "Which node this command is running inside, what that node is wired to, and the command that drives each of them. Run this **first** when `UNLUMINOUS_SPACE_NODE` is set in your environment: it is the one command that answers where you are, because the answer depends on which process is asking. Outside a node it says so and says what that means — every node is reachable and no `--from` is needed, which is the window's own agent.",
+        arguments: NO_ARGUMENTS,
+        flags: &[option(
+            "node",
+            "node",
+            "Answer about this node rather than the one this process is in. Filled in from UNLUMINOUS_SPACE_NODE when it is not given, which is the ordinary case and needs nothing.",
+        )],
+        examples: &["unluminous-cli space here", "unluminous-cli space here --json"],
+        local: false,
+    },
+    Command {
+        area: "space",
         verb: "view",
         summary: "The whole canvas as data: every view, every node with its kind, its title, where it is and how big it is, and every connection. This is what to read before acting on a node, because everything else here names one by the id this prints.",
         arguments: NO_ARGUMENTS,
@@ -1255,7 +1268,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "space",
         verb: "add",
-        summary: "Put a node on the view that is showing and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with UNLUMINOUS_SPACE_NODE set to its id so an agent started in it knows which node it is.",
+        summary: "Put a node on the view that is showing and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with UNLUMINOUS_SPACE_NODE set to its id so an agent started in it knows which node it is, UNLUMINOUS_SPACE_HINT saying what to run first, and UNLUMINOUS_CLI and UNLUMINOUS_INSTANCE saying where `unluminous-cli` is and which window it drives - it is on nobody's PATH.",
         arguments: &[argument("kind", true, "terminal, browser, folder or editor.")],
         flags: &[
             option("x", "points", "Where to put it, in canvas points. The middle of what is showing when it is not given."),
@@ -1413,6 +1426,33 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         area: "space",
+        verb: "zoom",
+        summary: "How big one node draws what it holds. Each kind walks the number that really decides its size: a terminal and a file editor a point size, a folder view a multiplier over its rows, and a web browser the page's own zoom. With no flag at all it answers the factor the node is drawn at. This is what the modifier wheel over a node does, and it changes nothing about the canvas's own zoom, which is `space camera`.",
+        arguments: &[argument("node", true, "The node's id.")],
+        flags: &[
+            option("factor", "number", "How big, as a multiplier for a folder or a browser, or a point size for a terminal or an editor."),
+            switch("bigger", "One step up."),
+            switch("smaller", "One step down."),
+            switch("reset", "Back to the size the window's own setting gives."),
+            option("from", "node", "Which node is asking. It must be wired to the one it names."),
+        ],
+        examples: &["unluminous-cli space zoom 7 --bigger", "unluminous-cli space zoom 9 --factor 1.5"],
+        local: false,
+    },
+    Command {
+        area: "space",
+        verb: "address",
+        summary: "Type an address into a browser node's own address bar and enter it, which is what pressing Enter in that field does. `space browser <node> go` is the same navigation asked for directly; this exists so the control a person uses has a way in of its own.",
+        arguments: &[
+            argument("node", true, "The browser node's id."),
+            argument("url", true, "The address, or a path to a local page in this project."),
+        ],
+        flags: &[option("from", "node", "Which node is asking. It must be wired to the one it names.")],
+        examples: &["unluminous-cli space address 9 https://example.com/"],
+        local: false,
+    },
+    Command {
+        area: "space",
         verb: "browser",
         summary: "Drive a browser node: `go` to an address, `back`, `forward`, `reload`, `url` to read where it is, and `shot` to write a picture of the node to a file. A window renders one page at a time, so the node acted on is shown first. **`shot` photographs the node as Unluminous drew it and not the page inside it**: a rendered page is a native child window the operating system composites on top, and no picture taken from inside Unluminous contains one. Use it to see the node, its address bar and where it is on the canvas; use `url` to read the address, and the agent's own tools to read what a page says.",
         arguments: &[
@@ -1433,7 +1473,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "space",
         verb: "folder",
-        summary: "Drive a folder node: `expand` and `collapse` a folder in it, `select` a row, `open` a file into the editing area, `root` to point it at another folder, and `rows` to read what it is showing.",
+        summary: "Drive a folder node: `expand` and `collapse` a folder in it, `select` a row, `open` a file, `root` to point it at another folder, and `rows` to read what it is showing. `open` puts the file in a File Editor node this one is wired to when there is one, and in the editing area when there is not — which is what a double click in the node does. `root` is what the node's own `Choose Folder...` menu row calls, so several folder nodes can show several different folders.",
         arguments: &[
             argument("node", true, "The folder node's id."),
             argument("command", true, "expand, collapse, select, open, root or rows."),
@@ -2441,6 +2481,24 @@ pub const COMMANDS: &[Command] = &[
             "unluminous-cli git action annotate",
             "unluminous-cli git action show-history --path README.md",
         ],
+        local: false,
+    },
+    Command {
+        area: "git",
+        verb: "branches",
+        summary: "The branches of the project, saying which one is checked out and which live on a remote. This is what the branch button in the title bar lists, read from the status git already reported rather than by running a git command.",
+        arguments: NO_ARGUMENTS,
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli git branches --json"],
+        local: false,
+    },
+    Command {
+        area: "git",
+        verb: "switch",
+        summary: "Move to a branch that already exists, which is what choosing one from the title bar's branch button does. It goes through the machine's real git on a thread, so uncommitted work that would be overwritten stops it with git's own message rather than being discarded; `git action new-branch` is how a branch is started.",
+        arguments: &[argument("branch", true, "The branch to move to, as `git branches` names it.")],
+        flags: &[option("wait", "milliseconds", "Wait up to this long for git to answer before returning.")],
+        examples: &["unluminous-cli git switch main --wait 20000"],
         local: false,
     },
     // ----------------------------------------------------------------- every menu entry there is

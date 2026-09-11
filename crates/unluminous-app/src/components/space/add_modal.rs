@@ -14,15 +14,33 @@ use crate::components::{controls, modal};
 use crate::services::space::Kind;
 use crate::theme::{color, size};
 
-/// The size it opens at. Tall enough for every kind with room to grow, and narrow, because the list is
-/// names rather than sentences.
+/// The size it opens at. Narrow, because the list is names rather than sentences.
 const WIDTH: f32 = 380.0;
-const HEIGHT: f32 = 360.0;
 /// How tall one row is.
 ///
 /// A name and two lines of summary, which is what the longest of the four needs: at 46 the second
 /// line of the terminal's own description ran into the row under it, which the first picture showed.
 const ROW: f32 = 60.0;
+/// How tall the search field is.
+const FIELD: f32 = 28.0;
+/// The gap between the field and the first row.
+const AFTER_THE_FIELD: f32 = 10.0;
+
+/// Tall enough for every kind, **worked out rather than chosen**.
+///
+/// `task-1905`: at 360 the body ran from y=60 to y=300, the field left the list starting at y=98, and
+/// the fourth row of 60 ended at y=334 — so [`show_the_rows`] broke out of its loop and `Kind::Editor`
+/// was never drawn at all. The modal read as a list of three kinds with a large empty space under it,
+/// and the report it produced guessed the kind was missing from the modal rather than off the bottom of
+/// it. A number typed here is a number the next kind added would break again, so this is the arithmetic
+/// `modal::body` and `show_the_rows` really do.
+const HEIGHT: f32 = modal::HEADER
+    + 14.0
+    + FIELD
+    + AFTER_THE_FIELD
+    + ROW * Kind::ALL.len() as f32
+    + modal::FOOTER
+    + 8.0;
 
 /// What the person has typed and which row is picked out.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -67,7 +85,7 @@ pub fn show(ctx: &egui::Context, state: &mut State) -> Outcome {
             chosen = Some(None);
         }
         let body = modal::body(area);
-        let field = Rect::from_min_size(body.min, Vec2::new(body.width(), 28.0));
+        let field = Rect::from_min_size(body.min, Vec2::new(body.width(), FIELD));
         let response =
             controls::search_field(ui, field, "Search nodes", "Search nodes", &mut state.filter);
         // The keyboard starts in the field, which is what a modal opened to be typed into means.
@@ -77,7 +95,8 @@ pub fn show(ctx: &egui::Context, state: &mut State) -> Outcome {
         let found = matching(&state.filter);
         state.highlighted = state.highlighted.min(found.len().saturating_sub(1));
         walk_with_the_arrow_keys(ui, state, found.len());
-        let list = Rect::from_min_max(Pos2::new(body.left(), field.bottom() + 10.0), body.max);
+        let list =
+            Rect::from_min_max(Pos2::new(body.left(), field.bottom() + AFTER_THE_FIELD), body.max);
         if let Some(kind) = show_the_rows(ui, list, &found, state) {
             chosen = Some(Some(kind));
         }
@@ -176,6 +195,29 @@ fn show_the_rows(ui: &mut egui::Ui, area: Rect, found: &[Kind], state: &mut Stat
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every kind fits inside the body, which is what makes it drawn rather than merely offered.
+    ///
+    /// `task-1905`: this is the arithmetic `show_the_rows` does, asserted rather than looked at. It
+    /// fails at the 360 the modal opened at, where the fourth row ended six points past the body and
+    /// the loop that draws the rows gave up — so `Kind::Editor` was in `matching("")`, which the test
+    /// below already asserted, and on the screen it was nowhere.
+    #[test]
+    fn every_kind_has_room_to_be_drawn_in_the_modal() {
+        let area = Rect::from_min_size(Pos2::ZERO, Vec2::new(WIDTH, HEIGHT));
+        let body = modal::body(area);
+        let list_top = body.top() + FIELD + AFTER_THE_FIELD;
+        let last = list_top + (Kind::ALL.len() - 1) as f32 * ROW + ROW - 4.0;
+        assert!(
+            last <= body.bottom(),
+            "the last of {} kinds ends at {last} and the body ends at {}",
+            Kind::ALL.len(),
+            body.bottom(),
+        );
+        // And not so much taller than it needs to be that a kind could be added without anybody
+        // noticing the modal had stopped fitting: one row of slack, no more.
+        assert!(body.bottom() - last < ROW, "the modal is more than a row taller than its list");
+    }
 
     #[test]
     fn the_filter_matches_a_name_or_the_line_under_it() {

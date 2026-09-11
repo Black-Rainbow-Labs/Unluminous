@@ -115,7 +115,7 @@ impl std::fmt::Debug for Running {
 /// What one turn asks a command-line agent.
 ///
 /// Built by the caller because it knows things this crate does not: which folder the window has
-/// open, and what the person actually typed.
+/// open, what the person actually typed, and what environment the agent runs in.
 #[derive(Debug, Clone, Default)]
 pub struct Ask {
     /// What to say. One turn's worth: the transcript is the agent's own.
@@ -128,6 +128,15 @@ pub struct Ask {
     pub pictures: Vec<std::path::PathBuf>,
     /// How much the agent may do without being asked.
     pub permission: Permission,
+    /// The environment the program is looked for on and started with.
+    ///
+    /// **Given rather than read**, which is [`crate::environment`]'s whole reason. Two things went
+    /// wrong without it, and `unluminous_app::services::login_shell` records both from measuring them:
+    /// `claude` lives in `~/.local/bin`, which is not on the `PATH` an Unluminous started from the Dock
+    /// has, so it could not be found at all; and a child started from that process gets launchd's dozen
+    /// variables rather than the gateway's, so an agent that did start said it was not logged in.
+    /// `task-1905`.
+    pub environment: crate::environment::Environment,
 }
 
 /// How much a command-line agent may do to this machine without asking.
@@ -300,10 +309,10 @@ pub fn run(
     running: &Running,
     on_reply: &dyn Fn(Reply) -> bool,
 ) {
-    let Some(program) = provider.program_path() else {
+    let Some(program) = provider.program_path(&ask.environment) else {
         on_reply(Reply::Failed(
             provider
-                .why_not()
+                .why_not(&ask.environment)
                 .unwrap_or_else(|| format!("`{}` could not be run.", provider.command)),
         ));
         return;
@@ -314,6 +323,24 @@ pub fn run(
     if let Some(folder) = &ask.folder {
         command.current_dir(folder);
     }
+    // **The whole environment the caller handed over, and nothing this process happens to hold.** An agent
+    // started from a window launchd started has none of the person's own exports otherwise, and says it is
+    // not logged in — `task-1905`.
+    //
+    // `env_clear` before `envs`, which is the half the Codex Sol review of `task-1905` found missing:
+    // `Command::envs` replaces the names it is given and **leaves the rest**, so a stale `ANTHROPIC_API_KEY`
+    // this process was launched with survived a profile that had removed it, and the child went on using a
+    // key its owner had revoked. What the child gets is what a command typed in the person's own shell would
+    // have got, which is the whole claim `services::login_shell` makes.
+    //
+    // **It is cleared only for an environment that really is one**, which is the safe reading of
+    // `Environment::is_whole`: a caller that handed over nothing, or a shell profile that could not be read
+    // and came back holding a `PATH` and little else, means "whatever you have". Clearing for one of those
+    // would start `claude` with no `HOME` and no `USER`, which is a worse failure than a stale variable.
+    if ask.environment.is_whole() {
+        command.env_clear();
+    }
+    command.envs(ask.environment.variables().iter().map(|(name, value)| (name, value)));
     // **The prompt goes down standard input**, for the reason at the top of this file: a batch file
     // cannot take a multi-line argument, and `codex` is a batch file on Windows. Inheriting the
     // window's own would be worse than either, since there is nothing on the other end of it.
@@ -1145,9 +1172,10 @@ mod tests {
     fn a_program_is_found_the_way_a_shell_finds_one() {
         // A name with a separator is a path; a bare name is looked for on `PATH`, with `PATHEXT`
         // tried on Windows because `claude` is a `.cmd` there.
-        assert!(crate::provider::program("").is_none());
-        assert!(crate::provider::program("unluminous-no-such-agent-anywhere").is_none());
-        assert!(crate::provider::program("/definitely/not/here/claude").is_none());
+        let here = crate::Environment::of_this_process();
+        assert!(crate::provider::program("", &here).is_none());
+        assert!(crate::provider::program("unluminous-no-such-agent-anywhere", &here).is_none());
+        assert!(crate::provider::program("/definitely/not/here/claude", &here).is_none());
         let folder = std::env::temp_dir().join(format!("unluminous-chat-program-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("a folder");
         let name = match cfg!(windows) {
@@ -1157,7 +1185,7 @@ mod tests {
         let made = folder.join(name);
         std::fs::write(&made, b"").expect("a file that stands in for a program");
         assert_eq!(
-            crate::provider::program(&made.to_string_lossy()),
+            crate::provider::program(&made.to_string_lossy(), &here),
             Some(made.clone()),
             "a path is taken as one"
         );
@@ -1168,13 +1196,14 @@ mod tests {
     fn an_agent_that_is_not_installed_says_so_before_anything_is_run() {
         let mut provider = provider(Wire::ClaudeCli);
         provider.command = "unluminous-no-such-agent-anywhere".to_owned();
-        let why = provider.why_not().expect("a refusal");
+        let here = crate::Environment::of_this_process();
+        let why = provider.why_not(&here).expect("a refusal");
         assert!(why.contains("unluminous-no-such-agent-anywhere"), "{why}");
         assert!(why.contains("PATH"), "{why}");
         // And it never asks for a key, whatever a settings file says.
         provider.key_env = "ANTHROPIC_API_KEY".to_owned();
         assert!(!provider.wants_a_key());
-        assert!(provider.headers().iter().all(|(name, _)| name == "content-type"));
+        assert!(provider.headers(&here).iter().all(|(name, _)| name == "content-type"));
     }
 
     fn feed(decoder: &mut Decoder, lines: &[&str]) -> Vec<Reply> {

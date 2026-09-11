@@ -41,6 +41,7 @@ pub mod references;
 pub mod resize_edges;
 pub mod run_dialog;
 pub mod run_panel;
+pub mod branch_widget;
 pub mod run_widget;
 pub mod scrollbar;
 pub mod settings_dialog;

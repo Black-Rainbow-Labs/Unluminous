@@ -1289,12 +1289,21 @@ mod tests {
         //            leaving the canvas unreachable from an agent would have been the one thing
         //            this repository's first rule does not allow.
         //
+        //   21,284   `task-1905`'s three: `space here`, which orients an agent running inside a node,
+        //            `space zoom` and `space address`. Measured rather than estimated, with the ceiling
+        //            moved to 22,000 afterwards. Most of it is `space here` and the two sentences added
+        //            to the area's own description saying that `UNLUMINOUS_SPACE_NODE` means you are in
+        //            a node — and the whole point of those is that they are read *before* a question is
+        //            asked. An agent that cannot find out where it is spends nine tool calls and two
+        //            shell commands working it out, which is what that ticket measured on a real
+        //            `claude`.
+        //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
         // the areas it needs and leaves the rest out — the same catalogue at 4,491 tokens for
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
-        assert!(grouped.len() / 4 < 21_000, "grouped MCP schema exceeded budget: {} bytes", grouped.len());
+        assert!(grouped.len() / 4 < 22_000, "grouped MCP schema exceeded budget: {} bytes", grouped.len());
         for command in commands() {
             assert!(
                 grouped.contains(command.verb),

@@ -58,6 +58,7 @@ use unluminous_core::{layout, relayout, Command, Document, Highlights, Layout, R
 
 use crate::components::about_dialog::{self, About};
 use crate::components::activity_bar;
+use crate::components::branch_widget;
 use crate::components::browser_view;
 use crate::components::context_menu;
 use crate::components::debug_dialogs::{self, BreakpointDialog, EvaluateDialog};
@@ -602,6 +603,12 @@ pub struct UnluminousApp {
     pub browser: BrowserHost,
     /// Browser child rectangles reported by the panes in this frame.
     browser_placements: Vec<BrowserPlacement>,
+    /// Where the native browser views were asked to go last frame, for a test.
+    ///
+    /// **A native child is a real window and nothing Unluminous draws**, so no screenshot holds one and no
+    /// state the window reports said where it had been put. `task-1905` reported a node's page drawn up and
+    /// to the left of its node, and this is the only thing a test can assert on: the rectangle the view was
+    /// handed, in the window's own points.
     pub tree: FileTree,
     pub renderer: TextRenderer,
     /// The font and the background, as chosen in `Edit -> Settings`.
@@ -764,6 +771,8 @@ pub struct UnluminousApp {
     /// says which of the two a copy is about — set by a press in a preview and cleared by a press in
     /// an editing area, which is what "the pane the pointer last pressed in" means.
     reading_preview: bool,
+    /// The address a `Ctrl/Cmd+Click` in the preview asked for, acted on at the end of the frame.
+    link_to_open: Option<String>,
     /// The pictures in the preview, decoded and kept between frames.
     ///
     /// One of the three caches that stay on the window rather than moving onto the tab with the rest
@@ -974,6 +983,14 @@ pub struct UnluminousApp {
     /// Where each pane's strip of tabs drew itself and its tabs, in pane order. Frame local, and
     /// rebuilt by the pane loop, which is the only thing that can know it.
     tab_strips: Vec<file_tabs::Strip>,
+    /// Where each File Editor **node**'s own strip drew itself, and the rectangle of the node it belongs
+    /// to, in screen points.
+    ///
+    /// **A node is a third kind of place a tab can be dropped**, so it joins the list `settle_the_tab_drag`
+    /// reads: that function exists because a tab picked up in one place is dropped in another as often as
+    /// not, and a node's strip left out of it is a tab that cannot be dragged out of a node at all.
+    /// `task-1905`.
+    node_tab_strips: Vec<(crate::services::space::NodeId, Rect, file_tabs::Strip)>,
     /// The editing area's own menu, when it is open. Held here for the same reason the gutter's is,
     /// and it carries the colour wheel with it.
     pub text_menu: Option<text_menu::TextMenu>,
@@ -1099,6 +1116,7 @@ impl UnluminousApp {
             settling_the_maximise: false,
             maximise_wanted: false,
             reading_preview: false,
+            link_to_open: None,
             preview_images: PreviewImages::new(),
             mermaid_scenes: MermaidScenes::new(),
             themed: false,
@@ -1140,6 +1158,7 @@ impl UnluminousApp {
             terminal_menu: None,
             tab_drag: None,
             tab_strips: Vec::new(),
+            node_tab_strips: Vec::new(),
             panel_drag: None,
             panes_area: Rect::ZERO,
             panel_rects: dock::Regions { panels: [Rect::ZERO; dock::SLOTS], editor: Rect::ZERO },
@@ -1972,6 +1991,7 @@ impl UnluminousApp {
             open_files: self.files.len(),
             panes: self.files.pane_count(),
             pane: self.files.focused_pane(),
+            tab_is_on_a_node: self.files.home_of(self.files.active_index()).node().is_some(),
             tabs_in_pane: self.files.tabs_in(self.files.focused_pane()).len(),
             in_repository: self.repository_controls_apply(),
             has_file: self.document().path().is_some(),
@@ -3833,6 +3853,24 @@ impl UnluminousApp {
         self.tab_strips.get(pane).map(|strip| strip.area).unwrap_or(Rect::NOTHING)
     }
 
+    /// The File Editor node strips this frame recorded, for a test.
+    ///
+    /// **What it proves is an ordering.** `settle_the_tab_drag` reads this list, and it has to run after the
+    /// canvas has been drawn rather than after the panes alone — settled in the wrong place the list is
+    /// empty every time it is read, and a tab can neither be dragged onto a node nor off one. A synthesised
+    /// pointer cannot check that, because a node's strip is drawn into a transformed sublayer.
+    pub fn node_tab_strips_were_recorded(&self) -> Vec<(crate::services::space::NodeId, Rect)> {
+        self.node_tab_strips.iter().map(|(node, rect, _)| (*node, *rect)).collect()
+    }
+
+    /// Where each native browser view was asked to go last frame, in the window's own points.
+    ///
+    /// See the note on [`Self::browser_placements`]: a native child is not drawn by Unluminous, so this is
+    /// the only way a test can check a page is inside the node it belongs to.
+    pub fn browser_placements(&self) -> Vec<(u64, Rect)> {
+        self.browser_placements.iter().map(|placement| (placement.id, placement.area)).collect()
+    }
+
     pub fn panel_area(&self, panel: dock::Panel) -> Rect {
         let rect = self.panel_rects.of(panel);
         if rect.width() > 1.0 && rect.height() > 1.0 {
@@ -3843,7 +3881,13 @@ impl UnluminousApp {
         }
         let mut showing = self.panels_showing();
         showing[panel.index()] = true;
-        dock::regions(self.panes_area, &self.panes.dock, showing, &self.panes).of(panel)
+        // **Told whether the editing area is showing**, which this used to assume. A panel whose real
+        // rectangle is degenerate is asked about again with itself switched on, and answering with the
+        // layout of a window that is not on the screen is how a pseudoconsole was opened at the wrong
+        // size while the editing area was hidden — which is the fault `task-1684` measured losing a
+        // program's first line. `task-1905`.
+        dock::regions_with(self.panes_area, &self.panes.dock, showing, &self.panes, self.editor_visible)
+            .of(panel)
     }
 
     /// Draw every contributed pane that is showing, and gather what they asked for.
@@ -5390,6 +5434,17 @@ impl UnluminousApp {
                 let (status, remotes) = (git.snapshot.status.clone(), git.snapshot.remotes.clone());
                 git.dialogs.open(Dialog::Branches, &status, &remotes);
             }
+            // The branch flyout's row and `unluminous-cli git switch`, both reaching the request the
+            // `Branches...` dialog already sends. Refused when it is the branch already checked out,
+            // rather than running a git command that would do nothing and report that it had worked.
+            GitAction::Switch(name) => {
+                if git.snapshot.status.branch.as_deref() == Some(name.as_str())
+                {
+                    self.message = Some(format!("Already on {name}."));
+                    return;
+                }
+                git.send(Request::Switch(name));
+            }
             GitAction::NewBranch => {
                 self.prompt = Some(Prompt::new(
                     "New Branch",
@@ -6371,6 +6426,81 @@ impl UnluminousApp {
     }
 
     /// Where the inline code is, for a test.
+    /// The links in the preview of the tab that is showing: where each one's words are and where it
+    /// goes. Read by `unluminous-cli editor preview --json` and by the tests, which need it to work out
+    /// where on the screen a link is rather than clicking at a guessed position.
+    /// What the branch widget in the title bar needs: the branch that is checked out and the local
+    /// branches to offer. Empty outside a repository, which is what makes the widget absent.
+    ///
+    /// The branches come from the git snapshot the worker already keeps, so this costs no git command
+    /// and asks nothing on the frame it is read — a widget that ran `git branch` once a frame would run
+    /// it sixty times a second.
+    pub fn branch_state(&self) -> branch_widget::BranchState {
+        let Some(git) = self.git.as_ref() else { return branch_widget::BranchState::default() };
+        branch_widget::BranchState {
+            current: git.snapshot.status.branch.clone(),
+            locals: git
+                .snapshot
+                .branches
+                .iter()
+                .filter(|branch| !branch.remote)
+                .map(|branch| branch.name.clone())
+                .collect(),
+        }
+    }
+
+    /// Where the explorer's filter box is, which is what `components::explorer` really draws it at.
+    ///
+    /// Read by `the_filter_box_puts_its_words_on_the_same_line_as_the_magnifier`, which used to spell the
+    /// position out as a copy of the component's own arithmetic and therefore went stale when the explorer
+    /// moved. Only the panel's rectangle and its zoom are needed, and the window has both.
+    pub fn explorer_filter_field(&self) -> Rect {
+        let area = self.panel_area(dock::Panel::Explorer);
+        // The `View` is built with the fields the drawing reads for a position and nothing else: the
+        // filter box's rectangle depends on the panel's own measurements and its zoom, so `Host::Panel`
+        // is what makes this the panel's answer rather than a node's.
+        let view = explorer::View {
+            current: None,
+            selected: None,
+            keyboard: false,
+            unsaved: false,
+            reveal: false,
+            reveal_selected: false,
+            opacity: self.settings.opacity,
+            zoom: self.panes.zoom_of(dock::Panel::Explorer),
+            scroll_to: None,
+            host: explorer::Host::Panel,
+        };
+        explorer::filter_field(area, &view, explorer::heading_height(&view))
+    }
+
+    /// The rectangle a contributed pane has, by `<plugin id>/<pane id>`, or `None` when it is not showing.
+    ///
+    /// Read by the tests, which need to say something about how wide a plugin's pane really turned out to
+    /// be rather than about a control that happens to be absent at that width.
+    /// How wide a contributed pane is, for the tests: `plugins pane` has no `--width`, and `panel size`
+    /// names Unluminous's own four rather than a plugin's.
+    pub fn set_plugin_pane_width_for(&mut self, key: &str, width: f32) {
+        if let Some(slot) = self.plugin_ui.slot_of(key) {
+            self.panes.set_width_of(dock::Panel::Plugin(slot as u8), width);
+        }
+    }
+
+    pub fn plugin_pane_area_for(&self, key: &str) -> Option<Rect> {
+        let slot = self.plugin_ui.slot_of(key)?;
+        self.plugin_ui.is_visible(slot).then(|| self.panel_area(dock::Panel::Plugin(slot as u8)))
+    }
+
+    pub fn preview_links(&self) -> Vec<unluminous_core::PreviewLink> {
+        self.files
+            .active()
+            .cached
+            .preview
+            .as_ref()
+            .map(|preview| preview.links.clone())
+            .unwrap_or_default()
+    }
+
     pub fn preview_code_spans(&self) -> Vec<std::ops::Range<usize>> {
         self.files
             .active()
@@ -6917,6 +7047,11 @@ impl UnluminousApp {
         crate::services::frame_trace::phase("menus");
         let mut action = None;
 
+        // The branch the repository is on and the local branches, for the widget beside the project's
+        // name. Worked out before the bar is drawn because the bar needs the width to leave room for it.
+        let branch_state = self.branch_state();
+        let branch_width = branch_widget::width(&branch_state, ui.painter());
+
         // The title bar.
         let outcome = title_bar::show(
             ui,
@@ -6927,6 +7062,7 @@ impl UnluminousApp {
             &menus,
             tools_width,
             run_width,
+            branch_width,
         );
         if outcome.close {
             self.closing = true;
@@ -6990,6 +7126,20 @@ impl UnluminousApp {
             let chosen = {
                 let mut run_ui = ui.new_child(egui::UiBuilder::new().max_rect(run_rect));
                 run_widget::show(&mut run_ui, run_rect, &run_state)
+            };
+            if let Some(chosen) = chosen {
+                action = Some(chosen);
+            }
+        }
+
+        // The branch widget, over the bar for the reason the run widget and the tools are: the bar takes
+        // drags over the room between the menus and the buttons to move the window, and a control added
+        // earlier would sit underneath that and never be pressed.
+        if branch_width > 0.0 && outcome.branch_rect.width() > 4.0 {
+            let chosen = {
+                let mut bar_ui =
+                    ui.new_child(egui::UiBuilder::new().max_rect(outcome.branch_rect));
+                branch_widget::show(&mut bar_ui, outcome.branch_rect, &branch_state)
             };
             if let Some(chosen) = chosen {
                 action = Some(chosen);
@@ -7112,7 +7262,11 @@ impl UnluminousApp {
 
         // The explorer, and the divider that sets its width.
         crate::services::frame_trace::phase("chrome");
-        if self.explorer_visible {
+        // **A rectangle with no room in it is not drawn**, which is the guard `show_the_plugin_panes` and
+        // `show_the_space` already have and which the explorer was the one panel without: it was drawn
+        // into nothing, registering a filter box and row interactions at no size at all. One threshold
+        // and one rule for all three panels rather than three. `task-1905`.
+        if self.explorer_visible && explorer_rect.width() > 1.0 && explorer_rect.height() > 1.0 {
             let explorer_outcome = {
                 let open = self.files.active().path().map(std::path::Path::to_path_buf);
                 let unsaved = self.document().is_modified();
@@ -7262,6 +7416,7 @@ impl UnluminousApp {
         let had_the_keyboard = self.files.focused_pane();
         let mut keyboard = had_the_keyboard;
         self.tab_strips.clear();
+        self.node_tab_strips.clear();
         self.tab_drag = None;
         // Rebuilt by the pane that has the keyboard, which is the only thing that can know it.
         self.completion_anchor = None;
@@ -7284,9 +7439,9 @@ impl UnluminousApp {
         if let Some(index) = close {
             self.close_tab(index);
         }
-        // Where a tab being carried would land, and where it did. After the loop, because a tab
-        // picked up in one pane is dropped on another as often as not.
-        self.settle_the_tab_drag(ui, &pane_rects);
+        // A link a `Ctrl/Cmd+Click` in a preview asked for. After the loop, because opening it makes a
+        // browser tab the active one and the rest of a preview's drawing reads the active tab's cache.
+        self.settle_the_link_click();
         // The completion popup, drawn from the geometry the pane with the keyboard recorded. After
         // the loop for the reason the tab drag is settled after it: this is the first moment
         // anything knows where that pane's caret ended up, and one popup drawn here can never be
@@ -7428,6 +7583,15 @@ impl UnluminousApp {
         if let Some(chosen) = self.show_the_space_menu(ui) {
             action = Some(chosen);
         }
+
+        // **Where a tab being carried would land, and where it did. After the canvas as well as after the
+        // panes.** Its own rule is that a tab picked up in one place is dropped in another as often as not,
+        // so it is settled once everything that can hold a tab has been drawn — and since `task-1905` a
+        // File Editor **node** can hold one. Settled where it used to be, between the panes and the canvas,
+        // `node_tab_strips` was always empty when it was read: dragging a pane's tab onto a node had no
+        // target, and a drag reported *by* a node was cleared before the next frame could act on it. The
+        // Codex Sol review of `task-1905` found it.
+        self.settle_the_tab_drag(ui, &pane_rects);
 
         // The terminal.
         if self.terminal.visible {
@@ -8692,6 +8856,11 @@ impl UnluminousApp {
         area: Rect,
         close: &mut Option<usize>,
     ) -> bool {
+        // **A tab in a pane is set in the window's own font.** A tab dragged out of a File Editor node was
+        // given a size of its own there — `task-1905` — and a pane has no per-node size, so it is put back
+        // here rather than at each of the places a tab can leave a node, which is `follow_the_open_file`'s
+        // rule. `sized_at` is `None` for every tab nothing resized, so this costs one comparison.
+        self.put_a_panes_tabs_back_to_the_windows_font(pane);
         let tabs_rect =
             Rect::from_min_size(area.min, Vec2::new(area.width(), file_tabs::HEIGHT));
         let editor_rect =
@@ -8786,6 +8955,28 @@ impl UnluminousApp {
         took_the_keyboard
     }
 
+    /// Put any tab in this pane that was sized inside a node back to the window's own font.
+    ///
+    /// See the call in [`Self::show_pane`] for why it lives there rather than beside every place a tab can
+    /// leave a node.
+    fn put_a_panes_tabs_back_to_the_windows_font(&mut self, pane: usize) {
+        let sized: Vec<usize> = self
+            .files
+            .tabs_in(pane)
+            .into_iter()
+            .filter(|index| self.files.at(*index).sized_at.is_some())
+            .collect();
+        if sized.is_empty() {
+            return;
+        }
+        let change = self.settings.as_style_change();
+        for index in sized {
+            self.files.at_mut(index).document.set_base_style(change.clone());
+            self.files.at_mut(index).cached.stale = true;
+            self.files.at_mut(index).sized_at = None;
+        }
+    }
+
     /// Work out where the tab being carried would land, draw the mark that says so, and move it when
     /// it is let go.
     ///
@@ -8800,6 +8991,23 @@ impl UnluminousApp {
         let Some(drag) = self.tab_drag else {
             return;
         };
+        // **A File Editor node is asked about first**, because a node is drawn *over* the panes: a canvas
+        // docked to the bottom is inside the body the panes were laid out in, so a point inside a node is
+        // very often inside a pane as well, and the node is what the pointer is actually over.
+        // `task-1905`.
+        if let Some((node, _, strip)) =
+            self.node_tab_strips.iter().find(|(_, rect, _)| rect.contains(drag.at)).cloned()
+        {
+            let position = strip.position_at(drag.at.x);
+            if drag.dropped {
+                self.files.drag_tab_to_node(drag.file, node, position);
+                self.focus = Focus::Space;
+                self.space.space.choose(Some(node));
+                return;
+            }
+            file_tabs::insertion_mark(ui.painter(), &strip, position);
+            return;
+        }
         let Some(pane) = pane_rects.iter().position(|rect| rect.contains(drag.at)) else {
             return;
         };
@@ -9067,13 +9275,25 @@ impl UnluminousApp {
             return;
         };
         let showing = self.panels_showing();
-        let bands = dock::zones(panes, &self.panes.dock, showing, &self.panes);
-        let aimed =
-            dock::target(panes, &self.panes.dock, showing, &self.panes, drag.panel, drag.at);
+        // **Every one of these three asks about the layout that is really on the screen**, which means
+        // each is told whether the editing area is showing. They read `dock::regions`, which means "with
+        // the editing area showing", so with it hidden the bands, the answer and the strong rectangle
+        // were all worked out against a window nobody was looking at. `task-1905`.
+        let editor = self.editor_visible;
+        let bands = dock::zones(panes, &self.panes.dock, showing, &self.panes, editor);
+        let aimed = dock::target(
+            panes,
+            &self.panes.dock,
+            showing,
+            &self.panes,
+            drag.panel,
+            drag.at,
+            editor,
+        );
         let landing = match aimed {
             Some((side, position)) => {
                 let after = self.panes.dock.with(drag.panel, side, Some(position));
-                dock::regions(panes, &after, showing, &self.panes).of(drag.panel)
+                dock::regions_with(panes, &after, showing, &self.panes, editor).of(drag.panel)
             }
             None => Rect::ZERO,
         };
@@ -9095,9 +9315,15 @@ impl UnluminousApp {
         let showing = self.panels_showing();
         // Let go over the document rather than over an edge, nothing happens: a drag can be thought
         // better of, which is what the explorer's row drag and the tab drag both already promise.
-        if let Some((side, position)) =
-            dock::target(panes, &self.panes.dock, showing, &self.panes, drag.panel, drag.at)
-        {
+        if let Some((side, position)) = dock::target(
+            panes,
+            &self.panes.dock,
+            showing,
+            &self.panes,
+            drag.panel,
+            drag.at,
+            self.editor_visible,
+        ) {
             self.dock_the_panel(drag.panel, side, Some(position));
         }
         ctx.request_repaint();
@@ -9258,8 +9484,27 @@ impl UnluminousApp {
     fn show_browser(&mut self, ui: &mut egui::Ui, area: Rect, focused: bool) -> bool {
         let Some(tab) = self.files.active().browser.clone() else { return false };
         let showing = self.browser.showing().is_none_or(|id| id == tab.id);
-        let (outcome, placement) = browser_view::show(ui, area, &tab, focused, showing);
-        self.browser_placements.push(placement);
+        // Taken off the tab, handed over, and put back — the same borrow a browser node does, and for the
+        // same reason: a tab that is not showing is not drawn.
+        let mut typed = std::mem::take(&mut self.files.active_mut().typed_address);
+        let mut editing = self.files.active().editing_address;
+        let (outcome, placement) = browser_view::show(
+            ui,
+            area,
+            browser_view::Toolbar {
+                tab: Some(&tab),
+                typed: &mut typed,
+                editing: &mut editing,
+                id: egui::Id::new(("browser-address", tab.id)),
+            },
+            focused,
+            showing,
+        );
+        self.files.active_mut().typed_address = typed;
+        self.files.active_mut().editing_address = editing;
+        if let Some(placement) = placement {
+            self.browser_placements.push(placement);
+        }
         if let Some(command) = outcome.command {
             self.run_browser_command(tab.id, command);
         }
@@ -9291,6 +9536,20 @@ impl UnluminousApp {
                 if let Err(problem) = self.browser.reload(id) { self.message = Some(problem); }
                 return;
             }
+            // **An address typed into the toolbar's own field.** It goes wherever the tab is: a node's
+            // tab through `send_a_space_browser_to`, which keeps the node's history for a remote address
+            // and opens a fresh tab for a local one, and the editing area's through `open_browser`.
+            // Both resolve through `BrowserLocation::parse` rather than handing the text to the view.
+            BrowserCommand::Go(address) => {
+                let answer = match self.space.live.node_of_browser(id) {
+                    Some(node) => self.send_a_space_browser_to(node, address.trim()),
+                    None => self.open_browser(address.trim()).map(|_| ()),
+                };
+                if let Err(problem) = answer {
+                    self.message = Some(problem);
+                }
+                return;
+            }
             BrowserCommand::Back => self.browser_tab(id).and_then(|tab| tab.step(true)),
             BrowserCommand::Forward => self.browser_tab(id).and_then(|tab| tab.step(false)),
         };
@@ -9305,8 +9564,26 @@ impl UnluminousApp {
     }
 
     /// The rendered tab with this id, wherever it is open.
+    ///
+    /// **Two places, asked in one function**, which is `follow_the_open_file`'s rule: a tab is either in
+    /// the editing area or on a browser **node** on the canvas, and a list of the places that have to
+    /// remember to look on the canvas as well is a list whose next entry is the one that forgets. It is
+    /// the reading half of what `raw_input_hook` already does for the placements, where the canvas's tabs
+    /// join the list the editing area's are reconciled in.
+    ///
+    /// It forgot, and `task-1905` is the report. A node's tab was never found, so its title never
+    /// arrived, `loading` was set once and never cleared, and `Back` answered *"There is nowhere for this
+    /// tab to go that way"* however many pages had been visited — its history had one entry in it because
+    /// nothing had ever added a second.
+    ///
+    /// An id is unique across both, because `BrowserHost` hands them out from one counter, so "the
+    /// editing area first, then the canvas" cannot answer with the wrong tab.
     fn browser_tab(&self, id: u64) -> Option<&BrowserTab> {
-        self.files.iter().filter_map(|file| file.browser.as_ref()).find(|tab| tab.id == id)
+        self.files
+            .iter()
+            .filter_map(|file| file.browser.as_ref())
+            .find(|tab| tab.id == id)
+            .or_else(|| self.space.live.browsers().find(|tab| tab.id == id))
     }
 
     /// Apply browser callbacks to ordinary tab state and open requested popup URLs as Unluminous tabs.
@@ -9314,7 +9591,17 @@ impl UnluminousApp {
         for id in self.browser.reload_changed_local_tabs() {
             let _ = self.browser.reload(id);
         }
-        for event in self.browser.take_events() {
+        let arrived = self.browser.take_events();
+        self.act_on_browser_events(arrived);
+    }
+
+    /// What each event does, split out so a test can feed the four shapes with no engine behind them.
+    ///
+    /// `task-1905`: every one of these reached `change_browser_tab`, which walked `self.files` alone, so
+    /// none of them reached a browser **node** on the canvas. A test could not have caught it, because
+    /// there was no way to hand the window an event without a real WebView2 or WKWebView answering.
+    pub fn act_on_browser_events(&mut self, events: Vec<BrowserEvent>) {
+        for event in events {
             match event {
                 BrowserEvent::OpenRequested { url, .. } => { let _ = self.open_browser(&url); }
                 BrowserEvent::Title { id, title } => self.change_browser_tab(id, |tab| tab.title = title),
@@ -9325,9 +9612,18 @@ impl UnluminousApp {
     }
 
     /// Change one browser tab without exposing native state to the file collection.
+    ///
+    /// The writing half of [`Self::browser_tab`], and it looks in the same two places for the same
+    /// reason. `task-1905`.
     fn change_browser_tab(&mut self, id: u64, change: impl FnOnce(&mut BrowserTab)) {
         if let Some(tab) = self.files.iter_mut().filter_map(|file| file.browser.as_mut()).find(|tab| tab.id == id) {
             change(tab);
+            return;
+        }
+        if let Some(node) = self.space.live.node_of_browser(id) {
+            if let Some(tab) = self.space.live.browser_mut(node) {
+                change(tab);
+            }
         }
     }
 
@@ -9622,6 +9918,12 @@ impl UnluminousApp {
         if response.hovered() {
             painter_ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
         }
+        // **After the text cursor, so the hand wins where a link is.** egui keeps the last cursor asked
+        // for in a frame, and a link is a few words inside a page that is otherwise selectable text; the
+        // other way round the hand was set and then immediately replaced, which is a link that cannot be
+        // seen and can still be clicked. It reads the pointer rather than being a widget of its own,
+        // because a widget over the words would take the drag that selects them.
+        self.open_a_link_in_the_preview(&painter_ui, &response, origin);
         self.paint_the_panels(&painter_ui, origin, text_width);
         self.paint_the_code_chips(&painter_ui, origin);
         editor_view::paint_behind(
@@ -9678,6 +9980,85 @@ impl UnluminousApp {
         if let Some(selection) = selection {
             self.files.active_mut().preview_selection = selection;
             self.reading_preview = true;
+        }
+    }
+
+    /// Where the link under the pointer goes, and `None` when the pointer is not on one.
+    ///
+    /// `unluminous_core::markdown::Preview::links` is a sorted list of byte ranges, so this is a binary
+    /// search: `partition_point` finds the first range that could hold the offset and one comparison
+    /// settles it. The pointer is read while it moves, so it costs no more than the hover in a source
+    /// file does.
+    fn link_under_the_pointer(&self, response: &egui::Response, origin: Pos2) -> Option<String> {
+        let at = response.hover_pos()?;
+        let preview = self.files.active().cached.preview.as_ref()?;
+        if preview.links.is_empty() {
+            return None;
+        }
+        let local = at - origin;
+        let offset = self.preview_layout().offset_at(local.x, local.y);
+        let first = preview.links.partition_point(|link| link.bytes.end <= offset);
+        let link = preview.links.get(first)?;
+        (link.bytes.contains(&offset)).then(|| link.target.clone())
+    }
+
+    /// Open the link under the pointer, if the modifier is held and there is one there.
+    ///
+    /// `task-1848`: "Links in markdown should allow me to CMD/Ctrl+Click to open them in a new browser
+    /// window." Three decisions in it are rules rather than choices:
+    ///
+    /// **The modifier is Go to Definition's**, which `task-1696` set: `Ctrl/Cmd` held means "take me to
+    /// the thing this names". A plain click keeps the meaning it has in a preview, which is placing a
+    /// selection — so nothing a person could already do changes.
+    ///
+    /// **The pointer says so before the click**, with the hand cursor an underlined address already
+    /// implies. Without it, a link is indistinguishable from underlined text and the feature is one
+    /// nobody finds.
+    ///
+    /// **Only `http` and `https` open.** A `file:`, a `javascript:` or a `mailto:` is refused by name in
+    /// the status bar. This is the rule `services::preview_images` already keeps about a picture with a
+    /// scheme in it: a document must not be able to reach this machine because somebody clicked a word
+    /// in it, and a `javascript:` address handed to a web view would run whatever the document said.
+    fn open_a_link_in_the_preview(&mut self, ui: &egui::Ui, response: &egui::Response, origin: Pos2) {
+        let held = ui.input(|input| input.modifiers.command);
+        if !held {
+            return;
+        }
+        let Some(target) = self.link_under_the_pointer(response, origin) else { return };
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        if response.clicked() {
+            // **Noted rather than done here.** Opening a tab changes which file is active, and this runs
+            // half way through drawing the preview — the rest of which reads `active().cached.preview`
+            // and found it missing, which is a panic rather than a wrong-looking frame. It is the same
+            // reason a fold is acted on at the end of the frame that asked for one.
+            self.link_to_open = Some(target);
+        }
+    }
+
+    /// Open the link a `Ctrl/Cmd+Click` in the preview asked for, at the end of the frame.
+    ///
+    /// **Only `http` and `https` open.** A `file:`, a `javascript:` or a `mailto:` is refused by name in
+    /// the status bar. This is the rule `services::preview_images` already keeps about a picture with a
+    /// scheme in it: a document must not be able to reach this machine because somebody clicked a word
+    /// in it, and a `javascript:` address handed to a web view would run whatever the document said.
+    fn settle_the_link_click(&mut self) {
+        let Some(target) = self.link_to_open.take() else { return };
+        match target.split_once(':') {
+            Some(("http" | "https", _)) => match self.open_browser(&target) {
+                Ok(_) => {}
+                Err(said) => self.message = Some(said),
+            },
+            // A bare address the document wrote without a scheme — `example.com/a` in angle brackets, or
+            // a relative path. `https` is what a browser assumes, and it is the safe half of the two.
+            None => match self.open_browser(&format!("https://{target}")) {
+                Ok(_) => {}
+                Err(said) => self.message = Some(said),
+            },
+            Some((scheme, _)) => {
+                self.message = Some(format!(
+                    "{scheme}: links are not opened from a preview. Only http and https are."
+                ));
+            }
         }
     }
 
@@ -10651,6 +11032,20 @@ impl eframe::App for UnluminousApp {
         let settled = self.browser.reconcile(&tabs, &placements, occluded, ctx.clone());
         if let Some(id) = settled.pointed_at {
             self.change_browser_tab(id, |tab| tab.pointed_at());
+            // **A browser node's own zoom is applied again when the one view arrives at its tab.** A window
+            // has one native child, so zooming a node whose page is not the one rendering could not reach the
+            // engine at the time — the factor is remembered on the node, and this is where it is spent. The
+            // Codex Sol review of `task-1905` found that it never was, so selecting the node later left it at
+            // whatever zoom the previous page had.
+            if let Some(node) = self.space.live.node_of_browser(id) {
+                // The node's own zoom **and** the camera's, which is the same product
+                // `show_a_browser_node` applies — a page is not transformed by the node's layer, so the
+                // camera has to be spent here as well. Two places computing one number would be one too
+                // many, so this asks the same question of the same two values.
+                let zoom = self.space.live.page_zoom_of(node)
+                    * self.space.space.current().camera.zoom;
+                let _ = self.browser.zoom(id, f64::from(zoom));
+            }
         }
         for (id, problem) in settled.problems {
             self.change_browser_tab(id, |tab| tab.problem = Some(problem.clone()));

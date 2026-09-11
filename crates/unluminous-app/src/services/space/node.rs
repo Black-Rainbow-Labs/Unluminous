@@ -124,13 +124,12 @@ impl State {
                 font_size: 0.0,
                 session: String::new(),
             }),
-            Kind::Browser => State::Browser(Browser { url: String::new() }),
+            Kind::Browser => State::Browser(Browser::default()),
             Kind::Folder => State::Folder(Folder {
                 root: project.map(std::path::Path::to_path_buf),
-                expanded: Vec::new(),
-                filter: String::new(),
+                ..Folder::default()
             }),
-            Kind::Editor => State::Editor(Editor { path: None, caret: 0, scroll: 0.0 }),
+            Kind::Editor => State::Editor(Editor::default()),
         }
     }
 }
@@ -157,28 +156,69 @@ pub struct Terminal {
     pub session: String,
 }
 
-/// A browser node: the address it is on.
+/// A browser node: the address it is on, and the address being typed into its bar.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Browser {
     pub url: String,
+    /// What is in the toolbar's address field right now.
+    ///
+    /// **On the node rather than in `egui`'s memory**, because a node scrolled off the canvas stops being
+    /// drawn — `components::space::is_showing` sees to that on every pan — and a half-typed address must
+    /// not go with it.
+    ///
+    /// **And deliberately not written to `space.conf`.** What a project comes back with is the address the
+    /// node is *on*, which is [`Browser::url`]; a half-typed address is not state worth restoring, and
+    /// `store::save` skips it.
+    pub typed: String,
+    /// Whether what is in the bar is the person's rather than the page's.
+    ///
+    /// Not written to `space.conf` either: a project comes back showing where the page is.
+    pub editing: bool,
 }
 
 /// A folder node: which folder, which folders inside it are open, and what is in its filter box.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Folder {
     /// Empty for the project folder.
     pub root: Option<std::path::PathBuf>,
     pub expanded: Vec<std::path::PathBuf>,
     pub filter: String,
+    /// How much bigger or smaller than its usual size this node draws its rows.
+    ///
+    /// A multiplier rather than a point size, because the explorer has none of its own: its rows, its
+    /// indents and its lettering are the style guide's numbers, and one multiplier reaches every one of
+    /// them through `explorer::View::at`. That is `task-1771`'s answer for the panel, kept per node —
+    /// `task-1905` asks that the modifier wheel over a node zoom **that node**.
+    pub zoom: f32,
+}
+
+impl Default for Folder {
+    /// Written by hand for the zoom, which is 1.0 rather than nothing.
+    fn default() -> Self {
+        Self { root: None, expanded: Vec::new(), filter: String::new(), zoom: 1.0 }
+    }
 }
 
 /// An editor node: which file, and where it was being read.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Editor {
     pub path: Option<std::path::PathBuf>,
     /// Where the caret was, as a byte offset, which is what every offset in Unluminous is.
     pub caret: usize,
     pub scroll: f32,
+    /// How big this node's letters are, or `0.0` to follow `appearance.font.size`.
+    ///
+    /// **A size of its own, and the alternative is worse.** The editor's font is one setting for the whole
+    /// window — `set_the_font_everywhere` exists because of it — so a node walking that number would
+    /// resize every other tab, which is the fault `task-1657` fixed in the other direction. The `0.0`
+    /// meaning "follow the setting" is the convention `Terminal::font_size` already uses. `task-1905`.
+    pub font_size: f32,
+}
+
+impl Default for Editor {
+    fn default() -> Self {
+        Self { path: None, caret: 0, scroll: 0.0, font_size: 0.0 }
+    }
 }
 
 /// One node on the canvas.

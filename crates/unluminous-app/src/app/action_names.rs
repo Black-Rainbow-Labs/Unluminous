@@ -11,10 +11,11 @@
 //! wording: `toggle-line-numbers` rather than `Show Line Numbers`, because what the row says
 //! changes with the state and a name that changed with the state would be useless in a script.
 //!
-//! Three actions are **refused** from the command line. `open-folder`, `open-file` and `save-as`
-//! each open the platform's own file chooser and then wait for somebody to click in it, which from
-//! a script is a window that never closes. Each has a command that takes the path instead, and the
-//! refusal says which.
+//! Five actions are **refused** from the command line. `open-folder`, `open-file`, `open-web-address`,
+//! `save-as` and `space-choose-folder` each open the platform's own file chooser and then wait for
+//! somebody to click in it, which from a script is a window that never closes. Each has a command that
+//! takes the path instead, and the refusal says which — [`Action::instead_of_a_file_chooser`] is the
+//! list, and a test asserts every entry in it.
 
 use std::path::PathBuf;
 
@@ -278,6 +279,9 @@ impl Action {
             "open-file" => Some("tab open <path>"),
             "open-web-address" => Some("browser open <address-or-path>"),
             "save-as" => Some("tab save-as <path>"),
+            // `task-1905`: a Folder View node's `Choose Folder...` opens the platform's chooser too, so it
+            // is refused from a script with the command that takes the folder directly. Fifth of five.
+            "space-choose-folder" => Some("space folder <node> root --path <folder>"),
             _ => None,
         }
     }
@@ -303,6 +307,9 @@ impl GitAction {
             GitAction::Continue => "continue",
             GitAction::Abort => "abort",
             GitAction::Branches => "branches",
+            // Not a menu entry, so no menu name is derived from it; it is the branch flyout's row and
+            // `unluminous-cli git switch`.
+            GitAction::Switch(_) => "switch",
             GitAction::NewBranch => "new-branch",
             GitAction::NewTag => "new-tag",
             GitAction::ResetHead => "reset-head",
@@ -574,10 +581,16 @@ mod tests {
     }
 
     #[test]
-    fn the_three_actions_that_would_open_a_file_chooser_name_a_command_instead() {
+    fn every_action_that_would_open_a_file_chooser_names_a_command_instead() {
         assert_eq!(Action::instead_of_a_file_chooser("open-file"), Some("tab open <path>"));
         assert_eq!(Action::instead_of_a_file_chooser("open-folder"), Some("project open <folder>"));
         assert_eq!(Action::instead_of_a_file_chooser("save-as"), Some("tab save-as <path>"));
+        // `task-1905`'s own: a Folder View node's folder is chosen through the platform's dialog, which is
+        // a window nobody is looking at when a script asks for it.
+        assert_eq!(
+            Action::instead_of_a_file_chooser("space-choose-folder"),
+            Some("space folder <node> root --path <folder>")
+        );
         assert_eq!(Action::instead_of_a_file_chooser("save"), None, "Save needs no chooser");
     }
 }

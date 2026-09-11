@@ -68,13 +68,34 @@ pub fn show(ui: &mut egui::Ui, window: Rect, maximized: bool) -> Option<ResizeDi
         return None;
     }
     let mut started = None;
+    // **The edges use the double-headed cursors, not the one-way ones.** `task-1848`: "there's one on the
+    // left edge that points left with a bar, that doesn't do anything when I drag and click once it's
+    // shown. The two arrow icon shows, and that allows me to resize."
+    //
+    // Both halves of that report are about the same four points of overlap. `ResizeWest` is drawn by macOS
+    // as an arrow against a bar, and it is what these edges used to set; `components::splitter` — the
+    // divider between two panes, a few points away — sets `ResizeHorizontal`, the double-headed arrow, and
+    // that one is grabbed by the splitter rather than by the window. So the two cursors marked two
+    // different controls sitting on top of each other, and the one-way arrow was the window's edge, whose
+    // drag then went to the window manager rather than moving the divider the person was aiming at.
+    //
+    // A double-headed arrow says "this edge moves in two directions", which is true of a window edge and
+    // of a divider alike, so both now look the same and the difference is which one is under the pointer
+    // rather than which glyph is showing. The corners keep their diagonals: those are unambiguous and
+    // there is nothing else at a corner to confuse them with.
+    //
+    // The grips themselves stay. An undecorated window has no frame for the platform to put a grip on —
+    // `task-1658` measured a window that could only be resized from the top, where the title bar's drag
+    // happened to land on something the platform still handled — so removing them would take resizing
+    // away rather than tidying it up.
+    //
     // The four edges first, then the four corners over them, so a grab in a corner resizes both ways.
     let edges: [(&str, ResizeDirection, Rect, egui::CursorIcon); 4] = [
         (
             "top",
             ResizeDirection::North,
             Rect::from_min_size(window.left_top(), Vec2::new(window.width(), EDGE)),
-            egui::CursorIcon::ResizeNorth,
+            EDGE_CURSORS[0],
         ),
         (
             "bottom",
@@ -83,13 +104,13 @@ pub fn show(ui: &mut egui::Ui, window: Rect, maximized: bool) -> Option<ResizeDi
                 egui::pos2(window.left(), window.bottom() - EDGE),
                 Vec2::new(window.width(), EDGE),
             ),
-            egui::CursorIcon::ResizeSouth,
+            EDGE_CURSORS[1],
         ),
         (
             "left",
             ResizeDirection::West,
             Rect::from_min_size(window.left_top(), Vec2::new(EDGE, window.height())),
-            egui::CursorIcon::ResizeWest,
+            EDGE_CURSORS[2],
         ),
         (
             "right",
@@ -98,7 +119,7 @@ pub fn show(ui: &mut egui::Ui, window: Rect, maximized: bool) -> Option<ResizeDi
                 egui::pos2(window.right() - EDGE, window.top()),
                 Vec2::new(EDGE, window.height()),
             ),
-            egui::CursorIcon::ResizeEast,
+            EDGE_CURSORS[3],
         ),
     ];
     let corners: [(&str, ResizeDirection, egui::Pos2, egui::CursorIcon); 4] = [
@@ -184,5 +205,53 @@ mod tests {
         // egui insists a pass's texture changes are taken or cleared before the output is dropped.
         output.textures_delta.clear();
         assert_eq!(answer, None, "a maximised window has no size to change");
+    }
+}
+
+/// The cursor each of the four window edges sets, in the order `edges` builds them: top, bottom, left,
+/// right.
+///
+/// **`edges` reads this rather than spelling the four out**, so the test below asserts the cursors the
+/// window really sets. A test against a second copy of the list would pass while the two disagreed, and a
+/// cursor cannot be read off a screenshot — it is a value on the frame's output rather than something
+/// drawn into the window — so this constant is the only place a test can see them.
+pub const EDGE_CURSORS: [egui::CursorIcon; 4] = [
+    egui::CursorIcon::ResizeVertical,
+    egui::CursorIcon::ResizeVertical,
+    egui::CursorIcon::ResizeHorizontal,
+    egui::CursorIcon::ResizeHorizontal,
+];
+
+#[cfg(test)]
+mod cursor_tests {
+    use super::*;
+
+    /// `task-1848`: "theres one on the left edge that points left with a bar, that doesn't do anything
+    /// when I drag and click once its shown. The two arrow icon shows, and that allows me to resize."
+    ///
+    /// The one-way arrows are what macOS draws for `ResizeWest` and its three siblings, and they sat on
+    /// top of `components::splitter`'s double-headed ones where a pane divider reaches the window's edge.
+    /// A change back to a one-way arrow fails here.
+    #[test]
+    fn the_window_edges_use_the_double_headed_cursors() {
+        for cursor in EDGE_CURSORS {
+            assert!(
+                matches!(
+                    cursor,
+                    egui::CursorIcon::ResizeVertical | egui::CursorIcon::ResizeHorizontal
+                ),
+                "an edge set {cursor:?}, which macOS draws as an arrow against a bar"
+            );
+        }
+    }
+
+    /// The corners keep their diagonals: unambiguous, and nothing else is at a corner to confuse them
+    /// with. Named so that folding them into the pair above would have to be a deliberate change.
+    #[test]
+    fn the_corners_keep_their_diagonal_cursors() {
+        use egui::CursorIcon::*;
+        for cursor in [ResizeNorthWest, ResizeNorthEast, ResizeSouthWest, ResizeSouthEast] {
+            assert!(!matches!(cursor, ResizeVertical | ResizeHorizontal));
+        }
     }
 }

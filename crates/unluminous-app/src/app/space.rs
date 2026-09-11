@@ -186,7 +186,8 @@ impl UnluminousApp {
             let mut bar_ui = ui.new_child(egui::UiBuilder::new().max_rect(bar));
             let views = self.space.space.views().to_vec();
             let current = self.space.space.current_id();
-            space_view::view_bar(&mut bar_ui, bar, &views, current, look)
+            let zoom = self.space.space.current().camera.zoom;
+            space_view::view_bar(&mut bar_ui, bar, &views, current, zoom, look)
         };
         self.act_on_the_view_bar(bar_outcome);
 
@@ -285,6 +286,31 @@ impl UnluminousApp {
             }
             _ => None,
         };
+        // **Which node the pointer is over is decided once, here, before any of them is drawn.**
+        //
+        // The loop below draws back to front, so a node asking "am I under the pointer" while it is drawn
+        // answers yes for the *backmost* of a stack — and both the wheel and the modifier wheel then went to
+        // the node underneath the one somebody was looking at, which the Codex Sol review of `task-1905`
+        // found. One answer, worked out from the drawing order the way `View::node_at` does, and handed to
+        // whichever node it names.
+        //
+        // It is the **chosen** node first when the pointer is inside it, because a node that has been clicked
+        // is moved to the top egui layer by `move_to_top` whether or not `Space::raise` moved it in the
+        // model — so the model's own order is not the whole truth about what is on top.
+        let pointer = body_ui
+            .input(|input| input.pointer.hover_pos().or_else(|| input.pointer.latest_pos()))
+            .filter(|at| body.contains(*at));
+        let under_the_pointer = pointer.and_then(|at| {
+            let over = |node: &Node| camera.rect_to_screen(body.min, node.rect()).contains(at);
+            nodes
+                .iter()
+                .find(|node| Some(node.id) == chosen && over(node))
+                .or_else(|| nodes.iter().rev().find(|node| over(node)))
+                .map(|node| node.id)
+        });
+        // **The modifier wheel goes to that node**, before `zoom_over_a_panel` at the end of
+        // `show_the_space` can give it to the camera. `task-1905`.
+        self.zoom_over_a_node(body_ui, under_the_pointer);
         let parent = body_ui.layer_id();
         let mut menu: Option<(Pos2, NodeId)> = None;
         for node in nodes {
@@ -305,11 +331,13 @@ impl UnluminousApp {
             );
             node_ui.set_clip_rect(clip);
             let focused = Some(node.id) == chosen && matches!(self.focus, Focus::Space);
-            self.show_a_node_body(&mut node_ui, &node, parts.body, focused);
+            let has_the_pointer = under_the_pointer == Some(node.id);
+            self.show_a_node_body(&mut node_ui, &node, parts.body, focused, has_the_pointer);
             let framing = space_view::Framing {
                 chosen: Some(node.id) == chosen,
                 keyboard: focused,
                 on_screen: camera.rect_to_screen(body.min, node.rect()),
+                visible: body,
                 wire_is_looking: wiring,
                 landing,
                 fallback_title: &self.name_of_a_node(&node),
@@ -324,6 +352,101 @@ impl UnluminousApp {
             self.space.space.choose(Some(node));
             self.space.space.raise(node);
             self.space.menu = Some((at, Menu::Node));
+        }
+    }
+
+    /// The modifier wheel over a node zooms **that node**, and the canvas gets it only when no node did.
+    ///
+    /// `task-1905`: *"If I CMD/CTRL mouse wheel while hovering over a node, that node should zoom in/out,
+    /// rather than the entire canvas."* Both gestures reached the camera before — the plain wheel through
+    /// `take_the_canvas_input` and the modifier one through `zoom_over_a_panel` — and nothing reached a
+    /// node.
+    ///
+    /// **Claimed here, before `zoom_over_a_panel(Panel::Space)` is reached**, which is the last line of
+    /// `show_the_space`: `zoom_taken` is the lock, one level further in than `task-1771` put it. And
+    /// `zoom_steps` is called **at most once a frame**, because calling it twice spends the same notch
+    /// twice — so which node the pointer is in is decided first and it is called once for that node.
+    fn zoom_over_a_node(&mut self, ui: &egui::Ui, under_the_pointer: Option<NodeId>) {
+        if self.zoom_taken {
+            return;
+        }
+        let Some(node) = under_the_pointer else {
+            return;
+        };
+        self.zoom_taken = true;
+        let steps = self.zoom_steps(ui);
+        if steps != 0 {
+            self.zoom_a_node(node, steps);
+        }
+    }
+
+    /// Take `steps` off or on to how big one node draws what it holds.
+    ///
+    /// **Each kind walks the number that really decides its size**, which is `task-1771`'s rule — where a
+    /// pane already has a size a person chooses, the zoom walks that setting, because one number saying how
+    /// big the text is beats a setting and a multiplier that can disagree. A terminal and an editor have a
+    /// point size; a folder has none of its own, so its is a multiplier; a page's size is the page's own
+    /// business and `wry` has `WebView::zoom` for it.
+    pub(crate) fn zoom_a_node(&mut self, node: NodeId, steps: i32) {
+        let Some(found) = self.space.space.current().node(node).cloned() else { return };
+        let up = steps > 0;
+        match found.kind() {
+            Kind::Terminal => self.step_a_node_font(node, steps),
+            Kind::Editor => {
+                let was = space_view::editor_font_size_of(&found, self.settings.font_size);
+                let mut size = was;
+                for _ in 0..steps.abs() {
+                    size = crate::settings::step_font_size(size, up);
+                }
+                if (size - was).abs() < 0.01 {
+                    return;
+                }
+                self.space.space.change(node, |state| {
+                    if let State::Editor(editor) = state {
+                        editor.font_size = size;
+                    }
+                });
+                // The tab in this node is laid out again at the new size, which is what makes it show.
+                if let Some(index) = self.files.tab_in_node(node) {
+                    self.files.at_mut(index).cached.stale = true;
+                }
+            }
+            Kind::Folder => {
+                let was = match &found.state {
+                    State::Folder(folder) => folder.zoom,
+                    _ => 1.0,
+                };
+                let mut zoom = was;
+                for _ in 0..steps.abs() {
+                    zoom = crate::settings::step_zoom(zoom, up);
+                }
+                if (zoom - was).abs() < 0.001 {
+                    return;
+                }
+                self.space.space.change(node, |state| {
+                    if let State::Folder(folder) = state {
+                        folder.zoom = zoom;
+                    }
+                });
+            }
+            // **A page's own zoom, because a page is not Unluminous's drawing at all.** How big it is
+            // drawn is the engine's, and `wry::WebView::zoom` is what changes it.
+            Kind::Browser => {
+                let was = self.space.live.page_zoom_of(node);
+                let mut zoom = was;
+                for _ in 0..steps.abs() {
+                    zoom = crate::settings::step_zoom(zoom, up);
+                }
+                if (zoom - was).abs() < 0.001 {
+                    return;
+                }
+                self.space.live.set_page_zoom(node, zoom);
+                if let Some(tab) = self.space.live.browser(node).map(|tab| tab.id) {
+                    if let Err(problem) = self.browser.zoom(tab, f64::from(zoom)) {
+                        self.message = Some(problem);
+                    }
+                }
+            }
         }
     }
 
@@ -390,14 +513,21 @@ impl UnluminousApp {
     // ------------------------------------------------------------------------------- the bodies
 
     /// Draw whatever one node holds, into the rectangle under its header.
-    fn show_a_node_body(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
+    fn show_a_node_body(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        body: Rect,
+        focused: bool,
+        has_the_pointer: bool,
+    ) {
         if body.width() < 2.0 || body.height() < 2.0 {
             return;
         }
         match node.kind() {
             Kind::Terminal => self.show_a_terminal_node(ui, node, body, focused),
             Kind::Browser => self.show_a_browser_node(ui, node, body, focused),
-            Kind::Folder => self.show_a_folder_node(ui, node, body, focused),
+            Kind::Folder => self.show_a_folder_node(ui, node, body, focused, has_the_pointer),
             Kind::Editor => self.show_an_editor_node(ui, node, body, focused),
         }
     }
@@ -433,27 +563,97 @@ impl UnluminousApp {
     }
 
     /// A browser node: Unluminous's own toolbar, and the rectangle the one native child view is placed in.
+    ///
+    /// **The toolbar is drawn whether or not the node has a page**, which is the whole of `task-1905`'s
+    /// first report. This used to return before reaching the component whenever there was no tab yet, so
+    /// the node had no address bar — and the only ways to give it an address were `space browser go` and
+    /// `space add --url`. An address bar on a browser node is not a control that can never apply; it is
+    /// the control that makes the node usable.
     fn show_a_browser_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
-        let Some(tab) = self.space.live.browser(node.id).cloned() else {
-            let painter = ui.painter_at(body);
-            painter.text(
-                body.center(),
-                egui::Align2::CENTER_CENTER,
-                "Give this node an address to open.",
-                egui::FontId::proportional(12.0),
-                crate::theme::color::text_faint(),
-            );
-            return;
-        };
+        let tab = self.space.live.browser(node.id).cloned();
         // **One native view a window**, so only the tab it is pointed at renders. The others say so,
         // which is the sentence `browser_view::show` already says for a second rendered tab in
         // another pane.
-        let showing = self.browser.showing().is_none_or(|id| id == tab.id);
-        let (outcome, placement) =
-            crate::components::browser_view::show(ui, body, &tab, focused, showing);
-        self.browser_placements.push(placement);
+        let showing = tab
+            .as_ref()
+            .is_none_or(|tab| self.browser.showing().is_none_or(|id| id == tab.id));
+        // What is being typed lives on the node, so it survives the node scrolling off the canvas and
+        // stopping being drawn. Taken out, handed over, and put back if it changed.
+        let mut typed = match &node.state {
+            State::Browser(browser) => browser.typed.clone(),
+            _ => String::new(),
+        };
+        let mut editing = matches!(&node.state, State::Browser(browser) if browser.editing);
+        let (outcome, placement) = crate::components::browser_view::show(
+            ui,
+            body,
+            crate::components::browser_view::Toolbar {
+                tab: tab.as_ref(),
+                typed: &mut typed,
+                editing: &mut editing,
+                id: egui::Id::new(("space-browser-address", node.id)),
+            },
+            focused,
+            showing,
+        );
+        if let Some(mut placement) = placement {
+            // **A native child view is a real window, so its placement is in the window's own points.**
+            // Everything else about a node is drawn in world points into a layer carrying the camera, and
+            // the rectangle that comes back from the component is in those — so handed over as it stands,
+            // the page was placed at the node's *world* position and drawn up and to the left of the node,
+            // at the wrong size. `task-1905`, reported against the installed build.
+            //
+            // The whole rectangle is converted rather than only its corner, so the page is also the size it
+            // is on the screen: a canvas at 0.5 draws a node half as wide, and a page that kept its world
+            // size would hang out of it. That is what "resize/zoom/etc" asks for, and it costs one call.
+            let camera = self.space.space.current().camera;
+            placement.area =
+                camera.rect_to_screen(self.space.body.min, placement.area).intersect(self.space.body);
+            // **The camera's zoom is spent on the page's own zoom, because a native child cannot be
+            // transformed.** Everything else in a node is drawn into a layer carrying the camera, so it is
+            // genuinely scaled; a `WebView` has no such transform, and `set_bounds` alone would make a
+            // half-size node **reflow** its page at half the width rather than draw it half as large. The
+            // Codex Sol review of `task-1905` named that, and the page's own zoom is the only lever `wry`
+            // offers. It is combined with whatever zoom the node was given, so the two compose.
+            //
+            // What it does **not** fix is the clipping: a node hanging off the canvas has its view's viewport
+            // narrowed rather than cropped, so a page laid out against the viewport reflows. There is no
+            // cropping a native child either, and the honest answer is the one `browser_view` already gives
+            // for a second rendered tab — see the note in `show_a_browser_node`.
+            let wanted = self.space.live.page_zoom_of(node.id) * camera.zoom;
+            if let Some(tab) = self.space.live.browser(node.id).map(|tab| tab.id) {
+                let _ = self.browser.zoom(tab, f64::from(wanted));
+            }
+            // A node scrolled off the canvas has nothing on the screen to place, and a rectangle with no
+            // room in it would ask the view to be a pixel wide somewhere on the pane's edge.
+            if placement.area.width() > 1.0 && placement.area.height() > 1.0 {
+                self.browser_placements.push(placement);
+            }
+        }
+        let changed = match &node.state {
+            State::Browser(browser) => browser.typed != typed || browser.editing != editing,
+            _ => false,
+        };
+        if changed {
+            self.space.space.change(node.id, |state| {
+                if let State::Browser(browser) = state {
+                    browser.typed = typed;
+                    browser.editing = editing;
+                }
+            });
+        }
         if let Some(command) = outcome.command {
-            self.run_browser_command(tab.id, command);
+            match (&tab, command) {
+                // **An address typed at a node that has no page yet.** There is no tab to send a command
+                // to, so the node is pointed at it directly — the same function `space browser go` calls.
+                (None, crate::services::browser::BrowserCommand::Go(address)) => {
+                    if let Err(problem) = self.send_a_space_browser_to(node.id, address.trim()) {
+                        self.message = Some(problem);
+                    }
+                }
+                (Some(tab), command) => self.run_browser_command(tab.id, command),
+                (None, _) => {}
+            }
         }
         if outcome.took_focus {
             self.space.space.choose(Some(node.id));
@@ -462,11 +662,26 @@ impl UnluminousApp {
     }
 
     /// A folder node: `components::explorer`, with its panel furniture left off.
-    fn show_a_folder_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
+    ///
+    /// **The window reads the wheel and the explorer is told where to scroll.** A `ScrollArea` inside a
+    /// node can never take the wheel itself — see `Live::scrolls` for the reason, which is that a node's
+    /// layer registers no `AreaState` and so `Context::rect_contains_pointer` is false everywhere inside
+    /// one. `task-1905` reports that as *"I can't scroll the node"*. What is used instead is the
+    /// `View::scroll_to` and `ExplorerOutcome::scroll` pair the panel's own zoom already drives.
+    fn show_a_folder_node(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        body: Rect,
+        focused: bool,
+        has_the_pointer: bool,
+    ) {
         self.make_sure_a_node_has_a_tree(node);
         let selected = self.space.live.tree_selection(node.id).map(std::path::Path::to_path_buf);
         let showing = self.files.active().path().map(std::path::Path::to_path_buf);
         let opacity = self.settings.opacity;
+        let scroll = self.wheel_over_a_folder_node(ui, node, has_the_pointer);
+        let node_zoom = space_view::folder_zoom_of(node);
         let outcome = {
             let decorate = |_: &std::path::Path| crate::components::explorer::Decoration::default();
             let Some(tree) = self.space.live.tree_mut(node.id) else { return };
@@ -482,15 +697,50 @@ impl UnluminousApp {
                 reveal: false,
                 reveal_selected: false,
                 opacity,
-                zoom: 1.0,
-                scroll_to: None,
+                zoom: node_zoom,
+                scroll_to: scroll,
                 host: crate::components::explorer::Host::Node,
             };
             let outcome = crate::components::explorer::show(ui, body, tree, &mut filter, view, &decorate);
             (outcome, filter)
         };
         let (outcome, filter) = outcome;
+        // Read back where the list really ended up, which is what the next wheel is measured from — the
+        // same round trip `keep_the_place_through_a_panels_zoom` makes for the panel.
+        self.space.live.scroll_to(node.id, outcome.scroll);
         self.act_on_a_folder_node(node, outcome, filter);
+    }
+
+    /// How far this folder node's rows should be scrolled, given the wheel this frame.
+    ///
+    /// Answers `None` on a frame nobody turned the wheel, which is what leaves the list where it was:
+    /// `View::scroll_to` is applied when it is `Some` and ignored otherwise.
+    ///
+    /// Two rules, and each is a thing that would otherwise be wrong. **The delta is in screen points and
+    /// the offset is in the node's own**, so it is divided by the camera's zoom — a canvas at 0.5 would
+    /// otherwise scroll twice as far as the pointer moved. And **a wheel this takes is taken out of the
+    /// frame**, which is what `egui::ScrollArea` itself does when it takes one: without it the canvas
+    /// would pan or zoom at the same time as the node scrolled, which is one gesture doing two things.
+    /// `has_the_pointer` is whether this is the node the pointer is over, worked out **once** before any
+    /// node was drawn — see `show_the_space_nodes`. Each node asking for itself gave the wheel to the
+    /// backmost of a stack, and cleared the delta so the one on top got nothing.
+    fn wheel_over_a_folder_node(
+        &mut self,
+        ui: &egui::Ui,
+        node: &Node,
+        has_the_pointer: bool,
+    ) -> Option<f32> {
+        if !has_the_pointer {
+            return None;
+        }
+        let camera = self.space.space.current().camera;
+        let delta = ui.input(|input| input.smooth_scroll_delta.y);
+        if delta.abs() < 0.5 {
+            return None;
+        }
+        ui.ctx().input_mut(|input| input.smooth_scroll_delta.y = 0.0);
+        let was = self.space.live.scroll_of(node.id);
+        Some((was - delta / camera.zoom.max(0.01)).max(0.0))
     }
 
     /// What a folder node's rows asked for.
@@ -524,16 +774,84 @@ impl UnluminousApp {
             self.space.space.choose(Some(node.id));
             self.take_the_keyboard_for_the_space();
         }
-        // A file opened from a folder node goes into the editing area, which is where a file opens
-        // from every other list in Unluminous. A file editor **node** is asked for by wiring one and
-        // saying so, rather than by a click meaning two different things in two panels.
-        if let Some(path) = outcome.open.or(outcome.open_permanently) {
+        // **A double click opens a wired File Editor node; a single click opens into the editing area.**
+        // `task-1905`: *"If I double click a file, it should open a file view node and connect it, if one
+        // isn't already open, or open a new tab in the connected file view node."*
+        //
+        // The split is the panel's own: a single click there is a way of looking through a folder, so a
+        // preview belongs in the editing area, and a double click is what says "I mean this one". That is
+        // why the report asks for a double click rather than a click.
+        if let Some(path) = outcome.open_permanently {
+            self.open_from_a_folder_node(node.id, &path);
+        } else if let Some(path) = outcome.open {
             let _ = self.open_path_permanently(&path);
         }
     }
 
+    /// Open a file a folder node was double clicked in, in a File Editor node wired to it.
+    ///
+    /// **One wired already and the file joins its tabs; none and one is made beside this node and wired.**
+    /// Made *beside* means to the right of the folder node with a gap, so the wire is visible rather than
+    /// crossing the node that drew it. `task-1905`.
+    fn open_from_a_folder_node(&mut self, from: NodeId, path: &std::path::Path) {
+        let wired = self
+            .space
+            .space
+            .current()
+            .reaches(from)
+            .into_iter()
+            .find(|other| {
+                self.space.space.current().node(*other).is_some_and(|node| node.kind() == Kind::Editor)
+            });
+        let editor = match wired {
+            Some(editor) => editor,
+            None => {
+                let Some(found) = self.space.space.current().node(from).cloned() else { return };
+                let at = Pos2::new(found.rect().right() + 60.0, found.at.y);
+                let made = self.add_a_space_node(Kind::Editor, at);
+                if let Err(problem) = self.space.space.connect(from, made, Pipe::Off) {
+                    self.message = Some(problem);
+                }
+                made
+            }
+        };
+        if let Err(problem) = self.open_in_a_space_node(editor, path) {
+            self.message = Some(problem);
+        }
+    }
+
+    /// [`Self::open_from_a_folder_node`] by name, for a test.
+    ///
+    /// A double click on a row inside a node is what calls it, and a test cannot synthesise one: a node's
+    /// contents are drawn into a transformed sublayer, so a press at the rectangle the accessibility tree
+    /// reports lands where the widget in the layer's own coordinates is not.
+    pub fn open_from_a_folder_node_for_a_test(&mut self, from: NodeId, path: &std::path::Path) {
+        self.open_from_a_folder_node(from, path);
+    }
+
     /// An editor node: the editing area's own four hundred lines, on the tab that lives in this node.
     fn show_an_editor_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
+        // **A strip of tabs across the top, which is what `show_pane` draws for a pane.** `task-1905` asks
+        // for a node *"just like our editing area, where I can see and edit files in multiple tabs"*, and
+        // `components::file_tabs::show` is the same component — so dragging a tab along it, the close cross,
+        // the middle click and the unsaved dot all arrive with no code here.
+        let indices = self.files.tabs_in_node(node.id);
+        let body = match indices.len() > 1 {
+            true => {
+                let strip = Rect::from_min_size(
+                    body.min,
+                    Vec2::new(body.width(), crate::components::file_tabs::HEIGHT),
+                );
+                self.show_an_editor_nodes_tabs(ui, node, strip, &indices, focused);
+                Rect::from_min_max(Pos2::new(body.left(), strip.bottom()), body.max)
+            }
+            // **One tab draws no strip**, because a strip naming the one file a node's own header already
+            // names is a row of furniture saying nothing. It appears with the second tab.
+            false => body,
+        };
+        if body.height() < 2.0 {
+            return;
+        }
         let Some(index) = self.files.tab_in_node(node.id) else {
             let painter = ui.painter_at(body);
             painter.text(
@@ -551,6 +869,37 @@ impl UnluminousApp {
         let was = self.files.focus();
         self.files.show(index);
         self.files.focus_node(node.id);
+        // **And its own font size, the same way.** The editor's font is one setting for the whole window —
+        // `set_the_font_everywhere` exists because of it — so a node that walked that number would resize
+        // every other tab. What it walks instead is `Editor::font_size`, applied to this tab's document
+        // for the frame it is drawn in and put back by the layout being marked stale when it changes.
+        // `task-1905`.
+        let wanted = space_view::editor_font_size_of(node, self.settings.font_size);
+        // **Applied once per change rather than every frame**, because `set_base_style` walks every byte of
+        // the document and bumps its text revision — which would re-colour and re-lay out the file sixty
+        // times a second.
+        //
+        // **And remembered on the tab, not on the node**, which is the fault the Codex Sol review of
+        // `task-1905` found: keyed on the node, the second tab shown in one was never restyled because the
+        // node's cache already held the wanted size, and a tab dragged back into a pane kept the node's size.
+        // A document carries the base style, so the document remembers what it was given. `OpenFile::sized_at`
+        // is `None` for a tab nothing has resized, which is every tab in a pane — and putting a node back to
+        // the window's own size therefore restyles rather than skipping.
+        let already = self.files.at(index).sized_at;
+        let asked = match (wanted - self.settings.font_size).abs() > 0.01 {
+            true => Some(wanted),
+            // Back to the window's own size, which is a change like any other when the tab was resized.
+            false => None,
+        };
+        if already != asked {
+            let change = unluminous_core::StyleChange {
+                size: Some(wanted),
+                ..self.settings.as_style_change()
+            };
+            self.files.at_mut(index).document.set_base_style(change);
+            self.files.at_mut(index).cached.stale = true;
+            self.files.at_mut(index).sized_at = asked;
+        }
         let took = self.show_editor(ui, body, focused);
         if took {
             self.space.space.choose(Some(node.id));
@@ -558,6 +907,107 @@ impl UnluminousApp {
         }
         if !focused {
             self.files.restore_focus(was);
+        }
+    }
+
+    /// The strip of tabs across the top of a File Editor node.
+    ///
+    /// What it reports is turned back into an index into the open files here, which is `show_pane`'s own
+    /// arrangement: the strip counts within itself and knows nothing about `OpenFiles`.
+    fn show_an_editor_nodes_tabs(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        strip: Rect,
+        indices: &[usize],
+        focused: bool,
+    ) {
+        let icons: Vec<Option<egui::TextureHandle>> = indices
+            .iter()
+            .map(|index| self.files.at(*index).path().map(std::path::Path::to_path_buf))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|path| self.plugin_icon(ui.ctx(), path.as_deref()))
+            .collect();
+        let tabs: Vec<crate::components::file_tabs::TabView> = indices
+            .iter()
+            .zip(icons)
+            .map(|(index, icon)| {
+                let file = self.files.at(*index);
+                crate::components::file_tabs::TabView {
+                    name: file.name(),
+                    modified: file.document.is_modified(),
+                    transient: file.transient,
+                    marker: file
+                        .path()
+                        .map(crate::theme::file_marker)
+                        .unwrap_or(crate::theme::color::file_text()),
+                    icon,
+                }
+            })
+            .collect();
+        let active = self
+            .files
+            .tab_in_node(node.id)
+            .and_then(|showing| indices.iter().position(|index| *index == showing))
+            .unwrap_or(0);
+        let opacity = self.settings.opacity;
+        let outcome = {
+            let mut strip_ui = ui.new_child(egui::UiBuilder::new().max_rect(strip));
+            // The pane number a strip is given is only an id salt and a drag's origin, and a node is not a
+            // pane — so it is given the node's id, which is unique across both by construction.
+            crate::components::file_tabs::show(
+                &mut strip_ui,
+                strip,
+                &tabs,
+                active,
+                node.id as usize,
+                focused,
+                opacity,
+            )
+        };
+        // **Where this strip drew itself, and where the node is**, for the drag to be settled against once
+        // everything has been drawn — which is `settle_the_tab_drag`'s own reason and is what lets a tab be
+        // dragged out of a node into a pane, or the other way. `task-1905`.
+        let camera = self.space.space.current().camera;
+        let on_screen = camera.rect_to_screen(self.space.body.min, node.rect());
+        self.node_tab_strips.push((node.id, on_screen.intersect(self.space.body), outcome.strip.clone()));
+        let at = |within: usize| indices.get(within).copied();
+        if let Some((within, pointer)) = outcome.dragging {
+            if let Some(file) = at(within) {
+                // The pointer comes back in the node's own world points, and the drag is settled in screen
+                // points against every strip in the window — so it is converted here, where the camera is
+                // to hand.
+                self.tab_drag = Some(crate::app::TabDrag {
+                    file,
+                    at: camera.to_screen(self.space.body.min, pointer),
+                    dropped: outcome.dropped,
+                });
+            }
+        }
+        if let Some(index) = outcome.show.and_then(at).or_else(|| outcome.keep.and_then(at)) {
+            self.files.show(index);
+            self.files.focus_node(node.id);
+            self.space.space.choose(Some(node.id));
+            self.take_the_keyboard_for_the_space();
+        }
+        if let Some(index) = outcome.keep.and_then(at) {
+            self.files.make_permanent(index);
+        }
+        if let Some(index) = outcome.close.and_then(at) {
+            // Closing a tab writes it if it was edited, which is `close_tab`'s own promise. A node whose
+            // last tab is closed draws "Give this node a file to edit", which is what it drew before one
+            // was opened.
+            self.close_tab(index);
+        }
+        if let Some((within, where_)) = outcome.menu {
+            if let Some(index) = at(within) {
+                self.files.show(index);
+                self.files.focus_node(node.id);
+                self.space.space.choose(Some(node.id));
+                self.take_the_keyboard_for_the_space();
+            }
+            self.tab_menu = Some((where_, node.id as usize));
         }
     }
 
@@ -739,26 +1189,7 @@ impl UnluminousApp {
         let Some(found) = self.space.space.current().node(node).cloned() else {
             return Err(format!("There is no node {node}."));
         };
-        let State::Terminal(terminal) = &found.state else {
-            return Err("That node is not a terminal.".to_owned());
-        };
-        let folder = terminal.folder.clone().unwrap_or_else(|| self.tree.root().to_path_buf());
-        // **Resolved before it is spawned**, which is what makes `codex` work at all on Windows — see
-        // `services::space::launch` for the three files npm installs and which of them can be started.
-        let mut command = terminal.command.clone();
-        if resume && !terminal.session.is_empty() && !command.trim().is_empty() {
-            command = format!("{command} --resume {}", terminal.session);
-        }
-        let launch = crate::services::space::launch::resolve(&command, self.settings.shell())?;
-        let settings = unluminous_terminal::session::SessionSettings {
-            shell: launch.program,
-            args: launch.args,
-            working_directory: Some(folder),
-            // **Which node this is**, so an agent started in it knows without being told. It is the
-            // one thing the canvas adds to a terminal's environment, and it is a number rather than
-            // anything a secret could be kept in — `SessionSettings::env`'s own note.
-            env: vec![("UNLUMINOUS_SPACE_NODE".to_owned(), node.to_string())],
-        };
+        let settings = self.space_terminal_settings_for(&found, resume)?;
         let parts = space_view::parts_of(&found);
         let font = space_view::font_size_of(&found, self.settings.terminal_font_size);
         let cell = self.renderer.cell_metrics(font);
@@ -772,6 +1203,76 @@ impl UnluminousApp {
             }
             Err(problem) => Err(format!("The program would not start: {problem}")),
         }
+    }
+
+    /// What a terminal node's session is started with: the program, its arguments, its folder and its
+    /// environment.
+    ///
+    /// Split out from starting it so a test can read it with no process behind it — the same bargain
+    /// `new_detached_space_node` makes about a session, applied to the arguments it would have been given.
+    fn space_terminal_settings_for(
+        &self,
+        found: &Node,
+        resume: bool,
+    ) -> Result<unluminous_terminal::session::SessionSettings, String> {
+        let State::Terminal(terminal) = &found.state else {
+            return Err("That node is not a terminal.".to_owned());
+        };
+        let node = found.id;
+        let folder = terminal.folder.clone().unwrap_or_else(|| self.tree.root().to_path_buf());
+        // **Resolved before it is spawned**, which is what makes `codex` work at all on Windows — see
+        // `services::space::launch` for the three files npm installs and which of them can be started.
+        let mut command = terminal.command.clone();
+        if resume && !terminal.session.is_empty() && !command.trim().is_empty() {
+            command = format!("{command} --resume {}", terminal.session);
+        }
+        let launch = crate::services::space::launch::resolve(&command, self.settings.shell())?;
+        Ok(unluminous_terminal::session::SessionSettings {
+            shell: launch.program,
+            args: launch.args,
+            working_directory: Some(folder),
+            // **Which node this is**, so an agent started in it knows without being told. It is a number
+            // rather than anything a secret could be kept in — `SessionSettings::env`'s own note.
+            //
+            // **And a sentence saying there is something to read.** A variable holding English is unusual
+            // and the reason is measured rather than stylistic: `task-1905` watched an agent run `env`,
+            // read a number, and learn nothing it could act on — it then spent nine tool calls and two
+            // shell commands establishing what one call answers. It is the cheapest possible place to put
+            // a pointer, it costs the child nothing, and any agent reads it whatever its own tooling.
+            // `UNLUMINOUS_SPACE_NODE` is untouched, because a program that wants the id wants the id.
+            //
+            // **And where `unluminous-cli` is, and which window it drives.** `unluminous-cli` is on
+            // nobody's `PATH` — on macOS it is inside the application bundle beside `unluminous` and on
+            // Windows in the installation folder — so an agent told to run `unluminous-cli space here`
+            // answers `command not found`, which is what driving the real window found. The Agent-Tasks
+            // board already solved this: `agent::ENV_CLI` and `ENV_INSTANCE`, filled in by
+            // `agent_tasks::beside_this_program`. The hint uses those variables rather than a bare name,
+            // so what it tells an agent to run is a command that works.
+            env: {
+                let cli = crate::services::agent_tasks::beside_this_program("unluminous-cli");
+                let instance = std::process::id().to_string();
+                let hint = format!(
+                    "This terminal is node {node} on an Unluminous canvas. Run `\"${cli_var}\" --instance ${instance_var} space here` to see which nodes it is wired to and how to drive them.",
+                    cli_var = crate::services::agent_tasks::agent::ENV_CLI,
+                    instance_var = crate::services::agent_tasks::agent::ENV_INSTANCE,
+                );
+                vec![
+                    ("UNLUMINOUS_SPACE_NODE".to_owned(), node.to_string()),
+                    ("UNLUMINOUS_SPACE_HINT".to_owned(), hint),
+                    (crate::services::agent_tasks::agent::ENV_CLI.to_owned(), cli),
+                    (crate::services::agent_tasks::agent::ENV_INSTANCE.to_owned(), instance),
+                ]
+            },
+        })
+    }
+
+    /// The same, for a node named by its id, which is what a test asks.
+    pub fn space_terminal_settings(
+        &self,
+        node: NodeId,
+    ) -> Option<unluminous_terminal::session::SessionSettings> {
+        let found = self.space.space.current().node(node)?.clone();
+        self.space_terminal_settings_for(&found, false).ok()
     }
 
     /// Send a browser node to an address.
@@ -829,13 +1330,18 @@ impl UnluminousApp {
         if found.kind() != Kind::Editor {
             return Err("That node is not a file editor.".to_owned());
         }
-        // A tab already in this node is replaced rather than joined: a node shows one file, so the
-        // one that was there is closed the way closing a tab closes it, which writes it first.
-        if let Some(was) = self.files.tab_in_node(node) {
-            if self.files.at(was).path() == Some(path) {
-                return Ok(());
-            }
-            self.close_tab(was);
+        // **A file already in this node is shown rather than opened twice**, and one that is not joins the
+        // tabs already there. `task-1905` asks for the node to hold several — *"just like our editing
+        // area, where I can see and edit files in multiple tabs"* — where it used to close whatever was
+        // there before opening the next one.
+        if let Some(already) =
+            self.files.tabs_in_node(node).into_iter().find(|index| self.files.at(*index).path() == Some(path))
+        {
+            self.files.show(already);
+            self.files.focus_node(node);
+            self.focus = Focus::Space;
+            self.space.space.choose(Some(node));
+            return Ok(());
         }
         // **The one place a file is opened**, so a node's editor and the editing area's read a file
         // the same way, refuse it the same way, and answer the same thing when they cannot.
@@ -856,7 +1362,14 @@ impl UnluminousApp {
 
     /// Take a node off the canvas, stopping whatever was behind it.
     pub(crate) fn close_a_space_node(&mut self, node: NodeId) {
-        if let Some(index) = self.files.tab_in_node(node) {
+        // **Every tab on it, not only the one showing.** A node holds several since `task-1905`, and closing
+        // one tab left the rest with a `Home::Node` naming a node that had gone — reachable from nothing,
+        // drawn by nothing, and still holding whatever was typed into them. The Codex Sol review found it.
+        //
+        // Highest index first, because `close_tab` removes from the vector and every index after it shifts.
+        let mut on_it = self.files.tabs_in_node(node);
+        on_it.sort_unstable_by(|left, right| right.cmp(left));
+        for index in on_it {
             // Closing a tab writes it if it was edited, which is `close_tab`'s own promise.
             self.close_tab(index);
         }
@@ -909,6 +1422,27 @@ impl UnluminousApp {
         if let Some(session) = self.space.live.terminal_mut(node) {
             session.feed(bytes);
         }
+    }
+
+    /// Give a browser node a tab with **no native view behind it**, which is what a test needs.
+    ///
+    /// `BrowserHost::open_tab` allocates an id and registers a local root and does not create a view —
+    /// the view is made in `reconcile`, before the egui pass. So a tab on its own is a value, and this is
+    /// `new_detached_space_node`'s bargain applied to a page: a picture of a node, and a state a test can
+    /// read, without waiting on WebView2 or WKWebView to answer.
+    pub fn new_detached_space_page(&mut self, node: NodeId, url: &str) -> Option<u64> {
+        let location =
+            crate::services::browser::BrowserLocation::parse(url, self.tree.root()).ok()?;
+        let tab = self.browser.open_tab(location);
+        let id = tab.id;
+        self.space.live.put_a_browser(node, tab);
+        self.space.space.change(node, |state| {
+            if let State::Browser(browser) = state {
+                browser.url = url.to_owned();
+                browser.typed = url.to_owned();
+            }
+        });
+        Some(id)
     }
 
     // ------------------------------------------------------------------------------- each frame
@@ -1071,6 +1605,7 @@ impl UnluminousApp {
                 Some(node) => self.close_a_space_node(node),
                 None => self.message = Some("No node is chosen.".to_owned()),
             },
+            SpaceAction::ChooseFolder => self.choose_a_folder_for_a_node(),
             SpaceAction::RestartNode => self.restart_a_space_node(false),
             SpaceAction::ResumeSession => self.restart_a_space_node(true),
             SpaceAction::Disconnect => {
@@ -1116,6 +1651,58 @@ impl UnluminousApp {
         id
     }
 
+    /// Ask which folder a Folder View node shows, and point it there.
+    ///
+    /// **The same `rfd` dialog `Open Folder` and the Database plugin's file picker already use.** It blocks
+    /// inside a frame, which is what a native file dialog is on every platform and what the window already
+    /// does for `Open File`.
+    ///
+    /// What it then does is `space folder <node> root`, which already exists and already does the right
+    /// thing: it writes the root, clears `expanded`, and **forgets** the live tree so it is built again
+    /// from the node's own state on the next frame. So the pointer and the command line reach one
+    /// function, which is `run_cli`'s rule, and no new state is invented. `task-1905`.
+    fn choose_a_folder_for_a_node(&mut self) {
+        let Some(node) = self.space.chosen() else {
+            self.message = Some("No node is chosen.".to_owned());
+            return;
+        };
+        let Some(found) = self.space.space.current().node(node).cloned() else { return };
+        let State::Folder(folder) = &found.state else {
+            self.message = Some("That node is not a folder view.".to_owned());
+            return;
+        };
+        // Start where the node already is. On a node whose root has been deleted since, that is the
+        // folder above it rather than nowhere.
+        let start = folder
+            .root
+            .clone()
+            .filter(|root| root.is_dir())
+            .or_else(|| folder.root.as_ref().and_then(|root| root.parent().map(std::path::Path::to_path_buf)))
+            .unwrap_or_else(|| self.tree.root().to_path_buf());
+        let Some(chosen) = rfd::FileDialog::new()
+            .set_title("Choose the folder this node shows")
+            .set_directory(&start)
+            .pick_folder()
+        else {
+            return;
+        };
+        self.point_a_folder_node_at(node, &chosen);
+    }
+
+    /// Point a folder node at a folder. The one place that happens, so the dialog and `space folder root`
+    /// cannot come apart.
+    pub(crate) fn point_a_folder_node_at(&mut self, node: NodeId, root: &std::path::Path) {
+        self.space.space.change(node, |state| {
+            if let State::Folder(folder) = state {
+                folder.root = Some(root.to_path_buf());
+                folder.expanded.clear();
+            }
+        });
+        // Forgotten rather than re-rooted, so the tree is built again from the node's own state on the
+        // next frame — one place a node's tree comes from.
+        self.space.live.forget(node);
+    }
+
     /// Throw a view away, stopping everything that was on it.
     pub(crate) fn delete_a_space_view(&mut self, id: u64) {
         if self.space.space.views().len() < 2 {
@@ -1124,10 +1711,15 @@ impl UnluminousApp {
         }
         let Some(view) = self.space.space.view(id) else { return };
         let nodes: Vec<NodeId> = view.nodes.iter().map(|node| node.id).collect();
+        // Every tab on every node, highest index first — see `close_a_space_node` for why all of them and
+        // why in that order.
+        let mut on_them: Vec<usize> =
+            nodes.iter().flat_map(|node| self.files.tabs_in_node(*node)).collect();
+        on_them.sort_unstable_by(|left, right| right.cmp(left));
+        for index in on_them {
+            self.close_tab(index);
+        }
         for node in &nodes {
-            if let Some(index) = self.files.tab_in_node(*node) {
-                self.close_tab(index);
-            }
             if let Some(tab) = self.space.live.browser(*node).map(|tab| tab.id) {
                 self.browser.close_tab(tab);
             }
@@ -1176,6 +1768,18 @@ impl UnluminousApp {
         if let Some((at, id)) = outcome.menu {
             self.space.in_hand.view = Some(id);
             self.space.menu = Some((at, Menu::View));
+        }
+        // **About the middle of the pane**, because a button has no pointer — which is the same choice
+        // `step_the_zoom_of` already makes for the keys. `task-1905`.
+        if outcome.zoom != 0 {
+            let body = self.space.body;
+            self.space.space.current_mut().camera.zoom_by(outcome.zoom, body.min, body.center());
+            self.space.space.touch();
+        }
+        if outcome.reset_zoom {
+            let body = self.space.body;
+            self.space.space.current_mut().camera.zoom_to(1.0, body.min, body.center());
+            self.space.space.touch();
         }
     }
 
@@ -1359,6 +1963,7 @@ impl UnluminousApp {
                 self.show_a_panel(dock::Panel::Space, false);
                 done(request, "Put the canvas away.")
             }
+            "here" => self.cli_space_here(request),
             "view" => ok(request, "The canvas.", self.space.space.as_json()),
             "list" => self.cli_space_list(request),
             "views" => self.cli_space_views(request),
@@ -1480,6 +2085,28 @@ impl UnluminousApp {
                 }
             }
             "font" => self.cli_space_font(request),
+            "zoom" => self.cli_space_zoom(request),
+            "address" => {
+                let node = match self.a_reachable_node(request, "node", Kind::Browser) {
+                    Ok(node) => node,
+                    Err(outcome) => return outcome,
+                };
+                let Some(url) = request.text("url") else {
+                    return no(request, code::USAGE, "Say which address.");
+                };
+                // Through the same function the field's own Enter reaches, which is `run_cli`'s rule.
+                match self.send_a_space_browser_to(node, url.trim()) {
+                    Ok(()) => {
+                        self.space.space.change(node, |state| {
+                            if let State::Browser(browser) = state {
+                                browser.typed = url.trim().to_owned();
+                            }
+                        });
+                        done(request, format!("Node {node} is going to {}.", url.trim()))
+                    }
+                    Err(problem) => no(request, code::FAILED, problem),
+                }
+            }
             "browser" => self.cli_space_browser(request, ctx),
             "folder" => self.cli_space_folder(request),
             "editor" => {
@@ -1501,6 +2128,110 @@ impl UnluminousApp {
             }
             _ => unknown(request),
         }
+    }
+
+    /// Which node this command came from, and what it may act on.
+    ///
+    /// **The one command whose answer depends on which process is asking**, which is why it is a command
+    /// rather than a paragraph: `UNLUMINOUS_SPACE_NODE` is in the *client's* environment, so the client
+    /// reads it and sends it, and the window answers about the node it names.
+    ///
+    /// `task-1905` is the report — an agent in a terminal node spent nine tool calls and two shell
+    /// commands working out what one call could have told it, and then hedged its answer because it had
+    /// never established what it was allowed to do. What makes this worth having is not the eight calls
+    /// saved: it is that **the answer names the command for each thing it lists**, which `task-1695`
+    /// measured as what decides whether a command is used at all rather than `bash`.
+    ///
+    /// **Outside a node it is an answer rather than a refusal.** The window's own agent runs it too, and a
+    /// refusal there would be a refusal about nothing — which is `picture::from_the_clipboard`'s rule.
+    fn cli_space_here(&self, request: &Request) -> Outcome {
+        let view = self.space.space.current();
+        // The client puts what its own environment said here; the window has no way to know.
+        let asking = request.number("node").map(|id| id as u64);
+        let Some(asking) = asking else {
+            return lines(
+                request,
+                "Not running inside a node.",
+                vec![
+                    "This command is not running inside a node on the canvas, so it is the window's own"
+                        .to_owned(),
+                    "agent: every node is reachable and no --from is needed. `space list` is the nodes."
+                        .to_owned(),
+                ],
+                json!({ "node": Value::Null, "inANode": false, "reaches": [], "reachedBy": [] }),
+            );
+        };
+        let Some(found) = view.node(asking) else {
+            return no(
+                request,
+                code::NOT_FOUND,
+                format!(
+                    "UNLUMINOUS_SPACE_NODE says node {asking}, and there is no such node on {}. The canvas may have moved to another view.",
+                    view.name
+                ),
+            );
+        };
+        let describe = |id: NodeId| -> Option<Value> {
+            let other = view.node(id)?;
+            Some(json!({
+                "node": id,
+                "kind": other.kind().name(),
+                "title": self.name_of_a_node(other),
+                "command": drives(other.kind(), id, asking),
+            }))
+        };
+        let reaches: Vec<Value> = view.reaches(asking).into_iter().filter_map(describe).collect();
+        let reached_by: Vec<Value> =
+            view.reached_by(asking).into_iter().filter_map(describe).collect();
+        let mut rows = vec![format!(
+            "node {asking}  {}  \"{}\"  on view {}",
+            found.kind().name(),
+            self.name_of_a_node(found),
+            view.name,
+        )];
+        rows.push("wired to:".to_owned());
+        match reaches.is_empty() {
+            true => rows.push("  nothing".to_owned()),
+            false => {
+                for one in &reaches {
+                    rows.push(format!(
+                        "  {:<4} {:<9} {:<22} {}",
+                        one["node"],
+                        one["kind"].as_str().unwrap_or_default(),
+                        one["title"].as_str().unwrap_or_default(),
+                        one["command"].as_str().unwrap_or_default(),
+                    ));
+                }
+            }
+        }
+        rows.push("wired from:".to_owned());
+        match reached_by.is_empty() {
+            true => rows.push("  nothing".to_owned()),
+            false => {
+                for one in &reached_by {
+                    rows.push(format!(
+                        "  {:<4} {:<9} {}",
+                        one["node"],
+                        one["kind"].as_str().unwrap_or_default(),
+                        one["title"].as_str().unwrap_or_default(),
+                    ));
+                }
+            }
+        }
+        lines(
+            request,
+            format!("node {asking} on {}", view.name),
+            rows,
+            json!({
+                "node": asking,
+                "inANode": true,
+                "kind": found.kind().name(),
+                "title": self.name_of_a_node(found),
+                "view": view.name,
+                "reaches": reaches,
+                "reachedBy": reached_by,
+            }),
+        )
     }
 
     /// The nodes on the view that is showing, one a line.
@@ -1855,6 +2586,117 @@ impl UnluminousApp {
         )
     }
 
+    /// How big one node draws what it holds.
+    ///
+    /// Through [`UnluminousApp::zoom_a_node`], which is what the modifier wheel over a node presses — one
+    /// path, so a size set from the command line and one set by hand are the same size.
+    fn cli_space_zoom(&mut self, request: &Request) -> Outcome {
+        let node = match self.a_named_node(request, "node") {
+            Ok(node) => node,
+            Err(outcome) => return outcome,
+        };
+        if let Some(from) = request.number("from").map(|id| id as u64) {
+            if !self.space.space.may_reach(from, node) {
+                return no(
+                    request,
+                    code::REFUSED,
+                    format!("Node {from} is not connected to node {node}."),
+                );
+            }
+        }
+        let Some(found) = self.space.space.current().node(node).cloned() else {
+            return no(request, code::NOT_FOUND, format!("There is no node {node}."));
+        };
+        if request.switch("reset") {
+            self.space.space.change(node, |state| match state {
+                State::Terminal(terminal) => terminal.font_size = 0.0,
+                State::Editor(editor) => editor.font_size = 0.0,
+                State::Folder(folder) => folder.zoom = 1.0,
+                State::Browser(_) => {}
+            });
+            if found.kind() == Kind::Browser {
+                self.space.live.set_page_zoom(node, 1.0);
+                if let Some(tab) = self.space.live.browser(node).map(|tab| tab.id) {
+                    let _ = self.browser.zoom(tab, 1.0);
+                }
+            }
+        } else if let Some(asked) = request.number("factor") {
+            let asked = asked as f32;
+            if asked <= 0.0 {
+                return no(request, code::USAGE, "A zoom is a number above zero.");
+            }
+            match found.kind() {
+                Kind::Terminal | Kind::Editor => {
+                    if !(6.0..=96.0).contains(&asked) {
+                        return no(request, code::USAGE, "A point size is 6 to 96.");
+                    }
+                    self.space.space.change(node, |state| match state {
+                        State::Terminal(terminal) => terminal.font_size = asked,
+                        State::Editor(editor) => editor.font_size = asked,
+                        _ => {}
+                    });
+                    if let Some(index) = self.files.tab_in_node(node) {
+                        self.files.at_mut(index).cached.stale = true;
+                    }
+                }
+                Kind::Folder => {
+                    if !(0.25..=4.0).contains(&asked) {
+                        return no(request, code::USAGE, "A folder node's zoom is 0.25 to 4.");
+                    }
+                    self.space.space.change(node, |state| {
+                        if let State::Folder(folder) = state {
+                            folder.zoom = asked;
+                        }
+                    });
+                }
+                Kind::Browser => {
+                    if !(0.25..=4.0).contains(&asked) {
+                        return no(request, code::USAGE, "A page's zoom is 0.25 to 4.");
+                    }
+                    self.space.live.set_page_zoom(node, asked);
+                    if let Some(tab) = self.space.live.browser(node).map(|tab| tab.id) {
+                        if let Err(problem) = self.browser.zoom(tab, f64::from(asked)) {
+                            self.message = Some(problem);
+                        }
+                    }
+                }
+            }
+        } else if request.switch("bigger") {
+            self.zoom_a_node(node, 1);
+        } else if request.switch("smaller") {
+            self.zoom_a_node(node, -1);
+        }
+        let found = self.space.space.current().node(node).cloned();
+        let (factor, own) = match found.as_ref().map(|node| &node.state) {
+            Some(State::Terminal(terminal)) => (
+                space_view::font_size_of(found.as_ref().expect("it is there"), self.settings.terminal_font_size),
+                terminal.font_size > 0.0,
+            ),
+            Some(State::Editor(editor)) => (
+                space_view::editor_font_size_of(found.as_ref().expect("it is there"), self.settings.font_size),
+                editor.font_size > 0.0,
+            ),
+            Some(State::Folder(folder)) => (folder.zoom, (folder.zoom - 1.0).abs() > 0.001),
+            Some(State::Browser(_)) => {
+                let zoom = self.space.live.page_zoom_of(node);
+                (zoom, (zoom - 1.0).abs() > 0.001)
+            }
+            None => (1.0, false),
+        };
+        let walks = match found.as_ref().map(|node| node.kind()) {
+            Some(Kind::Terminal) => "terminal.font.size",
+            Some(Kind::Editor) => "appearance.font.size",
+            Some(Kind::Folder) => "a multiplier over its rows",
+            Some(Kind::Browser) => "the page's own zoom",
+            None => "",
+        };
+        ok(
+            request,
+            format!("Node {node} is drawn at {factor:.2}."),
+            json!({ "node": node, "factor": factor, "itsOwn": own, "walks": walks }),
+        )
+    }
+
     fn cli_space_browser(&mut self, request: &Request, ctx: &egui::Context) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Browser) {
             Ok(node) => node,
@@ -1970,24 +2812,42 @@ impl UnluminousApp {
                 let Some(path) = self.cli_path_argument(request, "path") else {
                     return no(request, code::USAGE, "Say which file, with --path.");
                 };
-                match self.open_path_permanently(&path) {
-                    Ok(()) => done(request, format!("Opened {}.", path.display())),
-                    Err(problem) => no(request, code::FAILED, problem),
+                // **The same rule a double click keeps**: into a wired File Editor node when there is one,
+                // and into the editing area when there is not. One function, so the pointer and the agent
+                // cannot come to different answers. `task-1905`.
+                let wired = self.space.space.current().reaches(node).into_iter().find(|other| {
+                    self.space
+                        .space
+                        .current()
+                        .node(*other)
+                        .is_some_and(|found| found.kind() == Kind::Editor)
+                });
+                match wired {
+                    Some(editor) => match self.open_in_a_space_node(editor, &path) {
+                        Ok(()) => ok(
+                            request,
+                            format!("Opened {} in node {editor}.", path.display()),
+                            json!({ "node": editor, "path": path.to_string_lossy() }),
+                        ),
+                        Err(problem) => no(request, code::FAILED, problem),
+                    },
+                    None => match self.open_path_permanently(&path) {
+                        Ok(()) => ok(
+                            request,
+                            format!("Opened {} in the editing area.", path.display()),
+                            json!({ "node": Value::Null, "path": path.to_string_lossy() }),
+                        ),
+                        Err(problem) => no(request, code::FAILED, problem),
+                    },
                 }
             }
             "root" => {
                 let Some(root) = self.cli_path_argument(request, "path") else {
                     return no(request, code::USAGE, "Say which folder, with --path.");
                 };
-                self.space.space.change(node, |state| {
-                    if let State::Folder(folder) = state {
-                        folder.root = Some(root.clone());
-                        folder.expanded.clear();
-                    }
-                });
-                // Forgotten rather than re-rooted, so the tree is built again from the node's own
-                // state on the next frame - one place a node's tree comes from.
-                self.space.live.forget(node);
+                // Through the one function the `Choose Folder...` dialog calls, so a folder chosen by
+                // hand and one named here are the same change.
+                self.point_a_folder_node_at(node, &root);
                 done(request, format!("Node {node} is showing {}.", root.display()))
             }
             "rows" => {
@@ -2112,6 +2972,22 @@ impl UnluminousApp {
                 ),
             },
         ))
+    }
+}
+
+/// The command that drives a node of `kind`, written out with the ids filled in.
+///
+/// **Naming the command is the point of `space here`.** `task-1695` measured a model handed a node id and
+/// left to work out which of twenty-three `space` verbs applies to a browser: it reached for `bash`. One
+/// handed the command line writes the command line. So this is a worked example rather than a verb name,
+/// and `--from` is in it, because a command from a node that leaves it out is a command that reaches
+/// everything and teaches the wrong habit.
+fn drives(kind: Kind, node: NodeId, from: NodeId) -> String {
+    match kind {
+        Kind::Terminal => format!("space send {node} <text> --from {from}"),
+        Kind::Browser => format!("space browser {node} go --url <address> --from {from}"),
+        Kind::Folder => format!("space folder {node} rows --from {from}"),
+        Kind::Editor => format!("space editor {node} <path> --from {from}"),
     }
 }
 

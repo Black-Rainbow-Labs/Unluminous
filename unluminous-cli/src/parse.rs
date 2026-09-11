@@ -304,7 +304,32 @@ pub fn parse(words: &[String]) -> Result<Typed, Problem> {
         ));
     }
 
+    // **`space here` is answered about the node this process is running in**, and only this process can
+    // know which that is: `UNLUMINOUS_SPACE_NODE` is in the *client's* environment, put there by the
+    // window when it started the node's shell. So the client reads it and sends it, and the window answers
+    // about the node it names. `task-1905`.
+    //
+    // It is the one place an environment variable becomes an argument, and it is deliberately narrow: one
+    // command, one variable, and a caller that passed `--node` itself is left alone. Doing this for `--from`
+    // on every command was weighed and refused — it would make the same command line mean two things
+    // depending on where it was typed.
+    if command.wire() == "space.here" && !arguments.contains_key("node") {
+        if let Some(node) = the_node_this_process_is_in() {
+            arguments.insert("node".to_owned(), Value::String(node));
+        }
+    }
+
     Ok(Typed { command: Some(command), arguments, global })
+}
+
+/// The node this process was started in, from `UNLUMINOUS_SPACE_NODE`.
+///
+/// A value that is not a number is ignored rather than refused: it is not something a caller typed, so a
+/// refusal would be about a variable somebody's shell happens to hold.
+fn the_node_this_process_is_in() -> Option<String> {
+    let said = std::env::var("UNLUMINOUS_SPACE_NODE").ok()?;
+    let said = said.trim();
+    said.parse::<u64>().ok().map(|node| node.to_string())
 }
 
 enum Taken {

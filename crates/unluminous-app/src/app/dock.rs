@@ -447,6 +447,18 @@ pub const EDITOR_MIN_WIDTH: f32 = crate::theme::size::EDITOR_PANE_MIN;
 /// - 120).max(MIN)` was written out three times in `UnluminousApp::ui` and is now written once.
 pub const EDITOR_MIN_HEIGHT: f32 = 120.0;
 
+/// The least the band between the two strips may be squeezed to when the editing area is hidden and
+/// something is docked to the left or the right.
+///
+/// [`EDITOR_MIN_HEIGHT`] is what is kept **for the editing area**, so with no editing area it is zero —
+/// which was right while there was nothing else between the two strips. A panel docked to the left or the
+/// right is exactly something else between them, and with the height given away entirely those panels
+/// came out hundreds of points wide and nothing tall. `task-1905`.
+///
+/// The number is the same 120, because what it protects is the same thing: enough of a panel to be worth
+/// drawing.
+pub const COLUMN_BAND_MIN: f32 = EDITOR_MIN_HEIGHT;
+
 /// Where every panel that is showing was put, and what is left for the document.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Regions {
@@ -480,6 +492,18 @@ pub fn regions(body: Rect, layout: &Layout, showing: [bool; SLOTS], sizes: &Pane
 /// Nothing else about the arithmetic changes. The strips are still taken first across the whole width and the
 /// columns still come out of what is left, so a terminal along the bottom with the editing area hidden is a
 /// terminal along the bottom with the explorer above it, which is what dragging it there already means.
+///
+/// **And the strips may only fill the height when there is nothing between them to fill it for.**
+/// [`fill_the_depth`]'s job is to leave no gap, so it returns two numbers that always add up to the whole
+/// height — which made `middle`, the band between the two strips, exactly nothing tall. A panel docked to
+/// the left or the right lives in that band, so with one panel on the bottom and one on the left, the one
+/// on the left came out five hundred points wide and **no** points tall, and the drawing then skipped it
+/// for being under a point. Measured on a 1150 by 700 body with the Agent-Tasks pane on the bottom and the
+/// Explorer, Agent-Chat and Database panes beside it: three of the five panels showing were invisible with
+/// their rail buttons lit. `task-1905`.
+///
+/// The two tests of a hidden editing area each showed exactly one panel, which is the only arrangement
+/// that worked.
 pub fn regions_with(
     body: Rect,
     layout: &Layout,
@@ -487,10 +511,6 @@ pub fn regions_with(
     sizes: &Panes,
     editor: bool,
 ) -> Regions {
-    let (keep_width, keep_height) = match editor {
-        true => (EDITOR_MIN_WIDTH, EDITOR_MIN_HEIGHT),
-        false => (0.0, 0.0),
-    };
     let mut panels = [Rect::ZERO; SLOTS];
     let visible = |side: Side| -> Vec<Panel> {
         layout.panels_on(side).into_iter().filter(|panel| showing[panel.index()]).collect()
@@ -501,14 +521,32 @@ pub fn regions_with(
     // a hole under the one that wanted more.
     let top_panels = visible(Side::Top);
     let bottom_panels = visible(Side::Bottom);
+    let left_panels = visible(Side::Left);
+    let right_panels = visible(Side::Right);
+    // **Asked before the strips are given their depth**, which is what this used to work out afterwards:
+    // whether anything at all lives in the band between them. See the note above.
+    let columns_want_a_band = !left_panels.is_empty() || !right_panels.is_empty();
+    let keep_width = match editor {
+        true => EDITOR_MIN_WIDTH,
+        false => 0.0,
+    };
+    let keep_height = match (editor, columns_want_a_band) {
+        (true, _) => EDITOR_MIN_HEIGHT,
+        (false, true) => COLUMN_BAND_MIN,
+        (false, false) => 0.0,
+    };
     let depth = |panels: &[Panel]| -> f32 {
         panels.iter().map(|panel| sizes.height_of(*panel)).fold(0.0_f32, f32::max)
     };
-    let (top_depth, bottom_depth) = match editor {
-        true => share_the_depth(body.height(), depth(&top_panels), depth(&bottom_panels), keep_height),
-        // With no editing area there is nothing between the two strips, so they fill the height between them
-        // rather than each taking its own and leaving a gap.
-        false => fill_the_depth(body.height(), depth(&top_panels), depth(&bottom_panels)),
+    let (top_depth, bottom_depth) = match (editor, columns_want_a_band) {
+        // Something is between the strips — the editing area, a column, or both — so each keeps to the
+        // depth it asked for and what is between them gets the rest.
+        (true, _) | (false, true) => {
+            share_the_depth(body.height(), depth(&top_panels), depth(&bottom_panels), keep_height)
+        }
+        // Nothing is, so they fill the height between them rather than each taking its own and leaving a
+        // gap — `task-28`.
+        (false, false) => fill_the_depth(body.height(), depth(&top_panels), depth(&bottom_panels)),
     };
 
     let top_strip = Rect::from_min_max(body.min, Pos2::new(body.right(), body.top() + top_depth));
@@ -524,8 +562,11 @@ pub fn regions_with(
 
     // Then the columns, out of what the strips left. Each takes its own width, so a side's depth is
     // the sum of its columns rather than the greatest of them.
-    let left_panels = visible(Side::Left);
-    let right_panels = visible(Side::Right);
+    //
+    // **The width needs no equivalent of the rule above**, and that asymmetry is a decision rather than an
+    // oversight: with the editing area hidden there is genuinely nothing between the left and the right,
+    // so giving the whole width to whichever of them has panels is correct. The day a panel can sit in
+    // the middle of the row, this needs the same treatment the height just got.
     let width = |panels: &[Panel]| -> f32 {
         panels.iter().map(|panel| sizes.width_of(*panel)).sum::<f32>()
     };
@@ -615,8 +656,15 @@ fn lay_a_strip_out(strip: Rect, order: &[Panel], sizes: &Panes, out: &mut [Rect;
 
 /// A side of the window: the panels are columns left to right in order, each its own width, and the
 /// region is exactly as wide as they add up to.
+///
+/// **Both dimensions are guarded, so a band with no height leaves nothing rather than a rectangle that
+/// is wide and flat.** `Rect::ZERO` is this module's own word for "not there", and every reader of a
+/// rectangle here already treats it that way; a rectangle four hundred points wide and none tall is
+/// neither absent nor drawable, and it travelled as far as `show_the_plugin_panes`, which skipped it for
+/// being under a point in one direction and said nothing. `task-1905` — with the guard, a fault here is
+/// an absence somebody can see.
 fn lay_columns_out(region: Rect, order: &[Panel], sizes: &Panes, out: &mut [Rect; SLOTS]) {
-    if order.is_empty() || region.width() <= 0.0 {
+    if order.is_empty() || region.width() <= 0.0 || region.height() <= 0.0 {
         return;
     }
     // The region may have been shrunk to leave the editing area its minimum, so the columns are
@@ -659,8 +707,20 @@ pub struct Zone {
 /// A band is [`ZONE`] deep, or as deep as whatever is already docked to that side if that is deeper —
 /// which is what lets the pointer reach *past the middle* of a panel that is already there and so
 /// choose to land after it rather than before it, with no second control and no modifier key.
-pub fn zones(body: Rect, layout: &Layout, showing: [bool; SLOTS], sizes: &Panes) -> [Zone; 4] {
-    let placed = regions(body, layout, showing, sizes);
+///
+/// **`editor` is whether the editing area is showing**, because how deep a side is occupied depends on
+/// the layout that is really on the screen. It was hardcoded true, so with the editing area hidden the
+/// four bands and the strong rectangle were both worked out against a window nobody was looking at —
+/// which is the opposite of `task-1697`'s promise that the highlight *is* the layout rather than a
+/// picture of it. `task-1905`.
+pub fn zones(
+    body: Rect,
+    layout: &Layout,
+    showing: [bool; SLOTS],
+    sizes: &Panes,
+    editor: bool,
+) -> [Zone; 4] {
+    let placed = regions_with(body, layout, showing, sizes, editor);
     let occupied = |side: Side| -> f32 {
         layout
             .panels_on(side)
@@ -707,8 +767,9 @@ pub fn target(
     sizes: &Panes,
     carrying: Panel,
     pointer: Pos2,
+    editor: bool,
 ) -> Option<(Side, usize)> {
-    let bands = zones(body, layout, showing, sizes);
+    let bands = zones(body, layout, showing, sizes, editor);
     let mut best: Option<(Side, f32)> = None;
     for zone in bands {
         if !zone.band.contains(pointer) {
@@ -728,7 +789,7 @@ pub fn target(
         }
     }
     let (side, _) = best?;
-    Some((side, position_in(body, layout, showing, sizes, side, carrying, pointer.x)))
+    Some((side, position_in(body, layout, showing, sizes, side, carrying, pointer.x, editor)))
 }
 
 /// Where along `side` the pointer is: **after every panel whose middle it has passed**.
@@ -744,8 +805,9 @@ pub fn position_in(
     side: Side,
     carrying: Panel,
     x: f32,
+    editor: bool,
 ) -> usize {
-    let placed = regions(body, layout, showing, sizes);
+    let placed = regions_with(body, layout, showing, sizes, editor);
     layout
         .panels_on(side)
         .into_iter()
@@ -929,12 +991,12 @@ mod tests {
         let sizes = Panes::new();
         let layout = Layout::new();
         let showing = all_showing();
-        let bands = zones(body(), &layout, showing, &sizes);
+        let bands = zones(body(), &layout, showing, &sizes, true);
         for zone in bands {
             assert!(zone.band.width() > 0.0 && zone.band.height() > 0.0);
         }
         assert_eq!(
-            target(body(), &layout, showing, &sizes, Panel::Terminal, Pos2::new(500.0, 350.0)),
+            target(body(), &layout, showing, &sizes, Panel::Terminal, Pos2::new(500.0, 350.0), true),
             None,
             "the document is not a dock host"
         );
@@ -946,7 +1008,7 @@ mod tests {
         // the side panel" would be unreachable.
         let sizes = Panes::new();
         let layout = Layout::new();
-        let bands = zones(body(), &layout, only(&[Panel::Explorer]), &sizes);
+        let bands = zones(body(), &layout, only(&[Panel::Explorer]), &sizes, true);
         let left = bands.iter().find(|zone| zone.side == Side::Left).expect("a left band");
         assert!(left.band.right() >= sizes.explorer_width, "{:?}", left.band);
     }
@@ -959,10 +1021,10 @@ mod tests {
         // Two points in the bottom left corner: one hard against the left edge, one hard against the
         // bottom.
         let (side, _) =
-            target(body(), &layout, showing, &sizes, Panel::Run, Pos2::new(2.0, 660.0)).expect("a side");
+            target(body(), &layout, showing, &sizes, Panel::Run, Pos2::new(2.0, 660.0), true).expect("a side");
         assert_eq!(side, Side::Left);
         let (side, _) =
-            target(body(), &layout, showing, &sizes, Panel::Run, Pos2::new(60.0, 699.0)).expect("a side");
+            target(body(), &layout, showing, &sizes, Panel::Run, Pos2::new(60.0, 699.0), true).expect("a side");
         assert_eq!(side, Side::Bottom);
     }
 
@@ -972,9 +1034,9 @@ mod tests {
         let layout = Layout::new();
         let showing = only(&[Panel::Explorer, Panel::Terminal]);
         let middle = sizes.explorer_width / 2.0;
-        let before = target(body(), &layout, showing, &sizes, Panel::Terminal, Pos2::new(middle - 20.0, 300.0));
+        let before = target(body(), &layout, showing, &sizes, Panel::Terminal, Pos2::new(middle - 20.0, 300.0), true);
         assert_eq!(before, Some((Side::Left, 0)));
-        let after = target(body(), &layout, showing, &sizes, Panel::Terminal, Pos2::new(middle + 20.0, 300.0));
+        let after = target(body(), &layout, showing, &sizes, Panel::Terminal, Pos2::new(middle + 20.0, 300.0), true);
         assert_eq!(after, Some((Side::Left, 1)));
     }
 
@@ -1056,6 +1118,139 @@ mod tests {
         assert_eq!(without.of(Panel::Terminal).height(), 700.0, "the terminal takes the whole height");
         assert_eq!(without.of(Panel::Terminal).width(), 1000.0, "and still spans the whole width");
         assert_eq!(without.editor, Rect::ZERO);
+    }
+
+    /// A panel on a strip does not annihilate one on a column when the editing area is hidden.
+    ///
+    /// `task-1905` is the report — *"the panels for database explorer, agent tasks, and agent chat, don't
+    /// show when editing area is toggled off"* — and this is what it measured: with a panel on the bottom
+    /// and panels on the left and the right, the strip was given the whole height by `fill_the_depth`,
+    /// the band between the two strips came out with none, and every column was laid out into nothing and
+    /// then skipped for being under a point tall. The two tests above each show exactly one panel, which
+    /// is the only arrangement that worked.
+    #[test]
+    fn a_panel_on_a_strip_does_not_annihilate_one_on_a_column_when_the_editing_area_is_hidden() {
+        let body = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1150.0, 700.0));
+        let sizes = Panes::default();
+        let mut layout = Layout::default();
+        // Two contributed panes arranged as the Agent-Chat and Agent-Tasks manifests really arrange
+        // them: one down the right hand side, one along the bottom.
+        layout.set_plugin_panes(&[Side::Right, Side::Bottom], &[false, false]);
+        layout.dock(Panel::Plugin(0), Side::Right, None);
+        layout.dock(Panel::Plugin(1), Side::Bottom, None);
+        let mut showing = [false; SLOTS];
+        showing[Panel::Explorer.index()] = true;
+        showing[Panel::Plugin(0).index()] = true;
+        showing[Panel::Plugin(1).index()] = true;
+
+        let placed = regions_with(body, &layout, showing, &sizes, false);
+        let on_the_screen = [Panel::Explorer, Panel::Plugin(0), Panel::Plugin(1)];
+        for panel in on_the_screen {
+            let rect = placed.of(panel);
+            assert!(
+                rect.width() > 1.0 && rect.height() > 1.0,
+                "{} came back {} x {}, which is a panel nothing will draw",
+                panel.name(),
+                rect.width(),
+                rect.height(),
+            );
+        }
+        // The band the columns live in is at least what it is promised, and the strip has the rest.
+        let band = placed.of(Panel::Explorer).height();
+        assert!(band >= COLUMN_BAND_MIN - 0.01, "the column band is {band}");
+        assert_eq!(placed.of(Panel::Plugin(1)).height(), 700.0 - band, "the strip has the rest");
+        assert_eq!(placed.editor, Rect::ZERO, "and there is still no editing area");
+
+        // And the whole height is used: no gap, which is what `task-28` asked for and what the fix must
+        // not give away.
+        assert_eq!(placed.of(Panel::Explorer).top(), body.top());
+        assert_eq!(placed.of(Panel::Plugin(1)).bottom(), body.bottom());
+    }
+
+    /// Every arrangement of the five panels tiles the body: no overlap, nothing negative, nothing
+    /// outside it, and — with the editing area hidden — no gap.
+    ///
+    /// **All 32,768 of them**: each of Unluminous's five own panels on each of the four sides, each shown or
+    /// hidden, with the editing area on and off. `task-1905` changed how the height is divided, and the two
+    /// tests that covered a hidden editing area each showed exactly *one* panel — which is why the fault
+    /// this ticket fixed could ship. An exhaustive check is cheap here because [`regions_with`] allocates
+    /// nothing and touches no window, which is the whole reason this module holds no `egui` drawing.
+    #[test]
+    fn every_arrangement_of_the_panels_tiles_the_body() {
+        let sizes = Panes::new();
+        let body = Rect::from_min_max(Pos2::new(36.0, 60.0), Pos2::new(1186.0, 760.0));
+        let sides = [Side::Left, Side::Right, Side::Top, Side::Bottom];
+        for mask in 0..(1u32 << Panel::ALL.len()) {
+            for combo in 0..4usize.pow(Panel::ALL.len() as u32) {
+                let mut layout = Layout::new();
+                let mut showing = [false; SLOTS];
+                let mut spread = combo;
+                for (at, panel) in Panel::ALL.iter().enumerate() {
+                    layout.dock(*panel, sides[spread % 4], None);
+                    spread /= 4;
+                    showing[panel.index()] = mask & (1 << at) != 0;
+                }
+                for editor in [true, false] {
+                    let placed = regions_with(body, &layout, showing, &sizes, editor);
+                    let where_ = format!("mask {mask}, arrangement {combo}, editor {editor}");
+                    // **A panel that is showing is drawn**, which is the fault this ticket fixed and the
+                    // assertion the rest of this test would have filtered away: the panels came back
+                    // hundreds of points wide and *none* tall, so they were neither absent nor drawable and
+                    // the drawing skipped them in silence. A panel gets a real rectangle or `Rect::ZERO`,
+                    // never something in between — which is this module's own stated invariant.
+                    for panel in Panel::ALL.iter().filter(|panel| showing[panel.index()]) {
+                        let rect = placed.of(*panel);
+                        assert!(
+                            rect == Rect::ZERO || (rect.width() > 1.0 && rect.height() > 1.0),
+                            "{} is showing and came back {rect:?}, which nothing will draw: {where_}",
+                            panel.name(),
+                        );
+                    }
+                    let mut drawn: Vec<(&str, Rect)> = Panel::ALL
+                        .iter()
+                        .filter(|panel| showing[panel.index()])
+                        .map(|panel| (panel.name(), placed.of(*panel)))
+                        .filter(|(_, rect)| rect.width() > 0.01 && rect.height() > 0.01)
+                        .collect();
+                    if placed.editor.width() > 0.01 && placed.editor.height() > 0.01 {
+                        drawn.push(("editor", placed.editor));
+                    }
+                    for (name, rect) in &drawn {
+                        assert!(rect.width() >= 0.0 && rect.height() >= 0.0, "{name} is {rect:?}: {where_}");
+                        assert!(body.expand(0.5).contains_rect(*rect), "{name} is outside at {rect:?}: {where_}");
+                    }
+                    for first in 0..drawn.len() {
+                        for second in (first + 1)..drawn.len() {
+                            let shared = drawn[first].1.intersect(drawn[second].1);
+                            assert!(
+                                shared.width() <= 0.5 || shared.height() <= 0.5,
+                                "{} and {} overlap: {where_}",
+                                drawn[first].0,
+                                drawn[second].0,
+                            );
+                        }
+                    }
+                    // **And with no editing area there is no gap**, which is what `task-28` asked for and
+                    // what the fix to the height must not have given away.
+                    if !editor && !drawn.is_empty() {
+                        let covered: f32 =
+                            drawn.iter().map(|(_, rect)| rect.width() * rect.height()).sum();
+                        let whole = body.width() * body.height();
+                        assert!(covered >= whole * 0.98, "only {covered} of {whole} covered: {where_}");
+                    }
+                }
+            }
+        }
+    }
+
+    /// A band with no height leaves nothing rather than a rectangle that is wide and flat.
+    #[test]
+    fn a_collapsed_band_leaves_nothing_rather_than_a_rectangle_with_no_height() {
+        let sizes = Panes::default();
+        let mut out = [Rect::ZERO; SLOTS];
+        let flat = Rect::from_min_max(Pos2::new(0.0, 100.0), Pos2::new(400.0, 100.0));
+        lay_columns_out(flat, &[Panel::Explorer], &sizes, &mut out);
+        assert_eq!(out[Panel::Explorer.index()], Rect::ZERO);
     }
 
     /// `regions` is `regions_with` with the editing area showing, which is what every existing caller and every

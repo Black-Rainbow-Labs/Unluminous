@@ -40,6 +40,23 @@ pub struct Live {
     /// A folder node has a selection of its own for the reason the explorer panel does: the row the
     /// arrow keys are on is a different question from the file that is showing.
     selected: HashMap<NodeId, std::path::PathBuf>,
+    /// How far down a folder node's rows are scrolled, in the node's own points.
+    ///
+    /// **Held here rather than in `egui`'s own `ScrollArea` state**, and that is not a preference. A
+    /// node's contents are drawn into a layer made by hand with `set_sublayer`, which puts the layer in
+    /// the order list and registers **no `AreaState`** — only `egui::Area` does that and `set_state` is
+    /// `pub(crate)`. `Areas::layer_id_at` reads that map, `Context::rect_contains_pointer` asks it, and a
+    /// `ScrollArea` decides whether the wheel is its own by asking exactly that. So no `ScrollArea`
+    /// inside a node can ever take the wheel, whatever it is handed. `task-1905` is the report — *"I
+    /// can't scroll the node"* — and the answer is that the window reads the wheel and tells the explorer
+    /// where to scroll, through the `View::scroll_to` and `ExplorerOutcome::scroll` pair the panel's own
+    /// zoom already uses.
+    ///
+    /// Not written to `space.conf`: `Folder::expanded` is what a project comes back with, and a scroll
+    /// into a tree whose folders may have been opened or shut since means nothing.
+    scrolls: HashMap<NodeId, f32>,
+    /// How big each browser node draws its page. See [`Live::page_zoom_of`].
+    page_zooms: HashMap<NodeId, f32>,
     /// When the pipes were last read, in seconds of the window's own clock.
     read_at: f64,
 }
@@ -231,6 +248,30 @@ impl Live {
         self.selected.get(&node).map(std::path::PathBuf::as_path)
     }
 
+    /// How big a browser node draws its page.
+    ///
+    /// **Kept here rather than on the node's state**, because it is the engine's number rather than
+    /// Unluminous's drawing: `wry::WebView::zoom` is what applies it, and a window has one native view, so
+    /// it has to be applied again whenever the view is pointed at this node's tab.
+    pub fn page_zoom_of(&self, node: NodeId) -> f32 {
+        self.page_zooms.get(&node).copied().unwrap_or(1.0)
+    }
+
+    /// Remember how big this node draws its page.
+    pub fn set_page_zoom(&mut self, node: NodeId, zoom: f32) {
+        self.page_zooms.insert(node, zoom.max(0.1));
+    }
+
+    /// How far a folder node's rows are scrolled.
+    pub fn scroll_of(&self, node: NodeId) -> f32 {
+        self.scrolls.get(&node).copied().unwrap_or(0.0)
+    }
+
+    /// Scroll a folder node's rows to `offset`, never above the top.
+    pub fn scroll_to(&mut self, node: NodeId, offset: f32) {
+        self.scrolls.insert(node, offset.max(0.0));
+    }
+
     /// Put its cursor on a row, or take it off.
     pub fn select_in_tree(&mut self, node: NodeId, path: Option<std::path::PathBuf>) {
         match path {
@@ -259,6 +300,8 @@ impl Live {
         self.browsers.remove(&node);
         self.trees.remove(&node);
         self.selected.remove(&node);
+        self.scrolls.remove(&node);
+        self.page_zooms.remove(&node);
     }
 
     /// Stop and forget everything behind a list of nodes, which is what deleting a view is.
@@ -356,10 +399,23 @@ mod tests {
         let mut live = Live::default();
         live.put_a_tree(7, FileTree::new(std::env::temp_dir()));
         live.typed_into(7, "something");
+        live.scroll_to(7, 240.0);
         assert!(live.has_a_tree(7));
         assert_eq!(live.nodes(), vec![7]);
         live.forget(7);
         assert!(!live.has_a_tree(7));
         assert!(live.nodes().is_empty());
+        assert_eq!(live.scroll_of(7), 0.0, "and where it was scrolled to went with it");
+    }
+
+    /// A folder node's scroll starts at the top and is never taken above it.
+    #[test]
+    fn a_folder_nodes_scroll_is_kept_and_never_goes_above_the_top() {
+        let mut live = Live::default();
+        assert_eq!(live.scroll_of(7), 0.0, "a node nobody has scrolled is at the top");
+        live.scroll_to(7, 180.0);
+        assert_eq!(live.scroll_of(7), 180.0);
+        live.scroll_to(7, -40.0);
+        assert_eq!(live.scroll_of(7), 0.0, "a wheel turned up at the top stops at the top");
     }
 }

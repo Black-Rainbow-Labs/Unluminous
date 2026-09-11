@@ -132,6 +132,8 @@ fn write_a_node(node: &Node, key: &str, root: &Path, values: &mut Values) {
                 values.set(&format!("{key}.folder"), written(root, folder));
             }
         }
+        // `Browser::typed` is deliberately not written: a half-typed address is not state a project
+        // should come back with. `task-1905`.
         State::Browser(browser) => values.set_or_clear(&format!("{key}.url"), &browser.url),
         State::Folder(folder) => {
             if let Some(at) = &folder.root {
@@ -140,6 +142,9 @@ fn write_a_node(node: &Node, key: &str, root: &Path, values: &mut Values) {
             let expanded: Vec<String> =
                 folder.expanded.iter().map(|path| written(root, path)).collect();
             values.set_or_clear(&format!("{key}.expanded"), &expanded.join("|"));
+            if (folder.zoom - 1.0).abs() > 0.001 {
+                values.set(&format!("{key}.zoom"), format!("{:.2}", folder.zoom));
+            }
         }
         State::Editor(editor) => {
             if let Some(file) = &editor.path {
@@ -147,6 +152,9 @@ fn write_a_node(node: &Node, key: &str, root: &Path, values: &mut Values) {
             }
             values.set(&format!("{key}.caret"), editor.caret.to_string());
             values.set(&format!("{key}.scroll"), format!("{:.1}", editor.scroll));
+            if editor.font_size > 0.0 {
+                values.set(&format!("{key}.font"), format!("{:.0}", editor.font_size));
+            }
         }
     }
 }
@@ -246,6 +254,12 @@ fn read_a_node(values: &Values, key: &str, root: &Path) -> Option<Node> {
         }),
         Kind::Browser => State::Browser(Browser {
             url: values.text(&format!("{key}.url")).unwrap_or_default().to_owned(),
+            // **What a project comes back with is the address the node is on**, so a node opens with its
+            // own address in its bar rather than with an empty one. `Browser::typed` is not written down —
+            // see the note on it — and this is where it starts. `task-1905`.
+            typed: values.text(&format!("{key}.url")).unwrap_or_default().to_owned(),
+            // A project comes back showing where the page is, so the bar is the page's.
+            editing: false,
         }),
         Kind::Folder => State::Folder(Folder {
             root: values
@@ -259,6 +273,12 @@ fn read_a_node(values: &Values, key: &str, root: &Path) -> Option<Node> {
                 .map(|part| project_state::absolute(root, Path::new(part)))
                 .collect(),
             filter: String::new(),
+            // A zoom a person set is worth coming back with — it is how big they wanted this node's rows,
+            // which is what `panes.<panel>.zoom` is for the panel. `task-1905`.
+            zoom: match values.number(&format!("{key}.zoom")).unwrap_or(0.0) {
+                asked if asked > 0.0 => asked,
+                _ => 1.0,
+            },
         }),
         Kind::Editor => State::Editor(Editor {
             path: values
@@ -266,6 +286,9 @@ fn read_a_node(values: &Values, key: &str, root: &Path) -> Option<Node> {
                 .map(|file| project_state::absolute(root, Path::new(file))),
             caret: values.number(&format!("{key}.caret")).unwrap_or(0.0).max(0.0) as usize,
             scroll: values.number(&format!("{key}.scroll")).unwrap_or(0.0),
+            // `0.0` means "follow `appearance.font.size`", which is the convention a terminal node's own
+            // size already uses.
+            font_size: values.number(&format!("{key}.font")).unwrap_or(0.0).max(0.0),
         }),
     };
     Some(Node { id, at, size, title, state })
@@ -338,7 +361,17 @@ mod tests {
             assert_eq!(after.at, before.at);
             assert_eq!(after.size, before.size);
             assert_eq!(after.title, before.title);
-            assert_eq!(after.state, before.state, "a node's own state came back");
+            match (&before.state, &after.state) {
+                // **A browser node's `typed` is not written down and comes back as its address**, which
+                // is what puts the node's own address in its bar when a project opens. A half-typed
+                // address is not state a project should come back with — `task-1905`, and the note on
+                // `Browser::typed`.
+                (State::Browser(was), State::Browser(now)) => {
+                    assert_eq!(now.url, was.url, "a node's own state came back");
+                    assert_eq!(now.typed, was.url, "and its bar opens on the address it is on");
+                }
+                (before, after) => assert_eq!(after, before, "a node's own state came back"),
+            }
         }
         assert_eq!(now.edges.len(), 2);
         assert_eq!(now.edges[0].from, was.edges[0].from);

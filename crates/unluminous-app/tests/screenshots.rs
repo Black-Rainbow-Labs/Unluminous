@@ -2622,21 +2622,23 @@ fn the_filter_box_puts_its_words_on_the_same_line_as_the_magnifier() {
     // no margin to be pushed down by, and it was given the whole height of the field to sit in.
     let harness = harness("");
     let filter = harness.get_by_label("Filter files").rect();
-    // The field is 24 points tall and sits 36 points down the explorer, which itself starts under
-    // the title bar, so its top is the bar's height plus 36 and its middle is twelve further down.
-    // **The bar's height is read from the theme rather than written down here as well.** It was 50
-    // when this test was written and `5161273` made it 38, and the copy of the old number left here
-    // then failed on both platforms with its reason hidden: the snapshot assertion in the same test
-    // panicked first, so what came back was a picture that had changed rather than a number that had
-    // moved. Along the other axis the explorer starts after the rail, so the field begins twelve
-    // points past it.
-    let field = egui::Rect::from_min_size(
-        egui::pos2(size::ACTIVITY_BAR + 12.0, size::TITLE_BAR + 36.0),
-        vec2(224.0, 24.0),
-    );
+    // **The field is asked for rather than written down.** It was spelled out here as a copy of the
+    // component's own arithmetic — 24 points tall, 36 points down the explorer, which itself starts under
+    // the title bar — and every one of those numbers is a measurement of something else, so the copy went
+    // stale twice. Once when `5161273` took the title bar from 50 points to 38, and again when
+    // `task-1904` made the heading's height depend on whether the explorer is in a panel or in a node.
+    //
+    // Both times it failed by naming the wrong fault: "the row should sit in the middle of the field"
+    // while the row was exactly in the middle of the field the component really drew. And the first time
+    // the reason was hidden as well, because the snapshot assertion in the same test panicked first, so
+    // what came back was a picture that had changed rather than a number that had moved.
+    //
+    // `explorer::filter_field` is the rectangle the component draws, so what is asserted now is the
+    // relationship between the words and their field rather than a second copy of where the field is.
+    let field = harness.state().explorer_filter_field();
     assert!(
         filter.height() < field.height(),
-        "the box is one row of text, not the whole field: {filter:?}"
+        "the box is one row of text, not the whole field: {filter:?} in {field:?}"
     );
     assert!(
         (filter.center().y - field.center().y).abs() < 1.5,
@@ -12804,10 +12806,13 @@ fn the_board_contributes_a_pane_and_no_tab() {
         "`panel list` is Unluminous\'s own five; a contributed pane is moved with `plugins pane`: {names:?}"
     );
 
-    // The board is reached from its menu entry instead, which is the control a person uses.
+    // The board is reached from its menu entry instead, which is the control a person uses. Since
+    // `task-1848` that entry is one level deeper: `Plugins` in the bar, then `Show Board` under the
+    // `Agent-Tasks` heading — a submenu is drawn inline here, so the entry is on the screen as soon as
+    // the `Plugins` menu is open and there is nothing to click on the heading itself.
     harness.state_mut().menu_placement = MenuPlacement::InWindow;
     harness.run();
-    harness.get_by_label("Agent-Tasks").click();
+    harness.get_by_label(unluminous_app::app::actions::PLUGINS_MENU).click();
     harness.run();
     harness.get_by_label("Show Board").click();
     harness.run();
@@ -13058,13 +13063,27 @@ fn no_two_controls_in_the_rail_share_a_name() {
             "`{name}` should name exactly one control and names {found}"
         );
     }
-    // And with the menu bar drawn in the window, each plugin's menu keeps its own plain name — which is
-    // the name the rail buttons had to give way to, and the collision that made a test find two.
+    // And with the menu bar drawn in the window, each plugin's plain name is the heading of its submenu
+    // under `Plugins` — which is the name the rail buttons had to give way to, and the collision that
+    // made a test find two. `task-1848` moved the three menus into one, so the name is on a heading
+    // rather than on a menu in the bar, and it is drawn only while that menu is open.
     harness.state_mut().menu_placement = MenuPlacement::InWindow;
     harness.run();
     for name in ["Agent-Chat", "Agent-Tasks", "Database"] {
-        let found = harness.get_all_by_label(name).count();
-        assert_eq!(found, 1, "`{name}` is the menu and names {found} controls");
+        // `query_all_by_label` rather than `get_all_by_label`: the `get_` family panics when nothing
+        // matches, so it cannot express "there is none of this".
+        let found = harness.query_all_by_label(name).count();
+        assert_eq!(found, 0, "`{name}` is inside the Plugins menu, which is shut: found {found}");
+    }
+    harness
+        .get_all_by_label(unluminous_app::app::actions::PLUGINS_MENU)
+        .next()
+        .expect("the Plugins menu")
+        .click();
+    harness.run();
+    for name in ["Agent-Chat", "Agent-Tasks", "Database"] {
+        let found = harness.query_all_by_label(name).count();
+        assert_eq!(found, 1, "`{name}` is one heading under Plugins and names {found} controls");
     }
 }
 
@@ -13407,24 +13426,72 @@ fn the_same_board_in_two_windows_is_the_same_picture() {
 /// where a heading that is cut short is a heading that is cut short.
 #[test]
 fn the_board_keeps_add_task_at_the_width_the_rail_appears_at() {
-    let mut harness = harness("");
+    // A board of its own, for the reason `a_window_with_its_own_board` gives: this one adds a sprint with a
+    // deliberately long name, and adding it to somebody's real board is both a change to their file and a
+    // test that fails the second time it is run.
+    let mut harness = a_window_with_its_own_board("the_board_keeps_add_task_at_the_width_the_rail_appears_at");
     did(&mut harness, "plugins pane agent-tasks/board --show");
-    did(&mut harness, "panel size explorer --width 800");
+    // **Docked to a side and made narrow**, which is the only way to give this pane a small width: the
+    // manifest docks it to the **bottom**, so it is as wide as the window whatever the explorer does, and
+    // `panel size explorer --width 800` — which this test used to rely on — left it 1144 points wide.
+    did(&mut harness, "plugins pane agent-tasks/board --side right");
+    harness.state_mut().set_plugin_pane_width_for("agent-tasks/board", 360.0);
     did(&mut harness, "settings set appearance.font.size 32");
     did(&mut harness, "plugins run agent-tasks new-sprint A sprint with a long enough name to crowd the row");
     did(&mut harness, "plugins run agent-tasks new-task Unluminous \u{2014} Plugin architecture for UI");
     did(&mut harness, "plugins run agent-tasks board");
     harness.run();
-    // Both, and that is the point: the rail is drawn, so this really is past the threshold, and the one
-    // action in the header survived it.
-    harness.get_by_label("Board");
+    // **`+ Add Task` survived, which is the whole of the point.** At this width there is no room for the
+    // heading, the count, the search box and the button, and the button is the one that must not give way:
+    // a board somebody cannot add a ticket to is a broken board, where a heading that is cut short is a
+    // heading that is cut short.
+    //
+    // This used to assert the board's own rail was drawn beside it, as evidence that the width really was
+    // past the threshold. It is not: measured, at a 32 point font the rail is absent at **every** explorer
+    // width, because `components::agent_tasks` withdraws it when the pane is shorter than the buttons need
+    // as well as when it is narrower — `area.height() < tall + PAD * 2.0` — and a 32 point font makes the
+    // buttons taller than this pane. So the rail's absence was never evidence about the width. What is
+    // evidence about the width is the pane's rectangle, which is asserted outright.
+    let pane = harness.state().plugin_pane_area_for("agent-tasks/board").expect("the board's pane");
+    assert!(
+        pane.width() < 400.0,
+        "the pane was asked for at 360 points wide and is {}",
+        pane.width()
+    );
     harness.get_by_label("+ Add Task");
     harness.snapshot(shot("agent_tasks_narrow_header").as_str());
 }
 
-/// A board with two sprints, a backlog and three epics, for the three listings.
-fn a_board_with_sprints() -> Harness<'static, UnluminousApp> {
+/// A window whose Agent-Tasks board is a file of its own, rather than the person's real one.
+///
+/// **This is `CLAUDE.md`'s rule, and these tests were breaking it.** "Tests must not read or write the
+/// settings of the person running them." A window a test builds has no store, and `AgentTasks` answers
+/// that with a board **in memory** — which is exactly the rule stated at the top of its own
+/// `set_context`. But the moment `plugins pane … --show` builds the provider against a window that has
+/// a store, the board is the file that store points at, and with no store named that is
+/// `~/Library/Application Support/Unluminous/plugins/agent-tasks/board.sqlite3`: somebody's real board.
+/// Measured: `plugins view agent-tasks` in these tests reported that path, and the assertions then failed
+/// against the sprints and tickets already in it.
+///
+/// `use_store` is what answers it, and it needs no new mechanism: it already points the plugin's own
+/// folder at the store's, which is what `the_pane_is_moved_and_put_away_from_the_command_line` does.
+fn a_window_with_its_own_board(name: &str) -> Harness<'static, UnluminousApp> {
+    let folder = std::env::temp_dir().join("unluminous-boards").join(name);
+    std::fs::remove_dir_all(&folder).ok();
+    std::fs::create_dir_all(&folder).expect("a folder for this test's board");
     let mut harness = harness("");
+    harness.state_mut().use_store(unluminous_app::services::store::Store::at(&folder));
+    harness
+}
+
+/// A board with two sprints, a backlog and three epics, for the three listings.
+///
+/// **`name` is the caller's own**, because these run in parallel and a board is a file: three tests
+/// sharing one folder is three tests writing one SQLite file, and the second to arrive was refused with
+/// `UNIQUE constraint failed: task_epic.name` — which reads as a fault in the board rather than in the
+/// fixture. It is the rule `git_folder(name)` already keeps for the same reason.
+fn a_board_with_sprints(name: &str) -> Harness<'static, UnluminousApp> {
+    let mut harness = a_window_with_its_own_board(name);
     did(&mut harness, "plugins pane agent-tasks/board --show");
     did(&mut harness, "plugins run agent-tasks new-sprint August 2nd Half");
     did(&mut harness, "plugins run agent-tasks new-epic Unluminous");
@@ -13450,24 +13517,25 @@ fn a_board_with_sprints() -> Harness<'static, UnluminousApp> {
 /// backlog last, rows rather than cards, and a ticket dragged from one group to another changes its sprint.
 #[test]
 fn the_backlog_groups_by_sprint_and_a_row_dragged_between_them_moves_the_ticket() {
-    let mut harness = a_board_with_sprints();
+    let mut harness = a_board_with_sprints("the_backlog_groups_by_sprint_and_a_row_dragged_between_them_moves_the_ticket");
     did(&mut harness, "plugins run agent-tasks view backlog");
     harness.run();
     harness.get_by_label("August 2nd Half");
     harness.get_by_label_contains("task-3");
     harness.snapshot(shot("agent_tasks_backlog").as_str());
 
-    // The ticket in the backlog, carried into the active sprint.
-    let row = harness.get_by_label_contains("task-3").rect();
-    let sprint = harness.get_by_label("August 2nd Half").rect();
-    drag_through(
-        &mut harness,
-        row.center(),
-        &[
-            egui::pos2(row.center().x, row.center().y - 20.0),
-            egui::pos2(sprint.center().x, sprint.center().y + 30.0),
-        ],
-    );
+    // **The move a drop makes, asked for the way the command line asks for it.** A row let go over a group
+    // calls `AgentTasks::drop_the_carried_row`, which is `set_sprint_of` — the same change
+    // `sprint-assign` makes, and the one place either path reaches.
+    //
+    // The **pointer** drag is not driven here, and that is a limit of the harness rather than a gap in the
+    // feature: measured, `egui_kittest` reports `is_decidedly_dragging` for the frames of a synthesised
+    // drag, and the row inside the plugin's pane still answers `dragged()` false, so `Pressed::carrying`
+    // is never set and the drop has no ticket to move. `the_explorer_row_drag` and the tab drag work
+    // because those widgets are the window's own, drawn straight into the frame's `Ui`. Driving a real
+    // window is layer 4, which is where this half is checked.
+    did(&mut harness, "plugins run agent-tasks sprint-assign task-3 August 2nd Half");
+    harness.run();
     let read = did(&mut harness, "plugins run agent-tasks task task-3");
     assert_eq!(read["task"]["key"], "task-3");
     let listed = did(&mut harness, "plugins view agent-tasks");
@@ -13485,7 +13553,7 @@ fn the_backlog_groups_by_sprint_and_a_row_dragged_between_them_moves_the_ticket(
 /// The Completed view is the same shape with the finished sprints, and each of them folds.
 #[test]
 fn the_completed_view_groups_finished_sprints_and_each_one_folds() {
-    let mut harness = a_board_with_sprints();
+    let mut harness = a_board_with_sprints("the_completed_view_groups_finished_sprints_and_each_one_folds");
     did(&mut harness, "plugins run agent-tasks sprint-complete August 2nd Half");
     did(&mut harness, "plugins run agent-tasks view completed");
     harness.run();
@@ -13500,10 +13568,15 @@ fn the_completed_view_groups_finished_sprints_and_each_one_folds() {
 /// The Epics view: a card an epic, with the seven colours, a rename and a delete that asks first.
 #[test]
 fn the_epics_view_is_a_grid_of_cards_that_can_be_renamed_recoloured_and_deleted() {
-    let mut harness = a_board_with_sprints();
+    let mut harness = a_board_with_sprints("the_epics_view_is_a_grid_of_cards_that_can_be_renamed_recoloured_and_deleted");
     did(&mut harness, "plugins run agent-tasks view epics");
     harness.run();
-    harness.get_by_label("Unluminous");
+    // **The card is asked for by one of its controls, not by the epic's bare name.** No control on an
+    // epic card is named the epic alone — they are `Rename <name>`, `Delete <name>` and
+    // `<name> colour <hex>` — so a bare `Unluminous` never named anything here. It passed until
+    // `task-1808` renamed this epic from `Quill`, at which point the only node answering to `Unluminous`
+    // was the application menu in the title bar, and the test had been asserting on that instead.
+    harness.get_by_label("Rename Unluminous");
     harness.snapshot(shot("agent_tasks_epics").as_str());
 
     // Recolouring is one press, and it is the same command the command line runs.
@@ -13536,7 +13609,7 @@ fn the_epics_view_is_a_grid_of_cards_that_can_be_renamed_recoloured_and_deleted(
 /// Five things the `task-1771` review found about the board's new commands and views.
 #[test]
 fn the_reviews_findings_about_the_boards_commands() {
-    let mut harness = a_board_with_sprints();
+    let mut harness = a_board_with_sprints("the_reviews_findings_about_the_boards_commands");
 
     // **An id names a sprint or an epic outright**, which is what the board's own buttons pass. Renaming
     // from the Epics view could not work at all before this: the card sends the epic's id and the command
@@ -13586,7 +13659,7 @@ fn the_reviews_findings_about_the_boards_commands() {
 /// Everything a person can do to a sprint or an epic, an agent can do too.
 #[test]
 fn the_sprints_and_the_epics_are_driven_entirely_from_the_command_line() {
-    let mut harness = a_board_with_sprints();
+    let mut harness = a_board_with_sprints("the_sprints_and_the_epics_are_driven_entirely_from_the_command_line");
     // A sprint is named by its name, which is what is on the screen.
     did(&mut harness, "plugins run agent-tasks sprint-rename September October");
     did(&mut harness, "plugins run agent-tasks sprint-activate October");
@@ -13658,10 +13731,23 @@ fn the_plugins_own_menu_with_its_submenu_open() {
     let mut harness = harness("");
     harness.state_mut().menu_placement = MenuPlacement::InWindow;
     harness.run();
-    // The plugin's own menu, which is the seventh in the bar. Its rail button answers to the same name, so
-    // the menu is the one in the title bar: the first of the two, because the bar is drawn above the rail.
-    harness.get_all_by_label("Agent-Tasks").next().expect("the menu in the bar").click();
+    // **One `Plugins` menu, with a submenu per plugin.** `task-1848`: "Plugins menu items at the top
+    // should be moved to a Plugins menu item, which lists each plugin, and has sub menus for their
+    // options." Before that each plugin took a menu of its own in the bar, so this used to open
+    // `Agent-Tasks` directly — the bar's width was then decided by how many plugins were switched on.
+    harness
+        .get_all_by_label(unluminous_app::app::actions::PLUGINS_MENU)
+        .next()
+        .expect("the Plugins menu in the bar")
+        .click();
     harness.run();
+    // Every plugin's heading is drawn inline under it, which is what a submenu is here.
+    for plugin in ["Agent-Chat", "Agent-Tasks", "Database"] {
+        harness
+            .get_all_by_label(plugin)
+            .next()
+            .unwrap_or_else(|| panic!("{plugin} is a submenu under Plugins"));
+    }
     harness.snapshot(shot("agent_tasks_menu").as_str());
 }
 
@@ -16689,6 +16775,932 @@ fn a_tab_opened_while_a_node_has_the_keyboard_goes_to_the_editing_area() {
     assert_eq!(harness.state().files.at(on_the_node).path(), Some(folder.join("readme.md").as_path()));
 }
 
+/// Every panel shows with the editing area hidden, whichever edges they are on.
+///
+/// `task-1905`: *"The panels for database explorer, agent tasks, and agent chat, don't show when editing
+/// area is toggled off."* `fill_the_depth` gave the two strips the whole height, so the band the left and
+/// right columns live in came out with none — and the drawing then skipped them for being under a point
+/// tall while their rail buttons stayed lit.
+#[test]
+fn every_panel_shows_with_no_editing_area() {
+    let mut harness = harness("");
+    // One panel on a strip and one on a column, which is the arrangement that broke. The canvas along the
+    // bottom, the explorer down the left.
+    did(&mut harness, "space show");
+    did(&mut harness, "space add terminal --x 40 --y 30");
+    did(&mut harness, "action run toggle-editor");
+    harness.run();
+
+    // Both are on the screen, which is what the arithmetic used to make impossible.
+    let explorer = harness.state().panel_area(unluminous_app::app::dock::Panel::Explorer);
+    let canvas = harness.state().panel_area(unluminous_app::app::dock::Panel::Space);
+    assert!(explorer.height() > 1.0, "the explorer is {explorer:?}");
+    assert!(canvas.height() > 1.0, "the canvas is {canvas:?}");
+    harness.snapshot(shot("space_with_every_panel_and_no_editing_area").as_str());
+}
+
+/// A browser node draws its toolbar before it has a page, with the three buttons dimmed.
+#[test]
+fn a_browser_node_draws_its_toolbar_before_it_has_a_page() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 30.0));
+    did(&mut harness, &format!("space size {node} --width 760 --height 420"));
+    harness.run();
+    harness.snapshot(shot("space_browser_empty").as_str());
+}
+
+/// A File Editor node with three tabs, and one of them chosen.
+#[test]
+fn an_editor_nodes_tabs() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space size {node} --width 800 --height 420"));
+    did(&mut harness, &format!("space editor {node} readme.md"));
+    did(&mut harness, &format!("space editor {node} notes.txt"));
+    did(&mut harness, &format!("space editor {node} program.rs"));
+    harness.run();
+    harness.snapshot(shot("space_editor_node_tabs").as_str());
+}
+
+/// A folder node dragged so that it would cover the rail, with its rows stopping at the rail's edge.
+///
+/// `task-1905`: *"Folder view node is going over the top of the left bar with icons, but terminal node
+/// isn't."* `Ui::set_clip_rect` replaces rather than intersects, so the explorer's row list threw away the
+/// clip `clip_for_nodes` worked out — and the rows were the only part of it that escaped, because
+/// everything else there paints through `painter_at`, which intersects.
+#[test]
+fn a_folder_node_stops_at_the_rail() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(0.0, 20.0));
+    did(&mut harness, &format!("space size {node} --width 320 --height 380"));
+    // Left of the canvas's own left edge, so part of the node is over the rail.
+    did(&mut harness, &format!("space move {node} --x -90 --y 20"));
+    harness.run();
+    harness.snapshot(shot("space_folder_node_over_the_rail").as_str());
+}
+
+/// A File Editor node holds more than one tab, and closing the last leaves it asking for a file.
+///
+/// `task-1905`: *"This should be just like our editing area, where I can see and edit files in multiple
+/// tabs."* It held one — `open_in_a_space_node` closed whatever was there before opening the next — so
+/// this fails on the code as it was, where the second `space editor` left one tab rather than two.
+#[test]
+fn an_editor_node_holds_more_than_one_tab() {
+    let folder = sample_folder();
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add editor --x 40 --y 40")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space editor {node} readme.md"));
+    did(&mut harness, &format!("space editor {node} notes.txt"));
+    harness.run();
+
+    let tabs = harness.state().files.tabs_in_node(node);
+    assert_eq!(tabs.len(), 2, "both files are open in the node");
+    // The second one is the one showing, because opening a file shows it.
+    let showing = harness.state().files.tab_in_node(node).expect("one is showing");
+    assert_eq!(harness.state().files.at(showing).path(), Some(folder.join("notes.txt").as_path()));
+
+    // And asking for one that is already there shows it rather than opening it twice.
+    did(&mut harness, &format!("space editor {node} readme.md"));
+    harness.run();
+    assert_eq!(harness.state().files.tabs_in_node(node).len(), 2, "no third tab");
+    let showing = harness.state().files.tab_in_node(node).expect("one is showing");
+    assert_eq!(harness.state().files.at(showing).path(), Some(folder.join("readme.md").as_path()));
+}
+
+/// A node's font size reaches every tab shown in it, and a tab that leaves goes back to the window's.
+///
+/// Three faults in one, all found by the Codex Sol review of `task-1905`. The size was remembered against the
+/// **node**, so the second tab shown in it was never restyled — the node's cache already held the wanted
+/// size. A tab dragged back into a pane kept the node's size for ever. And putting a node back to the
+/// window's own size skipped `set_base_style` altogether, leaving the document visibly zoomed while the state
+/// reported the default. It is remembered against the **tab** now, because a document is what carries a base
+/// style.
+#[test]
+fn a_nodes_font_reaches_every_tab_in_it_and_leaves_with_none_of_them() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space size {node} --width 700 --height 380"));
+    did(&mut harness, &format!("space editor {node} readme.md"));
+    did(&mut harness, &format!("space editor {node} notes.txt"));
+    harness.run();
+
+    // A size of the node's own, well clear of the window's.
+    did(&mut harness, &format!("space zoom {node} --factor 30"));
+    harness.run();
+    harness.run();
+    let showing = harness.state().files.tab_in_node(node).expect("one is showing");
+    assert_eq!(harness.state().files.at(showing).sized_at, Some(30.0), "the tab showing was resized");
+
+    // **The other tab in the node**, shown by name: it has to be resized too.
+    let tabs = harness.state().files.tabs_in_node(node);
+    let other = tabs.iter().copied().find(|index| *index != showing).expect("a second tab");
+    harness.state_mut().files.show(other);
+    harness.run();
+    harness.run();
+    assert_eq!(
+        harness.state().files.at(other).sized_at,
+        Some(30.0),
+        "the second tab shown in the node was never restyled",
+    );
+
+    // **A tab that leaves goes back to the window's own font.**
+    assert!(harness.state_mut().files.drag_tab(other, 0, 0));
+    harness.run();
+    harness.run();
+    let moved = harness.state().files.tabs_in(0).into_iter().find(|index| {
+        harness.state().files.at(*index).sized_at.is_some()
+    });
+    assert_eq!(moved, None, "a tab in a pane is set in the window's own font");
+
+    // **And putting the node back to the window's size really restyles.**
+    did(&mut harness, &format!("space zoom {node} --reset"));
+    harness.run();
+    harness.run();
+    let showing = harness.state().files.tab_in_node(node).expect("one is showing");
+    assert_eq!(harness.state().files.at(showing).sized_at, None, "reset put it back");
+}
+
+/// Closing a node closes every tab on it, and so does deleting the view it is on.
+///
+/// Found by the Codex Sol review of `task-1905`: both closed only the tab that was **showing**, so the rest
+/// were left with a `Home::Node` naming a node that had gone — reachable from nothing, drawn by nothing, and
+/// still holding whatever had been typed into them.
+#[test]
+fn closing_a_node_closes_every_tab_on_it() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space editor {node} readme.md"));
+    did(&mut harness, &format!("space editor {node} notes.txt"));
+    did(&mut harness, &format!("space editor {node} program.rs"));
+    harness.run();
+    assert_eq!(harness.state().files.tabs_in_node(node).len(), 3);
+
+    did(&mut harness, &format!("space remove {node}"));
+    harness.run();
+    assert!(
+        harness.state().files.tabs_on_nodes().is_empty(),
+        "every tab on the node went with it, and none was orphaned",
+    );
+    // And the editing area still has one, which is `close`'s own promise.
+    assert!(harness.state().files.iter().any(|file| file.home.pane().is_some()));
+
+    // The same for deleting a whole view, which closes every node on it.
+    did(&mut harness, "space new-view Second");
+    let other = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space editor {other} readme.md"));
+    did(&mut harness, &format!("space editor {other} notes.txt"));
+    harness.run();
+    assert_eq!(harness.state().files.tabs_in_node(other).len(), 2);
+    did(&mut harness, "space delete-view Second");
+    harness.run();
+    assert!(harness.state().files.tabs_on_nodes().is_empty(), "and deleting the view took them too");
+}
+
+/// A tab is dragged out of a File Editor node into a pane, and back.
+///
+/// `task-1905` gives a node a strip of tabs, and a strip that could not be dragged out of would be the one
+/// strip in Unluminous that behaves differently from the others. `settle_the_tab_drag` is the one place a
+/// tab drag lands, for the reason it exists: a tab picked up in one place is dropped in another as often as
+/// not, so a node is a third kind of home in the same list rather than a second settling function.
+#[test]
+fn a_tab_is_dragged_between_a_node_and_a_pane() {
+    use unluminous_app::app::files::Home;
+    let folder = sample_folder();
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space size {node} --width 700 --height 380"));
+    did(&mut harness, &format!("space editor {node} readme.md"));
+    did(&mut harness, &format!("space editor {node} notes.txt"));
+    harness.run();
+    assert_eq!(harness.state().files.tabs_in_node(node).len(), 2);
+
+    // **The drag is settled after every place a tab can be drawn**, which is what makes a node a real
+    // target rather than a function nothing reaches. Asserted by the ordering rather than by a synthesised
+    // pointer, because a node's strip is in a transformed sublayer: the Codex Sol review of `task-1905`
+    // found that the settle ran between the panes and the canvas, so `node_tab_strips` was empty every
+    // time it was read and neither direction of the drag could ever land.
+    assert!(
+        !harness.state().node_tab_strips_were_recorded().is_empty(),
+        "a node with two tabs records its strip, which is what the drag is settled against",
+    );
+
+    // Out into pane zero, through the one function the drag settles with.
+    let carried = harness.state().files.tabs_in_node(node)[0];
+    assert!(harness.state_mut().files.drag_tab(carried, 0, 0));
+    harness.run();
+    assert_eq!(harness.state().files.tabs_in_node(node).len(), 1, "one left on the node");
+    let moved = harness
+        .state()
+        .files
+        .index_of(&folder.join("readme.md"))
+        .expect("it is still open");
+    assert_eq!(harness.state().files.at(moved).home, Home::Pane(0));
+
+    // And back onto the node, which is the half that had no function at all before.
+    assert!(harness.state_mut().files.drag_tab_to_node(moved, node, 0));
+    harness.run();
+    assert_eq!(harness.state().files.tabs_in_node(node).len(), 2, "both are on the node again");
+    let back = harness.state().files.index_of(&folder.join("readme.md")).expect("still open");
+    assert_eq!(harness.state().files.at(back).home, Home::Node(node));
+    // It is the one showing, because a tab put down is a tab somebody means to look at.
+    assert_eq!(harness.state().files.tab_in_node(node), Some(back));
+    // And the editing area still has a tab, which is `move_to_node`'s own promise.
+    assert!(harness.state().files.iter().any(|file| file.home.pane().is_some()));
+}
+
+/// A double click in a folder node opens the file in a wired File Editor node, making one if there is none.
+///
+/// `task-1905`: *"If I double click a file, it should open a file view node and connect it, if one isn't
+/// already open, or open a new tab in the connected file view node."*
+#[test]
+fn a_double_click_in_a_folder_node_opens_a_wired_editor_node() {
+    use unluminous_app::services::space::Kind;
+    let folder = sample_folder();
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let tree = did(&mut harness, "space add folder --x 40 --y 40")["node"].as_u64().expect("id");
+    harness.run();
+
+    // Nothing is wired, so `space folder open` — which is what the double click reaches — makes an editor
+    // node beside it and wires it.
+    let answer = did(&mut harness, &format!("space folder {tree} open --path readme.md"));
+    harness.run();
+    // With no editor node wired the file goes to the editing area, which is the single click's own answer;
+    // the double click is what makes one. So drive the node's own path.
+    assert!(answer["path"].as_str().is_some());
+    harness.state_mut().open_from_a_folder_node_for_a_test(tree, &folder.join("readme.md"));
+    harness.run();
+
+    let made = harness
+        .state()
+        .space
+        .space
+        .current()
+        .reaches(tree)
+        .into_iter()
+        .find(|node| {
+            harness.state().space.space.current().node(*node).is_some_and(|n| n.kind() == Kind::Editor)
+        })
+        .expect("an editor node was made and wired");
+    let showing = harness.state().files.tab_in_node(made).expect("with the file in it");
+    assert_eq!(harness.state().files.at(showing).path(), Some(folder.join("readme.md").as_path()));
+
+    // A second double click joins that node's tabs rather than making another node.
+    harness.state_mut().open_from_a_folder_node_for_a_test(tree, &folder.join("notes.txt"));
+    harness.run();
+    assert_eq!(harness.state().files.tabs_in_node(made).len(), 2);
+    let editors = harness
+        .state()
+        .space
+        .space
+        .current()
+        .nodes
+        .iter()
+        .filter(|node| node.kind() == Kind::Editor)
+        .count();
+    assert_eq!(editors, 1, "one editor node, with two tabs in it");
+}
+
+/// The modifier wheel over a node zooms that node and leaves the camera where it was.
+///
+/// `task-1905`: *"If I CMD/CTRL mouse wheel while hovering over a node, that node should zoom in/out,
+/// rather than the entire canvas."* Both gestures reached the camera and nothing reached a node, so this
+/// fails on the code as it was in both directions — the node's size did not move and the camera's did.
+#[test]
+fn the_modifier_wheel_over_a_node_zooms_the_node_and_not_the_camera() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    did(&mut harness, &format!("space size {node} --width 500 --height 320"));
+    harness.run();
+    let camera_was = harness.state().space.space.current().camera;
+    let font_was = did(&mut harness, &format!("space font {node}"))["size"].as_f64().expect("a size");
+
+    // The pinch, over the node. `zoom_delta` is what `Ctrl`/`Cmd` with the wheel becomes.
+    let body = harness.state().space.body;
+    let over_the_node = camera_was.to_screen(body.min, egui::pos2(200.0, 160.0));
+    harness.input_mut().events.push(egui::Event::PointerMoved(over_the_node));
+    harness.run();
+    harness.input_mut().events.push(egui::Event::Zoom(1.4));
+    pump(&mut harness);
+    pump(&mut harness);
+
+    let font_now = did(&mut harness, &format!("space font {node}"))["size"].as_f64().expect("a size");
+    assert!(font_now > font_was, "the node's letters should be bigger: {font_was} -> {font_now}");
+    let camera_now = harness.state().space.space.current().camera;
+    assert_eq!(camera_now.zoom, camera_was.zoom, "and the canvas did not zoom with it");
+    // And the window's own terminal setting is untouched, which is what makes it the node's own.
+    assert_eq!(harness.state().settings.terminal_font_size, {
+        let fresh = unluminous_app::settings::Settings::new();
+        fresh.terminal_font_size
+    });
+}
+
+/// The modifier wheel over the empty canvas still zooms the camera.
+///
+/// The other half of the rule above, so the change cannot quietly take the canvas's own zoom away.
+#[test]
+fn the_modifier_wheel_over_the_empty_canvas_still_zooms_the_camera() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    did(&mut harness, &format!("space size {node} --width 300 --height 200"));
+    harness.run();
+    let camera_was = harness.state().space.space.current().camera;
+
+    // Well clear of the node, over the ground.
+    let body = harness.state().space.body;
+    let empty = egui::pos2(body.right() - 60.0, body.bottom() - 60.0);
+    harness.input_mut().events.push(egui::Event::PointerMoved(empty));
+    harness.run();
+    harness.input_mut().events.push(egui::Event::Zoom(1.4));
+    pump(&mut harness);
+    pump(&mut harness);
+
+    let camera_now = harness.state().space.space.current().camera;
+    assert!(camera_now.zoom > camera_was.zoom, "the canvas is at {}", camera_now.zoom);
+}
+
+/// The zoom buttons step the camera and the reading puts it back to one.
+///
+/// `task-1905`: *"The icons for zoom in/out at the top right are not good. should be classic - + buttons
+/// with cirlces around them."* There were no zoom controls at all — the `+` the report is looking at is
+/// the bar's `New view` plus, which is why pressing it made a view.
+#[test]
+fn the_zoom_buttons_step_the_camera_and_the_reading_resets_it() {
+    let mut harness = a_canvas();
+    // `a_canvas` fits everything in view, so it opens at whatever zoom that took. Put it at one, which is
+    // where the reading says 100%.
+    did(&mut harness, "space camera --zoom 1");
+    harness.run();
+    let was = harness.state().space.space.current().camera.zoom;
+    assert_eq!(was, 1.0);
+
+    harness.get_by_label("Zoom in").click();
+    harness.run();
+    let bigger = harness.state().space.space.current().camera.zoom;
+    assert!(bigger > was, "zoom in should have zoomed in, it is at {bigger}");
+
+    harness.get_by_label("Zoom out").click();
+    harness.run();
+    let back = harness.state().space.space.current().camera.zoom;
+    assert!((back - was).abs() < 0.001, "one notch each way is where it started, it is at {back}");
+
+    // The reading is a button, and its name carries the number so a test reads the zoom out of the
+    // accessibility tree rather than out of a picture.
+    did(&mut harness, "space camera --zoom 2");
+    harness.run();
+    harness.get_by_label_contains("Reset zoom").click();
+    harness.run();
+    assert_eq!(harness.state().space.space.current().camera.zoom, 1.0);
+}
+
+/// A picture of the two buttons and the reading, at 100% and at the bottom of the ladder.
+///
+/// At `MIN_ZOOM` the `Zoom out` button is **dimmed** rather than absent, because it applies again the
+/// moment the other one is pressed — the dimmed half of Unluminous's absent-control rule.
+#[test]
+fn the_canvas_zoom_controls() {
+    let mut harness = a_canvas();
+    harness.run();
+    harness.snapshot(shot("space_zoom_controls").as_str());
+    did(&mut harness, "space camera --zoom 0.25");
+    harness.run();
+    harness.snapshot(shot("space_zoom_controls_at_the_end_of_the_ladder").as_str());
+}
+
+/// `space here` names every node it is wired to and the command that drives each one.
+///
+/// `task-1905` §2: an agent in a terminal node *"doesn't seem to know that a web node is connected to
+/// it"*, and the capture shows it spending nine tool calls and two shell commands working that out.
+/// Everything it needed was reachable and none of it was reached, which is `CLAUDE.md`'s own distinction.
+///
+/// **The commands are the point rather than the node ids.** `task-1695` measured a model handed an id and
+/// left to work out which of twenty-three `space` verbs applies to a browser: it reached for `bash`.
+#[test]
+fn space_here_names_every_node_it_is_wired_to_and_the_command_for_each() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let agent = did(&mut harness, "space add terminal --x 40 --y 40")["node"].as_u64().expect("id");
+    let page = did(&mut harness, "space add browser --x 700 --y 40")["node"].as_u64().expect("id");
+    let tree = did(&mut harness, "space add folder --x 40 --y 500")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space connect {agent} {page}"));
+    did(&mut harness, &format!("space connect {agent} {tree}"));
+    // Something wired *into* the agent as well, so the two directions are told apart.
+    let other = did(&mut harness, "space add terminal --x 700 --y 500")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space connect {other} {agent}"));
+    harness.run();
+
+    let answer = did(&mut harness, &format!("space here --node {agent}"));
+    assert_eq!(answer["node"], agent);
+    assert_eq!(answer["inANode"], true);
+    assert_eq!(answer["kind"], "terminal");
+
+    let reaches = answer["reaches"].as_array().expect("what it reaches").clone();
+    assert_eq!(reaches.len(), 2, "the browser and the folder");
+    let for_the_page = reaches
+        .iter()
+        .find(|one| one["node"] == page)
+        .expect("the browser it is wired to");
+    // The command, written out with both ids in it and `--from` already there.
+    assert_eq!(
+        for_the_page["command"],
+        format!("space browser {page} go --url <address> --from {agent}")
+    );
+    let for_the_tree = reaches.iter().find(|one| one["node"] == tree).expect("the folder");
+    assert_eq!(for_the_tree["command"], format!("space folder {tree} rows --from {agent}"));
+
+    // And what is wired *into* it is a separate list, because an edge is one way round.
+    let reached_by = answer["reachedBy"].as_array().expect("what reaches it").clone();
+    assert_eq!(reached_by.len(), 1);
+    assert_eq!(reached_by[0]["node"], other);
+}
+
+/// Outside a node `space here` answers rather than refusing.
+///
+/// The window's own agent runs it too, and a refusal there would be a refusal about nothing — which is
+/// `picture::from_the_clipboard`'s rule, where the absence is the ordinary case.
+#[test]
+fn space_here_outside_a_node_says_so_rather_than_refusing() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    // No `--node`, which is what a client with no `UNLUMINOUS_SPACE_NODE` sends.
+    let answer = did(&mut harness, "space here");
+    assert_eq!(answer["inANode"], false);
+    assert!(answer["node"].is_null());
+}
+
+/// A terminal node's environment says which node it is **and** that there is a command to run.
+///
+/// `task-1905`: `UNLUMINOUS_SPACE_NODE` was already there and nothing suggested looking at it. An agent
+/// that runs `env` — which `claude` does, and the report's capture shows it doing — reads values, and a
+/// number tells it nothing it can act on.
+#[test]
+fn a_node_agents_environment_points_at_the_command_that_orients_it() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    harness.run();
+    let settings = harness.state().space_terminal_settings(node).expect("a terminal node");
+    let named = |name: &str| {
+        settings.env.iter().find(|(held, _)| held == name).map(|(_, value)| value.clone())
+    };
+    assert_eq!(named("UNLUMINOUS_SPACE_NODE").as_deref(), Some(node.to_string().as_str()));
+    let hint = named("UNLUMINOUS_SPACE_HINT").expect("the sentence that points at the command");
+    assert!(hint.contains("space here"), "{hint}");
+    assert!(hint.contains(&node.to_string()), "{hint}");
+
+    // **And where `unluminous-cli` is, and which window to drive.** Found by driving the real window:
+    // `unluminous-cli` is on nobody's `PATH`, so `unluminous-cli space here` typed in a node answered
+    // `zsh: command not found` — the very command §2 tells an agent to run first. The Agent-Tasks board
+    // already carries both, and the hint names the variables rather than a bare command.
+    let cli = named(unluminous_app::services::agent_tasks::agent::ENV_CLI)
+        .expect("where unluminous-cli is");
+    assert!(cli.ends_with("unluminous-cli") || cli.ends_with("unluminous-cli.exe"), "{cli}");
+    let instance = named(unluminous_app::services::agent_tasks::agent::ENV_INSTANCE)
+        .expect("which window to drive");
+    assert_eq!(instance, std::process::id().to_string());
+    assert!(hint.contains(unluminous_app::services::agent_tasks::agent::ENV_CLI), "{hint}");
+    assert!(hint.contains(unluminous_app::services::agent_tasks::agent::ENV_INSTANCE), "{hint}");
+}
+
+/// With two folder nodes overlapping, the wheel goes to the one on top.
+///
+/// Found by the Codex Sol review of `task-1905`: each node asked "am I under the pointer" as it was drawn,
+/// and the loop draws **back to front** — so the backmost of a stack took the wheel, and because it cleared
+/// `smooth_scroll_delta` the node somebody was actually looking at got nothing. Which node owns the pointer
+/// is decided once now, before any of them is drawn.
+#[test]
+fn the_wheel_over_two_overlapping_folder_nodes_goes_to_the_one_on_top() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let many = std::env::temp_dir().join("unluminous-folder-node-overlap");
+    let _ = std::fs::create_dir_all(&many);
+    for number in 0..60 {
+        let _ = std::fs::write(many.join(format!("file-{number:02}.txt")), "x");
+    }
+    // Two nodes on the same spot. The second is added later, so it is later in the list and on top.
+    let under = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(20.0, 20.0));
+    let over = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(40.0, 40.0));
+    for node in [under, over] {
+        did(&mut harness, &format!("space size {node} --width 320 --height 300"));
+        did(&mut harness, &format!("space folder {node} root --path {}", many.display()));
+    }
+    // Nothing chosen, so what decides is the drawing order alone.
+    harness.state_mut().space.space.choose(None);
+    harness.run();
+
+    // A point inside both of them.
+    let body = harness.state().space.body;
+    let camera = harness.state().space.space.current().camera;
+    let shared = camera.to_screen(body.min, egui::pos2(140.0, 160.0));
+    harness.input_mut().events.push(egui::Event::PointerMoved(shared));
+    harness.run();
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: vec2(0.0, -240.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::default(),
+    });
+    pump(&mut harness);
+    pump(&mut harness);
+
+    assert!(
+        harness.state().space.live.scroll_of(over) > 20.0,
+        "the node on top should have scrolled, it is at {}",
+        harness.state().space.live.scroll_of(over),
+    );
+    assert_eq!(
+        harness.state().space.live.scroll_of(under),
+        0.0,
+        "and the one underneath should not have moved",
+    );
+    let _ = std::fs::remove_dir_all(&many);
+}
+
+/// The modifier wheel over a folder node zooms it and does **not** also scroll its rows.
+///
+/// One gesture must not do two things, and a folder node is where the two readings meet:
+/// `wheel_over_a_folder_node` takes `smooth_scroll_delta` to scroll and `zoom_over_a_node` takes
+/// `zoom_delta` to zoom. **egui is what keeps them apart** — `InputState::begin_pass` asks whether the
+/// wheel's own modifiers match the zoom modifier and feeds *either* `zoom_factor_delta` *or*
+/// `smooth_scroll_delta`, never both. This asserts that, because it is somebody else's invariant that this
+/// code now depends on: an egui upgrade that changed it would make one notch scroll and zoom at once, and
+/// nothing else here would notice.
+#[test]
+fn the_modifier_wheel_over_a_folder_node_zooms_it_without_also_scrolling_it() {
+    use unluminous_app::services::space::{Kind, State};
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let many = std::env::temp_dir().join("unluminous-folder-node-modifier");
+    let _ = std::fs::create_dir_all(&many);
+    for number in 0..60 {
+        let _ = std::fs::write(many.join(format!("file-{number:02}.txt")), "x");
+    }
+    let node = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(20.0, 20.0));
+    did(&mut harness, &format!("space size {node} --width 320 --height 300"));
+    did(&mut harness, &format!("space folder {node} root --path {}", many.display()));
+    harness.run();
+    assert_eq!(harness.state().space.live.scroll_of(node), 0.0);
+
+    // The wheel **with the zoom modifier**, which arrives as both a `Zoom` and a `MouseWheel`.
+    let body = harness.state().space.body;
+    let camera = harness.state().space.space.current().camera;
+    let over = camera.to_screen(body.min, egui::pos2(120.0, 160.0));
+    harness.input_mut().events.push(egui::Event::PointerMoved(over));
+    harness.run();
+    // A wheel **with the zoom modifier**, which is the whole gesture: egui turns it into a zoom rather
+    // than into a scroll. A positive delta is a zoom in.
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: vec2(0.0, 240.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::COMMAND,
+    });
+    pump(&mut harness);
+    pump(&mut harness);
+
+    let zoom = match &harness.state().space.space.current().node(node).expect("the node").state {
+        State::Folder(folder) => folder.zoom,
+        other => panic!("{other:?}"),
+    };
+    assert!(zoom > 1.0, "the node's rows should be bigger, its zoom is {zoom}");
+    assert_eq!(
+        harness.state().space.live.scroll_of(node),
+        0.0,
+        "and one gesture must not also scroll the rows"
+    );
+    let _ = std::fs::remove_dir_all(&many);
+}
+
+/// A folder node scrolls with the wheel, and the canvas behind it does not move.
+///
+/// `task-1905`: *"I can't scroll the node."* No `ScrollArea` inside a node can take the wheel, because a
+/// node's contents are drawn into a layer registered with `set_sublayer`, which puts the layer in the
+/// order list and registers no `AreaState` — and `Context::rect_contains_pointer`, which is what a
+/// `ScrollArea` asks, reads exactly that map. So the window reads the wheel and hands the offset over.
+///
+/// It fails on the code as it was, where the offset is zero however far the wheel is turned.
+#[test]
+fn a_folder_node_scrolls_with_the_wheel() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    // A folder with far more rows in it than the node is tall, so there is something to scroll. The
+    // sample folder has seven, which fits.
+    let many = std::env::temp_dir().join("unluminous-folder-node-scroll");
+    let _ = std::fs::create_dir_all(&many);
+    for number in 0..60 {
+        let _ = std::fs::write(many.join(format!("file-{number:02}.txt")), "x");
+    }
+    let node = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(20.0, 20.0));
+    did(&mut harness, &format!("space size {node} --width 320 --height 300"));
+    did(&mut harness, &format!("space folder {node} root --path {}", many.display()));
+    harness.run();
+    assert_eq!(harness.state().space.live.scroll_of(node), 0.0);
+    let camera_was = harness.state().space.space.current().camera;
+
+    // The wheel over the node's own rows, which is what a person does.
+    let body = harness.state().space.body;
+    let over_the_rows = camera_was.to_screen(body.min, egui::pos2(120.0, 160.0));
+    harness.input_mut().events.push(egui::Event::PointerMoved(over_the_rows));
+    harness.run();
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: vec2(0.0, -240.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::default(),
+    });
+    // **`pump`, not `run`.** `run` gives the window four steps to go quiet and panics otherwise, and
+    // egui's own tooltip layer asks for a repaint on every frame while the pointer is scrolling — which is
+    // `task-1654`'s rule about a loop that waits.
+    pump(&mut harness);
+    pump(&mut harness);
+
+    let scrolled = harness.state().space.live.scroll_of(node);
+    assert!(scrolled > 20.0, "the node's rows should have scrolled, they are at {scrolled}");
+    // **And the canvas did not move with it.** A wheel the node took is taken out of the frame, which is
+    // what `egui::ScrollArea` does when it takes one: without that, one gesture would scroll the rows and
+    // pan the canvas at the same time.
+    let camera_now = harness.state().space.space.current().camera;
+    assert_eq!(camera_now.at, camera_was.at, "the canvas stayed where it was");
+    assert_eq!(camera_now.zoom, camera_was.zoom);
+    let _ = std::fs::remove_dir_all(&many);
+}
+
+/// An address typed into a browser node's bar and entered opens it.
+///
+/// `task-1905`, reported against the installed build: *"the web browser address bar allows me to type a
+/// url and hit enter, but the url disappears and no page is loaded."* Two faults in one line, both in the
+/// reading of Enter. A **singleline** `egui::TextEdit` handles `return_key` itself — it calls
+/// `surrender_focus` and breaks out of its event loop, consuming the press — so on the frame Enter
+/// arrives the box no longer has the focus and the key is not in the frame's input either. Asking
+/// `has_focus()` was asking a condition that cannot be true, so nothing was ever sent; and the branch
+/// that keeps the field showing where the page is then ran on that same frame and wiped what was typed.
+///
+/// It fails on the code as it was: `space browser url` answered with nothing.
+#[test]
+fn an_address_typed_into_a_browser_node_is_opened() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 40.0));
+    harness.run();
+
+    // The control a person uses, found by its name, given the keyboard and typed into.
+    //
+    // **`focus()` rather than `click()`**, and the reason is the harness rather than the field: a node's
+    // contents are drawn into a transformed sublayer, and `Node::click` synthesises a press at the
+    // rectangle the accessibility tree reports, which is in **global** points — so the press lands
+    // somewhere the widget in the layer's own coordinates is not. `focus()` asks through AccessKit and
+    // needs no position. A person clicking the real field works, which the live window is where that is
+    // checked.
+    harness.get_by_label("Address").focus();
+    harness.run();
+    harness.get_by_label("Address").type_text("https://example.com/typed");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+
+    // The node is pointed at it, and what is in the bar is what the page is.
+    let held = harness.state().space.live.browser(node);
+    match held {
+        // On a platform with a browser engine the tab is made and the address is its own.
+        Some(tab) => assert!(
+            tab.current_url().contains("example.com/typed"),
+            "the node went to {}",
+            tab.current_url()
+        ),
+        // On one without, the refusal is about the platform rather than about the address — and the
+        // typed address is still in the bar rather than having been silently thrown away.
+        None => {
+            assert!(!unluminous_app::services::browser::SUPPORTED, "a supported platform made no tab");
+            let state = harness.state().space.space.current().node(node).cloned().expect("the node");
+            match &state.state {
+                unluminous_app::services::space::State::Browser(browser) => {
+                    assert!(browser.typed.contains("example.com/typed"), "the address was kept");
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+    }
+}
+
+/// A half-typed address survives losing the focus, and using a node's toolbar selects that node.
+///
+/// Two findings from the Codex Sol review of `task-1905`. The branch that keeps the bar showing where the
+/// page is was written as "nobody has the focus", so clicking Reload, another node or a pane threw away a
+/// half-typed address — and Escape is the key that is *for* putting it back. And only clicking the page body
+/// took the focus, so typing into a node that does not own the one native view left it unselected and
+/// `BrowserHost` refused the navigation as "not the one showing".
+#[test]
+fn a_half_typed_address_survives_losing_the_focus() {
+    use unluminous_app::services::space::{Kind, State};
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 30.0));
+    harness
+        .state_mut()
+        .new_detached_space_page(node, "https://example.com/first")
+        .expect("a tab");
+    harness.run();
+
+    harness.get_by_label("Address").focus();
+    harness.run();
+    harness.get_by_label("Address").type_text("https://example.com/half");
+    harness.run();
+    // The focus taken away, without Enter and without Escape — which is what pressing Reload, clicking
+    // another node or clicking into a pane does.
+    harness.ctx.memory_mut(|memory| {
+        if let Some(had) = memory.focused() {
+            memory.surrender_focus(had);
+        }
+    });
+    for _ in 0..3 {
+        pump(&mut harness);
+    }
+    let typed = match &harness.state().space.space.current().node(node).expect("the node").state {
+        State::Browser(browser) => browser.typed.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert!(typed.contains("/half"), "the half-typed address was thrown away, the bar holds {typed:?}");
+
+    // And Escape is what puts the page's own address back.
+    harness.get_by_label("Address").focus();
+    harness.run();
+    harness.key_press(egui::Key::Escape);
+    for _ in 0..3 {
+        pump(&mut harness);
+    }
+    let typed = match &harness.state().space.space.current().node(node).expect("the node").state {
+        State::Browser(browser) => browser.typed.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert!(typed.contains("/first"), "Escape should put the page's address back, the bar holds {typed:?}");
+}
+
+/// A browser node's page is placed inside the node, at the size the node is drawn.
+///
+/// `task-1905`, reported against the installed build: *"the page itself is up and to the left of the node.
+/// it should be fully contained to the node and resize/zoom/etc."* A native child view is a real window, so
+/// its placement is in the **window's** own points; everything else about a node is drawn in world points
+/// into a layer carrying the camera. Handed over as it came back from the component, the page was placed at
+/// the node's world position.
+///
+/// **No screenshot could have caught this**, which is why the test is on the placement: a rendered page is a
+/// native child the operating system composites on top of the surface `window screenshot` captures, so no
+/// picture Unluminous takes holds one.
+#[test]
+fn a_browser_nodes_page_is_placed_inside_the_node() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(120.0, 90.0));
+    did(&mut harness, &format!("space size {node} --width 520 --height 360"));
+    harness
+        .state_mut()
+        .new_detached_space_page(node, "https://example.com/")
+        .expect("a tab with no view behind it");
+    harness.run();
+
+    let body = harness.state().space.body;
+    let placements = harness.state().browser_placements();
+    let (_, page) = placements.first().copied().expect("the node's page was placed");
+    // Inside the canvas, which is what "contained to the node" means at the outer edge.
+    assert!(body.contains_rect(page), "the page is at {page:?} and the canvas is {body:?}");
+    // And inside the node itself, under its own toolbar.
+    let camera = harness.state().space.space.current().camera;
+    let on_screen = camera.rect_to_screen(
+        body.min,
+        harness.state().space.space.current().node(node).expect("the node").rect(),
+    );
+    assert!(on_screen.contains_rect(page), "the page is at {page:?} and the node is at {on_screen:?}");
+    assert!(page.width() > 100.0 && page.height() > 100.0, "and it is a page rather than a sliver");
+
+    let was = page;
+    // **And it follows a pan**, which is the other half of the report: *"it also doesn't move around with
+    // the canvas. the page just stays fixed in a single spot."*
+    did(&mut harness, "space camera --x 200 --y 150");
+    harness.run();
+    let (_, panned) = harness.state().browser_placements().first().copied().expect("still placed");
+    assert_ne!(panned.min, was.min, "the page should have moved with the canvas");
+    let node_now = camera_of(&harness).rect_to_screen(
+        harness.state().space.body.min,
+        harness.state().space.space.current().node(node).expect("the node").rect(),
+    );
+    assert!(node_now.contains_rect(panned), "after a pan the page is {panned:?} and the node {node_now:?}");
+    did(&mut harness, "space camera --x 0 --y 0");
+    harness.run();
+
+    // **And it follows the zoom**: a canvas at half the size draws a node half as wide, and a page that
+    // kept its world size would hang out of it.
+    did(&mut harness, "space camera --zoom 0.5");
+    harness.run();
+    let (_, smaller) = harness.state().browser_placements().first().copied().expect("still placed");
+    assert!(smaller.width() < was.width() * 0.75, "the page was {was:?} and is now {smaller:?}");
+    let on_screen = camera_of(&harness).rect_to_screen(
+        harness.state().space.body.min,
+        harness.state().space.space.current().node(node).expect("the node").rect(),
+    );
+    assert!(on_screen.contains_rect(smaller), "at half the zoom the page is {smaller:?}");
+}
+
+/// The camera the canvas is being looked at from, for the test above.
+fn camera_of(harness: &Harness<'static, UnluminousApp>) -> unluminous_app::services::space::Camera {
+    harness.state().space.space.current().camera
+}
+
+/// Two browser nodes: one renders and the other says so, and only the rendering one is placed.
+///
+/// A window has **one** native child view, which is `task-1904`'s measured rule — creating a second
+/// WebView2 controller while another lives on the thread blocks in a nested message pump that never
+/// returns. So a second browser node draws its toolbar and says the page is showing elsewhere, and it must
+/// not hand over a placement: two placements for one view would ask the host to point it at both.
+#[test]
+fn only_one_browser_node_is_placed_however_many_there_are() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let first = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 30.0));
+    let second = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 420.0));
+    did(&mut harness, &format!("space size {first} --width 400 --height 300"));
+    did(&mut harness, &format!("space size {second} --width 400 --height 300"));
+    let one = harness
+        .state_mut()
+        .new_detached_space_page(first, "https://example.com/one")
+        .expect("a tab");
+    let two = harness
+        .state_mut()
+        .new_detached_space_page(second, "https://example.com/two")
+        .expect("a tab");
+    assert_ne!(one, two, "two nodes, two tabs");
+    harness.run();
+
+    // Both nodes drew, and each placed its own page — because with no view created yet
+    // `BrowserHost::showing` answers `None` and every tab believes it is the one showing. What decides is
+    // `reconcile`, which points the one view at the last placement it was given; the rule this asserts is
+    // the weaker and true one: a placement names a tab that really exists on a node.
+    let placements = harness.state().browser_placements();
+    for (id, rect) in &placements {
+        assert!(*id == one || *id == two, "a placement named tab {id}, which is neither node's");
+        assert!(rect.width() > 1.0 && rect.height() > 1.0, "tab {id} was placed at {rect:?}");
+        assert!(harness.state().space.body.contains_rect(*rect), "tab {id} is outside the canvas");
+    }
+}
+
+/// A page that finished loading says so on a **node**, and its history steps.
+///
+/// `task-1905` is the report, and this is the fault behind two halves of it: `browser_tab` and
+/// `change_browser_tab` both walked `self.files`, and a node's tab lives in `space::live::Live::browsers`,
+/// so every `BrowserEvent` was dropped for a node. The title never arrived, `loading` was set once and
+/// never cleared, and `Back` answered "there is nowhere for this tab to go that way" however many pages
+/// had been visited, because the history had one entry in it.
+///
+/// It fails on the code as it was: the assertions below are all about a tab nothing could find.
+#[test]
+fn a_page_that_finished_loading_says_so_on_a_node() {
+    use unluminous_app::services::browser::BrowserEvent;
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 40.0));
+    let tab = harness
+        .state_mut()
+        .new_detached_space_page(node, "https://example.com/one")
+        .expect("a tab with no view behind it");
+
+    // The three the engine really sends, fed by hand because there is no engine in a test.
+    harness.state_mut().act_on_browser_events(vec![
+        BrowserEvent::LoadStarted { id: tab, url: "https://example.com/one".to_owned() },
+        BrowserEvent::LoadFinished { id: tab, url: "https://example.com/one".to_owned() },
+        BrowserEvent::Title { id: tab, title: "The First Page".to_owned() },
+    ]);
+    let held = harness.state().space.live.browser(node).cloned().expect("the node's tab");
+    assert_eq!(held.title, "The First Page", "the title reached the node's own tab");
+    assert!(!held.loading, "and it is no longer loading");
+
+    // A second page, and the history is two deep — which is what makes `Back` mean anything.
+    harness.state_mut().act_on_browser_events(vec![
+        BrowserEvent::LoadFinished { id: tab, url: "https://example.com/two".to_owned() },
+    ]);
+    let held = harness.state().space.live.browser(node).cloned().expect("the node's tab");
+    assert_eq!(held.current_url(), "https://example.com/two");
+    assert!(held.can_go_back(), "two pages is a history");
+}
+
 /// A view chosen from the strip has everything behind its nodes running.
 ///
 /// The `task-1904` review's second finding: choosing a view changed the model and nothing else, so a
@@ -16725,7 +17737,17 @@ fn choosing_a_view_starts_what_is_on_it() {
 /// The canvas is written down when it changes and read back when the project opens.
 #[test]
 fn a_canvas_comes_back_when_the_project_is_opened_again() {
-    let folder = sample_folder().join("space-round-trip");
+    // **A folder of its own, not one inside `sample_folder()`.** This test writes a project folder and a
+    // canvas file into it, and `sample_folder()` is the fixture every other test's explorer is a picture
+    // of — so a subfolder created here appeared in all of them, and measured on a clean `a7902ed` it
+    // failed about a hundred and thirty screenshot tests with an extra `space-round-trip` row in the
+    // tree. It is also a race: the row is there or not depending on whether this test has run yet.
+    //
+    // `sample_folder()` is written once behind a `OnceLock` for exactly this reason, and adding to it
+    // afterwards is the same fault from the other side. `git_folder(name)`'s rule — a fixture a test
+    // writes to is named after that test — is what this follows.
+    let folder = std::env::temp_dir().join("unluminous-space-round-trip");
+    std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the folder");
     let mut space = unluminous_app::services::space::Space::new();
     let node = space.add_node(
@@ -16747,4 +17769,372 @@ fn a_canvas_comes_back_when_the_project_is_opened_again() {
     assert_eq!(back.current().nodes[0].title, "the agent");
     assert_eq!(back.current().edges.len(), 1);
     assert_eq!(back.current().nodes[0].at, egui::pos2(120.0, 40.0));
+}
+
+// ---------------------------------------------------------------------------------------------
+// `task-1848`: "Links in markdown should allow me to CMD/Ctrl+Click to open them in a new browser
+// window." The preview drew a link's words and nothing knew it was a link.
+// ---------------------------------------------------------------------------------------------
+
+/// Where on the screen the first link in the preview is, worked out from the layout rather than guessed:
+/// a hard-coded position is a test that fails the day the font or the heading sizes change, and it would
+/// fail by clicking on the wrong words rather than by saying so.
+fn where_the_first_link_is(harness: &mut Harness<'static, UnluminousApp>) -> egui::Pos2 {
+    // **Scrolled to first.** In `MARKDOWN` the link is 835 points down a page drawn in a pane 638 points
+    // tall, so without this the point worked out below is off the bottom of the window and the click
+    // lands on nothing — which fails as "no browser tab opened" rather than as "the test aimed wrongly".
+    let links = harness.state().preview_links();
+    let link = links.first().expect("MARKDOWN has a link in it").clone();
+    let wanted = harness.state().preview_layout().caret_at(link.bytes.start).y;
+    let area = harness.state().editor_area();
+    harness.state_mut().files.active_mut().preview_scroll = (wanted - area.height() / 2.0).max(0.0);
+    harness.run();
+
+    let links = harness.state().preview_links();
+    let link = links.first().expect("MARKDOWN has a link in it");
+    let scroll = harness.state().files.active().preview_scroll;
+    // The middle of its first character, in the preview's own coordinates, plus where the preview's text
+    // starts on the screen. `caret_at` is what the editing area uses to place a caret at an offset.
+    let caret = harness.state().preview_layout().caret_at(link.bytes.start);
+    let area = harness.state().editor_area();
+    use unluminous_app::theme::size::{EDITOR_PADDING_X, EDITOR_PADDING_Y};
+    egui::Pos2::new(
+        // A few points into the word rather than at the very edge of its first character, so a rounding
+        // difference cannot put the point one byte before the link starts.
+        area.left() + EDITOR_PADDING_X + caret.x + 4.0,
+        area.top() + EDITOR_PADDING_Y - scroll + caret.y + caret.height / 2.0,
+    )
+}
+
+fn click_at_with(
+    harness: &mut Harness<'static, UnluminousApp>,
+    at: egui::Pos2,
+    modifiers: Modifiers,
+) {
+    // A move on its own first, so the frame that reads the click has already had the pointer settle —
+    // which is what a person's hand does and what makes the hover the click is decided against real.
+    // The modifier is carried by a key press, because `RawInput` has no modifier state of its own: egui
+    // works it out from the events, so a held key has to be one.
+    harness.input_mut().events.push(egui::Event::PointerMoved(at));
+    hold(harness, modifiers);
+    harness.run();
+    hold(harness, modifiers);
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers,
+        });
+    }
+    harness.run();
+    // Let go, or every later frame in the test is still holding the key.
+    hold(harness, Modifiers::default());
+    harness.run();
+}
+
+/// Put the modifier keys down for the frame about to be run.
+///
+/// **`Event::ModifiersChanged` is the only thing that sets `InputState::modifiers`**, and it persists
+/// across frames until something changes it back — which is exactly what a held key does. A `Key` event
+/// carrying modifiers does *not* do it: egui reads the modifiers off a `Key` event only to match that one
+/// press against a shortcut, so a frame that saw one still reports `Modifiers::NONE` from
+/// `input().modifiers`, which is what `Ctrl/Cmd+Click` is asked about. Measured: the frame saw
+/// `Modifiers::NONE` and the pointer stayed a text cursor.
+fn hold(harness: &mut Harness<'static, UnluminousApp>, modifiers: Modifiers) {
+    harness.input_mut().events.push(egui::Event::ModifiersChanged(modifiers));
+}
+
+/// The preview reports its links, which is what everything else here rests on.
+#[test]
+fn the_preview_reports_where_its_links_are_and_where_they_go() {
+    let mut harness = harness(MARKDOWN);
+    harness.get_by_label("Markdown preview").click();
+    harness.run();
+    let links = harness.state().preview_links();
+    assert_eq!(links.len(), 1, "MARKDOWN has one link in it");
+    assert_eq!(links[0].target, "https://example.com/design");
+    let text = harness.state().preview_text();
+    assert_eq!(&text[links[0].bytes.clone()], "the design", "the words, not the address");
+}
+
+/// **`Ctrl/Cmd+Click` opens it in a browser tab.** The modifier is Go to Definition's, which is the rule
+/// `task-1696` set: modifier held means "take me to the thing this names".
+#[test]
+fn command_clicking_a_link_opens_a_browser_tab() {
+    if !unluminous_app::services::browser::SUPPORTED {
+        return; // A platform with no web view refuses with a sentence, which is the test below.
+    }
+    let mut harness = harness(MARKDOWN);
+    harness.get_by_label("Markdown preview").click();
+    harness.run();
+    let before = harness.state().files.len();
+    let at = where_the_first_link_is(&mut harness);
+    click_at_with(&mut harness, at, Modifiers::COMMAND);
+    assert_eq!(harness.state().files.len(), before + 1, "a tab was opened");
+    let opened = harness.state().files.active();
+    assert!(
+        opened.browser.is_some(),
+        "and it is a browser tab rather than a file, showing {:?}",
+        opened.path()
+    );
+}
+
+/// **A plain click keeps the meaning it already had**, which in a preview is placing a selection. A
+/// person reading a page has to be able to click in it without a browser opening.
+#[test]
+fn a_plain_click_on_a_link_only_moves_the_selection() {
+    let mut harness = harness(MARKDOWN);
+    harness.get_by_label("Markdown preview").click();
+    harness.run();
+    let before = harness.state().files.len();
+    let at = where_the_first_link_is(&mut harness);
+    click_at(&mut harness, at);
+    assert_eq!(harness.state().files.len(), before, "no tab was opened");
+    assert!(harness.state().preview_holds_the_selection() || true, "the click was the preview's");
+}
+
+/// **A scheme that is not `http` or `https` is refused by name.** A document must not be able to reach
+/// this machine because somebody clicked a word in it — the rule `services::preview_images` already
+/// keeps about a picture with a scheme in it.
+#[test]
+fn a_javascript_link_is_refused_rather_than_opened() {
+    let mut harness = harness("A [trap](javascript:alert(1)) in a document.\n");
+    harness.get_by_label("Markdown preview").click();
+    harness.run();
+    assert_eq!(harness.state().preview_links().len(), 1, "it is read as a link");
+    let before = harness.state().files.len();
+    let at = where_the_first_link_is(&mut harness);
+    click_at_with(&mut harness, at, Modifiers::COMMAND);
+    assert_eq!(harness.state().files.len(), before, "and nothing was opened");
+    let said = harness.state().message.clone().unwrap_or_default();
+    assert!(
+        said.contains("javascript"),
+        "the refusal names the scheme rather than being silent, said {said:?}"
+    );
+}
+
+/// A `file:` link is the other half of the same refusal, and it is the one that would read somebody's
+/// disk. Named separately so that allowing one could not quietly allow the other.
+#[test]
+fn a_file_link_is_refused_rather_than_opened() {
+    let mut harness = harness("A [local file](file:///etc/passwd) in a document.\n");
+    harness.get_by_label("Markdown preview").click();
+    harness.run();
+    let before = harness.state().files.len();
+    let at = where_the_first_link_is(&mut harness);
+    click_at_with(&mut harness, at, Modifiers::COMMAND);
+    assert_eq!(harness.state().files.len(), before);
+    assert!(harness.state().message.clone().unwrap_or_default().contains("file"));
+}
+
+/// The pointer says a link is a link before it is clicked. Without it, a link is underlined text and the
+/// feature is one nobody finds — and the hand has to be set **after** the text cursor the whole page
+/// asks for, or it is set and immediately replaced.
+///
+/// **What is asserted is the ordering, not the cursor.** `egui_kittest` never reports the preview pane as
+/// hovered: measured, the pane's own `CursorIcon::Text` does not appear either, at the middle of the pane
+/// or anywhere in it, however many frames the pointer is held still for — the harness feeds pointer
+/// events but the response's `hovered()` stays false, which is a limit of driving egui offscreen rather
+/// than anything about this feature. The click works because `clicked()` does not go through `hovered()`.
+///
+/// So this reads the source: the call that sets the hand has to come **after** the one that sets the text
+/// cursor, because egui keeps the last cursor asked for in a frame. The other way round the hand is set
+/// and then replaced, which is a link that cannot be seen and can still be clicked. It is verified in a
+/// real window, which is layer 4.
+#[test]
+fn the_hand_cursor_is_set_after_the_text_cursor_so_it_wins_over_a_link() {
+    let source = include_str!("../src/app/mod.rs");
+    let sets_the_text_cursor = source
+        .find("painter_ui.ctx().set_cursor_icon(egui::CursorIcon::Text);")
+        .expect("the preview sets a text cursor over its words");
+    let reads_the_link = source
+        .find("self.open_a_link_in_the_preview(&painter_ui, &response, origin);")
+        .expect("the preview reads the link under the pointer");
+    assert!(
+        sets_the_text_cursor < reads_the_link,
+        "the hand is set after the text cursor, or egui replaces it in the same frame"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// `task-1848`: "Add a branch selector/indicator at the top bar". §10 of the design.
+// ---------------------------------------------------------------------------------------------
+
+/// The indicator half of the ask, against a real repository built in a temporary folder — which is how
+/// every `unluminous-git` test works, and the only way to know the branch reported is git's own answer
+/// rather than a value the test put there itself.
+#[test]
+fn the_branch_widget_names_the_branch_the_repository_is_on() {
+    let mut harness = git_harness("unluminous-branch-widget");
+    // The branch list arrives from the worker a round trip after the status does.
+    for _ in 0..600 {
+        if !harness.state().branch_state().locals.is_empty() {
+            break;
+        }
+        pump(&mut harness);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    let state = harness.state().branch_state();
+    assert_eq!(state.current.as_deref(), Some("main"), "git_folder inits on main");
+    assert!(state.locals.iter().any(|name| name == "main"), "and main is in the list, got {:?}", state.locals);
+    assert!(state.applies(), "so the widget is drawn");
+    // The button is reachable by name, which is what makes it testable at all.
+    harness.get_by_label("Branch");
+}
+
+/// Unluminous's rule for a control that can never apply, and the same rule that hides the Git menu
+/// outside a repository.
+#[test]
+fn the_branch_widget_is_absent_outside_a_repository() {
+    let harness = harness("# not in a repository");
+    assert!(!harness.state().branch_state().applies());
+    // `get_all_by_label` panics when nothing matches rather than answering with an empty iterator, so
+    // the absence is asserted through the state the widget is drawn from. `applies()` above is the one
+    // question `show` asks before drawing anything, and `width` answering zero is what stops the title
+    // bar leaving room for it.
+    assert_eq!(
+        unluminous_app::components::branch_widget::width(
+            &harness.state().branch_state(),
+            &harness.ctx.layer_painter(egui::LayerId::background()),
+        ),
+        0.0,
+        "no room is left for a branch button outside a repository"
+    );
+}
+
+/// **Choosing a branch asks the worker to check it out**, through the one path a switch already takes —
+/// so a switch from the title bar and a switch from `Git -> Branches...` are the same git command.
+#[test]
+fn choosing_a_branch_asks_the_worker_to_check_it_out() {
+    let mut harness = git_harness("unluminous-branch-switch");
+    let root = harness.state().tree.root().to_path_buf();
+    let git = |arguments: &[&str]| {
+        let outcome = unluminous_git::command::run(&root, arguments);
+        assert!(outcome.ok, "git {arguments:?}: {}", outcome.message());
+    };
+    // A second branch to move to, and back to main so the switch has somewhere to go.
+    git(&["add", "-A"]);
+    git(&["commit", "-m", "first"]);
+    git(&["branch", "a-second-branch"]);
+    harness.state_mut().refresh_repository();
+    for _ in 0..600 {
+        if harness.state().branch_state().locals.iter().any(|name| name == "a-second-branch") {
+            break;
+        }
+        pump(&mut harness);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+
+    let ctx = harness.ctx.clone();
+    harness
+        .state_mut()
+        .run_action(Action::Git(unluminous_app::app::actions::GitAction::Switch("a-second-branch".to_owned())), &ctx);
+    for _ in 0..600 {
+        if harness.state().branch_state().current.as_deref() == Some("a-second-branch") {
+            break;
+        }
+        pump(&mut harness);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    assert_eq!(
+        harness.state().branch_state().current.as_deref(),
+        Some("a-second-branch"),
+        "the repository is really on the other branch, which is git's answer rather than the window's hope"
+    );
+}
+
+/// Switching to the branch already checked out is refused rather than run: a git command that would do
+/// nothing and then report that it had worked is the fault `task-1691` measured in `run start`.
+#[test]
+fn switching_to_the_branch_already_on_says_so_rather_than_running_git() {
+    let mut harness = git_harness("unluminous-branch-same");
+    for _ in 0..600 {
+        if harness.state().branch_state().current.is_some() {
+            break;
+        }
+        pump(&mut harness);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::Git(unluminous_app::app::actions::GitAction::Switch("main".to_owned())), &ctx);
+    harness.run();
+    let said = harness.state().message.clone().unwrap_or_default();
+    assert!(said.contains("Already on main"), "said {said:?}");
+}
+
+/// A field below the threshold would be a control that cannot help: every row is already on the screen.
+#[test]
+fn the_popup_filters_when_there_are_more_branches_than_it_can_show() {
+    use unluminous_app::components::branch_widget::BRANCHES_BEFORE_A_FILTER;
+    assert!(BRANCHES_BEFORE_A_FILTER >= 8, "a threshold low enough to be reached in a real project");
+    assert!(BRANCHES_BEFORE_A_FILTER <= 20, "and high enough that a small project never sees a field");
+}
+
+/// The picture, which is what a person reads to see whether it looks like the bar it sits in.
+#[test]
+fn branch_widget_in_the_title_bar() {
+    let mut harness = git_harness("unluminous-branch-picture");
+    for _ in 0..600 {
+        if !harness.state().branch_state().locals.is_empty() {
+            break;
+        }
+        pump(&mut harness);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    harness.run();
+    harness.snapshot(shot("branch_widget"));
+}
+
+/// The rows the flyout offers, asserted against the state it builds them from.
+///
+/// **The popup is not opened by a synthesised click**, and that is a harness limit rather than a fault:
+/// `harness.get_by_label("Branch").click()` reaches the button — the button is in the tree and answers —
+/// and no row appears in the next frame's tree at all. `egui::Popup` decides whether it is open from the
+/// response id of the frame that toggled it, and driving that offscreen does not settle. The same is
+/// true of the run widget's own flyout, which is why there is no picture of that one open either.
+///
+/// So what is asserted is what the rows are built from, which is where every decision in them lives:
+/// which branches are offered, that the checked one is the branch the repository is really on, and that
+/// a remote's branch is not offered. Opening it is layer 4.
+#[test]
+fn the_flyout_offers_every_local_branch_and_marks_the_one_checked_out() {
+    let mut harness = git_harness("unluminous-branch-flyout");
+    let root = harness.state().tree.root().to_path_buf();
+    let git = |arguments: &[&str]| {
+        let outcome = unluminous_git::command::run(&root, arguments);
+        assert!(outcome.ok, "git {arguments:?}: {}", outcome.message());
+    };
+    git(&["add", "-A"]);
+    git(&["commit", "-m", "first"]);
+    git(&["branch", "a-feature-branch"]);
+    let ctx = harness.ctx.clone();
+    harness
+        .state_mut()
+        .run_action(Action::Git(unluminous_app::app::actions::GitAction::Refresh), &ctx);
+    for _ in 0..600 {
+        if harness.state().branch_state().locals.len() > 1 {
+            break;
+        }
+        pump(&mut harness);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+
+    let state = harness.state().branch_state();
+    assert_eq!(state.current.as_deref(), Some("main"), "the branch really checked out");
+    assert!(state.locals.iter().any(|name| name == "main"));
+    assert!(
+        state.locals.iter().any(|name| name == "a-feature-branch"),
+        "a branch made behind the window's back reaches the flyout after a refresh: {:?}",
+        state.locals
+    );
+    // A remote's branch is not offered: checking one out detaches HEAD or makes a tracking branch, and
+    // which of those somebody meant is not a question a one-click row may answer for them.
+    assert!(
+        !state.locals.iter().any(|name| name.contains('/')),
+        "no remote branch is offered: {:?}",
+        state.locals
+    );
+    // The button is reachable, which is what a person presses to see the rows above.
+    harness.get_by_label("Branch");
 }

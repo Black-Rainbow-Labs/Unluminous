@@ -965,7 +965,7 @@ unluminous-cli editor scroll --preview --top
 unluminous-cli editor preview
 ```
 
-Read the preview of the tab that is showing: a Markdown page as plain text with where its pictures and diagrams are, or, for a Mermaid file, what the diagram came out as.
+Read the preview of the tab that is showing: a Markdown page as plain text with where its pictures, diagrams and links are, or, for a Mermaid file, what the diagram came out as. Under `--json` each link reports the bytes of its words and the address it goes to, with a reference definition already resolved, so a document's links can be read without parsing its source.
 
 ```sh
 unluminous-cli editor preview --json
@@ -1423,7 +1423,7 @@ unluminous-cli panel reset
 
 ## space — the Base of Infinite Space: a canvas of terminals, web pages, folder trees and file editors, wired together
 
-The Base of Infinite Space is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `space browser`, `space folder`, `space editor` and `space send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `space view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.
+If `UNLUMINOUS_SPACE_NODE` is set in your environment you are running inside a node on this canvas, and `space here` is the first thing to run: it says which node you are, which nodes you are wired to, and the command that drives each of them. **`unluminous-cli` is not on your PATH** - it lives inside the application - so run it as `"$UNLUMINOUS_CLI" --instance $UNLUMINOUS_INSTANCE <command>`, which are both set in your environment. You may act on the nodes you are wired to and no others, so every command you send carries `--from <your node>`. The Base of Infinite Space is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `space browser`, `space folder`, `space editor` and `space send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `space view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.
 
 ### space show
 
@@ -1447,6 +1447,21 @@ Put the canvas away. Everything running on it keeps running.
 
 ```sh
 unluminous-cli space hide
+```
+
+### space here
+
+```
+unluminous-cli space here [--node <node>]
+```
+
+Which node this command is running inside, what that node is wired to, and the command that drives each of them. Run this **first** when `UNLUMINOUS_SPACE_NODE` is set in your environment: it is the one command that answers where you are, because the answer depends on which process is asking. Outside a node it says so and says what that means — every node is reachable and no `--from` is needed, which is the window's own agent.
+
+- `--node <node>` — Answer about this node rather than the one this process is in. Filled in from UNLUMINOUS_SPACE_NODE when it is not given, which is the ordinary case and needs nothing.
+
+```sh
+unluminous-cli space here
+unluminous-cli space here --json
 ```
 
 ### space view
@@ -1562,7 +1577,7 @@ unluminous-cli space delete-view Rendering
 unluminous-cli space add <kind> [--x <points>] [--y <points>] [--width <points>] [--height <points>] [--title <text>] [--command <text>] [--url <address>] [--root <path>] [--path <path>]
 ```
 
-Put a node on the view that is showing and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with UNLUMINOUS_SPACE_NODE set to its id so an agent started in it knows which node it is.
+Put a node on the view that is showing and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with UNLUMINOUS_SPACE_NODE set to its id so an agent started in it knows which node it is, UNLUMINOUS_SPACE_HINT saying what to run first, and UNLUMINOUS_CLI and UNLUMINOUS_INSTANCE saying where `unluminous-cli` is and which window it drives - it is on nobody's PATH.
 
 - `kind` — terminal, browser, folder or editor.
 
@@ -1777,6 +1792,44 @@ unluminous-cli space font 7 --size 16
 unluminous-cli space font 7 --smaller
 ```
 
+### space zoom
+
+```
+unluminous-cli space zoom <node> [--factor <number>] [--bigger] [--smaller] [--reset] [--from <node>]
+```
+
+How big one node draws what it holds. Each kind walks the number that really decides its size: a terminal and a file editor a point size, a folder view a multiplier over its rows, and a web browser the page's own zoom. With no flag at all it answers the factor the node is drawn at. This is what the modifier wheel over a node does, and it changes nothing about the canvas's own zoom, which is `space camera`.
+
+- `node` — The node's id.
+
+- `--factor <number>` — How big, as a multiplier for a folder or a browser, or a point size for a terminal or an editor.
+- `--bigger` — One step up.
+- `--smaller` — One step down.
+- `--reset` — Back to the size the window's own setting gives.
+- `--from <node>` — Which node is asking. It must be wired to the one it names.
+
+```sh
+unluminous-cli space zoom 7 --bigger
+unluminous-cli space zoom 9 --factor 1.5
+```
+
+### space address
+
+```
+unluminous-cli space address <node> <url> [--from <node>]
+```
+
+Type an address into a browser node's own address bar and enter it, which is what pressing Enter in that field does. `space browser <node> go` is the same navigation asked for directly; this exists so the control a person uses has a way in of its own.
+
+- `node` — The browser node's id.
+- `url` — The address, or a path to a local page in this project.
+
+- `--from <node>` — Which node is asking. It must be wired to the one it names.
+
+```sh
+unluminous-cli space address 9 https://example.com/
+```
+
 ### space browser
 
 ```
@@ -1803,7 +1856,7 @@ unluminous-cli space browser 9 url
 unluminous-cli space folder <node> <command> [--path <path>] [--from <node>]
 ```
 
-Drive a folder node: `expand` and `collapse` a folder in it, `select` a row, `open` a file into the editing area, `root` to point it at another folder, and `rows` to read what it is showing.
+Drive a folder node: `expand` and `collapse` a folder in it, `select` a row, `open` a file, `root` to point it at another folder, and `rows` to read what it is showing. `open` puts the file in a File Editor node this one is wired to when there is one, and in the editing area when there is not — which is what a double click in the node does. `root` is what the node's own `Choose Folder...` menu row calls, so several folder nodes can show several different folders.
 
 - `node` — The folder node's id.
 - `command` — expand, collapse, select, open, root or rows.
@@ -3201,6 +3254,34 @@ Run one of the entries on the Git menu. Git runs on a thread, so the answer says
 unluminous-cli git action fetch --wait 20000
 unluminous-cli git action annotate
 unluminous-cli git action show-history --path README.md
+```
+
+### git branches
+
+```
+unluminous-cli git branches
+```
+
+The branches of the project, saying which one is checked out and which live on a remote. This is what the branch button in the title bar lists, read from the status git already reported rather than by running a git command.
+
+```sh
+unluminous-cli git branches --json
+```
+
+### git switch
+
+```
+unluminous-cli git switch <branch> [--wait <milliseconds>]
+```
+
+Move to a branch that already exists, which is what choosing one from the title bar's branch button does. It goes through the machine's real git on a thread, so uncommitted work that would be overwritten stops it with git's own message rather than being discarded; `git action new-branch` is how a branch is started.
+
+- `branch` — The branch to move to, as `git branches` names it.
+
+- `--wait <milliseconds>` — Wait up to this long for git to answer before returning.
+
+```sh
+unluminous-cli git switch main --wait 20000
 ```
 
 ## action — every menu entry there is

@@ -26,7 +26,8 @@ pub(crate) enum Kind {
     Text,
     /// Inline code: the monospaced family, the code colour, and a chip drawn behind it.
     Code,
-    /// A link's label: the link colour, underlined. The address is not shown.
+    /// A link's label: the link colour, underlined. The address is not shown in the text — it is on
+    /// `Span::target`, which is what lets the window open it without reading the source again.
     Link,
     /// Said in the quiet colour: a picture's alt text, a footnote's number.
     Quiet,
@@ -42,6 +43,17 @@ pub(crate) struct Span {
     pub italic: bool,
     pub strike: bool,
     pub kind: Kind,
+    /// Where a `Kind::Link` goes, and `None` for everything else.
+    ///
+    /// `task-1848`: "Links in markdown should allow me to CMD/Ctrl+Click to open them in a new browser
+    /// window." The preview drew a link's words and nothing knew it was a link, so the address was read
+    /// and thrown away here. It is carried rather than looked up again from the source, because by the
+    /// time the window has a click it holds a byte offset into the **preview**, and the source that
+    /// produced it may have been edited since.
+    ///
+    /// It is on the span rather than on `Kind`, which is `Copy` and twelve bytes and is compared all
+    /// over this module.
+    pub target: Option<String>,
 }
 
 impl Span {
@@ -51,6 +63,7 @@ impl Span {
             && self.italic == other.italic
             && self.strike == other.strike
             && self.kind == other.kind
+            && self.target == other.target
             && self.kind != Kind::Break
     }
 }
@@ -93,7 +106,7 @@ enum Node {
     Code(String),
     Quiet(String),
     Break,
-    Link(Vec<Node>),
+    Link { target: String, children: Vec<Node> },
     Emph { bold: bool, italic: bool, strike: bool, children: Vec<Node> },
 }
 
@@ -123,7 +136,7 @@ const HTML_ITALIC: char = '\u{2}';
 pub(crate) fn parse(text: &str, references: &References) -> Vec<Span> {
     let nodes = scan(text, references);
     let mut spans = Vec::new();
-    flatten(&nodes, Span { text: String::new(), bold: false, italic: false, strike: false, kind: Kind::Text }, &mut spans);
+    flatten(&nodes, Span { text: String::new(), bold: false, italic: false, strike: false, kind: Kind::Text, target: None }, &mut spans);
     fold(spans)
 }
 
@@ -155,8 +168,9 @@ fn flatten(nodes: &[Node], state: Span, out: &mut Vec<Span>) {
                 out.push(Span { text: text.clone(), kind: Kind::Quiet, ..state.clone() })
             }
             Node::Break => out.push(Span { text: String::new(), kind: Kind::Break, ..state.clone() }),
-            Node::Link(children) => {
-                let inside = Span { kind: Kind::Link, ..state.clone() };
+            Node::Link { target, children } => {
+                let inside =
+                    Span { kind: Kind::Link, target: Some(target.clone()), ..state.clone() };
                 flatten(children, inside, out);
             }
             Node::Emph { bold, italic, strike, children } => {
@@ -294,7 +308,9 @@ fn scan(text: &str, references: &References) -> Vec<Node> {
             if let Some(length) = read_bare_link(rest) {
                 push_text(&mut stack, &mut plain);
                 let address = &rest[..length];
-                top(&mut stack).nodes.push(Node::Link(vec![Node::Text(address.to_owned())]));
+                top(&mut stack)
+                    .nodes
+                    .push(Node::Link { target: address.to_owned(), children: vec![Node::Text(address.to_owned())] });
                 at += length;
                 continue;
             }
@@ -532,10 +548,16 @@ fn read_angle(rest: &str, stack: &mut Vec<Frame>) -> Option<(Option<Node>, usize
     }
     // An autolink: a scheme and a colon, or an email address.
     if inner.contains(':') && !inner.starts_with(':') {
-        return Some((Some(Node::Link(vec![Node::Text(inner.to_owned())])), length));
+        return Some((Some(Node::Link { target: inner.to_owned(), children: vec![Node::Text(inner.to_owned())] }), length));
     }
     if inner.contains('@') && inner.contains('.') {
-        return Some((Some(Node::Link(vec![Node::Text(inner.to_owned())])), length));
+        return Some((
+            Some(Node::Link {
+                target: format!("mailto:{inner}"),
+                children: vec![Node::Text(inner.to_owned())],
+            }),
+            length,
+        ));
     }
     let name = tag_name(inner)?;
     Some((html_tag(&name, inner, stack), length))
@@ -621,8 +643,12 @@ fn read_link(rest: &str, references: &References, picture: bool) -> Option<ReadL
     // An inline destination.
     if after.starts_with('(') {
         if let Some(end) = destination_end(after) {
+            // `(destination "a title")` — the title is read and dropped, which is what the preview has
+            // always done, and the address is everything up to the first unescaped space outside angle
+            // brackets.
+            let inside = &after[1..end];
             return Some(ReadLink {
-                node: Some(label_node(label, picture, references)),
+                node: Some(label_node(label, &destination_of(inside), picture, references)),
                 length: close + 1 + end + 1,
             });
         }
@@ -632,28 +658,46 @@ fn read_link(rest: &str, references: &References, picture: bool) -> Option<ReadL
     if let Some(second) = after.strip_prefix('[') {
         if let Some(end) = second.find(']') {
             let name = if second[..end].trim().is_empty() { label } else { &second[..end] };
-            if references.link(name).is_some() {
+            if let Some(target) = references.link(name) {
+                let target = target.to_owned();
                 return Some(ReadLink {
-                    node: Some(label_node(label, picture, references)),
+                    node: Some(label_node(label, &target, picture, references)),
                     length: close + 1 + end + 2,
                 });
             }
             return None;
         }
     }
-    if references.link(label).is_some() {
-        return Some(ReadLink { node: Some(label_node(label, picture, references)), length: close + 1 });
+    if let Some(target) = references.link(label) {
+        let target = target.to_owned();
+        return Some(ReadLink {
+            node: Some(label_node(label, &target, picture, references)),
+            length: close + 1,
+        });
     }
     None
 }
 
 /// A link's label goes through the whole inline pass, because it can hold marks of its own. A
 /// picture's alt text does not: it stands in for a picture and is shown plainly.
-fn label_node(label: &str, picture: bool, references: &References) -> Node {
+fn label_node(label: &str, target: &str, picture: bool, references: &References) -> Node {
     if picture {
         return Node::Quiet(label.to_owned());
     }
-    Node::Link(scan(label, references))
+    Node::Link { target: target.to_owned(), children: scan(label, references) }
+}
+
+/// The address out of an inline destination's brackets: `example.com "a title"` is `example.com`, and
+/// `<a b.com>` is `a b.com`.
+///
+/// The title is dropped, which is what `References` already does with a reference definition's title, so
+/// a link written either way answers the same thing.
+fn destination_of(inside: &str) -> String {
+    let inside = inside.trim();
+    if let Some(rest) = inside.strip_prefix('<') {
+        return rest.split('>').next().unwrap_or("").to_owned();
+    }
+    inside.split_whitespace().next().unwrap_or("").to_owned()
 }
 
 /// Where the `]` matching the `[` at the start of `rest` is, counting nesting and skipping escapes.

@@ -324,8 +324,26 @@ impl Configuration {
     }
 
     /// Where the board file is, whether or not one was configured.
-    pub fn database_path(&self) -> PathBuf {
-        self.database.clone().unwrap_or_else(Store::default_path)
+    ///
+    /// `folder` is the plugin's own folder under whichever settings store the window is using, and `None`
+    /// is a window with no store at all — a test's window, which gets a board **in memory**. That is what
+    /// makes a window pointed at a temporary store keep its board there too; see
+    /// [`Store::default_path_in`] for the fault this replaced.
+    pub fn database_path(&self, folder: Option<&std::path::Path>) -> Option<PathBuf> {
+        match (&self.database, folder) {
+            (Some(named), _) => Some(named.clone()),
+            (None, Some(folder)) => Some(Store::default_path_in(folder)),
+            (None, None) => None,
+        }
+    }
+
+    /// The same answer as text, for the places that report it. `in memory` is what a window with no
+    /// settings folder has, which is a test's window.
+    pub fn database_said(&self, folder: Option<&std::path::Path>) -> String {
+        match self.database_path(folder) {
+            Some(path) => path.display().to_string(),
+            None => "in memory".to_owned(),
+        }
     }
 }
 
@@ -893,7 +911,7 @@ impl std::fmt::Debug for AgentTasks {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         out.debug_struct("AgentTasks")
             .field("open", &self.is_open())
-            .field("database", &self.configuration.database_path())
+            .field("database", &self.configuration.database_said(self.folder.as_deref()))
             .field("view", &self.view)
             .field("cards", &self.board.total())
             .field("terminals", &self.terminals.len())
@@ -1127,6 +1145,17 @@ impl AgentTasks {
 
     pub fn results(&self) -> &[Task] {
         &self.results
+    }
+
+    /// Where this board's file is, and `None` for a board in memory — which is a window with no
+    /// settings folder, so a test's window. See [`store::Store::default_path_in`].
+    pub fn database_path(&self) -> Option<PathBuf> {
+        self.configuration.database_path(self.folder.as_deref())
+    }
+
+    /// The same as text, with `in memory` for a board that has no file.
+    pub fn database_said(&self) -> String {
+        self.configuration.database_said(self.folder.as_deref())
     }
 
     pub fn configuration(&self) -> &Configuration {
@@ -1549,7 +1578,7 @@ impl AgentTasks {
                 }
                 environment.push((
                     "UNLUMINOUS_AGENT_TASKS".to_owned(),
-                    self.configuration.database_path().display().to_string(),
+                    self.configuration.database_said(self.folder.as_deref()),
                 ));
                 // The two the handoff line names. Without them the line would have to hold an absolute
                 // path and a process id, which is a line nobody could read and nobody could retype.
@@ -2447,8 +2476,12 @@ impl UiProvider for AgentTasks {
         match context.folder.clone() {
             Some(folder) => {
                 self.configuration = Configuration::read(&folder);
+                let path = self
+                    .configuration
+                    .database_path(Some(&folder))
+                    .expect("a folder was named, so there is a path");
                 self.folder = Some(folder);
-                self.store = Some(Store::open(self.configuration.database_path())?);
+                self.store = Some(Store::open(path)?);
             }
             None => {
                 self.configuration = Configuration::default();
@@ -2549,24 +2582,37 @@ impl UiProvider for AgentTasks {
                     })));
                 }
                 // Copied first, and named for when it was made, so two clears do not overwrite one another.
-                let file = self.configuration.database_path();
+                // A board in memory has no file to copy first, which is a test's window rather than
+                // anybody's board — so the copy is skipped rather than the clear being refused.
                 let stamp = clock::now().replace([':', '.'], "-");
-                let copy = file.with_file_name(format!("board-before-clear-{stamp}.sqlite3"));
-                let copied = self.store()?.copy_the_file(&copy)?;
+                let copy = self
+                    .configuration
+                    .database_path(self.folder.as_deref())
+                    .map(|file| file.with_file_name(format!("board-before-clear-{stamp}.sqlite3")));
+                let copied = match &copy {
+                    Some(copy) => Some(self.store()?.copy_the_file(copy)?),
+                    None => None,
+                };
                 let (tickets, todos, comments) = self.store()?.clear_the_tickets()?;
                 self.close_detail();
                 self.refresh()?;
-                self.message = format!(
-                    "{tickets} tickets deleted, with {todos} todos and {comments} comments. The board as it was \
-                     is in {}",
-                    copied.display()
-                );
+                self.message = match &copied {
+                    Some(copied) => format!(
+                        "{tickets} tickets deleted, with {todos} todos and {comments} comments. The board \
+                         as it was is in {}",
+                        copied.display()
+                    ),
+                    None => format!(
+                        "{tickets} tickets deleted, with {todos} todos and {comments} comments. This \
+                         board is in memory, so there is no copy of it as it was."
+                    ),
+                };
                 Ok(Answer::said(self.message.clone()).with(json!({
                     "deleted": true,
                     "tickets": tickets,
                     "todos": todos,
                     "comments": comments,
-                    "backup": copied.display().to_string(),
+                    "backup": copied.as_ref().map(|copied| copied.display().to_string()),
                 })))
             }
             // `task-28`: the same change the two buttons on a description and on each comment make, reached the
@@ -3208,7 +3254,7 @@ impl UiProvider for AgentTasks {
     fn view(&self) -> serde_json::Value {
         json!({
             "open": self.is_open(),
-            "database": self.configuration.database_path().display().to_string(),
+            "database": self.configuration.database_said(self.folder.as_deref()),
             "view": self.view.name(),
             "modal": self.modal_open,
             // Which way the open ticket is being read, so an agent can see what a person is looking at rather
