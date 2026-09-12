@@ -115,6 +115,13 @@ struct Awaited {
     url: String,
     /// Where in this tab's history the page belongs, when a step asked for it.
     position: Option<usize>,
+    /// Whether this is a **new** address this tab was sent to, rather than a step along its own history.
+    ///
+    /// **What it decides is whether a redirect is followed.** A page that arrives at a different address from
+    /// the one asked for is a redirect when the tab typed an address, and is the view reporting the page it is
+    /// *leaving* when the tab took a step or was switched to — those two cases look identical from here and
+    /// must not be treated the same. See the redirect branch in [`BrowserTab::arrived_at`]. `task-1907`.
+    typed: bool,
 }
 
 impl BrowserTab {
@@ -163,7 +170,29 @@ impl BrowserTab {
     /// Take a step this tab asked for, so the page that arrives is not read as a new address.
     pub fn heading_for(&mut self, position: usize) {
         let url = self.history[position].clone();
-        self.awaiting = Some(Awaited { url, position: Some(position) });
+        self.awaiting = Some(Awaited { url, position: Some(position), typed: false });
+        self.loading = true;
+    }
+
+    /// Record an address this tab has been sent to, whether or not the shared view can go there now.
+    ///
+    /// **A window has one native view**, so `BrowserHost::navigate` refuses a tab that is not the one
+    /// showing. Before `task-1907` that refusal threw the address away while the *node* recorded it, so a
+    /// canvas with two browser nodes held an address its page had never reached — and `space.conf` was
+    /// written from that. What a tab knows is where it *should* be; the view is sent there when this tab is
+    /// the one rendering, which is what [`Self::pointed_at`] already does for a tab being switched to.
+    ///
+    /// This is [`Self::arrived_at`]'s push half without the arrival: whatever was ahead of the current
+    /// position is dropped, because typing an address is a new branch of history rather than a step along
+    /// the one that is there.
+    pub fn heading_for_a_new_page(&mut self, url: &str) {
+        let url = canonical(url);
+        if self.current_url() != url {
+            self.history.truncate(self.position + 1);
+            self.history.push(url.clone());
+            self.position = self.history.len() - 1;
+        }
+        self.awaiting = Some(Awaited { url, position: Some(self.position), typed: true });
         self.loading = true;
     }
 
@@ -174,7 +203,7 @@ impl BrowserTab {
     /// *from* as somewhere it had been, and offer a `Back` to a page it had never shown.
     pub fn pointed_at(&mut self) {
         let url = self.current_url().to_owned();
-        self.awaiting = Some(Awaited { url, position: None });
+        self.awaiting = Some(Awaited { url, position: None, typed: false });
         self.loading = true;
     }
 
@@ -188,6 +217,26 @@ impl BrowserTab {
         let url = canonical(&url);
         if let Some(awaited) = &self.awaiting {
             if awaited.url != url {
+                // **A page this tab asked for that arrives somewhere else is a redirect, and it is taken.**
+                // Ignoring it left `loading` true for ever and the history naming an address the tab never
+                // reached: measured on a real window, `http://github.com/` was still reported as the tab's
+                // address, still loading, minutes after the page had settled on `https://github.com/`. The
+                // Codex Sol review of `task-1907` found it, and `task-1907`'s own §2 is what made it reachable
+                // from a browser node — a redirect was previously only met on a tab in the editing area.
+                //
+                // **Only for an address this tab typed**, which is what `position: None` means. A *step* names
+                // an entry that is already in the history, so a page arriving at a different address there is
+                // the view reporting the page it is leaving — which is the case this whole branch exists to
+                // ignore, and is why `pointed_at` and `heading_for` are unaffected.
+                if !awaited.typed {
+                    return;
+                }
+                self.awaiting = None;
+                self.loading = false;
+                // The destination replaces the address that redirected, rather than being pushed after it: a
+                // `Back` to the address that only ever answered with a redirect would redirect again, which is
+                // what every browser collapses and why `history` names where the tab really is.
+                self.history[self.position] = url;
                 return;
             }
             let position = awaited.position;

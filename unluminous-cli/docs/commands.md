@@ -1771,17 +1771,19 @@ unluminous-cli space send 9 cargo test --from 7
 ### space restart
 
 ```
-unluminous-cli space restart <node> [--resume]
+unluminous-cli space restart <node> [--resume] [--running]
 ```
 
-Start a terminal node's program again in the same folder. With `--resume` it starts the agent on the conversation it named, which Claude takes and Codex does not.
+Start a terminal node's program again in the same folder. With `--resume` it starts the agent on the conversation it named, which Claude takes and Codex does not. With `--running` it types the program the node was last seen running into the shell it already has, which is what a node comes back as when somebody typed an agent into a plain terminal rather than giving the node a command.
 
 - `node` — The terminal node's id.
 
 - `--resume` — Start the agent on the session it named, rather than a fresh one.
+- `--running` — Type what the node was last seen running into its shell, continuing an agent's most recent conversation in that folder. What is recorded is a program name rather than a command line, so its arguments are not restored.
 
 ```sh
 unluminous-cli space restart 7 --resume
+unluminous-cli space restart 7 --running
 ```
 
 ### space font

@@ -663,8 +663,12 @@ pub fn paint_text(ui: &egui::Ui, renderer: &TextRenderer, text: &Rope, layout: &
                         // Snap the glyph to whole pixels. A glyph is drawn at exactly the size it was
                         // rasterised at, so landing it on a fraction of a pixel would resample it and
                         // soften every letter on screen.
+                        //
+                        // **Whole pixels, which are not whole points inside a node**: on the canvas the layer
+                        // carries the camera, so rounding to points would fight the scaling and space the
+                        // letters unevenly. `Crispness::snap` is that arithmetic — `task-1907`.
                         let at = to_screen(cluster.x + glyph.offset.x, baseline + glyph.offset.y);
-                        let at = Pos2::new(at.x.round(), at.y.round());
+                        let at = renderer.crispness().snap(at);
                         placed.push((Rect::from_min_size(at, glyph.size), glyph.uv, color));
                     });
                 }

@@ -33,6 +33,12 @@ pub struct Live {
     selecting: HashMap<NodeId, bool>,
     /// What each node's outgoing pipes have read, and what has been typed into it.
     taps: HashMap<NodeId, Tap>,
+    /// Which nodes have had something typed into them since the window opened.
+    ///
+    /// **Separate from `taps`, which every started terminal has an entry in**: `follow_from_here` makes one the
+    /// moment a session starts, so `taps` answers "this node exists" rather than "somebody has used it". See
+    /// [`Self::has_been_used`] for what depends on the difference. `task-1907`.
+    typed: std::collections::HashSet<NodeId>,
     browsers: HashMap<NodeId, BrowserTab>,
     trees: HashMap<NodeId, FileTree>,
     /// Which row a folder node's own cursor is on.
@@ -198,6 +204,25 @@ impl Live {
     /// target's shell will echo, and an echo forwarded is the same loop by another route.
     pub fn typed_into(&mut self, node: NodeId, line: &str) {
         self.taps.entry(node).or_default().sent(line);
+        self.typed.insert(node);
+    }
+
+    /// Whether anything has been typed into this node since the window opened.
+    ///
+    /// **What it is for is deciding whether a shell is a shell somebody is really at.** A restored terminal
+    /// node starts a shell, so the first reading of what it is running is a prompt — and that would clear the
+    /// program `space.conf` held before anything could offer it. See the guard in
+    /// `UnluminousApp::note_what_a_node_is_running`. The protection has to end, or a program somebody
+    /// deliberately quit would be offered on every restart from then on; once something has been typed, a
+    /// prompt is a prompt somebody really is at. `task-1907`.
+    ///
+    /// **Not a `taps` entry, which every started node has.** `follow_from_here` inserts one the moment a
+    /// terminal starts, so asking `taps` answered yes for every restored node and the protection never applied
+    /// at all — measured on the released build, `running = sleep` survived the window closing and was cleared
+    /// a second after it reopened. What is counted is lines a person or an agent really sent, which is
+    /// [`Self::typed_into`]'s own event.
+    pub fn has_been_used(&self, node: NodeId) -> bool {
+        self.typed.contains(&node)
     }
 
     // ------------------------------------------------------------------------------- browsers
@@ -297,6 +322,7 @@ impl Live {
         }
         self.selecting.remove(&node);
         self.taps.remove(&node);
+        self.typed.remove(&node);
         self.browsers.remove(&node);
         self.trees.remove(&node);
         self.selected.remove(&node);

@@ -73,12 +73,17 @@ const CHANGE_BAR: f32 = 3.0;
 const NUMBER_RATIO: f32 = 11.5 / crate::settings::DEFAULT_FONT_SIZE;
 /// The size the blame column is set at, on the same terms.
 const BLAME_RATIO: f32 = 10.5 / crate::settings::DEFAULT_FONT_SIZE;
-/// The smallest and largest the gutter's own type is allowed to get.
+/// The smallest the gutter's own type is allowed to get.
 ///
-/// Six point text still needs a gutter somebody can read, and a hundred and forty-four point text
-/// must not have a gutter wider than the editing area beside it.
+/// Six point text still needs a gutter somebody can read, and this is the one end where following the
+/// editor's size exactly buys nothing.
+///
+/// **There is deliberately no largest.** There was one, 28 points, and `task-1907` reports what it did: the
+/// numbers stopped growing with the text above about 39 points and stopped shrinking below about 13, so they
+/// did not follow the letters at either end. The requirement it was standing in for — that the gutter must not
+/// take the editing area — is about the **width** of the column, and it is measured as that in
+/// [`fitted_size`], where it is true at every size.
 const SMALLEST_TYPE: f32 = 9.0;
-const LARGEST_TYPE: f32 = 28.0;
 /// How wide the square a folding arrow is drawn and clicked in is. The whole of [`GAP`], so the
 /// target is as large as the space allows — a five point arrow with a five point target is a control
 /// nobody can hit.
@@ -183,16 +188,29 @@ fn blame_width(font_size: f32) -> f32 {
     BLAME_WIDTH * blame_size(font_size) / (crate::settings::DEFAULT_FONT_SIZE * BLAME_RATIO)
 }
 
-/// One of the gutter's two type sizes, clamped so that neither extreme of the zoom is unusable.
+/// One of the gutter's two type sizes.
 ///
 /// A `font_size` of zero — which is what `Gutter::default()` gives — means the default size, so a
 /// test that builds a gutter by hand gets the sizes the gutter has always used.
+///
+/// **The numbers follow the letters, and the only thing that overrides that is the gutter running out of
+/// room.** This used to end `.clamp(SMALLEST_TYPE, LARGEST_TYPE)`, and `task-1907` reports what a **ceiling**
+/// on a number that is supposed to track another number does: the numbers stopped growing above about 39
+/// points of text and stopped shrinking below about 13, so they did not shrink or grow with the text at
+/// either end. It is the same shape as the fault `task-1771` found in the ticket modal, where *"a floor is
+/// exactly the thing that makes a budget stop adding up."*
+///
+/// `task-1693` put the clamp there and its reason is kept rather than discarded — *"a hundred and forty-four
+/// point text must not have a gutter wider than the editing area beside it"* — but that is a statement about
+/// how wide the **column** is, so it is measured in [`width`] where it can be true at every size. The floor
+/// stays here, because a number nobody can read is not a number, and it is the one end where following the
+/// text exactly has no value.
 fn type_size(font_size: f32, ratio: f32) -> f32 {
     let size = match font_size > 0.0 {
         true => font_size,
         false => crate::settings::DEFAULT_FONT_SIZE,
     };
-    (size * ratio).clamp(SMALLEST_TYPE, LARGEST_TYPE)
+    (size * ratio).max(SMALLEST_TYPE)
 }
 
 /// The box the letters of `line` actually occupy on screen, given the layout's `top`.
@@ -301,11 +319,85 @@ fn digits(lines: usize) -> usize {
     count
 }
 
-/// How wide the gutter is, which the window needs before it can lay the editing area out.
+/// The most of the pane the gutter may take before its type stops following the editor's.
+///
+/// **What `LARGEST_TYPE` was really protecting**, said as the thing it is about. `task-1693` capped the
+/// gutter's *type* so that *"a hundred and forty-four point text must not have a gutter wider than the editing
+/// area beside it"* — a true requirement, approximated by a ceiling that also stopped the numbers following
+/// the text at every ordinary size. Measured here instead, it is true at every size and costs the numbers
+/// nothing until the column genuinely runs out of room. `task-1907`.
+const GUTTER_SHARE: f32 = 0.3;
+
+/// How wide the gutter is, given the room it has, and the type size that fits in it.
 ///
 /// The number column is sized for the largest line number the file has rather than for the largest
 /// on screen, so the text does not shift sideways as the file is scrolled past line 99.
+///
+/// **`room` is the width of the whole editing pane**, and what it decides is only the case where the gutter
+/// would take more than [`GUTTER_SHARE`] of it — a hundred and forty-four point file in a narrow pane. The
+/// type is reduced until it fits rather than the column being clipped, because a number drawn half off the
+/// edge of the gutter is worse than a smaller number.
+pub fn fitted_size(ui: &egui::Ui, gutter: &Gutter, lines: usize, room: f32) -> f32 {
+    if gutter.font_size <= 0.0 {
+        return gutter.font_size;
+    }
+    let digits = digits_width(ui, gutter, lines, gutter.font_size);
+    let fixed = width_at(ui, gutter, lines, gutter.font_size) - digits;
+    size_that_fits(gutter.font_size, digits, fixed, room * GUTTER_SHARE)
+}
+
+/// The type size at which a gutter of `fixed` points plus `digits` points of numerals fits in `most`.
+///
+/// **Pure arithmetic, split out so it can be tested with no window**, which is the only way the case that
+/// matters can be reached: it takes a very large font, many line numbers and a pane narrower than any
+/// screenshot window with an explorer in it. `fitted_size` measures the two widths from real fonts and hands
+/// them here.
+///
+/// **`digits` is the only part that scales with the type.** `CHANGE_BAR`, `GAP` and `NUMBER_MARGIN` are fixed
+/// points, so scaling the size by the ratio the *whole* width overshot by lands short and the column stays over
+/// its share — measured, a 400 point pane wanting 343.5 points of gutter came out at 141.5 against a cap of
+/// 120. Scaling by the ratio the **digits** overshot by lands on 120 exactly. The Codex Sol review of
+/// `task-1907` found the first arithmetic; this is the second.
+///
+/// Two guards. A `most` the fixed furniture alone exceeds cannot be met at any type size, so the floor is
+/// returned rather than zero — a gutter too small to read is not an improvement on one that is slightly too
+/// wide. And the answer never exceeds the size asked for, because this only ever reduces.
+fn size_that_fits(asked: f32, digits: f32, fixed: f32, most: f32) -> f32 {
+    let floor = SMALLEST_TYPE / NUMBER_RATIO;
+    if fixed + digits <= most {
+        return asked;
+    }
+    let room_for_digits = most - fixed;
+    if room_for_digits <= 0.0 || digits <= 0.0 {
+        return floor.min(asked);
+    }
+    (asked * (room_for_digits / digits)).clamp(floor.min(asked), asked)
+}
+
+/// What the digits alone take at `font_size`, which is the part of the gutter that scales with the type.
+///
+/// Split out for [`fitted_size`]: the rest of the column — the change bar, the gap and the margins — is fixed
+/// points that do not shrink with the letters, so a single proportional pass over the *whole* width lands
+/// short. This is the part the arithmetic there is allowed to treat as proportional.
+fn digits_width(ui: &egui::Ui, gutter: &Gutter, lines: usize, font_size: f32) -> f32 {
+    if !gutter.numbers {
+        return 0.0;
+    }
+    let font = egui::FontId::monospace(number_size(font_size));
+    let digit = ui.ctx().fonts_mut(|fonts| fonts.glyph_width(&font, '0'));
+    digit * digits(lines) as f32
+}
+
+/// How wide the gutter is, which the window needs before it can lay the editing area out.
 pub fn width(ui: &egui::Ui, gutter: &Gutter, lines: usize) -> f32 {
+    width_at(ui, gutter, lines, gutter.font_size)
+}
+
+/// The same, at a type size that is not necessarily the one the gutter is carrying.
+///
+/// Split out so [`fitted_size`] can ask what a size *would* cost without building a second `Gutter`.
+fn width_at(ui: &egui::Ui, gutter: &Gutter, lines: usize, font_size: f32) -> f32 {
+    let gutter = &Gutter { font_size, ..*gutter };
     if !gutter.showing() {
         return 0.0;
     }
@@ -724,11 +816,72 @@ mod tests {
         assert_eq!(number_size(0.0), 11.5);
     }
 
+    /// The numbers track the letters across the whole range, with a floor and no ceiling.
+    ///
+    /// **This used to assert the ceiling and that is the fault `task-1907` reports.** `number_size(144.0)` was
+    /// `LARGEST_TYPE`, 28 points, and `number_size(48.0)` was 28 as well — so at every size above about 39
+    /// points the numbers were the same size whatever the text did, and below about 13 they were all 9. What
+    /// replaced the ceiling is a limit on the gutter's *width*, in `fitted_size`, which is the thing
+    /// `task-1693` was really protecting and which is true at every size.
     #[test]
-    fn the_gutters_type_follows_the_editors_and_stops_at_both_ends() {
+    fn the_gutters_type_tracks_the_editors_across_the_whole_range() {
         assert!(number_size(32.0) > number_size(16.0), "it grows with the editor's font");
         assert_eq!(number_size(6.0), SMALLEST_TYPE, "six point text still needs a legible gutter");
-        assert_eq!(number_size(144.0), LARGEST_TYPE, "and the gutter never takes the window");
+        // The ratio, not a clamp, at both of the sizes that used to be clamped.
+        assert!((number_size(48.0) - 48.0 * NUMBER_RATIO).abs() < 0.01, "{}", number_size(48.0));
+        assert!((number_size(144.0) - 144.0 * NUMBER_RATIO).abs() < 0.01, "{}", number_size(144.0));
+        // And it really is monotonic across the range, which is what "tracks" means.
+        for pair in [(8.0, 12.0), (12.0, 16.0), (16.0, 24.0), (24.0, 48.0), (48.0, 144.0)] {
+            assert!(
+                number_size(pair.1) >= number_size(pair.0),
+                "{} points must not set smaller numbers than {} points",
+                pair.1,
+                pair.0
+            );
+        }
+    }
+
+    /// The gutter really fits its share, and the arithmetic that looked right did not.
+    ///
+    /// **The case is a very large font with many line numbers in a narrow pane**, which no screenshot window
+    /// with an explorer in it can reach — so the arithmetic is tested rather than a window. The numbers are the
+    /// ones measured off a real 144 point file with five digit line numbers: 310.5 points of numerals and 33
+    /// points of fixed furniture, in a 400 point pane whose share is 120.
+    ///
+    /// Scaling by the ratio the **whole** width overshot by — which is what `task-1907` first wrote — gives
+    /// `144 * (120 / 343.5)` = 50.3 points, and a gutter of 141.5: over the cap by 21.5, because the change bar,
+    /// the gap and the margins do not shrink with the letters. The Codex Sol review found it.
+    #[test]
+    fn the_gutter_really_fits_its_share_of_a_narrow_pane() {
+        let (asked, digits, fixed, most) = (144.0, 310.5, 33.0, 120.0);
+        let size = size_that_fits(asked, digits, fixed, most);
+        // The digits scale with the type, so this is what they come to at the answer.
+        let now = fixed + digits * (size / asked);
+        assert!(now <= most + 0.01, "the gutter fits: {now} of {most} at {size} points");
+        // And the old arithmetic did not, which is what says this test has something to catch.
+        let old = asked * (most / (fixed + digits));
+        let then = fixed + digits * (old / asked);
+        assert!(then > most + 1.0, "the single pass really overshot: {then} of {most}");
+    }
+
+    /// A cap the fixed furniture alone cannot meet gives the smallest readable size rather than nothing.
+    ///
+    /// A gutter too small to read is not an improvement on one slightly too wide, and zero would be a column of
+    /// no width with numbers in it.
+    #[test]
+    fn a_cap_that_cannot_be_met_gives_the_smallest_readable_size() {
+        let floor = SMALLEST_TYPE / NUMBER_RATIO;
+        assert_eq!(size_that_fits(144.0, 310.5, 33.0, 20.0), floor);
+        assert_eq!(size_that_fits(144.0, 310.5, 33.0, 0.0), floor);
+        // And a size already smaller than the floor is not grown by it.
+        assert_eq!(size_that_fits(8.0, 310.5, 33.0, 0.0), 8.0);
+    }
+
+    /// A gutter that already fits is left exactly alone, which is every ordinary window.
+    #[test]
+    fn a_gutter_that_already_fits_is_not_reduced() {
+        assert_eq!(size_that_fits(16.0, 30.0, 33.0, 300.0), 16.0);
+        assert_eq!(size_that_fits(144.0, 310.5, 33.0, 400.0), 144.0);
     }
 
     #[test]

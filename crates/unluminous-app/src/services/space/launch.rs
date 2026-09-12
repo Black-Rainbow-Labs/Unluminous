@@ -319,3 +319,117 @@ mod tests {
         assert!(refusal.contains("PATH"), "and says where it looked: {refusal}");
     }
 }
+
+/// The command line that starts `program` again, continuing its conversation where it has one.
+///
+/// **`--continue` rather than `--resume <id>`, and the difference is the whole of why this is honest.**
+/// `--resume <id>` names a conversation Unluminous chose and *gave* to Claude, which is what
+/// [`session_for`] does for a node whose **command** is an agent. It cannot work here: this is for a node
+/// whose terminal is a shell somebody typed `claude` into, so by the time there is anything to record the
+/// process is already running without an id, and there is no id to resume.
+///
+/// `--continue` is Claude's own answer to *"continue the most recent conversation in this directory"* — a
+/// question it answers from its own records rather than one Unluminous answers from a file it wrote. It is
+/// weaker in two specific ways, and both are told rather than hidden: two nodes in one folder come back on
+/// the same conversation, and a conversation continued in a terminal elsewhere since is the one that comes
+/// back. It is still the difference between `task-1907`'s *"no claude code"* and a node that comes back
+/// where it was.
+///
+/// **Codex gets no flag**, and `agent::why_it_cannot_resume` is the existing reason: it names its own
+/// sessions, so anything Unluminous passed would be a marker rather than something it answers to. Starting
+/// it again begins a new conversation, which is what the row on the node says it does.
+pub fn continues_a_conversation(program: &str) -> String {
+    let named = program.trim();
+    match takes_a_session(named) {
+        true => format!("{named} --continue"),
+        false => named.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod continuing_tests {
+    use super::*;
+
+    /// An agent typed into a shell is continued rather than resumed.
+    ///
+    /// `task-1907`: the conversation cannot be resumed by id, because the id has to be given to Claude when it
+    /// starts and by the time somebody has typed `claude` it is already running without one. `--continue` is
+    /// Claude's own question about its own records.
+    #[test]
+    fn the_offer_is_a_continue_when_there_is_no_recorded_conversation() {
+        assert_eq!(continues_a_conversation("claude"), "claude --continue");
+        assert_eq!(continues_a_conversation("  claude  "), "claude --continue");
+    }
+
+    /// A shell and Codex get no flag, for two different reasons that both end the same way.
+    ///
+    /// A shell has no conversation at all. Codex names its own sessions, so anything passed here would be a
+    /// marker rather than something it answers to — `agent::why_it_cannot_resume`'s own limitation.
+    #[test]
+    fn a_program_with_no_conversation_is_started_as_it_is() {
+        assert_eq!(continues_a_conversation("zsh"), "zsh");
+        assert_eq!(continues_a_conversation("bash"), "bash");
+        assert_eq!(continues_a_conversation("codex"), "codex");
+        assert_eq!(continues_a_conversation("vim"), "vim");
+    }
+}
+
+/// Whether this program is a shell rather than something somebody ran in one.
+///
+/// **What it is for is not classifying shells, it is deciding what may be overwritten.** A restored terminal
+/// node starts a shell, so the first reading of what it is running after a project opens answers `zsh` — and
+/// before `task-1907` that replaced the program the file held before anything could offer it. Measured on the
+/// released build: `space.conf` held `running = sleep` before a restart and `running = zsh` a second after it,
+/// and the offer then said *"Started zsh again"*. So a shell is not recorded over a program.
+///
+/// The list is the shells a machine actually starts a terminal with — `Settings::shell()` names the first two
+/// on each platform — and a name that is not on it is treated as a program, which is the safe direction: a
+/// program wrongly kept is an offer nobody has to take, and a program wrongly discarded is the report.
+pub fn is_a_shell(program: &str) -> bool {
+    const SHELLS: [&str; 10] = [
+        "zsh", "bash", "sh", "fish", "dash", "ksh", "tcsh", "csh", "powershell", "pwsh",
+    ];
+    // **Both separators, rather than `Path::file_stem`**, which splits only the running platform's — so a
+    // `C:\Windows\System32\cmd.exe` read out of a `space.conf` written on Windows came back whole on macOS and
+    // was not recognised. `is_the_node_runtime` splits both for the same reason: a canvas written on one
+    // platform is read on the other.
+    let last = program.trim().rsplit(['/', '\\']).next().unwrap_or_default();
+    let stem = last.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(last);
+    let named = stem.to_ascii_lowercase();
+    // `cmd.exe` and `login`, which macOS starts a terminal through, are shells for this purpose too.
+    SHELLS.contains(&named.as_str()) || named == "cmd" || named == "login"
+}
+
+#[cfg(test)]
+mod shell_tests {
+    use super::*;
+
+    /// The shells a machine starts a terminal with are recognised, whatever path they arrive by.
+    ///
+    /// What this decides is not a classification for its own sake — it is what may be overwritten. A restored
+    /// node starts a shell, so the first reading after a project opens must not replace the program the file
+    /// held. `task-1907` found that by driving the released build: `running = sleep` before a restart became
+    /// `running = zsh` a second after it, and the offer then said *"Started zsh again"*.
+    #[test]
+    fn the_shells_a_terminal_starts_with_are_recognised() {
+        for shell in ["zsh", "bash", "sh", "fish", "pwsh", "powershell", "cmd", "login"] {
+            assert!(is_a_shell(shell), "{shell} is a shell");
+        }
+        // By a full path and with an extension, which is how a machine names them.
+        assert!(is_a_shell("/bin/zsh"));
+        assert!(is_a_shell("/usr/local/bin/fish"));
+        assert!(is_a_shell("C:\\Windows\\System32\\cmd.exe"));
+        assert!(is_a_shell("  /bin/bash  "));
+    }
+
+    /// And a program somebody ran in a shell is not one.
+    ///
+    /// A name that is not on the list is treated as a program, which is the safe direction: a program wrongly
+    /// kept is an offer nobody has to take, and a program wrongly discarded is the report.
+    #[test]
+    fn a_program_somebody_ran_is_not_a_shell() {
+        for program in ["claude", "codex", "vim", "sleep", "node", "cargo", "python3", ""] {
+            assert!(!is_a_shell(program), "{program} is not a shell");
+        }
+    }
+}

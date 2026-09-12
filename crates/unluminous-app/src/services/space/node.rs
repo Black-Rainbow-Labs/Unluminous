@@ -123,6 +123,7 @@ impl State {
                 folder: project.map(std::path::Path::to_path_buf),
                 font_size: 0.0,
                 session: String::new(),
+                running: String::new(),
             }),
             Kind::Browser => State::Browser(Browser::default()),
             Kind::Folder => State::Folder(Folder {
@@ -154,6 +155,19 @@ pub struct Terminal {
     /// `services::agent_tasks::agent` for the same field and the same limitation: Claude takes a
     /// session id it is given and Codex names its own.
     pub session: String,
+    /// The program that was in the foreground of this terminal when the canvas was last written down.
+    ///
+    /// **What was running, which is not [`Self::command`].** `command` is what the node was *given*, and what
+    /// a person does is add a plain terminal node and then type `claude` into the shell — so a canvas that
+    /// recorded only the command came back as a shell whatever had been running in it, which is what
+    /// `task-1907` reports. Read from the pseudoterminal by `unluminous_terminal::Session::foreground`.
+    ///
+    /// **A program name, not a command line**, so what a restored node does with it is *offer* it rather than
+    /// run it: the arguments, any `cd` somebody did and anything typed after the program are all gone, and
+    /// running `claude` when what was running was `claude --model opus -p …` is running a different thing and
+    /// calling it the same. Empty on a node whose terminal is at a prompt, on a node whose program has ended,
+    /// and on Windows, where a ConPTY has no foreground group to ask for.
+    pub running: String,
 }
 
 /// A browser node: the address it is on, and the address being typed into its bar.

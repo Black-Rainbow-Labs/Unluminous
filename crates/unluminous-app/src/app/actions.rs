@@ -801,6 +801,14 @@ pub enum SpaceAction {
     RestartNode,
     /// Start it again as `--resume <session>`, for an agent that named one.
     ResumeSession,
+    /// Start the program this node was left running again.
+    ///
+    /// **An offer rather than something a restore does by itself**, and the reason is that what was written
+    /// down is a program *name*: the arguments, any `cd` somebody did and anything typed after it are gone, so
+    /// running `claude` when what was running was `claude --model opus -p …` would be running a different thing
+    /// and calling it the same. A shell is also somebody's shell, and there is no undo for a program that
+    /// starts. `task-1907`.
+    StartWhatWasRunning,
     /// Take away the connection that was right clicked.
     Disconnect,
     /// Turn the connection that was right clicked into one that carries lines, or back.
@@ -831,6 +839,7 @@ impl SpaceAction {
             "choose-folder" => SpaceAction::ChooseFolder,
             "restart-node" => SpaceAction::RestartNode,
             "resume-session" => SpaceAction::ResumeSession,
+            "start-what-was-running" => SpaceAction::StartWhatWasRunning,
             "disconnect" => SpaceAction::Disconnect,
             "carry-lines" => SpaceAction::CarryLines(true),
             "stop-carrying-lines" => SpaceAction::CarryLines(false),
@@ -855,6 +864,7 @@ impl SpaceAction {
             SpaceAction::ChooseFolder => "choose-folder".to_owned(),
             SpaceAction::RestartNode => "restart-node".to_owned(),
             SpaceAction::ResumeSession => "resume-session".to_owned(),
+            SpaceAction::StartWhatWasRunning => "start-what-was-running".to_owned(),
             SpaceAction::Disconnect => "disconnect".to_owned(),
             SpaceAction::CarryLines(on) => {
                 match on {
@@ -998,6 +1008,13 @@ pub struct MenuState {
     /// and `Resume session` mean nothing on a web page, which is Unluminous's rule that a control
     /// which cannot apply is not drawn at all.
     pub space_node: Option<(crate::services::space::Kind, bool)>,
+    /// The program the chosen terminal node was left running, when it was left running one.
+    ///
+    /// **A separate field rather than a third item in the tuple above**, because it answers a different
+    /// question: `space_node`'s bool is whether there is a *conversation* to resume, and this is whether there
+    /// is a *program* to offer. A node can have either, both or neither — a shell somebody typed `claude` into
+    /// has the program and no conversation, and a node whose command is `claude` has both. `task-1907`.
+    pub space_node_running: String,
     /// Whether the connection in hand carries lines, which is what ticks its row.
     pub space_pipe: bool,
     /// How many views the canvas has, which is what dims `Delete View` on the last one.
@@ -1970,6 +1987,17 @@ pub fn space_node_menu(state: &MenuState) -> Vec<Entry> {
         if session {
             entries.push(Entry::item("Resume Session", Action::Space(SpaceAction::ResumeSession)));
         }
+        // **What the node was left running, named in the row.** `task-1907` asks for *"the exact session as
+        // though I never closed anything"*, and a node whose shell had `claude` typed into it comes back as a
+        // shell — so the row says which program, because `Start What Was Running` would make somebody guess.
+        // Absent when the node was at a prompt, which is the ordinary case and the rule that keeps `Resume
+        // Session` off a node with no conversation.
+        if !state.space_node_running.trim().is_empty() {
+            entries.push(Entry::item(
+                &format!("Start {} Again", state.space_node_running.trim()),
+                Action::Space(SpaceAction::StartWhatWasRunning),
+            ));
+        }
     }
     // **Which folder this node shows**, `task-1905`, and absent on every other kind because a terminal
     // and a web page have no folder to choose.
@@ -2374,6 +2402,46 @@ mod tests {
     /// `Choose Folder...` is on a Folder View node's menu and on no other kind's.
     ///
     /// `task-1905`: the report asks for it, and Unluminous's rule is that a control which can never apply is
+    /// A node offers to start what it was left running, named, and only when it was left running something.
+    ///
+    /// `task-1907`: a person adds a plain terminal node and types `claude` into the shell, so a restored node
+    /// comes back as a shell. What is written down is a program **name** rather than a command line, so the row
+    /// is an offer and it names the program — `Start What Was Running` would make somebody guess. Absent on a
+    /// node that was at a prompt, and absent on every kind that is not a terminal, which is the same reading
+    /// that keeps `Restart` off a browser node.
+    #[test]
+    fn a_node_offers_to_start_what_it_was_left_running_and_names_it() {
+        use crate::services::space::Kind;
+        let running = |kind: Kind, program: &str| {
+            let state = MenuState {
+                space_node: Some((kind, false)),
+                space_node_running: program.to_owned(),
+                ..MenuState::default()
+            };
+            names(&space_node_menu(&state))
+        };
+
+        let rows = running(Kind::Terminal, "claude");
+        assert!(rows.iter().any(|row| row == "Start claude Again"), "{rows:?}");
+
+        // At a prompt there is nothing to offer, which is the ordinary case.
+        let rows = running(Kind::Terminal, "");
+        assert!(!rows.iter().any(|row| row.starts_with("Start ")), "{rows:?}");
+        // And whitespace is not a program either, because that is what a hand edited file can hold.
+        let rows = running(Kind::Terminal, "   ");
+        assert!(!rows.iter().any(|row| row.starts_with("Start ")), "{rows:?}");
+
+        // Every other kind offers nothing, whatever is recorded against it.
+        for kind in Kind::ALL.into_iter().filter(|kind| *kind != Kind::Terminal) {
+            let rows = running(kind, "claude");
+            assert!(
+                !rows.iter().any(|row| row.starts_with("Start ")),
+                "a {} node offered {rows:?}",
+                kind.name()
+            );
+        }
+    }
+
     /// **absent** rather than dimmed — a terminal and a web page have no folder to choose, which is the
     /// same reading that keeps `Restart` off a browser node.
     #[test]

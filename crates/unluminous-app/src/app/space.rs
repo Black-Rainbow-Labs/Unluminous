@@ -82,6 +82,15 @@ pub struct SpaceState {
     /// When a write of `space.conf` last failed, so a broken disk is not written to sixty times a
     /// second while the canvas stays marked as needing writing.
     pub write_failed_at: Option<f64>,
+    /// When each terminal node was last asked what program is running in it.
+    ///
+    /// **A syscall rather than a field, so it is asked on a clock.** Everything else
+    /// `note_where_the_nodes_are_reading` records is already in memory and costs an integer comparison a
+    /// frame; `Session::foreground` is a `tcgetpgrp` and a process lookup, and asking it sixty times a second
+    /// for every terminal node on a canvas would be the most expensive thing an idle window did. It is asked
+    /// at [`crate::app::WATCH_INTERVAL`], which is the rate `FileTree::changed_on_disk` asks the disk at and
+    /// for the same reason: what is being watched changes when a person does something, not between frames.
+    pub asked_what_is_running: Option<std::time::Instant>,
     /// The rectangle the canvas body had last frame.
     ///
     /// What a command with no place of its own puts a node at — `space add` with no `--x` — and what
@@ -104,6 +113,7 @@ impl Default for SpaceState {
             in_hand: InHand::default(),
             brought_to_life: None,
             write_failed_at: None,
+            asked_what_is_running: None,
             body: Rect::ZERO,
         }
     }
@@ -527,12 +537,28 @@ impl UnluminousApp {
         if body.width() < 2.0 || body.height() < 2.0 {
             return;
         }
+        // **A node's glyphs are rasterised at the size they are composited at.** The layer this is drawn into
+        // carries the camera as a `TSTransform`, and `epaint` applies that to the finished shape — so a glyph
+        // rasterised at the layout's own size and then scaled is a magnified bitmap, which is `task-1907`'s
+        // *"the text in the nodes looks pixelated when I zoom in"*. Unluminous's own atlas rasterises at any size
+        // it is asked for, so it is asked for the seen one and the quad is divided back; the layout is
+        // untouched, which is what keeps a zoom a matrix rather than a relayout. See
+        // `services::text_renderer::Crispness`.
+        //
+        // **Set and put back around the call rather than held by a guard**, because a guard borrows the
+        // renderer for the whole scope and every one of these takes `&mut self`. Putting it back is the part
+        // that matters: left on, the canvas's zoom would rasterise the glyphs of whatever pane is drawn after
+        // this node, which reads as the whole window being at the wrong size.
+        let zoom = self.space.space.current().camera.zoom;
+        let was = self.renderer.crispness();
+        self.renderer.composite_at(zoom);
         match node.kind() {
             Kind::Terminal => self.show_a_terminal_node(ui, node, body, focused),
             Kind::Browser => self.show_a_browser_node(ui, node, body, focused),
             Kind::Folder => self.show_a_folder_node(ui, node, body, focused, has_the_pointer),
             Kind::Editor => self.show_an_editor_node(ui, node, body, focused),
         }
+        self.renderer.restore_compositing(was);
     }
 
     /// A terminal node: `components::terminal_panel::grid`, which is what the terminal tile and the
@@ -1602,10 +1628,25 @@ impl UnluminousApp {
         let location = crate::services::browser::BrowserLocation::parse(address, self.tree.root())?;
         let remote = location.source_path().is_none();
         if let (true, Some(tab)) = (remote, self.space.live.browser(node).map(|tab| tab.id)) {
-            self.browser.navigate(tab, address.trim())?;
+            // **The parsed address, not the typed one.** `implied_address` is the one place a bare host is
+            // given a scheme, and wry hands an unknown scheme to `Navigate`, which refuses it **in silence** —
+            // so the pane went on showing the old page while the reply said the node had gone. Measured on the
+            // installed 0.39.1: a node already on a page answered `ok` to `google.com` and stayed where it
+            // was, while `https://example.org/` on the same node worked. `task-1907`.
+            let url = location.initial_url(tab);
+            // **The tab is told where it is going even when the view cannot be driven there yet.** A window
+            // has one native view, so `BrowserHost::navigate` refuses a tab that is not the one showing — and
+            // before this the address was thrown away while the node's own record was changed anyway, so a
+            // canvas with two browser nodes ended up permanently disagreeing with itself. Measured: `space
+            // list` said `https://example.org/` while `space browser url` said `https://google.com/`.
+            self.change_browser_tab(tab, |tab| tab.heading_for_a_new_page(&url));
+            // A refusal here is a view that could not be driven now, which the reconciliation in
+            // `raw_input_hook` answers when this node next becomes the one rendering — so it is not an error
+            // the caller has to see, and the address is already recorded above.
+            let _ = self.browser.navigate(tab, &url);
             self.space.space.change(node, |state| {
                 if let State::Browser(browser) = state {
-                    browser.url = address.to_owned();
+                    browser.url = url.clone();
                 }
             });
             return Ok(());
@@ -1845,6 +1886,16 @@ impl UnluminousApp {
     /// wrote `space.conf` on every frame of a scroll would write a file sixty times a second — which is
     /// `Space::is_dirty`'s whole reason for existing.
     pub fn note_where_the_nodes_are_reading(&mut self) {
+        // **A terminal is asked what it is running on a clock, not on every frame.** See
+        // `SpaceState::asked_what_is_running`: it is a syscall where everything else here is a field.
+        let now = std::time::Instant::now();
+        let ask_what_is_running = self
+            .space
+            .asked_what_is_running
+            .is_none_or(|last| now.duration_since(last) >= crate::app::WATCH_INTERVAL);
+        if ask_what_is_running {
+            self.space.asked_what_is_running = Some(now);
+        }
         let nodes: Vec<(NodeId, Kind)> = self
             .space
             .space
@@ -1892,8 +1943,85 @@ impl UnluminousApp {
                         });
                     }
                 }
+                Kind::Terminal if ask_what_is_running => {
+                    self.note_what_a_node_is_running(node);
+                }
                 Kind::Terminal | Kind::Browser => {}
             }
+        }
+    }
+
+    /// Take down what every terminal node is running, whatever the clock says.
+    ///
+    /// **What `on_exit` calls**, and the reason it has to exist: the ordinary reading is throttled to
+    /// `WATCH_INTERVAL`, so a program started inside the last three quarters of a second before a window closes
+    /// would never be written down — and `on_exit` kills the sessions, after which there is no pseudoterminal
+    /// left to ask. The Codex Sol review of `task-1907` found that. Switching away from a view has the same
+    /// shape and calls this too.
+    pub(crate) fn note_what_the_nodes_are_running_now(&mut self) {
+        let nodes: Vec<NodeId> = self
+            .space
+            .space
+            .current()
+            .nodes
+            .iter()
+            .filter(|node| node.kind() == Kind::Terminal)
+            .map(|node| node.id)
+            .collect();
+        for node in nodes {
+            self.note_what_a_node_is_running(node);
+        }
+    }
+
+    /// What one terminal node is running, written down when it has changed.
+    fn note_what_a_node_is_running(&mut self, node: NodeId) {
+        // **What is running, not what the node was given.** `task-1907`: a person adds a plain
+        // terminal node and types `claude` into the shell, so a canvas that recorded only the
+        // command came back as a shell whatever had been running in it. See
+        // `unluminous_terminal::foreground` for the mechanism, and for why Windows answers nothing.
+        //
+        // Empty answers are written down too, because a program that has ended is a node that
+        // should come back at a prompt rather than offering to start something it is no longer
+        // running.
+        let running = self
+            .space
+            .live
+            .terminal(node)
+            .and_then(unluminous_terminal::Session::foreground)
+            .unwrap_or_default();
+        // **A shell is written down as nothing**, which is what makes this field mean "a program
+        // somebody ran" rather than "whatever the foreground group is called". A node at a prompt
+        // has nothing to offer, and recording `zsh` there would put a row on the node offering to
+        // start the shell it is already sitting in. `is_a_shell` is the one place that is decided.
+        let running = match crate::services::space::launch::is_a_shell(&running) {
+            true => String::new(),
+            false => running,
+        };
+        let held = match &self.space.space.current().node(node).map(|node| &node.state) {
+            Some(State::Terminal(terminal)) => terminal.running.clone(),
+            _ => String::new(),
+        };
+        // **A restored node's own shell does not clear what the file held, until the node has been
+        // used.** This is the fault driving the released build found: a restored node starts a
+        // shell, so the first reading after a project opens is a prompt — which cleared the `sleep`
+        // the file held before anything could offer it, and the offer then said *"Started zsh
+        // again"*. Measured: `space.conf` held `running = sleep` before the restart and `zsh` a
+        // second after it.
+        //
+        // **And the protection ends the moment the node is used**, which is the other half and is
+        // what the Codex Sol review of this change asked for: keeping it for ever would mean a
+        // program somebody deliberately quit was offered on every restart from then on. Once
+        // anything has been typed into the node — including the offer being taken, which types the
+        // program — a prompt is a prompt somebody really is at, and it clears.
+        if running.is_empty() && !held.is_empty() && !self.space.live.has_been_used(node) {
+            return;
+        }
+        if held != running {
+            self.space.space.change(node, |state| {
+                if let State::Terminal(terminal) = state {
+                    terminal.running = running;
+                }
+            });
         }
     }
 
@@ -2026,6 +2154,7 @@ impl UnluminousApp {
             SpaceAction::ChooseFolder => self.choose_a_folder_for_a_node(),
             SpaceAction::RestartNode => self.restart_a_space_node(false),
             SpaceAction::ResumeSession => self.restart_a_space_node(true),
+            SpaceAction::StartWhatWasRunning => self.start_what_a_node_was_running(),
             SpaceAction::Disconnect => {
                 let Some(edge) = self.space.in_hand.wire else { return };
                 self.space.space.disconnect(edge);
@@ -2150,6 +2279,78 @@ impl UnluminousApp {
     }
 
     /// Start the chosen terminal node's program again.
+    /// Start the program this node was left running, in the shell it already has.
+    ///
+    /// **Typed into the terminal rather than started as the node's command**, and that is the decision worth
+    /// reading. The node is a shell — that is what it was — and replacing the shell with the program would
+    /// throw away the shell somebody had, take the node's `command` away from what they configured, and leave
+    /// nothing to come back to when the program ends. Typing it is exactly what the person did in the first
+    /// place, so what they get is what they had.
+    ///
+    /// **And an agent gets `--continue`.** The conversation cannot be *resumed* by id, because the id has to be
+    /// given to Claude when it starts and by the time somebody typed `claude` it was already running without
+    /// one — see `services::space::launch::continues_a_conversation`. `--continue` is Claude's own answer to
+    /// *"the most recent conversation in this directory"*, which is a question it answers from its own records
+    /// rather than one Unluminous answers from a file it wrote. `task-1907`.
+    fn start_what_a_node_was_running(&mut self) {
+        let Some(node) = self.space.chosen() else {
+            self.message = Some("No node is chosen.".to_owned());
+            return;
+        };
+        let running = match self.space.space.current().node(node).map(|found| &found.state) {
+            Some(State::Terminal(terminal)) => terminal.running.trim().to_owned(),
+            _ => String::new(),
+        };
+        if running.is_empty() {
+            self.message = Some("This node was not left running a program.".to_owned());
+            return;
+        }
+        // **Refused while the program is still running**, which the Codex Sol review of this change asked for
+        // and which is a real fault rather than tidiness: a node whose `claude` is running is a node whose
+        // terminal is Claude's, so typing `claude --continue` into it types those words *at the agent* — and a
+        // program that is not reading standard input leaves the line queued for whenever the shell comes back.
+        // The offer is for a node that came back as a shell, so it is refused for one that did not.
+        let at_a_prompt = self
+            .space
+            .live
+            .terminal(node)
+            .and_then(unluminous_terminal::Session::foreground)
+            .is_none_or(|program| crate::services::space::launch::is_a_shell(&program));
+        if !at_a_prompt {
+            self.message = Some(format!("{running} is already running in this node."));
+            return;
+        }
+        // A node whose terminal has gone is started first, so the program has a shell to be typed into.
+        if !self.space.live.has_a_terminal(node) {
+            if let Err(problem) = self.start_a_space_terminal(node, false) {
+                self.message = Some(problem);
+                return;
+            }
+        }
+        let line = crate::services::space::launch::continues_a_conversation(&running);
+        // Remembered as something typed in, so its echo is not piped back out — the rule in
+        // `services::space::pipe`, which this needs exactly as much as `space send` does.
+        self.space.live.typed_into(node, &line);
+        if let Some(session) = self.space.live.terminal(node) {
+            session.send(format!("{line}\r").into_bytes());
+        }
+        // **The node goes on holding the program it has just been told to start.** Typing marks the node as
+        // used, which ends the protection that stops a prompt clearing this field — and the program takes a
+        // moment to start, so the very next reading a fraction of a second later saw a prompt and cleared it.
+        // Measured on the released build: the offer answered *"Started sleep again"* and `space.conf` had no
+        // `running` key a second afterwards, so the offer worked once and then forgot itself.
+        //
+        // Written here rather than waited for, because what is true is that this node was told to run this
+        // program. The ordinary reading takes over from the next tick, and if the program failed to start the
+        // tick after that clears it — which is the honest sequence rather than a sleep in a frame.
+        self.space.space.change(node, |state| {
+            if let State::Terminal(terminal) = state {
+                terminal.running = running.clone();
+            }
+        });
+        self.message = Some(format!("Started {running} again."));
+    }
+
     fn restart_a_space_node(&mut self, resume: bool) {
         let Some(node) = self.space.chosen() else {
             self.message = Some("No node is chosen.".to_owned());
@@ -2552,6 +2753,22 @@ impl UnluminousApp {
                     Ok(node) => node,
                     Err(outcome) => return outcome,
                 };
+                // **`--running` is the other half of the row on the node's own menu**, which is the rule that a
+                // thing done by hand and the same thing done by an agent are the same thing: it goes through
+                // `start_what_a_node_was_running`, so the program is typed into the shell the node has rather
+                // than replacing it. `task-1907`.
+                if request.switch("running") {
+                    let was = self.space.chosen();
+                    self.space.space.choose(Some(node));
+                    self.start_what_a_node_was_running();
+                    let answer = self.message.clone().unwrap_or_default();
+                    self.space.space.choose(was);
+                    let started = answer.starts_with("Started ");
+                    return match started {
+                        true => done(request, answer),
+                        false => no(request, code::REFUSED, answer),
+                    };
+                }
                 match self.start_a_space_terminal(node, request.switch("resume")) {
                     Ok(()) => done(request, format!("Started node {node} again.")),
                     Err(problem) => no(request, code::FAILED, problem),

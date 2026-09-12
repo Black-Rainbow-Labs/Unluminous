@@ -14,9 +14,15 @@ every one of them has a cause that can be pointed at rather than guessed at:
 6. *"When the infinite space is a bottom panel with agent tasks above it, i'm unable to resize by moving
    the top up, it will only go down."*
 
+They are answered in a different order from the one they were reported in, because two of them turn out to be
+one fault seen from two distances: the sections are the divider (§1), the browser node's address (§2), the
+pixelation (§3), the line numbers (§4), what a terminal node was running (§5) and what a canvas writes down
+(§6, which is §5 seen from further away).
+
 Every section says the same four things: what was reported, what is actually happening, what changes, and
 what proves it. `CLAUDE.md`'s rule applies to each — the control a person uses, the same code reached by
-an agent through the same path, and tests over both.
+an agent through the same path, and tests over both. Four of the six were isolated by driving the installed
+build rather than by reading, and each of those says what the run was.
 
 ## 0. What was measured first
 
@@ -34,6 +40,11 @@ up 120:        stored 560 -> 550, drawn 550 -> 550     (nothing moved)
 down 120:      stored 550 -> 430, drawn 550 -> 430     (moved)
 up 120 again:  stored 430 -> 550, drawn 430 -> 550     (moved, back to the wall)
 ```
+
+**The first line of that is not a fault, and finding out why narrowed the whole section.** A 670 point window
+keeps `EDITOR_MIN_HEIGHT` for the editing area, so 550 is the most a strip along the bottom can have — the
+canvas defaults to 560 and is therefore against its maximum the moment it opens. Dragging up correctly does
+nothing there. What the report is about is the case below it.
 
 With the Agent-Tasks board above it — the arrangement the report names — the same drag is worse, because
 the two panels are being scaled to fit and the stored numbers are no longer the drawn ones:
@@ -208,6 +219,13 @@ rectangles are already on `self.panel_rects`, put there by the frame that drew t
 computation of `share_the_depth` here would be a second place for the two to disagree — which is the
 `follow_the_open_file` rule about a derived answer beating a reported one.
 
+**And the editing area has to be counted as room, which is the half the implementation found.** The sharing
+path takes what one side gains off the side facing it, and `givable` was the facing panels' spare only — so a
+strip whose facing side has no panels on it could not grow at all, whatever the pointer did. That is right
+with no editing area, where the two strips really are the whole window, and wrong with one, where the thing
+between them is exactly what should give the room up. `from_the_editor` is the editing area's drawn size above
+its own minimum, read off `panel_rects.editor` rather than recomputed, and it is added to `givable`.
+
 **And the sharing path already handles the case where nothing is being shared**, because its first step is
 to write the rendered measurements back: with the numbers already equal that step is the identity and the
 rest is the ordinary take-from-the-far-side move. So the two paths could in principle be one. They are
@@ -216,12 +234,12 @@ that is not against a wall should keep costing one clamp rather than a walk of e
 
 **What proves it.**
 
-- `a_bottom_strips_divider_moves_up_as_well_as_down` — the measurement above, made a test: the canvas
-  alone along the bottom of a 670 point window, dragged up 120 and then down 120, and the stored height has
-  to move both times. It fails on the code as it is with `560 -> 550`, which is 10 points of 120.
-- `a_divider_between_two_panels_in_one_strip_moves_the_pointers_distance` — the board above the canvas,
-  which is the arrangement reported, asserting that the **drawn** height follows the pointer rather than a
-  fraction of it. It fails on the code as it is at 2.4 points of 120.
+- `a_bottom_strip_dragged_smaller_can_be_dragged_back_up` — the canvas alone along the bottom, dragged down
+  150 and then back up 150. This is the plain case, and it is written down 150 first because a canvas on its
+  own opens against its maximum, as §0 records.
+- `a_divider_under_two_panels_moves_the_pointers_distance` — the board above the canvas, which is the
+  arrangement reported, asserting that the **drawn** height follows the pointer rather than a fraction of it.
+  It fails on the code as it is at 2.4 points of 120.
 - `two_panels_on_one_axis_always_add_up_to_the_room` — the invariant the sharing path keeps, checked after
   each of a run of drags in both directions, because a fix that moved the divider by the right amount and
   left the two sides not adding up would be a fix that leaves a gap.
@@ -233,7 +251,7 @@ that is not against a wall should keep costing one clamp rather than a walk of e
 **Reported.** *"The browser node is on example.com and if i type google.com and enter, nothing happens."*
 
 **What is actually happening.** Two faults, and §0 has the runs that separate them. They are described
-separately here because they need different fixes and only one of them is what was reported.
+separately because they need different fixes and only one of them is what was reported.
 
 **A bare host loses its scheme on the way to the view.** `BrowserLocation::parse` turns `google.com` into
 `Remote { url: "https://google.com/" }` — `implied_address` is the one place a scheme is added — and
@@ -245,7 +263,7 @@ on showing the old page.
 It appears only once the node has a page, which is why the report is phrased the way it is. A node with no
 tab yet falls through to `open_a_space_browser`, which passes the parsed `BrowserLocation` to `open_tab` and
 lets `BrowserTab::new` take the address from `location.initial_url(id)` — so the first address a node is
-given always works and every one after it does not.
+given always works and every one after it does not. Isolated on a real window three times over.
 
 **Nothing else about that path is broken**, and saying so narrows the fix. `BrowserTab::arrived_at` is
 called from the `LoadFinished` event and pushes a new history entry, truncating whatever was ahead of it, so
@@ -255,9 +273,10 @@ on the same node works, end to end. The address is the whole of it.
 **And a node that is not the one rendering cannot be driven, while its record changes anyway.**
 `BrowserHost::navigate` opens with `self.for_the_showing_tab(id)?` because a window has one native view —
 which is `task-1756`'s measurement and not a thing to argue with. The refusal is honest and it reaches the
-caller. What is wrong is the order of the two things `send_a_space_browser_to` does: it records the address
-on the node **before** navigating, so a refused navigation leaves the canvas holding an address its page
-never reached, and `space.conf` is then written from it.
+caller: driven on a real window, `space browser 3 go` answered *"That rendered tab is not the one showing."*
+What is wrong is the order of the two things `send_a_space_browser_to` does: it records the address on the
+node **before** navigating, so a refused navigation leaves the canvas holding an address its page never
+reached, and `space.conf` is then written from it.
 
 **What changes.** Three things.
 
@@ -670,3 +689,265 @@ session yet answers `None` — so it is guarded in the same place and by the sam
   `task-1906` §4.8's rule: a test that calls `restore_project` needs a folder of its own, always.
 - **And the real window**, which is the layer this can only be answered at: a canvas with a terminal node
   running `claude`, closed and opened, and the offer pressed. `verify-before-saying-done` is the rule.
+
+## 6. Everything on a canvas is written down, and the file says what is missing
+
+**Reported.** *"When i close and open the project, my views in Base of Infinite Space are not restored to what
+they were."*
+
+**What is actually happening.** This is §5's fault seen from further away rather than a separate one, and the
+reporter's own file is the evidence. `store::save` builds a fresh `Values` on every write, so
+`.unluminous/space.conf` is the whole truth about a canvas — nothing is merged and nothing survives from an
+earlier write. The file held:
+
+```
+space.current = 57
+space.view.0.id = 57
+space.view.0.name = View 2
+space.view.0.node.0.kind = terminal
+space.view.0.node.0.folder =
+space.view.0.node.0.font = 20
+space.view.0.node.0.x = 628.4      ... width, height, id
+```
+
+One view, one node, and about that node: where it is, how big it is, what folder it starts in and what size its
+type is. No `command`, no `session`, no title. So the canvas came back exactly as recorded — the position, the
+size and the font all restored correctly — and what was missing had never been written. **Nothing is wrong with
+the reading**, which is what makes this §5 and not a bug in `store`.
+
+`task-1906` §4 fixed the three fields that were declared and never filled — `Terminal::session`,
+`Editor::caret` and `Editor::scroll` — and that work is in the tree. What it did not reach is the field nobody
+had thought to declare, which is what is actually running.
+
+**What changes, and it is one thing rather than a list.** The state a node holds is what a person can see about
+it, and the way to keep that true is to stop deciding it twice. So there is one test that says so, and it is the
+one worth writing before any of the code:
+
+```rust
+/// Every kind of node, given every piece of state it can hold, comes back holding all of it.
+///
+/// **Written from `Kind::ALL` rather than from a list of fields**, so a kind added later fails this until it is
+/// written down — which is the fault `task-1907` is: `Terminal::running` was not a field anybody had forgotten
+/// to write, it was a field nobody had declared, and no round trip test over the fields that existed could have
+/// found it. This is `every_command_is_offered_as_a_tool_in_both_shapes` applied to a canvas.
+#[test]
+fn every_kind_of_node_round_trips_everything_it_holds() { … }
+```
+
+It cannot check a field nobody has declared either — nothing can — but it makes the list of what a kind holds
+one place rather than three, so the next kind is written down when it is added rather than when somebody
+reports it.
+
+**And the offer in §5.3 is what makes the incompleteness visible.** A canvas that cannot bring a program back is
+going to exist — a shell that had `vim` open in it, a program with arguments nobody recorded — and the answer
+is a node that says what it saw rather than a node that looks restored and is not. That is the difference
+between this and the report.
+
+**What proves it.**
+
+- `every_kind_of_node_round_trips_everything_it_holds` — above.
+- `a_canvas_written_down_and_read_back_is_the_same_canvas` — the existing round trip, extended with `running`.
+- `a_space_conf_written_by_the_previous_version_opens_unchanged` — a file with no `running` key in it, because
+  every one of these on a real machine will be that file. `Layout::read_from`'s own rule.
+- `a_hand_edited_space_conf_cannot_panic` — the rule `task-1906` established for `showing`: this is a text file
+  a person can edit, so an unknown program name, an empty one and a very long one all have to answer with
+  something.
+
+## 7. What is deliberately left out
+
+- **What a program was doing, as opposed to which program it was.** A shell's scrollback, a `vim` session's
+  unsaved buffer, a REPL's variables. §5 says why: that is not recoverable, and `project_state` made the same
+  promise about the terminal tile — *"what comes back is the same shell in the same folder"*.
+- **A command line rather than a program name.** `tcgetpgrp` names a process and the platform names the program
+  behind it; the arguments would be a second platform-specific read (`sysctl` with `KERN_PROCARGS2` on macOS,
+  `/proc/<pid>/cmdline` on Linux), and a command line reconstructed from a running process is a different
+  feature with its own quoting problems. The offer says the program, which is what makes it an offer.
+- **Reading the foreground program on Windows.** §5.1: a ConPTY is a pipe rather than a controlling terminal, so
+  there is nothing to ask. The control is absent there, which is Unluminous's own rule, and the day someone wants
+  it the shape is a process tree walk from the child handle `Reaper` already holds.
+- **Sharp galley text inside a node.** §3.2: `epaint` offers no per-layer `pixels_per_point`, and the two things
+  somebody reads in a node go through Unluminous's own atlas and are fixed. The gutter and a folder node's rows
+  stay scaled, and the note in `vello_canvas` about following epaint applies here when epaint moves.
+- **A caret and a scroll per tab on a node.** `task-1906` §7 already refused it and the reason holds:
+  `open-files.txt` keeps one per tab for the panes, and a second list for the nodes would be a second thing to
+  keep in step.
+- **A canvas that outlives its project.** `task-1906` §7 again — a canvas names a project's files, so a space
+  opened elsewhere is a canvas of broken nodes.
+- **Making the two divider paths one.** §1 says the sharing path would handle both and explains why they are
+  kept apart: 554 accepted screenshots were taken through the plain one, and a divider not against a wall should
+  go on costing one clamp.
+
+## 8. Tests
+
+Four layers, as everything here has.
+
+1. **Unit tests with no window.** The divider's two-number comparison; the browser's address normalisation and
+   the tab that records where it was sent; the crispness arithmetic and its quantising; the gutter's type
+   against the file's size and its width against the pane; `store`'s round trip per kind; which command a
+   restored node builds.
+2. **`unluminous-app` unit tests.** `Session::foreground` against a detached session, which answers `None`, and
+   the guard that stops a derived field being written before the canvas is alive.
+3. **Screenshot tests**, each through `builder()` and never `Harness::builder()`, for `task-1654`'s reason.
+   Three new pictures: `space_zoomed_in`, `space_zoomed_out` and `space_editor_node_gutter`.
+4. **The real window.** The layer four of the six reports can only be answered at, and the layer they were all
+   written from. A canvas with a terminal node running `claude`, a browser node, a folder node and an editor
+   node at its own font size; the canvas zoomed to 150% and 200% and photographed; the divider dragged both
+   ways with the board above it; then Unluminous closed and opened and every one of those checked by hand.
+   `tools/drive-a-window.sh` is how, and it never takes the keyboard focus.
+
+**And a test that calls `restore_project` gets a folder of its own, always.** `task-1906` §4.8 learned this the
+hard way: `sample_folder()` is one folder behind a `OnceLock` that every test wanting a project shares, so a test
+that writes a `space.conf` into it changes what every later test in the same process restores.
+
+## 9. What the implementation changed about this design
+
+Four things came out differently from §1 to §6, and each is recorded here rather than by quietly editing the
+section above it, because each is a thing the next person would otherwise wonder about.
+
+**§1's fix needed a second half nobody predicted.** Moving the gate from *is the editing area hidden* to *are
+the stored sizes the drawn ones* was necessary and not sufficient: the sharing path takes what one side gains
+off the side **facing** it, and a strip whose facing side has no panels on it had nothing to take from, so
+`givable` was zero and the drag was still clamped to nothing. The editing area is what is between them and is
+exactly what should give the room up, so `from_the_editor` — its drawn size above `EDITOR_MIN_HEIGHT`, read off
+`panel_rects.editor` — is added to `givable`.
+
+**And one of §0's measurements turned out not to be a fault.** The canvas alone along the bottom of a 670 point
+window is drawn at 550 and asks for 560, so it is against its maximum the moment it opens and dragging up
+correctly does nothing. The test written for it asserts the case below the wall instead — down 150, then back up
+150 — and the report's real case is the two-panel one, which moved 2.4 points of 120 before the fix.
+
+**§3's crispness is ambient on the renderer rather than an argument.** `paint_text` has five callers and the
+terminal grid has four, and threading a number through all nine to be 1.0 in eight of them is nine chances to
+pass the wrong one. It is also genuinely a property of *where the drawing lands* rather than of what is being
+drawn. `TextRenderer::composite_at` and `restore_compositing` are the pair, called around
+`show_a_node_body` — **not** a `Drop` guard, which was tried and cannot work: a guard borrows the renderer for
+the scope and every node drawing function takes `&mut self`.
+
+**§3 also gained a rule the design did not state: a canvas zoomed *out* changes nothing at all.**
+`Crispness::at` never goes below 1.0, because rasterising smaller than the layout and magnifying back up is the
+very fault being fixed. That is what makes `the_canvas_zoomed_out` — an accepted picture at a camera of 0.4 —
+still match its original snapshot byte for byte, which is the strongest evidence available that the change is
+confined to the case it is for.
+
+**§4's ceiling became a limit on the column rather than on the type.** `gutter::fitted_size` takes the room the
+pane has and reduces the type only when the gutter would take more than `GUTTER_SHARE` of it, so
+`LARGEST_TYPE` is gone entirely. `task-1693`'s requirement is kept and is now true at every size rather than
+approximated by a number that also broke the tracking at ordinary sizes.
+
+**§5's offer types the program into the shell rather than becoming the node's command.** The node *is* a shell
+— that is what it was — so replacing the shell would throw away the shell somebody had, change the node's
+`command` away from what they configured, and leave nothing to come back to when the program ends. Typing it is
+exactly what the person did in the first place. `space restart <node> --running` is the agent's half of the
+same function, which is the rule that a thing done by hand and the same thing done by an agent are the same
+thing.
+
+**And §5.1's mechanism was measured before it was written, which is why it exists at all.** `Session::kill`
+records that *"`alacritty_terminal` keeps the pseudoterminal inside its `EventLoop`, so there is no child handle
+here"* — so the first question was whether the master could be reached at all. It can, in `Session::spawn`,
+between `tty::new` answering and `EventLoop::new` moving the `Pty`, which is the same window `Reaper::adopt`
+takes the Windows handle in. `cargo run -p unluminous-terminal --example foreground_check` is the measurement,
+kept as a runnable example rather than as a number in a comment:
+
+```text
+at the prompt: Some("bash")
+while sleeping: Some("sleep")
+after interrupt: Some("bash")
+```
+
+## 10. What the Codex Sol review found
+
+Ten findings, and they are recorded with their verdicts rather than only the ones that were acted on: a
+finding that was checked and did not reproduce is worth as much as one that did, because the next person
+will have the same worry.
+
+**Six were real and are fixed.**
+
+- **A shell overwrote a recorded program, and the protection against it never ended.** Two faults in one
+  place. `running` was being written as `zsh` for a node at a prompt, which is a node offering to start the
+  shell it is sitting in; a shell is written down as **nothing** now, so the field means "a program somebody
+  ran". And the guard that stops a restored node's own shell clearing what the file held is bounded by
+  `Live::has_been_used` — otherwise a program somebody deliberately quit would be offered on every restart
+  from then on. The comment referred to a function that was never written, which is what a reader would have
+  hit next.
+- **The offer was available while the program was still running.** A node whose `claude` is running is a
+  node whose terminal is Claude's, so typing `claude --continue` into it types those words *at the agent*.
+  It is refused unless the terminal is at a prompt.
+- **A program started in the last three quarters of a second before a window closed was never written
+  down.** The reading is throttled to `WATCH_INTERVAL` and `on_exit` kills the sessions before writing, so
+  there was nothing left to ask. `note_what_the_nodes_are_running_now` takes one last reading first.
+- **A redirect left a browser tab loading for ever.** `arrived_at` ignored a page that finished at a
+  different address from the one asked for, which is right for a *step* — there the view is reporting the
+  page it is leaving — and wrong for an address somebody typed. Measured on a real window before the fix:
+  `http://github.com/` was still reported as the tab's address, still loading, long after the page had
+  settled on `https://github.com/`. `Awaited::typed` is what tells the two cases apart, and the destination
+  replaces the address that redirected rather than being pushed after it, because a `Back` to an address
+  that only ever answered with a redirect would redirect again. **This one predates `task-1907`** and §2 is
+  what made it reachable from a browser node.
+- **A strip equalising its panels was read as a side being shared.** `dock::regions` draws every panel in a
+  strip at the deepest one's depth, so a 300 point panel beside a 420 point one is *drawn* at 420 — and an
+  absolute comparison read that as scaling, sent an ordinary drag down the sharing path and rewrote the
+  shorter panel's stored height. `share_the_depth` only ever scales **down**, so the question is whether a
+  panel is drawn *smaller* than it asked for.
+- **The gutter's cap did not hold.** `CHANGE_BAR`, `GAP` and `NUMBER_MARGIN` are fixed points that do not
+  shrink with the letters, so scaling the type by the ratio the *whole* width overshot by lands short:
+  measured, a 400 point pane wanting 343.5 points of gutter came out at 141.5 against a cap of 120.
+  `size_that_fits` scales by the ratio the **digits** overshot by, which is the part that really is
+  proportional, and lands on 120 exactly. It is a pure function so the case can be tested at a pane width no
+  screenshot window can be.
+
+**One was a real fault in the design as written, and the fix is the opposite of what shipped first.**
+`Crispness::at` rounded the scale to the **nearest** quarter, and the canvas zooms in steps of 1.1 — so a
+person's very first zoom step became 1.0 and the glyphs were magnified exactly as before. It rounds **up**
+now, so a glyph is rasterised at at least the size it is composited at and the transform only ever scales it
+down. `a_glyph_is_never_rasterised_smaller_than_it_is_composited` walks the whole 1.1 ladder.
+
+**One was already fixed while the review was running.** The block cursor's second copy of the character
+under it still rounded to whole points; it uses `Crispness::snap` like the grid it sits in.
+
+**And two did not reproduce, each checked rather than argued about.**
+
+- **The duplicated pseudoterminal descriptor does not stop a program being killed.** The worry was exact:
+  on Unix `Reaper::kill` does nothing, so if ending a program depended on the pseudoterminal closing, a
+  second descriptor held open would keep it alive. Measured both ways — with the duplicate and with it
+  removed — a `sleep 300` behind a session that was killed and **deliberately kept alive**, which is the run
+  tile's own case, was gone both times. The mechanism is `alacritty_terminal`'s own `impl Drop for Pty`,
+  which sends `SIGHUP` to the child **by process id** rather than relying on the descriptor.
+  `cargo run -p unluminous-terminal --example kill_check` is that measurement, kept.
+- **A real navigation failure on the showing tab is not silently lost.** The `let _ =` on
+  `BrowserHost::navigate` is there for the one native view refusing a tab that is not showing, which is not
+  an error the caller can act on. A genuine `load_url` failure leaves the tab `loading` with its address
+  recorded as where it should be, which is what the reconciliation in `raw_input_hook` acts on when the node
+  next renders — the same path a node that was not showing takes. It is weaker than reporting the failure and
+  that is stated rather than hidden: what a tab knows is where it should be.
+
+**The review also confirmed four things by checking them**, which is worth recording because each was a
+design decision rather than an accident: the ambient crispness really is restored across every ordinary
+early return; the layout and measurement paths — `advance`, `line_metrics`, `cell_metrics` — do not read it,
+so a zoom cannot relayout; the divider's signs are right on all four sides; and the `proc_name` extern, its
+buffer and its `unsafe` are sound.
+
+## 11. Two faults the review's own fixes introduced, found by driving the build again
+
+Both are about *when* something is read rather than what it says, and neither would have failed a test — they
+are the sixth and seventh time in four tickets that the installed binary found something no reasonable test
+would.
+
+**`taps` answers "this node exists", not "somebody has used it".** The bound put on the shell guard asked
+`Live::has_been_used`, which was `taps.contains_key` — and `follow_from_here` inserts a tap the moment a
+session starts, so every restored node looked used and the protection never applied at all. Measured:
+`running = sleep` survived the window closing and was gone a second after it reopened. `Live::typed` is a set
+of its own now, added to by `typed_into` and by nothing else, so the question is about lines somebody really
+sent.
+
+**And the offer forgot itself.** Taking it types the program, which marks the node used and so ends the
+protection — and the program takes a moment to start, so the very next reading three quarters of a second
+later saw a prompt and cleared the field. The offer worked exactly once and then the node had nothing to
+offer again. It records the program it has just been told to start, and the ordinary reading takes over from
+the next tick.
+
+**One thing verification confirmed rather than found, and it is the limitation §5 already states.**
+`space restart --running` on a node that was running `sleep 200` starts `sleep` with no argument, which exits
+at once — because what is written down is a program **name**. The same cycle with `cat`, which needs no
+arguments, works end to end: recorded, survived a close and reopen, restarted by the offer, still recorded
+afterwards. That is the honest shape of the feature and it is why the control is an offer that names the
+program rather than something a restore does silently.

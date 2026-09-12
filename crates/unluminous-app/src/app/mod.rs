@@ -1948,6 +1948,19 @@ impl UnluminousApp {
                     (found.kind(), session)
                 })
             }),
+            // **What the chosen node was left running**, which is a different question from whether it has a
+            // conversation to resume — see `MenuState::space_node_running`. `task-1907`.
+            space_node_running: self
+                .space
+                .chosen()
+                .and_then(|node| self.space.space.current().node(node))
+                .and_then(|found| match &found.state {
+                    crate::services::space::State::Terminal(terminal) => {
+                        Some(terminal.running.clone())
+                    }
+                    _ => None,
+                })
+                .unwrap_or_default(),
             space_pipe: self.space.in_hand.wire.is_some_and(|edge| {
                 self.space
                     .space
@@ -9138,15 +9151,20 @@ impl UnluminousApp {
         panes: Rect,
     ) {
         if drag.delta != 0.0 {
-            match self.editor_visible {
-                true => {
+            // **Which of the two paths depends on whether the stored sizes are the drawn ones**, not on
+            // whether the editing area is showing. See `the_sizes_are_being_shared`: `dock::share_the_depth`
+            // scales a side down whenever the panels ask for more room than there is, and that happens with
+            // the editing area showing too — which is what `task-1907` reports and what the gate on
+            // `editor_visible` missed.
+            match !self.editor_visible || self.the_sizes_are_being_shared(panel) {
+                true => self.move_a_divider_by_sharing(panel, drag.delta * sign),
+                false => {
                     let room = match self.panes.dock.side_of(panel).is_a_column() {
                         true => panes.width() - dock::EDITOR_MIN_WIDTH,
                         false => panes.height() - dock::EDITOR_MIN_HEIGHT,
                     };
                     self.panes.resize(panel, drag.delta * sign, room);
                 }
-                false => self.move_a_divider_with_no_editor(panel, drag.delta * sign),
             }
             self.unsaved_settings = true;
         }
@@ -9156,10 +9174,52 @@ impl UnluminousApp {
         }
     }
 
-    /// Move a divider when there is no editing area between the two sides of the window.
+    /// Whether the panels on `panel`'s axis are being drawn at the sizes they asked for.
     ///
-    /// **The room is shared out in proportion when the editing area is hidden**, which `dock::fill_the_depth`
-    /// does so that hiding it gives the room to the panels rather than leaving a hole. That is right for the
+    /// **The question `act_on_a_panel_divider` has to ask before it adds a drag to a stored number.**
+    /// `dock::share_the_depth` scales a side down whenever the two strips together want more room than there
+    /// is, so a panel's stored height is then a *share* rather than a size — and adding ten points of pointer
+    /// to a share that is already against its clamp moves the divider not at all. Measured on a 670 point
+    /// window with the canvas alone along the bottom: stored 560, drawn 550, and a drag up of 120 points
+    /// bought ten. With the Agent-Tasks board above it, the first drag up bought nothing and the next bought
+    /// 2.4 points of 120.
+    ///
+    /// `task-1771` found this with the editing area hidden and fixed it there, gated on `editor_visible`; the
+    /// scaling happens with the editing area showing too, which is what `task-1907` reports. Comparing the
+    /// two numbers is the honest form of the question.
+    ///
+    /// **Read off the rectangles the frame really drew** rather than by running `share_the_depth` again here,
+    /// which is `follow_the_open_file`'s rule: a second computation is a second place for the two to
+    /// disagree. A panel that is not showing has no rectangle and is skipped.
+    fn the_sizes_are_being_shared(&self, panel: dock::Panel) -> bool {
+        let side = self.panes.dock.side_of(panel);
+        let column = side.is_a_column();
+        let showing = self.panels_showing();
+        dock::Panel::all(self.plugin_ui.pane_count())
+            .into_iter()
+            .filter(|one| showing[one.index()])
+            .filter(|one| self.panes.dock.side_of(*one).is_a_column() == column)
+            .any(|one| {
+                let rect = self.panel_rects.of(one);
+                let (drawn, asked) = match column {
+                    true => (rect.width(), self.panes.width_of(one)),
+                    false => (rect.height(), self.panes.height_of(one)),
+                };
+                // **Smaller than it asked for, not merely different from it**, and that asymmetry is the whole
+                // of the question. `share_the_depth` only ever *scales down*, so a panel drawn short of what it
+                // asked for is a panel being shared. A panel drawn **larger** is `lay_a_strip_out` equalising a
+                // strip — every panel in a strip is drawn at the deepest one's depth, because one that wanted
+                // less would leave a hole — and reading that as sharing sent an ordinary drag down the wrong
+                // path and rewrote the shorter panel's stored height. The Codex Sol review of `task-1907` found
+                // it, and an absolute difference is what made it possible.
+                drawn > 0.0 && asked - drawn > 0.5
+            })
+    }
+
+    /// Move a divider by taking what one side gains off the side facing it.
+    ///
+    /// **The room is shared out in proportion whenever the panels ask for more than there is**, which
+    /// `dock::fill_the_depth` and `dock::share_the_depth` do so that nothing leaves a hole. That is right for the
     /// layout and wrong for a drag: a panel's stored measurement is then a *share* rather than a size, so ten
     /// points of pointer became three points of movement, less the wider it got — and it stopped altogether
     /// at what [`crate::settings::PANEL_MAX_WIDTH`] used to be. `task-1771` reports that as the Agent-Chat
@@ -9178,7 +9238,7 @@ impl UnluminousApp {
     ///
     /// With nothing on the far side there is nothing to take from and a side cannot grow: it already has
     /// everything, which is what its divider sitting against the edge of the window says.
-    fn move_a_divider_with_no_editor(&mut self, panel: dock::Panel, by: f32) {
+    fn move_a_divider_by_sharing(&mut self, panel: dock::Panel, by: f32) {
         let side = self.panes.dock.side_of(panel);
         let column = side.is_a_column();
         let showing = self.panels_showing();
@@ -9233,7 +9293,26 @@ impl UnluminousApp {
         };
         let givable = (depth(&self.panes, &facing) - floor(&self.panes, &facing)).max(0.0);
         let sparable = (depth(&self.panes, &mine) - floor(&self.panes, &mine)).max(0.0);
-        let by = by.clamp(-sparable, givable);
+        // **And the editing area gives room too, which is what it is between the two sides for.**
+        // Without this, a strip whose facing side has no panels on it could not grow at all — `givable` was
+        // zero, the drag was clamped to nothing, and the divider did not move however far the pointer went.
+        // That is `task-1907`'s report with the canvas alone along the bottom: measured, a drag of 120 points
+        // bought ten. What the editing area has spare is whatever it is drawn at above its own minimum, and
+        // it is asked for the same measurement the panels are.
+        let from_the_editor = match self.editor_visible {
+            true => {
+                // The rectangle the frame really gave it, for `the_sizes_are_being_shared`'s own reason:
+                // one answer read back rather than a second computation that could disagree.
+                let editor = self.panel_rects.editor;
+                let (drawn, least) = match column {
+                    true => (editor.width(), dock::EDITOR_MIN_WIDTH),
+                    false => (editor.height(), dock::EDITOR_MIN_HEIGHT),
+                };
+                (drawn - least).max(0.0)
+            }
+            false => 0.0,
+        };
+        let by = by.clamp(-sparable, givable + from_the_editor);
         if by == 0.0 {
             return;
         }
@@ -10231,7 +10310,13 @@ impl UnluminousApp {
             execution_point: self.execution_paragraph(file.path()),
             // What the gutter's own type follows, so the numbers grow with the text rather than
             // staying a fixed eleven and a half points beside forty point letters.
-            font_size: self.settings.font_size,
+            //
+            // **The size this file is really set in, not the window's setting.** An editor node on the canvas
+            // gives its own tab a size through `set_base_style` and records it as `OpenFile::sized_at`, so a
+            // gutter reading the setting drew eleven point numbers beside twenty point letters — which is
+            // `task-1907`'s report. `None` is every tab in a pane, which is the setting, so nothing outside the
+            // canvas changes by a pixel. Every other field here already reads `file`.
+            font_size: file.sized_at.unwrap_or(self.settings.font_size),
         }
     }
 
@@ -10542,8 +10627,12 @@ impl UnluminousApp {
         // The gutter takes the left of the editing area, and the text starts after it. With no
         // gutter the text keeps the padding it always had, so putting the numbers away leaves the
         // window looking exactly as it did before there were any.
-        let gutter = self.gutter(&fold_marks, &breakpoint_marks);
+        let mut gutter = self.gutter(&fold_marks, &breakpoint_marks);
         let lines = self.document().text().len_lines();
+        // **The type is reduced only if the column would take more than its share of the pane**, which is what
+        // replaced the ceiling `LARGEST_TYPE` used to put on it — see `gutter::fitted_size`. At every ordinary
+        // size this answers with the size it was given and nothing changes.
+        gutter.font_size = gutter::fitted_size(ui, &gutter, lines, area.width());
         let gutter_width = gutter::width(ui, &gutter, lines);
         let gutter_rect =
             Rect::from_min_size(area.min, Vec2::new(gutter_width, area.height()));
@@ -11070,6 +11159,12 @@ impl eframe::App for UnluminousApp {
     /// and this is the same path taken deliberately so it happens while the window is still here to
     /// wait for it.
     fn on_exit(&mut self) {
+        // **What each terminal node is running, asked before anything is killed.** It is read from the
+        // pseudoterminal, so a killed session answers nothing — and the ordinary reading is on a clock, at
+        // `WATCH_INTERVAL`, so a program started inside the last three quarters of a second would otherwise
+        // never be written down at all. The Codex Sol review of `task-1907` found that. One last reading here
+        // costs one syscall a node and closes the window between the last tick and the window going.
+        self.note_what_the_nodes_are_running_now();
         self.run.kill_everything();
         // Every program a node started, killed rather than dropped - `Live::forget`'s own note, and
         // `task-1769`'s 119 orphaned shells.

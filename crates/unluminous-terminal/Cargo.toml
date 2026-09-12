@@ -14,6 +14,12 @@ path = "src/lib.rs"
 alacritty_terminal.workspace = true
 unicode-width.workspace = true
 
+# `tcgetpgrp`, and nothing else: the one question that answers what program a terminal is really talking to,
+# as opposed to what it was started with. See `src/foreground.rs` for why that difference matters and why
+# Windows has no equivalent.
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
 # Job objects, and nothing else: the one promise Windows will make about a program outliving the
 # terminal it was started in. See `src/reap.rs` for why a pseudoterminal closing is not that promise.
 [target.'cfg(windows)'.dependencies]

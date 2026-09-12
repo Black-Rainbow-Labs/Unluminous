@@ -160,6 +160,11 @@ pub struct Session {
     /// closed pipe on Windows — and a closed pipe is not noticed by a program that is not reading
     /// it. `task-1769` found 119 shells left behind that way. See [`crate::reap`].
     reaper: Reaper,
+    /// The pseudoterminal, kept only to be asked what program is in the foreground of it.
+    ///
+    /// See [`crate::foreground`]: a node's recorded command is what it was *given*, and what is running in it
+    /// is a different question that only the terminal can answer.
+    master: crate::foreground::Master,
     /// Parses bytes given to [`Session::feed`]. Only a detached session has one; a session with a shell
     /// has the reader thread's parser instead.
     parser: Option<Processor>,
@@ -233,6 +238,15 @@ impl Session {
         let reaper = Reaper::adopt(pty.child_watcher().raw_handle() as *mut std::ffi::c_void);
         #[cfg(not(windows))]
         let reaper = Reaper::detached();
+        // **And the pseudoterminal itself, so what is running in it can be asked for later.** This is the one
+        // window in which it is reachable: `tty::new` has answered and `EventLoop::new` below moves the `Pty`
+        // into the loop, after which — as `Session::kill` records — there is no handle left here at all. A
+        // duplicate rather than the same descriptor, because the loop owns and closes the original.
+        //
+        // What it is for is `Session::foreground`: a node on the canvas records the *command it was given*,
+        // and a person adds a plain terminal node and then types `claude` into the shell, so a canvas that
+        // knew only the command came back as a shell whatever had been running in it. `task-1907`.
+        let master = crate::foreground::Master::duplicating(&pty);
         // The fourth argument is `drain_on_exit`, and it is `true` so that **what a program wrote
         // just before it ended is read**. With it false the reader loop leaves the pseudoterminal
         // alone the moment the child exits, and a program that prints one line and stops has all of
@@ -257,6 +271,7 @@ impl Session {
             events,
             notifier: Some(notifier),
             reaper,
+            master,
             parser: None,
             size,
             palette,
@@ -287,6 +302,7 @@ impl Session {
             events,
             notifier: None,
             reaper: Reaper::detached(),
+            master: crate::foreground::Master::detached(),
             parser: Some(Processor::new()),
             size,
             palette,
@@ -382,6 +398,19 @@ impl Session {
 
     pub fn bells(&self) -> usize {
         self.bells
+    }
+
+    /// The program in the foreground of this terminal, when it can be told.
+    ///
+    /// **What is running, not what it was started with**, which are different things: a terminal node on the
+    /// canvas records the command it was *given*, and a person adds a plain terminal node and then types
+    /// `claude` into the shell. See [`crate::foreground`] for the mechanism, and for why Windows answers
+    /// nothing.
+    ///
+    /// A program that has ended answers nothing, because a terminal with no foreground group is not running
+    /// anything — so a node whose program stopped before the window closed is not recorded as still having it.
+    pub fn foreground(&self) -> Option<String> {
+        self.running.then(|| self.master.foreground()).flatten()
     }
 
     /// What the program asked to be put on the clipboard, taken out so it is only handed over once.

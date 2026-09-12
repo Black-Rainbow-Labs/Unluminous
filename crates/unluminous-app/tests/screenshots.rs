@@ -18641,3 +18641,349 @@ fn the_flyout_offers_every_local_branch_and_marks_the_one_checked_out() {
     // The button is reachable, which is what a person presses to see the rows above.
     harness.get_by_label("Branch");
 }
+
+/// A bottom strip that has been dragged smaller can be dragged back up again.
+///
+/// `task-1907`: *"i'm unable to resize by moving the top up, it will only go down."* The canvas defaults to
+/// 560 points and a 670 point window leaves it 550 — `EDITOR_MIN_HEIGHT` is kept for the editing area — so a
+/// canvas on its own really is against its maximum when it opens and dragging up correctly does nothing. What
+/// must work is everything below that wall, which is what this asserts: down, then back up by the same amount.
+#[test]
+fn a_bottom_strip_dragged_smaller_can_be_dragged_back_up() {
+    use unluminous_app::app::dock::{Panel, Side};
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    harness.state_mut().dock_the_panel(Panel::Space, Side::Bottom, None);
+    harness.run();
+
+    let drawn = |harness: &Harness<'static, UnluminousApp>| {
+        harness.state().panel_rect_for_tests(Panel::Space).height()
+    };
+    let was = drawn(&harness);
+
+    let handle = harness.get_by_label("Resize space").rect();
+    drag(&mut harness, handle.center(), egui::pos2(handle.center().x, handle.center().y + 150.0));
+    let shorter = drawn(&harness);
+    assert!(shorter < was - 130.0, "dragging down made it shorter: {was} to {shorter}");
+
+    let handle = harness.get_by_label("Resize space").rect();
+    drag(&mut harness, handle.center(), egui::pos2(handle.center().x, handle.center().y - 150.0));
+    let taller = drawn(&harness);
+    assert!(
+        taller > shorter + 130.0,
+        "and dragging back up made it taller again: {shorter} to {taller}"
+    );
+}
+
+/// The same with a second panel above it, which is the arrangement `task-1907` reports.
+///
+/// Two panels in the two strips are being scaled to fit, so the stored numbers are not the drawn ones at all:
+/// measured before the fix, the board asked 420 and was drawn 235.71 while the canvas asked 560 and was drawn
+/// 314.29, and a drag of 120 points moved the canvas 2.4. What is asserted is the **drawn** height, because
+/// that is what somebody dragging a divider is looking at.
+#[test]
+fn a_divider_under_two_panels_moves_the_pointers_distance() {
+    use unluminous_app::app::dock::{Panel, Side};
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let slot = harness
+        .state()
+        .plugin_ui
+        .slot_of("agent-tasks/board")
+        .expect("the board contributes a pane") as u8;
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    harness.state_mut().dock_the_panel(Panel::Plugin(slot), Side::Top, None);
+    harness.state_mut().dock_the_panel(Panel::Space, Side::Bottom, None);
+    harness.run();
+
+    let drawn = |harness: &Harness<'static, UnluminousApp>| {
+        harness.state().panel_rect_for_tests(Panel::Space).height()
+    };
+    let was = drawn(&harness);
+    let handle = harness.get_by_label("Resize space").rect();
+    drag(&mut harness, handle.center(), egui::pos2(handle.center().x, handle.center().y - 120.0));
+    let now = drawn(&harness);
+    assert!(
+        now > was + 90.0,
+        "the canvas really followed the pointer rather than a fraction of it: {was} to {now}"
+    );
+}
+
+/// Two panels facing each other always add up to the room they are sharing.
+///
+/// The invariant the sharing path keeps, and the reason it is asserted separately: a fix that moved the divider
+/// by the right amount and left the two sides not adding up would be a fix that leaves a gap in the window.
+#[test]
+fn two_panels_on_one_axis_always_add_up_to_the_room() {
+    use unluminous_app::app::dock::{Panel, Side};
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let slot = harness.state().plugin_ui.slot_of("agent-tasks/board").expect("the board") as u8;
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    harness.state_mut().dock_the_panel(Panel::Plugin(slot), Side::Top, None);
+    harness.state_mut().dock_the_panel(Panel::Space, Side::Bottom, None);
+    harness.state_mut().editor_visible = false;
+    harness.state_mut().explorer_visible = false;
+    harness.run();
+
+    for dy in [-90.0f32, 140.0, -200.0, 60.0] {
+        let handle = harness.get_by_label("Resize space").rect();
+        drag(&mut harness, handle.center(), egui::pos2(handle.center().x, handle.center().y + dy));
+        let body = harness.state().panes_area().height();
+        let top = harness.state().panel_rect_for_tests(Panel::Plugin(slot)).height();
+        let bottom = harness.state().panel_rect_for_tests(Panel::Space).height();
+        assert!(
+            (top + bottom - body).abs() < 1.0,
+            "after {dy}: {top} + {bottom} should fill {body}"
+        );
+    }
+}
+
+/// A bare host sent to a node that already has a page is given a scheme.
+///
+/// `task-1907`: *"the browser node is on example.com and if i type google.com and enter, nothing happens."*
+/// `BrowserLocation::parse` turns `google.com` into `https://google.com/` and `send_a_space_browser_to` then
+/// handed the **typed** text to the view, where wry passes an unknown scheme to `Navigate` and it is refused in
+/// silence. Measured on the installed 0.39.1: the reply said the node had gone and `space browser url` said it
+/// was still on the page before.
+///
+/// The first address a node is given always worked, because a node with no tab yet falls through to
+/// `open_a_space_browser`, which passes the parsed location to `open_tab`. So this opens a page first.
+#[test]
+fn a_bare_host_sent_to_a_node_that_already_has_a_page_is_given_a_scheme() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add browser --x 40 --y 40")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space browser {node} go --url https://example.com/"));
+    harness.run();
+
+    did(&mut harness, &format!("space browser {node} go --url google.com"));
+    harness.run();
+    let answer = did(&mut harness, &format!("space browser {node} url"));
+    assert_eq!(
+        answer["url"], "https://google.com/",
+        "the bare host was given a scheme and the tab really moved"
+    );
+}
+
+/// A browser node that is not the one rendering still records where it was sent.
+///
+/// A window has one native view, so `BrowserHost::navigate` refuses a tab that is not the one showing — an
+/// honest refusal that `task-1907` found had been throwing the address away while the node's own record was
+/// changed anyway. Measured on the installed build with two browser nodes: `space list` said the node was on
+/// `https://example.org/` and `space browser url` said `https://google.com/`, for ever.
+#[test]
+fn a_browser_node_that_is_not_rendering_still_records_where_it_was_sent() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let first = did(&mut harness, "space add browser --x 40 --y 40")["node"].as_u64().expect("id");
+    let second = did(&mut harness, "space add browser --x 700 --y 40")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space browser {first} go --url https://example.com/"));
+    did(&mut harness, &format!("space browser {second} go --url https://example.org/"));
+    harness.run();
+
+    // The first node is the one being read now, so the second is the one that cannot be driven.
+    did(&mut harness, &format!("space focus {first}"));
+    harness.run();
+    did(&mut harness, &format!("space browser {second} go --url https://example.net/"));
+    harness.run();
+
+    let answer = did(&mut harness, &format!("space browser {second} url"));
+    assert_eq!(
+        answer["url"], "https://example.net/",
+        "the tab knows where it should be even though the view could not be driven there"
+    );
+}
+
+/// A node's own record and its page agree about where it is.
+///
+/// The two disagreeing is what made this hard to attribute: `space list` reads the node's state and
+/// `space browser url` reads the live tab, and `send_a_space_browser_to` recorded the address before it
+/// navigated — so a navigation that did not happen left the two saying different things, and `space.conf` was
+/// written from the one that was wrong.
+#[test]
+fn a_nodes_own_record_and_its_page_agree_about_where_it_is() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add browser --x 40 --y 40")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space browser {node} go --url https://example.com/"));
+    did(&mut harness, &format!("space browser {node} go --url example.org"));
+    harness.run();
+
+    let page = did(&mut harness, &format!("space browser {node} url"))["url"].clone();
+    let listed = did(&mut harness, "space list")["views"][0]["nodes"]
+        .as_array()
+        .expect("the nodes")
+        .iter()
+        .find(|one| one["id"] == node)
+        .expect("the browser node")["url"]
+        .clone();
+    assert_eq!(page, listed, "the state and the page name one address");
+    assert_eq!(page, "https://example.org/");
+}
+
+/// An editor node set at its own size has a gutter at that size.
+///
+/// `task-1907`: *"the line numbers on the file view don't shrink the same as the text to the right of them."*
+/// `UnluminousApp::gutter` read `self.settings.font_size` while every other field in it read the file, and an
+/// editor node gives its own tab a size through `set_base_style` — so the letters changed and the numbers
+/// beside them did not. Asserted on the gutter's **width**, because that is the observable the window computes
+/// from the type size and hands to the layout.
+#[test]
+fn an_editor_node_at_its_own_size_has_a_gutter_at_that_size() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Editor, egui::pos2(40.0, 40.0));
+    harness.run();
+    did(&mut harness, &format!("space editor {node} program.rs"));
+    harness.run();
+
+    let narrow = harness.state().editor_area().left();
+    did(&mut harness, &format!("space zoom {node} --factor 40"));
+    harness.run();
+    let wide = harness.state().editor_area().left();
+    assert!(
+        wide > narrow,
+        "the gutter grew with the node's own font: {narrow} to {wide}"
+    );
+}
+
+/// The gutter never takes more than its share of the pane, at any type size.
+///
+/// This is what replaced the ceiling on the gutter's type — see `gutter::fitted_size`. `task-1693` asked that
+/// *"a hundred and forty-four point text must not have a gutter wider than the editing area beside it"*, and
+/// capping the type was an approximation of it that also stopped the numbers following the text at ordinary
+/// sizes. Measured on the column itself, the requirement holds and the numbers are free.
+#[test]
+fn a_gutter_never_takes_more_than_its_share_of_the_pane() {
+    // **The hardest case the harness can build**: the largest type the settings allow, five digits of line
+    // number so the column is as wide as it can be, and the editing pane narrowed by a wide explorer. Every one
+    // of those is what made a single proportional pass land short — the change bar, the gap and the margins are
+    // fixed points that do not shrink with the letters, which the Codex Sol review of `task-1907` found.
+    let many = (1..=12_000).map(|line| format!("line {line}\n")).collect::<String>();
+    let mut harness = harness(&many);
+    did(&mut harness, "settings set appearance.font.size 144");
+    did(&mut harness, "panel size explorer --width 600");
+    harness.run();
+
+    // The editing pane is what is left of the panes area once the explorer has taken its width, and the gutter
+    // is the part of it in front of the text.
+    let explorer =
+        harness.state().panel_rect_for_tests(unluminous_app::app::dock::Panel::Explorer);
+    let pane_left = explorer.right();
+    let pane_width = harness.state().panes_area().right() - pane_left;
+    let gutter = harness.state().editor_area().left() - pane_left;
+    assert!(gutter > 0.0, "there is a gutter to measure: {gutter}");
+    assert!(
+        gutter < pane_width * 0.45,
+        "a 144 point file with five digit line numbers still leaves the text most of a narrow pane: \
+         gutter {gutter} of {pane_width}"
+    );
+}
+
+
+/// Zooming the canvas does not relayout a node, which is the promise the crispness change could have broken.
+///
+/// `task-1904` promises that *"a zoom costs a matrix, not a relayout"*, and `task-1907` makes a node's glyphs
+/// rasterise at the size they are composited at. The one way that could go wrong is by scaling the **layout**
+/// rather than the raster size — the terminal derives its rows and columns from its cell metrics, so a scaled
+/// metric would change the cell count and send a resize to the program on the far side.
+#[test]
+fn a_zoom_does_not_relayout_a_node() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let terminal =
+        harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    harness.state_mut().feed_a_space_terminal(terminal, b"$ cargo test\r\n");
+    harness.run();
+
+    let grid = |harness: &Harness<'static, UnluminousApp>| {
+        let session = harness.state().space.live.terminal(terminal).expect("its session");
+        (session.size().rows, session.size().columns)
+    };
+    let at_one = grid(&harness);
+
+    for zoom in ["1.5", "2.0", "0.5"] {
+        did(&mut harness, &format!("space camera --zoom {zoom}"));
+        harness.run();
+        assert_eq!(
+            grid(&harness),
+            at_one,
+            "the terminal kept its cell count at a camera of {zoom}"
+        );
+    }
+}
+
+/// The canvas at 200%, which is the picture `task-1907` is about.
+///
+/// A node's terminal and editor text is rasterised at the size it is composited at, so the glyphs are drawn
+/// rather than magnified. The furniture — the header, the gutter numbers, a folder node's rows — is `egui`
+/// galleys and is still scaled, which §3.2 of the design says plainly and which this picture is the record of.
+#[test]
+fn space_zoomed_in() {
+    let mut harness = a_canvas();
+    did(&mut harness, "space camera --zoom 2.0");
+    harness.run();
+    harness.snapshot(shot("space_zoomed_in").as_str());
+}
+
+/// A terminal node records the program running in it, and an agent can start it again.
+///
+/// `task-1907`: *"if i just have a view with a terminal with claude-code open, then quit, re-open, the terminal
+/// is there but no claude code."* A node's `command` is what it was **given**, and a person adds a plain
+/// terminal node and types `claude` into the shell — so a canvas that recorded only the command came back as a
+/// shell whatever had been running in it. Measured on the installed 0.39.1, the node read back
+/// `{"command": "", "session": ""}`, which is byte for byte the shape of the reporter's own `space.conf`.
+///
+/// **Through a detached session**, which is what makes a terminal testable with no shell: it has no
+/// pseudoterminal, so `Session::foreground` answers `None` and the node is recorded as being at a prompt. That
+/// is the honest answer for a test and is asserted here rather than worked around, because a detached session
+/// claiming a program would put one in every canvas a test wrote down. What a real shell reports is measured by
+/// `cargo run -p unluminous-terminal --example foreground_check`.
+#[test]
+fn a_terminal_node_records_the_program_running_in_it() {
+    use unluminous_app::services::space::{Kind, State};
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    harness.run();
+
+    let running = |harness: &Harness<'static, UnluminousApp>| {
+        match harness.state().space.space.current().node(node).map(|found| &found.state) {
+            Some(State::Terminal(terminal)) => terminal.running.clone(),
+            _ => panic!("a terminal node"),
+        }
+    };
+    assert_eq!(running(&harness), "", "a session with no pseudoterminal answers nothing");
+
+    // And what a restore reads out of `space.conf` is what an agent can act on, which is the rule that a thing
+    // done by hand and the same thing done by an agent are the same thing.
+    harness.state_mut().space.space.change(node, |state| {
+        if let State::Terminal(terminal) = state {
+            terminal.running = "echo".to_owned();
+        }
+    });
+    harness.run();
+    let reply = run(&mut harness, &format!("space restart {node} --running"));
+    assert!(reply.ok, "it started: {}", reply.message);
+    assert!(
+        reply.message.contains("echo"),
+        "the reply names the program it started: {}",
+        reply.message
+    );
+}
+
+/// And a node that was left at a prompt is refused rather than starting something.
+#[test]
+fn a_node_that_was_not_left_running_anything_is_refused_with_a_sentence() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    harness.run();
+    let reply = run(&mut harness, &format!("space restart {node} --running"));
+    assert!(!reply.ok, "a node at a prompt has nothing to start again");
+    assert!(reply.message.contains("not left running"), "{}", reply.message);
+}

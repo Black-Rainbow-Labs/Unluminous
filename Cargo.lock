@@ -5009,6 +5009,7 @@ name = "unluminous-terminal"
 version = "0.40.0"
 dependencies = [
  "alacritty_terminal",
+ "libc",
  "unicode-width",
  "windows-sys 0.61.2",
 ]

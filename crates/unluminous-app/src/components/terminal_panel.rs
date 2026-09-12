@@ -542,11 +542,12 @@ fn paint(
                         continue;
                     };
                     // Snapped to whole pixels: a glyph drawn on a fraction of a pixel is resampled, which
-                    // softens every letter in the grid.
-                    let position = Pos2::new(
-                        (pen.x + glyph.offset.x).round(),
-                        (pen.y + cell.ascent + glyph.offset.y).round(),
-                    );
+                    // softens every letter in the grid. **Whole pixels rather than whole points**, because a
+                    // terminal node on the canvas is composited through the camera — see `Crispness::snap`.
+                    let position = renderer.crispness().snap(Pos2::new(
+                        pen.x + glyph.offset.x,
+                        pen.y + cell.ascent + glyph.offset.y,
+                    ));
                     placed.push((Rect::from_min_size(position, glyph.size), glyph.uv, colour));
                 }
             }
@@ -620,10 +621,14 @@ fn paint(
                 if cursor.shape == CursorShape::Block && !under.is_blank() {
                     let style = renderer.terminal_style(font_size, under.bold, under.italic);
                     if let Some(glyph) = renderer.glyph(under.character, &style) {
-                        let position = Pos2::new(
-                            (pen.x + glyph.offset.x).round(),
-                            (pen.y + cell.ascent + glyph.offset.y).round(),
-                        );
+                        // Snapped the same way the grid's own glyphs are — whole pixels rather than whole
+                        // points, because a terminal node on the canvas is composited through the camera. The
+                        // two must agree, or the letter under the cursor sits a fraction off the one the grid
+                        // drew in the same cell.
+                        let position = renderer.crispness().snap(Pos2::new(
+                            pen.x + glyph.offset.x,
+                            pen.y + cell.ascent + glyph.offset.y,
+                        ));
                         let mut mesh = Mesh::with_texture(renderer.texture(ui.ctx()));
                         mesh.add_rect_with_uv(
                             Rect::from_min_size(position, glyph.size),

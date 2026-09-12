@@ -125,6 +125,10 @@ fn write_a_node(node: &Node, key: &str, root: &Path, values: &mut Values) {
         State::Terminal(terminal) => {
             values.set_or_clear(&format!("{key}.command"), &terminal.command);
             values.set_or_clear(&format!("{key}.session"), &terminal.session);
+            // **What was running, which is not the command.** `task-1907`: a node's command is what it was
+            // given, and a person types `claude` into a plain shell — so a canvas that wrote only the command
+            // came back as a shell whatever had been running in it.
+            values.set_or_clear(&format!("{key}.running"), &terminal.running);
             if terminal.font_size > 0.0 {
                 values.set(&format!("{key}.font"), format!("{:.0}", terminal.font_size));
             }
@@ -295,6 +299,10 @@ fn read_a_node(values: &Values, key: &str, root: &Path) -> Option<Node> {
                 .map(|folder| project_state::absolute(root, Path::new(folder))),
             font_size: values.number(&format!("{key}.font")).unwrap_or(0.0).max(0.0),
             session: values.text(&format!("{key}.session")).unwrap_or_default().to_owned(),
+            // Absent in a `space.conf` written before `task-1907`, which reads as a node that was at a prompt
+            // — the same thing `Layout::read_from` does for a settings file written before the panels could be
+            // moved, and what makes an existing canvas open unchanged.
+            running: values.text(&format!("{key}.running")).unwrap_or_default().to_owned(),
         }),
         Kind::Browser => State::Browser(Browser {
             url: values.text(&format!("{key}.url")).unwrap_or_default().to_owned(),
@@ -358,6 +366,8 @@ mod tests {
             if let State::Terminal(terminal) = state {
                 terminal.command = "claude".to_owned();
                 terminal.session = "6f1c0b0e".to_owned();
+                // What was really in the foreground of it, which is not the command — `task-1907`.
+                terminal.running = "claude".to_owned();
                 terminal.font_size = 13.0;
             }
         });
@@ -424,6 +434,54 @@ mod tests {
         assert_eq!(now.edges.len(), 2);
         assert_eq!(now.edges[0].from, was.edges[0].from);
         assert_eq!(now.edges[0].to, was.edges[0].to);
+    }
+
+    /// A `space.conf` written before `task-1907` opens unchanged.
+    ///
+    /// **Every one of these on a real machine is that file**, so the absent key has to read as something rather
+    /// than refusing: a node with no `running` is a node that was at a prompt, which is what a canvas written by
+    /// the previous version means. It is `Layout::read_from`'s own rule about a settings file written before the
+    /// panels could be moved.
+    #[test]
+    fn a_space_conf_written_before_the_running_program_was_recorded_opens_unchanged() {
+        let project = Path::new("/projects/thing");
+        let mut values = Values::new();
+        values.set("space.current", "1");
+        values.set("space.view.0.id", "1");
+        values.set("space.view.0.name", "Main");
+        values.set("space.view.0.node.0.id", "5");
+        values.set("space.view.0.node.0.kind", "terminal");
+        values.set("space.view.0.node.0.command", "zsh");
+        let back = read(&values, project);
+        let node = &back.views()[0].nodes[0];
+        let State::Terminal(terminal) = &node.state else { panic!("a terminal node") };
+        assert_eq!(terminal.command, "zsh", "what it was given still comes back");
+        assert_eq!(terminal.running, "", "and what was running reads as a prompt rather than refusing");
+    }
+
+    /// What was running is written down beside the command, and they are different things.
+    ///
+    /// `task-1907`: a person adds a plain terminal node — `command` empty — and types `claude` into the shell,
+    /// which is the case the whole section exists for. Asserted on the values rather than on a round trip,
+    /// because what the file holds is the thing a later window reads.
+    #[test]
+    fn what_a_terminal_was_running_is_written_beside_what_it_was_given() {
+        let project = Path::new("/projects/thing");
+        let mut space = Space::new();
+        let node = space.add_node(Kind::Terminal, Pos2::new(0.0, 0.0), Some(project));
+        space.change(node, |state| {
+            if let State::Terminal(terminal) = state {
+                terminal.running = "claude".to_owned();
+            }
+        });
+        let mut values = Values::new();
+        write(&space, project, &mut values);
+        assert_eq!(values.text("space.view.0.node.0.running"), Some("claude"));
+        assert_eq!(
+            values.text("space.view.0.node.0.command"),
+            None,
+            "a plain shell node was given no command, which is the case this is for"
+        );
     }
 
     /// A hand edited file cannot ask for a tab that is not there.
