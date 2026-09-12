@@ -102,6 +102,34 @@ cleaned; the symptom was a credential fault wearing the costume of a missing com
 `net.git-fetch-with-cli`: cargo's own git client cannot authenticate to one at all, and the failure it
 reports is `revision <sha> not found`.
 
+## Every change is installed and launched before it is reported
+
+**After every change, build it, install it over the copy on this machine, and start a window on it.**
+Not at the end of a task — after each change that a person could look at. Then say what to look at.
+
+The reason is that a change nobody has seen is a change nobody has checked, and the person reading the
+report cannot check it either: they have the old binary on their desktop. `task-1907` had four rounds of
+this, each one a report against a build that predated the fix — a browser node that recorded a version
+number instead of a program name, a page that reflowed when a node touched the edge, a session that
+never came back. Every one of them was invisible to `cargo test` and obvious in a window.
+
+```sh
+cargo build --release -p unluminous-app -p unluminous-cli   # what the change actually is
+bash installer/macos/build.sh --install                     # over /Applications/Unluminous.app
+bash tools/drive-a-window.sh <folder>                        # a window, without taking the keyboard
+```
+
+**`bash tools/drive-a-window.sh` is how a window is started, not `nohup … &`.** A backgrounded
+`unluminous` from a shell exits immediately here; the script starts it the way the desktop does and
+prints the process id, and it never takes the focus. `unluminous-cli --instance <pid> …` drives it
+afterwards. `tools/release.sh` does the install itself, so a release is one of these and needs no
+second install.
+
+**And there is one install, not two.** `/Applications/Unluminous.app` is the install.
+`installer/dist/Unluminous.app` is the folder `installer/macos/build.sh` assembles the bundle in before
+copying it — gitignored, rewritten on every run, and not a second copy anybody should open. What is
+kept from a build is the image in `releases/`, which carries its version in its name.
+
 ## Finishing a task means releasing it
 
 **When the work is done and verified, run the release. Do not ask first — run it.** On macOS and

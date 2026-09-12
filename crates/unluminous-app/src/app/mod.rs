@@ -11165,6 +11165,9 @@ impl eframe::App for UnluminousApp {
         // never be written down at all. The Codex Sol review of `task-1907` found that. One last reading here
         // costs one syscall a node and closes the window between the last tick and the window going.
         self.note_what_the_nodes_hold_now();
+        // **Before the sessions are killed**, because a screen is read out of a live terminal and a killed one
+        // has nothing to read. `task-1908`.
+        self.write_the_screens_down();
         self.run.kill_everything();
         // Every program a node started, killed rather than dropped - `Live::forget`'s own note, and
         // `task-1769`'s 119 orphaned shells.

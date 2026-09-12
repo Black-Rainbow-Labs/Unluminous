@@ -682,3 +682,48 @@ space.view.0.node.1.expanded = src|src/deeper
         assert!(!used.contains(&fresh), "{fresh} was already in use");
     }
 }
+
+/// Where a terminal node's screen is kept, so it can come back showing what was on it.
+///
+/// **A file per node rather than a key in `space.conf`**, because a screen is kilobytes of escape sequences and
+/// `space.conf` is a settings file somebody reads and edits by hand. `task-1908`.
+pub fn screen_path(root: &Path, node: crate::services::space::NodeId) -> std::path::PathBuf {
+    project_state::folder(root).join("terminals").join(format!("{node}.bytes"))
+}
+
+/// Write down what is on a terminal node's screen.
+///
+/// **Called when the window closes and at no other time.** A screen changes on every keystroke, and
+/// `Space::is_dirty` exists so the canvas is not written sixty times a second; what somebody wants back is the
+/// last state, so it is written once. `None` removes whatever was there, which is what a node drawing its own
+/// full screen answers — see `Session::screen_to_replay`.
+pub fn save_a_screen(
+    root: &Path,
+    node: crate::services::space::NodeId,
+    bytes: Option<&[u8]>,
+) -> Result<(), String> {
+    let file = screen_path(root, node);
+    let Some(bytes) = bytes else {
+        // Removed rather than left, so a node that came back at a prompt does not replay yesterday's screen the
+        // time after that.
+        let _ = std::fs::remove_file(&file);
+        return Ok(());
+    };
+    if let Some(folder) = file.parent() {
+        std::fs::create_dir_all(folder)
+            .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
+    }
+    std::fs::write(&file, bytes)
+        .map_err(|problem| format!("{} could not be written: {problem}", file.display()))
+}
+
+/// Read back a terminal node's screen, and take the file away.
+///
+/// **Taken away as it is read**, so a canvas that fails to start a node does not replay the same screen for
+/// ever. What is on a terminal is the last thing that was on it, not a thing a project owns.
+pub fn take_a_screen(root: &Path, node: crate::services::space::NodeId) -> Option<Vec<u8>> {
+    let file = screen_path(root, node);
+    let bytes = std::fs::read(&file).ok()?;
+    let _ = std::fs::remove_file(&file);
+    (!bytes.is_empty()).then_some(bytes)
+}

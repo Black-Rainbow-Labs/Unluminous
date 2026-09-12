@@ -148,6 +148,26 @@ impl EventListener for Proxy {
     }
 }
 
+/// Whether nothing at all has been written to a terminal's grid yet.
+///
+/// **What [`Session::replay`] is really gated on**, and it is a fact about the grid rather than about when an
+/// event was last read: the reader thread writes while holding the terminal's lock, so an empty grid asked for
+/// under that lock is a program that has written nothing. Only the screen is asked about, because a fresh
+/// session has no history either and asking about both would be the same answer twice.
+fn is_empty(term: &Term<Proxy>) -> bool {
+    let grid = term.grid();
+    if term.history_size() > 0 {
+        return false;
+    }
+    (0..grid.screen_lines()).all(|line| {
+        (0..grid.columns()).all(|column| {
+            let point = Point::new(Line(line as i32), Column(column));
+            let cell = &grid[point];
+            cell.c == ' ' || cell.c == '\0'
+        })
+    })
+}
+
 /// One terminal.
 pub struct Session {
     term: Arc<FairMutex<Term<Proxy>>>,
@@ -160,6 +180,12 @@ pub struct Session {
     /// closed pipe on Windows — and a closed pipe is not noticed by a program that is not reading
     /// it. `task-1769` found 119 shells left behind that way. See [`crate::reap`].
     reaper: Reaper,
+    /// Whether the program has written anything to the grid yet.
+    ///
+    /// **What [`Session::replay`] is gated on.** Putting a screen back is safe only before the program's own
+    /// output has started arriving; afterwards it would land in the middle of whatever the program is drawing.
+    /// `Event::Wakeup` is the reader thread saying the grid changed, which is the honest signal. `task-1908`.
+    has_read_from_the_program: bool,
     /// The pseudoterminal, kept only to be asked what program is in the foreground of it.
     ///
     /// See [`crate::foreground`]: a node's recorded command is what it was *given*, and what is running in it
@@ -272,6 +298,7 @@ impl Session {
             notifier: Some(notifier),
             reaper,
             master,
+            has_read_from_the_program: false,
             parser: None,
             size,
             palette,
@@ -303,6 +330,7 @@ impl Session {
             notifier: None,
             reaper: Reaper::detached(),
             master: crate::foreground::Master::detached(),
+            has_read_from_the_program: false,
             parser: Some(Processor::new()),
             size,
             palette,
@@ -325,6 +353,58 @@ impl Session {
         parser.advance(&mut *term, bytes);
         drop(term);
         self.pump();
+    }
+
+    /// The bytes that would draw what is on this terminal, for [`Self::replay`] to put back later.
+    ///
+    /// **Nothing while the program is drawing its own screen**, and `task-1908` §1.2 is why: the alternate
+    /// buffer is cleared when it is entered and abandoned when it is left, so a full-screen program's display is
+    /// not a thing that can be saved even in principle. What is written down in that case is `None` rather than
+    /// the shell's buffer behind it — a screen belonging to a program that is no longer running would come back
+    /// as a frozen frame of its interface, which is worse than an empty terminal because it looks alive. The
+    /// node says what was running and offers to start it instead, which is `task-1907`'s own control.
+    pub fn screen_to_replay(&self) -> Option<Vec<u8>> {
+        if self.on_alternate_screen() {
+            return None;
+        }
+        // **Bounded by dropping rows, never by cutting bytes.** A byte cut lands inside an escape sequence
+        // sooner or later — the stream is mostly `\x1b[0;38;2;232;235;241;48;2;26;31;38m` — and half a sequence
+        // is not a shorter sequence, it is text: the tail `35;241m` would be *printed*. So the bound is applied
+        // to the screen before it is written, which is where a row boundary exists to respect.
+        Some(crate::replay::bytes_within(&self.snapshot(), crate::replay::REPLAY_LIMIT))
+    }
+
+    /// Put a screen back, before anything has been read from the program.
+    ///
+    /// **What `task-1908` asks for**: a terminal node comes back showing what was on it, which is a stream of
+    /// the bytes that would draw it — see [`crate::replay`] for what is in one and why it is bytes rather than
+    /// text.
+    ///
+    /// **Not [`Self::feed`]**, and the difference is a rule rather than an inconvenience. `feed` works only on a
+    /// detached session, because a session with a shell has the reader thread's parser and two parsers over one
+    /// stream would interleave. Replaying is not input: it happens before the first byte of the program's own
+    /// output, so there is nothing to interleave with. A parser of its own is made for it, used once and
+    /// dropped.
+    ///
+    /// **Refused once anything has been read**, which is what keeps that true. Answers whether it happened, so
+    /// a caller that has left it too late is told rather than believing a screen was put back.
+    pub fn replay(&mut self, bytes: &[u8]) -> bool {
+        if self.has_read_from_the_program {
+            return false;
+        }
+        let mut parser: Processor = Processor::new();
+        let mut term = self.term.lock();
+        // **Asked of the grid, under the lock, rather than of the flag alone.** The flag is set when
+        // `Event::Wakeup` is *read*, which happens in `pump` — so between the reader thread writing and the next
+        // pump the flag is still false, and a replay in that window would land in the middle of whatever the
+        // program had begun to draw. The grid itself cannot be out of date: the reader thread writes to it while
+        // holding this lock, so an empty grid under the lock is a program that has genuinely written nothing.
+        if !is_empty(&term) {
+            return false;
+        }
+        parser.advance(&mut *term, bytes);
+        drop(term);
+        true
     }
 
     /// The name for the tab: the title the program set, or the program's own name.
@@ -449,7 +529,11 @@ impl Session {
                     self.running = false;
                 }
                 Event::Exit => self.running = false,
-                Event::Wakeup | Event::MouseCursorDirty | Event::CursorBlinkingChange => {}
+                // **`Wakeup` is the reader thread saying the grid changed**, which is the one signal that the
+                // program has written something. `Session::replay` is refused after it, because a replay is
+                // only safe before the first byte of the program's own output — see that function.
+                Event::Wakeup => self.has_read_from_the_program = true,
+                Event::MouseCursorDirty | Event::CursorBlinkingChange => {}
             }
         }
     }

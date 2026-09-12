@@ -123,12 +123,61 @@ fn tidy(path: PathBuf) -> PathBuf {
 /// too: the windows that were open last time are brought back **only** on this launch, because
 /// `unluminous .` typed in a folder has to open that folder and nothing else.
 ///
-/// The test is that the current directory is the folder the program itself lives in, which is what a
-/// shortcut to Unluminous's own installer leaves it as.
+/// **Two launches look different and both are the desktop**, which is what `task-1908` found.
+///
+/// On Windows an installed `unluminous.exe` really does start in the folder it lives in, so the test is that
+/// the current directory is the program's own folder — which is what a shortcut leaves it as, and what
+/// `task-1670` wrote this for.
+///
+/// On macOS an application is a **bundle**, and a bundle opened by the Dock, by Finder or by Spotlight starts
+/// with its working directory at the root of the file system. Measured with a real `.app`:
+///
+/// ```text
+/// cwd    = /
+/// exe    = /private/tmp/Probe.app/Contents/MacOS/Probe
+/// parent = /private/tmp/Probe.app/Contents/MacOS
+/// ```
+///
+/// So the Windows test answered `false` for every launch a person makes on this platform, and everything gated
+/// on it never happened: the windows that were open last time were read out of `session.txt` and thrown away.
+/// The report is *"if I quit Unluminous and open back up, it's supposed to open the windows I had open, but
+/// it's never doing that."*
+///
+/// **What identifies it is the bundle plus a working directory nobody chose.** A binary inside
+/// `…app/Contents/MacOS` is a bundle's binary, and `/` is not a folder anybody opens an editor in — a person
+/// standing in a project has that project as their working directory, which is the narrow half of the rule and
+/// is what keeps `unluminous .` opening the folder it was typed in. Both halves have a test.
 pub fn started_from_the_desktop(current_directory: &Path, program: Option<&Path>) -> bool {
-    program
+    let beside_the_program = program
         .and_then(|program| program.parent())
-        .is_some_and(|folder| same_folder(folder, current_directory))
+        .is_some_and(|folder| same_folder(folder, current_directory));
+    beside_the_program || opened_as_a_bundle(current_directory, program)
+}
+
+/// Whether this is a macOS application bundle started with a working directory nobody chose.
+///
+/// Split out so the two halves of [`started_from_the_desktop`] can be read apart, and because this one is a
+/// statement about a platform's own launch mechanism rather than about a path.
+fn opened_as_a_bundle(current_directory: &Path, program: Option<&Path>) -> bool {
+    // The root of the file system, which is where `launchd` leaves a bundle it opened and nowhere a person
+    // opens an editor from. Compared before the bundle test because it is a cheap comparison and it is the half
+    // that says the working directory was not chosen.
+    if current_directory != Path::new("/") {
+        return false;
+    }
+    // `…/Something.app/Contents/MacOS/binary`, which is the only layout a bundle's executable has.
+    let Some(folder) = program.and_then(|program| program.parent()) else {
+        return false;
+    };
+    let inside_macos = folder.file_name().is_some_and(|name| name == "MacOS");
+    let inside_contents =
+        folder.parent().and_then(Path::file_name).is_some_and(|name| name == "Contents");
+    let inside_a_bundle = folder
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::file_name)
+        .is_some_and(|name| name.to_string_lossy().ends_with(".app"));
+    inside_macos && inside_contents && inside_a_bundle
 }
 
 pub fn starting_folder(
@@ -260,6 +309,66 @@ mod tests {
             starting_folder(&installed, Some(&program), None),
             installed,
             "with nothing opened before, there is nothing better than where it started"
+        );
+    }
+
+    /// A macOS bundle launched from the Dock is a desktop launch, and it does not look like one.
+    ///
+    /// **Measured with a real `.app`** rather than reasoned about: a bundle opened through `open` — which is what
+    /// the Dock, Finder and Spotlight all do — starts with
+    ///
+    /// ```text
+    /// cwd    = /
+    /// exe    = /private/tmp/Probe.app/Contents/MacOS/Probe
+    /// parent = /private/tmp/Probe.app/Contents/MacOS
+    /// ```
+    ///
+    /// so the working directory is **not** the binary's folder and `started_from_the_desktop` answered `false`.
+    /// `task-1670` wrote that test against the Windows layout, where an installed `unluminous.exe` really does
+    /// start in the folder it lives in, and macOS was never checked. The cost was everything gated on it:
+    /// `Store::open_windows` was never read, so *"if I quit Unluminous and open back up, it's supposed to open
+    /// the windows I had open, but it's never doing that"* — `task-1908`.
+    #[test]
+    fn a_macos_bundle_opened_from_the_dock_is_a_desktop_launch() {
+        let root = sample();
+        let program = root.join("Unluminous.app/Contents/MacOS/unluminous");
+        std::fs::create_dir_all(program.parent().expect("a folder")).expect("make the folder");
+        let project = root.join("inner");
+
+        // What `open` really gives: the root of the file system, and the binary inside the bundle.
+        assert!(
+            started_from_the_desktop(Path::new("/"), Some(&program)),
+            "a bundle opened from the Dock is a desktop launch"
+        );
+        assert_eq!(
+            starting_folder(Path::new("/"), Some(&program), Some(&project)),
+            project,
+            "so the last project is what was meant"
+        );
+    }
+
+    /// And a bundle's binary run **from a terminal** still opens the folder the person is standing in.
+    ///
+    /// The narrow half of the rule above, and the one that keeps `unluminous .` honest: the bundle is what says
+    /// this might be a desktop launch, and the working directory is what says it is not. Somebody standing in a
+    /// project who runs the binary inside the bundle by its full path means that project.
+    #[test]
+    fn a_bundles_binary_run_from_a_project_opens_that_project() {
+        let root = sample();
+        let program = root.join("Unluminous.app/Contents/MacOS/unluminous");
+        std::fs::create_dir_all(program.parent().expect("a folder")).expect("make the folder");
+        let standing_in = root.join("inner");
+        let elsewhere = root.join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).expect("make the folder");
+
+        assert!(
+            !started_from_the_desktop(&standing_in, Some(&program)),
+            "a working directory somebody chose is not a desktop launch"
+        );
+        assert_eq!(
+            starting_folder(&standing_in, Some(&program), Some(&elsewhere)),
+            standing_in,
+            "so the folder they are standing in wins over the last project"
         );
     }
 

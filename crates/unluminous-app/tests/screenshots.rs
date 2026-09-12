@@ -18994,15 +18994,20 @@ fn a_node_that_was_not_left_running_anything_is_refused_with_a_sentence() {
     assert!(reply.message.contains("not left running"), "{}", reply.message);
 }
 
-/// A page cut into by the pane's edge is not drawn at all.
+/// A page a little off the edge is still drawn, and one cut to a strip is not.
 ///
 /// `task-1907`: *"there's an issue with the browser node. it resizes the content when it's pushed against the
 /// edge of the main window. e.g. if the node itself is 50% off the page/view, the full browser page is shown but
 /// resized to 50% width."* `wry` offers `set_bounds` and nothing else — there is no clipping a native child —
 /// so a node hanging off the edge has its view's **viewport** narrowed rather than cropped, and a page laid out
 /// against the viewport reflows into it. What was drawn was not a picture of the page the node is on.
+///
+/// **And `task-1908` reports the first attempt at this being far too eager**: *"the web browser contents
+/// disappear if the node is slightly off screen."* A fraction of the width was the wrong measure, because what
+/// makes a page reflow is its viewport crossing a stylesheet's breakpoint, which is an absolute width. See
+/// `PAGE_REFLOW`.
 #[test]
-fn a_browser_page_cut_into_by_the_edge_is_not_drawn() {
+fn a_browser_page_is_cut_by_the_edge_until_there_is_nothing_worth_drawing() {
     use unluminous_app::services::space::Kind;
     let mut harness = harness("");
     did(&mut harness, "space show");
@@ -19017,12 +19022,23 @@ fn a_browser_page_cut_into_by_the_edge_is_not_drawn() {
         "the page is drawn while the node is whole"
     );
 
-    // Half the node off the left edge, which is the case reported.
-    did(&mut harness, "space camera --x 400 --y 0");
+    // **Slightly off the edge keeps its page**, which is `task-1908`'s report against the first attempt at
+    // this: a fraction of the width was the wrong measure, and eighty points off a five hundred point page
+    // blanked it. What decides a reflow is the absolute width the page is left with — see `PAGE_REFLOW`.
+    did(&mut harness, "space camera --x 60 --y 0");
+    harness.run();
+    assert!(
+        !harness.state().browser_placements().is_empty(),
+        "a page a little off the edge is still drawn"
+    );
+
+    // Cut down to a strip, and there is nothing worth drawing. The node is 900 points wide and starts at
+    // world 120, so a camera at 880 leaves 140 of it on the canvas.
+    did(&mut harness, "space camera --x 880 --y 0");
     harness.run();
     assert!(
         harness.state().browser_placements().is_empty(),
-        "a page cut in half is put away rather than reflowed into what is left"
+        "a page cut below `PAGE_REFLOW` is put away rather than reflowed into what is left"
     );
 
     // And it comes back when the node does.
@@ -19080,4 +19096,47 @@ fn a_page_followed_to_a_new_address_is_what_the_node_comes_back_on() {
         "https://example.com/an-article",
         "the node records where the page really went, which is what a reopen sends it to"
     );
+}
+
+/// A terminal node comes back showing what was on it.
+///
+/// `task-1908`: *"I have 2 terminals, one with claude code, and one with `ls` command executed. When I quit and
+/// reopen, I want both exactly restored so I see claude code and the contents of `ls`."* The process cannot come
+/// back — `tasks/task-1908-restoring-what-was-open-tdd.md` §1.1 has tmux's and iTerm2's own documentation on why
+/// — and the screen can. This is the screen.
+///
+/// **On a folder of its own**, which is `task-1906` §4.8's rule: a test that calls `restore_project` writes into
+/// the project it is given, and `sample_folder` is shared by every test that wants one.
+#[test]
+fn a_terminal_node_comes_back_showing_what_was_on_it() {
+    use unluminous_app::services::space::Kind;
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screen-replay");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().restore_project();
+    harness.run();
+
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    harness.state_mut().feed_a_space_terminal(
+        node,
+        b"$ ls\r\ntotal 48\r\nsrc  tests  Cargo.toml\r\n$ ",
+    );
+    harness.run();
+
+    // What the window would write on its way out.
+    harness.state_mut().write_the_screens_down();
+    let saved = unluminous_app::services::space::store::screen_path(&folder, node);
+    assert!(saved.is_file(), "the screen was written down at {}", saved.display());
+
+    // And what a fresh session is given when the node starts again. Read directly, because a detached session
+    // is what a test has and `take_a_screen` is what the real path calls.
+    let bytes = unluminous_app::services::space::store::take_a_screen(&folder, node)
+        .expect("the screen comes back");
+    let mut fresh = unluminous_terminal::Session::detached(unluminous_terminal::Size::new(12, 40));
+    assert!(fresh.replay(&bytes), "a fresh session takes it");
+    let screen = fresh.snapshot();
+    assert!(screen.contains("total 48"), "the `ls` output came back: {:?}", screen.text());
+    assert!(screen.contains("Cargo.toml"), "all of it, not just the first line");
+
+    std::fs::remove_dir_all(&folder).ok();
 }

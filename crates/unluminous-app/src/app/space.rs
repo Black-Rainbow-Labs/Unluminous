@@ -35,19 +35,31 @@ use crate::services::space::{live::Live, store, Kind, Node, NodeId, Pipe, Space,
 /// How long to wait before writing `space.conf` again after a write failed, in seconds.
 const RETRY_A_FAILED_WRITE: f64 = 2.0;
 
-/// How much of a browser node's width has to still be on the canvas for its page to be drawn.
+/// How narrow a browser node's page may be cut to before it is not drawn at all.
 ///
-/// **`wry` offers `set_bounds` and nothing else**: there is no clipping a native child and no handle to clip it
-/// with, so a node hanging off the pane's edge has its view's *viewport* narrowed rather than cropped — and a
-/// page laid out against the viewport reflows into it. `task-1907` reports what that looks like: *"if the node
-/// itself is 50% off the page/view, the full browser page is shown but resized to 50% width."* A page redrawn
-/// at a width nobody chose is not a picture of the page the node is on.
+/// **A page reflows when its viewport crosses a stylesheet's breakpoint, which is an absolute width rather than
+/// a fraction of one.** `wry` offers `set_bounds` and nothing else, so a node cut by the pane's edge has its
+/// view's viewport narrowed and a responsive page answers the new width with a different layout — which is
+/// `task-1907`'s report, *"the full browser page is shown but resized to 50% width"*.
 ///
-/// So past this much cropping the page is put away and the node draws its toolbar and says where the page is,
-/// which is the sentence `browser_view::show` already says for a second rendered tab. Nine tenths rather than
-/// all of it, because a node a few points off the edge going blank as it is dragged would be worse than one
-/// that goes when it is genuinely being cut into.
-const PAGE_CROP: f32 = 0.9;
+/// The first attempt made this a fraction, nine tenths, and `task-1908` reports what that does: *"the web
+/// browser contents disappear if the node is slightly off screen."* Eighty points off a five hundred point page
+/// was enough to blank it. A fraction is the wrong measure in both directions — a 900 point node cut by a tenth
+/// is 810 points and reflows nothing, while a 700 point node cut by a tenth is 630 and crosses Tailwind's `sm`.
+///
+/// So the number is a width, and it is well below the narrowest breakpoint in common use — Bootstrap's `sm` is
+/// 576 and Tailwind's `sm` is 640. Two things follow, and the second is the one the first attempt got wrong.
+///
+/// A page **wider** than this is drawn cut, because a page that is still hundreds of points wide is in the same
+/// layout it was in and what is missing is simply the part off the edge — which is what cropping looks like.
+///
+/// And a page whose node is **already narrower** than this is drawn cut too, and always: it is in its phone
+/// layout because of the size somebody gave the node, and cutting it further does not change which layout it is
+/// in. There is nothing to protect it from. What the threshold catches is a page reduced to a strip, where the
+/// node keeps its toolbar and says the page is elsewhere.
+const PAGE_REFLOW: f32 = 200.0;
+
+
 
 /// What is being dragged on the canvas right now.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -651,28 +663,27 @@ impl UnluminousApp {
             // size would hang out of it. That is what "resize/zoom/etc" asks for, and it costs one call.
             let camera = self.space.space.current().camera;
             let whole = camera.rect_to_screen(self.space.body.min, placement.area);
+            // **Cut to the pane, and the cost of that is stated rather than worked around.**
+            //
+            // `wry` offers `set_bounds` and nothing else — there is no clipping a native child and no handle to
+            // clip it with — so cutting a dimension narrows the view's *viewport* in that dimension, and
+            // narrowing the width makes a responsive page **relay out** into it. `task-1907` reports what that
+            // looks like: *"the full browser page is shown but resized to 50% width."*
+            //
+            // **Overflowing the pane instead was measured and refused.** Drawing the view at its whole width and
+            // letting the window clip the overhang works on exactly one of four edges: the window here is 1100
+            // by 720 and the canvas pane is `x 36..1100, y 158..688`, so only the right edge is the window's
+            // own. Past the left edge a page would cover the activity rail, past the top the title bar and the
+            // tabs, past the bottom the status bar — a native child is composited above everything egui draws,
+            // so each of those is a page drawn over Unluminous's own furniture.
+            //
+            // So the page is cut, and `PAGE_REFLOW` is where it stops being drawn at all rather than shown
+            // reflowed. See that constant for why the threshold is where it is.
             placement.area = whole.intersect(self.space.body);
-            // **A page that has been cut down by the pane's edge is not drawn at all.**
-            //
-            // `set_bounds` is the only geometry `wry` offers — there is no clipping a native child and no
-            // handle to clip it with — so a node half off the canvas has its view's **viewport** narrowed
-            // rather than cropped, and a page laid out against the viewport reflows into it. `task-1907`
-            // reports what that looks like: *"if the node itself is 50% off the page/view, the full browser
-            // page is shown but resized to 50% width."* A page redrawn at a width nobody chose is worse than
-            // no page, because it is not a picture of the page the node is on.
-            //
-            // So past `PAGE_CROP` the page is put away and the node draws its toolbar and says where the page
-            // is, which is the sentence `browser_view::show` already says for a second rendered tab. A little
-            // cropping is allowed rather than none, because a node an inch off the edge reflowing away as it
-            // is dragged would be worse than one that goes when it is genuinely half gone.
-            let cut = match whole.width() > 1.0 {
-                true => placement.area.width() / whole.width(),
-                false => 0.0,
-            };
-            if cut < PAGE_CROP {
-                // Not pushed, so the reconciliation hides the view exactly as it does for a node scrolled off
-                // the canvas — there is one place that decides whether a page is drawn and this is a reason to
-                // reach it, not a second mechanism.
+            // Below `PAGE_REFLOW` there is nothing worth drawing: not pushed, so the reconciliation hides the
+            // view exactly as it does for a node scrolled off the canvas — one place decides whether a page is
+            // drawn and this is a reason to reach it rather than a second mechanism.
+            if placement.area.width() < PAGE_REFLOW {
                 return;
             }
             // **The camera's zoom is spent on the page's own zoom, because a native child cannot be
@@ -1515,7 +1526,24 @@ impl UnluminousApp {
         let size = crate::components::terminal_panel::grid_size(parts.body.size(), cell);
         let waker = self.waker();
         match unluminous_terminal::Session::spawn(&settings, size, waker) {
-            Ok(session) => {
+            Ok(mut session) => {
+                // **The screen it was left showing, put back before anything has been read.** `task-1908`:
+                // *"one with `ls` command executed … I want both exactly restored so I see … the contents of
+                // `ls`."* The bytes are taken as they are read, so a node that fails to start does not replay
+                // the same screen for ever, and `Session::replay` refuses once the program has written — which
+                // is why this is here, in the moment between the shell starting and its first output.
+                //
+                // **A restore is told from a restart by the file existing at all.** A screen is written down
+                // only when the window closes and is taken away as it is read, so the one moment a node has a
+                // saved screen is the first time it starts in a new window. `Restart` on a node later in the
+                // session finds nothing and gets the shell it asked for, which is what it means.
+                if self.remembers_this_project() {
+                    if let Some(bytes) =
+                        crate::services::space::store::take_a_screen(self.tree.root(), node)
+                    {
+                        session.replay(&bytes);
+                    }
+                }
                 self.space.live.start_terminal(node, session);
                 self.space.live.follow_from_here(node);
                 // **Written down once it really started**, so a node whose program would not start is not
@@ -2114,6 +2142,45 @@ impl UnluminousApp {
                     terminal.running = running;
                 }
             });
+        }
+    }
+
+    /// Write down what every terminal node's screen is showing, so it can come back showing it.
+    ///
+    /// **Called when the window closes and at no other time.** A screen changes on every keystroke and the
+    /// canvas is deliberately not written that often — `Space::is_dirty` exists for exactly that — and what
+    /// somebody wants back is the last state rather than every state. `task-1908`.
+    ///
+    /// A node whose program is drawing its own full screen writes **nothing**, which removes whatever was there:
+    /// see `Session::screen_to_replay` and §1.2 of the design for why a full-screen program's display is not a
+    /// thing that can be saved.
+    pub fn write_the_screens_down(&mut self) {
+        if !self.remembers_this_project() {
+            return;
+        }
+        let nodes: Vec<NodeId> = self
+            .space
+            .space
+            .current()
+            .nodes
+            .iter()
+            .filter(|node| node.kind() == Kind::Terminal)
+            .map(|node| node.id)
+            .collect();
+        let root = self.tree.root().to_path_buf();
+        for node in nodes {
+            let bytes = self
+                .space
+                .live
+                .terminal(node)
+                .and_then(unluminous_terminal::Session::screen_to_replay);
+            if let Err(problem) =
+                crate::services::space::store::save_a_screen(&root, node, bytes.as_deref())
+            {
+                // The window is closing, so there is nowhere to report this that anybody would read. What is
+                // lost is a screen coming back, which is not worth failing an exit over.
+                let _ = problem;
+            }
         }
     }
 
