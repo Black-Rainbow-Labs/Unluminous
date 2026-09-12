@@ -8,6 +8,11 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- The windows come back, and a terminal brings its screen with it (`task-1908`)
+- The replay's own edge cases, asked rather than assumed (`task-1908`)
+
+## 0.41.1 — 2026-09-11
+
 - Three reports against 0.41.0, and a program named after its version (`task-1907`)
 
 ## 0.41.0 — 2026-09-11
