@@ -8,6 +8,10 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- The canvas comes back whole, and five faults in the way of reading it (`task-1907`)
+
+## 0.40.0 — 2026-09-11
+
 - The second round of reported issues, and task-1848's last four sections (`task-1905`)
 - A canvas comes back in the state it was left in, and a manager to find one (`task-1906`)
 - The design for six more reports about the canvas (`task-1907`)
