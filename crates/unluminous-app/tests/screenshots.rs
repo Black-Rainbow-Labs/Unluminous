@@ -18096,7 +18096,13 @@ fn a_browser_nodes_page_is_placed_inside_the_node() {
     let was = page;
     // **And it follows a pan**, which is the other half of the report: *"it also doesn't move around with
     // the canvas. the page just stays fixed in a single spot."*
-    did(&mut harness, "space camera --x 200 --y 150");
+    //
+    // A pan small enough to keep the whole page on the canvas, because `task-1907` stopped drawing a page
+    // that has been cut into by more than `PAGE_CROP` — `wry` narrows a native child's viewport rather than
+    // cropping it, so a page laid out against that viewport reflows, and what was drawn was not a picture of
+    // the page. The pan this test used to make took 80 of the page's 520 points off the left edge, which is
+    // exactly the case that is now put away.
+    did(&mut harness, "space camera --x 40 --y 150");
     harness.run();
     let (_, panned) = harness.state().browser_placements().first().copied().expect("still placed");
     assert_ne!(panned.min, was.min, "the page should have moved with the canvas");
@@ -18986,4 +18992,92 @@ fn a_node_that_was_not_left_running_anything_is_refused_with_a_sentence() {
     let reply = run(&mut harness, &format!("space restart {node} --running"));
     assert!(!reply.ok, "a node at a prompt has nothing to start again");
     assert!(reply.message.contains("not left running"), "{}", reply.message);
+}
+
+/// A page cut into by the pane's edge is not drawn at all.
+///
+/// `task-1907`: *"there's an issue with the browser node. it resizes the content when it's pushed against the
+/// edge of the main window. e.g. if the node itself is 50% off the page/view, the full browser page is shown but
+/// resized to 50% width."* `wry` offers `set_bounds` and nothing else — there is no clipping a native child —
+/// so a node hanging off the edge has its view's **viewport** narrowed rather than cropped, and a page laid out
+/// against the viewport reflows into it. What was drawn was not a picture of the page the node is on.
+#[test]
+fn a_browser_page_cut_into_by_the_edge_is_not_drawn() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(120.0, 90.0));
+    harness
+        .state_mut()
+        .new_detached_space_page(node, "https://example.com/")
+        .expect("a tab with no view behind it");
+    harness.run();
+    assert!(
+        !harness.state().browser_placements().is_empty(),
+        "the page is drawn while the node is whole"
+    );
+
+    // Half the node off the left edge, which is the case reported.
+    did(&mut harness, "space camera --x 400 --y 0");
+    harness.run();
+    assert!(
+        harness.state().browser_placements().is_empty(),
+        "a page cut in half is put away rather than reflowed into what is left"
+    );
+
+    // And it comes back when the node does.
+    did(&mut harness, "space camera --x 0 --y 0");
+    harness.run();
+    assert!(
+        !harness.state().browser_placements().is_empty(),
+        "the page comes back when the node is whole again"
+    );
+}
+
+/// A page followed to a new address is what the node comes back on.
+///
+/// `task-1907`, against the released build: *"i clicked and navigated to a url from hacker news, but when it
+/// reopened it was back at hacker news."* A click inside a page navigates the view and
+/// `BrowserTab::arrived_at` records that on the **tab** — but `Browser::url` is what `store::write` puts in
+/// `space.conf`, and nothing bridged the two. So the node was written down at the address it was *sent* to and
+/// came back there, while the toolbar and `space browser url` both showed the right page for as long as the
+/// window was open, which is why it read as a save fault rather than a navigation one.
+///
+/// `arrived_at` is what a click looks like from here: nothing asked for the page, so there is no `awaiting`.
+#[test]
+fn a_page_followed_to_a_new_address_is_what_the_node_comes_back_on() {
+    use unluminous_app::services::space::{Kind, State};
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(60.0, 60.0));
+    harness
+        .state_mut()
+        .new_detached_space_page(node, "https://news.ycombinator.com/")
+        .expect("a tab with no view behind it");
+    // **The view has to be alive before anything derived from it is written down**, which is `task-1906` §4.5's
+    // guard: before the nodes are running the live state is empty, and writing it would put nothing over the
+    // file. A real window does this when it opens a project.
+    harness.state_mut().bring_the_current_view_to_life();
+    harness.run();
+
+    let recorded = |harness: &Harness<'static, UnluminousApp>| {
+        match harness.state().space.space.current().node(node).map(|found| &found.state) {
+            Some(State::Browser(browser)) => browser.url.clone(),
+            _ => panic!("a browser node"),
+        }
+    };
+    assert_eq!(recorded(&harness), "https://news.ycombinator.com/");
+
+    // A click inside the page, which is an arrival nothing asked for.
+    let tab = harness.state().space.live.browser(node).expect("its tab").id;
+    harness
+        .state_mut()
+        .arrived_at_for_tests(tab, "https://example.com/an-article".to_owned());
+    harness.run();
+
+    assert_eq!(
+        recorded(&harness),
+        "https://example.com/an-article",
+        "the node records where the page really went, which is what a reopen sends it to"
+    );
 }

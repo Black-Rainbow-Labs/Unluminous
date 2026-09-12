@@ -11164,7 +11164,7 @@ impl eframe::App for UnluminousApp {
         // `WATCH_INTERVAL`, so a program started inside the last three quarters of a second would otherwise
         // never be written down at all. The Codex Sol review of `task-1907` found that. One last reading here
         // costs one syscall a node and closes the window between the last tick and the window going.
-        self.note_what_the_nodes_are_running_now();
+        self.note_what_the_nodes_hold_now();
         self.run.kill_everything();
         // Every program a node started, killed rather than dropped - `Live::forget`'s own note, and
         // `task-1769`'s 119 orphaned shells.

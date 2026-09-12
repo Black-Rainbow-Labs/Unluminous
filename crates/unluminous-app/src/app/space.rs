@@ -35,6 +35,20 @@ use crate::services::space::{live::Live, store, Kind, Node, NodeId, Pipe, Space,
 /// How long to wait before writing `space.conf` again after a write failed, in seconds.
 const RETRY_A_FAILED_WRITE: f64 = 2.0;
 
+/// How much of a browser node's width has to still be on the canvas for its page to be drawn.
+///
+/// **`wry` offers `set_bounds` and nothing else**: there is no clipping a native child and no handle to clip it
+/// with, so a node hanging off the pane's edge has its view's *viewport* narrowed rather than cropped — and a
+/// page laid out against the viewport reflows into it. `task-1907` reports what that looks like: *"if the node
+/// itself is 50% off the page/view, the full browser page is shown but resized to 50% width."* A page redrawn
+/// at a width nobody chose is not a picture of the page the node is on.
+///
+/// So past this much cropping the page is put away and the node draws its toolbar and says where the page is,
+/// which is the sentence `browser_view::show` already says for a second rendered tab. Nine tenths rather than
+/// all of it, because a node a few points off the edge going blank as it is dragged would be worse than one
+/// that goes when it is genuinely being cut into.
+const PAGE_CROP: f32 = 0.9;
+
 /// What is being dragged on the canvas right now.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum Gesture {
@@ -636,8 +650,31 @@ impl UnluminousApp {
             // is on the screen: a canvas at 0.5 draws a node half as wide, and a page that kept its world
             // size would hang out of it. That is what "resize/zoom/etc" asks for, and it costs one call.
             let camera = self.space.space.current().camera;
-            placement.area =
-                camera.rect_to_screen(self.space.body.min, placement.area).intersect(self.space.body);
+            let whole = camera.rect_to_screen(self.space.body.min, placement.area);
+            placement.area = whole.intersect(self.space.body);
+            // **A page that has been cut down by the pane's edge is not drawn at all.**
+            //
+            // `set_bounds` is the only geometry `wry` offers — there is no clipping a native child and no
+            // handle to clip it with — so a node half off the canvas has its view's **viewport** narrowed
+            // rather than cropped, and a page laid out against the viewport reflows into it. `task-1907`
+            // reports what that looks like: *"if the node itself is 50% off the page/view, the full browser
+            // page is shown but resized to 50% width."* A page redrawn at a width nobody chose is worse than
+            // no page, because it is not a picture of the page the node is on.
+            //
+            // So past `PAGE_CROP` the page is put away and the node draws its toolbar and says where the page
+            // is, which is the sentence `browser_view::show` already says for a second rendered tab. A little
+            // cropping is allowed rather than none, because a node an inch off the edge reflowing away as it
+            // is dragged would be worse than one that goes when it is genuinely half gone.
+            let cut = match whole.width() > 1.0 {
+                true => placement.area.width() / whole.width(),
+                false => 0.0,
+            };
+            if cut < PAGE_CROP {
+                // Not pushed, so the reconciliation hides the view exactly as it does for a node scrolled off
+                // the canvas — there is one place that decides whether a page is drawn and this is a reason to
+                // reach it, not a second mechanism.
+                return;
+            }
             // **The camera's zoom is spent on the page's own zoom, because a native child cannot be
             // transformed.** Everything else in a node is drawn into a layer carrying the camera, so it is
             // genuinely scaled; a `WebView` has no such transform, and `set_bounds` alone would make a
@@ -1780,6 +1817,14 @@ impl UnluminousApp {
     /// the view is made in `reconcile`, before the egui pass. So a tab on its own is a value, and this is
     /// `new_detached_space_node`'s bargain applied to a page: a picture of a node, and a state a test can
     /// read, without waiting on WebView2 or WKWebView to answer.
+    /// Tell a node's tab that a page arrived, which is what a click inside one looks like from here.
+    ///
+    /// For a test: a click asks for nothing, so it reaches `BrowserTab::arrived_at` with no `awaiting` set, and
+    /// a harness has no native view to click in. `task-1907`.
+    pub fn arrived_at_for_tests(&mut self, tab: u64, url: String) {
+        self.change_browser_tab(tab, |tab| tab.arrived_at(url));
+    }
+
     pub fn new_detached_space_page(&mut self, node: NodeId, url: &str) -> Option<u64> {
         let location =
             crate::services::browser::BrowserLocation::parse(url, self.tree.root()).ok()?;
@@ -1946,30 +1991,77 @@ impl UnluminousApp {
                 Kind::Terminal if ask_what_is_running => {
                     self.note_what_a_node_is_running(node);
                 }
-                Kind::Terminal | Kind::Browser => {}
+                Kind::Browser => self.note_where_a_node_is_browsing(node),
+                Kind::Terminal => {}
             }
         }
     }
 
-    /// Take down what every terminal node is running, whatever the clock says.
+    /// Take down what every node holds that is read from something live, whatever the clock says.
     ///
-    /// **What `on_exit` calls**, and the reason it has to exist: the ordinary reading is throttled to
-    /// `WATCH_INTERVAL`, so a program started inside the last three quarters of a second before a window closes
-    /// would never be written down — and `on_exit` kills the sessions, after which there is no pseudoterminal
-    /// left to ask. The Codex Sol review of `task-1907` found that. Switching away from a view has the same
-    /// shape and calls this too.
-    pub(crate) fn note_what_the_nodes_are_running_now(&mut self) {
-        let nodes: Vec<NodeId> = self
+    /// **What `on_exit` calls**, and the reason it has to exist: a terminal's program is read from its
+    /// pseudoterminal on a clock, at `WATCH_INTERVAL`, and `on_exit` kills the sessions — so a program started
+    /// inside the last three quarters of a second was never written down and there was nothing left to ask
+    /// afterwards. The Codex Sol review of `task-1907` found that.
+    ///
+    /// A browser node is here for the same reason with a different clock: its page moves whenever somebody
+    /// clicks a link, and the last click before a window closes can land after the last frame that read it.
+    pub(crate) fn note_what_the_nodes_hold_now(&mut self) {
+        let nodes: Vec<(NodeId, Kind)> = self
             .space
             .space
             .current()
             .nodes
             .iter()
-            .filter(|node| node.kind() == Kind::Terminal)
-            .map(|node| node.id)
+            .map(|node| (node.id, node.kind()))
             .collect();
-        for node in nodes {
-            self.note_what_a_node_is_running(node);
+        for (node, kind) in nodes {
+            match kind {
+                Kind::Terminal => self.note_what_a_node_is_running(node),
+                // **And where each page is**, for the same reason: a click on a link moves the tab and the
+                // ordinary reading writes it down, but the last click before a window closes may land after
+                // the last frame that read it. `on_exit` closes that window too.
+                Kind::Browser => self.note_where_a_node_is_browsing(node),
+                Kind::Folder | Kind::Editor => {}
+            }
+        }
+    }
+
+    /// Where a browser node's page really is, written down when it has moved.
+    ///
+                fn note_where_a_node_is_browsing(&mut self, node: NodeId) {
+        // **Where the page really is, which is not where the node was sent.** A click on a link
+        // inside a page navigates the view, and `BrowserTab::arrived_at` records that on the
+        // **tab** — but `Browser::url` is what `store::write` puts in `space.conf`, and nothing
+        // bridged the two. So a node sent to `news.ycombinator.com` and then clicked through to an
+        // article came back at `news.ycombinator.com`, which is `task-1907`'s second report against
+        // the released build.
+        //
+        // Derived here rather than reported from the `LoadFinished` handler, which is
+        // `follow_the_open_file`'s rule: a page's address also changes on a redirect, on `Back` and
+        // on `Forward`, and a list of the places that have to remember to write it down is a list
+        // whose next entry is the one that forgets.
+        let showing = self
+            .space
+            .live
+            .browser(node)
+            .map(|tab| tab.current_url().to_owned())
+            .unwrap_or_default();
+        // A node with no page open keeps what it was left holding, because that is what a restore
+        // will send it to. Only a page that really is somewhere overwrites it.
+        if showing.is_empty() {
+            return;
+        }
+        let held = match &self.space.space.current().node(node).map(|node| &node.state) {
+            Some(State::Browser(browser)) => browser.url.clone(),
+            _ => String::new(),
+        };
+        if held != showing {
+            self.space.space.change(node, |state| {
+                if let State::Browser(browser) = state {
+                    browser.url = showing;
+                }
+            });
         }
     }
 

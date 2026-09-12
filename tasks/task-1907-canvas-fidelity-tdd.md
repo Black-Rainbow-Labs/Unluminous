@@ -951,3 +951,95 @@ at once — because what is written down is a program **name**. The same cycle w
 arguments, works end to end: recorded, survived a close and reopen, restarted by the offer, still recorded
 afterwards. That is the honest shape of the feature and it is why the control is an offer that names the
 program rather than something a restore does silently.
+
+## 12. Three reports against 0.41.0, and the first one is the whole of §5 defeated by a file name
+
+Driving the released build found three more things. The first is the sharpest lesson in the ticket.
+
+### 12.1 macOS has three names for a process and two of them are wrong
+
+**Reported.** *"It's still not opening my terminal session back up when I quit and reopen."*
+
+**What was actually happening.** §5 worked. `space.conf` held, in the reporter's own project:
+
+```
+space.view.1.node.0.running = 2.1.269
+```
+
+A version number, offered as a program. Claude Code's executable is
+`~/.local/share/claude/versions/2.1.269`, and `proc_name` answers with the **executable's file name** — so the
+one program the whole section exists for was the one program it could not name. Everything else about §5 was
+right: the reading, the persistence, the offer, the guard. The name was wrong.
+
+**Two wrong answers before the right one**, which is why they are written down as a table rather than as a
+sentence. Measured against a real `claude` on this machine:
+
+| asked for | answers | what it really is |
+|---|---|---|
+| `proc_name` | `2.1.269` | the executable's file name |
+| `p_comm`, which is `ps -o ucomm=` | `2.1.269` | the same name, truncated to sixteen characters |
+| **argv[0]**, which is `ps -o comm=` | `claude` | the word that was typed |
+
+So `argv_zero` reads `KERN_PROCARGS2`, which is where `ps` reads it from. Its buffer begins with a count of
+the arguments, then the executable path, then NUL padding, then argv[0] — and the last component of that is
+taken, because a command line very often names a program by its path and `-zsh` is a login shell wearing a
+dash.
+
+**Two things about the reading were measured rather than reasoned about.** `proc_bsdshortinfo` is **64** bytes
+with `pbsi_comm` at offset 16 and a length of 16, not 17 — a byte out made the struct 68, `proc_pidinfo` wrote
+64, the length check refused it and every node answered that nothing was running. And `KERN_PROCARGS2` fills
+its buffer with the arguments *and the whole environment* and refuses with `ENOMEM` rather than truncating, so
+4,096 bytes was enough for a `/bin/zsh` (1,004) and not enough for a `cargo test` binary. It asks
+`kern.argmax`, which is what `ps` does.
+
+**The lesson worth keeping is about the test.** A test that checked "some name came back" passed on all three
+answers. What found this was reading the reporter's own `space.conf` — and what would have found it earlier is
+asking the question about `claude` specifically, which is the program the feature is for.
+
+### 12.2 A page followed to a new address was not what the node came back on
+
+**Reported.** *"I clicked and navigated to a url from hacker news, but when it reopened it was back at hacker
+news."*
+
+**What was actually happening.** Two values, and only one of them was written down.
+
+| | value | lives in | moves on a link click? | written to `space.conf`? |
+|---|---|---|---|---|
+| the tab | `BrowserTab::current_url` | `space.live.browsers`, dropped on exit | **yes**, through `arrived_at` | no |
+| the node | `Browser::url` | `space.space`, the model | **no** | **yes** |
+
+`Browser::url` was written only when something *sent* the node somewhere, and then went stale for the life of
+the window while the tab moved underneath it. The toolbar and `space browser url` both read the **tab**, so
+everything looked right until a restart — which is why this read as a save fault rather than a navigation one.
+
+**And `note_where_the_nodes_are_reading` had `Kind::Browser => {}`**, in a function whose own doc comment
+states the rule it was breaking: *"derived rather than reported… a list of the places that have to remember to
+write it down is a list whose next entry is the one that forgets."* Browser was the entry that forgot.
+`note_where_a_node_is_browsing` is that arm, derived the same way the caret and the folder scroll are — so a
+redirect, a `Back` and a `Forward` are all covered by one reading rather than three that have to remember.
+
+It joins the `on_exit` pass too, which is now `note_what_the_nodes_hold_now` rather than
+`…_are_running_now`: a terminal's program and a browser's address are both read from something live, and the
+last click before a window closes can land after the last frame that read it.
+
+### 12.3 A page cut into by the pane's edge was reflowed rather than cropped
+
+**Reported.** *"If the node itself is 50% off the page/view, the full browser page is shown but resized to 50%
+width."*
+
+**What is actually happening, and it is a limit rather than a mistake.** `wry` offers `set_bounds` and nothing
+else — there is no clipping a native child and no handle to clip it with, on either platform. So a node
+hanging off the edge has its view's **viewport** narrowed, and a page laid out against the viewport reflows
+into it. `task-1905` recorded this as the honest cost of a native child; `task-1907` reports what it actually
+looks like, which is a page redrawn at a width nobody chose.
+
+**So past `PAGE_CROP` the page is not drawn.** Nine tenths of its width, and the node keeps its toolbar and
+says the page is showing elsewhere — which is the sentence `browser_view::show` already says for a second
+rendered tab, reached by not pushing a placement rather than by a second mechanism. Nine tenths rather than
+all of it, because a node a few points off the edge going blank as it is dragged would be worse than one that
+goes when it is genuinely being cut into.
+
+**And it is a page rather than a picture of a page that is being given up**, which is worth being plain about:
+this trades a reflowed page for no page. The reflowed one was not a picture of the page the node is on, and a
+node that says where its page is can be dragged back; there is no third answer while `set_bounds` is the only
+lever.
