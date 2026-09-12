@@ -107,12 +107,11 @@ pub fn bytes_within(screen: &Screen, limit: usize) -> Vec<u8> {
 /// than a cursor move, so nothing depends on it.
 fn without_the_first_rows(screen: &Screen, count: usize) -> Screen {
     let count = count.min(screen.rows);
-    let mut out = Screen::empty(
-        screen.rows,
-        screen.columns,
-        screen.cells.first().map(|cell| cell.foreground).unwrap_or(screen.background),
-        screen.background,
-    );
+    // **The background for both**, so a blank cell is one `is_plain_blank` recognises and `bytes_of` trims. The
+    // foreground of a blank is never drawn — there is nothing in it — and taking the first cell's colour would
+    // make the default depend on which row happened to be first, which is arbitrary even where it does not show.
+    let mut out =
+        Screen::empty(screen.rows, screen.columns, screen.background, screen.background);
     out.title = screen.title.clone();
     for row in count..screen.rows {
         for column in 0..screen.columns {
@@ -460,6 +459,61 @@ mod tests {
         assert!(!text.contains("38;"), "nor any other part of one: {text:?}");
         // And the end is what was kept, because the end is what somebody wants back.
         assert!(text.contains("row 5"), "the last row survived: {text:?}");
+    }
+
+    /// Dropping rows does not recolour the rows that are left.
+    ///
+    /// `without_the_first_rows` builds its replacement with `Screen::empty`, which needs a foreground for the
+    /// blank cells — and the first cell's colour is an arbitrary thing to use for that. What has to be true is
+    /// that the cells actually *copied* keep their own colours, and that the blanks below them are blanks: the
+    /// default only shows through where nothing was copied, and `bytes_of` trims those rows anyway.
+    #[test]
+    fn dropping_rows_does_not_recolour_what_is_left() {
+        let mut session = Session::detached(Size::new(6, 20));
+        // A first row in an unusual colour, then rows in another, so a default taken from the first cell would
+        // be visible if it leaked.
+        session.feed(b"\x1b[35mmagenta first row\r\n\x1b[32mgreen second\r\n\x1b[32mgreen third\r\n");
+        let screen = session.snapshot();
+        let magenta = screen.cell(0, 0).expect("a cell").foreground;
+        let green = screen.cell(1, 0).expect("a cell").foreground;
+        assert_ne!(magenta, green, "the fixture really has two colours");
+
+        // Drop the magenta row and the greens must still be green.
+        let bounded = bytes_within(&screen, bytes_of(&screen).len() - 20);
+        let now = fed(&bounded).snapshot();
+        assert!(now.text().contains("green second"), "the rows that were kept came back");
+        assert!(!now.text().contains("magenta"), "and the one that was dropped did not");
+        assert_eq!(
+            now.cell(0, 0).expect("a cell").foreground,
+            green,
+            "a kept row keeps its own colour rather than the dropped row's"
+        );
+    }
+
+    /// A bound is never exceeded, at any limit, including limits nothing can fit in.
+    ///
+    /// Every path out of `bytes_within` compares against `limit` before returning, and the last one answers with
+    /// nothing rather than with a row that does not fit — a stream over the bound would be a file over the bound,
+    /// which is the thing `REPLAY_LIMIT` exists to prevent.
+    #[test]
+    fn a_bound_is_never_exceeded_whatever_it_is() {
+        let mut session = Session::detached(Size::new(6, 20));
+        for row in 0..6 {
+            session.feed(format!("\x1b[3{}mrow {row} of coloured text\r\n", row + 1).as_bytes());
+        }
+        let screen = session.snapshot();
+        // Every limit from nothing at all to more than the whole stream.
+        let whole = bytes_of(&screen).len();
+        for limit in [0, 1, 10, 50, 120, 200, whole / 2, whole - 1, whole, whole + 100] {
+            let bounded = bytes_within(&screen, limit);
+            assert!(
+                bounded.len() <= limit,
+                "a limit of {limit} answered with {} bytes",
+                bounded.len()
+            );
+        }
+        // And a limit that fits everything really does answer with everything.
+        assert_eq!(bytes_within(&screen, whole).len(), whole);
     }
 
     /// Trailing blank rows are not written down, so an almost-empty screen is a small stream.

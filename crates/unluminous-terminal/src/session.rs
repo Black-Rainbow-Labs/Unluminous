@@ -154,6 +154,11 @@ impl EventListener for Proxy {
 /// event was last read: the reader thread writes while holding the terminal's lock, so an empty grid asked for
 /// under that lock is a program that has written nothing. Only the screen is asked about, because a fresh
 /// session has no history either and asking about both would be the same answer twice.
+///
+/// **It reads whichever grid is active**, which is the normal one for every caller there is: `Session::replay` is
+/// the only one, and it runs between a shell starting and its first byte — long before anything could ask for
+/// the alternate screen. A session already on the alternate screen would be answered about *that* grid, which is
+/// the honest reading of "has anything been written here" and is also a state no replay can reach.
 fn is_empty(term: &Term<Proxy>) -> bool {
     let grid = term.grid();
     if term.history_size() > 0 {
