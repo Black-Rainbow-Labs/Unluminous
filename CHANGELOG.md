@@ -8,6 +8,10 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- Three reports against 0.41.0, and a program named after its version (`task-1907`)
+
+## 0.41.0 — 2026-09-11
+
 - The canvas comes back whole, and five faults in the way of reading it (`task-1907`)
 
 ## 0.40.0 — 2026-09-11
