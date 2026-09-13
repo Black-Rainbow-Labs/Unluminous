@@ -1814,10 +1814,19 @@ Start-Sleep -Seconds 900"
             if session.snapshot().contains("[inherited]") {
                 break;
             }
+            // **The exit code is in the message because the screen alone cannot say which of two
+            // things went wrong.** `task-1922`: this failed once, during a release, with the screen
+            // holding `""` -- and an empty screen is both "the shell never started" and "the shell
+            // ran and `windir` was not there to echo". Those are a loaded machine and a real fault,
+            // and telling them apart afterwards from a 30 second timeout was not possible.
             assert!(
                 std::time::Instant::now() < deadline,
-                "the inherited environment should still be there, the screen holds {:?}",
-                session.snapshot().text()
+                "the inherited environment should still be there, the screen holds {:?} and the                  program has {}",
+                session.snapshot().text(),
+                match session.exit_code() {
+                    Some(code) => format!("ended with {code}"),
+                    None => "not ended".to_owned(),
+                }
             );
             std::thread::sleep(std::time::Duration::from_millis(25));
         }
