@@ -199,9 +199,12 @@ fn add_source(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, Str
         ..source
     };
     let named = source.name.clone();
+    // Two answers to one question, on purpose: the sentence goes in the status bar and cuts a file's
+    // path to its end, and the field an agent reads holds the whole of it. `task-1922`.
+    let said = crate::services::paths::where_a_source_points(&source);
     let where_it_points = source.where_it_points();
     explorer.save_source("", source)?;
-    Ok(Answer::said(format!("`{named}` — {where_it_points}"))
+    Ok(Answer::said(format!("`{named}` — {said}"))
         .with(serde_json::json!({ "name": named, "where": where_it_points })))
 }
 

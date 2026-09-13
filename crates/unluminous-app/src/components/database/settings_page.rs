@@ -148,7 +148,7 @@ fn one_source(
         Rect::from_min_size(Pos2::new(body.left(), row.bottom()), Vec2::new(body.width(), 18.0));
     let said = format!(
         "{} · {} · password {}",
-        source.where_it_points(),
+        crate::services::paths::where_a_source_points(source),
         match (explorer.is_connected(&source.name), source.read_only) {
             (true, true) => "connected, read only",
             (true, false) => "connected",

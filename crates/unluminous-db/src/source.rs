@@ -35,6 +35,21 @@ impl Engine {
         }
     }
 
+    /// What the engine is called where a person reads it, which is not what it is called on the
+    /// command line.
+    ///
+    /// `name` is the word a settings file, a URL and `--engine` are written with, and it is lower
+    /// case because those are. This is the word on the New Data Source dialog's buttons and in the
+    /// sentence under a source in the tree. They were two lists in two crates and a third one would
+    /// have been written the next time somebody needed the answer. `task-1922`.
+    pub fn title(self) -> &'static str {
+        match self {
+            Engine::Postgres => "PostgreSQL",
+            Engine::Sqlite => "SQLite",
+            Engine::Inillucent => "Inillucent",
+        }
+    }
+
     /// The engines this version speaks, which is what a refusal names.
     pub const ALL: &'static [&'static str] = &["postgres", "sqlite", "inillucent"];
 
@@ -273,10 +288,9 @@ impl Source {
     pub fn where_it_points(&self) -> String {
         match self.engine {
             Engine::Postgres => {
-                format!("PostgreSQL · {}:{}/{}", self.host, self.port, self.database)
+                format!("{} · {}:{}/{}", self.engine.title(), self.host, self.port, self.database)
             }
-            Engine::Sqlite => format!("SQLite · {}", self.database),
-            Engine::Inillucent => format!("Inillucent · {}", self.database),
+            _ => format!("{} · {}", self.engine.title(), self.database),
         }
     }
 

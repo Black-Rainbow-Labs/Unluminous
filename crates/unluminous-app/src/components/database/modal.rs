@@ -285,11 +285,7 @@ fn fields(ui: &mut egui::Ui, body: Rect, top: f32, form: &mut SourceForm) -> f32
             Pos2::new(engines.left() + index as f32 * 96.0, engines.top()),
             Vec2::new(90.0, engines.height()),
         );
-        let name = match engine {
-            Engine::Postgres => "PostgreSQL",
-            Engine::Sqlite => "SQLite",
-            Engine::Inillucent => "Inillucent",
-        };
+        let name = engine.title();
         if crate::components::controls::choice_button(
             ui,
             button,

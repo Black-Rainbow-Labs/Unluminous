@@ -38,6 +38,7 @@ pub mod login_shell;
 pub mod mcp;
 pub mod mermaid_scene;
 pub mod native_menu;
+pub mod paths;
 pub mod picture;
 pub mod plugin_settings;
 pub mod plugin_ui;

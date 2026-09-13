@@ -6481,7 +6481,7 @@ impl UnluminousApp {
                     "New File",
                     &format!(
                         "A new, empty file in {}. Any extension: example.txt, test.json, main.rs.",
-                        path.display()
+                        crate::services::paths::the_useful_end_of(&path.display().to_string())
                     ),
                     "example.txt",
                     "Create",

@@ -1306,7 +1306,10 @@ impl UiProvider for AgentChat {
                     return Err("attach takes the path of a picture.".to_owned());
                 }
                 self.attach(&path)?;
-                Ok(Answer::said(format!("attached {}", path.display()))
+                Ok(Answer::said(format!(
+                    "attached {}",
+                    crate::services::paths::the_useful_end_of(&path.display().to_string())
+                ))
                     .with(serde_json::json!({ "attachments": self.attachments.len() })))
             }
             "providers" => Ok(Answer::said(

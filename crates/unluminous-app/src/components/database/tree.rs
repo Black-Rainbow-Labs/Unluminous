@@ -92,7 +92,7 @@ pub fn lines(explorer: &DatabaseExplorer) -> Vec<Line> {
             depth: 0,
             what: What::Source {
                 name: source.name.clone(),
-                where_it_points: source.where_it_points(),
+                where_it_points: crate::services::paths::where_a_source_points(source),
                 connected: explorer.is_connected(&source.name),
                 open,
                 busy: explorer.is_busy(&source.name),
