@@ -8,6 +8,10 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- Nodes that can be typed into, and controls that fit their own text (`task-1914`)
+
+## 0.44.0 — 2026-09-12
+
 - Drive and photograph the window without taking the keyboard (`task-1914`)
 
 ## 0.43.0 — 2026-09-12
