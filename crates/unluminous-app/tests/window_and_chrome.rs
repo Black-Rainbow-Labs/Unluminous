@@ -3352,7 +3352,11 @@ fn a_file_link_is_refused_rather_than_opened() {
 /// real window, which is layer 4.
 #[test]
 fn the_hand_cursor_is_set_after_the_text_cursor_so_it_wins_over_a_link() {
-    let source = include_str!("../src/app/mod.rs");
+    // **`app/preview.rs`, not `app/mod.rs`.** `task-1922` split that file into sixteen, and this test
+    // reads source text rather than state, so the day the two calls moved it stopped asserting
+    // anything -- it would have failed on the `expect`, which is what it did. Both calls are in one
+    // file, which is what makes comparing their positions mean anything at all.
+    let source = include_str!("../src/app/preview.rs");
     let sets_the_text_cursor = source
         .find("painter_ui.ctx().set_cursor_icon(egui::CursorIcon::Text);")
         .expect("the preview sets a text cursor over its words");
