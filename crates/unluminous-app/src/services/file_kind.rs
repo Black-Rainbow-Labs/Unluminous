@@ -843,8 +843,15 @@ mod tests {
         let css = Path::new("site.css");
         assert!(!definitions_apply(Some(css), grammars));
         assert!(symbols_apply(Some(css), grammars));
+        // A TOML file is the stylesheet's case again, since `task-1922` bundled a plugin for it: no
+        // go to definition, because a key in a table has no keyword defining it and the jump would
+        // have nowhere honest to land, and both of the others, because finding every use of a
+        // dependency's name across a project and renaming it is a real thing to want.
+        let manifest = Path::new("Cargo.toml");
+        assert!(!definitions_apply(Some(manifest), grammars), "a table key has no keyword");
+        assert!(symbols_apply(Some(manifest), grammars), "and renaming a key is worth having");
         // Prose, a picture and a document that has never been saved have none of the three.
-        for other in ["notes.md", "notes.txt", "photo.png", "Cargo.toml"] {
+        for other in ["notes.md", "notes.txt", "photo.png"] {
             let path = Path::new(other);
             assert!(!definitions_apply(Some(path), grammars), "{other}");
             assert!(!symbols_apply(Some(path), grammars), "{other}");

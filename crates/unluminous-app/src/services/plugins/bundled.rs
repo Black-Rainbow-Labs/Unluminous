@@ -64,6 +64,44 @@ pub const ALL: &[(&str, &str, Option<&[u8]>)] = &[
         include_str!("../../../plugins/html/plugin.conf"),
         Some(include_bytes!("../../../plugins/html/icon.png")),
     ),
+    // The fifth of `task-1922`'s five: everything with no comment at all rather than one this
+    // tokeniser can represent as a manifest value. See `plugins/json/plugin.conf`.
+    (
+        "json",
+        include_str!("../../../plugins/json/plugin.conf"),
+        Some(include_bytes!("../../../plugins/json/icon.png")),
+    ),
+    // `task-1922`. Triple quoted strings are named in this one's own `plugin.limitations` rather
+    // than half coloured, because the tokeniser's string rule ends at a line break for every quote
+    // but a backtick and that is not a manifest key — see `plugins/python/plugin.conf`.
+    (
+        "python",
+        include_str!("../../../plugins/python/plugin.conf"),
+        Some(include_bytes!("../../../plugins/python/icon.png")),
+    ),
+    // `task-1922`. A section header has no token of its own, so `[server.production]` is coloured
+    // by its brackets and its dot and nothing else — see `plugins/toml/plugin.conf`.
+    (
+        "toml",
+        include_str!("../../../plugins/toml/plugin.conf"),
+        Some(include_bytes!("../../../plugins/toml/icon.png")),
+    ),
+    // `task-1922`. The awkward case named in the ticket - a bare word is a key or a value and this
+    // tokeniser cannot tell which - is decided and written down in the manifest's own comment,
+    // beside the four literals it does colour. See `plugins/yaml/plugin.conf`.
+    (
+        "yaml",
+        include_str!("../../../plugins/yaml/plugin.conf"),
+        Some(include_bytes!("../../../plugins/yaml/icon.png")),
+    ),
+    // `task-1922`. The one language here whose function definitions are found through
+    // `brace_definitions` rather than a keyword, because `foo() { ... }` has no keyword to read -
+    // see `plugins/shell/plugin.conf`.
+    (
+        "shell",
+        include_str!("../../../plugins/shell/plugin.conf"),
+        Some(include_bytes!("../../../plugins/shell/icon.png")),
+    ),
     // The first plugin that is neither a language nor a pane: five palettes and nothing else. It
     // puts its mark in front of no file — what a theme looks like is the six swatches the Theme
     // page draws — but the marketplace lists it beside the others and a row with nothing where
@@ -523,5 +561,276 @@ mod tests {
             assert_eq!(plugin.renders, None, "{} should name no renderer", plugin.id);
         }
         assert!(!plugins.renders("something-else"), "a name nothing declares is not rendered");
+    }
+
+    // `task-1922`'s five: Python, JSON, TOML, YAML and shell. None of them names a manifest key
+    // that did not already exist — `language.imports`, `language.definers`, `language.strings` and
+    // the rest are all read by exactly the same reader that reads them for Rust and CSS — so there
+    // is no new flag defaulting to off to prove is untouched for the plugins that shipped before, the way
+    // `the_older_plugins_ask_for_none_of_what_css_added` and its siblings prove one for their own
+    // round of keys. What those existing tests already do, by iterating every bundled plugin,
+    // covers these five automatically: none of them sets `word_characters`, `hex_colors`, `types`,
+    // `markup`, `raw_text` or `themes`, so every one of those tests passes over these five with no
+    // change to its own body.
+
+    #[test]
+    fn the_five_new_language_plugins_load_and_claim_the_right_files() {
+        let (plugins, problems) = Plugins::load(None);
+        assert!(problems.is_empty(), "{problems:?}");
+        let cases: &[(&str, &[&str], &[&str])] = &[
+            ("python", &["a.py", "a.pyw", "A.PY"], &["a.pyc"]),
+            ("json", &["a.json"], &["a.json5", "a.jsonc"]),
+            ("toml", &["a.toml", "Cargo.toml"], &["a.tml"]),
+            ("yaml", &["a.yaml", "a.yml"], &["a.yamlx"]),
+            ("shell", &["a.sh", "a.bash", "a.zsh"], &["a.fish"]),
+        ];
+        for (id, claimed, not_claimed) in cases {
+            let plugin = plugins.get(id).unwrap_or_else(|| panic!("the {id} plugin"));
+            assert_eq!(plugin.kind, Kind::Language, "{id}");
+            for path in *claimed {
+                assert!(plugin.claims(Path::new(path)), "{id} should claim {path}");
+            }
+            for path in *not_claimed {
+                assert!(!plugin.claims(Path::new(path)), "{id} should not claim {path}");
+            }
+        }
+        // No two of the five, and none of the five against a plugin that already shipped, claim
+        // the same extension - the collision every one of these was checked against by hand before
+        // it was written down here.
+        let every_file =
+            ["a.py", "a.pyw", "a.json", "a.toml", "a.yaml", "a.yml", "a.sh", "a.bash", "a.zsh"];
+        for file in every_file {
+            let claiming: Vec<&str> = plugins
+                .all()
+                .iter()
+                .filter(|plugin| plugin.claims(Path::new(file)))
+                .map(|plugin| plugin.id.as_str())
+                .collect();
+            assert_eq!(
+                claiming.len(),
+                1,
+                "{file} should be claimed by exactly one plugin: {claiming:?}"
+            );
+        }
+    }
+
+    /// The manifest format's own trap, found while writing these five: `services::store::Values`
+    /// reads a `#` that ends a line, or is followed by whitespace, as the start of a comment **on
+    /// the manifest line itself** - which is right for `size = 20  # a comment` and wrong for a
+    /// value that is meant to be the character `#`, because a bare `language.line_comment = #`
+    /// parses to an empty string rather than to `#`. An empty `line_comment` is worse than a
+    /// missing one: `unluminous_core::syntax::comment` checks `rest.starts_with(opener)`, and every
+    /// string starts with the empty string, so every position in every file would read as a
+    /// comment running to the end of its line and nothing would ever be coloured as anything else.
+    /// Each of the four manifests below writes the value as a doubled hash with a real trailing
+    /// comment after it, which is what keeps the first `#` from being read as ending the line; this
+    /// pins that the character each of them actually reads with is the one character `#`, and that
+    /// it never regresses to the empty string the naive form would silently produce.
+    #[test]
+    fn a_bare_hash_line_comment_is_written_so_the_settings_parser_does_not_eat_it() {
+        let (plugins, problems) = Plugins::load(None);
+        assert!(problems.is_empty(), "{problems:?}");
+        for id in ["python", "toml", "yaml", "shell"] {
+            let plugin = plugins.get(id).unwrap_or_else(|| panic!("the {id} plugin"));
+            assert_eq!(
+                plugin.grammar.line_comment.as_deref(),
+                Some("#"),
+                "{id}'s line comment should be exactly one character"
+            );
+        }
+        // What that adds up to: a `#` really does start a comment, and nothing before it on the
+        // same line is swallowed by it. `scan` rather than `highlight`, because `highlight` drops
+        // `Token::Text` and the plain words either side of the comment are exactly what proves the
+        // rest of the file was not swallowed with it.
+        use unluminous_core::syntax::{scan, Token};
+        let python = plugins.get("python").expect("python");
+        let text = "x = 1  # a comment\ny = 2\n";
+        let mut found: Vec<(&str, Token)> = Vec::new();
+        scan(text, &python.grammar, |range, token| found.push((&text[range], token)));
+        assert!(found.contains(&("x", Token::Text)), "{found:?}");
+        assert!(found.contains(&("1", Token::Number)), "{found:?}");
+        assert!(found.contains(&("# a comment", Token::Comment)), "{found:?}");
+        assert!(found.contains(&("y", Token::Text)), "the next line is not swallowed: {found:?}");
+        assert!(found.contains(&("2", Token::Number)), "{found:?}");
+    }
+
+    #[test]
+    fn the_python_plugin_reads_keywords_definitions_and_the_docstring_gap() {
+        let (plugins, problems) = Plugins::load(None);
+        assert!(problems.is_empty(), "{problems:?}");
+        let python = plugins.get("python").expect("the python plugin");
+        assert_eq!(python.debug_adapter, None, "plugins::DEBUGGERS has no python entry");
+        assert_eq!(python.grammar.definer("def"), Some(SymbolKind::Function));
+        assert_eq!(python.grammar.definer("class"), Some(SymbolKind::Type));
+        assert_eq!(python.grammar.imports, Some(ImportStyle::Path));
+        assert_eq!(python.grammar.export_keyword, None, "nothing in Python hides a module name");
+
+        use unluminous_core::syntax::{highlight, Token};
+        let source = "def draw(area):\n    return area\n";
+        let found: Vec<(&str, Token)> = highlight(source, &python.grammar)
+            .into_iter()
+            .map(|(range, token)| (&source[range], token))
+            .collect();
+        assert!(found.contains(&("def", Token::Keyword)), "{found:?}");
+        assert!(found.contains(&("draw", Token::Function)), "{found:?}");
+        assert!(found.contains(&("return", Token::Keyword)), "{found:?}");
+
+        // A one-line docstring is unaffected, because it never crosses a line break.
+        let one_line = "\"\"\"One line.\"\"\"\n";
+        let found: Vec<(&str, Token)> = highlight(one_line, &python.grammar)
+            .into_iter()
+            .map(|(range, token)| (&one_line[range], token))
+            .collect();
+        assert!(
+            found.iter().any(|(word, token)| word.contains("One line") && *token == Token::String),
+            "a one-line docstring still reads as a string: {found:?}"
+        );
+
+        // A multi-line docstring is the gap named in `plugin.limitations`: the tokeniser's string
+        // rule ends at the first line break for every quote but a backtick, so the body is read as
+        // ordinary words rather than as one string. This is checked rather than assumed, so a later
+        // change to `syntax.rs` that fixes it is noticed here rather than left stale in a comment.
+        let multi_line = "\"\"\"\nSecond line.\n\"\"\"\n";
+        let found: Vec<(&str, Token)> = highlight(multi_line, &python.grammar)
+            .into_iter()
+            .map(|(range, token)| (&multi_line[range], token))
+            .collect();
+        assert!(
+            !found.iter().any(|(word, token)| *word == "Second" && *token == Token::String),
+            "the docstring body is not read as a string, which is the known gap: {found:?}"
+        );
+    }
+
+    #[test]
+    fn the_json_plugin_reads_a_string_with_an_escape_and_the_three_literals() {
+        let (plugins, problems) = Plugins::load(None);
+        assert!(problems.is_empty(), "{problems:?}");
+        let json = plugins.get("json").expect("the json plugin");
+        assert!(json.grammar.line_comment.is_none(), "JSON has no comments");
+        assert!(json.grammar.block_comment.is_none());
+
+        use unluminous_core::syntax::{highlight, Token};
+        // An escaped Rust string rather than a raw one: the source has to hold a literal backslash
+        // in front of the `n` and in front of two of the quotes, exactly as a `.json` file on disk
+        // would, and a raw string cannot end in the same character its own closing quote is without
+        // one more quote added to tell the two apart.
+        let source =
+            "{\"name\": \"line1\\nline2 \\\"quoted\\\"\", \"n\": -1.5e10, \"ok\": true, \"gone\": null}";
+        let found: Vec<(&str, Token)> = highlight(source, &json.grammar)
+            .into_iter()
+            .map(|(range, token)| (&source[range], token))
+            .collect();
+        assert!(
+            found.contains(&("\"line1\\nline2 \\\"quoted\\\"\"", Token::String)),
+            "the escape inside the string does not end it early: {found:?}"
+        );
+        assert!(found.contains(&("true", Token::Builtin)), "{found:?}");
+        assert!(found.contains(&("null", Token::Builtin)), "{found:?}");
+    }
+
+    #[test]
+    fn the_toml_plugin_reads_a_section_header_and_the_date_gap() {
+        let (plugins, problems) = Plugins::load(None);
+        assert!(problems.is_empty(), "{problems:?}");
+        let toml = plugins.get("toml").expect("the toml plugin");
+        assert!(
+            toml.grammar.definers.is_empty(),
+            "a key is defined by being written, not a keyword"
+        );
+
+        use unluminous_core::syntax::{highlight, Token};
+        let source = "[server.production]\nport = 8080\n";
+        let found: Vec<(&str, Token)> = highlight(source, &toml.grammar)
+            .into_iter()
+            .map(|(range, token)| (&source[range], token))
+            .collect();
+        assert!(found.contains(&("[", Token::Operator)), "{found:?}");
+        assert!(found.contains(&(".", Token::Operator)), "{found:?}");
+        assert!(found.contains(&("]", Token::Operator)), "{found:?}");
+        assert!(found.contains(&("=", Token::Operator)), "{found:?}");
+        assert!(found.contains(&("8080", Token::Number)), "{found:?}");
+
+        // The date gap named in `plugin.limitations`: a letter directly after a digit is read as
+        // the number's own suffix, so a date's letters and digits are swept together rather than
+        // told apart from the punctuation around them.
+        let date = "when = 1979-05-27T07:32:00Z\n";
+        let found: Vec<(&str, Token)> = highlight(date, &toml.grammar)
+            .into_iter()
+            .map(|(range, token)| (&date[range], token))
+            .collect();
+        assert!(
+            found.iter().any(|(word, token)| word.contains('T') && *token == Token::Number),
+            "the letter after a digit is read as part of the number, which is the known gap: {found:?}"
+        );
+    }
+
+    #[test]
+    fn the_yaml_plugin_reads_a_bare_word_as_the_same_kind_of_word_a_key_is() {
+        let (plugins, problems) = Plugins::load(None);
+        assert!(problems.is_empty(), "{problems:?}");
+        let yaml = plugins.get("yaml").expect("the yaml plugin");
+
+        // `scan` rather than `highlight`, because `highlight` drops `Token::Text` and a plain bare
+        // word reading as text is exactly the awkward case this test is about.
+        use unluminous_core::syntax::{scan, Token};
+        let source = "name: Jason\nactive: true\ncount: 3\nnickname: ~\n";
+        let mut found: Vec<(&str, Token)> = Vec::new();
+        scan(source, &yaml.grammar, |range, token| found.push((&source[range], token)));
+        // The awkward case, read through the tokeniser rather than only described: a bare key and a
+        // bare value are not told apart, and a value starting with a capital letter reads as a type
+        // by the same heuristic every language here shares.
+        assert!(found.contains(&("name", Token::Text)), "a lowercase bare word is text: {found:?}");
+        assert!(
+            found.contains(&("Jason", Token::Type)),
+            "a bare word starting with a capital reads as a type: {found:?}"
+        );
+        assert!(found.contains(&("true", Token::Builtin)), "{found:?}");
+        assert!(found.contains(&("3", Token::Number)), "{found:?}");
+        assert!(
+            found.contains(&("~", Token::Operator)),
+            "null written as ~ is not a word: {found:?}"
+        );
+    }
+
+    #[test]
+    fn the_shell_plugin_reads_a_variable_a_builtin_and_a_posix_function() {
+        let (plugins, problems) = Plugins::load(None);
+        assert!(problems.is_empty(), "{problems:?}");
+        let shell = plugins.get("shell").expect("the shell plugin");
+        assert!(shell.grammar.definers.is_empty(), "no keyword-based definer is named");
+        assert!(shell.grammar.brace_definitions, "a POSIX function has no keyword in front of it");
+
+        use unluminous_core::syntax::{highlight, Token};
+        let source = "echo \"hello $HOME and $USER and $NOBODY\"\n";
+        let found: Vec<(&str, Token)> = highlight(source, &shell.grammar)
+            .into_iter()
+            .map(|(range, token)| (&source[range], token))
+            .collect();
+        assert!(found.contains(&("echo", Token::Builtin)), "{found:?}");
+        // The whole string is one token: `$HOME` and `$USER` are inside it and are not coloured
+        // separately from the string, which is what a shell's real double-quoted string is - a
+        // variable inside a string is not read here, and this is checked rather than assumed.
+        assert!(
+            found.iter().any(|(word, token)| word.contains("$HOME") && *token == Token::String),
+            "{found:?}"
+        );
+
+        // A bare `$HOME` outside a string is one word and is named in `language.builtins`.
+        let bare = "cd $HOME\n";
+        let found: Vec<(&str, Token)> = highlight(bare, &shell.grammar)
+            .into_iter()
+            .map(|(range, token)| (&bare[range], token))
+            .collect();
+        assert!(found.contains(&("$HOME", Token::Builtin)), "{found:?}");
+
+        // `foo() { ... }`, found through `unluminous_core::symbols::file_definitions` exactly as a
+        // JavaScript class method is - the same rule, applied to the shape most shell functions are
+        // actually written in.
+        let source = "foo() {\n    echo hi\n}\n";
+        let found: Vec<&str> = unluminous_core::symbols::file_definitions(source, &shell.grammar)
+            .into_iter()
+            .map(|definition| &source[definition.name_range])
+            .collect();
+        assert_eq!(found, vec!["foo"], "the POSIX function shape is found with no keyword");
     }
 }

@@ -166,11 +166,27 @@ impl Values {
     }
 
     /// Where the comment starts on this line, if it has one.
+    ///
+    /// A `#` opens a comment when what follows it is whitespace **and there is something after that
+    /// whitespace**. A `#` that is the last thing on the line is part of the value.
+    ///
+    /// **That second half is a fix rather than a nicety.** `task-1922`: without it
+    /// `language.line_comment = #` parses to the *empty string*, and an empty line comment is worse
+    /// than none at all, because `rest.starts_with("")` is true at every byte — every file of that
+    /// language would be drawn as one comment from its first character. It is not hypothetical for
+    /// a value either: `plugins/rust/plugin.conf` and `plugins/css/plugin.conf` have both ended
+    /// `language.operators` with `#` since they were written, and both have been silently losing it,
+    /// so Rust's attribute character and CSS's hash have never been coloured as operators.
+    ///
+    /// An inline comment still works, because a comment somebody wrote has words in it. A line
+    /// ending `value #` with nothing after the hash now keeps the hash, which is the one thing this
+    /// gives up and is not something anybody writes on purpose.
     fn comment_at(line: &str) -> Option<usize> {
         line.char_indices()
             .find(|(at, character)| {
                 *character == '#'
                     && line[at + 1..].chars().next().map(char::is_whitespace).unwrap_or(true)
+                    && !line[at + 1..].trim().is_empty()
             })
             .map(|(at, _)| at)
     }
