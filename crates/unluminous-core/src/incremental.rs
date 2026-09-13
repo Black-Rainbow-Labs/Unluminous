@@ -48,8 +48,9 @@ use crate::syntax::{self, Grammar, Token};
 /// What has changed since a document's syntax was last read.
 ///
 /// Held by [`crate::Document`], which is the one place that knows the text moved — `insert` and
-/// `remove_range` are the two functions that already say so for the marks, the folds and the
-/// breakpoints, and this is the fourth thing they tell.
+/// `remove_range` are the two functions that note it, on top of the shift `Document::splice`
+/// already does for the marks, the folds and the breakpoints. This is the fourth thing they tell,
+/// and the only one of the four that `indent`, `dedent` and `replace_many` do not tell too.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Dirt {
     /// Nothing has changed since the syntax was last set.

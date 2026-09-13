@@ -16,7 +16,7 @@
 //!
 //! [`Folds`] is which of them somebody has collapsed, and it is state. It holds **byte offsets**
 //! rather than line numbers, so that it can live in the [`crate::document::Document`] and be moved
-//! by the two functions that already move the marked passages when the text changes. A set of line
+//! by the same function that already moves the marked passages when the text changes. A set of line
 //! numbers would be wrong the moment a line was typed at the top of the file.
 
 use std::ops::Range;
@@ -530,9 +530,9 @@ fn heading_regions(text: &str, lines: &LineIndex) -> Vec<Region> {
 /// Which regions somebody has collapsed.
 ///
 /// **Byte offsets, not line numbers**: this lives inside a [`crate::document::Document`] so that
-/// `Document::insert` and `Document::remove_range` — the only two places in Unluminous that know a range
-/// of bytes moved — shift it in the same line that already shifts the marked passages. Line numbers
-/// would be wrong the first time somebody typed a line at the top of the file.
+/// `Document::splice` — the one place in Unluminous that knows a range of bytes moved — shifts it in
+/// the same line that already shifts the marked passages. Line numbers would be wrong the first time
+/// somebody typed a line at the top of the file.
 ///
 /// Each offset is the start of a collapsed region's **head line**, and a region counts as collapsed
 /// when one of them falls anywhere inside that line. Snapping to the line rather than to the byte is

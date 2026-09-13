@@ -7,10 +7,10 @@
 //!
 //! **Offsets, not line numbers.** A stored line number is wrong the moment a line is typed at the
 //! top of the file, and every offset in Unluminous is already a byte offset into the real text — which
-//! means [`crate::document::Document::insert`] and `remove_range`, the only two places in Unluminous that
-//! know a range of bytes moved, can shift these in the same two lines that already shift the marked
-//! passages and the folds. That is what makes a breakpoint stay on its line while the file is edited
-//! above it, with no watcher and no bookkeeping anywhere else.
+//! means [`crate::document::Document::splice`], the one place in Unluminous that knows a range of
+//! bytes moved, can shift these in the same call that already shifts the marked passages and the
+//! folds. That is what makes a breakpoint stay on its line while the file is edited above it, with
+//! no watcher and no bookkeeping anywhere else.
 //!
 //! Which **line** an offset is on is derived when the adapter asks, and the adapter's answers are
 //! converted back the same way, so the two conversions live at the one seam rather than being

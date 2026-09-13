@@ -167,15 +167,15 @@ pub struct Document {
     chars: StyleSpans,
     paragraphs: ParagraphStyles,
     /// The passages somebody has marked with a colour. Sparse, unlike `chars`, and shifted by the
-    /// same two places that shift `chars`: see `insert` and `remove_range`.
+    /// same place that shifts `chars`: see `Self::splice`.
     highlights: Highlights,
     /// Which blocks are collapsed, held as the byte offset of each collapsed region's head line and
-    /// shifted by the same two places for the same reason. What is *foldable* is derived from the
-    /// text by `crate::folding::regions` and is not state; this is the half that is.
+    /// shifted by `Self::splice`, for the same reason. What is *foldable* is derived from the text
+    /// by `crate::folding::regions` and is not state; this is the half that is.
     folds: Folds,
-    /// Where a debugger is to stop, held as the byte offset of each line's start and shifted by the
-    /// same two places for the same reason: `insert` and `remove_range` are the only two functions in
-    /// Unluminous that know a range of bytes moved. See `crate::breakpoints`.
+    /// Where a debugger is to stop, held as the byte offset of each line's start and shifted by
+    /// `Self::splice`, for the same reason: it is the only function in Unluminous that knows a range
+    /// of bytes moved. See `crate::breakpoints`.
     breakpoints: Breakpoints,
     selection: Selection,
     /// Formatting chosen while nothing was selected, applied to the next text typed.
@@ -223,10 +223,10 @@ pub struct Document {
     ///
     /// `task-1804` §5.2, which is `task-1666` §12's *"the next thing to become the
     /// largest item"* becoming it: at 2 MB a keystroke cost 73.6 ms, and nearly all of that was
-    /// reading a file that had changed in one place. Kept here because `insert` and `remove_range`
-    /// are the two functions that already know the text moved -- the same two that shift the marks,
-    /// the folds and the breakpoints -- and a fourth thing told in the same place cannot drift from
-    /// the other three.
+    /// reading a file that had changed in one place. Noted only by `insert` and `remove_range`,
+    /// which is ordinary typing and deleting; `indent`, `dedent` and `replace_many` call the same
+    /// `Self::splice` that shifts the marks, the folds and the breakpoints, but do not note the
+    /// dirt, so those three still colour the file as a whole rather than incrementally.
     syntax_dirt: Dirt,
     /// Bumped only when a block is collapsed or expanded.
     ///
@@ -1086,6 +1086,45 @@ impl Document {
         self.text_changed();
     }
 
+    /// Replace `range` with `text` in the text, the character formatting, the marked passages, the
+    /// folds, the breakpoints and the paragraph list, all by the same edit.
+    ///
+    /// This is the one place in Unluminous that knows a range of bytes moved. `insert`,
+    /// `remove_range`, `replace_many`, `indent` and `dedent` used to shift all six by hand, which
+    /// meant a sixth structure -- and there have been five so far -- would have had four call sites
+    /// to be threaded through, each an easy one to forget. An empty `range` is a pure insertion, an
+    /// empty `text` is a pure removal, and that is what lets one function stand in for both
+    /// `insert`'s shape and `remove_range`'s.
+    ///
+    /// What it does not do: it does not touch the caret or the undo history, because those are the
+    /// caller's business, not the edit's; it does not note `syntax_dirt`, because `indent`,
+    /// `dedent` and `replace_many` never did and still do not, so a rename or an indent still
+    /// colours the file as a whole rather than incrementally; and it does not apply a style to the
+    /// inserted bytes, because `chars.insert` only makes room for them -- the caller colours what it
+    /// put there, with whatever style it read before the edit.
+    fn splice(&mut self, range: Range<usize>, text: &str) {
+        let paragraph = self.text.byte_to_line(range.start);
+        if !range.is_empty() {
+            let last = self.text.byte_to_line(range.end);
+            self.text.remove(range.clone());
+            self.chars.remove(range.clone());
+            self.highlights.remove(range.clone());
+            self.folds.remove(range.clone());
+            self.breakpoints.remove(range.clone());
+            self.paragraphs.join(paragraph, last);
+        }
+        if !text.is_empty() {
+            let at = range.start;
+            let line_breaks = text.bytes().filter(|byte| *byte == b'\n').count();
+            self.text.insert(at, text);
+            self.chars.insert(at, text.len());
+            self.highlights.insert(at, text.len());
+            self.folds.insert(at, text.len());
+            self.breakpoints.insert(at, text.len());
+            self.paragraphs.split(paragraph, line_breaks);
+        }
+    }
+
     fn insert(&mut self, text: &str) {
         if text.is_empty() {
             return;
@@ -1101,22 +1140,12 @@ impl Document {
             self.remove_range(range.clone());
         }
         let at = range.start;
-        let paragraph = self.text.byte_to_line(at);
-        let line_breaks = text.bytes().filter(|b| *b == b'\n').count();
-
-        self.text.insert(at, text);
-        self.chars.insert(at, text.len());
         // The fourth thing this function tells, beside the marks, the folds and the breakpoints.
         self.syntax_dirt = self.syntax_dirt.note(at, 0, text.len());
-        // The marked passages and the collapsed blocks move with the text, in the one place that
-        // knows the text moved.
-        self.highlights.insert(at, text.len());
-        self.folds.insert(at, text.len());
-        self.breakpoints.insert(at, text.len());
+        self.splice(at..at, text);
         // `set_in` rather than `set`, because this is one letter and `set` rebuilds the whole span
         // list to apply it -- 234,000 style clones for a keystroke on a 2 MB file. `task-1804` §5.2.
         self.chars.set_in(at..at + text.len(), &style_as_change(&style), &[]);
-        self.paragraphs.split(paragraph, line_breaks);
 
         self.selection.set_caret(at + text.len());
         self.pending = StyleChange::default();
@@ -1128,10 +1157,10 @@ impl Document {
     /// Replace several ranges in one undo step, back to front.
     ///
     /// One `push_undo` and then every edit, which is what makes a rename across a file a single
-    /// step to undo. Each edit is deliberately the same three lines [`Self::insert`] uses — the
-    /// text, the character formatting and the marked passages moving together — because a place
-    /// that knew the bytes had moved and forgot one of the three would be a mark left behind on the
-    /// wrong word, and that is a fault that looks like a drawing bug and lives in the model.
+    /// step to undo. Each edit is deliberately the same `Self::splice` that [`Self::insert`] calls —
+    /// the text, the character formatting and the marked passages moving together — because a place
+    /// that knew the bytes had moved and forgot one of them would be a mark left behind on the wrong
+    /// word, and that is a fault that looks like a drawing bug and lives in the model.
     fn replace_many(&mut self, edits: Vec<(Range<usize>, String)>) {
         // Put in order here as well as by the caller, because a `Command` can be built by hand —
         // the command line builds one — and applying these in the wrong order would corrupt the
@@ -1176,15 +1205,8 @@ impl Document {
             if replacement.is_empty() {
                 continue;
             }
-            let paragraph = self.text.byte_to_line(at);
-            let line_breaks = replacement.bytes().filter(|byte| *byte == b'\n').count();
-            self.text.insert(at, &replacement);
-            self.chars.insert(at, replacement.len());
-            self.highlights.insert(at, replacement.len());
-            self.folds.insert(at, replacement.len());
-            self.breakpoints.insert(at, replacement.len());
+            self.splice(at..at, &replacement);
             self.chars.set(at..at + replacement.len(), &style_as_change(&style));
-            self.paragraphs.split(paragraph, line_breaks);
             self.selection.set_caret(at + replacement.len());
         }
         self.desired_x = None;
@@ -1222,11 +1244,7 @@ impl Document {
             // indent never deletes the span it reads. The pending formatting is not applied, because
             // an indent is not typing.
             let style = self.chars.style_for_insertion(at);
-            self.text.insert(at, unit);
-            self.chars.insert(at, unit.len());
-            self.highlights.insert(at, unit.len());
-            self.folds.insert(at, unit.len());
-            self.breakpoints.insert(at, unit.len());
+            self.splice(at..at, unit);
             self.chars.set(at..at + unit.len(), &style_as_change(&style));
         }
         let shift =
@@ -1249,10 +1267,10 @@ impl Document {
     ///
     /// The removal mirrors `indent`'s insertion byte for byte: found back to front so an earlier
     /// line's start is not moved by a later line's edit, taken out of the text, the character
-    /// formatting and the marked passages together, with the folds and the breakpoints shifted in
-    /// the same two places. The selection follows the text the same way `indent`'s does: each end
-    /// moves back past the removals at or before it, so pressing the key again removes another level
-    /// from whatever is still indented.
+    /// formatting and the marked passages together, with the folds and the breakpoints shifted by
+    /// the same `Self::splice`. The selection follows the text the same way `indent`'s does: each
+    /// end moves back past the removals at or before it, so pressing the key again removes another
+    /// level from whatever is still indented.
     fn dedent(&mut self, unit: IndentUnit) {
         let range = self.selection.range();
         let (first, last) = if range.is_empty() {
@@ -1275,12 +1293,7 @@ impl Document {
         self.push_undo(EditKind::Other);
         for at in starts.iter().rev() {
             let at = *at;
-            let removed = at..at + unit.len();
-            self.text.remove(removed.clone());
-            self.chars.remove(removed.clone());
-            self.highlights.remove(removed.clone());
-            self.folds.remove(removed.clone());
-            self.breakpoints.remove(removed.clone());
+            self.splice(at..at + unit.len(), "");
         }
         let shift =
             |offset: usize| starts.iter().filter(|start| **start < offset).count() * unit.len();
@@ -1296,15 +1309,8 @@ impl Document {
         if range.is_empty() {
             return;
         }
-        let first = self.text.byte_to_line(range.start);
-        let last = self.text.byte_to_line(range.end);
-        self.text.remove(range.clone());
-        self.chars.remove(range.clone());
         self.syntax_dirt = self.syntax_dirt.note(range.start, range.end - range.start, 0);
-        self.highlights.remove(range.clone());
-        self.folds.remove(range.clone());
-        self.breakpoints.remove(range.clone());
-        self.paragraphs.join(first, last);
+        self.splice(range.clone(), "");
         self.selection.set_caret(range.start);
     }
 
@@ -2699,7 +2705,7 @@ the fourth line",
         assert!(document.fold_revision() > 1, "but the layout has to be worked out again");
     }
 
-    /// The collapsed blocks move with the text, in the two places that already move the marked
+    /// The collapsed blocks move with the text, in the same splice that already moves the marked
     /// passages.
     #[test]
     fn a_collapsed_block_moves_with_the_text() {
