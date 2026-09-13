@@ -49,7 +49,7 @@ fn main() {
     // The real plugins, so the reading is the one the window would do for this file.
     let (plugins, _) = Plugins::load(None);
     let grammars = plugins.grammars();
-    let reading = file_kind::folding_reading(Some(&path), &grammars);
+    let reading = file_kind::folding_reading(Some(&path), grammars);
 
     println!("{}", path.display());
     println!("  {} bytes, {} lines", text.len(), text.lines().count());

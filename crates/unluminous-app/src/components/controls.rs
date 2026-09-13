@@ -390,9 +390,7 @@ pub fn labelled_flyout_with_icon<T>(
     let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&response))
         != response.clicked();
     let painter = ui.painter();
-    if open {
-        painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::control());
-    } else if response.hovered() {
+    if open || response.hovered() {
         painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::control());
     }
     let tint = if open { color::text_strong() } else { color::text_control() };

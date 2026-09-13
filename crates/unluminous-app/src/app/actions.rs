@@ -3100,7 +3100,7 @@ mod tests {
             Shortcut::command_shift(egui::Key::O).label(),
             if cfg!(target_os = "macos") { "Cmd+Shift+O" } else { "Ctrl+Shift+O" }
         );
-        assert_eq!(Shortcut::command(egui::Key::Comma).label().ends_with(','), true);
+        assert!(Shortcut::command(egui::Key::Comma).label().ends_with(','));
         assert_eq!(Shortcut::control(egui::Key::Backtick).label(), "Ctrl+`");
     }
 

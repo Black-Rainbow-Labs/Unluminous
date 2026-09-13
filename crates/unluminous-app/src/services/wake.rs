@@ -104,7 +104,7 @@ fn since_the_last_frame() -> Option<std::time::Duration> {
 /// it is waiting for.
 pub fn from_a_worker_thread(repaint: impl Fn() + Send + Sync + 'static) {
     if since_the_last_frame().is_some_and(|silent| silent >= ESCALATE) {
-        the_run_loop(move || repaint());
+        the_run_loop(repaint);
         return;
     }
     repaint();

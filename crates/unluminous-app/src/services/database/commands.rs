@@ -18,7 +18,7 @@ use crate::services::database::{ColumnForm, DatabaseExplorer, Page, Sheet, Sourc
 use crate::services::plugin_ui::{Answer, UiProvider};
 
 /// Every command, with the one line `plugins show database` prints for each.
-pub const LIST: &[(&'static str, &'static str)] = &[
+pub const LIST: &[(&str, &str)] = &[
     ("open-pane", "Show the pane: the data source tree, with the consoles and the row editors under it."),
     ("sources", "Every data source: where it points, whether it is connected, and where its password is. Never the password."),
     ("add-source", "Add one. Takes a name and a `postgres://…` URL, or a name and the path of a SQLite file, and optionally the NAME of an environment variable holding the password."),

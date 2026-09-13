@@ -61,7 +61,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -336,15 +336,10 @@ impl Server {
     pub fn take(&self) -> Vec<Pending> {
         self.health.a_frame_began();
         let mut out = Vec::new();
-        loop {
-            match self.requests.try_recv() {
-                Ok(pending) => {
-                    pending.taken.store(true, Ordering::SeqCst);
-                    self.health.queued.fetch_sub(1, Ordering::SeqCst);
-                    out.push(pending);
-                }
-                Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
-            }
+        while let Ok(pending) = self.requests.try_recv() {
+            pending.taken.store(true, Ordering::SeqCst);
+            self.health.queued.fetch_sub(1, Ordering::SeqCst);
+            out.push(pending);
         }
         out
     }
@@ -374,7 +369,7 @@ fn advertise(instance: &Instance) -> std::io::Result<PathBuf> {
     let folder = instances::folder();
     std::fs::create_dir_all(&folder)?;
     let path = instance.path_in(&folder);
-    std::fs::write(&path, instance.to_text())?;
+    crate::services::store::write_atomically(&path, instance.to_text().as_bytes())?;
     // The token is in it, so on a system with file modes it is the person's own and nobody else's.
     // Windows has no equivalent to set here: the folder is already under the person's own
     // application data, which is what the platform's own access control covers.
@@ -546,7 +541,17 @@ fn read_and_queue(
     wake();
     let watching = watched.then_some(stream);
     let reply = wait_for_the_window(
-        &command, &wait, &taken, &abandoned, deadline, said, wake, health, watching,
+        &command,
+        Wait {
+            wait: &wait,
+            taken: &taken,
+            abandoned: &abandoned,
+            deadline,
+            said,
+            wake,
+            health,
+            watching,
+        },
     );
     // Back to blocking before the answer is written, because the mode belongs to the socket and the
     // write below is the one thing that must not come back `WouldBlock`.
@@ -592,40 +597,45 @@ fn escalation_is_due(since_the_last_frame: Option<Duration>) -> bool {
 /// screenshot — owns its own deadline, and `pump_control` is already keeping the window drawing for
 /// it. And when the caller's deadline passes with the request **still on the queue**, it is marked
 /// abandoned so that the window throws it away rather than applying it to a caller that has gone.
-fn wait_for_the_window(
-    command: &str,
-    wait: &mpsc::Receiver<Reply>,
-    taken: &Arc<AtomicBool>,
-    abandoned: &Arc<AtomicBool>,
+/// What [`wait_for_the_window`] watches while a request sits on the queue.
+///
+/// Grouped because the function was taking nine arguments. `command`, which names what is being
+/// waited for, stays out on its own; everything here is about the wait itself.
+struct Wait<'a> {
+    wait: &'a mpsc::Receiver<Reply>,
+    taken: &'a Arc<AtomicBool>,
+    abandoned: &'a Arc<AtomicBool>,
     deadline: Duration,
     said: Option<u64>,
-    wake: &Arc<dyn Fn() + Send + Sync>,
-    health: &Arc<Health>,
-    watching: Option<&TcpStream>,
-) -> Reply {
+    wake: &'a Arc<dyn Fn() + Send + Sync>,
+    health: &'a Arc<Health>,
+    watching: Option<&'a TcpStream>,
+}
+
+fn wait_for_the_window(command: &str, on: Wait) -> Reply {
     let began = Instant::now();
     loop {
-        match wait.recv_timeout(NUDGE) {
+        match on.wait.recv_timeout(NUDGE) {
             Ok(reply) => return reply,
             Err(RecvTimeoutError::Disconnected) => {
                 return Reply::failed(command, code::NOT_RUNNING, "Unluminous is closing.")
             }
             Err(RecvTimeoutError::Timeout) => {}
         }
-        let picked_up = taken.load(Ordering::SeqCst);
+        let picked_up = on.taken.load(Ordering::SeqCst);
         let spent = began.elapsed();
         // The caller closing the connection is the same thing as its deadline passing, and it is
         // the earlier of the two: it says so at the moment it happens rather than being inferred
         // from a clock. A request the window is already holding is left alone — it has been run.
-        if !picked_up && watching.map(caller_has_gone).unwrap_or(false) {
-            abandoned.store(true, Ordering::SeqCst);
+        if !picked_up && on.watching.map(caller_has_gone).unwrap_or(false) {
+            on.abandoned.store(true, Ordering::SeqCst);
             return Reply::failed(
                 command,
                 code::TIMED_OUT,
                 format!(
                     "The caller stopped waiting for {command} after {} ms, so it was not run. {}",
                     spent.as_millis(),
-                    health.what_was_seen()
+                    on.health.what_was_seen()
                 ),
             );
         }
@@ -635,30 +645,30 @@ fn wait_for_the_window(
         // deadline would shorten every waiting command in the catalogue without saying so.
         let over = match picked_up {
             true => spent >= BACKSTOP,
-            false => spent >= deadline,
+            false => spent >= on.deadline,
         };
         if !over {
             if !picked_up {
-                wake_or_escalate(wake, health);
+                wake_or_escalate(on.wake, on.health);
             }
             continue;
         }
         if !picked_up {
             // Marked before the reply is written, so a frame that lands between the two finds the
             // flag already set rather than running a command whose caller has been told it failed.
-            abandoned.store(true, Ordering::SeqCst);
+            on.abandoned.store(true, Ordering::SeqCst);
         }
         let ran = match picked_up {
             true => "Unluminous had taken it, so it may already have been run.",
             false => "The command was not run.",
         };
-        let asked = said.unwrap_or_else(|| spent.as_millis().min(u64::MAX as u128) as u64);
+        let asked = on.said.unwrap_or_else(|| spent.as_millis().min(u64::MAX as u128) as u64);
         return Reply::failed(
             command,
             code::TIMED_OUT,
             format!(
                 "Unluminous did not answer {command} within {asked} ms. {} {ran}",
-                health.what_was_seen()
+                on.health.what_was_seen()
             ),
         );
     }

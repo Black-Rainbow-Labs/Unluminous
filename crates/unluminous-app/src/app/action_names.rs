@@ -252,20 +252,21 @@ impl Action {
     }
 
     /// True when this action cannot be run without being told which file or folder it is about.
+    ///
+    /// **Asked of [`Action::from_name`] rather than written down.** `task-1922` B10: this was a list
+    /// of ten names beside a `from_name` that builds twelve actions out of a path, and the two that
+    /// were missing -- `new-folder` and `delete-path` -- therefore ran with an empty path instead of
+    /// being refused. `unluminous-cli action run new-folder` with no `--path` made a folder called
+    /// nothing.
+    ///
+    /// Building the action twice with two different paths and asking whether the two differ is the
+    /// whole test, and it needs no list at all: an action that keeps the path it was given is one
+    /// that cannot be built without one, and a thirteenth added tomorrow is covered the day it is
+    /// written. `Action` derives `PartialEq`, which is what makes the comparison possible.
     pub fn wants_a_path(name: &str) -> bool {
-        matches!(
-            name,
-            "open-recent"
-                | "new-file"
-                | "cut-path"
-                | "copy-path"
-                | "copy-path-reference"
-                | "paste-into"
-                | "rename-path"
-                | "reveal-path"
-                | "reload-path"
-                | "open-in-browser"
-        )
+        let one = Self::from_name(name, Some(PathBuf::from("/unluminous/one")));
+        let other = Self::from_name(name, Some(PathBuf::from("/unluminous/other")));
+        one.is_some() && one != other
     }
 
     /// The command to use instead, for the actions that would open the platform's file chooser.

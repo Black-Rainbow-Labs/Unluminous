@@ -487,7 +487,7 @@ pub fn show(
             ui.add_space(visible.start as f32 * view.at(size::ROW));
             for row in &rows[visible.clone()] {
                 if row.entry.is_directory {
-                    let clicked = folder_row(ui, &row.entry, row.depth, view);
+                    let clicked = folder_row(ui, row.entry, row.depth, view);
                     if clicked.open {
                         outcome.toggle = Some(row.entry.path.clone());
                     }
@@ -638,7 +638,7 @@ pub fn show(
     // leaves it with no name to be found by.
     let counted = ui.interact(footer, ui.id().with("explorer-file-count"), Sense::hover());
     counted.widget_info(|| egui::WidgetInfo {
-        current_text_value: Some(text.clone().into()),
+        current_text_value: Some(text.clone()),
         ..egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "File count")
     });
 
@@ -1073,7 +1073,7 @@ mod tests {
                 host: Host::Node,
             };
             let decorate = |_: &Path| Decoration::default();
-            let _ = show(&mut inner, given, &mut tree, &mut filter, view, &decorate);
+            let _ = show(&mut inner, given, &tree, &mut filter, view, &decorate);
         });
         let shapes = output.shapes.clone();
         output.drop_without_applying_deltas();

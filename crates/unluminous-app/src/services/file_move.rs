@@ -643,21 +643,21 @@ fn declare_the_module(
         _ => {}
     }
     let mut declaration = format!("pub mod {new_name};");
-    match &old_parent {
-        Some(here) if after(here) == **here => match text_of(here) {
-            Some(text) => match find_declaration(&text, old_name) {
-                Some(found) => {
-                    declaration = found.written(new_name);
-                    edits.entry(here.clone()).or_default().push((found.whole, String::new()));
+    if let Some(here) = &old_parent {
+        if after(here) == **here {
+            if let Some(text) = text_of(here) {
+                match find_declaration(&text, old_name) {
+                    Some(found) => {
+                        declaration = found.written(new_name);
+                        edits.entry(here.clone()).or_default().push((found.whole, String::new()));
+                    }
+                    None => notes.push(format!(
+                        "{} does not declare `mod {old_name};`, so nothing was taken out of it",
+                        here.display()
+                    )),
                 }
-                None => notes.push(format!(
-                    "{} does not declare `mod {old_name};`, so nothing was taken out of it",
-                    here.display()
-                )),
-            },
-            None => {}
-        },
-        _ => {}
+            }
+        }
     }
     match &new_parent {
         Some(there) => {

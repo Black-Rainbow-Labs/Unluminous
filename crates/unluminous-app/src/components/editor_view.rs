@@ -116,32 +116,30 @@ pub fn handle_input(
     let events = ui.input(|input| input.events.clone());
     for event in events {
         match event {
-            egui::Event::Text(text) => {
-                if !text.chars().any(|c| c.is_control()) {
-                    // A single space over a selection is an indent of one space per line, the same
-                    // rule the `Tab` key follows: the selection is what makes the key an indent
-                    // rather than a type. The modifiers are read off the frame's input state, because
-                    // a `Text` event carries none of its own, and the check is what keeps
-                    // `Ctrl+Space` — the completion's key — from indenting.
-                    let indenting = text == " "
-                        && !document.selection().is_empty()
-                        && !ui.input(|input| input.modifiers.command)
-                        && !ui.input(|input| input.modifiers.ctrl);
-                    if indenting {
-                        // Shift dedents by one space instead of indenting by one, the reverse half
-                        // `Shift+Space` asks for beside `Space`'s own.
-                        let unit = IndentUnit::Space;
-                        let command = if ui.input(|input| input.modifiers.shift) {
-                            Command::Dedent { unit }
-                        } else {
-                            Command::Indent { unit }
-                        };
-                        outcome.changed |= document.apply(command);
+            egui::Event::Text(text) if !text.chars().any(|c| c.is_control()) => {
+                // A single space over a selection is an indent of one space per line, the same
+                // rule the `Tab` key follows: the selection is what makes the key an indent
+                // rather than a type. The modifiers are read off the frame's input state, because
+                // a `Text` event carries none of its own, and the check is what keeps
+                // `Ctrl+Space` — the completion's key — from indenting.
+                let indenting = text == " "
+                    && !document.selection().is_empty()
+                    && !ui.input(|input| input.modifiers.command)
+                    && !ui.input(|input| input.modifiers.ctrl);
+                if indenting {
+                    // Shift dedents by one space instead of indenting by one, the reverse half
+                    // `Shift+Space` asks for beside `Space`'s own.
+                    let unit = IndentUnit::Space;
+                    let command = if ui.input(|input| input.modifiers.shift) {
+                        Command::Dedent { unit }
                     } else {
-                        outcome.changed |= document.apply(Command::Insert(text));
-                    }
-                    outcome.scroll_to_caret = true;
+                        Command::Indent { unit }
+                    };
+                    outcome.changed |= document.apply(command);
+                } else {
+                    outcome.changed |= document.apply(Command::Insert(text));
                 }
+                outcome.scroll_to_caret = true;
             }
             egui::Event::Paste(text) => {
                 // Line breaks from another application may be a carriage return and a line feed. The
@@ -150,17 +148,13 @@ pub fn handle_input(
                 outcome.changed |= document.apply(Command::Insert(text));
                 outcome.scroll_to_caret = true;
             }
-            egui::Event::Copy => {
-                if !document.selection().is_empty() {
-                    outcome.copy = Some(document.selected_text());
-                }
+            egui::Event::Copy if !document.selection().is_empty() => {
+                outcome.copy = Some(document.selected_text());
             }
-            egui::Event::Cut => {
-                if !document.selection().is_empty() {
-                    outcome.copy = Some(document.selected_text());
-                    outcome.changed |= document.apply(Command::DeleteBackward);
-                    outcome.scroll_to_caret = true;
-                }
+            egui::Event::Cut if !document.selection().is_empty() => {
+                outcome.copy = Some(document.selected_text());
+                outcome.changed |= document.apply(Command::DeleteBackward);
+                outcome.scroll_to_caret = true;
             }
             egui::Event::Key { key, pressed: true, modifiers, .. } => {
                 let shift = modifiers.shift;

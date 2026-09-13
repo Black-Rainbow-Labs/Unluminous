@@ -127,8 +127,7 @@ impl Configuration {
                  and the value is read at the moment a connection is opened and never held.",
             ),
         )
-        .map_err(|why| format!("{} could not be written: {why}", Self::FILE,))
-        .map_err(|why| format!("{why}"))
+        .map_err(|why| format!("{} could not be written: {why}", Self::FILE))
     }
 
     pub fn source(&self, name: &str) -> Option<&Source> {

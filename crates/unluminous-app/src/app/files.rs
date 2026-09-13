@@ -448,7 +448,7 @@ impl OpenFile {
 /// which of them is showing**, and everything else a person would call the state of an editor —
 /// the scroll position, the view mode, the blame, the laid out text — is already on the tab.
 ///
-/// Which pane a tab is in is **written on the tab**, as [`OpenFile::pane`], rather than held as a
+/// Where a tab lives is **written on the tab**, as [`OpenFile::home`], rather than held as a
 /// list of indices in a pane. Every index into `files` shifts when a tab is opened or closed, so a
 /// pane holding indices would have to be fixed up by all seven of the operations below, and a
 /// fix-up is the sort of thing that is right for a month. A number on the tab survives every
@@ -1019,10 +1019,10 @@ impl OpenFiles {
         let mut renumbered: Vec<Option<usize>> = vec![None; self.panes];
         let mut widths: Vec<f32> = Vec::new();
         let mut carried = 0.0;
-        for pane in 0..self.panes {
+        for (pane, slot) in renumbered.iter_mut().enumerate() {
             let width = self.widths.get(pane).copied().unwrap_or(0.0);
             if self.files.iter().any(|file| file.home == Home::Pane(pane)) {
-                renumbered[pane] = Some(widths.len());
+                *slot = Some(widths.len());
                 widths.push(width + carried);
                 carried = 0.0;
             } else {
@@ -1815,9 +1815,7 @@ mod tests {
         let mut files = two_open();
         files.split_right();
         assert_eq!(files.focused_pane(), 1);
-        let one = files
-            .index_of(&document("one.md").path().expect("a path").to_path_buf())
-            .expect("open");
+        let one = files.index_of(document("one.md").path().expect("a path")).expect("open");
         files.show(one);
         assert_eq!(files.focused_pane(), 0, "clicking a tab moves the keyboard to its pane");
         assert_eq!(files.active().name(), "one.md");

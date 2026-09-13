@@ -70,7 +70,14 @@ impl Bar {
     /// scrolled `scroll` points down. `None` when it all fits.
     pub fn new(area: Rect, scroll: f32, content: f32, view: f32) -> Option<Self> {
         let overflow = content - view;
-        if !(overflow > 0.5) || view <= 0.0 || !content.is_finite() {
+        // Written with `partial_cmp` rather than `!(overflow > 0.5)`, because `f32` is only
+        // partially ordered: a `NaN` overflow has to fall into this refusal exactly as it did
+        // before, and `partial_cmp` says so directly instead of relying on a negated comparison
+        // that a reader has to check against `NaN` by hand.
+        if overflow.partial_cmp(&0.5) != Some(std::cmp::Ordering::Greater)
+            || view <= 0.0
+            || !content.is_finite()
+        {
             return None;
         }
         let track = Rect::from_min_max(

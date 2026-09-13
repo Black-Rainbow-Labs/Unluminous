@@ -103,9 +103,12 @@ pub fn show(
         let after_tabs = tabs(ui, body, panel);
         let rest = Rect::from_min_max(Pos2::new(body.left(), after_tabs), body.max);
         match panel.tab {
-            Tab::Commit => {
-                commit_tab(ui, area, rest, panel, status, repository, recent, &mut outcome)
-            }
+            Tab::Commit => commit_tab(
+                ui,
+                panel,
+                CommitTab { area, rest, status, repository, recent },
+                &mut outcome,
+            ),
             Tab::Stashes => stashes_tab(ui, area, rest, stashes, &mut outcome),
         }
     });
@@ -154,17 +157,26 @@ fn tabs(ui: &mut egui::Ui, body: Rect, panel: &mut CommitPanel) -> f32 {
     body.top() + 38.0
 }
 
+/// What `commit_tab` needs to draw itself, apart from the panel's own state and where the outcome
+/// goes.
+struct CommitTab<'a> {
+    /// The whole modal body, which the footer's buttons are placed against.
+    area: Rect,
+    /// The room left under the tab strip.
+    rest: Rect,
+    status: &'a Status,
+    repository: &'a str,
+    recent: &'a [String],
+}
+
 /// The changes tree, the message box and the two buttons.
 fn commit_tab(
     ui: &mut egui::Ui,
-    area: Rect,
-    rest: Rect,
     panel: &mut CommitPanel,
-    status: &Status,
-    repository: &str,
-    recent: &[String],
+    at: CommitTab<'_>,
     outcome: &mut CommitOutcome,
 ) {
+    let CommitTab { area, rest, status, repository, recent } = at;
     let list_height = (rest.height() - MESSAGE - 74.0).max(120.0);
     let list = Rect::from_min_size(rest.min, Vec2::new(rest.width(), list_height));
     changes_tree(ui, list, panel, status, repository, outcome);

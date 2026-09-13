@@ -475,7 +475,7 @@ impl Plugin {
             return false;
         };
         let extension = extension.to_lowercase();
-        self.extensions.iter().any(|known| *known == extension)
+        self.extensions.contains(&extension)
     }
 }
 
@@ -539,7 +539,7 @@ impl Plugins {
                 }
             }
         }
-        installed.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        installed.sort_by_key(|plugin| plugin.name.to_lowercase());
         let mut plugins = Self { installed, grammars: Grammars::default() };
         plugins.settle();
         (plugins, problems)
@@ -773,7 +773,7 @@ impl Plugins {
             .map_err(|reason| std::io::Error::new(std::io::ErrorKind::InvalidData, reason))?;
         self.installed.retain(|known| known.id != plugin.id);
         self.installed.push(plugin);
-        self.installed.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        self.installed.sort_by_key(|plugin| plugin.name.to_lowercase());
         self.settle();
         Ok(())
     }
@@ -808,7 +808,7 @@ impl Plugins {
                 self.installed.push(plugin);
             }
         }
-        self.installed.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        self.installed.sort_by_key(|plugin| plugin.name.to_lowercase());
         self.settle();
         Ok(())
     }
@@ -1255,6 +1255,7 @@ fn contributions(values: &Values, kind: Kind) -> Result<Contributions, String> {
     };
     // A key that asks for something the manifest did not declare is a line that does nothing, and a line
     // that does nothing silently is what every refusal here exists to prevent.
+    only_known_keys(values)?;
     no_orphans(values, "pane.", found.pane.is_some(), "pane.id")?;
     no_orphans(values, "tab.", found.tab.is_some(), "tab.id")?;
     no_orphans(values, "settings.", found.page.is_some(), "settings.page")?;
@@ -1463,6 +1464,116 @@ fn measurement(values: &Values, name: &str, default: f32) -> Result<f32, String>
         },
         None => Ok(default),
     }
+}
+
+/// Every key Unluminous reads from a manifest, in the namespaces whose keys are a fixed list.
+///
+/// `task-1922` B13. `no_orphans` covered `pane.`, `tab.`, `settings.` and `menu.` and nothing else,
+/// and every key in the four namespaces below is read with `word()`, `list()` or `flag()`, each of
+/// which answers with nothing for a name that is not there. So `language.keywrods = fn, let` loaded
+/// as a language with no keywords at all, and said nothing: the file opened, it was simply not
+/// coloured, and the manifest looked right.
+///
+/// `menu.` and `theme.` are deliberately not here. A menu's keys are recursive --
+/// `menu.submenu.<id>.submenu.<other>.entries` is a submenu inside a submenu -- so there is no list
+/// to check against; and a theme's are its own roles, which `read_theme` already refuses by name
+/// with the list of roles Unluminous has. Both are checked, just not by this.
+const KNOWN_KEYS: &[(&str, &[&str])] = &[
+    ("plugin.", &["id", "name", "kind", "version", "vendor", "description", "limitations", "conf"]),
+    (
+        "language.",
+        &[
+            "extensions",
+            "keywords",
+            "builtins",
+            "types",
+            "operators",
+            "numbers",
+            "strings",
+            "escapes",
+            "line_comment",
+            "block_comment",
+            "word_characters",
+            "hex_colors",
+            "markup",
+            "raw_text",
+            "renders",
+            "definers",
+            "brace_definitions",
+            "export_keyword",
+            "imports",
+            "import_keywords",
+            "import_extensions",
+            "import_index",
+            "import_omit_extension",
+            "path_separator",
+            "source_roots",
+            "path_roots",
+        ],
+    ),
+    ("run.", &["file", "project"]),
+    ("debug.", &["adapter"]),
+    ("ui.", &["provider", "chrome"]),
+    ("pane.", &["id", "label", "icon", "side", "group", "width", "height", "applies"]),
+    ("tab.", &["id", "label", "icon"]),
+    ("settings.", &["page", "icon"]),
+];
+
+/// Refuse a key in one of [`KNOWN_KEYS`]'s namespaces that Unluminous does not read.
+///
+/// The refusal names the nearest key it does read, because a misspelling is what this is for and a
+/// list of twenty-six names is not an answer to one typed letter. When nothing is near enough, the
+/// whole list of that namespace is given instead.
+fn only_known_keys(values: &Values) -> Result<(), String> {
+    for (prefix, known) in KNOWN_KEYS {
+        for (rest, _) in values.starting_with(prefix) {
+            let leaf = rest.split('.').next().unwrap_or(&rest);
+            if known.contains(&leaf) {
+                continue;
+            }
+            let nearest = known
+                .iter()
+                .map(|name| (letters_apart(leaf, name), *name))
+                .filter(|(apart, _)| *apart * 3 <= leaf.len().max(1))
+                .min_by_key(|(apart, _)| *apart);
+            return Err(match nearest {
+                Some((_, name)) => format!(
+                    "the manifest sets {prefix}{rest}, which Unluminous does not read. Did it mean \
+                     {prefix}{name}?"
+                ),
+                None => format!(
+                    "the manifest sets {prefix}{rest}, which Unluminous does not read. It reads {}",
+                    known
+                        .iter()
+                        .map(|name| format!("{prefix}{name}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// How many single-letter changes turn `one` into `other`: the ordinary edit distance.
+///
+/// Two rows of a table rather than the whole of it, because the names being compared are short and
+/// the answer only ever needs the row before.
+fn letters_apart(one: &str, other: &str) -> usize {
+    let one: Vec<char> = one.chars().collect();
+    let other: Vec<char> = other.chars().collect();
+    let mut previous: Vec<usize> = (0..=other.len()).collect();
+    let mut current = vec![0; other.len() + 1];
+    for (row, letter) in one.iter().enumerate() {
+        current[0] = row + 1;
+        for (column, theirs) in other.iter().enumerate() {
+            let substitution = previous[column] + usize::from(letter != theirs);
+            current[column + 1] =
+                substitution.min(previous[column + 1] + 1).min(current[column] + 1);
+        }
+        std::mem::swap(&mut previous, &mut current);
+    }
+    previous[other.len()]
 }
 
 /// Refuse a `pane.`, `tab.` or `settings.` key on a manifest that asks for no such contribution.
@@ -2328,6 +2439,48 @@ language.extensions = .aa
         assert!(
             plugins.grammars().for_path(rust()).is_some(),
             "and start again when it comes back"
+        );
+    }
+
+    /// **A misspelt key in any namespace is refused, naming the key it meant.** `task-1922` B13.
+    ///
+    /// `no_orphans` covered four namespaces and `language.`, `run.`, `debug.` and `plugin.` were not
+    /// among them -- and every key in those is read with a helper that answers nothing for a name
+    /// that is not there. So `language.keywrods` loaded as a language with no keywords, said nothing,
+    /// and the file simply opened uncoloured while the manifest looked right.
+    #[test]
+    fn a_misspelt_manifest_key_in_any_namespace_is_refused() {
+        let refused = |text: &str| {
+            let mut values = Values::new();
+            for line in text.lines() {
+                if let Some((name, value)) = line.split_once('=') {
+                    values.set(name.trim(), value.trim());
+                }
+            }
+            only_known_keys(&values).err()
+        };
+
+        let said = refused("language.keywrods = fn, let").expect("a misspelt key is refused");
+        assert!(said.contains("language.keywrods"), "it says what was written: {said}");
+        assert!(said.contains("language.keywords"), "and what it meant: {said}");
+
+        for (wrong, meant) in [
+            ("run.fil = node {file}", "run.file"),
+            ("debug.adaptor = lldb", "debug.adapter"),
+            ("plugin.vendorr = Somebody", "plugin.vendor"),
+            ("pane.lable = Board", "pane.label"),
+        ] {
+            let said = refused(wrong).unwrap_or_else(|| panic!("{wrong} should be refused"));
+            assert!(said.contains(meant), "{wrong} should suggest {meant}, said: {said}");
+        }
+
+        // A key that is nothing like any of them gets the list rather than a guess.
+        let said = refused("language.xyzzy = 1").expect("refused");
+        assert!(said.contains("language.keywords"), "the list is given instead: {said}");
+
+        // And a manifest of only real keys is accepted.
+        assert!(
+            refused("language.keywords = fn, let\nplugin.id = rust\nrun.project = cargo").is_none()
         );
     }
 

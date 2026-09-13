@@ -651,9 +651,7 @@ impl Canvas {
         // rasterising has a floor of about two nanoseconds a pixel whether anything is drawn there or not,
         // so an empty canvas the size of a 1400 by 900 pane costs 2.4 ms before a single shape. A board
         // whose lanes are as tall as their contents leaves most of a tall pane empty.
-        let Some(rect) = bounds_of(items).map(|bounds| bounds.intersect(rect)) else {
-            return None;
-        };
+        let rect = bounds_of(items).map(|bounds| bounds.intersect(rect))?;
         if rect.width() < 1.0 || rect.height() < 1.0 {
             return None;
         }

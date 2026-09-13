@@ -531,13 +531,15 @@ pub fn show(
         if let (Some(rect), true) = (breakpoint_rect, first_row) {
             if draw_breakpoint(
                 &mut inner,
-                rect,
-                row,
-                band,
-                line.paragraph,
-                mark,
-                stopped,
-                gutter.can_debug,
+                BreakpointRow {
+                    column: rect,
+                    row,
+                    band,
+                    paragraph: line.paragraph,
+                    mark,
+                    stopped,
+                    can_debug: gutter.can_debug,
+                },
             ) {
                 outcome.toggle_breakpoint = Some(line.paragraph);
             }
@@ -583,6 +585,24 @@ fn draw_arrow(ui: &mut egui::Ui, centre: Pos2, paragraph: usize, collapsed: bool
     response.clicked()
 }
 
+/// What one row needs to draw its breakpoint column.
+struct BreakpointRow {
+    /// The column's own rectangle, running the height of the gutter.
+    column: Rect,
+    /// This row's rectangle.
+    row: Rect,
+    /// Where the letters on this row really sit, which every mark is centred on.
+    band: egui::Rangef,
+    /// Which paragraph this row is.
+    paragraph: usize,
+    /// The breakpoint on this line, if there is one.
+    mark: Option<BreakpointMark>,
+    /// True while the debugger is stopped on this line.
+    stopped: bool,
+    /// False when the file's language names no debugger, which makes the whole column inert.
+    can_debug: bool,
+}
+
 /// The breakpoint column for one row: the dot if there is one, the execution-point arrow if the
 /// program is stopped here, and the click that toggles one.
 ///
@@ -593,16 +613,8 @@ fn draw_arrow(ui: &mut egui::Ui, centre: Pos2, paragraph: usize, collapsed: bool
 ///
 /// A file whose language names no debugger takes no click at all — Unluminous's rule for a control that
 /// can never apply — and draws nothing, so its gutter looks exactly as it did.
-fn draw_breakpoint(
-    ui: &mut egui::Ui,
-    column: Rect,
-    row: Rect,
-    band: egui::Rangef,
-    paragraph: usize,
-    mark: Option<BreakpointMark>,
-    stopped: bool,
-    can_debug: bool,
-) -> bool {
+fn draw_breakpoint(ui: &mut egui::Ui, at: BreakpointRow) -> bool {
+    let BreakpointRow { column, row, band, paragraph, mark, stopped, can_debug } = at;
     // The dot sits at the left of the column with the numbers on — over the margin the number's
     // right alignment leaves — and in the middle of its own column with them off. Its height comes
     // from the letters rather than from the line, so it stays beside the number it replaces at every

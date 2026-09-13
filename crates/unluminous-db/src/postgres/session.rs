@@ -407,7 +407,7 @@ impl Session {
 
     fn next_message(&mut self) -> Answer<Message> {
         loop {
-            if let Some(message) = self.frames.next()? {
+            if let Some(message) = self.frames.next_message()? {
                 return Ok(message);
             }
             let mut buffer = [0_u8; 16 * 1024];

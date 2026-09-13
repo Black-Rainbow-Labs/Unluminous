@@ -424,7 +424,7 @@ fn unknown(first: &str, second: Option<&String>) -> String {
     if let Some(near) = nearest(&typed) {
         message.push_str(&format!(" Did you mean `{}`?", near.typed()));
     }
-    if catalogue::areas().iter().any(|area| *area == first) {
+    if catalogue::areas().contains(&first) {
         let verbs: Vec<String> =
             catalogue::in_area(first).iter().map(|command| command.verb.to_owned()).collect();
         message.push_str(&format!(" `{first}` holds: {}.", verbs.join(", ")));

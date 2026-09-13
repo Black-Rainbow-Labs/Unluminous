@@ -178,10 +178,7 @@ fn draw_ladder(scene: &mut Scene, top: f32, from: f32, to: f32, options: &Option
         let strong = step == 0;
         scene.add(Item::Line {
             points: vec![Point::new(from, y), Point::new(to, y)],
-            stroke: Stroke::new(
-                if strong { options.theme.grid } else { options.theme.grid },
-                if strong { parts::LINE } else { 1.0 },
-            ),
+            stroke: Stroke::new(options.theme.grid, if strong { parts::LINE } else { 1.0 }),
             dash: if strong { Dash::Solid } else { parts::DASH },
         });
     }

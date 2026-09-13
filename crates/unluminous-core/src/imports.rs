@@ -833,7 +833,7 @@ impl Cursor<'_> {
             }
             let word = self.word(grammar)?;
             // `use a::{self, b}` names `a` itself, so the word adds nothing to the path.
-            if !(word == "self" && !segments.is_empty()) {
+            if word != "self" || segments.is_empty() {
                 segments.push(word);
             }
             self.space();

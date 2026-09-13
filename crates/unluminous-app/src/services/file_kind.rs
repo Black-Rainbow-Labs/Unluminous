@@ -754,7 +754,7 @@ mod tests {
         let folder = folder("unluminous-file-kind-utf8");
         let path = folder.join("accents.unluminousnotes");
         // Enough accented letters to run past the sniff, so the last one is cut in half.
-        let text: String = std::iter::repeat("é").take(SNIFF).collect();
+        let text: String = "é".repeat(SNIFF);
         std::fs::write(&path, text).expect("write it");
         assert!(is_text(&path), "a character split by the read is not a reason to refuse the file");
         std::fs::remove_dir_all(&folder).ok();
@@ -835,30 +835,30 @@ mod tests {
         let grammars = plugins.grammars();
         for code in ["main.rs", "app.js", "index.ts"] {
             let path = Path::new(code);
-            assert!(definitions_apply(Some(path), &grammars), "{code} has definitions");
-            assert!(symbols_apply(Some(path), &grammars), "and references and rename");
+            assert!(definitions_apply(Some(path), grammars), "{code} has definitions");
+            assert!(symbols_apply(Some(path), grammars), "and references and rename");
         }
         // A stylesheet keeps references and rename and loses go to definition, because a custom
         // property is defined by position rather than by a keyword.
         let css = Path::new("site.css");
-        assert!(!definitions_apply(Some(css), &grammars));
-        assert!(symbols_apply(Some(css), &grammars));
+        assert!(!definitions_apply(Some(css), grammars));
+        assert!(symbols_apply(Some(css), grammars));
         // Prose, a picture and a document that has never been saved have none of the three.
         for other in ["notes.md", "notes.txt", "photo.png", "Cargo.toml"] {
             let path = Path::new(other);
-            assert!(!definitions_apply(Some(path), &grammars), "{other}");
-            assert!(!symbols_apply(Some(path), &grammars), "{other}");
+            assert!(!definitions_apply(Some(path), grammars), "{other}");
+            assert!(!symbols_apply(Some(path), grammars), "{other}");
         }
-        assert!(!definitions_apply(None, &grammars), "an unsaved document has no language");
-        assert!(!symbols_apply(None, &grammars));
+        assert!(!definitions_apply(None, grammars), "an unsaved document has no language");
+        assert!(!symbols_apply(None, grammars));
         // Completion is the wider question again: a stylesheet completes, prose does not.
         for code in ["main.rs", "app.js", "index.ts", "site.css"] {
-            assert!(completion_applies(Some(Path::new(code)), &grammars), "{code} completes");
+            assert!(completion_applies(Some(Path::new(code)), grammars), "{code} completes");
         }
         for other in ["notes.md", "notes.txt", "photo.png"] {
-            assert!(!completion_applies(Some(Path::new(other)), &grammars), "{other}");
+            assert!(!completion_applies(Some(Path::new(other)), grammars), "{other}");
         }
-        assert!(!completion_applies(None, &grammars), "an unsaved document has no language");
+        assert!(!completion_applies(None, grammars), "an unsaved document has no language");
         // And the two are the opposite way round from formatting, which is what lets the command
         // key and B mean bold in prose and `Go to Definition` in code without either being dimmed.
         for code in ["main.rs", "app.js"] {

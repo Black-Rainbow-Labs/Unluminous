@@ -643,7 +643,18 @@ pub fn applied(text: &str, edits: &[(Range<usize>, String)]) -> String {
     let mut out = String::with_capacity(text.len());
     let mut at = 0;
     for (range, replacement) in ordered {
-        if range.start < at || range.end > text.len() {
+        // **The character boundary is checked, not just the length**, which is `task-1922` B16 and
+        // is what `replacements` above already does. Slicing a `str` across a character panics, and
+        // this is reached from Find in Files Replace All over a file that is not open: the ranges
+        // were found in the text as it was on disk a moment ago, and a file that changed underneath
+        // -- an edit anywhere before a match, by anything that is not Unluminous -- moves every offset
+        // after it. A range that lands mid character is then an ordinary thing to be handed, and it
+        // took the window down rather than skipping the file.
+        if range.start < at
+            || range.end > text.len()
+            || !text.is_char_boundary(range.start)
+            || !text.is_char_boundary(range.end)
+        {
             continue;
         }
         out.push_str(&text[at..range.start]);
@@ -684,6 +695,30 @@ pub fn check_name(name: &str, grammar: &Grammar) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **A stale range that lands inside a character is skipped rather than panicking.**
+    /// `task-1922` B16.
+    ///
+    /// `replacements` filtered on the character boundary and `applied` checked only the length, and
+    /// `applied` is what rewrites a file that is not open. The ranges came from the text as it was on
+    /// disk a moment ago; anything that is not Unluminous editing that file before a match moves every
+    /// offset after it, so being handed a range that lands mid character is ordinary. It took the
+    /// window down.
+    #[test]
+    fn a_range_that_lands_inside_a_character_is_skipped_rather_than_panicking() {
+        // `é` is two bytes, so byte 1 is inside it.
+        let text = "é = one;\n";
+        let inside = vec![(1..3, "two".to_owned())];
+        assert_eq!(applied(text, &inside), text, "the file is left exactly as it was");
+
+        // A range that is on a boundary is still applied, so the guard did not simply stop the work.
+        let real = vec![(5..8, "two".to_owned())];
+        assert_eq!(applied(text, &real), "é = two;\n");
+
+        // And the end can be the half of it that is wrong.
+        let ending_inside = vec![(0..1, "x".to_owned())];
+        assert_eq!(applied(text, &ending_inside), text);
+    }
 
     /// The Rust grammar as the bundled plugin describes it, cut down to what these tests need.
     fn rust() -> Grammar {
@@ -1130,8 +1165,11 @@ mod tests {
         let text = "abcdef";
         let edits = replacements(text, &[0..3, 1..4], "X");
         assert_eq!(edits.len(), 1, "two edits over the same bytes have no meaning: {edits:?}");
-        assert!(replacements(text, &[10..20], "X").is_empty());
-        assert!(replacements(text, &[3..3], "X").is_empty(), "an empty range replaces nothing");
+        assert!(replacements(text, std::slice::from_ref(&(10..20)), "X").is_empty());
+        assert!(
+            replacements(text, std::slice::from_ref(&(3..3)), "X").is_empty(),
+            "an empty range replaces nothing"
+        );
     }
 
     #[test]

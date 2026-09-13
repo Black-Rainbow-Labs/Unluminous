@@ -340,11 +340,35 @@ impl Document {
         Self { path: Some(path.to_owned()), ..Self::new() }
     }
 
+    /// The largest file this crate will open, which is what a document offset can spell.
+    ///
+    /// `task-1922` B18. A `PlacedCluster` holds its byte range as two `u32`, with an `expect` on the
+    /// conversion, and `Document::open` had no size guard of its own -- so a file past four gigabytes
+    /// was read, kept, and then panicked in layout, which is after the window has committed to
+    /// showing it. `unluminous_app::services::file_kind` refuses a file over 16 MB before it is ever
+    /// opened in a tab, and that is the limit a person meets; this is the one underneath it, for the
+    /// callers that do not go through `file_kind` at all.
+    pub const LARGEST: u64 = u32::MAX as u64;
+
     /// Open the file at `path`, keeping what its bytes were so that saving it does not change them.
     ///
     /// A file that is not UTF-8 opens **read-only** rather than being refused: see [`Encoding`] for
-    /// which shapes are read that way and why none of them is written back.
+    /// which shapes are read that way and why none of them is written back. A file larger than
+    /// [`Document::LARGEST`] is refused here rather than panicking later, which is what it did.
     pub fn open(path: &Path) -> std::io::Result<Self> {
+        if let Ok(about) = std::fs::metadata(path) {
+            if about.len() > Self::LARGEST {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "{} is {} bytes, and Unluminous reads a file of at most {} bytes",
+                        path.display(),
+                        about.len(),
+                        Self::LARGEST
+                    ),
+                ));
+            }
+        }
         let read = read_file(path)?;
         let mut document = Self::from_text(&read.text);
         document.path = Some(path.to_owned());
@@ -795,15 +819,6 @@ impl Document {
         true
     }
 
-    /// Take every breakpoint out of this file. True when there were any.
-    pub fn clear_breakpoints(&mut self) -> bool {
-        let cleared = self.breakpoints.clear();
-        if cleared {
-            self.revision += 1;
-        }
-        cleared
-    }
-
     /// The byte offset the line holding `offset` starts at.
     ///
     /// The one conversion, so the gutter, the command line and the adapter's answers all snap the
@@ -1002,16 +1017,10 @@ impl Document {
         if kind != EditKind::None && kind == self.last_edit && kind == EditKind::Typing {
             return;
         }
-        self.undo.push(Snapshot {
-            text: self.text.clone(),
-            chars: self.chars.clone(),
-            paragraphs: self.paragraphs.clone(),
-            selection: self.selection,
-            history_revision: self.history_revision,
-            highlights: self.highlights.clone(),
-            folds: self.folds.clone(),
-            breakpoints: self.breakpoints.clone(),
-        });
+        // `snapshot()` rather than a second copy of its eight fields, which is `task-1922`'s review
+        // finding: a ninth thing kept per document would have had two places to be added and one of
+        // them would have been forgotten.
+        self.undo.push(self.snapshot());
         if self.undo.len() > UNDO_LIMIT {
             self.undo.remove(0);
         }

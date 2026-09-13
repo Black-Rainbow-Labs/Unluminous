@@ -91,7 +91,7 @@ pub fn fit(scene: &Scene, area: Rect) -> f32 {
     }
     let across = area.width() / scene.size.width;
     let down = area.height() / scene.size.height;
-    across.min(down).min(1.0).max(SMALLEST)
+    across.min(down).clamp(SMALLEST, 1.0)
 }
 
 /// Take the wheel, the drag and the zoom.

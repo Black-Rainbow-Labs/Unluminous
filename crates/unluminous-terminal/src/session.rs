@@ -273,7 +273,7 @@ impl Session {
         // own, so that closing the terminal ends it whatever it happens to be doing at the time.
         // Borrowed rather than owned: `child_watcher` keeps using the same handle to report the exit.
         #[cfg(windows)]
-        let reaper = Reaper::adopt(pty.child_watcher().raw_handle() as *mut std::ffi::c_void);
+        let reaper = Reaper::adopt(pty.child_watcher().raw_handle());
         #[cfg(not(windows))]
         let reaper = Reaper::detached();
         // **And the pseudoterminal itself, so what is running in it can be asked for later.** This is the one

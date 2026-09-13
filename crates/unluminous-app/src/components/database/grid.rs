@@ -589,7 +589,7 @@ fn cell_editor(
         egui::WidgetInfo::labeled(
             egui::WidgetType::TextEdit,
             true,
-            &format!("{name} row {}", at + 1),
+            format!("{name} row {}", at + 1),
         )
     });
     if typed != editing.text {
@@ -788,7 +788,7 @@ pub fn rows_only(ui: &mut egui::Ui, look: &Look<'_>, area: Rect, rows: &Rows, id
                         .and_then(|row| row.get(index))
                         .cloned()
                         .unwrap_or_default();
-                    draw_a_value(&painter, look, cell, &value, column.numeric, false, scale, None);
+                    draw_a_value(painter, look, cell, &value, column.numeric, false, scale, None);
                 }
             }
         });

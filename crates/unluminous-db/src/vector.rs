@@ -179,8 +179,10 @@ mod tests {
         // `%_config`, and `catalog::Table::is_a_vector_column` is the gate. A blob anywhere else is
         // decoded only when a person asks for it in the inspector, and then it is their question
         // rather than the grid's claim.
-        let mut table = crate::catalog::Table::default();
-        table.columns = vec![crate::value::Column::new("portrait", "BLOB")];
+        let table = crate::catalog::Table {
+            columns: vec![crate::value::Column::new("portrait", "BLOB")],
+            ..Default::default()
+        };
         assert!(!table.is_a_vector_column("portrait"));
     }
 

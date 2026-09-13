@@ -287,8 +287,8 @@ fn ownership(graph: &Graph, nodes: &[usize], children: &[usize]) -> Vec<Option<u
         owner[index] = Some(position);
     }
     for (position, &child) in children.iter().enumerate() {
-        for index in 0..graph.nodes.len() {
-            if inside(graph, graph.nodes[index].group, child) {
+        for (index, node) in graph.nodes.iter().enumerate() {
+            if inside(graph, node.group, child) {
                 owner[index] = Some(nodes.len() + position);
             }
         }
@@ -486,8 +486,8 @@ fn insert_dummies(
     for (index, edge) in edges.iter().enumerate() {
         let (from, to) = ends(edge, reversed[index]);
         let (top, bottom) = (ranks[from], ranks[to]);
-        for level in (top + 1)..bottom {
-            layers[level].push(Slot::Dummy(index));
+        for (level, layer) in layers.iter_mut().enumerate().take(bottom).skip(top + 1) {
+            layer.push(Slot::Dummy(index));
             chains[index].push(level);
         }
     }

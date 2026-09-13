@@ -416,7 +416,7 @@ fn flag(on: bool) -> &'static str {
 }
 
 fn write(path: &Path, text: &str) {
-    if let Err(problem) = std::fs::write(path, text) {
+    if let Err(problem) = crate::services::store::write_atomically(path, text.as_bytes()) {
         eprintln!("Unluminous could not write {}: {problem}", path.display());
     }
 }

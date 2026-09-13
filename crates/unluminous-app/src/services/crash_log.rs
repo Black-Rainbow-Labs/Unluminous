@@ -69,7 +69,7 @@ fn report(panic: &std::panic::PanicHookInfo<'_>, backtrace: &str) -> String {
         None => out.push_str("in   somewhere with no location\n"),
     }
     out.push_str(&format!("said {}\n", message(panic)));
-    out.push_str("\n");
+    out.push('\n');
     out.push_str(backtrace);
     if !backtrace.ends_with('\n') {
         out.push('\n');

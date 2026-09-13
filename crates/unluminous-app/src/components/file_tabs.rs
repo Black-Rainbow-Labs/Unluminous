@@ -314,7 +314,7 @@ fn draw_tab(
         let shut_response = ui
             .interact(shut, ui.id().with(("file-tab-close", at.pane, index)), Sense::click())
             .on_hover_text(&shut_name);
-        icon::cross(&ui.painter(), shut.center(), color::text_dim());
+        icon::cross(ui.painter(), shut.center(), color::text_dim());
         shut_response
             .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &shut_name));
         if shut_response.clicked() {

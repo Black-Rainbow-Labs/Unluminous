@@ -130,7 +130,7 @@ impl FileMarks {
             // Nothing is marked any more. The file is emptied rather than left holding what was
             // cleared, and a project that never had one does not get one.
             if file.exists() {
-                if let Err(problem) = std::fs::write(&file, heading()) {
+                if let Err(problem) = super::store::write_atomically(&file, heading().as_bytes()) {
                     eprintln!("Unluminous could not write {}: {problem}", file.display());
                 }
             }
@@ -140,7 +140,7 @@ impl FileMarks {
             eprintln!("Unluminous could not make {}: {problem}", folder.display());
             return;
         }
-        if let Err(problem) = std::fs::write(&file, self.to_text(root)) {
+        if let Err(problem) = super::store::write_atomically(&file, self.to_text(root).as_bytes()) {
             eprintln!("Unluminous could not write {}: {problem}", file.display());
         }
     }

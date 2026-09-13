@@ -3865,7 +3865,8 @@ fn typing_in_the_terminal_reaches_the_shell_and_not_the_document() {
     // to go quiet is the wrong budget — it is the rule the file's other waiting loops already follow.
     // Seen failing on a loaded machine as `Harness::run exceeded max_steps (4)` with the terminal's
     // own waker as the repaint cause.
-    for text in ["echo unluminous-typing-works"] {
+    {
+        let text = "echo unluminous-typing-works";
         harness.input_mut().events.push(egui::Event::Text(text.to_owned()));
         pump(&mut harness);
     }
@@ -7413,8 +7414,8 @@ fn action_list_answers_for_the_menu_that_was_asked_for() {
         .iter()
         .map(|entry| entry["menu"].as_str().unwrap_or_default())
         .collect();
-    assert!(menus.iter().any(|menu| *menu == "View"));
-    assert!(menus.iter().any(|menu| *menu == "Edit"));
+    assert!(menus.contains(&"View"));
+    assert!(menus.contains(&"Edit"));
     assert!(menus.iter().all(|menu| *menu == "View" || *menu == "Edit"));
 
     // No menu named is still every menu.
@@ -11751,8 +11752,12 @@ fn concise_debug_replies_lead_with_the_paused_frame_and_locals() {
 /// So this is the reported shape exactly: two files, only one of them open, the editor scrolled, and
 /// the breakpoint named the way an agent names one — relative, with a forward slash.
 ///
-/// **Skipped with a message on a machine with no adapter**, which is the rule the test above keeps.
+/// **`#[ignore]`d**, which is `agent_board.rs`'s rule and `task-1922`'s correction: a test that
+/// returns early with a message on a machine with no adapter *reports a pass*, so a suite with three
+/// of them in it says it checked something it never ran. `nightly.yml` runs it with `--ignored` where
+/// an adapter is installed, and the early return below stays as the second guard for that run.
 #[test]
+#[ignore = "needs codelldb or lldb-dap on PATH, or UNLUMINOUS_LLDB_ADAPTER"]
 fn a_real_debugger_binds_a_breakpoint_in_a_file_that_is_not_open() {
     let Some(adapter) = std::env::var_os("UNLUMINOUS_LLDB_ADAPTER")
         .map(std::path::PathBuf::from)
@@ -11919,6 +11924,7 @@ fn a_real_debugger_binds_a_breakpoint_in_a_file_that_is_not_open() {
 /// to go quiet and panics otherwise — right for a settled window and wrong while a debugger is
 /// loading a binary's debug information. `task-1654`'s rule about waiting loops, once more.
 #[test]
+#[ignore = "needs codelldb or lldb-dap on PATH, or UNLUMINOUS_LLDB_ADAPTER"]
 fn a_real_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
     // `UNLUMINOUS_LLDB_ADAPTER` first, which is the test's own spelling of the `debug.lldb` setting: an
     // adapter unpacked somewhere rather than installed is the ordinary case on a machine that has
@@ -12107,6 +12113,7 @@ fn a_real_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
 /// it ships as a `.js` file in a GitHub release asset rather than as a program, which is why
 /// `debug.node` has no default and why `tools/get-debug-adapter.sh` exists.
 #[test]
+#[ignore = "needs node and js-debug, pointed at by UNLUMINOUS_NODE_ADAPTER"]
 fn a_real_node_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
     let Some(adapter) = std::env::var_os("UNLUMINOUS_NODE_ADAPTER")
         .map(std::path::PathBuf::from)
@@ -16662,7 +16669,8 @@ fn an_inillucent_file(name: &str) -> std::path::PathBuf {
             .expect("a row with a vector");
     }
     database.checkpoint().expect("checkpointed");
-    drop(connection);
+    // `connection` has no destructor of its own, so nothing is gained by dropping it before
+    // `database`, which does close the file.
     drop(database);
     file
 }
@@ -18825,10 +18833,13 @@ fn an_address_typed_into_a_browser_node_is_opened() {
         // On one without, the refusal is about the platform rather than about the address — and the
         // typed address is still in the bar rather than having been silently thrown away.
         None => {
-            assert!(
-                !unluminous_app::services::browser::SUPPORTED,
-                "a supported platform made no tab"
-            );
+            // `SUPPORTED` is a compile-time constant, so clippy would rather this were a static
+            // assertion — but whether this branch runs at all depends on what the harness actually
+            // did, which is not known until the test runs. A supported platform reaching here is a
+            // real failure and has to panic, so this stays a runtime check written as a plain `if`.
+            if unluminous_app::services::browser::SUPPORTED {
+                panic!("a supported platform made no tab");
+            }
             let state =
                 harness.state().space.space.current().node(node).cloned().expect("the node");
             match &state.state {
@@ -19125,7 +19136,7 @@ fn a_canvas_comes_back_when_the_project_is_opened_again() {
         Some(&folder),
     );
     space.connect(node, second, unluminous_app::services::space::Pipe::Off).expect("wired");
-    unluminous_app::services::space::store::save(&folder, &space);
+    unluminous_app::services::space::store::save(&folder, &space).expect("saved");
 
     let back = unluminous_app::services::space::store::load(&folder);
     assert_eq!(back.current().nodes.len(), 2);
@@ -19254,7 +19265,7 @@ fn a_plain_click_on_a_link_only_moves_the_selection() {
     let at = where_the_first_link_is(&mut harness);
     click_at(&mut harness, at);
     assert_eq!(harness.state().files.len(), before, "no tab was opened");
-    assert!(harness.state().preview_holds_the_selection() || true, "the click was the preview's");
+    assert!(harness.state().is_reading_the_preview(), "the click was the preview's");
 }
 
 /// **A scheme that is not `http` or `https` is refused by name.** A document must not be able to reach
@@ -19434,19 +19445,19 @@ fn switching_to_the_branch_already_on_says_so_rather_than_running_git() {
     assert!(said.contains("Already on main"), "said {said:?}");
 }
 
-/// A field below the threshold would be a control that cannot help: every row is already on the screen.
-#[test]
-fn the_popup_filters_when_there_are_more_branches_than_it_can_show() {
-    use unluminous_app::components::branch_widget::BRANCHES_BEFORE_A_FILTER;
-    assert!(
-        BRANCHES_BEFORE_A_FILTER >= 8,
-        "a threshold low enough to be reached in a real project"
-    );
-    assert!(
-        BRANCHES_BEFORE_A_FILTER <= 20,
-        "and high enough that a small project never sees a field"
-    );
-}
+// A field below the threshold would be a control that cannot help: every row is already on the
+// screen. Checked here rather than in a runtime test, because clippy is right that comparing a
+// constant against a literal can only ever pass or fail the same way: a build fails before the
+// popup could ever ship with a threshold nobody would notice was wrong.
+use unluminous_app::components::branch_widget::BRANCHES_BEFORE_A_FILTER;
+const _: () = assert!(
+    BRANCHES_BEFORE_A_FILTER >= 8,
+    "a threshold low enough to be reached in a real project"
+);
+const _: () = assert!(
+    BRANCHES_BEFORE_A_FILTER <= 20,
+    "and high enough that a small project never sees a field"
+);
 
 /// The picture, which is what a person reads to see whether it looks like the bar it sits in.
 #[test]

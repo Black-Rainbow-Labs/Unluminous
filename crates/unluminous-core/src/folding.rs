@@ -673,12 +673,7 @@ impl Hidden {
 /// The regions are sorted widest first within a head, and an inner region has a later head than the
 /// one holding it, so the **last** one that covers the line is the innermost.
 pub fn region_at(regions: &[Region], line: usize) -> Option<&Region> {
-    regions.iter().filter(|region| region.covers(line)).next_back()
-}
-
-/// The region whose head is exactly this line, which is what pressing the arrow beside it means.
-pub fn region_headed_by(regions: &[Region], line: usize) -> Option<&Region> {
-    regions.iter().find(|region| region.head == line)
+    regions.iter().rfind(|region| region.covers(line))
 }
 
 /// The region headed by `line`, and every region nested inside it, in the order the regions are.

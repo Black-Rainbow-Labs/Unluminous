@@ -11,6 +11,48 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// Write `bytes` to `path` through a temporary and a rename, so a crash cannot truncate the file.
+///
+/// `task-1922` B7. Every file Unluminous remembers anything in was one `std::fs::write`:
+/// `settings.conf`, `recent.txt`, `session.txt`, a project's `workspace.conf` and its two lists,
+/// `space.conf`, `highlights.txt`, `breakpoints.conf` and the instance file. A `write` truncates the
+/// file and then fills it, so a crash, a power cut or a full disk between those two leaves the file
+/// empty or half written -- and every one of these is read at startup, so what a person loses is the
+/// state of the thing they were in the middle of.
+///
+/// The temporary is in the **same folder** as the target, because a rename is only atomic within one
+/// file system and a temporary directory is very often on another one. Its name carries the process
+/// id, so two Unluminous windows writing the same settings file cannot take each other's temporary.
+/// `sync_all` before the rename is what makes the bytes really be on the disk rather than in the
+/// operating system's cache when the rename makes them visible.
+///
+/// On Windows `std::fs::rename` is `MoveFileEx` with `MOVEFILE_REPLACE_EXISTING`, so replacing an
+/// existing file needs nothing extra. When the rename is refused the temporary is taken away again,
+/// so a folder does not fill with them, and the old file is left exactly as it was.
+pub fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let folder = path.parent().unwrap_or_else(|| Path::new("."));
+    let name = path.file_name().map(|name| name.to_string_lossy().into_owned());
+    let name = name.unwrap_or_else(|| "unluminous".to_owned());
+    let temporary = folder.join(format!("{name}.tmp-{}", std::process::id()));
+
+    let written = (|| -> std::io::Result<()> {
+        let mut file = std::fs::File::create(&temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()
+    })();
+    if let Err(problem) = written {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(problem);
+    }
+    if let Err(problem) = std::fs::rename(&temporary, path) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(problem);
+    }
+    Ok(())
+}
+
 /// How many projects the recent list holds. Fifteen fills a menu without needing to scroll.
 pub const RECENT_LIMIT: usize = 15;
 
@@ -370,7 +412,7 @@ impl Store {
 
     fn write(&self, path: &Path, text: &str) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.folder)?;
-        std::fs::write(path, text)
+        write_atomically(path, text.as_bytes())
     }
 }
 
@@ -433,6 +475,51 @@ mod tests {
         let folder = std::env::temp_dir().join(name);
         std::fs::remove_dir_all(&folder).ok();
         folder
+    }
+
+    /// **A write that fails leaves the file that was there exactly as it was.** `task-1922` B7.
+    ///
+    /// Every file Unluminous remembers anything in used to be one `std::fs::write`, which truncates and
+    /// then fills -- so a crash, a power cut or a full disk between those two leaves the file empty
+    /// or half written, and every one of them is read at startup.
+    ///
+    /// The rename is made to fail by pointing it at a folder, which neither platform will replace
+    /// with a file. What the test then asks is the whole of the promise: the thing that was there is
+    /// untouched, and no temporary is left behind.
+    #[test]
+    fn a_write_that_fails_leaves_the_old_file_alone_and_no_temporary_behind() {
+        let folder = temporary("unluminous-atomic-write");
+        std::fs::create_dir_all(&folder).expect("make the folder");
+
+        // The ordinary case first: it writes, and it replaces.
+        let file = folder.join("settings.conf");
+        write_atomically(&file, b"appearance.font.size = 16\n").expect("the first write");
+        write_atomically(&file, b"appearance.font.size = 20\n").expect("the second write");
+        assert_eq!(
+            std::fs::read_to_string(&file).expect("read it back"),
+            "appearance.font.size = 20\n"
+        );
+
+        // A rename onto a folder is refused on both platforms, which stands in for a disk that is
+        // full at exactly the wrong moment.
+        let in_the_way = folder.join("occupied");
+        std::fs::create_dir_all(&in_the_way).expect("make the folder");
+        std::fs::write(in_the_way.join("inside.txt"), "still here\n").expect("write inside it");
+        let refused = write_atomically(&in_the_way, b"this cannot land\n");
+        assert!(refused.is_err(), "renaming a file over a folder is refused");
+        assert_eq!(
+            std::fs::read_to_string(in_the_way.join("inside.txt")).expect("read it back"),
+            "still here\n",
+            "what was there is untouched"
+        );
+
+        let leftovers: Vec<_> = std::fs::read_dir(&folder)
+            .expect("list the folder")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains(".tmp-"))
+            .collect();
+        assert!(leftovers.is_empty(), "no temporary is left behind: {leftovers:?}");
     }
 
     /// Nothing is running, so nothing answers. What every test here starts from.

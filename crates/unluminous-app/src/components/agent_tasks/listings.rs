@@ -178,7 +178,7 @@ pub fn act(board: &mut AgentTasks, pressed: Pressed) -> Vec<Request> {
             // **Made first and coloured after**, because `new-epic` takes a name and nothing else, and
             // giving it a second argument would give one command two shapes. The epic is found again by the
             // name that was just typed, which is what `epic-colour` names one by anyway.
-            match board.command_now("new-epic", &[name.clone()]) {
+            match board.command_now("new-epic", std::slice::from_ref(&name)) {
                 Ok(_) => {
                     if let Err(problem) = board.command_now("epic-colour", &[name, colour]) {
                         say(problem);
@@ -773,7 +773,7 @@ fn row(
     clipped_in(
         &painter,
         Pos2::new(pen, middle - look.font_size * 0.7),
-        &task.display_title(),
+        task.display_title(),
         egui::FontId::proportional(look.font_size),
         look.palette.text,
         room,
@@ -1072,11 +1072,13 @@ pub fn epics(
         epic_card(
             &mut grid,
             look,
-            at,
-            epic,
-            counts[index],
-            renaming == Some(epic.id),
-            asked == Some(epic.id),
+            EpicCard {
+                area: at,
+                epic,
+                count: counts[index],
+                renaming: renaming == Some(epic.id),
+                asked: asked == Some(epic.id),
+            },
             &mut pressed,
         );
     }
@@ -1194,17 +1196,19 @@ fn swatch(
     response.clicked()
 }
 
-/// One epic: its colour, its name, how many tickets carry it, its seven colours, and two buttons.
-fn epic_card(
-    ui: &mut egui::Ui,
-    look: &Look<'_>,
+/// What one epic card needs to draw itself: where it is, which epic it is, how many tickets carry
+/// it, and whether it is being renamed or is the one asked about for deletion.
+struct EpicCard<'a> {
     area: Rect,
-    epic: &crate::services::agent_tasks::model::Epic,
+    epic: &'a crate::services::agent_tasks::model::Epic,
     count: i64,
     renaming: bool,
     asked: bool,
-    pressed: &mut Pressed,
-) {
+}
+
+/// One epic: its colour, its name, how many tickets carry it, its seven colours, and two buttons.
+fn epic_card(ui: &mut egui::Ui, look: &Look<'_>, card: EpicCard<'_>, pressed: &mut Pressed) {
+    let EpicCard { area, epic, count, renaming, asked } = card;
     let scale = look.scale();
     let radius = GROUP_RADIUS * scale;
     if look.chrome.is_recording() {

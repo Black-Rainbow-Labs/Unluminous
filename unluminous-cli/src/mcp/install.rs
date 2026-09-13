@@ -577,28 +577,73 @@ fn program_named(name: &str) -> String {
     }
 }
 
+/// How long an agent's own command is given before it is killed.
+///
+/// `task-1922` B12. `unluminous-cli mcp install claude` ran `claude mcp add-json` and waited for it
+/// with no deadline at all, on a child whose standard input it had not closed -- so an agent CLI that
+/// stopped to ask something, about a login or a trust prompt, hung the install for ever with nothing
+/// on the screen. Sixty seconds is far longer than either agent takes to edit one file and short
+/// enough that a person notices a stall rather than a hang, and the refusal names the command so they
+/// can run it themselves and answer whatever it asked.
+const LONGEST_INSTALL: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// Run an agent's own command. `None` when the program is not there at all, which is the case the
 /// fallback is for; `Some(false)` when it ran and would not do it.
 fn run(program: &str, arguments: &[&str], folder: &Path) -> Option<bool> {
     let mut attempt = std::process::Command::new(program);
     attempt.args(arguments).current_dir(folder);
     // Nothing it prints is wanted: what matters is whether it worked, and the sentence a person
-    // reads is written here so that both roads say the same thing.
-    attempt.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-    match attempt.status() {
-        Ok(status) => Some(status.success()),
+    // reads is written here so that both roads say the same thing. Standard input is closed as well,
+    // so a command that decides to ask something reads the end of its input and answers itself
+    // rather than waiting on a person who is not there.
+    attempt
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    match attempt.spawn() {
+        Ok(child) => Some(within(child, program, LONGEST_INSTALL)),
         Err(problem) if problem.kind() == std::io::ErrorKind::NotFound => {
             // On Windows a `.cmd` shim is what npm installs, and a bare name is what a real
             // executable is. Try the other spelling before giving up.
             if let Some(bare) = program.strip_suffix(".cmd") {
                 let mut second = std::process::Command::new(bare);
                 second.args(arguments).current_dir(folder);
-                second.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-                return second.status().ok().map(|status| status.success());
+                second
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null());
+                return second.spawn().ok().map(|child| within(child, bare, LONGEST_INSTALL));
             }
             None
         }
         Err(_) => None,
+    }
+}
+
+/// Wait for `child` for `longest`, and kill it if it is still there.
+///
+/// A poll on a clock rather than a second thread: there is one child, nothing else is happening while
+/// it runs, and a thread would have to be joined by a `wait` that is the thing being avoided. A child
+/// that had to be killed answers `false`, which is the same answer as a command that refused, and the
+/// caller's own sentence names the command either way.
+///
+/// The deadline is a parameter rather than read from [`LONGEST_INSTALL`] so a test can hand it a
+/// short one; a test that waited out the real minute is a test nobody runs.
+fn within(mut child: std::process::Child, program: &str, longest: std::time::Duration) -> bool {
+    let started = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) => {}
+            Err(_) => return false,
+        }
+        if started.elapsed() >= longest {
+            eprintln!("`{program}` did not finish within {longest:?}, so it was stopped.");
+            let _ = child.kill();
+            let _ = child.wait();
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
 }
 
@@ -625,6 +670,49 @@ fn home() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **An agent's own command is given a deadline.** `task-1922` B12.
+    ///
+    /// `unluminous-cli mcp install claude` runs `claude mcp add-json` and waited for it with no
+    /// deadline at all. An agent CLI that stops to ask something -- about a login, or trusting a
+    /// folder -- hung the install for ever with nothing on the screen to say why.
+    #[test]
+    fn a_command_that_never_finishes_is_stopped_rather_than_waited_for() {
+        let mut sleeping = match cfg!(windows) {
+            true => {
+                let mut one = std::process::Command::new("ping");
+                one.args(["-n", "60", "127.0.0.1"]);
+                one
+            }
+            false => {
+                let mut one = std::process::Command::new("sleep");
+                one.arg("60");
+                one
+            }
+        };
+        let child = sleeping
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("a long-lived child");
+        let started = std::time::Instant::now();
+        let worked = within(child, "a program that sleeps", std::time::Duration::from_millis(300));
+        let took = started.elapsed();
+        assert!(!worked, "a command that had to be stopped did not do what was asked");
+        assert!(
+            took < std::time::Duration::from_secs(10),
+            "it was stopped rather than waited for: {took:?}"
+        );
+
+        // And a command that finishes is answered by what it did, not by the clock.
+        let quick = match cfg!(windows) {
+            true => std::process::Command::new("cmd").args(["/c", "exit", "0"]).spawn(),
+            false => std::process::Command::new("true").spawn(),
+        };
+        let quick = quick.expect("a program that ends at once");
+        assert!(within(quick, "a program that ends", std::time::Duration::from_secs(10)));
+    }
 
     /// One test at a time, in a home of its own. Where the configuration goes is named by an
     /// environment variable, which belongs to the whole process rather than to one test — the same

@@ -75,26 +75,36 @@ pub struct SettingsOutcome {
     pub plugin_page: Option<(usize, Rect)>,
 }
 
+/// What the window tells the Settings dialog about the machine it is running on.
+///
+/// `show` and `contents` share almost this whole list, and every field here is read rather than
+/// written — what changes as the dialog runs is `SettingsWindow` and `Settings`, both taken
+/// separately.
+#[derive(Clone, Copy)]
+pub struct SettingsContext<'a> {
+    pub families: &'a [String],
+    pub project: &'a str,
+    pub plugins: &'a Plugins,
+    pub mcp_running: &'a crate::services::mcp::State,
+    /// The client an agent is told to launch. It is passed in rather than worked out in the page,
+    /// because `current_exe` in the window is `unluminous.exe`, and because a screenshot test has to
+    /// be able to pin it: a picture holding this machine's own path is a picture no other machine can
+    /// match.
+    pub unluminous_cli: &'a std::path::Path,
+    pub installed_on_disk: &'a dyn Fn(&str) -> bool,
+    pub icon_for: &'a dyn Fn(&str) -> Option<egui::TextureHandle>,
+    /// The name each plugin that contributed a page calls it, in slot order. Passed in rather than
+    /// read from the plugins, because a page's name is `settings.page` in its manifest and the
+    /// dialog draws rows rather than reading manifests.
+    pub plugin_pages: &'a [String],
+}
+
 /// Draw the Settings window. Does nothing when it is not open.
 pub fn show(
     ctx: &egui::Context,
     state: &mut SettingsWindow,
     settings: &mut Settings,
-    families: &[String],
-    project: &str,
-    plugins: &Plugins,
-    mcp_running: &crate::services::mcp::State,
-    // `unluminous_cli` is the client an agent is told to launch. It is passed in rather than worked out
-    // in the page, because `current_exe` in the window is `unluminous.exe`, and because a screenshot
-    // test has to be able to pin it: a picture holding this machine's own path is a picture no
-    // other machine can match.
-    unluminous_cli: &std::path::Path,
-    installed_on_disk: &dyn Fn(&str) -> bool,
-    icon_for: &dyn Fn(&str) -> Option<egui::TextureHandle>,
-    // The name each plugin that contributed a page calls it, in slot order. Passed in rather than read
-    // from the plugins, because a page's name is `settings.page` in its manifest and the dialog draws
-    // rows rather than reading manifests.
-    plugin_pages: &[String],
+    context: SettingsContext,
     // Draws a contributed page, given the page's slot and the rectangle every page gets. A closure
     // because only the window can reach a plugin's provider, and because the page has to be drawn
     // **inside** the modal: the modal is an `egui::Area` of its own, so anything painted into the window
@@ -112,21 +122,7 @@ pub fn show(
     // window draggable and resizable along with every other modal.
     let (inner, should_close) =
         modal::show(ctx, "unluminous-settings", WIDTH, HEIGHT, |ui, area| {
-            contents(
-                ui,
-                area,
-                state,
-                settings,
-                families,
-                project,
-                plugins,
-                mcp_running,
-                unluminous_cli,
-                installed_on_disk,
-                icon_for,
-                plugin_pages,
-                plugin_page,
-            )
+            contents(ui, area, state, settings, context, plugin_page)
         });
 
     outcome.changed = inner.changed;
@@ -140,24 +136,12 @@ pub fn show(
     outcome
 }
 
-#[allow(clippy::too_many_arguments)]
 fn contents(
     ui: &mut egui::Ui,
     area: Rect,
     state: &mut SettingsWindow,
     settings: &mut Settings,
-    families: &[String],
-    project: &str,
-    plugins: &Plugins,
-    mcp_running: &crate::services::mcp::State,
-    // `unluminous_cli` is the client an agent is told to launch. It is passed in rather than worked out
-    // in the page, because `current_exe` in the window is `unluminous.exe`, and because a screenshot
-    // test has to be able to pin it: a picture holding this machine's own path is a picture no
-    // other machine can match.
-    unluminous_cli: &std::path::Path,
-    installed_on_disk: &dyn Fn(&str) -> bool,
-    icon_for: &dyn Fn(&str) -> Option<egui::TextureHandle>,
-    plugin_pages: &[String],
+    context: SettingsContext,
     plugin_page: &mut dyn FnMut(&mut egui::Ui, usize, Rect),
 ) -> SettingsOutcome {
     let mut outcome = SettingsOutcome::default();
@@ -166,10 +150,10 @@ fn contents(
     let header = Rect::from_min_size(area.min, Vec2::new(area.width(), HEADER));
     let painter = ui.painter_at(area);
     painter.rect_filled(header, CornerRadius { nw: 10, ne: 10, sw: 0, se: 0 }, color::title_bar());
-    let title = if project.is_empty() {
+    let title = if context.project.is_empty() {
         "Settings".to_owned()
     } else {
-        format!("Settings \u{2014} {project}")
+        format!("Settings \u{2014} {}", context.project)
     };
     let galley =
         painter.layout_no_wrap(title, egui::FontId::proportional(13.0), color::text_strong());
@@ -196,13 +180,13 @@ fn contents(
     ui.painter_at(area).rect_filled(list, CornerRadius::ZERO, color::explorer_footer());
     line(ui, Pos2::new(list.right(), list.top()), Pos2::new(list.right(), list.bottom()));
 
-    show_list(ui, list, state, plugin_pages);
+    show_list(ui, list, state, context.plugin_pages);
     match state.page {
         Page::Appearance => {
-            outcome.changed |= appearance_page(ui, page_area, settings, families);
+            outcome.changed |= appearance_page(ui, page_area, settings, context.families);
         }
         Page::Theme => {
-            outcome.changed |= theme_page(ui, page_area, settings, plugins);
+            outcome.changed |= theme_page(ui, page_area, settings, context.plugins);
         }
         Page::Editor => {
             outcome.changed |= editor_page(ui, page_area, settings);
@@ -212,9 +196,9 @@ fn contents(
                 ui,
                 page_area,
                 &mut state.plugins,
-                plugins,
-                installed_on_disk,
-                icon_for,
+                context.plugins,
+                context.installed_on_disk,
+                context.icon_for,
             );
         }
         Page::Terminal => {
@@ -226,8 +210,8 @@ fn contents(
                 page_area,
                 &mut state.mcp,
                 settings,
-                mcp_running,
-                unluminous_cli,
+                context.mcp_running,
+                context.unluminous_cli,
             )
             .changed;
         }

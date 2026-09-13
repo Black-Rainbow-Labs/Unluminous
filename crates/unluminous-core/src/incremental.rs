@@ -265,13 +265,14 @@ mod tests {
     /// A grammar with everything the incremental path has to survive: line comments, block comments
     /// and strings, so a test can open one and watch the rest of the file change colour.
     fn rust_like() -> Grammar {
-        let mut grammar = Grammar::default();
-        grammar.line_comment = Some("//".to_owned());
-        grammar.block_comment = Some(("/*".to_owned(), "*/".to_owned()));
-        grammar.strings = vec!['"'];
-        grammar.numbers = true;
-        grammar.keywords = ["fn", "let", "pub", "struct"].iter().map(|k| (*k).to_owned()).collect();
-        grammar
+        Grammar {
+            line_comment: Some("//".to_owned()),
+            block_comment: Some(("/*".to_owned(), "*/".to_owned())),
+            strings: vec!['"'],
+            numbers: true,
+            keywords: ["fn", "let", "pub", "struct"].iter().map(|k| (*k).to_owned()).collect(),
+            ..Default::default()
+        }
     }
 
     /// Every token, read the way `syntax::scan` reads them, which is the answer to be matched.
@@ -341,7 +342,7 @@ mod tests {
             "it read a line, not the file: {} of {full}",
             update.scanned
         );
-        assert!(update.changed.start <= at && update.changed.end >= at + 1);
+        assert!(update.changed.start <= at && update.changed.end > at);
         assert!(
             update.changed.len() < 200,
             "and it says only that line changed colour: {:?}",

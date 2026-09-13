@@ -80,9 +80,9 @@ pub fn save(root: &Path, space: &Space) -> Result<(), String> {
     let mut values = Values::new();
     write(space, root, &mut values);
     let file = path(root);
-    std::fs::write(
+    crate::services::store::write_atomically(
         &file,
-        values.to_text_headed("Unluminous: the Base of Infinite Space in this project."),
+        values.to_text_headed("Unluminous: the Base of Infinite Space in this project.").as_bytes(),
     )
     .map_err(|problem| format!("{} could not be written: {problem}", file.display()))
 }
@@ -394,6 +394,68 @@ fn read_a_node(values: &Values, key: &str, root: &Path) -> Option<Node> {
         Kind::Tasks => State::Tasks(Tasks { zoom: read_a_zoom(values, key) }),
     };
     Some(Node { id, at, size, title, state })
+}
+
+/// Where a terminal node's screen is kept, so it can come back showing what was on it.
+///
+/// **A file per node rather than a key in `space.conf`**, because a screen is kilobytes of escape sequences and
+/// `space.conf` is a settings file somebody reads and edits by hand. `task-1908`.
+pub fn screen_path(root: &Path, node: crate::services::space::NodeId) -> std::path::PathBuf {
+    project_state::folder(root).join("terminals").join(format!("{node}.bytes"))
+}
+
+/// Write down what is on a terminal node's screen.
+///
+/// **Called when the window closes and at no other time.** A screen changes on every keystroke, and
+/// `Space::is_dirty` exists so the canvas is not written sixty times a second; what somebody wants back is the
+/// last state, so it is written once. `None` removes whatever was there, which is what a node drawing its own
+/// full screen answers — see `Session::screen_to_replay`.
+pub fn save_a_screen(
+    root: &Path,
+    node: crate::services::space::NodeId,
+    bytes: Option<&[u8]>,
+) -> Result<(), String> {
+    let file = screen_path(root, node);
+    let Some(bytes) = bytes else {
+        // Removed rather than left, so a node that came back at a prompt does not replay yesterday's screen the
+        // time after that.
+        let _ = std::fs::remove_file(&file);
+        return Ok(());
+    };
+    if let Some(folder) = file.parent() {
+        std::fs::create_dir_all(folder)
+            .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
+    }
+    crate::services::store::write_atomically(&file, bytes)
+        .map_err(|problem| format!("{} could not be written: {problem}", file.display()))
+}
+
+/// The file a terminal node is to come back showing, when there is one worth showing.
+///
+/// **The path rather than the bytes**, because what reads them is no longer this process: `task-1912` measured
+/// that a screen written into a terminal from outside is erased by the console host on Windows, so what is
+/// restored is printed by a program *inside* the node's own console — `unluminous_terminal::restore`. The file
+/// is taken away by whoever printed it.
+///
+/// An empty file answers `None` and is removed, so a node whose screen was written down as nothing does not
+/// start a shim to print nothing.
+pub fn a_screen_to_print(root: &Path, node: crate::services::space::NodeId) -> Option<PathBuf> {
+    let file = screen_path(root, node);
+    let worth_it = std::fs::metadata(&file).map(|about| about.len() > 0).unwrap_or(false);
+    if !worth_it {
+        let _ = std::fs::remove_file(&file);
+        return None;
+    }
+    Some(file)
+}
+
+/// Throw away whatever a node had written down, because it is starting without it.
+///
+/// **What keeps `task-1908`'s rule true now that the reading has moved**: a canvas that failed to come back
+/// must not replay a week-old screen for ever. The shim deletes the file once it has printed it, and this is
+/// the other way a file stops existing — a node started with nothing to restore.
+pub fn forget_a_screen(root: &Path, node: crate::services::space::NodeId) {
+    let _ = std::fs::remove_file(screen_path(root, node));
 }
 
 #[cfg(test)]
@@ -747,66 +809,4 @@ space.view.0.node.1.expanded = src|src/deeper
         let fresh = back.add_node(Kind::Terminal, Pos2::ZERO, Some(project));
         assert!(!used.contains(&fresh), "{fresh} was already in use");
     }
-}
-
-/// Where a terminal node's screen is kept, so it can come back showing what was on it.
-///
-/// **A file per node rather than a key in `space.conf`**, because a screen is kilobytes of escape sequences and
-/// `space.conf` is a settings file somebody reads and edits by hand. `task-1908`.
-pub fn screen_path(root: &Path, node: crate::services::space::NodeId) -> std::path::PathBuf {
-    project_state::folder(root).join("terminals").join(format!("{node}.bytes"))
-}
-
-/// Write down what is on a terminal node's screen.
-///
-/// **Called when the window closes and at no other time.** A screen changes on every keystroke, and
-/// `Space::is_dirty` exists so the canvas is not written sixty times a second; what somebody wants back is the
-/// last state, so it is written once. `None` removes whatever was there, which is what a node drawing its own
-/// full screen answers — see `Session::screen_to_replay`.
-pub fn save_a_screen(
-    root: &Path,
-    node: crate::services::space::NodeId,
-    bytes: Option<&[u8]>,
-) -> Result<(), String> {
-    let file = screen_path(root, node);
-    let Some(bytes) = bytes else {
-        // Removed rather than left, so a node that came back at a prompt does not replay yesterday's screen the
-        // time after that.
-        let _ = std::fs::remove_file(&file);
-        return Ok(());
-    };
-    if let Some(folder) = file.parent() {
-        std::fs::create_dir_all(folder)
-            .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
-    }
-    std::fs::write(&file, bytes)
-        .map_err(|problem| format!("{} could not be written: {problem}", file.display()))
-}
-
-/// The file a terminal node is to come back showing, when there is one worth showing.
-///
-/// **The path rather than the bytes**, because what reads them is no longer this process: `task-1912` measured
-/// that a screen written into a terminal from outside is erased by the console host on Windows, so what is
-/// restored is printed by a program *inside* the node's own console — `unluminous_terminal::restore`. The file
-/// is taken away by whoever printed it.
-///
-/// An empty file answers `None` and is removed, so a node whose screen was written down as nothing does not
-/// start a shim to print nothing.
-pub fn a_screen_to_print(root: &Path, node: crate::services::space::NodeId) -> Option<PathBuf> {
-    let file = screen_path(root, node);
-    let worth_it = std::fs::metadata(&file).map(|about| about.len() > 0).unwrap_or(false);
-    if !worth_it {
-        let _ = std::fs::remove_file(&file);
-        return None;
-    }
-    Some(file)
-}
-
-/// Throw away whatever a node had written down, because it is starting without it.
-///
-/// **What keeps `task-1908`'s rule true now that the reading has moved**: a canvas that failed to come back
-/// must not replay a week-old screen for ever. The shim deletes the file once it has printed it, and this is
-/// the other way a file stops existing — a node started with nothing to restore.
-pub fn forget_a_screen(root: &Path, node: crate::services::space::NodeId) {
-    let _ = std::fs::remove_file(screen_path(root, node));
 }

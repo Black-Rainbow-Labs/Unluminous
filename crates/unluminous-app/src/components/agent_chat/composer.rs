@@ -28,6 +28,10 @@ use crate::services::plugin_ui::Look;
 use crate::services::vello_canvas::{Fill, Lift};
 use crate::theme::icon;
 
+/// One button in the tool pill: its name, its icon, whether it is switched on, the accent it wears
+/// while it is on, and the act pressing it performs.
+type ToolButtonRow = (&'static str, fn(&egui::Painter, Pos2, Color32), bool, Color32, Act);
+
 /// The pill of tools, and one round button in it.
 const PILL: f32 = 28.0;
 const TOOL: f32 = 22.0;
@@ -178,7 +182,7 @@ fn pill(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Ve
     // a switch that turned it off would be a switch that lies. What is left is the attachment, which
     // means the same thing either way.
     let an_agent = parts.configuration.provider().is_some_and(|one| one.is_a_program());
-    let mut tools: Vec<(&str, fn(&egui::Painter, Pos2, Color32), bool, Color32, Act)> = Vec::new();
+    let mut tools: Vec<ToolButtonRow> = Vec::new();
     if !an_agent {
         tools.push((
             "Unluminous tools",

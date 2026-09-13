@@ -352,10 +352,14 @@ mod tests {
     use super::*;
     use std::cell::RefCell;
 
+    /// One call the stub was asked to make: the command's wire name, its arguments, and the
+    /// instance it was aimed at.
+    type AskedCall = (String, Map<String, Value>, Option<String>);
+
     /// A driver that records what it was asked and answers with whatever it was told to.
     struct Stub {
         answer: Reply,
-        asked: RefCell<Vec<(String, Map<String, Value>, Option<String>)>>,
+        asked: RefCell<Vec<AskedCall>>,
         file: Option<Vec<u8>>,
     }
 

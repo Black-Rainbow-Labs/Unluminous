@@ -564,6 +564,10 @@ impl Rope {
     /// single enormous leaf.
     pub fn insert(&mut self, byte_idx: usize, text: &str) {
         assert!(byte_idx <= self.len_bytes(), "insert past the end of the text");
+        // The same assertion `for_each_slice` already makes, because the failure is the same one a
+        // step later: an insert inside a character leaves text that is no longer UTF-8, and the next
+        // read of it panics somewhere that has nothing to do with what caused it. `task-1922`.
+        assert!(self.is_char_boundary(byte_idx), "insert inside a character");
         if text.is_empty() {
             return;
         }
@@ -588,6 +592,10 @@ impl Rope {
     /// Remove the bytes in `range`. Both ends must be character boundaries.
     pub fn remove(&mut self, range: Range<usize>) {
         assert!(range.end <= self.len_bytes(), "remove past the end of the text");
+        assert!(
+            self.is_char_boundary(range.start) && self.is_char_boundary(range.end),
+            "remove across a character"
+        );
         if range.is_empty() {
             return;
         }

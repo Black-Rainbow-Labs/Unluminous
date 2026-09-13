@@ -563,22 +563,32 @@ impl LocalResourceStore {
     }
 
     /// Register the one canonical root a local tab may read under.
+    ///
+    /// **A poisoned lock is taken rather than panicked on**, which is `task-1922` B15 and is what
+    /// `resolve` below and `services::control` already did. A `Mutex` is poisoned for the life of the
+    /// process once any thread panics while holding it, so one unrelated panic anywhere made every
+    /// later tab opening and closing panic too -- a fault that spreads out of the thing that caused
+    /// it. What is behind this lock is a map of tab ids to folders, and a panic cannot leave that
+    /// half updated in a way that matters: an entry is inserted or removed whole.
     fn register(&self, id: u64, root: PathBuf) {
         let root = root.canonicalize().unwrap_or(root);
         self.0
             .lock()
-            .expect("browser resource registry")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .insert(id, LocalRoot { root, resources: HashMap::new() });
     }
 
     /// Forget a tab's root and the bounded list of resources it loaded.
     fn unregister(&self, id: u64) {
-        self.0.lock().expect("browser resource registry").remove(&id);
+        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).remove(&id);
     }
 
     /// Forget roots whose tabs disappeared through a whole-window state change.
     fn retain(&self, live: &HashSet<u64>) {
-        self.0.lock().expect("browser resource registry").retain(|id, _| live.contains(id));
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .retain(|id, _| live.contains(id));
     }
 
     /// Resolve one custom-origin request without exposing paths outside the registered root.

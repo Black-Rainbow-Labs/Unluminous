@@ -61,7 +61,7 @@ impl UnluminousApp {
             let regions = if !too_large && file_kind::folding_applies(self.files.at(index).path()) {
                 let grammars = self.plugins.grammars();
                 let path = self.files.at(index).path().map(Path::to_path_buf);
-                let reading = file_kind::folding_reading(path.as_deref(), &grammars);
+                let reading = file_kind::folding_reading(path.as_deref(), grammars);
                 let text = self.files.at(index).document.text().to_string();
                 // The comments and strings `colour_the_file` already read out of this same text, if
                 // it has. A file with no plugin, or one too large to colour, is read here instead.
@@ -279,8 +279,7 @@ impl UnluminousApp {
         if collapse {
             heads.extend(tree_heads);
         }
-        let changed = self.set_collapsed(index, &heads);
-        changed
+        self.set_collapsed(index, &heads)
     }
 
     /// Collapse the innermost region the caret is in, and every region inside it.
@@ -474,6 +473,10 @@ mod tests {
     }
 
     #[test]
+    // `ranges()` really does return a list of ranges, and this file happens to hide only one. The
+    // one-element slice on the right is that list, not numbers to collect, so clippy's suggested
+    // rewrite would change what is being asserted.
+    #[allow(clippy::single_range_in_vec_init)]
     fn collapsing_recursively_closes_the_whole_subtree_and_only_it() {
         let (folder, mut app) = a_window("unluminous-fold-recursive-collapse");
         let index = app.files.active_index();

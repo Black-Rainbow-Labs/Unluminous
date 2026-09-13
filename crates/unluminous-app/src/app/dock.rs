@@ -791,7 +791,19 @@ pub fn target(
         }
     }
     let (side, _) = best?;
-    Some((side, position_in(body, layout, showing, sizes, side, carrying, pointer.x, editor)))
+    let geometry = DockGeometry { body, layout, showing, sizes, editor };
+    Some((side, position_in(&geometry, side, carrying, pointer.x)))
+}
+
+/// The window's geometry, as `position_in` needs it to place a panel: the body it is docked inside,
+/// the current layout, which panels are showing, their sizes, and whether the editing area is one of
+/// the panels sharing that space.
+pub struct DockGeometry<'a> {
+    pub body: Rect,
+    pub layout: &'a Layout,
+    pub showing: [bool; SLOTS],
+    pub sizes: &'a Panes,
+    pub editor: bool,
 }
 
 /// Where along `side` the pointer is: **after every panel whose middle it has passed**.
@@ -799,16 +811,8 @@ pub fn target(
 /// `file_tabs::Strip::position_at`'s rule, word for word, and the reason order is screen order along
 /// x on every side — one comparison answers it for all four. The panel being carried is left out, so
 /// what comes back is a plain insertion index and no caller has to subtract one.
-pub fn position_in(
-    body: Rect,
-    layout: &Layout,
-    showing: [bool; SLOTS],
-    sizes: &Panes,
-    side: Side,
-    carrying: Panel,
-    x: f32,
-    editor: bool,
-) -> usize {
+pub fn position_in(geometry: &DockGeometry, side: Side, carrying: Panel, x: f32) -> usize {
+    let &DockGeometry { body, layout, showing, sizes, editor } = geometry;
     let placed = regions_with(body, layout, showing, sizes, editor);
     layout
         .panels_on(side)

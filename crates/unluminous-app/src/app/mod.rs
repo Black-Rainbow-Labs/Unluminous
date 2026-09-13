@@ -4568,6 +4568,18 @@ impl UnluminousApp {
         let (plugins, problems) = crate::services::plugins::Plugins::load(self.store.as_ref());
         self.plugins = plugins;
         self.refresh_the_plugins();
+        // A manifest read again can have different keywords, a different comment marker or a
+        // different colour scheme, and none of that moves any document's text -- so nothing else
+        // would ask for a file to be coloured again. `set_plugin_enabled` has done this since it was
+        // written and a reload did not, which is why `plugins reload` after editing a manifest left
+        // every open file in the colours of the manifest before it.
+        for file in self.files.iter_mut() {
+            file.coloured_revision = None;
+            file.document.syntax_is_wholly_dirty();
+            file.cached.preview = None;
+            file.cached.preview_diagrams.clear();
+            file.cached.stale = true;
+        }
         // A manifest edited by hand can take a tab away, so a reload closes an open tab whose contribution
         // has gone for the same reason switching a plugin off does: a tab whose plugin no longer offers it
         // would draw nothing and could not be told what it was.
@@ -5342,6 +5354,7 @@ impl UnluminousApp {
                     Some(format!("Installed {id} into {}", Plugins::folder(&store, id).display()));
                 for file in self.files.iter_mut() {
                     file.coloured_revision = None;
+                    file.document.syntax_is_wholly_dirty();
                 }
             }
             Err(problem) => self.message = Some(format!("{id} could not be installed: {problem}")),
@@ -5360,6 +5373,7 @@ impl UnluminousApp {
                 self.message = Some(format!("Uninstalled {id}"));
                 for file in self.files.iter_mut() {
                     file.coloured_revision = None;
+                    file.document.syntax_is_wholly_dirty();
                 }
             }
             Err(problem) => {
@@ -6891,6 +6905,13 @@ impl UnluminousApp {
         // panes there is more than one file being drawn.
         for file in self.files.iter_mut() {
             file.coloured_revision = None;
+            // **And the tokeniser reads the whole file again.** `coloured_revision` on its own only
+            // says the colours are to be worked out again; the incremental reading in
+            // `colour_the_file` then asks `syntax_dirt` which *part* changed, and after the last
+            // colouring that is `Clean`. The text has not moved -- the **grammar** has -- so nothing
+            // but this says the old tokens are no longer about anything. `task-1922` found
+            // `syntax_is_wholly_dirty` with no caller at all, which is why.
+            file.document.syntax_is_wholly_dirty();
             // The preview is thrown away rather than kept, because whether a mermaid fence is a
             // picture or a piece of code has just changed and the preview is built from that answer.
             file.cached.preview = None;
@@ -8155,20 +8176,28 @@ impl UnluminousApp {
         let page_look = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer);
         let plugins_ui = &mut self.plugin_ui;
         let mut page_asked: Vec<(String, crate::services::plugin_ui::Request)> = Vec::new();
+        let unluminous_cli_program = unluminous_cli::mcp::install::unluminous_cli_program();
+        let settings_context = settings_dialog::SettingsContext {
+            families: &families,
+            project: &project,
+            plugins: &self.plugins,
+            // What the MCP page's status line reads. A window that never opened an endpoint — every
+            // window a test builds — reads as off, which is what it is.
+            mcp_running: self
+                .mcp
+                .as_ref()
+                .map(|hosted| hosted.state())
+                .unwrap_or(&services::mcp::State::Off),
+            unluminous_cli: &unluminous_cli_program,
+            installed_on_disk: &on_disk,
+            icon_for: &icon_for,
+            plugin_pages: &page_names,
+        };
         let settings_outcome = settings_dialog::show(
             ui.ctx(),
             &mut self.settings_window,
             &mut self.settings,
-            &families,
-            &project,
-            &self.plugins,
-            // What the MCP page's status line reads. A window that never opened an endpoint — every
-            // window a test builds — reads as off, which is what it is.
-            self.mcp.as_ref().map(|hosted| hosted.state()).unwrap_or(&services::mcp::State::Off),
-            &unluminous_cli::mcp::install::unluminous_cli_program(),
-            &on_disk,
-            &icon_for,
-            &page_names,
+            settings_context,
             &mut |page_ui, slot, area| {
                 // The contributed page, drawn inside the modal. `plugin_ui` and `settings` are separate
                 // fields, so this can borrow one while the dialog holds the other.
@@ -8429,6 +8458,7 @@ impl UnluminousApp {
         // more than one file being drawn.
         for file in self.files.iter_mut() {
             file.coloured_revision = None;
+            file.document.syntax_is_wholly_dirty();
             file.cached.preview = None;
             file.cached.preview_diagrams.clear();
             file.cached.stale = true;
@@ -8776,8 +8806,15 @@ impl UnluminousApp {
             dock::Panel::Debug => self.show_the_debug_tile(showing),
             dock::Panel::Space => {
                 self.space.visible = showing;
-                if !showing && matches!(self.focus, Focus::Space) {
-                    self.focus = Focus::Editor;
+                if !showing {
+                    // A gesture is a pointer half way through something, and the pointer is about to
+                    // be somewhere else entirely. A `Wiring` left set draws a line from a node nobody
+                    // can see to wherever the pointer now is, and a `Panning` left set pans the
+                    // canvas on the next drag anywhere. `task-1922`.
+                    self.space.gesture = space::Gesture::None;
+                    if matches!(self.focus, Focus::Space) {
+                        self.focus = Focus::Editor;
+                    }
                 }
             }
             dock::Panel::Plugin(slot) => {

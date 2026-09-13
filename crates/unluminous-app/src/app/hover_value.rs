@@ -141,7 +141,7 @@ impl UnluminousApp {
         let Some(path) = self.files.active().path().map(PathBuf::from) else {
             return false;
         };
-        if !file_kind::definitions_apply(Some(path.as_path()), &self.plugins.grammars()) {
+        if !file_kind::definitions_apply(Some(path.as_path()), self.plugins.grammars()) {
             return false;
         }
         debug.location().is_some_and(|(stopped_in, _)| crate::app::same_file(&path, &stopped_in))
@@ -357,8 +357,15 @@ impl UnluminousApp {
             return true;
         }
         let text = self.files.at(index).document.text();
+        // **The character boundary as well as the length**, which is `task-1922` B17. The range was
+        // worked out when the pointer stopped, and an edit anywhere before it moves every offset
+        // after it -- so a range that now lands inside a character is an ordinary thing to be
+        // holding, and slicing the text there is a panic rather than an answer. A range that does is
+        // by definition no longer about the word it was about, which is what this function decides.
         if open.range.end > text.len_bytes()
-            || text.byte_slice(open.range.clone()).to_string() != open.was
+            || !text.is_char_boundary(open.range.start)
+            || !text.is_char_boundary(open.range.end)
+            || text.byte_slice(open.range.clone()) != open.was
         {
             return true;
         }
@@ -390,13 +397,15 @@ impl UnluminousApp {
         let mut editing = open.editing.clone();
         let outcome = value_tooltip::show(
             ui,
-            hover,
-            &mut editing,
-            can_set_root,
-            can_set_child,
-            word,
-            pane,
-            above,
+            value_tooltip::ValueTooltip {
+                hover,
+                editing: &mut editing,
+                can_set_root,
+                can_set_child,
+                word,
+                pane,
+                above,
+            },
         );
         if let Some(open) = self.value_tooltip.as_mut() {
             open.editing = editing;

@@ -181,6 +181,10 @@ impl HoverValue {
     }
 }
 
+/// A one-off expression asked from `Evaluate Expression`: its question id, the expression text, and
+/// its answer once the adapter has replied. `None` for the answer means it has not arrived yet.
+type EvaluatedExpression = (u64, String, Option<Result<Variable, String>>);
+
 /// Everything the window knows about the session it is running.
 pub struct DebugState {
     client: Client,
@@ -224,7 +228,7 @@ pub struct DebugState {
     /// The next label for a question, so two answers can never be confused.
     next_question: u64,
     /// The one-off expression asked from `Evaluate Expression`, and its answer.
-    pub evaluated: Option<(u64, String, Option<Result<Variable, String>>)>,
+    pub evaluated: Option<EvaluatedExpression>,
     /// The value tooltip's question, while there is one. `task-1696`.
     pub hover: Option<HoverValue>,
     /// The offsets sent for each file, in the order they were sent, so the adapter's answers — which
@@ -1471,7 +1475,7 @@ mod tests {
         ));
         // The children were asked for without anything being clicked.
         let asked = state.requested();
-        assert_eq!(seq_of(&asked, "variables") > 0, true);
+        assert!(seq_of(&asked, "variables") > 0);
         assert!(!state.hover_is_ready(), "not until the children have come back");
         state.feed(answer(
             seq_of(&asked, "variables"),

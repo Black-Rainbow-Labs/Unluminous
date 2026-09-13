@@ -218,9 +218,8 @@ impl Worker {
         let (reply_sender, reply_receiver) = std::sync::mpsc::channel::<Reply>();
         let child = std::sync::Arc::new(crate::command::Running::default());
         let theirs = std::sync::Arc::clone(&child);
-        let thread = std::thread::Builder::new()
-            .name("unluminous-git".to_owned())
-            .spawn(move || {
+        let thread =
+            std::thread::Builder::new().name("unluminous-git".to_owned()).spawn(move || {
                 // Every `git` this thread starts goes into the slot the `Worker` also holds, so a
                 // window closing mid fetch can reach the process rather than leaving it running.
                 crate::command::put_this_thread_s_children_in(theirs);
@@ -484,8 +483,11 @@ mod tests {
             drop(held);
         });
         assert!(
-            crate::command::run(&root, &["remote", "add", "slow", &format!("git://127.0.0.1:{port}/x")])
-                .ok
+            crate::command::run(
+                &root,
+                &["remote", "add", "slow", &format!("git://127.0.0.1:{port}/x")]
+            )
+            .ok
         );
 
         let repository = Repository::discover(&root).expect("a repository");
@@ -506,7 +508,10 @@ mod tests {
         let dropping = std::time::Instant::now();
         drop(worker);
         let took = dropping.elapsed();
-        assert!(took < std::time::Duration::from_secs(10), "the drop waited out the fetch: {took:?}");
+        assert!(
+            took < std::time::Duration::from_secs(10),
+            "the drop waited out the fetch: {took:?}"
+        );
         assert_eq!(
             std::sync::Arc::strong_count(&slot),
             1,

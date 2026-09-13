@@ -314,9 +314,8 @@ mod tests {
     /// about.
     #[test]
     fn a_newer_release_on_a_scripted_server_is_read_as_an_update() {
-        let body = format!(
-            r#"{{"tag_name": "v999.0.0", "html_url": "https://example.invalid/999", "body": "A much later one"}}"#
-        );
+        let body = r#"{"tag_name": "v999.0.0", "html_url": "https://example.invalid/999", "body": "A much later one"}"#
+            .to_string();
         let url = scripted(200, &body);
         match ask_at(&url) {
             Answer::Newer(release) => {

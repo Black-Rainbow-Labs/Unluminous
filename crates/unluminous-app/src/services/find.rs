@@ -193,6 +193,12 @@ impl Find {
     /// Wrapping rather than stopping, because a Find bar that stops at the last match makes a person
     /// scroll back to the top to carry on, and every editor wraps. There is no state to say it
     /// wrapped: the tally already says `17 of 17` and then `1 of 17`.
+    ///
+    /// Named `next` rather than `next_match` throughout `app/` and `unluminous-cli`; renaming it
+    /// would mean editing files outside this crate's `services` folder, so the name stays and the
+    /// lint is silenced instead. It is not `Iterator::next`: it wraps round the end of the file
+    /// rather than exhausting.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<Range<usize>> {
         if self.matches.is_empty() {
             return None;

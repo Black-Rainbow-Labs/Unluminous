@@ -53,7 +53,7 @@ impl Master {
             // The process id rather than the handle, because that is what a snapshot of the process table is
             // keyed on and because an id that has gone simply matches nothing — where a handle kept open would
             // hold the dead process's object alive for as long as this session lives.
-            let handle = pty.child_watcher().raw_handle() as *mut std::ffi::c_void;
+            let handle = pty.child_watcher().raw_handle();
             // Safe: the handle belongs to the pseudoterminal and is open for the length of this call.
             let id = unsafe { windows_sys::Win32::System::Threading::GetProcessId(handle) };
             Self { child: (id != 0).then_some(id) }
@@ -353,7 +353,7 @@ fn process_table() -> Option<Vec<Process>> {
 /// system happened to walk it in and says nothing about age. A process that has gone between the snapshot and
 /// this question answers with the beginning of time, so it loses to a live sibling rather than winning.
 #[cfg(windows)]
-fn newest_child<'a>(table: &'a [Process], parent: u32) -> Option<&'a Process> {
+fn newest_child(table: &[Process], parent: u32) -> Option<&Process> {
     table
         .iter()
         .filter(|process| process.parent == parent && process.id != parent)

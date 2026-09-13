@@ -48,6 +48,20 @@ const STEP: f32 = 30.0;
 /// Space between the top or bottom edge of the rail and the first button.
 const MARGIN: f32 = 8.0;
 
+/// The icon a rail button draws: paint it at a point, in a colour.
+type IconDrawer = fn(&egui::Painter, Pos2, egui::Color32);
+
+/// One row of the panes that live at the side of the rail: its name, its icon, whether it is
+/// showing, whether it can be pressed, the action pressing it performs, and the panel its right
+/// click menu is about. The panel is `None` for a button with nowhere to be moved to, such as the
+/// editing area.
+type SideButtonRow =
+    (&'static str, IconDrawer, bool, bool, Action, Option<crate::app::dock::Panel>);
+
+/// One row of the tiles along the bottom of the rail: its name, its icon, whether it is showing,
+/// the action pressing it performs, and the panel its right click menu is about.
+type BottomButtonRow = (&'static str, IconDrawer, bool, Action, crate::app::dock::Panel);
+
 /// What the rail needs to know to draw itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RailState {
@@ -153,14 +167,7 @@ pub fn show_with(
     let centre_x = area.left() + crate::components::resize_edges::EDGE + BUTTON / 2.0;
 
     // The panes at the side, from the top.
-    let top: [(
-        &str,
-        fn(&egui::Painter, Pos2, egui::Color32),
-        bool,
-        bool,
-        Action,
-        Option<crate::app::dock::Panel>,
-    ); 4] = [
+    let top: [SideButtonRow; 4] = [
         (
             "Project",
             icon::folder,
@@ -230,13 +237,7 @@ pub fn show_with(
     // which a dozen accepted screenshots are of. The design's §9 says the debug button goes "below
     // the run tile's", and that would have taken the corner; the corner is the older promise, so the
     // new button goes above the run one instead.
-    let bottom: [(
-        &str,
-        fn(&egui::Painter, Pos2, egui::Color32),
-        bool,
-        Action,
-        crate::app::dock::Panel,
-    ); 3] = [
+    let bottom: [BottomButtonRow; 3] = [
         (
             "Terminal tile",
             icon::terminal,
@@ -387,28 +388,20 @@ fn rail_button(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The rail has to be tall enough to hold its two top buttons and the terminal button at the
-    /// bottom without them meeting. Below this the window is smaller than its own minimum, which
-    /// `main.rs` sets to 400 points.
-    #[test]
-    fn the_rail_is_narrow_enough_to_be_a_rail_and_wide_enough_to_hold_a_button() {
-        assert!(
-            size::ACTIVITY_BAR < 40.0,
-            "narrower than the reference editor's, which is what was asked for"
-        );
-        assert!(size::ACTIVITY_BAR >= BUTTON + 4.0, "a button has to fit inside it");
-        // The button starts where the window's own left resize grip stops, so the two never overlap.
-        let left = crate::components::resize_edges::EDGE;
-        assert!(
-            left + BUTTON <= size::ACTIVITY_BAR,
-            "the button has to fit clear of the resize grip"
-        );
-    }
-}
+// The rail's own constants are checked against each other here rather than in a test, because
+// every value involved is known at compile time: clippy is right that a runtime `assert!` on
+// them can only ever pass or fail the same way, so a build fails before it ever draws a rail
+// that could not fit its own buttons.
+const _: () = assert!(
+    size::ACTIVITY_BAR < 40.0,
+    "narrower than the reference editor's, which is what was asked for"
+);
+const _: () = assert!(size::ACTIVITY_BAR >= BUTTON + 4.0, "a button has to fit inside it");
+// The button starts where the window's own left resize grip stops, so the two never overlap.
+const _: () = assert!(
+    crate::components::resize_edges::EDGE + BUTTON <= size::ACTIVITY_BAR,
+    "the button has to fit clear of the resize grip"
+);
 
 #[cfg(test)]
 mod icon_tests {

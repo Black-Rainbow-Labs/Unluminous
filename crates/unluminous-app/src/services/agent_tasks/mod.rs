@@ -2053,12 +2053,9 @@ impl AgentTasks {
         let counts = self.lane_counts();
         let held = counts.iter().find(|(one, _)| *one == lane).map(|(_, held)| *held).unwrap_or(0);
         self.chosen = match held {
-            0 => match counts.iter().find(|(_, held)| *held > 0) {
-                // The lane emptied, so the ring moves to the first lane that holds anything rather than going out
-                // altogether: a board with cards on it should always be one Enter away from opening one.
-                Some((lane, _)) => Some((*lane, 0)),
-                None => None,
-            },
+            // The lane emptied, so the ring moves to the first lane that holds anything rather than going out
+            // altogether: a board with cards on it should always be one Enter away from opening one.
+            0 => counts.iter().find(|(_, held)| *held > 0).map(|(lane, _)| (*lane, 0)),
             held => Some((lane, row.min(held - 1))),
         };
     }
@@ -2129,7 +2126,6 @@ impl AgentTasks {
     /// design says the board never does, and it was doing it twice: once a frame for Backlog and once for
     /// Completed. They are read when the view is chosen and when a command changes something, which is when
     /// they can have changed.
-
     pub fn listing(&self, view: View) -> &[Task] {
         match view {
             View::Backlog => &self.backlog,

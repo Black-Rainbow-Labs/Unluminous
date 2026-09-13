@@ -120,7 +120,7 @@ impl Frames {
     /// `Err` is a stream that cannot be read at all — a length that is impossible, or a frame past
     /// [`LARGEST_FRAME`] — which is a different thing from an `ErrorResponse`, and the two must not be
     /// confused: one is the server saying no, the other is the connection being unusable.
-    pub fn next(&mut self) -> Result<Option<Message>, Failure> {
+    pub fn next_message(&mut self) -> Result<Option<Message>, Failure> {
         if self.held.len() < 5 {
             return Ok(None);
         }
@@ -218,10 +218,12 @@ fn read(tag: u8, body: &[u8]) -> Result<Message, Failure> {
                     // **Anything else negative is a broken stream, not an empty value.** Clamping it
                     // to zero would turn a fault into a value the grid cannot be told apart from a
                     // real empty string — which is the one distinction this client promises to keep.
-                    length if length < 0 => return Err(Failure::said(format!(
+                    length if length < 0 => {
+                        return Err(Failure::said(format!(
                         "the server sent a value of length {length}, and the only negative length \
                              a value has is -1, which means NULL."
-                    ))),
+                    )))
+                    }
                     length => Some(at.take(length as usize)?.to_vec()),
                 });
             }
@@ -243,11 +245,8 @@ fn read(tag: u8, body: &[u8]) -> Result<Message, Failure> {
 /// An `ErrorResponse` or a `NoticeResponse`: fields tagged by one letter, ending at a zero byte.
 fn failure(at: &mut Reader<'_>) -> Result<Failure, Failure> {
     let mut out = Failure::default();
-    loop {
-        let field = match at.take(1) {
-            Ok(byte) => byte[0],
-            Err(_) => break,
-        };
+    while let Ok(byte) = at.take(1) {
+        let field = byte[0];
         if field == 0 {
             break;
         }
@@ -426,7 +425,7 @@ mod tests {
         let mut messages = Vec::new();
         for piece in bytes.chunks(chunk.max(1)) {
             frames.feed(piece);
-            while let Some(message) = frames.next().expect("a readable stream") {
+            while let Some(message) = frames.next_message().expect("a readable stream") {
                 messages.push(message);
             }
         }
@@ -510,11 +509,11 @@ mod tests {
         // A length shorter than the length field, which no server sends and a corrupted stream does.
         let mut frames = Frames::new();
         frames.feed(&[b'Z', 0, 0, 0, 1]);
-        assert!(frames.next().is_err());
+        assert!(frames.next_message().is_err());
         // And a frame that claims to be larger than anything will be assembled.
         let mut huge = Frames::new();
         huge.feed(&[b'D', 0xff, 0xff, 0xff, 0xff]);
-        let refused = huge.next().expect_err("refused");
+        let refused = huge.next_message().expect_err("refused");
         assert!(refused.message.contains("past the"), "{refused}");
     }
 
@@ -525,16 +524,16 @@ mod tests {
         let bytes = Out::tagged(b'D').int16(1).int32(-2).finish();
         let mut frames = Frames::new();
         frames.feed(&bytes);
-        let refused = frames.next().expect_err("refused");
+        let refused = frames.next_message().expect_err("refused");
         assert!(refused.message.contains("only negative length"), "{refused}");
 
         // And a negative count of values or columns is refused for the same reason.
         let mut counts = Frames::new();
         counts.feed(&Out::tagged(b'D').int16(-1).finish());
-        assert!(counts.next().is_err());
+        assert!(counts.next_message().is_err());
         let mut columns = Frames::new();
         columns.feed(&Out::tagged(b'T').int16(-3).finish());
-        assert!(columns.next().is_err());
+        assert!(columns.next_message().is_err());
     }
 
     #[test]
@@ -543,7 +542,7 @@ mod tests {
         let bytes = Out::tagged(b'T').int16(2).string("a").int32(0).int16(0).finish();
         let mut frames = Frames::new();
         frames.feed(&bytes);
-        assert!(frames.next().is_err());
+        assert!(frames.next_message().is_err());
     }
 
     #[test]

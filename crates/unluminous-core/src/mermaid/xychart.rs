@@ -276,8 +276,9 @@ fn draw_series(
     let along = |index: usize| (index as f32 + 0.5) / steps as f32;
     let across = |value: f32| ((value - low) / span).clamp(0.0, 1.0);
     let bars = chart.series.iter().filter(|series| series.bars).count().max(1);
-    let mut bar_number = 0;
-    for (index, series) in chart.series.iter().enumerate().filter(|(_, s)| s.bars) {
+    for (bar_number, (index, series)) in
+        chart.series.iter().enumerate().filter(|(_, s)| s.bars).enumerate()
+    {
         let width = plot.width / steps as f32 * 0.7 / bars as f32;
         for (at, value) in series.values.iter().enumerate() {
             let centre = along(at);
@@ -297,7 +298,6 @@ fn draw_series(
                 stroke: None,
             });
         }
-        bar_number += 1;
     }
     for (index, series) in chart.series.iter().enumerate().filter(|(_, s)| !s.bars) {
         let points: Vec<Point> = series

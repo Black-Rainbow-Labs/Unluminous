@@ -229,6 +229,10 @@ struct GlyphKey {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct FaceId(u32);
 
+/// The last face resolved: which style it answers to, its small id, and the loaded face itself, if
+/// the system has one.
+type FaceMemo = Option<(FaceKey, FaceId, Option<Arc<FontVec>>)>;
+
 struct Atlas {
     image: ColorImage,
     texture: Option<TextureHandle>,
@@ -310,7 +314,7 @@ pub struct TextRenderer {
     /// Layout and painting both walk run by run, and every character of a run has the same style, so
     /// one entry answers nearly every question. It is compared with [`FaceKey::is`], which looks at
     /// the family name rather than copying it.
-    memo: RefCell<Option<(FaceKey, FaceId, Option<Arc<FontVec>>)>>,
+    memo: RefCell<FaceMemo>,
     atlas: RefCell<Atlas>,
     /// How many pixels a point is worth where whatever is being drawn right now will be composited.
     ///

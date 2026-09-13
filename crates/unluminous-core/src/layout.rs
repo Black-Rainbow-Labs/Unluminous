@@ -300,17 +300,14 @@ pub fn layout_with(
     let count = text.len_lines();
     let mut work = Work::with_capacity(count);
     let mut buffers = Buffers::default();
+    let inputs = LayoutInputs { text, spans: &spans, paragraphs, metrics, width };
     for paragraph in 0..count {
         // The fingerprint comes back from laying the paragraph out rather than being worked out
         // beforehand, because the two want the same text and the same runs and there is no reason to
         // read them twice.
         let mark = lay_out_paragraph(
             paragraph,
-            text,
-            &spans,
-            paragraphs,
-            metrics,
-            width,
+            &inputs,
             hidden.contains(paragraph),
             &mut buffers,
             &mut work,
@@ -388,17 +385,14 @@ pub fn relayout(
     work.starts.extend_from_slice(&was[..prefix]);
     work.y = lines.last().map(PlacedLine::bottom).unwrap_or(0.0);
     work.lines = lines;
+    let inputs = LayoutInputs { text, spans: &spans, paragraphs, metrics, width };
     // The paragraphs that changed.
     for paragraph in prefix..count - suffix {
         // The fingerprint it gives back is thrown away: this already has all of them, from the pass
         // that decided which paragraphs these are.
         let _ = lay_out_paragraph(
             paragraph,
-            text,
-            &spans,
-            paragraphs,
-            metrics,
-            width,
+            &inputs,
             hidden.contains(paragraph),
             &mut buffers,
             &mut work,
@@ -466,24 +460,13 @@ impl Work {
 
 /// Room to work in, handed from one paragraph to the next so that laying out three thousand
 /// paragraphs is not three thousand allocations of each of these.
+#[derive(Default)]
 struct Buffers<'a> {
     source: String,
     runs: Vec<(Range<usize>, &'a CharStyle)>,
     clusters: Vec<(usize, PlacedCluster)>,
     breaks: Vec<Range<usize>>,
     styles: Vec<Arc<CharStyle>>,
-}
-
-impl Default for Buffers<'_> {
-    fn default() -> Self {
-        Self {
-            source: String::new(),
-            runs: Vec::new(),
-            clusters: Vec::new(),
-            breaks: Vec::new(),
-            styles: Vec::new(),
-        }
-    }
 }
 
 /// Reuses one retained style allocation across every run with the same formatting.
@@ -521,7 +504,7 @@ fn runs_over<'a>(
 /// The same rule [`StyleSpans::style_at`] follows — so that a caret at the end of a bold word stays
 /// bold — but over the positioned spans layout has already collected, which makes it a binary search
 /// rather than a walk from byte zero.
-fn style_at<'a>(spans: &[(Range<usize>, &'a CharStyle)], offset: usize) -> CharStyle {
+fn style_at(spans: &[(Range<usize>, &CharStyle)], offset: usize) -> CharStyle {
     let index = spans.partition_point(|(range, _)| range.end < offset);
     spans.get(index).or_else(|| spans.last()).map(|(_, style)| (*style).clone()).unwrap_or_default()
 }
@@ -629,18 +612,26 @@ impl Fingerprint {
     }
 }
 
+/// The text, its style spans, the paragraph formatting and the width to fit into: everything a whole
+/// layout pass measures against, and the same for every paragraph in it.
+#[derive(Clone, Copy)]
+struct LayoutInputs<'a, 'b> {
+    text: &'b Rope,
+    spans: &'b [(Range<usize>, &'a CharStyle)],
+    paragraphs: &'b ParagraphStyles,
+    metrics: &'b dyn FontMetrics,
+    width: f32,
+}
+
 /// Lay one paragraph out, appending its lines to `work`, and give back its fingerprint.
 fn lay_out_paragraph<'a>(
     paragraph: usize,
-    text: &Rope,
-    spans: &[(Range<usize>, &'a CharStyle)],
-    paragraphs: &ParagraphStyles,
-    metrics: &dyn FontMetrics,
-    width: f32,
+    inputs: &LayoutInputs<'a, '_>,
     hidden: bool,
     buffers: &mut Buffers<'a>,
     work: &mut Work,
 ) -> u64 {
+    let LayoutInputs { text, spans, paragraphs, metrics, width } = *inputs;
     let paragraph_style = paragraphs.get(paragraph);
     let bytes = text.line_range(paragraph);
     text.slice_into(bytes.clone(), &mut buffers.source);
@@ -1224,7 +1215,9 @@ mod tests {
     /// that replaces everything.
     #[test]
     fn relayout_agrees_with_layout_after_every_shape_of_edit() {
-        let edits: Vec<(&str, Box<dyn Fn(&mut Document)>)> = vec![
+        /// One named shape of edit, tried against both `layout` and `relayout`.
+        type EditCase<'a> = (&'a str, Box<dyn Fn(&mut Document)>);
+        let edits: Vec<EditCase<'_>> = vec![
             (
                 "a letter typed in the middle",
                 Box::new(|d: &mut Document| {
@@ -1966,7 +1959,7 @@ mod tests {
     fn an_anchor_says_which_line_was_being_looked_at_and_where_in_it() {
         // Ten lines of three letters, 20 tall each by FixedMetrics, holding bytes 4n to 4n+3.
         let (rope, spans, paragraphs) = fixture(
-            &"abc
+            "abc
 "
             .repeat(10)
             .trim_end(),
@@ -2073,7 +2066,7 @@ def",
         let rope = Rope::from_str("one\ntwo\nthree\nfour\nfive");
         let spans = StyleSpans::new(rope.len_bytes(), CharStyle::default());
         let paragraphs = ParagraphStyles::new(rope.len_lines());
-        let hidden = Hidden::of([1..3]);
+        let hidden = Hidden::of(std::iter::once(1..3));
         let laid =
             layout_with(&rope, &spans, &paragraphs, &FixedMetrics::default(), 2000.0, &hidden);
         let numbers: Vec<usize> = laid.lines.iter().map(|line| line.paragraph).collect();
@@ -2100,7 +2093,7 @@ def",
             &paragraphs,
             &FixedMetrics::default(),
             2000.0,
-            &Hidden::of([1..3]),
+            &Hidden::of(std::iter::once(1..3)),
         );
         assert_eq!(open.lines[3].bytes, shut.lines[1].bytes, "the last line covers the same bytes");
     }
@@ -2116,9 +2109,9 @@ def",
         let source: String =
             (0..40).map(|i| format!("paragraph number {i}, with words in it\n")).collect();
         let folds = [
-            ("at the top", Hidden::of([1..5])),
-            ("in the middle", Hidden::of([20..25])),
-            ("at the end", Hidden::of([35..40])),
+            ("at the top", Hidden::of(std::iter::once(1..5))),
+            ("in the middle", Hidden::of(std::iter::once(20..25))),
+            ("at the end", Hidden::of(std::iter::once(35..40))),
             ("two at once", Hidden::of([2..6, 30..34])),
             ("nothing", Hidden::none()),
         ];
@@ -2166,7 +2159,7 @@ def",
         let paragraphs = ParagraphStyles::new(rope.len_lines());
         let metrics = FixedMetrics::default();
         let open = layout(&rope, &spans, &paragraphs, &metrics, 600.0);
-        let hidden = Hidden::of([5..12]);
+        let hidden = Hidden::of(std::iter::once(5..12));
         let shut = relayout(open.clone(), &rope, &spans, &paragraphs, &metrics, 600.0, &hidden);
         assert_eq!(shut, layout_with(&rope, &spans, &paragraphs, &metrics, 600.0, &hidden));
         let again = relayout(shut, &rope, &spans, &paragraphs, &metrics, 600.0, &Hidden::none());

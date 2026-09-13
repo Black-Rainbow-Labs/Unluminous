@@ -1956,7 +1956,7 @@ impl UnluminousApp {
                     self.reread_if_the_file_changed();
                     done(request, format!("Showing {}", self.files.active().name()))
                 }
-                Err(outcome) => outcome,
+                Err(outcome) => *outcome,
             },
             "close" => self.cli_tab_close(request),
             "next" => {
@@ -1989,7 +1989,7 @@ impl UnluminousApp {
         let index = if request.has("tab") {
             match self.cli_find_tab(request, "tab") {
                 Ok(index) => index,
-                Err(outcome) => return outcome,
+                Err(outcome) => return *outcome,
             }
         } else {
             self.files.active_index()
@@ -2231,7 +2231,7 @@ impl UnluminousApp {
         let index = if request.has("tab") {
             match self.cli_find_tab(request, "tab") {
                 Ok(index) => index,
-                Err(outcome) => return outcome,
+                Err(outcome) => return *outcome,
             }
         } else {
             self.files.active_index()
@@ -2354,19 +2354,22 @@ impl UnluminousApp {
     }
 
     /// The tab an argument names: its number, its name, or its path.
-    fn cli_find_tab(&self, request: &Request, name: &str) -> Result<usize, Outcome> {
+    ///
+    /// The error is boxed because `Outcome` carries the whole of `Waiting`, which is large enough
+    /// that clippy flags an unboxed `Err` here as bloating every `Ok` return alongside it.
+    fn cli_find_tab(&self, request: &Request, name: &str) -> Result<usize, Box<Outcome>> {
         let Some(text) = request.text(name) else {
-            return Err(no(request, code::USAGE, "Say which tab."));
+            return Err(Box::new(no(request, code::USAGE, "Say which tab.")));
         };
         if let Ok(index) = text.trim().parse::<usize>() {
             return if index < self.files.len() {
                 Ok(index)
             } else {
-                Err(no(
+                Err(Box::new(no(
                     request,
                     code::NOT_FOUND,
                     format!("There is no tab {index}; there are {}.", self.files.len()),
-                ))
+                )))
             };
         }
         let wanted = self.cli_path(&text);
@@ -2374,7 +2377,9 @@ impl UnluminousApp {
             .files
             .iter()
             .position(|file| file.path() == Some(wanted.as_path()) || file.name() == text);
-        found.ok_or_else(|| no(request, code::NOT_FOUND, format!("No tab is showing {text}.")))
+        found.ok_or_else(|| {
+            Box::new(no(request, code::NOT_FOUND, format!("No tab is showing {text}.")))
+        })
     }
 
     fn tabs_value(&self) -> Value {
@@ -3630,7 +3635,7 @@ impl UnluminousApp {
     fn cli_editor_definition(&mut self, request: &Request) -> Outcome {
         let (name, offset, named) = match self.cli_definition_target(request) {
             Ok(target) => target,
-            Err(problem) => return problem,
+            Err(problem) => return *problem,
         };
         let path = self.files.active().path().map(Path::to_path_buf);
         let candidates = self.candidates_for(&name, path.as_deref(), offset);
@@ -3667,24 +3672,28 @@ impl UnluminousApp {
     }
 
     /// Resolve the exact name a definition request asks about, keeping the caret as the default.
+    ///
+    /// The error is boxed for the same reason `cli_find_tab`'s is: `Outcome` carries the whole of
+    /// `Waiting`, which clippy flags as too large to return unboxed.
     fn cli_definition_target(
         &mut self,
         request: &Request,
-    ) -> Result<(String, usize, bool), Outcome> {
+    ) -> Result<(String, usize, bool), Box<Outcome>> {
         if let Some(name) = request.text("name").filter(|name| !name.trim().is_empty()) {
             return Ok((name.trim().to_owned(), self.caret_offset(), true));
         }
         if !self.definitions_apply_here() {
-            return Err(no(
+            return Err(Box::new(no(
                 request,
                 code::NOT_APPLICABLE,
                 "This file's language has not said what a definition looks like, so there is none to go to.",
-            ));
+            )));
         }
-        let offset =
-            self.cli_offset(request).map_err(|problem| no(request, code::USAGE, problem))?;
+        let offset = self
+            .cli_offset(request)
+            .map_err(|problem| Box::new(no(request, code::USAGE, problem)))?;
         let name = self.symbol_at(offset).ok_or_else(|| {
-            no(request, code::NOT_APPLICABLE, "There is no symbol at that position.")
+            Box::new(no(request, code::NOT_APPLICABLE, "There is no symbol at that position."))
         })?;
         Ok((name, offset, false))
     }
@@ -6990,6 +6999,12 @@ impl UnluminousApp {
     /// edit to a file: a provider holds its configuration in memory and re-reads it when the plugin
     /// is reloaded, so without this an agent would set a value, see it in `settings get`, and find
     /// the pane still behaving the way it did. `plugins reload` is the same call a person makes.
+    ///
+    /// **And what that reload said is reported.** `task-1922` B14: the reload's problems were thrown
+    /// away with `let _ =`, so a value that was written and then could not be read back -- which is
+    /// what a manifest this write has just made invalid looks like -- answered `ok`. The write really
+    /// did happen, so this is not a refusal of the write; it is the reload's own first problem,
+    /// carried up so the reply says the value is in the file and the plugin did not come back.
     fn set_plugin_setting(&mut self, name: &str, value: &str) -> Result<(), String> {
         let key = self
             .plugin_setting(name)
@@ -6999,8 +7014,12 @@ impl UnluminousApp {
         })?;
         crate::services::plugin_settings::write(&folder, &key.plugin, &key.key, value)
             .map_err(|problem| format!("{name} could not be written: {problem}"))?;
-        let _ = self.reload_the_plugins();
-        Ok(())
+        match self.reload_the_plugins().first() {
+            Some(problem) => Err(format!(
+                "{name} was written, and reading the plugins again did not work: {problem}"
+            )),
+            None => Ok(()),
+        }
     }
 
     fn cli_settings_set(&mut self, request: &Request) -> Outcome {
@@ -7882,7 +7901,7 @@ impl UnluminousApp {
                     return no(request, code::FAILED, problem);
                 }
                 match self.plugin_ui.view_of(&id) {
-                    Some(value) => ok(request, format!("{id}"), value),
+                    Some(value) => ok(request, id.to_string(), value),
                     None => no(request, code::FAILED, format!("{id} has nothing to show.")),
                 }
             }
@@ -8712,6 +8731,77 @@ fn key_named(name: &str) -> Option<unluminous_terminal::keys::KeyPress> {
     }))
 }
 
+/// What one plugin adds to the window, as short words, for `plugins list` and `plugins show`.
+///
+/// A language adds none of them and answers `language`, so a reader can tell at a glance which kind of
+/// plugin a row is without reading the `kind` column beside it.
+fn contributes(plugin: &crate::services::plugins::Plugin) -> Vec<String> {
+    let mut found = Vec::new();
+    if plugin.contributions.pane.is_some() {
+        found.push("pane".to_owned());
+    }
+    if plugin.contributions.tab.is_some() {
+        found.push("tab".to_owned());
+    }
+    if plugin.contributions.menu.is_some() {
+        found.push("menu".to_owned());
+    }
+    if plugin.contributions.page.is_some() {
+        found.push("settings page".to_owned());
+    }
+    if found.is_empty() && !plugin.extensions.is_empty() {
+        found.push("language".to_owned());
+    }
+    found
+}
+
+/// The words of a `plugins run` argument line, with everything a body needs left intact.
+///
+/// **Split on spaces only, and runs of them are not collapsed.** `split_whitespace` threw away every
+/// newline and every repeated space before the plugin saw them, and a provider's own `rest` closure
+/// joins the words back with single spaces — so a comment holding a markdown document arrived as one
+/// line. Markdown block structure is line based, so a heading swallowed the whole body, and no list,
+/// table, fence or blockquote could survive. An agent asked to post one found this and wrote the
+/// diagnosis on the ticket, because there was no way round it from the command line.
+///
+/// A run of n spaces becomes n-1 empty words here and n spaces again when the provider rejoins them, so
+/// indentation comes back exactly rather than nearly — which is what a nested list needs. Newlines and
+/// tabs sit inside the words and are not touched. The ends are trimmed of spaces so a line with a
+/// trailing one does not produce an empty argument, and newlines at the ends are kept because they are
+/// the caller's own text.
+fn plugin_arguments(line: String) -> Vec<String> {
+    let trimmed = line.trim_matches(' ');
+    match trimmed.is_empty() {
+        true => Vec::new(),
+        false => trimmed.split(' ').map(str::to_owned).collect(),
+    }
+}
+
+/// The action a plugin's own entry name stands for, or `None` when the name is not one of theirs.
+///
+/// Three shapes, matching what `Action::name` writes: `plugin-pane:<plugin>/<pane>`,
+/// `plugin-tab:<plugin>/<tab>` and `plugin-run:<plugin>:<command>`.
+fn plugin_action(name: &str) -> Option<crate::app::actions::Action> {
+    use crate::app::actions::Action;
+    if let Some(pane) = name.strip_prefix("plugin-pane:") {
+        return Some(Action::PluginPane { pane: pane.to_owned() });
+    }
+    if let Some(tab) = name.strip_prefix("plugin-tab:") {
+        return Some(Action::PluginTab { tab: tab.to_owned() });
+    }
+    if let Some(rest) = name.strip_prefix("plugin-run:") {
+        let (plugin, command) = rest.split_once(':')?;
+        if plugin.is_empty() || command.is_empty() {
+            return None;
+        }
+        return Some(Action::PluginCommand {
+            plugin: plugin.to_owned(),
+            command: command.to_owned(),
+        });
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -8788,75 +8878,4 @@ mod tests {
         assert_eq!(offset_at(&text, 1, 3), 3);
         assert_eq!(offset_at(&text, 2, 1), 7);
     }
-}
-
-/// What one plugin adds to the window, as short words, for `plugins list` and `plugins show`.
-///
-/// A language adds none of them and answers `language`, so a reader can tell at a glance which kind of
-/// plugin a row is without reading the `kind` column beside it.
-fn contributes(plugin: &crate::services::plugins::Plugin) -> Vec<String> {
-    let mut found = Vec::new();
-    if plugin.contributions.pane.is_some() {
-        found.push("pane".to_owned());
-    }
-    if plugin.contributions.tab.is_some() {
-        found.push("tab".to_owned());
-    }
-    if plugin.contributions.menu.is_some() {
-        found.push("menu".to_owned());
-    }
-    if plugin.contributions.page.is_some() {
-        found.push("settings page".to_owned());
-    }
-    if found.is_empty() && !plugin.extensions.is_empty() {
-        found.push("language".to_owned());
-    }
-    found
-}
-
-/// The words of a `plugins run` argument line, with everything a body needs left intact.
-///
-/// **Split on spaces only, and runs of them are not collapsed.** `split_whitespace` threw away every
-/// newline and every repeated space before the plugin saw them, and a provider's own `rest` closure
-/// joins the words back with single spaces — so a comment holding a markdown document arrived as one
-/// line. Markdown block structure is line based, so a heading swallowed the whole body, and no list,
-/// table, fence or blockquote could survive. An agent asked to post one found this and wrote the
-/// diagnosis on the ticket, because there was no way round it from the command line.
-///
-/// A run of n spaces becomes n-1 empty words here and n spaces again when the provider rejoins them, so
-/// indentation comes back exactly rather than nearly — which is what a nested list needs. Newlines and
-/// tabs sit inside the words and are not touched. The ends are trimmed of spaces so a line with a
-/// trailing one does not produce an empty argument, and newlines at the ends are kept because they are
-/// the caller's own text.
-fn plugin_arguments(line: String) -> Vec<String> {
-    let trimmed = line.trim_matches(' ');
-    match trimmed.is_empty() {
-        true => Vec::new(),
-        false => trimmed.split(' ').map(str::to_owned).collect(),
-    }
-}
-
-/// The action a plugin's own entry name stands for, or `None` when the name is not one of theirs.
-///
-/// Three shapes, matching what `Action::name` writes: `plugin-pane:<plugin>/<pane>`,
-/// `plugin-tab:<plugin>/<tab>` and `plugin-run:<plugin>:<command>`.
-fn plugin_action(name: &str) -> Option<crate::app::actions::Action> {
-    use crate::app::actions::Action;
-    if let Some(pane) = name.strip_prefix("plugin-pane:") {
-        return Some(Action::PluginPane { pane: pane.to_owned() });
-    }
-    if let Some(tab) = name.strip_prefix("plugin-tab:") {
-        return Some(Action::PluginTab { tab: tab.to_owned() });
-    }
-    if let Some(rest) = name.strip_prefix("plugin-run:") {
-        let (plugin, command) = rest.split_once(':')?;
-        if plugin.is_empty() || command.is_empty() {
-            return None;
-        }
-        return Some(Action::PluginCommand {
-            plugin: plugin.to_owned(),
-            command: command.to_owned(),
-        });
-    }
-    None
 }

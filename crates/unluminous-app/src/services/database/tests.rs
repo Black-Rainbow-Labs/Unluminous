@@ -491,10 +491,14 @@ fn a_grids_statement_asks_for_one_more_row_than_it_keeps() {
 
 #[test]
 fn a_cell_shows_what_is_pending_on_it_rather_than_what_was_read() {
-    let mut rows = unluminous_db::Rows::default();
-    rows.columns =
-        vec![unluminous_db::Column::new("id", "int"), unluminous_db::Column::new("name", "text")];
-    rows.rows = vec![vec![Value::typed("1"), Value::typed("Jason")]];
+    let rows = unluminous_db::Rows {
+        columns: vec![
+            unluminous_db::Column::new("id", "int"),
+            unluminous_db::Column::new("name", "text"),
+        ],
+        rows: vec![vec![Value::typed("1"), Value::typed("Jason")]],
+        ..unluminous_db::Rows::default()
+    };
     let mut grid = Grid {
         source: "test".to_owned(),
         table: unluminous_db::Table {
@@ -534,9 +538,11 @@ fn an_answer_to_a_superseded_question_is_thrown_away_rather_than_drawn() {
     let page = value(&mut explorer, "console", &["test"]);
     let id = page["page"].as_u64().expect("a page");
 
-    let mut rows = unluminous_db::Rows::default();
-    rows.columns = vec![unluminous_db::Column::new("who", "text")];
-    rows.rows = vec![vec![Value::typed("the old answer")]];
+    let rows = unluminous_db::Rows {
+        columns: vec![unluminous_db::Column::new("who", "text")],
+        rows: vec![vec![Value::typed("the old answer")]],
+        ..unluminous_db::Rows::default()
+    };
     // The page is waiting for nothing, so an answer with any ticket at all is stale.
     explorer.take_a_result_for_tests(id, 99, rows.clone());
     let after = value(&mut explorer, "result", &[]);
@@ -670,7 +676,6 @@ fn an_inillucent_database(name: &str) -> PathBuf {
         )
         .expect("a row with a vector");
     database.checkpoint().expect("checkpointed");
-    drop(connection);
     drop(database);
     file
 }

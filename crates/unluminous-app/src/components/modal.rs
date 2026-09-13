@@ -53,6 +53,11 @@ pub const MIN_HEIGHT: f32 = 220.0;
 const EDGE: f32 = 6.0;
 const CORNER: f32 = 16.0;
 
+// `CORNER` and `EDGE` are both constants, so a runtime `assert!` of one against the other can only
+// ever pass or fail the same way. Checked at compile time instead: a build fails before it ever
+// draws a corner grip that would lose to an edge grip where they overlap.
+const _: () = assert!(CORNER > EDGE, "the corners have to reach further than the edges");
+
 /// Where a modal has been dragged to, and how much bigger it has been made than its dialog asked.
 ///
 /// Held as a difference rather than as a rectangle so that a modal follows the window: making the
@@ -791,10 +796,5 @@ mod tests {
     fn a_modals_controls_are_named_after_it() {
         assert_eq!(plain_name("unluminous-find-in-files"), "find in files");
         assert_eq!(plain_name("unluminous-settings"), "settings");
-    }
-
-    #[test]
-    fn the_corners_reach_further_than_the_edges_so_they_win_where_they_overlap() {
-        assert!(CORNER > EDGE);
     }
 }

@@ -50,6 +50,50 @@ fn tracing() -> bool {
     })
 }
 
+/// A frame with the values of any `env` object in it replaced by their names.
+///
+/// `task-1922` B20. The trace wrote every frame in both directions in full, and a `launch` request
+/// carries the debuggee's environment -- which is where a person puts an API key, a database
+/// password or a token when they are debugging the program that uses one. This is the one dump in
+/// the tree with no redaction in it, and standard error is somewhere a run that is piped to a file
+/// keeps for ever.
+///
+/// The **names** are kept, because which variables were set is the thing the trace exists to show
+/// and no name is a secret. That is `SessionSettings`'s own `Debug`, applied to the wire.
+///
+/// It walks the whole value rather than looking at `arguments.env`, because the reverse request
+/// `runInTerminal` carries one too, and js-debug's child configuration nests a whole launch inside
+/// itself. A key called `env` holding an object is the shape being looked for wherever it appears.
+fn without_the_environment(frame: &serde_json::Value) -> serde_json::Value {
+    let mut copy = frame.clone();
+    hide_environments(&mut copy);
+    copy
+}
+
+/// Replace every `env` object's values, in place, wherever one appears.
+fn hide_environments(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(fields) => {
+            for (name, held) in fields.iter_mut() {
+                match (name.as_str(), &mut *held) {
+                    ("env", serde_json::Value::Object(variables)) => {
+                        for (_, held) in variables.iter_mut() {
+                            *held = serde_json::Value::String("\u{2026}".to_owned());
+                        }
+                    }
+                    _ => hide_environments(held),
+                }
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                hide_environments(item);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// A function the thread calls to have the window drawn again.
 ///
 /// The same `Arc<dyn Fn() + Send + Sync>` the terminal and git already take. A `stopped` event that
@@ -251,7 +295,7 @@ impl Client {
             return true;
         }
         if tracing() {
-            eprintln!("--> {frame}");
+            eprintln!("--> {}", without_the_environment(frame));
         }
         let bytes = codec::encode(frame);
         if self.writer.write_all(&bytes).is_err() || self.writer.flush().is_err() {
@@ -391,7 +435,7 @@ fn read_frames_as(
             Ok(messages) => {
                 for value in messages {
                     if tracing() {
-                        eprintln!("<-- {value}");
+                        eprintln!("<-- {}", without_the_environment(&value));
                     }
                     let message = Message::read(&value);
                     if sender.send(wrap(Box::new(message))).is_err() {
@@ -414,6 +458,44 @@ fn read_frames_as(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **The trace never writes an environment variable's value.** `task-1922` B20.
+    ///
+    /// A `launch` request carries the debuggee's environment, which is where a person puts a key or a
+    /// password when they are debugging the program that uses one. The trace wrote every frame in
+    /// full, and standard error is somewhere a run piped to a file keeps for ever. The names stay,
+    /// because which variables were set is what the trace is for and no name is a secret.
+    #[test]
+    fn the_trace_writes_the_names_of_environment_variables_and_not_their_values() {
+        let frame = serde_json::json!({
+            "seq": 2,
+            "type": "request",
+            "command": "launch",
+            "arguments": {
+                "program": "target/debug/one",
+                "env": {"DATABASE_URL": "postgres://user:hunter2@host/db", "RUST_LOG": "debug"},
+                "args": ["--fast"]
+            }
+        });
+        let written = without_the_environment(&frame).to_string();
+        assert!(!written.contains("hunter2"), "the value is gone: {written}");
+        assert!(!written.contains("postgres://"), "all of it, not the password alone: {written}");
+        assert!(written.contains("DATABASE_URL"), "the name stays: {written}");
+        assert!(written.contains("RUST_LOG"), "every name: {written}");
+        assert!(written.contains("--fast"), "and everything else is untouched: {written}");
+        assert!(written.contains("target/debug/one"), "{written}");
+
+        // js-debug hands a whole launch configuration over inside a reverse request, so the object
+        // being looked for is not always at `arguments.env`.
+        let nested = serde_json::json!({
+            "type": "request",
+            "command": "startDebugging",
+            "arguments": {"configuration": {"env": {"TOKEN": "secret-value"}}}
+        });
+        let written = without_the_environment(&nested).to_string();
+        assert!(!written.contains("secret-value"), "wherever it appears: {written}");
+        assert!(written.contains("TOKEN"), "{written}");
+    }
     use crate::adapter::Transport;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

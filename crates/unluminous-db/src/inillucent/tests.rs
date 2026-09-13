@@ -53,7 +53,6 @@ fn a_database(name: &str) -> PathBuf {
         )
         .expect("a row with a vector");
     database.checkpoint().expect("checkpointed");
-    drop(connection);
     drop(database);
     file
 }
@@ -461,7 +460,7 @@ fn a_file_that_is_not_a_database_at_all_refuses_rather_than_panicking() {
     let file = folder.join("junk.rdb");
     // The right magic and nothing else that is right, which is the case a length check alone misses.
     let mut bytes = MAGIC.to_vec();
-    bytes.extend(std::iter::repeat(0xA5).take(8192));
+    bytes.extend(std::iter::repeat_n(0xA5, 8192));
     std::fs::write(&file, &bytes).expect("written");
     let refused = Session::open(&file, false).expect_err("refused");
     assert!(!refused.message.is_empty(), "and it says something");

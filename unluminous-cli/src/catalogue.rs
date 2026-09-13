@@ -203,7 +203,6 @@ pub fn unknown_arguments(command: &Command, arguments: &Map<String, Value>) -> V
         .keys()
         .map(|key| canonical_argument_name(key))
         .filter(|name| !known.contains(&name.as_str()))
-        .map(|name| name)
         .collect()
 }
 

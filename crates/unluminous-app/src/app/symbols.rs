@@ -89,6 +89,15 @@ pub struct TabSymbols {
 /// nothing at all and a pointer moving within one word cost one comparison.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hover {
+    /// The tab it belongs to.
+    ///
+    /// `task-1922` B9. The key was the text revision and the byte range and nothing else, so two
+    /// tabs whose documents happened to be at the same revision -- which two files opened and not
+    /// typed in both are, at revision zero -- answered each other's questions: with the modifier
+    /// held, switching tab showed the first file's definition for a word in the second. This is
+    /// `CompletionState::path`'s rule, which was written for the same fault and not applied here.
+    /// `None` for a tab that has never been saved, which is still a tab and still its own.
+    pub path: Option<PathBuf>,
     pub revision: u64,
     pub word: std::ops::Range<usize>,
     pub name: String,
@@ -276,20 +285,23 @@ impl UnluminousApp {
     pub fn resolve_under_the_pointer(&mut self, offset: usize) -> Option<Hover> {
         let index = self.files.active_index();
         let revision = self.files.at(index).document.text_revision();
+        let path = self.files.at(index).path().map(Path::to_path_buf);
         if let Some(hover) = &self.hover {
-            if hover.revision == revision && hover.word.start <= offset && offset <= hover.word.end
+            if hover.path == path
+                && hover.revision == revision
+                && hover.word.start <= offset
+                && offset <= hover.word.end
             {
                 return (!hover.candidates.is_empty()).then(|| hover.clone());
             }
         }
-        let path = self.files.at(index).path().map(Path::to_path_buf);
         let word = self.tab_symbols(index).read.identifier_at(offset)?;
         let name = self.text_in(index, &word);
         let candidates = self.candidates_for(&name, path.as_deref(), offset);
         let at_definition = candidates.iter().any(|candidate| {
             Some(candidate.path.as_path()) == path.as_deref() && candidate.name_range == word
         });
-        let hover = Hover { revision, word, name, candidates, at_definition };
+        let hover = Hover { path, revision, word, name, candidates, at_definition };
         let resolved = !hover.candidates.is_empty();
         self.hover = Some(hover.clone());
         resolved.then_some(hover)
@@ -343,8 +355,8 @@ impl UnluminousApp {
     fn open_definition_candidates(&mut self, name: &str, candidates: Vec<Candidate>) {
         match candidates.len() {
             0 => self.message = Some(format!("No definition found for '{name}'.")),
-            1 => self.jump_to(&candidates[0], &name),
-            _ => self.open_candidates(&name, candidates),
+            1 => self.jump_to(&candidates[0], name),
+            _ => self.open_candidates(name, candidates),
         }
     }
 
@@ -450,11 +462,11 @@ impl UnluminousApp {
 
     /// Whether the three entries apply to the file that is showing.
     pub(crate) fn definitions_apply_here(&self) -> bool {
-        file_kind::definitions_apply(self.files.active().path(), &self.plugins.grammars())
+        file_kind::definitions_apply(self.files.active().path(), self.plugins.grammars())
     }
 
     pub(crate) fn symbols_apply_here(&self) -> bool {
-        file_kind::symbols_apply(self.files.active().path(), &self.plugins.grammars())
+        file_kind::symbols_apply(self.files.active().path(), self.plugins.grammars())
     }
 
     /// Apply a rename to the open tabs and to the files on the disk.
@@ -703,6 +715,13 @@ impl UnluminousApp {
             None => std::fs::read_to_string(&candidate.path).ok()?,
         };
         let start = candidate.name_range.start.min(text.len());
+        // The index answered about the file as it was when it last read it, and a file edited by
+        // anything that is not Unluminous moves every offset after the edit. A start that now lands
+        // inside a character cannot be sliced at, so the row is left out rather than taking the
+        // window down. `task-1922` B17.
+        if !text.is_char_boundary(start) {
+            return None;
+        }
         let line_start = text[..start].rfind('\n').map_or(0, |at| at + 1);
         let line = text[line_start..].split('\n').next().unwrap_or_default().trim_end_matches('\r');
         let begin = start - line_start;
@@ -834,10 +853,7 @@ impl UnluminousApp {
         }
         let wanted = modal.new_name.trim().to_owned();
         let grammar = self.grammar_for(self.files.active().path()).cloned().unwrap_or_default();
-        let refusal = match symbols::check_name(&wanted, &grammar) {
-            Ok(()) => None,
-            Err(reason) => Some(reason),
-        };
+        let refusal = symbols::check_name(&wanted, &grammar).err();
         let warning = refusal.is_none().then(|| self.collision(&wanted)).flatten();
         if let Some(modal) = self.references.as_mut() {
             modal.refusal = refusal;
@@ -1465,7 +1481,7 @@ mod tests {
         // half-finished one would have held is never kept either.
         let files = app.tree.all_files().to_vec();
         let grammars = app.plugins.grammars();
-        assert!(crate::services::symbol_index::Index::build(&files, &grammars, &|| true).is_none());
+        assert!(crate::services::symbol_index::Index::build(&files, grammars, &|| true).is_none());
         std::fs::remove_dir_all(&folder).ok();
     }
 

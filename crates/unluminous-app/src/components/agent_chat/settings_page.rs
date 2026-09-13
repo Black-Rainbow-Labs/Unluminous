@@ -101,8 +101,12 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
             egui::UiBuilder::new().max_rect(area).id_salt(("agent-chat-endpoint", index)),
         );
         let why_not = refusals.get(index).cloned().flatten();
-        let (height, act) =
-            endpoint(&mut row, look, inner, pen, &mut configuration, index, &chosen, why_not);
+        let (height, act) = endpoint(
+            &mut row,
+            look,
+            &mut configuration,
+            EndpointRow { area: inner, top: pen, index, chosen: &chosen, why_not },
+        );
         pen += height;
         match act {
             Some(Act::Remove) => removing = Some(index),
@@ -332,6 +336,20 @@ enum Act {
     Remove,
 }
 
+/// Where one endpoint's row draws, and which of `configuration.providers` it is.
+struct EndpointRow<'a> {
+    /// Where the whole page draws, so the row can size itself to it.
+    area: Rect,
+    /// How far down the page this row starts.
+    top: f32,
+    /// Which provider in `configuration.providers` this row is.
+    index: usize,
+    /// The name of the provider that is chosen, so the row can say whether it is the one in use.
+    chosen: &'a str,
+    /// Why this endpoint cannot be reached right now, if it cannot.
+    why_not: Option<String>,
+}
+
 /// One endpoint: its name, where it is, what it speaks and where its key comes from.
 ///
 /// Answers how tall it drew, so the page's pen moves by what was really drawn rather than by a
@@ -339,13 +357,10 @@ enum Act {
 fn endpoint(
     ui: &mut egui::Ui,
     look: &Look<'_>,
-    area: Rect,
-    top: f32,
     configuration: &mut crate::services::agent_chat::Configuration,
-    index: usize,
-    chosen: &str,
-    why_not: Option<String>,
+    at: EndpointRow<'_>,
 ) -> (f32, Option<Act>) {
+    let EndpointRow { area, top, index, chosen, why_not } = at;
     let mut act = None;
     let mut pen = top + 4.0;
     let in_use = configuration.providers[index].name == chosen;

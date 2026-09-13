@@ -68,7 +68,7 @@ pub fn delete(path: &Path) -> std::io::Result<()> {
     }
     #[cfg(windows)]
     {
-        return to_the_recycle_bin(path);
+        to_the_recycle_bin(path)
     }
     #[cfg(not(windows))]
     {

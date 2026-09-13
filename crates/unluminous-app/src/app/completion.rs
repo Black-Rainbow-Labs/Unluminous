@@ -201,7 +201,7 @@ pub struct CompletionAnchor {
 impl UnluminousApp {
     /// Whether auto-complete applies to the file that is showing.
     pub fn completion_applies_here(&self) -> bool {
-        file_kind::completion_applies(self.files.active().path(), &self.plugins.grammars())
+        file_kind::completion_applies(self.files.active().path(), self.plugins.grammars())
     }
 
     /// Whether a modal owns the keyboard, in which case there is no popup and no trigger.
@@ -298,7 +298,7 @@ impl UnluminousApp {
                 let position = unluminous_core::syntax::markup_position(
                     &self.document().text().to_string(),
                     offset,
-                    &grammar,
+                    grammar,
                 );
                 match position {
                     Some(unluminous_core::syntax::MarkupPosition::TagName) => {

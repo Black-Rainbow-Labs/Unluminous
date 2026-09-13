@@ -511,7 +511,7 @@ fn a_resumed_agent_remembers_the_conversation_even_in_agent_done() {
     let store = bench.on_disk();
     store.move_task(id, Status::AgentDone, i64::MAX, &now()).expect("into Agent Done");
     bench.board.refresh().expect("the board reads it");
-    bench.board.command("stop", &[key.clone()]).expect("the terminal closes");
+    bench.board.command("stop", std::slice::from_ref(&key)).expect("the terminal closes");
     assert!(
         bench.board.terminal_for(id).is_none_or(|terminal| !terminal.session.is_running()),
         "the terminal is not running any more"

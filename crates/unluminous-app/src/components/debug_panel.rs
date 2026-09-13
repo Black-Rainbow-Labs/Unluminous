@@ -269,8 +269,7 @@ fn show_header(
             let rect =
                 Rect::from_center_size(Pos2::new(pen + 11.0, area.center().y), Vec2::splat(22.0));
             pen += 26.0;
-            let pressed = dimmable(ui, rect, name, enabled, draw);
-            pressed
+            dimmable(ui, rect, name, enabled, draw)
         };
     if button(ui, "Resume", paused, &|painter, at| icon::resume(painter, at, tint(paused))) {
         outcome.step = Some(unluminous_dap::Step::Resume);
@@ -544,27 +543,42 @@ fn show_tree(
         for row in &debug.rows {
             let (rect, response) =
                 ui.allocate_exact_size(Vec2::new(area.width(), ROW), Sense::click());
-            show_row(ui, rect, response, row, &mut panel.editing, can_set, "Variable", &mut rows);
+            show_row(
+                ui,
+                RowDraw {
+                    rect,
+                    response,
+                    row,
+                    editing: &mut panel.editing,
+                    can_set,
+                    what: "Variable",
+                },
+                &mut rows,
+            );
         }
         outcome.toggle_row = rows.toggle_row;
         outcome.set_value = rows.set_value;
     });
 }
 
-/// One row of a variables tree: the disclosure triangle, the name, the type and the value.
+/// What one row of a variables tree needs to draw itself.
 ///
-/// `editing` is the row being edited and what has been typed into it, passed in rather than read off
-/// the tile — the value tooltip has a tree too, and it is the same row drawn the same way.
-pub fn show_row(
-    ui: &mut egui::Ui,
-    rect: Rect,
-    response: egui::Response,
-    row: &Row,
-    editing: &mut Option<(String, String)>,
-    can_set: bool,
-    what: &str,
-    outcome: &mut RowOutcome,
-) {
+/// `editing` is the row being edited and what has been typed into it, passed in rather than read
+/// off the tile — the value tooltip has a tree too, and it is the same row drawn the same way.
+/// `what` is what to call the row where it is drawn — `Variable` in the tile, `Value` in the value
+/// tooltip — because two controls must not share a name.
+pub struct RowDraw<'a> {
+    pub rect: Rect,
+    pub response: egui::Response,
+    pub row: &'a Row,
+    pub editing: &'a mut Option<(String, String)>,
+    pub can_set: bool,
+    pub what: &'a str,
+}
+
+/// One row of a variables tree: the disclosure triangle, the name, the type and the value.
+pub fn show_row(ui: &mut egui::Ui, draw: RowDraw<'_>, outcome: &mut RowOutcome) {
+    let RowDraw { rect, response, row, editing, can_set, what } = draw;
     if response.hovered() {
         ui.painter().rect_filled(
             rect.shrink2(Vec2::new(6.0, 2.0)),
@@ -596,7 +610,7 @@ pub fn show_row(
     pen += name.size().x + 10.0;
     if let Some(kind) = &row.kind {
         let label = ui.painter().layout_no_wrap(
-            format!("{kind}"),
+            kind.to_string(),
             egui::FontId::monospace(10.5),
             color::text_faint(),
         );
@@ -810,7 +824,7 @@ mod tests {
     #[test]
     fn a_value_too_long_for_a_row_is_cut_and_a_short_one_is_left_alone() {
         assert_eq!(elide("3"), "3");
-        let long: String = std::iter::repeat('x').take(VALUE_LIMIT + 40).collect();
+        let long = "x".repeat(VALUE_LIMIT + 40);
         let cut = elide(&long);
         assert!(cut.ends_with('\u{2026}'));
         assert_eq!(cut.chars().count(), VALUE_LIMIT + 1);

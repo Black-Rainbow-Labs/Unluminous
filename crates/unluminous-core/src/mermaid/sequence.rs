@@ -291,8 +291,12 @@ fn read_note(diagram: &mut Diagram, line: &Line, band: Option<usize>) -> bool {
     true
 }
 
+/// One arrow's written form: its token, whether it is dotted, how its head is drawn, and whether it
+/// has a head at both ends.
+type ArrowForm = (&'static str, bool, Ending, bool);
+
 /// The arrow forms, longest first so `-->>` is never read as `-->` with a stray `>`.
-const ARROWS: &[(&str, bool, Ending, bool)] = &[
+const ARROWS: &[ArrowForm] = &[
     ("<<-->>", true, Ending::Arrow, true),
     ("<<->>", false, Ending::Arrow, true),
     ("-->>", true, Ending::Arrow, false),
@@ -355,8 +359,8 @@ fn read_message(diagram: &mut Diagram, line: &Line, band: Option<usize>) -> Resu
 }
 
 /// Where the arrow is in a message's head, and which form it is.
-fn find_arrow(head: &str) -> Option<(usize, &'static (&'static str, bool, Ending, bool))> {
-    let mut best: Option<(usize, &'static (&'static str, bool, Ending, bool))> = None;
+fn find_arrow(head: &str) -> Option<(usize, &'static ArrowForm)> {
+    let mut best: Option<(usize, &'static ArrowForm)> = None;
     for form in ARROWS {
         let Some(at) = head.find(form.0) else {
             continue;

@@ -55,23 +55,30 @@ pub struct Outcome {
     pub above: Option<bool>,
 }
 
-/// Draw the popup. `word` is the box of the letters it is about and `pane` the editing area they are
-/// in, which it is flipped and clamped inside.
-///
-/// `can_set_root` and `can_set_child` are separate because the two rows are changed by two different
-/// requests: the root by `setExpression`, which not every adapter offers, and a child by
-/// `setVariable`, which the tile already sends. A control whose capability is absent is absent, so
-/// an adapter offering only the second still lets every field of a struct be typed over.
-pub fn show(
-    ui: &mut egui::Ui,
-    hover: &HoverValue,
-    editing: &mut Option<(String, String)>,
-    can_set_root: bool,
-    can_set_child: bool,
-    word: Rect,
-    pane: Rect,
-    above: Option<bool>,
-) -> Outcome {
+/// What the popup is showing, the field being typed over, and where it hangs.
+pub struct ValueTooltip<'a> {
+    /// The value under the pointer.
+    pub hover: &'a HoverValue,
+    /// The row being typed over, if any.
+    pub editing: &'a mut Option<(String, String)>,
+    /// Separate from `can_set_child` because the two rows are changed by two different requests:
+    /// the root by `setExpression`, which not every adapter offers, and a child by `setVariable`,
+    /// which the tile already sends. A control whose capability is absent is absent, so an adapter
+    /// offering only the second still lets every field of a struct be typed over.
+    pub can_set_root: bool,
+    pub can_set_child: bool,
+    /// The box of the letters the popup is about.
+    pub word: Rect,
+    /// The editing area it is flipped and clamped inside.
+    pub pane: Rect,
+    /// Which side of the word it went, so the next frame puts it on the same one. See
+    /// [`where_it_goes`].
+    pub above: Option<bool>,
+}
+
+/// Draw the popup.
+pub fn show(ui: &mut egui::Ui, tooltip: ValueTooltip) -> Outcome {
+    let ValueTooltip { hover, editing, can_set_root, can_set_child, word, pane, above } = tooltip;
     let mut outcome = Outcome::default();
     let message = waiting_or_refusal(hover);
     let rows = match message.is_some() {
@@ -106,7 +113,7 @@ pub fn show(
                 // egui's default spacing between allocated widgets would push the last row out
                 // of a box measured without it.
                 ui.spacing_mut().item_spacing.y = 0.0;
-                let mut what = RowOutcome::default();
+                let mut rows = RowOutcome::default();
                 for row in &hover.rows {
                     let (rect, response) =
                         ui.allocate_exact_size(Vec2::new(inner.width(), ROW), Sense::click());
@@ -115,11 +122,20 @@ pub fn show(
                         _ => can_set_child,
                     };
                     debug_panel::show_row(
-                        ui, rect, response, row, editing, can_set, "Value", &mut what,
+                        ui,
+                        debug_panel::RowDraw {
+                            rect,
+                            response,
+                            row,
+                            editing: &mut *editing,
+                            can_set,
+                            what: "Value",
+                        },
+                        &mut rows,
                     );
                 }
-                outcome.toggle_row = what.toggle_row;
-                outcome.set_value = what.set_value;
+                outcome.toggle_row = rows.toggle_row;
+                outcome.set_value = rows.set_value;
             });
         });
     outcome

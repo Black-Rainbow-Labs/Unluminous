@@ -178,7 +178,7 @@ impl BreakpointStore {
             // Nothing is left. The file is emptied rather than left holding what was taken away, and
             // a project that never had one does not get one — `FileMarks::save`'s rule.
             if file.exists() {
-                if let Err(problem) = std::fs::write(&file, heading()) {
+                if let Err(problem) = super::store::write_atomically(&file, heading().as_bytes()) {
                     eprintln!("Unluminous could not write {}: {problem}", file.display());
                 }
             }
@@ -191,7 +191,7 @@ impl BreakpointStore {
             eprintln!("Unluminous could not make {}: {problem}", folder.display());
             return;
         }
-        if let Err(problem) = std::fs::write(&file, self.to_text(root)) {
+        if let Err(problem) = super::store::write_atomically(&file, self.to_text(root).as_bytes()) {
             eprintln!("Unluminous could not write {}: {problem}", file.display());
         }
         self.stamp = DiskStamp::of(&file);

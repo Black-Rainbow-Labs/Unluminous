@@ -524,7 +524,7 @@ pub fn module_of(path: &Path, grammar: &Grammar) -> Option<Module> {
         match extension_of(Path::new(&last), grammar) {
             Some(extension) => {
                 let stem = last[..last.len() - extension.len()].to_owned();
-                if !grammar.import_index.iter().any(|index| *index == stem) {
+                if !grammar.import_index.contains(&stem) {
                     segments.push(stem);
                 }
             }

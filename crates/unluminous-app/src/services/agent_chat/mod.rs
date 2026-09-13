@@ -1548,12 +1548,14 @@ mod tests {
     #[test]
     fn the_configuration_round_trips_through_the_plugins_own_folder() {
         let folder = a_folder("configuration");
-        let mut configuration = Configuration::default();
-        configuration.chosen = "codex".to_owned();
-        configuration.tools = true;
-        configuration.tool_limit = 3;
-        configuration.system = "Be terse.".to_owned();
-        configuration.permission = unluminous_chat::Permission::Edit;
+        let mut configuration = Configuration {
+            chosen: "codex".to_owned(),
+            tools: true,
+            tool_limit: 3,
+            system: "Be terse.".to_owned(),
+            permission: unluminous_chat::Permission::Edit,
+            ..Configuration::default()
+        };
         configuration.providers[2].url = "http://127.0.0.1:9999/v1/chat/completions".to_owned();
         configuration.providers[2].key_env = "OPENAI_API_KEY".to_owned();
         configuration.write(&folder).expect("written");
@@ -1740,7 +1742,7 @@ mod tests {
         assert_eq!(shorten_for_a_model(&serde_json::Value::Null), "ok");
         // And a cut never lands in the middle of a character.
         let wide = serde_json::Value::String("é".repeat(20_000));
-        assert!(shorten_for_a_model(&wide).len() > 0);
+        assert!(!shorten_for_a_model(&wide).is_empty());
     }
 
     #[test]
@@ -1830,13 +1832,15 @@ mod tests {
         // back. **The key is the thing that must not be there**: an endpoint names the environment
         // variable it is in, and the value is read at the moment a request is sent and never held.
         let folder = a_folder("settings-round-trip");
-        let mut configuration = Configuration::default();
-        configuration.chosen = "codex".to_owned();
-        configuration.stream = false;
-        configuration.tools = true;
-        configuration.shell = true;
-        configuration.tool_limit = 3;
-        configuration.permission = unluminous_chat::Permission::Full;
+        let mut configuration = Configuration {
+            chosen: "codex".to_owned(),
+            stream: false,
+            tools: true,
+            shell: true,
+            tool_limit: 3,
+            permission: unluminous_chat::Permission::Full,
+            ..Configuration::default()
+        };
         configuration.providers[0].wire = unluminous_chat::Wire::Anthropic;
         configuration.providers[0].url = "https://example.test/v1/messages".to_owned();
         configuration.providers[0].key_env = "ANTHROPIC_API_KEY".to_owned();

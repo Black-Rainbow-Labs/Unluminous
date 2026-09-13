@@ -136,8 +136,7 @@ fn without_the_first_rows(screen: &Screen, count: usize) -> Screen {
         }
     }
     out.cursor = screen.cursor.as_ref().and_then(|cursor| {
-        (cursor.row >= count)
-            .then(|| crate::screen::Cursor { row: cursor.row - count, ..cursor.clone() })
+        (cursor.row >= count).then(|| crate::screen::Cursor { row: cursor.row - count, ..*cursor })
     });
     out
 }
@@ -434,15 +433,6 @@ mod tests {
         session.feed(b"\x1b[?1049l");
         assert!(session.screen_to_replay().is_some());
     }
-
-    /// A session that has read from its program refuses a replay rather than mixing into its output.
-    ///
-    /// **Two gates and the second is the one that matters.** The flag is set when `Event::Wakeup` is read, which
-    /// happens in `pump` — so between the reader thread writing and the next pump it is still false. The grid
-    /// itself cannot be out of date, because the reader thread writes to it while holding the terminal's lock,
-    /// so `is_empty` asked under that lock is the honest question. The real shell below is what tests the flag;
-    /// the detached session above tests the grid.
-    #[test]
 
     /// A row filled to its last column does not push the screen down by one.
     ///

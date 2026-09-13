@@ -55,6 +55,11 @@ pub const EDGE: f32 = 6.0;
 /// How far along each edge a corner reaches, which is roughly what a window manager offers.
 pub const CORNER: f32 = 16.0;
 
+// Both constants, so a runtime `assert!` of one against the other can only ever pass or fail the
+// same way. Checked at compile time instead: a corner has to reach further than an edge so it can
+// win where they overlap, and a build fails before it ever draws one that could not.
+const _: () = assert!(CORNER > EDGE, "a corner has to reach further than an edge");
+
 /// Add the eight grips over `window`, and report a direction when one of them was dragged.
 ///
 /// The caller sends the viewport command, so this component changes nothing itself, which is the rule
@@ -184,11 +189,6 @@ fn grip(ui: &mut egui::Ui, area: Rect, name: &str, cursor: egui::CursorIcon) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_corner_reaches_further_than_an_edge_so_it_can_win_where_they_overlap() {
-        assert!(CORNER > EDGE);
-    }
 
     /// `task-1693`: a maximised window adds no grips, so no resize the window manager would refuse
     /// is ever asked for. See the note at the top of this file for what one refused request costs.

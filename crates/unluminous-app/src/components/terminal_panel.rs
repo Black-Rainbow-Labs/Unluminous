@@ -440,7 +440,10 @@ pub(crate) fn grid(
     let origin = Pos2::new(area.left() + PADDING_X, area.top() + PADDING_Y);
     let mut painter_ui = ui.new_child(egui::UiBuilder::new().max_rect(area));
     painter_ui.set_clip_rect(ui.painter().clip_rect().intersect(area));
-    paint(&painter_ui, renderer, &screen, origin, cell, font_size, focused, opacity);
+    paint(
+        &painter_ui,
+        ScreenPaint { renderer, screen: &screen, origin, cell, font_size, focused, opacity },
+    );
 
     // Input, once the drawing is decided, so that a key press is acted on with the size the program already
     // knows about.
@@ -453,17 +456,20 @@ pub(crate) fn grid(
     outcome
 }
 
-/// Draw one screen.
-fn paint(
-    ui: &egui::Ui,
-    renderer: &TextRenderer,
-    screen: &Screen,
+/// What one screen needs to be painted.
+struct ScreenPaint<'a> {
+    renderer: &'a TextRenderer,
+    screen: &'a Screen,
     origin: Pos2,
     cell: crate::services::text_renderer::CellMetrics,
     font_size: f32,
     focused: bool,
     opacity: f32,
-) {
+}
+
+/// Draw one screen.
+fn paint(ui: &egui::Ui, draw: ScreenPaint<'_>) {
+    let ScreenPaint { renderer, screen, origin, cell, font_size, focused, opacity } = draw;
     let painter = ui.painter();
     let at = |row: usize, column: usize| {
         Pos2::new(origin.x + column as f32 * cell.width, origin.y + row as f32 * cell.height)

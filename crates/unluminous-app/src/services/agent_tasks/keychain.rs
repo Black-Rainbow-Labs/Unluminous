@@ -140,6 +140,11 @@ fn write_through_the_tool(name: &str, secret: &str) -> Result<(), String> {
 /// input rather than as an argument.
 ///
 /// Once everywhere else: `secret-tool store` reads the value and stops.
+///
+/// Used by [`write_through_the_tool`] on every platform but Windows, and by the test below on every
+/// platform, since it is what checks the macOS doubling. `cfg(any(test, not(windows)))` is what keeps
+/// both callers without making it dead code in a released Windows binary, where neither exists.
+#[cfg(any(test, not(windows)))]
 fn what_the_tool_reads(secret: &str) -> String {
     match cfg!(target_os = "macos") {
         true => format!("{secret}\n{secret}\n"),
@@ -416,7 +421,9 @@ mod tests {
     fn a_secret_round_trips_through_the_machines_own_store() {
         let name = format!("unluminous-round-trip-{}", std::process::id());
         if write(&name, "hunter2").is_err() {
-            assert!(!cfg!(any(windows, target_os = "macos")), "these two have a store");
+            if cfg!(any(windows, target_os = "macos")) {
+                panic!("these two have a store");
+            }
             return;
         }
         assert_eq!(read(&name).as_deref(), Some("hunter2"), "what was written comes back");

@@ -28,7 +28,7 @@
 
 use egui::{Color32, CornerRadius, Pos2, Rect, Stroke};
 
-use super::IconSet;
+use super::{color, IconSet};
 
 /// A small triangle pointing down, on the right of a dropdown.
 pub fn chevron_down(painter: &egui::Painter, centre: Pos2, color: Color32) {
@@ -720,7 +720,10 @@ pub fn color_wheel(painter: &egui::Painter, centre: Pos2, color: Color32) {
         ));
     }
     painter.circle_stroke(centre, outer, Stroke::new(1.0, color));
-    painter.circle_filled(centre, inner, Color32::from_rgb(0x26, 0x2C, 0x36));
+    // The hole is the menu's own ground, because that is what the wheel is drawn on. It was this
+    // colour written out, which is the one thing `no_component_writes_a_colour_of_its_own` exists to
+    // stop: a theme that moved `menu` left a lighter disc in the middle of the wheel. `task-1922`.
+    painter.circle_filled(centre, inner, color::menu());
 }
 
 /// The five kinds of thing a definition can name, drawn rather than lettered.

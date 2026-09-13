@@ -246,7 +246,7 @@ impl Grid {
 /// One page in the workspace tab.
 #[derive(Debug, Clone)]
 pub enum Sheet {
-    Console(Console),
+    Console(Box<Console>),
     Grid(Box<Grid>),
 }
 
@@ -740,11 +740,11 @@ impl DatabaseExplorer {
             .get(source)
             .and_then(|loaded| loaded.schemas.first().cloned())
             .unwrap_or_default();
-        Ok(self.add_page(Sheet::Console(Console {
+        Ok(self.add_page(Sheet::Console(Box::new(Console {
             source: source.to_owned(),
             schema,
             ..Console::default()
-        })))
+        }))))
     }
 
     /// Open a grid on a table. Its columns are asked for first, because the key decides everything.
@@ -1349,11 +1349,8 @@ pub fn why_not(grid: &Grid) -> Option<String> {
 /// A result as data, bounded, for `plugins view` and for a test.
 fn rows_value(rows: &Rows, vectors: &[String]) -> serde_json::Value {
     // Which result columns the schema says hold a vector, worked out once rather than per cell.
-    let is_a_vector: Vec<bool> = rows
-        .columns
-        .iter()
-        .map(|column| vectors.iter().any(|named| *named == column.name))
-        .collect();
+    let is_a_vector: Vec<bool> =
+        rows.columns.iter().map(|column| vectors.contains(&column.name)).collect();
     serde_json::json!({
         "columns": rows.columns.iter().map(|column| serde_json::json!({
             "name": column.name,
@@ -1368,7 +1365,7 @@ fn rows_value(rows: &Rows, vectors: &[String]) -> serde_json::Value {
         // `32 bytes: 00 00 00 00 bf 69 34 3e…`, so a person and an agent looking at the same row saw
         // different things — and the agent saw the one that is no use. `plugins run database vector`
         // gives the components; what belongs here is what the grid is showing.
-        "rows": rows.rows.iter().take(50).enumerate().map(|(_, row)| row.iter().enumerate().map(|(at, value)| match value {
+        "rows": rows.rows.iter().take(50).map(|row| row.iter().enumerate().map(|(at, value)| match value {
             Value::Null => serde_json::Value::Null,
             other => serde_json::Value::String(
                 match is_a_vector.get(at).copied().unwrap_or(false) {

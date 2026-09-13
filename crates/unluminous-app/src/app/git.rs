@@ -203,23 +203,6 @@ impl GitState {
         redraw
     }
 
-    /// Ask for the blame and the change bars of the file that is showing, when it is in this
-    /// repository and has not been asked for already.
-    pub fn refresh_file(&mut self, path: Option<&Path>, want_blame: bool, want_changes: bool) {
-        let Some(path) = path else {
-            return;
-        };
-        if self.relative(path).is_none() {
-            return;
-        }
-        if want_blame {
-            self.send(Request::Blame(path.to_path_buf()));
-        }
-        if want_changes {
-            self.send(Request::ChangedLines(path.to_path_buf()));
-        }
-    }
-
     /// What the status bar says about the repository, once there is anything to say.
     ///
     /// `None` until the first read comes back. Reading happens on a thread, so for the first few

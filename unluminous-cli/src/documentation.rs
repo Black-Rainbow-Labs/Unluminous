@@ -28,7 +28,7 @@ fn every_command_has_a_section_in_the_written_reference() {
     let missing: Vec<String> = catalogue::COMMANDS
         .iter()
         .filter(|command| !text.contains(&heading(command)))
-        .map(|command| heading(command))
+        .map(heading)
         .collect();
     assert!(
         missing.is_empty(),

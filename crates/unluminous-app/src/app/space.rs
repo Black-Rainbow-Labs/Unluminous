@@ -242,7 +242,7 @@ impl UnluminousApp {
             ui.interact(body, ui.id().with("space-canvas"), egui::Sense::click_and_drag());
         if response.dragged() {
             let by = response.drag_delta();
-            self.space.space.current_mut().camera.pan_by(by);
+            self.space.space.pan_by(by);
             self.space.gesture = Gesture::Panning;
         } else if self.space.gesture == Gesture::Panning {
             self.space.gesture = Gesture::None;
@@ -265,9 +265,8 @@ impl UnluminousApp {
             if steps.abs() > 0.5 {
                 if let Some(at) = ui.ctx().pointer_latest_pos() {
                     let notches = (steps / 50.0).clamp(-3.0, 3.0);
-                    let camera = &mut self.space.space.current_mut().camera;
-                    let wanted = camera.zoom * 1.1_f32.powf(notches);
-                    camera.zoom_to(wanted, body.min, at);
+                    let wanted = self.space.space.current().camera.zoom * 1.1_f32.powf(notches);
+                    self.space.space.zoom_at(wanted, body.min, at);
                 }
             }
         }
@@ -3238,7 +3237,7 @@ impl UnluminousApp {
                     self.bring_the_current_view_to_life();
                     done(request, format!("Showing {}.", self.space.space.current().name))
                 }
-                Err(outcome) => outcome,
+                Err(outcome) => *outcome,
             },
             "new-view" => {
                 let name = request.text("name").unwrap_or_else(|| "View".to_owned());
@@ -3253,7 +3252,7 @@ impl UnluminousApp {
             "rename-view" => {
                 let id = match self.a_named_view(request) {
                     Ok(id) => id,
-                    Err(outcome) => return outcome,
+                    Err(outcome) => return *outcome,
                 };
                 let Some(name) = request.text("name") else {
                     return no(request, code::USAGE, "Say what to call it.");
@@ -3266,7 +3265,7 @@ impl UnluminousApp {
             "duplicate-view" => {
                 let id = match self.a_named_view(request) {
                     Ok(id) => id,
-                    Err(outcome) => return outcome,
+                    Err(outcome) => return *outcome,
                 };
                 match self.space.space.duplicate_view(id) {
                     Some(copy) => {
@@ -3284,7 +3283,7 @@ impl UnluminousApp {
             "delete-view" => {
                 let id = match self.a_named_view(request) {
                     Ok(id) => id,
-                    Err(outcome) => return outcome,
+                    Err(outcome) => return *outcome,
                 };
                 if self.space.space.views().len() < 2 {
                     return no(
@@ -3302,7 +3301,7 @@ impl UnluminousApp {
             "title" => {
                 let node = match self.a_named_node(request, "node") {
                     Ok(node) => node,
-                    Err(outcome) => return outcome,
+                    Err(outcome) => return *outcome,
                 };
                 let title = request.text("title").unwrap_or_default();
                 self.space.space.title_node(node, title.trim());
@@ -3311,7 +3310,7 @@ impl UnluminousApp {
             "remove" => {
                 let node = match self.a_named_node(request, "node") {
                     Ok(node) => node,
-                    Err(outcome) => return outcome,
+                    Err(outcome) => return *outcome,
                 };
                 self.close_a_space_node(node);
                 done(request, format!("Took node {node} off the canvas."))
@@ -3319,7 +3318,7 @@ impl UnluminousApp {
             "focus" => {
                 let node = match self.a_named_node(request, "node") {
                     Ok(node) => node,
-                    Err(outcome) => return outcome,
+                    Err(outcome) => return *outcome,
                 };
                 self.show_a_panel(dock::Panel::Space, true);
                 self.space.space.choose(Some(node));
@@ -3347,7 +3346,7 @@ impl UnluminousApp {
             "restart" => {
                 let node = match self.a_named_node(request, "node") {
                     Ok(node) => node,
-                    Err(outcome) => return outcome,
+                    Err(outcome) => return *outcome,
                 };
                 // **`--running` is the other half of the row on the node's own menu**, which is the rule that a
                 // thing done by hand and the same thing done by an agent are the same thing: it goes through
@@ -3375,7 +3374,7 @@ impl UnluminousApp {
             "address" => {
                 let node = match self.a_reachable_node(request, "node", Kind::Browser) {
                     Ok(node) => node,
-                    Err(outcome) => return outcome,
+                    Err(outcome) => return *outcome,
                 };
                 let Some(url) = request.text("url") else {
                     return no(request, code::USAGE, "Say which address.");
@@ -3398,7 +3397,7 @@ impl UnluminousApp {
             "editor" => {
                 let node = match self.a_reachable_node(request, "node", Kind::Editor) {
                     Ok(node) => node,
-                    Err(outcome) => return outcome,
+                    Err(outcome) => return *outcome,
                 };
                 let Some(path) = self.cli_path_argument(request, "path") else {
                     return no(request, code::USAGE, "Say which file.");
@@ -3674,7 +3673,7 @@ impl UnluminousApp {
     fn cli_space_move(&mut self, request: &Request) -> Outcome {
         let node = match self.a_named_node(request, "node") {
             Ok(node) => node,
-            Err(outcome) => return outcome,
+            Err(outcome) => return *outcome,
         };
         let Some(found) = self.space.space.current().node(node).cloned() else {
             return no(request, code::NOT_FOUND, format!("There is no node {node}."));
@@ -3690,7 +3689,7 @@ impl UnluminousApp {
     fn cli_space_size(&mut self, request: &Request) -> Outcome {
         let node = match self.a_named_node(request, "node") {
             Ok(node) => node,
-            Err(outcome) => return outcome,
+            Err(outcome) => return *outcome,
         };
         let Some(found) = self.space.space.current().node(node).cloned() else {
             return no(request, code::NOT_FOUND, format!("There is no node {node}."));
@@ -3713,11 +3712,11 @@ impl UnluminousApp {
     fn cli_space_connect(&mut self, request: &Request) -> Outcome {
         let from = match self.a_named_node(request, "from") {
             Ok(node) => node,
-            Err(outcome) => return outcome,
+            Err(outcome) => return *outcome,
         };
         let to = match self.a_named_node(request, "to") {
             Ok(node) => node,
-            Err(outcome) => return outcome,
+            Err(outcome) => return *outcome,
         };
         let pipe = match request.text("pipe").as_deref().map(str::trim) {
             None => Pipe::Off,
@@ -3812,7 +3811,7 @@ impl UnluminousApp {
     fn cli_space_send(&mut self, request: &Request) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Terminal) {
             Ok(node) => node,
-            Err(outcome) => return outcome,
+            Err(outcome) => return *outcome,
         };
         let Some(text) = request.text("text") else {
             return no(request, code::USAGE, "Say what to type.");
@@ -3852,7 +3851,7 @@ impl UnluminousApp {
     fn cli_space_chat(&mut self, request: &Request) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Chat) {
             Ok(node) => node,
-            Err(outcome) => return outcome,
+            Err(outcome) => return *outcome,
         };
         let Some(verb) = request.text("verb") else {
             return no(request, code::USAGE, "Say what to do: state, send, new, stop, last, view.");
@@ -3890,7 +3889,7 @@ impl UnluminousApp {
     fn cli_space_read(&mut self, request: &Request) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Terminal) {
             Ok(node) => node,
-            Err(outcome) => return outcome,
+            Err(outcome) => return *outcome,
         };
         // Take in whatever the program has written since the last frame, so a read straight after a send is
         // not looking at the screen as it was before the command ran. `cli_terminal_read`'s own rule.
@@ -3911,7 +3910,7 @@ impl UnluminousApp {
     fn cli_space_font(&mut self, request: &Request) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Terminal) {
             Ok(node) => node,
-            Err(outcome) => return outcome,
+            Err(outcome) => return *outcome,
         };
         if request.switch("reset") {
             self.space.space.change(node, |state| {
@@ -3958,7 +3957,7 @@ impl UnluminousApp {
     fn cli_space_zoom(&mut self, request: &Request) -> Outcome {
         let node = match self.a_named_node(request, "node") {
             Ok(node) => node,
-            Err(outcome) => return outcome,
+            Err(outcome) => return *outcome,
         };
         if let Some(from) = request.number("from").map(|id| id as u64) {
             if !self.space.space.may_reach(from, node) {
@@ -4071,7 +4070,7 @@ impl UnluminousApp {
     fn cli_space_browser(&mut self, request: &Request, ctx: &egui::Context) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Browser) {
             Ok(node) => node,
-            Err(outcome) => return outcome,
+            Err(outcome) => return *outcome,
         };
         let Some(command) = request.text("command") else {
             return no(
@@ -4155,7 +4154,7 @@ impl UnluminousApp {
     fn cli_space_folder(&mut self, request: &Request) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Folder) {
             Ok(node) => node,
-            Err(outcome) => return outcome,
+            Err(outcome) => return *outcome,
         };
         let Some(command) = request.text("command") else {
             return no(
@@ -4287,37 +4286,46 @@ impl UnluminousApp {
     // ------------------------------------------------------------------------------- naming things
 
     /// The view a command named, by its name or by its id.
-    fn a_named_view(&self, request: &Request) -> Result<u64, Outcome> {
+    ///
+    /// The error is boxed because `Outcome` carries the whole of `Waiting`, which clippy flags as too
+    /// large to return unboxed.
+    fn a_named_view(&self, request: &Request) -> Result<u64, Box<Outcome>> {
         let Some(name) = request.text("view") else {
-            return Err(no(request, code::USAGE, "Say which view, by its name or its id."));
+            return Err(Box::new(no(
+                request,
+                code::USAGE,
+                "Say which view, by its name or its id.",
+            )));
         };
         self.space.space.view_named(name.trim()).ok_or_else(|| {
             let names: Vec<&str> =
                 self.space.space.views().iter().map(|view| view.name.as_str()).collect();
-            no(
+            Box::new(no(
                 request,
                 code::NOT_FOUND,
                 format!("There is no view called {name}. This canvas has {}.", names.join(", ")),
-            )
+            ))
         })
     }
 
     /// The node a command named, by its id.
-    fn a_named_node(&self, request: &Request, argument: &str) -> Result<NodeId, Outcome> {
+    ///
+    /// The error is boxed for the same reason `a_named_view`'s is.
+    fn a_named_node(&self, request: &Request, argument: &str) -> Result<NodeId, Box<Outcome>> {
         let Some(id) = request.number(argument).map(|id| id as u64) else {
-            return Err(no(
+            return Err(Box::new(no(
                 request,
                 code::USAGE,
                 format!("Say which node, with `{argument}` and an id from `space list`."),
-            ));
+            )));
         };
         match self.space.space.current().node(id).is_some() {
             true => Ok(id),
-            false => Err(no(
+            false => Err(Box::new(no(
                 request,
                 code::NOT_FOUND,
                 format!("There is no node {id} on {}.", self.space.space.current().name),
-            )),
+            ))),
         }
     }
 
@@ -4327,21 +4335,20 @@ impl UnluminousApp {
     /// node; one without it is the window's own agent. A node that is not wired to its target is
     /// refused with what it *is* wired to, so an agent that guessed is told what it may reach rather
     /// than left to guess again.
+    ///
+    /// The error is boxed for the same reason `a_named_view`'s is.
     fn a_reachable_node(
         &self,
         request: &Request,
         argument: &str,
         wanted: Kind,
-    ) -> Result<NodeId, Outcome> {
+    ) -> Result<NodeId, Box<Outcome>> {
         let node = self.a_named_node(request, argument)?;
-        let found = self
-            .space
-            .space
-            .current()
-            .node(node)
-            .ok_or_else(|| no(request, code::NOT_FOUND, format!("There is no node {node}.")))?;
+        let found = self.space.space.current().node(node).ok_or_else(|| {
+            Box::new(no(request, code::NOT_FOUND, format!("There is no node {node}.")))
+        })?;
         if found.kind() != wanted {
-            return Err(no(
+            return Err(Box::new(no(
                 request,
                 code::REFUSED,
                 format!(
@@ -4349,19 +4356,23 @@ impl UnluminousApp {
                     found.kind().name(),
                     wanted.name()
                 ),
-            ));
+            )));
         }
         let Some(from) = request.number("from").map(|id| id as u64) else {
             return Ok(node);
         };
         if self.space.space.current().node(from).is_none() {
-            return Err(no(request, code::NOT_FOUND, format!("There is no node {from}.")));
+            return Err(Box::new(no(
+                request,
+                code::NOT_FOUND,
+                format!("There is no node {from}."),
+            )));
         }
         if self.space.space.may_reach(from, node) {
             return Ok(node);
         }
         let reaches = self.space.space.current().reaches(from);
-        Err(no(
+        Err(Box::new(no(
             request,
             code::REFUSED,
             match reaches.is_empty() {
@@ -4371,7 +4382,7 @@ impl UnluminousApp {
                     reaches.iter().map(u64::to_string).collect::<Vec<_>>().join(", ")
                 ),
             },
-        ))
+        )))
     }
 }
 

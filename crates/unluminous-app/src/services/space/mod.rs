@@ -581,6 +581,26 @@ impl Space {
         self.dirty = true;
     }
 
+    /// Move the current view's camera by `by`, and remember that it moved.
+    ///
+    /// `task-1922` B8. `take_the_canvas_input` reached through `current_mut().camera` and mutated it
+    /// directly, and `write_the_space_if_it_changed` only writes when the canvas is dirty -- so a
+    /// canvas that was panned and left came back somewhere else. Every other camera mutation in that
+    /// file calls `touch()`; these two were the ones that did not, and the reason they could forget
+    /// is that there was nothing here to call. There is now, and dragging and zooming go through it.
+    pub fn pan_by(&mut self, by: Vec2) {
+        self.current_mut().camera.pan_by(by);
+        self.dirty = true;
+    }
+
+    /// Zoom the current view to `wanted`, keeping the world point under `at` where it is.
+    ///
+    /// The other half of [`Space::pan_by`], and dirty for the same reason.
+    pub fn zoom_at(&mut self, wanted: f32, origin: Pos2, at: Pos2) {
+        self.current_mut().camera.zoom_to(wanted, origin, at);
+        self.dirty = true;
+    }
+
     /// Every node on every view, which is what the window walks when it is stopping things.
     pub fn every_node(&self) -> impl Iterator<Item = (ViewId, &Node)> {
         self.views.iter().flat_map(|view| view.nodes.iter().map(move |node| (view.id, node)))
@@ -708,6 +728,27 @@ mod tests {
         assert_eq!(space.current().name, "Main");
         assert!(space.current().nodes.is_empty());
         assert!(!space.is_dirty(), "nothing has been changed yet");
+    }
+
+    /// **A canvas that was panned or zoomed has something to write down.** `task-1922` B8.
+    ///
+    /// `write_the_space_if_it_changed` only writes when the canvas is dirty, and dragging the empty
+    /// canvas and turning the wheel over it were the two mutations that reached the camera through
+    /// `current_mut()` and never said anything had changed. A canvas panned and left came back
+    /// somewhere else, and the reason those two could forget is that there was nothing to call.
+    #[test]
+    fn panning_or_zooming_the_canvas_is_something_to_write_down() {
+        let mut space = a_canvas();
+        assert!(!space.is_dirty(), "nothing has been changed yet");
+        space.pan_by(Vec2::new(-40.0, 12.0));
+        assert!(space.is_dirty(), "a pan moved the camera, so the file is out of date");
+        assert_eq!(space.current().camera.at, Pos2::new(40.0, -12.0), "and it really moved");
+
+        space.written();
+        assert!(!space.is_dirty());
+        space.zoom_at(1.5, Pos2::ZERO, Pos2::new(100.0, 100.0));
+        assert!(space.is_dirty(), "so did a zoom");
+        assert!((space.current().camera.zoom - 1.5).abs() < 0.001);
     }
 
     #[test]
