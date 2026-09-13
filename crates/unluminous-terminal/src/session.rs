@@ -1793,10 +1793,18 @@ Start-Sleep -Seconds 900"
         // is a bug nobody enjoys finding, and it is the one thing this could get wrong silently:
         // the program would still start, because Unluminous names it in full.
         let name = if cfg!(target_os = "windows") { "windir" } else { "HOME" };
+        // **The program waits after it has printed, and that is not padding.** `task-1922`: this
+        // test failed two releases running, on a machine with four agents on it, with the screen
+        // holding `""` and the program *ended with 0* -- so the shell ran, echoed, and the bytes
+        // never reached the emulator. That is the shape `services::run_configurations` already
+        // measured and wrote down: `cmd /c echo something` writes and exits inside a millisecond,
+        // and a pseudoconsole whose client is gone that quickly loses what it wrote. Keeping the
+        // shell alive until the marker has been read takes the race away; the session is dropped
+        // straight afterwards, which reaps the whole tree.
         let (shell_flag, command) = if cfg!(target_os = "windows") {
-            ("/c", format!("if defined {name} echo [inherited]"))
+            ("/c", format!("if defined {name} echo [inherited]& pause>nul"))
         } else {
-            ("-c", format!("[ -n \"${name}\" ] && echo \"[inherited]\""))
+            ("-c", format!("[ -n \"${name}\" ] && echo \"[inherited]\"; sleep 300"))
         };
         let settings = SessionSettings {
             shell: Some(test_shell()),
