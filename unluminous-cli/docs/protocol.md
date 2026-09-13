@@ -145,9 +145,12 @@ cannot rely on being there.
 
 **One command at a time reaches the window.** The listener queues a request and the window answers it
 at the top of its next frame, so a command's effect is in the frame about to be painted — which is
-why a screenshot taken straight after a command shows what the command did. Four commands are
-answered later than the frame they arrived on: `window screenshot`, `terminal read --wait-for`,
-`modal results --wait` and `git action --wait`. Each has a timeout, so nothing waits for ever.
+why a screenshot taken straight after a command shows what the command did. Nineteen commands are
+answered later than the frame they arrived on — every one with a `timeout` or a `wait` flag of its
+own: `launch`, `window screenshot`, `editor references`, `editor rename`, `update check`,
+`terminal read`, `run output`, `debug start`, `debug continue`, `debug step-over`, `debug step-into`,
+`debug step-out`, `debug run-to`, `debug hover`, `debug evaluate`, `debug status`, `modal results`,
+`git action` and `git switch`. Each has a timeout, so nothing waits for ever.
 
 **An idle window is woken until it answers.** The window has to draw a frame to drain the queue, and
 one request for a repaint can be lost — the graphics layer discards one it believes it has already

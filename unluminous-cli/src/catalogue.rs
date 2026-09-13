@@ -46,6 +46,11 @@ pub struct Argument {
     /// that `terminal send git status` needs no quotes.
     pub rest: bool,
     pub help: &'static str,
+    /// The words this argument accepts, when it is one of a closed set. Empty for free text, a
+    /// path, a number or anything else with no fixed list of answers. `usage()` prints these words
+    /// and the MCP tools narrow the argument's schema to an `enum` of them, so a model is told what
+    /// is accepted rather than finding out from a refusal.
+    pub values: &'static [&'static str],
 }
 
 /// One `--name` or `--name value`.
@@ -164,13 +169,22 @@ impl Command {
     }
 
     /// The usage line: the command, then each argument, then each flag.
+    ///
+    /// An argument with a closed set of `values` prints those words joined by `|` in place of its
+    /// name -- `<add|remove|list>` rather than `<action>` -- so the words in the summary and the
+    /// words in the usage line cannot drift apart.
     pub fn usage(&self) -> String {
         let mut line = format!("unluminous-cli {}", self.typed());
         for argument in self.arguments {
-            if argument.required {
-                line.push_str(&format!(" <{}>", argument.name));
+            let shown = if argument.values.is_empty() {
+                argument.name.to_owned()
             } else {
-                line.push_str(&format!(" [{}]", argument.name));
+                argument.values.join("|")
+            };
+            if argument.required {
+                line.push_str(&format!(" <{shown}>"));
+            } else {
+                line.push_str(&format!(" [{shown}]"));
             }
         }
         for flag in self.flags {
@@ -343,6 +357,7 @@ pub fn area_title(area: &'static str) -> &'static str {
         "tab" => "tab — the files that are open",
         "pane" => "pane — the editing area split into panes",
         "editor" => "editor — safely rename symbols everywhere, find every use and definitions",
+        "update" => "update — whether a newer Unluminous has been released",
         "highlight" => "highlight — the passages marked in the project's files",
         "fold" => "fold — the blocks collapsed in the tab that is showing",
         "panel" => "panel — which edge of the window each panel is docked to",
@@ -373,6 +388,7 @@ pub fn area_note(area: &'static str) -> &'static str {
         "tab" => "A tab holds a file. A relative path is resolved against the project folder, and every reply says which absolute path it used.",
         "pane" => "The editing area can be split into panes side by side, each with its own tabs, which is the reference editor's split view. `pane split` moves the tab that is showing into a new pane on the right — it moves rather than copies, because two tabs on one file would be two documents over one path. A pane holding only that tab keeps it and the new pane opens empty, ready for the next file: opening a file always lands in the pane that has the keyboard.",
         "editor" => "Use this tool first for project-symbol work. If asked to find every place a name is used, call `references` with `name`; if asked where a name is defined, call `definition`; if asked to rename it everywhere, call `rename` with `name`, `new-name` and `apply: true`. Do not begin those jobs with grep, file search, reads or file edits. Unluminous's native answers combine unsaved live open tabs with the project index, distinguish code from comments and strings, and apply a role-aware project rename as one undo step per open file while safely rewriting closed files. Lines and columns count from 1.",
+        "update" => "One request to the GitHub releases page, made only when this is run or when a person asks in the window. Unluminous sends nothing at startup unless the `update.check` setting says to, and this reports the version rather than installing anything.",
         "fold" => "A block that can be collapsed is a function, an `if`, a bracket that spans lines, a run of comments, an indented section, or a Markdown heading — worked out from the file itself, so nothing has to be written into it. Collapsing one hides its lines; the line numbers of everything still showing are unchanged, so `fold list` and `editor caret --line` speak the same language whatever is folded. `fold others` is the one to notice: it collapses everything that does not hold a marked passage, which is how to leave only the four places you care about on the screen.",
         "space" => "If `UNLUMINOUS_SPACE_NODE` is set in your environment you are running inside a node on this canvas, and `space here` is the first thing to run: it says which node you are, which nodes you are wired to, and the command that drives each of them. **`unluminous-cli` is not on your PATH** - it lives inside the application - so run it as `\"$UNLUMINOUS_CLI\" --instance $UNLUMINOUS_INSTANCE <command>`, which are both set in your environment. You may act on the nodes you are wired to and no others, so every command you send carries `--from <your node>`. The Base of Infinite Space is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `space browser`, `space folder`, `space editor` and `space send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `space view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.",
         "panel" => "Unluminous has four panels — the explorer, the terminal, the run tile and the debug tile — and each of them can be docked to any edge of the window, which is what dragging its header does. A side holds an ordered row of panels laid out left to right, so `panel dock terminal left --position 1` puts the terminal beside the explorer rather than in place of it. The terminal, run and debug tiles all draw a character grid and two grids in one strip would be two half-sized grids, so showing one puts away the other tiles **on its own side** — move one somewhere else and they are both showing at once. `panel list` says where everything is, including the rectangle each occupies, which is what to read before working out where a click lands.",
@@ -393,12 +409,25 @@ pub fn area_note(area: &'static str) -> &'static str {
 }
 
 const fn argument(name: &'static str, required: bool, help: &'static str) -> Argument {
-    Argument { name, required, rest: false, help }
+    Argument { name, required, rest: false, help, values: NO_VALUES }
 }
 
 /// An argument that takes the rest of the line, so the text after it needs no quoting.
 const fn rest(name: &'static str, required: bool, help: &'static str) -> Argument {
-    Argument { name, required, rest: true, help }
+    Argument { name, required, rest: true, help, values: NO_VALUES }
+}
+
+/// An argument that only ever holds one of a closed set of words, such as `add, remove or list`.
+///
+/// `values` is what the summary already says in prose — this is that same list made data, so
+/// `usage()` can print it and the MCP schema can narrow to an `enum` instead of a free string.
+const fn closed(
+    name: &'static str,
+    required: bool,
+    help: &'static str,
+    values: &'static [&'static str],
+) -> Argument {
+    Argument { name, required, rest: false, help, values }
 }
 
 const fn switch(name: &'static str, help: &'static str) -> Flag {
@@ -411,6 +440,7 @@ const fn option(name: &'static str, value: &'static str, help: &'static str) -> 
 
 const NO_ARGUMENTS: &[Argument] = &[];
 const NO_FLAGS: &[Flag] = &[];
+const NO_VALUES: &[&str] = &[];
 
 /// The one list.
 pub const COMMANDS: &[Command] = &[
@@ -687,7 +717,7 @@ pub const COMMANDS: &[Command] = &[
         area: "pane",
         verb: "move",
         summary: "Move the tab that is showing into the pane beside it.",
-        arguments: &[argument("direction", true, "left or right.")],
+        arguments: &[closed("direction", true, "left or right.", &["left", "right"])],
         flags: NO_FLAGS,
         examples: &["unluminous-cli pane move right", "unluminous-cli pane move left"],
         local: false,
@@ -839,7 +869,7 @@ pub const COMMANDS: &[Command] = &[
         area: "editor",
         verb: "view",
         summary: "Choose how a file with a preview is shown: the source, the source and the preview side by side, or the preview. Markdown and Mermaid files have one; nothing else does, and only a file with a preview can be shown any way but raw.",
-        arguments: &[argument("mode", true, "raw, side or preview.")],
+        arguments: &[closed("mode", true, "raw, side or preview.", &["raw", "side", "preview"])],
         flags: NO_FLAGS,
         examples: &["unluminous-cli editor view preview", "unluminous-cli editor view side"],
         local: false,
@@ -907,15 +937,6 @@ pub const COMMANDS: &[Command] = &[
             "unluminous-cli editor definition Rect --open --json",
             "unluminous-cli editor definition --line 42 --column 9 --open",
         ],
-        local: false,
-    },
-    Command {
-        area: "update",
-        verb: "check",
-        summary: "Whether a newer Unluminous has been released, and what this one is. One request to the GitHub releases page, made only when this is run or when a person asks in the window - Unluminous sends nothing at startup unless the update.check setting says to. It reports the version and never installs anything.",
-        arguments: NO_ARGUMENTS,
-        flags: &[option("timeout", "milliseconds", "How long to wait for the answer. 15000 by default.")],
-        examples: &["unluminous-cli update check --json"],
         local: false,
     },
     Command {
@@ -1032,6 +1053,16 @@ pub const COMMANDS: &[Command] = &[
         arguments: NO_ARGUMENTS,
         flags: NO_FLAGS,
         examples: &["unluminous-cli editor navigate-forward"],
+        local: false,
+    },
+    // ------------------------------------------------------------------------- the update check
+    Command {
+        area: "update",
+        verb: "check",
+        summary: "Whether a newer Unluminous has been released, and what this one is. One request to the GitHub releases page, made only when this is run or when a person asks in the window - Unluminous sends nothing at startup unless the update.check setting says to. It reports the version and never installs anything.",
+        arguments: NO_ARGUMENTS,
+        flags: &[option("timeout", "milliseconds", "How long to wait for the answer. 15000 by default.")],
+        examples: &["unluminous-cli update check --json"],
         local: false,
     },
     // ------------------------------------------------------------------ the marked passages
@@ -1175,7 +1206,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Move a panel to an edge of the window: the same change dragging its header makes. A side can hold more than one panel, side by side, so the terminal can sit beside the explorer down the left.",
         arguments: &[
             argument("panel", true, "explorer, terminal, run, debug, or a contributed pane's <plugin>/<pane>."),
-            argument("side", true, "left, right, top or bottom."),
+            closed("side", true, "left, right, top or bottom.", &["left", "right", "top", "bottom"]),
         ],
         flags: &[option(
             "position",
@@ -1247,99 +1278,6 @@ pub const COMMANDS: &[Command] = &[
         arguments: NO_ARGUMENTS,
         flags: NO_FLAGS,
         examples: &["unluminous-cli space hide"],
-        local: false,
-    },
-    Command {
-        area: "input",
-        verb: "move",
-        summary: "Move the pointer to a place in the window and leave it there, which is what makes something hover. Positions are the window's own points with 0,0 at its top left corner - the same points `window screenshot` writes out, so a position measured off a picture is the position to use. Nothing about this needs the window to be in front: the person's own pointer does not move and the window is never activated.",
-        arguments: &[
-            argument("x", true, "Across the window, in points."),
-            argument("y", true, "Down the window, in points."),
-        ],
-        flags: NO_FLAGS,
-        examples: &["unluminous-cli input move 300 220"],
-        local: false,
-    },
-    Command {
-        area: "input",
-        verb: "click",
-        summary: "Click at a place in the window: the pointer moves there, the button goes down and comes up again, over three frames, which is what makes it a click rather than a flicker. The window does not have to be in front and is not brought to the front. Positions are the window's own points, which is what `window screenshot` writes out.",
-        arguments: &[
-            argument("x", true, "Across the window, in points."),
-            argument("y", true, "Down the window, in points."),
-        ],
-        flags: &[
-            switch("right", "The secondary button, which opens a context menu."),
-            switch("middle", "The middle button, which closes a tab."),
-            switch("twice", "Two clicks, which is a double click."),
-            switch("ctrl", "Hold control."),
-            switch("shift", "Hold shift."),
-            switch("alt", "Hold alt."),
-            switch("cmd", "Hold command on macOS, control on Windows - the key a menu shortcut names."),
-        ],
-        examples: &[
-            "unluminous-cli input click 300 220",
-            "unluminous-cli input click 120 96 --twice",
-            "unluminous-cli input click 300 220 --right",
-        ],
-        local: false,
-    },
-    Command {
-        area: "input",
-        verb: "drag",
-        summary: "Drag from one place in the window to another: the pointer arrives, the button goes down, it is moved in steps, and it is let go. The steps are frames of their own because that is what a drag is - every drag in Unluminous is settled from the difference between two frames.",
-        arguments: &[
-            argument("x", true, "Where the drag starts, across the window."),
-            argument("y", true, "Where the drag starts, down the window."),
-        ],
-        flags: &[
-            option("to-x", "points", "Where it ends, across the window."),
-            option("to-y", "points", "Where it ends, down the window."),
-            option("steps", "count", "How many positions it is moved through. 20 when it is not given."),
-        ],
-        examples: &["unluminous-cli input drag 660 110 --to-x 1250 --to-y 700"],
-        local: false,
-    },
-    Command {
-        area: "input",
-        verb: "key",
-        summary: "Press a key and let it go, in whatever has the keyboard. The name is the one egui uses: a letter, a digit, `Enter`, `Escape`, `Tab`, `Backspace`, `Delete`, `Space`, `ArrowUp`, `F2` and the rest. A key produces no text - `input text` is what types.",
-        arguments: &[argument("key", true, "The key's name.")],
-        flags: &[
-            switch("ctrl", "Hold control."),
-            switch("shift", "Hold shift."),
-            switch("alt", "Hold alt."),
-            switch("cmd", "Hold command on macOS, control on Windows - the key a menu shortcut names."),
-            option("times", "count", "Press it more than once."),
-        ],
-        examples: &[
-            "unluminous-cli input key Escape",
-            "unluminous-cli input key ArrowDown --times 3",
-            "unluminous-cli input key s --cmd",
-        ],
-        local: false,
-    },
-    Command {
-        area: "input",
-        verb: "text",
-        summary: "Type into whatever has the keyboard, one character a frame. Each character is sent as the key press and the text a real keyboard produces, because the editing area reads one and a text box reads both.",
-        arguments: &[rest("text", true, "What to type. It is the rest of the line, so it needs no quoting.")],
-        flags: NO_FLAGS,
-        examples: &["unluminous-cli input text hello there"],
-        local: false,
-    },
-    Command {
-        area: "input",
-        verb: "wheel",
-        summary: "Turn the mouse wheel where the pointer is, in notches. A negative number scrolls down the page, which is what turning the wheel towards you does. `input move` is what puts the pointer over the thing to scroll.",
-        arguments: &[argument("notches", true, "How many notches, negative for down the page.")],
-        flags: &[
-            option("across", "notches", "Sideways, for a list that scrolls that way."),
-            switch("ctrl", "Hold control, which is what zooms."),
-            switch("cmd", "Hold command, which is what zooms on macOS."),
-        ],
-        examples: &["unluminous-cli input wheel -3", "unluminous-cli input wheel 2 --ctrl"],
         local: false,
     },
     Command {
@@ -1443,7 +1381,12 @@ pub const COMMANDS: &[Command] = &[
         area: "space",
         verb: "add",
         summary: "Put a node on the view that is showing and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with UNLUMINOUS_SPACE_NODE set to its id so an agent started in it knows which node it is, UNLUMINOUS_SPACE_HINT saying what to run first, and UNLUMINOUS_CLI and UNLUMINOUS_INSTANCE saying where `unluminous-cli` is and which window it drives - it is on nobody's PATH.",
-        arguments: &[argument("kind", true, "terminal, browser, folder, editor, chat or tasks.")],
+        arguments: &[closed(
+            "kind",
+            true,
+            "terminal, browser, folder, editor, chat or tasks.",
+            &["terminal", "browser", "folder", "editor", "chat", "tasks"],
+        )],
         flags: &[
             option("x", "points", "Where to put it, in canvas points. The middle of what is showing when it is not given."),
             option("y", "points", "The same, down the canvas."),
@@ -1590,7 +1533,15 @@ pub const COMMANDS: &[Command] = &[
         summary: "Drive an Agent Chat node's own conversation: `new`, `send`, `stop`, `state`, `messages`, `last`, `attach`, `providers`, `use`, `history`, `open`, `remove`, `tools` and `view`, which are the same verbs `plugins run agent-chat` has and reach the same code. The difference is whose conversation: each chat node holds one of its own, where `plugins run agent-chat` drives the pane's. Like the pane's, `send` does not wait - `state` says when the answer has arrived.",
         arguments: &[
             argument("node", true, "The chat node's id, from `space list`."),
-            argument("verb", true, "What to do: new, send, stop, state, messages, last, attach, providers, use, history, open, remove, tools or view."),
+            closed(
+                "verb",
+                true,
+                "What to do: new, send, stop, state, messages, last, attach, providers, use, history, open, remove, tools or view.",
+                &[
+                    "new", "send", "stop", "state", "messages", "last", "attach", "providers", "use",
+                    "history", "open", "remove", "tools", "view",
+                ],
+            ),
             rest("words", false, "What the verb takes: the message for `send`, the conversation id for `open`, `on` or `off` for `tools`. It is the rest of the line, so a message needs no quoting."),
         ],
         flags: &[option("from", "node", "Which node is asking. It must be wired to the one it names.")],
@@ -1660,7 +1611,12 @@ pub const COMMANDS: &[Command] = &[
         summary: "Drive a browser node: `go` to an address, `back`, `forward`, `reload`, `url` to read where it is, and `shot` to write a picture of the node to a file. A window renders one page at a time, so the node acted on is shown first. **`shot` photographs the node as Unluminous drew it and not the page inside it**: a rendered page is a native child window the operating system composites on top, and no picture taken from inside Unluminous contains one. Use it to see the node, its address bar and where it is on the canvas; use `url` to read the address, and the agent's own tools to read what a page says.",
         arguments: &[
             argument("node", true, "The browser node's id."),
-            argument("command", true, "go, back, forward, reload, url or shot."),
+            closed(
+                "command",
+                true,
+                "go, back, forward, reload, url or shot.",
+                &["go", "back", "forward", "reload", "url", "shot"],
+            ),
         ],
         flags: &[
             option("url", "address", "Where to go, for `go`."),
@@ -1679,7 +1635,12 @@ pub const COMMANDS: &[Command] = &[
         summary: "Drive a folder node: `expand` and `collapse` a folder in it, `select` a row, `open` a file, `root` to point it at another folder, and `rows` to read what it is showing. `open` puts the file in a File Editor node this one is wired to when there is one, and in the editing area when there is not — which is what a double click in the node does. `root` is what the node's own `Choose Folder...` menu row calls, so several folder nodes can show several different folders.",
         arguments: &[
             argument("node", true, "The folder node's id."),
-            argument("command", true, "expand, collapse, select, open, root or rows."),
+            closed(
+                "command",
+                true,
+                "expand, collapse, select, open, root or rows.",
+                &["expand", "collapse", "select", "open", "root", "rows"],
+            ),
         ],
         flags: &[
             option("path", "path", "Which row, or which folder for `root`."),
@@ -1701,6 +1662,100 @@ pub const COMMANDS: &[Command] = &[
         ],
         flags: &[option("from", "node", "Which node is asking. It must be wired to the one it names.")],
         examples: &["unluminous-cli space editor 13 src/main.rs --from 7"],
+        local: false,
+    },
+    // ----------------------------------------------------------------------- the input commands
+    Command {
+        area: "input",
+        verb: "move",
+        summary: "Move the pointer to a place in the window and leave it there, which is what makes something hover. Positions are the window's own points with 0,0 at its top left corner - the same points `window screenshot` writes out, so a position measured off a picture is the position to use. Nothing about this needs the window to be in front: the person's own pointer does not move and the window is never activated.",
+        arguments: &[
+            argument("x", true, "Across the window, in points."),
+            argument("y", true, "Down the window, in points."),
+        ],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli input move 300 220"],
+        local: false,
+    },
+    Command {
+        area: "input",
+        verb: "click",
+        summary: "Click at a place in the window: the pointer moves there, the button goes down and comes up again, over three frames, which is what makes it a click rather than a flicker. The window does not have to be in front and is not brought to the front. Positions are the window's own points, which is what `window screenshot` writes out.",
+        arguments: &[
+            argument("x", true, "Across the window, in points."),
+            argument("y", true, "Down the window, in points."),
+        ],
+        flags: &[
+            switch("right", "The secondary button, which opens a context menu."),
+            switch("middle", "The middle button, which closes a tab."),
+            switch("twice", "Two clicks, which is a double click."),
+            switch("ctrl", "Hold control."),
+            switch("shift", "Hold shift."),
+            switch("alt", "Hold alt."),
+            switch("cmd", "Hold command on macOS, control on Windows - the key a menu shortcut names."),
+        ],
+        examples: &[
+            "unluminous-cli input click 300 220",
+            "unluminous-cli input click 120 96 --twice",
+            "unluminous-cli input click 300 220 --right",
+        ],
+        local: false,
+    },
+    Command {
+        area: "input",
+        verb: "drag",
+        summary: "Drag from one place in the window to another: the pointer arrives, the button goes down, it is moved in steps, and it is let go. The steps are frames of their own because that is what a drag is - every drag in Unluminous is settled from the difference between two frames.",
+        arguments: &[
+            argument("x", true, "Where the drag starts, across the window."),
+            argument("y", true, "Where the drag starts, down the window."),
+        ],
+        flags: &[
+            option("to-x", "points", "Where it ends, across the window."),
+            option("to-y", "points", "Where it ends, down the window."),
+            option("steps", "count", "How many positions it is moved through. 20 when it is not given."),
+        ],
+        examples: &["unluminous-cli input drag 660 110 --to-x 1250 --to-y 700"],
+        local: false,
+    },
+    Command {
+        area: "input",
+        verb: "key",
+        summary: "Press a key and let it go, in whatever has the keyboard. The name is the one egui uses: a letter, a digit, `Enter`, `Escape`, `Tab`, `Backspace`, `Delete`, `Space`, `ArrowUp`, `F2` and the rest. A key produces no text - `input text` is what types.",
+        arguments: &[argument("key", true, "The key's name.")],
+        flags: &[
+            switch("ctrl", "Hold control."),
+            switch("shift", "Hold shift."),
+            switch("alt", "Hold alt."),
+            switch("cmd", "Hold command on macOS, control on Windows - the key a menu shortcut names."),
+            option("times", "count", "Press it more than once."),
+        ],
+        examples: &[
+            "unluminous-cli input key Escape",
+            "unluminous-cli input key ArrowDown --times 3",
+            "unluminous-cli input key s --cmd",
+        ],
+        local: false,
+    },
+    Command {
+        area: "input",
+        verb: "text",
+        summary: "Type into whatever has the keyboard, one character a frame. Each character is sent as the key press and the text a real keyboard produces, because the editing area reads one and a text box reads both.",
+        arguments: &[rest("text", true, "What to type. It is the rest of the line, so it needs no quoting.")],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli input text hello there"],
+        local: false,
+    },
+    Command {
+        area: "input",
+        verb: "wheel",
+        summary: "Turn the mouse wheel where the pointer is, in notches. A negative number scrolls down the page, which is what turning the wheel towards you does. `input move` is what puts the pointer over the thing to scroll.",
+        arguments: &[argument("notches", true, "How many notches, negative for down the page.")],
+        flags: &[
+            option("across", "notches", "Sideways, for a list that scrolls that way."),
+            switch("ctrl", "Hold control, which is what zooms."),
+            switch("cmd", "Hold command, which is what zooms on macOS."),
+        ],
+        examples: &["unluminous-cli input wheel -3", "unluminous-cli input wheel 2 --ctrl"],
         local: false,
     },
     // ----------------------------------------------------------------------------- the terminal
@@ -2025,7 +2080,12 @@ pub const COMMANDS: &[Command] = &[
         verb: "breakpoint",
         summary: "Where the program is to stop. `add` and `remove` take a file and a line; `list` prints every one in the project, with what the debugger said about it while a session is running. Breakpoints are kept in .unluminous/breakpoints.conf and move with the text as the file is edited.",
         arguments: &[
-            argument("action", true, "add, remove, enable, disable, list, or clear."),
+            closed(
+                "action",
+                true,
+                "add, remove, enable, disable, list, or clear.",
+                &["add", "remove", "enable", "disable", "list", "clear"],
+            ),
             argument("path", false, "The file. Not needed for list or clear."),
             argument("line", false, "The line, counting from 1."),
         ],
@@ -2122,7 +2182,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "watch",
         summary: "Expressions re-evaluated at every stop. `add` and `remove` take one; `list` prints them with their last answers.",
         arguments: &[
-            argument("action", true, "add, remove, or list."),
+            closed("action", true, "add, remove, or list.", &["add", "remove", "list"]),
             rest("expression", false, "The expression, for add and remove."),
         ],
         flags: NO_FLAGS,
@@ -2163,7 +2223,7 @@ pub const COMMANDS: &[Command] = &[
         area: "debug",
         verb: "install",
         summary: "Install a debug adapter by running its own install command in the run tile, where it can be watched with `run output` and stopped. Unluminous itself downloads nothing: what runs is a package manager, or an editor's extension installer, named by `debug adapters`.",
-        arguments: &[argument("adapter", true, "Which debugger: lldb or node.")],
+        arguments: &[closed("adapter", true, "Which debugger: lldb or node.", &["lldb", "node"])],
         flags: NO_FLAGS,
         examples: &["unluminous-cli debug install lldb"],
         local: false,
@@ -2345,7 +2405,12 @@ pub const COMMANDS: &[Command] = &[
         area: "modal",
         verb: "open",
         summary: "Open a modal, and put something in its box in the same breath.",
-        arguments: &[argument("name", true, "go-to-file, find-in-files, settings, about, new-file or rename.")],
+        arguments: &[closed(
+            "name",
+            true,
+            "go-to-file, find-in-files, settings, about, new-file or rename.",
+            &["go-to-file", "find-in-files", "settings", "about", "new-file", "rename"],
+        )],
         flags: &[
             option("query", "text", "Type this into the modal's box as it opens."),
             option("path", "path", "The folder a new file goes in, or the file being renamed. Needed by new-file and rename."),
@@ -2770,7 +2835,7 @@ pub const COMMANDS: &[Command] = &[
         area: "mcp",
         verb: "install",
         summary: "Write Unluminous's MCP server into an agent's own configuration, so it is there next time the agent starts.",
-        arguments: &[argument("client", true, "`claude`, `codex`, or `both`.")],
+        arguments: &[closed("client", true, "`claude`, `codex`, or `both`.", &["claude", "codex", "both"])],
         flags: &[
             option("transport", "stdio|http", "Which way the agent should talk to it. `stdio` by default, which needs no port."),
             option("port", "number", "The port to point at, for `--transport http`."),
@@ -2785,7 +2850,7 @@ pub const COMMANDS: &[Command] = &[
         area: "mcp",
         verb: "config",
         summary: "Print the configuration to paste into an agent that has no button of its own: the JSON an `mcpServers` block wants, and the TOML Codex wants.",
-        arguments: &[argument("client", false, "`claude` or `codex`. Both when it is left out.")],
+        arguments: &[closed("client", false, "`claude` or `codex`. Both when it is left out.", &["claude", "codex"])],
         flags: &[
             option("transport", "stdio|http", "Which way to describe. `stdio` by default."),
             option("port", "number", "The port to name, for `--transport http`."),
@@ -3096,6 +3161,59 @@ mod tests {
                         argument.name
                     );
                 }
+            }
+        }
+    }
+
+    /// **A closed set of words named in the summary is closed data too.** `task-1922` WP2.
+    ///
+    /// Thirteen arguments read, in their own summary, as a short exhaustive list of plain words --
+    /// "add, remove or list.", "left, right, top or bottom." -- and then reached the MCP schema as a
+    /// free string, so a caller only found out what was accepted from a refusal. `Argument::values`
+    /// is where the words go instead, and this is what stops the next one being added the old way.
+    ///
+    /// The check is deliberately narrow, and it is worth being honest about what it misses rather
+    /// than pretending it is a parser: it reads the summary's first sentence, drops one leading
+    /// "word word: " introduction such as "What to do: " or "Which debugger: ", and asks whether
+    /// what is left is nothing but short words -- lower case, hyphenated, or backtick-quoted --
+    /// joined by ", " with a final "or". A summary that says "such as", or that puts a real sentence
+    /// beside the list -- "The file. Not needed for list or clear." -- fails this on purpose: it is
+    /// giving examples or talking about something else, not naming a closed set, and forcing it into
+    /// `values` would be a guess rather than a reading. That is the trade this makes: it will not
+    /// find a closed set phrased in a way nobody has written yet, but it does not need to, because
+    /// every argument that already reads as one is checked here.
+    #[test]
+    fn every_closed_set_argument_names_its_words() {
+        fn reads_as_a_closed_list(help: &str) -> bool {
+            let first_sentence = help.split(". ").next().unwrap_or(help).trim_end_matches('.');
+            let after_intro = match first_sentence.rsplit_once(": ") {
+                Some((_, words)) => words,
+                None => first_sentence,
+            };
+            if !after_intro.contains(" or ") {
+                return false;
+            }
+            let normalised = after_intro.replace(", or ", ", ").replace(" or ", ", ");
+            let words: Vec<&str> = normalised.split(", ").collect();
+            words.len() >= 2
+                && words.iter().all(|word| {
+                    let word = word.trim_matches('`');
+                    !word.is_empty() && word.chars().all(|c| c.is_ascii_lowercase() || c == '-')
+                })
+        }
+
+        for command in COMMANDS {
+            for argument in command.arguments {
+                if argument.rest || !argument.values.is_empty() {
+                    continue;
+                }
+                assert!(
+                    !reads_as_a_closed_list(argument.help),
+                    "{}'s {} reads as a closed list ({:?}) but names no values",
+                    command.typed(),
+                    argument.name,
+                    argument.help
+                );
             }
         }
     }

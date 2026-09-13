@@ -8,21 +8,22 @@
 //!
 //! ## Two shapes, and why there is a choice at all
 //!
-//! There are a hundred and sixty commands — up from a hundred and thirty-six when this table was
-//! first written, `task-28`'s Agent-Tasks plugin having added the board's own dozen `plugins`
-//! verbs since. A tool definition costs an agent context on every conversation the server is
-//! connected to, before it reads a word of the question, so the two shapes were generated from
-//! the real catalogue and measured rather than guessed at:
+//! There are two hundred and eight commands as of `task-1922` WP2 — up from a hundred and
+//! thirty-six when this table was first written, `task-28`'s Agent-Tasks plugin and `task-1904`'s
+//! Base of Infinite Space having each added an area's worth of `plugins` and `space` verbs since. A
+//! tool definition costs an agent context on every conversation the server is connected to, before
+//! it reads a word of the question, so the two shapes were generated from the real catalogue and
+//! measured rather than guessed at:
 //!
 //! | Shape | Tools | Bytes of JSON | Tokens (≈ bytes ÷ 4) |
 //! |---|---|---|---|
-//! | [`Shape::Every`] — one tool a command | 160 | 160,284 | ~40,071 |
-//! | [`Shape::Grouped`] — one tool an area | 23 | 64,798 | ~16,199 |
+//! | [`Shape::Every`] — one tool a command | 207 | 226,772 | ~56,693 |
+//! | [`Shape::Grouped`] — one tool an area | 28 | 105,525 | ~26,381 |
 //!
-//! Nearly two and a half times the context, which is what makes `Grouped` the default. It is not a smaller
+//! A little over twice the context, which is what makes `Grouped` the default. It is not a smaller
 //! description of Unluminous: every command is still there, with its usage line and its summary, in the
 //! area tool's description — which is `docs/commands.md`, the document a local model scored 100%
-//! from, cut into fourteen pieces and put where the agent is already looking.
+//! from, cut into twenty-four pieces and put where the agent is already looking.
 //!
 //! `Every` exists for one reason and it is a good one: Claude Code permits a tool by name, so
 //! "may open tabs, may not quit" needs `tab open` to be a tool of its own. Somebody who wants that
@@ -37,10 +38,10 @@ use crate::catalogue::{self, Command};
 /// How many tools the catalogue is cut into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Shape {
-    /// One tool an area, with the area's verbs as an `enum`. Fourteen tools.
+    /// One tool an area, with the area's verbs as an `enum`. Twenty-eight tools.
     #[default]
     Grouped,
-    /// One tool a command. Ninety-seven tools, and per-tool permissions.
+    /// One tool a command. Two hundred and seven tools, and per-tool permissions.
     Every,
 }
 
@@ -273,6 +274,13 @@ fn grouped() -> Vec<Tool> {
 /// The nested object is a union because the selected verb is already an enum. It exposes every
 /// catalogue name once, which gives clients completion without repeating a full schema for every
 /// verb and keeps the default grouped shape within its context budget.
+///
+/// A name two verbs both take can carry two different closed sets -- `debug breakpoint`'s `action`
+/// and `debug watch`'s `action` are not the same six words -- and the union can only hold one
+/// `enum` under one key. The first verb that names it wins, so a later verb's true words can be a
+/// narrower set than what the union shows. That is a looser schema for that verb, never a tighter
+/// one: nothing the catalogue really accepts is left out, and the usage line in the description
+/// still says the words that verb actually takes.
 fn grouped_schema(commands: &[&'static Command], verbs: Vec<Value>) -> Value {
     let mut arguments = Map::new();
     for command in commands {
@@ -281,7 +289,7 @@ fn grouped_schema(commands: &[&'static Command], verbs: Vec<Value>) -> Value {
             // `RENAMED_IN_A_GROUPED_CALL`.
             arguments
                 .entry(offered_as(argument.name).to_owned())
-                .or_insert_with(|| json!({ "type": "string" }));
+                .or_insert_with(|| argument_property(argument));
         }
         for flag in command.flags {
             arguments.entry(flag.name.to_owned()).or_insert_with(|| {
@@ -290,6 +298,33 @@ fn grouped_schema(commands: &[&'static Command], verbs: Vec<Value>) -> Value {
             });
         }
     }
+    // One branch a verb, so a model is told what that verb needs rather than only what `command`
+    // itself is required to be. A verb with no required argument still gets a branch -- naming
+    // nothing further -- because `oneOf` has to cover every word `command`'s `enum` allows, or a
+    // call naming an uncovered verb would fail every branch and the schema would call a real
+    // command invalid.
+    let one_of: Vec<Value> = commands
+        .iter()
+        .zip(&verbs)
+        .map(|(command, verb)| {
+            let required: Vec<Value> = command
+                .arguments
+                .iter()
+                .filter(|argument| argument.required)
+                .map(|argument| json!(offered_as(argument.name)))
+                .collect();
+            if required.is_empty() {
+                json!({ "properties": { "command": { "const": verb } } })
+            } else {
+                json!({
+                    "properties": {
+                        "command": { "const": verb },
+                        "arguments": { "required": required },
+                    },
+                })
+            }
+        })
+        .collect();
     json!({
         "type": "object",
         "properties": {
@@ -307,6 +342,7 @@ fn grouped_schema(commands: &[&'static Command], verbs: Vec<Value>) -> Value {
             "instance": instance_property(),
             "timeout": timeout_property(),
         },
+        "oneOf": one_of,
         "required": ["command"],
         "additionalProperties": false,
     })
@@ -415,8 +451,9 @@ fn command_schema(command: &Command) -> Value {
                 " It is the rest of the line, so it may hold spaces and needs no quoting.",
             );
         }
-        properties
-            .insert(argument.name.to_owned(), json!({ "type": "string", "description": help }));
+        let mut schema = argument_property(argument);
+        schema["description"] = json!(help);
+        properties.insert(argument.name.to_owned(), schema);
         if argument.required {
             required.push(json!(argument.name));
         }
@@ -442,6 +479,17 @@ fn command_schema(command: &Command) -> Value {
         schema["required"] = Value::Array(required);
     }
     schema
+}
+
+/// The schema for one argument on its own: a string, narrowed to an `enum` of its
+/// [`catalogue::Argument::values`] when it has any. Shared by `command_schema` and
+/// `grouped_schema`, so the two shapes cannot narrow a closed argument two different ways.
+fn argument_property(argument: &catalogue::Argument) -> Value {
+    if argument.values.is_empty() {
+        json!({ "type": "string" })
+    } else {
+        json!({ "type": "string", "enum": argument.values })
+    }
 }
 
 /// The first of the two properties every tool has, in both shapes.
@@ -1311,6 +1359,10 @@ mod tests {
         //            before it, the only way to produce one was synthetic operating system input, which
         //            goes to the *foreground* window and therefore took the keyboard out of whatever the
         //            person was typing into — and on Windows switched the virtual desktop with it.
+        //   26,381   `task-1922` WP2's `oneOf` branches, one a verb, naming that verb's own required
+        //            arguments — before this the schema's only `required` was `["command"]`, so a
+        //            model was told which word a verb was and left to find its required arguments
+        //            from a refusal. Ceiling moved to 27,000 afterwards.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
@@ -1318,7 +1370,7 @@ mod tests {
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
         assert!(
-            grouped.len() / 4 < 23_500,
+            grouped.len() / 4 < 27_000,
             "grouped MCP schema exceeded budget: {} bytes",
             grouped.len()
         );

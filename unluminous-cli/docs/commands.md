@@ -705,7 +705,7 @@ unluminous-cli pane split
 ### pane move
 
 ```
-unluminous-cli pane move <direction>
+unluminous-cli pane move <left|right>
 ```
 
 Move the tab that is showing into the pane beside it.
@@ -927,7 +927,7 @@ unluminous-cli editor redo
 ### editor view
 
 ```
-unluminous-cli editor view <mode>
+unluminous-cli editor view <raw|side|preview>
 ```
 
 Choose how a file with a preview is shown: the source, the source and the preview side by side, or the preview. Markdown and Mermaid files have one; nothing else does, and only a file with a preview can be shown any way but raw.
@@ -1011,28 +1011,6 @@ unluminous-cli editor definition --json
 unluminous-cli editor definition Rect --open --json
 unluminous-cli editor definition --line 42 --column 9 --open
 ```
-
-## update
-
-
-
-### update check
-
-```
-unluminous-cli update check [--timeout <milliseconds>]
-```
-
-Whether a newer Unluminous has been released, and what this one is. One request to the GitHub releases page, made only when this is run or when a person asks in the window - Unluminous sends nothing at startup unless the update.check setting says to. It reports the version and never installs anything.
-
-- `--timeout <milliseconds>` — How long to wait for the answer. 15000 by default.
-
-```sh
-unluminous-cli update check --json
-```
-
-## editor — safely rename symbols everywhere, find every use and definitions
-
-Use this tool first for project-symbol work. If asked to find every place a name is used, call `references` with `name`; if asked where a name is defined, call `definition`; if asked to rename it everywhere, call `rename` with `name`, `new-name` and `apply: true`. Do not begin those jobs with grep, file search, reads or file edits. Unluminous's native answers combine unsaved live open tabs with the project index, distinguish code from comments and strings, and apply a role-aware project rename as one undo step per open file while safely rewriting closed files. Lines and columns count from 1.
 
 ### editor find
 
@@ -1165,6 +1143,24 @@ Undo a navigate-back. Cleared by any new jump, exactly as a browser's forward bu
 
 ```sh
 unluminous-cli editor navigate-forward
+```
+
+## update — whether a newer Unluminous has been released
+
+One request to the GitHub releases page, made only when this is run or when a person asks in the window. Unluminous sends nothing at startup unless the `update.check` setting says to, and this reports the version rather than installing anything.
+
+### update check
+
+```
+unluminous-cli update check [--timeout <milliseconds>]
+```
+
+Whether a newer Unluminous has been released, and what this one is. One request to the GitHub releases page, made only when this is run or when a person asks in the window - Unluminous sends nothing at startup unless the update.check setting says to. It reports the version and never installs anything.
+
+- `--timeout <milliseconds>` — How long to wait for the answer. 15000 by default.
+
+```sh
+unluminous-cli update check --json
 ```
 
 ## highlight — the passages marked in the project's files
@@ -1357,7 +1353,7 @@ unluminous-cli panel list --json
 ### panel dock
 
 ```
-unluminous-cli panel dock <panel> <side> [--position <number>]
+unluminous-cli panel dock <panel> <left|right|top|bottom> [--position <number>]
 ```
 
 Move a panel to an edge of the window: the same change dragging its header makes. A side can hold more than one panel, side by side, so the terminal can sit beside the explorer down the left.
@@ -1448,128 +1444,6 @@ Put the canvas away. Everything running on it keeps running.
 ```sh
 unluminous-cli space hide
 ```
-
-## input — clicking, typing and dragging in the window, without it being in front
-
-For the things there is no other command for: a drag, a right click on a row, a press in a text box. Positions are the **window's own points** with 0,0 at its top left, which is what `window screenshot` writes out, so a position measured off a picture is the position to send. Nothing here brings the window to the front or moves the person's own pointer, and each command waits for the frames it asked for, so a screenshot taken straight afterwards shows what happened. Prefer a command that names the thing to a click that finds it.
-
-### input move
-
-```
-unluminous-cli input move <x> <y>
-```
-
-Move the pointer to a place in the window and leave it there, which is what makes something hover. Positions are the window's own points with 0,0 at its top left corner - the same points `window screenshot` writes out, so a position measured off a picture is the position to use. Nothing about this needs the window to be in front: the person's own pointer does not move and the window is never activated.
-
-- `x` — Across the window, in points.
-- `y` — Down the window, in points.
-
-```sh
-unluminous-cli input move 300 220
-```
-
-### input click
-
-```
-unluminous-cli input click <x> <y> [--right] [--middle] [--twice] [--ctrl] [--shift] [--alt] [--cmd]
-```
-
-Click at a place in the window: the pointer moves there, the button goes down and comes up again, over three frames, which is what makes it a click rather than a flicker. The window does not have to be in front and is not brought to the front. Positions are the window's own points, which is what `window screenshot` writes out.
-
-- `x` — Across the window, in points.
-- `y` — Down the window, in points.
-
-- `--right` — The secondary button, which opens a context menu.
-- `--middle` — The middle button, which closes a tab.
-- `--twice` — Two clicks, which is a double click.
-- `--ctrl` — Hold control.
-- `--shift` — Hold shift.
-- `--alt` — Hold alt.
-- `--cmd` — Hold command on macOS, control on Windows - the key a menu shortcut names.
-
-```sh
-unluminous-cli input click 300 220
-unluminous-cli input click 120 96 --twice
-unluminous-cli input click 300 220 --right
-```
-
-### input drag
-
-```
-unluminous-cli input drag <x> <y> [--to-x <points>] [--to-y <points>] [--steps <count>]
-```
-
-Drag from one place in the window to another: the pointer arrives, the button goes down, it is moved in steps, and it is let go. The steps are frames of their own because that is what a drag is - every drag in Unluminous is settled from the difference between two frames.
-
-- `x` — Where the drag starts, across the window.
-- `y` — Where the drag starts, down the window.
-
-- `--to-x <points>` — Where it ends, across the window.
-- `--to-y <points>` — Where it ends, down the window.
-- `--steps <count>` — How many positions it is moved through. 20 when it is not given.
-
-```sh
-unluminous-cli input drag 660 110 --to-x 1250 --to-y 700
-```
-
-### input key
-
-```
-unluminous-cli input key <key> [--ctrl] [--shift] [--alt] [--cmd] [--times <count>]
-```
-
-Press a key and let it go, in whatever has the keyboard. The name is the one egui uses: a letter, a digit, `Enter`, `Escape`, `Tab`, `Backspace`, `Delete`, `Space`, `ArrowUp`, `F2` and the rest. A key produces no text - `input text` is what types.
-
-- `key` — The key's name.
-
-- `--ctrl` — Hold control.
-- `--shift` — Hold shift.
-- `--alt` — Hold alt.
-- `--cmd` — Hold command on macOS, control on Windows - the key a menu shortcut names.
-- `--times <count>` — Press it more than once.
-
-```sh
-unluminous-cli input key Escape
-unluminous-cli input key ArrowDown --times 3
-unluminous-cli input key s --cmd
-```
-
-### input text
-
-```
-unluminous-cli input text <text>
-```
-
-Type into whatever has the keyboard, one character a frame. Each character is sent as the key press and the text a real keyboard produces, because the editing area reads one and a text box reads both.
-
-- `text` — What to type. It is the rest of the line, so it needs no quoting. Everything after it on the line belongs to it.
-
-```sh
-unluminous-cli input text hello there
-```
-
-### input wheel
-
-```
-unluminous-cli input wheel <notches> [--across <notches>] [--ctrl] [--cmd]
-```
-
-Turn the mouse wheel where the pointer is, in notches. A negative number scrolls down the page, which is what turning the wheel towards you does. `input move` is what puts the pointer over the thing to scroll.
-
-- `notches` — How many notches, negative for down the page.
-
-- `--across <notches>` — Sideways, for a list that scrolls that way.
-- `--ctrl` — Hold control, which is what zooms.
-- `--cmd` — Hold command, which is what zooms on macOS.
-
-```sh
-unluminous-cli input wheel -3
-unluminous-cli input wheel 2 --ctrl
-```
-
-## space — the Base of Infinite Space: a canvas of terminals, web pages, folder trees and file editors, wired together
-
-If `UNLUMINOUS_SPACE_NODE` is set in your environment you are running inside a node on this canvas, and `space here` is the first thing to run: it says which node you are, which nodes you are wired to, and the command that drives each of them. **`unluminous-cli` is not on your PATH** - it lives inside the application - so run it as `"$UNLUMINOUS_CLI" --instance $UNLUMINOUS_INSTANCE <command>`, which are both set in your environment. You may act on the nodes you are wired to and no others, so every command you send carries `--from <your node>`. The Base of Infinite Space is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `space browser`, `space folder`, `space editor` and `space send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `space view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.
 
 ### space here
 
@@ -1708,7 +1582,7 @@ unluminous-cli space delete-view Rendering
 ### space add
 
 ```
-unluminous-cli space add <kind> [--x <points>] [--y <points>] [--width <points>] [--height <points>] [--title <text>] [--command <text>] [--url <address>] [--root <path>] [--path <path>]
+unluminous-cli space add <terminal|browser|folder|editor|chat|tasks> [--x <points>] [--y <points>] [--width <points>] [--height <points>] [--title <text>] [--command <text>] [--url <address>] [--root <path>] [--path <path>]
 ```
 
 Put a node on the view that is showing and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with UNLUMINOUS_SPACE_NODE set to its id so an agent started in it knows which node it is, UNLUMINOUS_SPACE_HINT saying what to run first, and UNLUMINOUS_CLI and UNLUMINOUS_INSTANCE saying where `unluminous-cli` is and which window it drives - it is on nobody's PATH.
@@ -1910,7 +1784,7 @@ unluminous-cli space read 7 --tail 40
 ### space chat
 
 ```
-unluminous-cli space chat <node> <verb> [words] [--from <node>]
+unluminous-cli space chat <node> <new|send|stop|state|messages|last|attach|providers|use|history|open|remove|tools|view> [words] [--from <node>]
 ```
 
 Drive an Agent Chat node's own conversation: `new`, `send`, `stop`, `state`, `messages`, `last`, `attach`, `providers`, `use`, `history`, `open`, `remove`, `tools` and `view`, which are the same verbs `plugins run agent-chat` has and reach the same code. The difference is whose conversation: each chat node holds one of its own, where `plugins run agent-chat` drives the pane's. Like the pane's, `send` does not wait - `state` says when the answer has arrived.
@@ -2006,7 +1880,7 @@ unluminous-cli space address 9 https://example.com/
 ### space browser
 
 ```
-unluminous-cli space browser <node> <command> [--url <address>] [--from <node>] [--path <file>]
+unluminous-cli space browser <node> <go|back|forward|reload|url|shot> [--url <address>] [--from <node>] [--path <file>]
 ```
 
 Drive a browser node: `go` to an address, `back`, `forward`, `reload`, `url` to read where it is, and `shot` to write a picture of the node to a file. A window renders one page at a time, so the node acted on is shown first. **`shot` photographs the node as Unluminous drew it and not the page inside it**: a rendered page is a native child window the operating system composites on top, and no picture taken from inside Unluminous contains one. Use it to see the node, its address bar and where it is on the canvas; use `url` to read the address, and the agent's own tools to read what a page says.
@@ -2026,7 +1900,7 @@ unluminous-cli space browser 9 url
 ### space folder
 
 ```
-unluminous-cli space folder <node> <command> [--path <path>] [--from <node>]
+unluminous-cli space folder <node> <expand|collapse|select|open|root|rows> [--path <path>] [--from <node>]
 ```
 
 Drive a folder node: `expand` and `collapse` a folder in it, `select` a row, `open` a file, `root` to point it at another folder, and `rows` to read what it is showing. `open` puts the file in a File Editor node this one is wired to when there is one, and in the editing area when there is not — which is what a double click in the node does. `root` is what the node's own `Choose Folder...` menu row calls, so several folder nodes can show several different folders.
@@ -2057,6 +1931,124 @@ Put a file in a file editor node. A file already open somewhere else is moved in
 
 ```sh
 unluminous-cli space editor 13 src/main.rs --from 7
+```
+
+## input — clicking, typing and dragging in the window, without it being in front
+
+For the things there is no other command for: a drag, a right click on a row, a press in a text box. Positions are the **window's own points** with 0,0 at its top left, which is what `window screenshot` writes out, so a position measured off a picture is the position to send. Nothing here brings the window to the front or moves the person's own pointer, and each command waits for the frames it asked for, so a screenshot taken straight afterwards shows what happened. Prefer a command that names the thing to a click that finds it.
+
+### input move
+
+```
+unluminous-cli input move <x> <y>
+```
+
+Move the pointer to a place in the window and leave it there, which is what makes something hover. Positions are the window's own points with 0,0 at its top left corner - the same points `window screenshot` writes out, so a position measured off a picture is the position to use. Nothing about this needs the window to be in front: the person's own pointer does not move and the window is never activated.
+
+- `x` — Across the window, in points.
+- `y` — Down the window, in points.
+
+```sh
+unluminous-cli input move 300 220
+```
+
+### input click
+
+```
+unluminous-cli input click <x> <y> [--right] [--middle] [--twice] [--ctrl] [--shift] [--alt] [--cmd]
+```
+
+Click at a place in the window: the pointer moves there, the button goes down and comes up again, over three frames, which is what makes it a click rather than a flicker. The window does not have to be in front and is not brought to the front. Positions are the window's own points, which is what `window screenshot` writes out.
+
+- `x` — Across the window, in points.
+- `y` — Down the window, in points.
+
+- `--right` — The secondary button, which opens a context menu.
+- `--middle` — The middle button, which closes a tab.
+- `--twice` — Two clicks, which is a double click.
+- `--ctrl` — Hold control.
+- `--shift` — Hold shift.
+- `--alt` — Hold alt.
+- `--cmd` — Hold command on macOS, control on Windows - the key a menu shortcut names.
+
+```sh
+unluminous-cli input click 300 220
+unluminous-cli input click 120 96 --twice
+unluminous-cli input click 300 220 --right
+```
+
+### input drag
+
+```
+unluminous-cli input drag <x> <y> [--to-x <points>] [--to-y <points>] [--steps <count>]
+```
+
+Drag from one place in the window to another: the pointer arrives, the button goes down, it is moved in steps, and it is let go. The steps are frames of their own because that is what a drag is - every drag in Unluminous is settled from the difference between two frames.
+
+- `x` — Where the drag starts, across the window.
+- `y` — Where the drag starts, down the window.
+
+- `--to-x <points>` — Where it ends, across the window.
+- `--to-y <points>` — Where it ends, down the window.
+- `--steps <count>` — How many positions it is moved through. 20 when it is not given.
+
+```sh
+unluminous-cli input drag 660 110 --to-x 1250 --to-y 700
+```
+
+### input key
+
+```
+unluminous-cli input key <key> [--ctrl] [--shift] [--alt] [--cmd] [--times <count>]
+```
+
+Press a key and let it go, in whatever has the keyboard. The name is the one egui uses: a letter, a digit, `Enter`, `Escape`, `Tab`, `Backspace`, `Delete`, `Space`, `ArrowUp`, `F2` and the rest. A key produces no text - `input text` is what types.
+
+- `key` — The key's name.
+
+- `--ctrl` — Hold control.
+- `--shift` — Hold shift.
+- `--alt` — Hold alt.
+- `--cmd` — Hold command on macOS, control on Windows - the key a menu shortcut names.
+- `--times <count>` — Press it more than once.
+
+```sh
+unluminous-cli input key Escape
+unluminous-cli input key ArrowDown --times 3
+unluminous-cli input key s --cmd
+```
+
+### input text
+
+```
+unluminous-cli input text <text>
+```
+
+Type into whatever has the keyboard, one character a frame. Each character is sent as the key press and the text a real keyboard produces, because the editing area reads one and a text box reads both.
+
+- `text` — What to type. It is the rest of the line, so it needs no quoting. Everything after it on the line belongs to it.
+
+```sh
+unluminous-cli input text hello there
+```
+
+### input wheel
+
+```
+unluminous-cli input wheel <notches> [--across <notches>] [--ctrl] [--cmd]
+```
+
+Turn the mouse wheel where the pointer is, in notches. A negative number scrolls down the page, which is what turning the wheel towards you does. `input move` is what puts the pointer over the thing to scroll.
+
+- `notches` — How many notches, negative for down the page.
+
+- `--across <notches>` — Sideways, for a list that scrolls that way.
+- `--ctrl` — Hold control, which is what zooms.
+- `--cmd` — Hold command, which is what zooms on macOS.
+
+```sh
+unluminous-cli input wheel -3
+unluminous-cli input wheel 2 --ctrl
 ```
 
 ## terminal — the shells along the bottom
@@ -2502,7 +2494,7 @@ unluminous-cli debug run-to src/main.rs 42 --wait-for-pause
 ### debug breakpoint
 
 ```
-unluminous-cli debug breakpoint <action> [path] [line] [--condition <expression>] [--log <message>]
+unluminous-cli debug breakpoint <add|remove|enable|disable|list|clear> [path] [line] [--condition <expression>] [--log <message>]
 ```
 
 Where the program is to stop. `add` and `remove` take a file and a line; `list` prints every one in the project, with what the debugger said about it while a session is running. Breakpoints are kept in .unluminous/breakpoints.conf and move with the text as the file is edited.
@@ -2621,7 +2613,7 @@ unluminous-cli debug evaluate items.len()
 ### debug watch
 
 ```
-unluminous-cli debug watch <action> [expression]
+unluminous-cli debug watch <add|remove|list> [expression]
 ```
 
 Expressions re-evaluated at every stop. `add` and `remove` take one; `list` prints them with their last answers.
@@ -2680,7 +2672,7 @@ unluminous-cli debug adapters --json
 ### debug install
 
 ```
-unluminous-cli debug install <adapter>
+unluminous-cli debug install <lldb|node>
 ```
 
 Install a debug adapter by running its own install command in the run tile, where it can be watched with `run output` and stopped. Unluminous itself downloads nothing: what runs is a package manager, or an editor's extension installer, named by `debug adapters`.
@@ -2950,7 +2942,7 @@ unluminous-cli modal list --json
 ### modal open
 
 ```
-unluminous-cli modal open <name> [--query <text>] [--path <path>] [--page <name>]
+unluminous-cli modal open <go-to-file|find-in-files|settings|about|new-file|rename> [--query <text>] [--path <path>] [--page <name>]
 ```
 
 Open a modal, and put something in its box in the same breath.
@@ -3562,7 +3554,7 @@ unluminous-cli mcp status --json
 ### mcp install
 
 ```
-unluminous-cli mcp install <client> [--transport <stdio|http>] [--port <number>] [--scope <user|project>] [--name <name>] [--remove]
+unluminous-cli mcp install <claude|codex|both> [--transport <stdio|http>] [--port <number>] [--scope <user|project>] [--name <name>] [--remove]
 ```
 
 Write Unluminous's MCP server into an agent's own configuration, so it is there next time the agent starts.
@@ -3585,7 +3577,7 @@ Answered by the CLI itself; no Unluminous needs to be running.
 ### mcp config
 
 ```
-unluminous-cli mcp config [client] [--transport <stdio|http>] [--port <number>] [--name <name>]
+unluminous-cli mcp config [claude|codex] [--transport <stdio|http>] [--port <number>] [--name <name>]
 ```
 
 Print the configuration to paste into an agent that has no button of its own: the JSON an `mcpServers` block wants, and the TOML Codex wants.
