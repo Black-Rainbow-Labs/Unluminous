@@ -42,6 +42,19 @@ pub struct GitState {
     pub recent_messages: Vec<String>,
     /// What git last said, for the status bar.
     pub message: Option<String>,
+    /// Whether [`GitState::message`] is a progress note rather than an answer.
+    ///
+    /// **The three replies that finish a piece of background work may clear a progress note and must
+    /// not clear an answer**, and without this they could not tell the two apart. `task-1922`
+    /// measured what that cost: every action that changes a repository puts git's own words here and
+    /// then asks for a `Refresh` and a `Log`, so `Reply::Log` wiped them a few frames later. `Add`,
+    /// `Fetch`, `Continue` and `Abort` each said what git said and then said nothing, **a failure
+    /// included** -- and this crate's rule is that git explains itself better than Unluminous could,
+    /// which a line nobody can read for three frames does not do.
+    ///
+    /// It is a bit beside the message rather than a kind on it, because `message` is read in a dozen
+    /// places that want only the words and none of them has any use for the difference.
+    pub working: bool,
     /// Set once the first read has come back.
     read: bool,
 }
@@ -74,13 +87,27 @@ impl GitState {
             recent_messages: Vec::new(),
             message: None,
             read: false,
+            working: false,
         })
     }
 
     /// Ask the thread for something.
     pub fn send(&mut self, request: Request) {
         self.message = Some(format!("{}\u{2026}", request.label()));
+        self.working = true;
         self.worker.send(request);
+    }
+
+    /// Take a progress note off the status bar, leaving an answer alone.
+    ///
+    /// The three replies that finish a piece of background work call this rather than clearing
+    /// `message` themselves, so none of them can take the bit and the message out of step. See
+    /// [`GitState::working`].
+    fn said_nothing_more(&mut self) {
+        if self.working {
+            self.message = None;
+            self.working = false;
+        }
     }
 
     /// What is running, for the status bar.
@@ -114,6 +141,7 @@ impl GitState {
                         self.message = Some(format!(
                             "{label} \u{2014} finish it or abandon it from the Git menu"
                         ));
+                        self.working = false;
                     }
                 }
                 Reply::Blame(path, blame) => {
@@ -134,7 +162,11 @@ impl GitState {
                         }
                         redraw = true;
                     }
-                    self.message = None;
+                    // **Only a progress note.** `Annotating...` and the line the change bars are
+                    // read behind are progress, and this reply is the end of the work they describe,
+                    // so the note goes when the work does -- but an answer sitting here from an
+                    // action that has just finished stays. See `GitState::working`.
+                    self.said_nothing_more();
                 }
                 Reply::ChangedLines(path, changes) => {
                     let changes: Vec<(usize, Change)> = changes
@@ -155,7 +187,11 @@ impl GitState {
                         }
                         redraw = true;
                     }
-                    self.message = None;
+                    // **Only a progress note.** `Annotating...` and the line the change bars are
+                    // read behind are progress, and this reply is the end of the work they describe,
+                    // so the note goes when the work does -- but an answer sitting here from an
+                    // action that has just finished stays. See `GitState::working`.
+                    self.said_nothing_more();
                 }
                 Reply::Log(commits) => {
                     self.recent_messages = commits
@@ -170,12 +206,25 @@ impl GitState {
                         })
                         .collect();
                     self.history = commits;
-                    self.message = None;
+                    // **A progress note only, and this is the arm `task-1922` found.** Every action
+                    // that changes a repository ends by asking for a `Refresh` and a `Log`, so this
+                    // arm runs a few frames after the words git answered with were put in the status
+                    // bar -- and clearing them meant `Add`, `Fetch`, `Continue` and `Abort` each said
+                    // what git said and then, a moment later, said nothing at all. A failure went
+                    // the same way, which is the half that matters: this crate's rule is that git
+                    // explains itself better than Unluminous could, and a line nobody can read for
+                    // three frames does not do that.
+                    //
+                    // It still clears the note the **panel** puts here, because opening the panel
+                    // asks for the recent messages through `send` and the status bar says so while
+                    // it does. `GitState::working` is what tells those two apart.
+                    self.said_nothing_more();
                 }
                 Reply::Text { title, body } => {
                     self.dialogs.open =
                         Some(crate::components::git_dialogs::Dialog::Text { title, body });
-                    self.message = None;
+                    // A dialog is what the answer is now, so the status line has nothing to add.
+                    self.said_nothing_more();
                 }
                 Reply::Done { label, outcome } => {
                     // Git's own message, always. A rejected push and a merge conflict both explain
@@ -190,6 +239,7 @@ impl GitState {
                     } else {
                         format!("{label} failed: {said}")
                     });
+                    self.working = false;
                     self.worker.send(Request::Refresh);
                     self.worker.send(Request::Log { path: None, limit: HISTORY_LIMIT });
                     // What git says about a file has changed, so anything annotated is annotated
@@ -203,6 +253,7 @@ impl GitState {
                     } else {
                         format!("Clone failed: {}", outcome.summary())
                     });
+                    self.working = false;
                     if outcome.ok {
                         crate::services::launcher::open_window(&folder);
                     }

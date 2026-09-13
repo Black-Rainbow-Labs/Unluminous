@@ -248,6 +248,37 @@ fn unknown_argument_refusal(request: &Request) -> Option<Outcome> {
     ))
 }
 
+/// A value of a kind the command cannot use is refused, rather than being dropped and the command
+/// run as though it had not been sent.
+///
+/// The other half of [`unknown_argument_refusal`], and the same fault seen from the other side: that
+/// one is about a name the command does not have, and this is about a name it has whose **value** it
+/// cannot read. `Request::number` answers `None` for an absent key and for an unusable one alike, so
+/// `window size --width nonsense` set no width and reported success, and so did `editor caret --line
+/// nonsense`, `explorer width nonsense` and `explorer tree --limit nonsense`. `task-1922` B13
+/// measured six of them.
+///
+/// Which names hold a number is [`unluminous_cli::catalogue::Kind`], written down beside each
+/// argument and flag, so this refuses every one of them without knowing what any command does — and
+/// a name marked as a number later is covered the day it is marked.
+fn wrong_number_refusal(request: &Request) -> Option<Outcome> {
+    let command = unluminous_cli::catalogue::find(&request.command)?;
+    let wrong = unluminous_cli::catalogue::wrong_numbers(command, &request.arguments);
+    if wrong.is_empty() {
+        return None;
+    }
+    let said: Vec<String> = wrong
+        .iter()
+        .map(|(name, given)| {
+            let kind = unluminous_cli::catalogue::kind_of(command, name)
+                .map(|kind| kind.named())
+                .unwrap_or("a number");
+            format!("{} takes {kind} for {name}, and it was given `{given}`.", command.typed())
+        })
+        .collect();
+    Some(no(request, code::USAGE, said.join(" ")))
+}
+
 /// `a`, `a or b`, `a, b or c` — one name read as a name and three read as a list.
 fn either(names: &[String]) -> String {
     match names {
@@ -686,6 +717,9 @@ impl UnluminousApp {
         if let Some(refusal) = unknown_argument_refusal(request) {
             return refusal;
         }
+        if let Some(refusal) = wrong_number_refusal(request) {
+            return refusal;
+        }
         let (area, verb) = match request.command.split_once('.') {
             Some((area, verb)) => (area, verb),
             None => ("", request.command.as_str()),
@@ -946,6 +980,12 @@ impl UnluminousApp {
             "tabs": self.tabs_value(),
             "activeTab": self.files.active_index(),
             "panes": self.panes_value(),
+            // **Whether the editing area is showing**, which is not in `panels` below and cannot be:
+            // `dock::Panel::ALL` is the four panels that dock to an edge, and the editing area is
+            // what the rest of the window is left over from. `task-1922` found that `toggle-editor`
+            // therefore changed something no command could read back -- the one thing an agent could
+            // do to this window and then not see.
+            "editorShowing": self.editor_visible,
             // Which edge each panel is docked to, because since `task-1697` the terminal is not
             // necessarily along the bottom and nothing driving the window can assume it is.
             "panels": dock::Panel::ALL

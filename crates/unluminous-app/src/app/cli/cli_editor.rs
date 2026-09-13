@@ -396,6 +396,10 @@ impl UnluminousApp {
             "canUndo": self.document().can_undo(),
             "canRedo": self.document().can_redo(),
             "previewApplies": file_kind::preview_applies(file.path()),
+            // **Whether the gutter is annotated with git blame.** Right clicking the gutter turns it
+            // on, and until `task-1922` nothing could be asked whether it was: an agent could see the
+            // menu entry and could not see what pressing it did.
+            "blame": file.blame.is_some(),
             "kind": file_kind::kind_name(file.path()),
             // What the file was on disk and what saving it will write. The same two facts the status
             // bar draws, so an agent can read what a person can see -- which is the rule the whole
