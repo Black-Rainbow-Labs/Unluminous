@@ -47,6 +47,10 @@ pub struct PluginsOutcome {
     pub uninstall: Option<String>,
     /// Switch a plugin on or off.
     pub set_enabled: Option<(String, bool)>,
+    /// How tall the page came out. This one sizes itself to the rectangle it is given — both of its
+    /// columns run to `area.bottom()` and each scrolls on its own — so it is exactly the room there
+    /// is, and the dialog never draws a second bar over the two it already has.
+    pub height: f32,
 }
 
 /// Draw the page into `area`.
@@ -58,7 +62,7 @@ pub fn show(
     installed_on_disk: &dyn Fn(&str) -> bool,
     icon_for: &dyn Fn(&str) -> Option<egui::TextureHandle>,
 ) -> PluginsOutcome {
-    let mut outcome = PluginsOutcome::default();
+    let mut outcome = PluginsOutcome { height: area.height(), ..PluginsOutcome::default() };
     let header = header(ui, area, state, plugins);
     let list = Rect::from_min_max(
         Pos2::new(area.left() + 20.0, header),

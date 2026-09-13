@@ -1190,15 +1190,31 @@ is compared against, changed only when the design changes. `crates/unluminous-ap
 **accepted output** — a change that alters the rendering fails against it, and `UPDATE_SNAPSHOTS=1`
 accepts a new one after somebody has opened the image and looked at it.
 
-**The Settings window is one size for every page, and the tallest page is what it has to hold.** It
-grew from 560 to 640 points when `task-1679` added the MCP page, because a dialog that changed height
-as its list was walked would jump under the pointer, and because a settings page here does not scroll.
-It grew to 680 when `task-1776` added an Interface section to Appearance, which took Appearance past
-MCP as the tallest and left its last line of explanation thirteen points off the bottom edge — **a page
-that fits exactly is a page where the next line added to it is drawn off the bottom and nobody
-notices**, so the number holds the tallest page with room rather than to the point. The other pages
-gain empty space, which is the cheaper of the two costs. If a page ever needs more than 680, that is
-the point at which a scrolling page area is worth building rather than another forty points.
+**The Settings window is one size for every page, and the page scrolls inside it.** It grew from 560
+to 640 points when `task-1679` added the MCP page and to 680 when `task-1776` added an Interface
+section to Appearance, each time because a page had outgrown it. The height itself is right — a dialog
+that changed height as its list was walked would jump under the pointer — but growing it was the wrong
+answer, and `task-1922` measured that it had already failed: **a page that fits exactly is a page where
+the next line added to it is drawn off the bottom and nobody notices**, and that is what had happened.
+The Editor page ran 217 points past the body, and its `Check for a newer version at startup` tick box
+was painted 89 points below the dialog's bottom edge, over the window, in an accepted picture nobody
+had questioned. The MCP page was 40 points over.
+
+So the window stayed at 680 and `components::settings_dialog` gained a scrolling page area instead.
+The four numbers it rests on: the page is drawn into the body **lifted** by however far it is scrolled,
+because every page positions what it draws from `area.top()` down and no page has to know it is being
+scrolled; what keeps it inside the body is the **clip**, since `Painter::with_clip_rect` intersects and
+`Ui::interact` cuts a control's interact rectangle the same way; the clip is saved and restored round
+the page rather than the page being drawn into a child `Ui`, because a child has an id of its own and
+every control on every page is named from the id of the `Ui` it is drawn into; and a page reports how
+tall it came out, because a page is a pen running down the rectangle it was given and where the pen
+stopped is only known once the last thing has been drawn. The bar is `components::scrollbar`, the one
+every document already has, and `Bar::new` answers `None` when a page fits — so the seven pages that
+already fitted show no bar and are drawn exactly where they were. The Plugins page and the three pages
+a plugin contributes report the body's own height, because each of them already scrolls itself.
+
+`cargo test -p unluminous-app --lib how_tall_every_page_is -- --nocapture` prints how tall every page
+is against the body, so the next row added to one is measured rather than guessed at.
 
 `components::modal` is the furniture every modal is made of: the frame, the header, the body
 rectangle, the footer, the buttons, the rows, a field and a tick box. The Settings window, the commit
@@ -1275,6 +1291,91 @@ needle.
 work: `controls::menu_rows` draws a submenu as a heading with its entries in the same list rather than
 as a flyout, which is right for a menu this shape and is why the Edit menu was already at the limit of
 a 740 point window. Four more entries pushed `Settings` off the bottom where nothing could reach it.
+
+## A line command is one `Command`, and a chord is checked against the ones there are
+
+`task-1922` WP4 is the editing a person notices on day one and Unluminous had none of: a comment
+toggle, duplicate, move, join and sort a line, `Go to Line`, the matching bracket, reopening a closed
+tab, an indentation setting, and a palette that finds a menu entry by name.
+
+**Every one of the seven editing commands is a `Command` variant in `unluminous-core` applied through
+`Document::apply`**, so each is one undo step by construction and each is already walked by
+`every_command()`. What the window adds is the three things the crate deliberately does not know:
+which marker this language comments with, whether a setting says to do it, and what a person sees.
+`app/code_editing.rs` is all of the second and third.
+
+**The marker comes from the plugin.** `file_kind::line_comment` and `file_kind::block_comment` answer
+with the marker rather than with a yes, because the menu needs to know whether to draw the entry and
+the command needs to know what to put in front of the line, and two functions would be two chances to
+disagree about a file. They are the seventh and eighth questions of the shape `formatting_applies`
+started. A language that names neither gets **no entry**, which is the absent control rule: CSS will
+never have a `//`, and it keeps its block comment entry while losing the line one.
+
+**A chord is checked against `actions.rs` before it is bound, and two of the design's were not free.**
+`Cmd/Ctrl+D` is Git's `Show Diff` and `Cmd/Ctrl+G` is `Find Next`, so Duplicate Line is
+`Cmd/Ctrl+Shift+D` and Go to Line is `Cmd/Ctrl+L`. Moving a chord somebody already has in their
+fingers so a new feature can have it was weighed and refused.
+`_agent_output/task-1928-plans/wp4-chords.md` is the whole table.
+
+**`Cmd+L` was not free in the editing area either, and that is a second list nobody was checking.**
+`components::editor_view` reads four alignment chords itself — they are on no menu, so it has to —
+and `Key::L if shortcut` was align left while `Key::J if shortcut` ignored shift, so `Cmd+Shift+J`
+justified a paragraph as well. Go to Line and Join Lines are menu entries, and the menu's watcher does
+not consume a press, so one press would have done both. Align left lost its chord, `J` compares shift
+now, and both still have their buttons in the `F` flyout. **When a chord is checked, `actions.rs` is
+half the list**: the other half is every `if shortcut` arm in `editor_view::handle_input`.
+
+**A shifted punctuation chord has to name the shifted spelling.** `egui_winit` builds its key from
+`logical_key.or(physical_key)`, the logical one first, so on a keyboard where shift and `/` produce
+`?` the frame carries `Key::Questionmark` and never `Key::Slash`. `Shortcut::matches` accepts the
+shifted spelling of `Slash` and `Backslash` when the shortcut asks for shift — without it,
+`Cmd+Shift+/` and `Cmd+Shift+\` could not be pressed at all and would have looked like chords that
+simply did nothing.
+
+**`Alt+Up` and `Alt+Down` are the one pair read from the keyboard**, because they are the one pair
+with no menu entry. They are read in `app::frame::route_the_keys_before_the_panes` with the completion
+popup's keys and the explorer's, and the key is **taken out of the frame** rather than merely read: a
+bare `ArrowUp` left in reaches `editor_view::handle_input` and moves the caret off the line that has
+just moved.
+
+**The palette is `Go to File` over a different list, ranked by the same scorer.**
+`components::command_palette` draws it, `services::file_search::score` ranks it — the same function,
+not a second one written for names — and `UnluminousApp::every_menu_command` is the one walk of the
+menus there is, which `action list`, `action find` and the palette all read. Enter runs the row
+through `run_action`. **A dimmed row is shown dimmed and refused with the reason**, because somebody
+looking for `Redo` wants to be told there is nothing to redo rather than told there is no such
+command. It is on `Find` rather than on `Edit`: that menu exists because Edit ran off the bottom of a
+740 point window once four searching entries were added to it, and WP4 adds seven more.
+
+**`editor.indent` says what one indent is, and it cannot yet say it about a selection.** The default is
+`tabs`, which is what the `Tab` key already typed — `task-1922` §2 says a setting added to a shipped
+editor leaves the current behaviour as the default, and §5.5's note that `spaces:4` is what Unluminous
+already does was measured and is not. With nothing selected, `Tab` types what the setting says.
+Indenting a **selection** still moves each line by one character, because
+`unluminous_core::IndentUnit` is a character and the crate says why; applying `Command::Indent` four
+times would be four undo steps, and rebuilding the edit in the window would be a second implementation
+of a command the crate already has. The fix is one field — a width on `Command::Indent` — and it
+belongs beside the loop that would read it.
+
+**`editor.trim` is off and never runs on Markdown.** Two spaces at the end of a line there are a line
+break, so trimming them changes what the document means rather than tidying it;
+`file_kind::trimming_applies` is what decides, and it answers no for a document nobody has saved
+anywhere because `save` writes one to `untitled.md`. It runs in `trim_before_writing`, called from the
+one place a tab is written, so a save from the menu, from `Ctrl+S`, from `tab save` and from closing a
+modified tab all do the same thing — and it is an ordinary `Command`, so a person who did not mean it
+can undo it.
+
+**A closed tab is remembered as a path and a `Home`, not as a document.** A tab closed with unsaved
+changes has already been written by `save_before_closing` and one closed with `--discard` was discarded
+on purpose, so reopening means reading the file again either way. The ten most recent are kept, the
+same file twice is one row, and the keyboard is put where the tab used to live before the file is
+opened — so it comes back in its own pane through `open_path_permanently` rather than through a second
+opening path. Travel history rather than state: bounded, and not written to disk, which is the line
+`back` and `forward` already draw.
+
+`unluminous-cli editor comment | lines | bracket | trim`, `tab reopen` and `action find` are the
+agent's half, and `modal open command-palette` drives the palette the way `modal` drives every other
+dialog.
 
 ## Every control has a name, and now something reads them
 

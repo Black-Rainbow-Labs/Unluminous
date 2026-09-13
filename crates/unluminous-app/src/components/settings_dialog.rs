@@ -15,6 +15,7 @@ use crate::components::controls;
 use crate::components::mcp_page::{self, McpState};
 use crate::components::modal;
 use crate::components::plugins_page::{self, PluginsState};
+use crate::components::scrollbar;
 use crate::services::plugins::Plugins;
 use crate::settings::{
     LineEndings, Page, Settings, Suggestions, UpdateCheck, ValueTooltip, FONT_SIZES, MIN_OPACITY,
@@ -25,19 +26,71 @@ use crate::theme::{color, icon, size};
 /// How large the window is, before it is shrunk to fit a small Unluminous window.
 ///
 /// It grew by eighty points when `task-1679` added the MCP page, and by forty more when `task-1776`
-/// added an Interface section to Appearance — which took Appearance past MCP as the tallest page, and
-/// left its last line of explanation thirteen points off the bottom edge. The window is one size for
-/// every page — a dialog that changed height as its list was walked would jump under the pointer — so
-/// the tallest page is what it has to hold, and it holds it with room rather than exactly. A page that
-/// fits exactly is a page where the next line of explanation is drawn off the bottom and nobody
-/// notices. The other pages gain empty space, which is the cheaper of the two costs, and `modal::fit`
-/// still shrinks the whole thing to whatever room a small Unluminous window has.
+/// added an Interface section to Appearance. Each of those was the same move: a page had outgrown the
+/// window, so the window was made taller. `task-1922` is where that stopped, because it was measured
+/// and it had already failed — the Editor page ran past the body in the accepted pictures and its
+/// `Check for a newer version at startup` tick box was drawn outside the dialog altogether, over the
+/// window below the footer, and nobody noticed. Forty more points would have moved the same fault to
+/// whichever page the next row is added to.
+///
+/// So the window is still one size for every page — a dialog that changed height as its list was
+/// walked would jump under the pointer — and the **page** scrolls instead. A page that fits shows no
+/// bar and is drawn exactly where it was; a page that does not is cut to the body and can be scrolled
+/// down it. `modal::fit` still shrinks the whole thing to whatever room a small Unluminous window has,
+/// and a page that no longer fits the shrunken body now scrolls rather than being cut off.
 const WIDTH: f32 = 900.0;
 const HEIGHT: f32 = 680.0;
 /// How wide the list of pages is.
 const LIST_WIDTH: f32 = 258.0;
 const HEADER: f32 = 46.0;
 const FOOTER: f32 = 52.0;
+
+/// How much room is left under the last thing on a page.
+///
+/// A page whose last line of explanation ended exactly on the body's bottom edge would read as a page
+/// that had been cut off, whether or not it had been.
+const TAIL: f32 = 16.0;
+/// What the page's scrollbar is called. `components::scrollbar` puts `Scroll` in front of it, so the
+/// control's name is `Scroll settings`, which nothing else in the window answers to.
+const SCROLLBAR: &str = "settings";
+
+/// What a page reported when it was drawn: whether a setting changed, and how tall the page is.
+///
+/// The height is what decides whether there is anything to scroll. It cannot be worked out in advance
+/// — a page is a pen running down the rectangle it was given, and where the pen stopped is only known
+/// once the last thing has been drawn — so it is reported back rather than measured a second way.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Drawn {
+    /// Whether a setting on the page changed this frame.
+    pub changed: bool,
+    /// How tall the page needs to be, from the top of the page area to [`TAIL`] under its last thing.
+    pub height: f32,
+}
+
+/// What a page reports, from where its pen stopped.
+pub(crate) fn drawn(area: Rect, pen: f32, changed: bool) -> Drawn {
+    Drawn { changed, height: pen - area.top() + TAIL }
+}
+
+/// The rectangle a page measures itself from, which is the page area lifted by however far it is
+/// scrolled.
+///
+/// Every page positions what it draws from `area.left()` across and `area.top()` down, so lifting the
+/// rectangle moves the whole page and no page has to know that it is being scrolled. What keeps it
+/// inside the body is the clip rather than the rectangle: `Painter::with_clip_rect` intersects, so a
+/// page's own `ui.painter_at(area)` is cut to the body by the clip the dialog set before it drew, and
+/// `Ui::interact` cuts a control's interact rectangle the same way.
+pub(crate) fn lifted(page_area: Rect, scroll: f32) -> Rect {
+    page_area.translate(Vec2::new(0.0, -scroll))
+}
+
+/// How far a page really is scrolled, given how tall it came out and how tall the body is.
+///
+/// A page that fits cannot be scrolled at all, which is what leaves every page that already fitted
+/// drawn exactly where it was.
+pub(crate) fn settle_the_scroll(asked: f32, height: f32, view: f32) -> f32 {
+    asked.clamp(0.0, (height - view).max(0.0))
+}
 
 /// Which page is showing, and what has been typed in the search box. Lives in the window's state, so it
 /// is still there when the settings are opened again.
@@ -50,6 +103,21 @@ pub struct SettingsWindow {
     pub plugins: PluginsState,
     /// What the MCP page is showing.
     pub mcp: McpState,
+    /// How far the page showing is scrolled down, in points.
+    pub scroll: f32,
+    /// How tall the page came out when it was last drawn.
+    ///
+    /// Kept from one frame to the next because a page's height can only be answered by drawing it: a
+    /// page is a pen running down the rectangle it was given, and where the pen stopped is not known
+    /// until the last thing has been drawn. The bar is built from this and painted from the height
+    /// this frame really came out at, so the only thing a frame behind is which pointer the bar took.
+    pub page_height: f32,
+    /// Which page [`SettingsWindow::scroll`] and [`SettingsWindow::page_height`] are about.
+    ///
+    /// Opening a different page starts at its top, so this is compared rather than a position being
+    /// kept per page: coming back to a page that was left half way down would put somebody somewhere
+    /// they did not choose, several pages later.
+    pub scrolled: Page,
 }
 
 impl SettingsWindow {
@@ -204,26 +272,72 @@ fn contents(
     line(ui, Pos2::new(list.right(), list.top()), Pos2::new(list.right(), list.bottom()));
 
     show_list(ui, list, state, context.plugin_pages);
-    match state.page {
+
+    // Opening a different page starts at its top, and forgets how tall the last one was: a bar built
+    // from the Editor page's height while the Terminal page is showing would offer to scroll a page
+    // that fits.
+    if state.scrolled != state.page {
+        state.scrolled = state.page;
+        state.scroll = 0.0;
+        state.page_height = 0.0;
+    }
+    let view = page_area.height();
+    let was = state.scroll;
+    // The bar down the right, taken hold of **before** the page is drawn so that it wins the pointer
+    // over whatever the page puts underneath it -- `components::scrollbar`'s own rule. It is built
+    // from the height the page came out at last frame, which is the only height there is until this
+    // one has been drawn; the bar painted at the end of this function is built from the height this
+    // frame really came out at.
+    let grab = match scrollbar::Bar::new(page_area, was, state.page_height, view) {
+        Some(bar) => scrollbar::grab(ui, &bar, SCROLLBAR),
+        None => scrollbar::Grab::default(),
+    };
+    if let Some(to) = grab.scroll {
+        state.scroll = to;
+    }
+    // `rect_contains_pointer` rather than a widget of its own: a widget over the whole page would be a
+    // control with nothing to do and no honest name, and the pointer is the only thing being asked
+    // about. It asks the layer too, so a dropdown's popup open over the page keeps its own wheel.
+    let wheel = ui.input(|input| input.smooth_scroll_delta.y);
+    if wheel != 0.0 && ui.rect_contains_pointer(page_area) {
+        state.scroll -= wheel;
+    }
+    state.scroll = settle_the_scroll(state.scroll, state.page_height, view);
+    let scroll = state.scroll;
+    let page_rect = lifted(page_area, scroll);
+    // The clip is what keeps a scrolled page inside the body, and it is put back afterwards so the
+    // footer under it is drawn with the clip the dialog had. Saved and restored rather than drawn into
+    // a child `Ui`, because a child has an id of its own and every control on every page is named from
+    // the id of the `Ui` it is drawn into: a page drawn into a child would be the same controls under
+    // different ids, for nothing.
+    let clip = ui.clip_rect();
+    ui.set_clip_rect(clip.intersect(page_area));
+    let height = match state.page {
         Page::Appearance => {
-            if appearance_page(ui, page_area, settings, context.families) {
+            let page = appearance_page(ui, page_rect, settings, context.families);
+            if page.changed {
                 outcome.page = PageOutcome::Changed;
             }
+            page.height
         }
         Page::Theme => {
-            if theme_page(ui, page_area, settings, context.plugins) {
+            let page = theme_page(ui, page_rect, settings, context.plugins);
+            if page.changed {
                 outcome.page = PageOutcome::Changed;
             }
+            page.height
         }
         Page::Editor => {
-            if editor_page(ui, page_area, settings) {
+            let page = editor_page(ui, page_rect, settings);
+            if page.changed {
                 outcome.page = PageOutcome::Changed;
             }
+            page.height
         }
         Page::Plugins => {
             let result = plugins_page::show(
                 ui,
-                page_area,
+                page_rect,
                 &mut state.plugins,
                 context.plugins,
                 context.installed_on_disk,
@@ -238,33 +352,48 @@ fn contents(
             } else {
                 PageOutcome::Nothing
             };
+            result.height
         }
         Page::Terminal => {
-            if terminal_page(ui, page_area, settings) {
+            let page = terminal_page(ui, page_rect, settings);
+            if page.changed {
                 outcome.page = PageOutcome::Changed;
             }
+            page.height
         }
         Page::Mcp => {
-            if mcp_page::show(
+            let page = mcp_page::show(
                 ui,
-                page_area,
+                page_rect,
                 &mut state.mcp,
                 settings,
                 context.mcp_running,
                 context.unluminous_cli,
-            )
-            .changed
-            {
+            );
+            if page.changed {
                 outcome.page = PageOutcome::Changed;
             }
+            page.height
         }
         // A contributed page is drawn by its own plugin. The window hands over a closure that can reach
         // the provider, and it is called here rather than after this function returns, because the modal
         // is an area of its own and anything painted into the window underneath it is covered. Nothing
         // to report back through `outcome` -- the drawing already happened.
+        //
+        // It reports the body's own height, so it is never scrolled and the rectangle it is handed is
+        // the one it always was. What a provider does about a page taller than the room it has is the
+        // provider's, which is the line `UiProvider::zoomed` already draws about a pane's scrolling.
         Page::Plugin(slot) => {
-            plugin_page(ui, slot as usize, page_area);
+            plugin_page(ui, slot as usize, page_rect);
+            view
         }
+    };
+    ui.set_clip_rect(clip);
+    state.page_height = height;
+    // Drawn last, at the position the frame settled on rather than the one it opened with, which is
+    // what `app::preview` already does with the same bar.
+    if let Some(bar) = scrollbar::Bar::new(page_area, scroll, height, view) {
+        scrollbar::paint(ui, &bar, SCROLLBAR, grab.active || (scroll - was).abs() > 0.01);
     }
 
     // The footer, holding the one button.
@@ -438,7 +567,7 @@ fn appearance_page(
     area: Rect,
     settings: &mut Settings,
     families: &[String],
-) -> bool {
+) -> Drawn {
     let mut changed = false;
     let mut pen = breadcrumb(ui, area, Page::Appearance);
 
@@ -614,27 +743,29 @@ fn appearance_page(
         changed = true;
     }
     pen += 32.0;
-    note(
+    pen = note(
         ui,
         area,
         pen,
         "Soft shadows, gradients and pressed edges behind a plugin's own pane, drawn on the processor. Off, a plugin draws flat, which costs nothing at all.",
     );
-    changed
+    drawn(area, pen, changed)
 }
 
 /// `Appearance & Behavior > Theme`: which palette the window is painted in, its accent, and its icons.
 ///
-/// A page of its own because the Settings window is one size for every page and no page scrolls — see
-/// `Page::Theme`. It is laid out the way the reference editor's own theme list is: a row per theme, its name on the
-/// left and the colours it is made of on the right, so the choice can be made by looking rather than by
-/// choosing a name and then seeing what happened.
+/// A page of its own rather than a section on Appearance, because Appearance already fills the body on
+/// its own — see `Page::Theme`. It is laid out the way the reference editor's own theme list is: a row
+/// per theme, its name on the left and the colours it is made of on the right, so the choice can be
+/// made by looking rather than by choosing a name and then seeing what happened. It is also the page
+/// that grows with what is installed, since every theme a plugin carries is a row here, which is why
+/// it can run past the body however tall the window is made.
 fn theme_page(
     ui: &mut egui::Ui,
     area: Rect,
     settings: &mut Settings,
     plugins: &crate::services::plugins::Plugins,
-) -> bool {
+) -> Drawn {
     let mut changed = false;
     let mut pen = breadcrumb(ui, area, Page::Theme);
 
@@ -745,13 +876,13 @@ fn theme_page(
         changed = true;
     }
     pen += 34.0;
-    note(
+    pen = note(
         ui,
         area,
         pen,
         "Which drawn marks the rail buttons, the folder arrow and the small controls use. Material draws a chevron where the classic set draws a triangle, and puts a folder in front of a folder's name.",
     );
-    changed
+    drawn(area, pen, changed)
 }
 
 /// What a person reads for an icon set, which is its name with a capital letter.
@@ -859,7 +990,7 @@ fn swatch_button(
 
 /// `Editor > Editor`: what the gutter down the left of the editing area shows, and whether
 /// completions arrive unasked.
-fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> bool {
+fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn {
     let mut changed = false;
     let mut pen = breadcrumb(ui, area, Page::Editor);
     pen = section(ui, area, pen, "Gutter");
@@ -1012,13 +1143,13 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> bool {
         changed = true;
     }
     pen += 32.0;
-    note(
+    pen = note(
         ui,
         area,
         pen,
         "One request to the releases page as the window opens. Off, Unluminous sends nothing at all until you ask: Check for Updates on the Unluminous menu works either way, and nothing is ever installed for you.",
     );
-    changed
+    drawn(area, pen, changed)
 }
 
 /// What the Line endings dropdown calls each value.
@@ -1070,7 +1201,7 @@ pub(crate) fn checkbox(ui: &mut egui::Ui, row: Rect, name: &str, value: &mut boo
 }
 
 /// `Tools > Terminal`.
-fn terminal_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> bool {
+fn terminal_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn {
     let mut changed = false;
     let mut pen = breadcrumb(ui, area, Page::Terminal);
     pen = section(ui, area, pen, "Font");
@@ -1131,8 +1262,8 @@ fn terminal_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> bool
     );
     // A note is one line and is not wrapped, so what an empty field means is a note of its own rather
     // than a longer sentence that would run off the end of the page.
-    note(ui, area, pen + 8.0, &format!("Leave it empty for {}.", default_shell_name()));
-    changed
+    pen = note(ui, area, pen + 8.0, &format!("Leave it empty for {}.", default_shell_name()));
+    drawn(area, pen, changed)
 }
 
 /// What an empty shell setting means on this machine, in words, so the note under the field says the
@@ -1264,4 +1395,181 @@ pub(crate) fn wide_button(ui: &mut egui::Ui, area: Rect, name: &str) -> bool {
 
 fn line(ui: &egui::Ui, from: Pos2, to: Pos2) {
     ui.painter().line_segment([from, to], Stroke::new(1.0, color::divider()));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The rectangle the modal gives `contents`, at the size the dialog asks for.
+    fn dialog() -> Rect {
+        Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(WIDTH, HEIGHT))
+    }
+
+    /// The body a page is drawn into: the dialog less its header and its footer.
+    fn body_height() -> f32 {
+        HEIGHT - HEADER - FOOTER
+    }
+
+    /// Draw the whole dialog on one page and report how tall that page came out, along with
+    /// everything that was painted.
+    ///
+    /// It draws twice, because the bar is built from the height the page came out at last frame: the
+    /// first pass is what measures the page and the second is what a person is looking at.
+    fn draw(page: Page, scroll: f32) -> (f32, Vec<egui::epaint::ClippedShape>) {
+        let area = dialog();
+        let plugins = crate::services::plugins::Plugins::load(None).0;
+        let mut settings = Settings::default();
+        let mut state = SettingsWindow { open: true, page, ..SettingsWindow::default() };
+        // So that the MCP page does not read the person's own agent configuration to find out what
+        // its buttons should say. A test must not read the settings of whoever is running it.
+        state.mcp.read = true;
+        let running = crate::services::mcp::State::Off;
+        let program = std::path::PathBuf::from("unluminous-cli");
+        let on_disk = |_: &str| false;
+        let icon_for = |_: &str| None;
+        let context = SettingsContext {
+            families: &[],
+            project: "",
+            plugins: &plugins,
+            mcp_running: &running,
+            unluminous_cli: &program,
+            installed_on_disk: &on_disk,
+            icon_for: &icon_for,
+            plugin_pages: &[],
+        };
+        let egui = egui::Context::default();
+        let mut shapes = Vec::new();
+        for pass in 0..2 {
+            if pass == 1 {
+                state.scroll = scroll;
+            }
+            let output = egui.run_ui(egui::RawInput::default(), |ui| {
+                contents(ui, area, &mut state, &mut settings, context, &mut |_, _, _| {});
+            });
+            shapes = output.shapes.clone();
+            output.drop_without_applying_deltas();
+        }
+        (state.page_height, shapes)
+    }
+
+    /// **How tall each page really is**, printed rather than written down, so that the next row added
+    /// to one can be measured rather than guessed at.
+    ///
+    /// `cargo test -p unluminous-app --lib how_tall_every_page_is -- --nocapture` prints the table.
+    /// The numbers move with the interface font, so what is asserted is the one thing that is a rule:
+    /// the Plugins page sizes itself to the room it is given and every other page reports a real
+    /// height for what it drew.
+    #[test]
+    fn how_tall_every_page_is() {
+        println!("body is {} points", body_height());
+        for page in Page::ALL {
+            let (height, _) = draw(page, 0.0);
+            let over = height - body_height();
+            println!(
+                "{:<11} {height:>7.1}  {}",
+                page.title(),
+                if over > 0.5 {
+                    format!("over by {over:.1}")
+                } else {
+                    format!("fits, {:.1} to spare", -over)
+                }
+            );
+            assert!(height.is_finite() && height > 0.0, "{} measured {height}", page.title());
+        }
+        // The Plugins page is two columns that each run to the bottom of the area and scroll on their
+        // own, so it is exactly the room there is and the dialog never puts a third bar over them.
+        let (plugins, _) = draw(Page::Plugins, 0.0);
+        assert_eq!(plugins, body_height());
+    }
+
+    /// **A page that fits cannot be scrolled**, which is what leaves every page that already fitted
+    /// drawn exactly where it was.
+    #[test]
+    fn a_page_that_fits_cannot_be_scrolled() {
+        assert_eq!(settle_the_scroll(200.0, 400.0, 582.0), 0.0);
+        assert_eq!(settle_the_scroll(200.0, 582.0, 582.0), 0.0);
+        assert_eq!(lifted(dialog(), 0.0), dialog());
+        assert_eq!(scrollbar::Bar::new(dialog(), 0.0, 400.0, 582.0), None);
+    }
+
+    /// A page taller than the body scrolls exactly as far as the part that cannot be seen, and no
+    /// further in either direction.
+    #[test]
+    fn a_page_that_does_not_fit_scrolls_to_its_end_and_no_further() {
+        assert_eq!(settle_the_scroll(-40.0, 700.0, 582.0), 0.0);
+        assert_eq!(settle_the_scroll(5000.0, 700.0, 582.0), 118.0);
+        let area = Rect::from_min_size(Pos2::new(0.0, 100.0), Vec2::new(600.0, 582.0));
+        assert_eq!(lifted(area, 118.0).top(), -18.0);
+        assert!(scrollbar::Bar::new(area, 0.0, 700.0, 582.0).is_some());
+    }
+
+    /// **Opening a different page starts at its top.** A page left half way down and come back to
+    /// would put somebody somewhere they did not choose, several pages later.
+    #[test]
+    fn opening_a_different_page_starts_at_its_top() {
+        let area = dialog();
+        let plugins = crate::services::plugins::Plugins::load(None).0;
+        let mut settings = Settings::default();
+        let mut state =
+            SettingsWindow { open: true, page: Page::Editor, ..SettingsWindow::default() };
+        state.mcp.read = true;
+        let running = crate::services::mcp::State::Off;
+        let program = std::path::PathBuf::from("unluminous-cli");
+        let on_disk = |_: &str| false;
+        let icon_for = |_: &str| None;
+        let context = SettingsContext {
+            families: &[],
+            project: "",
+            plugins: &plugins,
+            mcp_running: &running,
+            unluminous_cli: &program,
+            installed_on_disk: &on_disk,
+            icon_for: &icon_for,
+            plugin_pages: &[],
+        };
+        let egui = egui::Context::default();
+        let mut once = |state: &mut SettingsWindow| {
+            let output = egui.run_ui(egui::RawInput::default(), |ui| {
+                contents(ui, area, state, &mut settings, context, &mut |_, _, _| {});
+            });
+            output.drop_without_applying_deltas();
+        };
+        once(&mut state);
+        state.scroll = 60.0;
+        once(&mut state);
+        assert!(state.scroll > 0.0, "the Editor page should have somewhere to scroll to");
+        state.page = Page::Terminal;
+        once(&mut state);
+        assert_eq!(state.scroll, 0.0);
+    }
+
+    /// **Nothing the dialog draws lands outside the dialog.** This is the fault the scrolling page
+    /// area was built for: before it, the Editor page ran past the body and its last tick box was
+    /// painted over the window below the footer, where no picture of the dialog could show it.
+    ///
+    /// Checked on the Editor page at the top and at the end of its scroll, because the two put
+    /// different parts of it against the two edges.
+    #[test]
+    fn nothing_a_page_draws_lands_outside_the_dialog() {
+        let area = dialog();
+        for scroll in [0.0, 10_000.0] {
+            let (_, shapes) = draw(Page::Editor, scroll);
+            assert!(!shapes.is_empty(), "nothing was drawn, so this measures nothing");
+            for shape in &shapes {
+                let clip = shape.clip_rect;
+                if !clip.is_positive() {
+                    continue;
+                }
+                let painted = shape.shape.visual_bounding_rect().intersect(clip);
+                if !painted.is_positive() {
+                    continue;
+                }
+                assert!(
+                    area.expand(1.0).contains_rect(painted),
+                    "something was painted at {painted:?}, outside the {area:?} the dialog has",
+                );
+            }
+        }
+    }
 }

@@ -38,7 +38,7 @@ use unluminous_cli::mcp::Shape;
 
 use crate::components::controls;
 use crate::components::settings_dialog::{
-    breadcrumb, checkbox, label, note, row_at, section, wide_button,
+    breadcrumb, checkbox, drawn, label, note, row_at, section, wide_button,
 };
 use crate::services::mcp::State;
 use crate::settings::{clamp_port, Page, Settings};
@@ -85,6 +85,9 @@ impl McpState {
 pub struct McpOutcome {
     /// A setting changed, so the window applies it and writes the settings file.
     pub changed: bool,
+    /// How tall the page came out, which is what decides whether the dialog gives it a scrollbar.
+    /// See `settings_dialog::Drawn`.
+    pub height: f32,
 }
 
 /// Draw the page into `area`.
@@ -104,7 +107,8 @@ pub fn show(
 
     pen = install_section(ui, area, pen, state, settings, program);
     pen = server_section(ui, area, pen + 6.0, state, settings, running, &mut outcome);
-    configuration_section(ui, area, pen + 6.0, state, settings, program);
+    pen = configuration_section(ui, area, pen + 6.0, state, settings, program);
+    outcome.height = drawn(area, pen, false).height;
     outcome
 }
 
