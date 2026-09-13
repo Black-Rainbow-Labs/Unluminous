@@ -7,3 +7,14 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+
+# Ending a `git` and everything it started, rather than the one process this crate spawned.
+# `task-1922` B5: `git fetch --all` runs a `git fetch` of its own per remote, so killing the parent
+# leaves the child holding the pipe this crate is reading -- measured on the CI runner, where the
+# worker's `Drop` then waited out the whole fetch. `unluminous-terminal::reap` made the same
+# measurement about a shell and answered it the same way.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_System_JobObjects"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }

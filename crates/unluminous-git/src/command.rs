@@ -99,6 +99,14 @@ pub fn run<S: AsRef<OsStr>>(folder: &Path, arguments: &[S]) -> Outcome {
         command.creation_flags(0x0800_0000);
     }
     command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    // **Its own process group**, so that stopping it reaches the children it starts: `git fetch
+    // --all` runs a `git fetch` per remote, and killing only the parent leaves that one holding the
+    // pipe this thread is reading. On Windows the job object in `reap` does the same job.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
     // **Spawned rather than `Command::output()`**, which is `task-1922` B5: `output()` keeps the
     // child to itself, so there was no handle anywhere for a worker being dropped to kill, and
     // dropping one mid fetch left `git` running with nobody reading it. This is `task-1769`'s
@@ -151,27 +159,160 @@ pub fn run<S: AsRef<OsStr>>(folder: &Path, arguments: &[S]) -> Outcome {
 /// a worker being dropped to reach, and a worker dropped mid fetch orphaned the git process. That is
 /// the fault `task-1769` fixed for terminals, still open here.
 #[derive(Default)]
-pub struct Running(Mutex<Option<Child>>);
+pub struct Running(Mutex<Option<Held>>);
+
+/// One `git`, and whatever is needed to end everything it started along with it.
+struct Held {
+    child: Child,
+    /// The job object the child was put in, on the platform that has them.
+    #[cfg(windows)]
+    job: Option<reap::Job>,
+}
 
 impl Running {
-    /// Kill whatever is running on the thread this belongs to, if anything is.
+    /// Kill whatever is running on the thread this belongs to, and everything it started.
+    ///
+    /// **The whole tree, not the one process.** `task-1922` B5 first killed only the child this crate
+    /// spawned, and CI measured what that is worth: `git fetch --all` runs a `git fetch` of its own
+    /// per remote, so the parent died and the grandchild went on holding the pipe the reader is
+    /// blocked on. The drop then waited out the entire fetch on the window's own thread, which is
+    /// the fault it was meant to fix. `unluminous-terminal::reap` made the same measurement about a
+    /// shell and answered it the same way: a job object on Windows, a process group on Unix.
     pub fn stop(&self) {
-        if let Ok(mut held) = self.0.lock() {
-            if let Some(mut child) = held.take() {
-                let _ = child.kill();
-                let _ = child.wait();
+        if let Ok(mut slot) = self.0.lock() {
+            if let Some(mut held) = slot.take() {
+                reap::everything_below(&held.child);
+                #[cfg(windows)]
+                if let Some(job) = held.job.take() {
+                    job.terminate();
+                }
+                let _ = held.child.kill();
+                let _ = held.child.wait();
             }
         }
     }
 
     fn put(&self, child: Child) {
-        if let Ok(mut held) = self.0.lock() {
-            *held = Some(child);
+        #[cfg(windows)]
+        let job = reap::Job::holding(&child);
+        if let Ok(mut slot) = self.0.lock() {
+            *slot = Some(Held {
+                child,
+                #[cfg(windows)]
+                job,
+            });
         }
     }
 
     fn take(&self) -> Option<Child> {
-        self.0.lock().ok().and_then(|mut held| held.take())
+        self.0.lock().ok().and_then(|mut slot| slot.take()).map(|held| held.child)
+    }
+}
+
+/// Ending a `git` and everything it started.
+///
+/// Two platforms and two mechanisms, which is `unluminous-terminal::reap`'s shape. There is no shared
+/// crate: this is forty lines, that one is about a pseudoconsole, and a crate holding both would be a
+/// trait with two unrelated implementations behind it.
+mod reap {
+    use std::process::Child;
+
+    /// Kill every process the child started, on the platform where that is a process group.
+    ///
+    /// Nothing to do on Windows, where the job object below has already done it.
+    #[cfg(unix)]
+    pub fn everything_below(child: &Child) {
+        // The child leads its own process group, because `run` asks for one. A negative process id
+        // names that whole group, which is what makes this reach `git fetch --all`'s own children.
+        // SAFETY: `kill` takes two integers and returns one. Nothing here holds a pointer.
+        unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL) };
+    }
+
+    /// The job object holds the tree on Windows, so there is nothing to do here.
+    #[cfg(not(unix))]
+    pub fn everything_below(_: &Child) {}
+
+    #[cfg(windows)]
+    pub use windows::Job;
+
+    #[cfg(windows)]
+    mod windows {
+        use std::ffi::c_void;
+        use std::os::windows::io::AsRawHandle;
+        use std::process::Child;
+
+        use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+        use windows_sys::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+            SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        };
+
+        /// One job object holding one `git` and its descendants.
+        pub struct Job(HANDLE);
+
+        // The handle is owned by this value and only ever used through it: created here, closed in
+        // `Drop`, and never handed to another thread while a second copy exists.
+        unsafe impl Send for Job {}
+        unsafe impl Sync for Job {}
+
+        impl Job {
+            /// A job holding `child`, or `None` when any step of it fails.
+            ///
+            /// Every failure is the same answer, because there is one thing to do about any of them:
+            /// a git command that runs without the guarantee is better than one that does not run.
+            /// The likeliest by far is a process that has already exited, which needs no reaping.
+            ///
+            /// A child that starts one of its own between being spawned and being adopted here is
+            /// outside the job. `CREATE_SUSPENDED` would close that window and
+            /// `std::process::Command` cannot ask for it; `unluminous-terminal::reap` accepts the
+            /// same window for the same reason.
+            pub fn holding(child: &Child) -> Option<Self> {
+                let handle = child.as_raw_handle();
+                if handle.is_null() {
+                    return None;
+                }
+                // SAFETY: an unnamed job with default security, then the one limit that makes
+                // closing the handle end what is inside it, then the child. Each call is checked
+                // before the next is made, and the handle is closed by `Drop` on every path out.
+                unsafe {
+                    let made = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                    if made.is_null() {
+                        return None;
+                    }
+                    let job = Self(made);
+                    let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+                    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                    let set = SetInformationJobObject(
+                        job.0,
+                        JobObjectExtendedLimitInformation,
+                        std::ptr::addr_of!(limits) as *const c_void,
+                        std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                    );
+                    if set == 0 {
+                        return None;
+                    }
+                    if AssignProcessToJobObject(job.0, handle as HANDLE) == 0 {
+                        return None;
+                    }
+                    Some(job)
+                }
+            }
+
+            /// End everything in the job now. The handle is closed by `Drop` straight after.
+            pub fn terminate(self) {
+                // SAFETY: a job handle this value owns and has not closed.
+                unsafe { TerminateJobObject(self.0, 1) };
+            }
+        }
+
+        impl Drop for Job {
+            /// Closing the handle is what ends what is inside it, because of the limit above.
+            fn drop(&mut self) {
+                // SAFETY: closed exactly once, here, for a handle this value owns.
+                unsafe { CloseHandle(self.0) };
+            }
+        }
     }
 }
 

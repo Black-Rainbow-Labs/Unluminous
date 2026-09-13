@@ -442,75 +442,69 @@ mod tests {
         );
     }
 
-    /// **Dropping a worker kills the git it is running and waits for its thread.** `task-1922` B5.
+    /// **Dropping a worker kills the git it is running, and everything that git started.**
+    /// `task-1922` B5.
     ///
-    /// A fetch from a listener that accepts the connection and then says nothing stands in for a
-    /// fetch over a slow network, because when a real network call comes back is not something a
-    /// test can know and this is. `git://` rather than `https://` on purpose: the git protocol is
-    /// spoken by git's own process, so the thing that hangs is the child this crate started and the
-    /// kill reaches it directly.
+    /// A `pre-commit` hook that sleeps stands in for a fetch over a slow network, because when a real
+    /// network call comes back is not something a test can know and a hook is. It is also the shape
+    /// that matters: the hook is a **grandchild**, and it inherits git's own standard output, so
+    /// killing git alone leaves it holding the pipe the worker's thread is blocked reading. That is
+    /// not a contrived case -- `git fetch --all` runs a `git fetch` of its own per remote, which is
+    /// how the CI runner found the first version of this fix waiting out a whole fetch.
     ///
     /// Two things are asserted and neither alone would be enough:
     ///
-    /// - the drop returns in far less time than the fetch would take, which is what the kill buys.
-    ///   With the join and no kill it would wait out the whole fetch, on the window's own thread.
+    /// - the drop returns in far less time than the hook sleeps, which is what the kill buys. With
+    ///   the join and no kill it waits out the whole hook, on the window's own thread. Measured:
+    ///   30.0 s without, well under a second with.
     /// - the thread has really ended, read off the strong count of the slot it holds. Without a
     ///   `Drop` at all -- which is how this was -- the drop is instant and the thread is simply
     ///   abandoned, so the timing on its own would pass on the code this fixes.
-    ///
-    /// What this does **not** claim is that every descendant dies. A `pre-commit` hook inherits
-    /// git's own standard output, so killing git leaves the hook holding the pipe this thread is
-    /// reading; that is a process tree rather than a child, and reaping one is `unluminous-terminal`'s
-    /// job object rather than anything here.
     #[test]
-    fn dropping_a_worker_kills_the_git_it_is_running_and_waits_for_its_thread() {
+    fn dropping_a_worker_kills_the_git_it_is_running_and_everything_that_git_started() {
         let root = std::env::temp_dir().join("unluminous-git-tests").join("worker-drop");
         std::fs::remove_dir_all(&root).ok();
         std::fs::create_dir_all(&root).expect("make the folder");
         assert!(crate::command::run(&root, &["init", "--initial-branch=main"]).ok);
+        for (name, value) in
+            [("user.name", "Unluminous Test"), ("user.email", "test@unluminous.invalid")]
+        {
+            assert!(crate::command::run(&root, &["config", name, value]).ok);
+        }
+        std::fs::write(root.join("a.txt"), "one\n").expect("write");
+        assert!(crate::command::run(&root, &["add", "--", "a.txt"]).ok);
 
-        // Accepts, and then says nothing at all. Held open for the length of the test by the thread
-        // below, which is what makes git wait rather than fail.
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
-        let port = listener.local_addr().expect("the address").port();
-        // Held for far longer than the assertion below allows, and deliberately never joined: if
-        // the connection were released early, git would finish by itself and the test would pass
-        // whether or not anything killed it. The thread is asleep and the process ends with the
-        // suite.
-        std::thread::spawn(move || {
-            let held = listener.incoming().next();
-            std::thread::sleep(std::time::Duration::from_secs(60));
-            drop(held);
-        });
-        assert!(
-            crate::command::run(
-                &root,
-                &["remote", "add", "slow", &format!("git://127.0.0.1:{port}/x")]
-            )
-            .ok
-        );
+        // The hook says when it has started, so the test waits for git to be really running rather
+        // than for a number of milliseconds somebody guessed. Git runs a hook through its own `sh`
+        // on both platforms, so this is a grandchild everywhere.
+        let hook = root.join(".git/hooks/pre-commit");
+        std::fs::write(&hook, "#!/bin/sh\ntouch \"$(dirname \"$0\")/started\"\nsleep 30\n")
+            .expect("write the hook");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755))
+                .expect("make it runnable");
+        }
+        let started = root.join(".git/hooks/started");
 
         let repository = Repository::discover(&root).expect("a repository");
         let mut worker = Worker::start(repository, Arc::new(|| {})).expect("a worker");
         let slot = std::sync::Arc::clone(&worker.child);
-        assert!(worker.send(Request::Fetch));
+        assert!(worker.send(Request::Commit { message: "x".to_owned(), amend: false }));
 
-        // Wait until git is really connected, rather than for a number of milliseconds somebody
-        // guessed. The slot holding a child is what says so.
         let waited = std::time::Instant::now();
-        while std::sync::Arc::strong_count(&slot) == 2
-            && waited.elapsed() < std::time::Duration::from_secs(20)
-        {
-            std::thread::sleep(std::time::Duration::from_millis(20));
+        while !started.exists() && waited.elapsed() < std::time::Duration::from_secs(20) {
+            std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(started.exists(), "the hook never ran, so there is no tree to reap");
 
         let dropping = std::time::Instant::now();
         drop(worker);
         let took = dropping.elapsed();
         assert!(
             took < std::time::Duration::from_secs(10),
-            "the drop waited out the fetch: {took:?}"
+            "the drop waited out the hook, so something under git is still holding the pipe: {took:?}"
         );
         assert_eq!(
             std::sync::Arc::strong_count(&slot),
