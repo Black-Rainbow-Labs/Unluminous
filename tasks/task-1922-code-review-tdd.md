@@ -70,6 +70,21 @@ worked.
 
 ### 3.1 The build is not checked anywhere
 
+> **Superseded, `task-1928`.** Everything below about continuous integration was carried out and then
+> taken out again: Jason asked for GitHub Actions to be removed entirely, and it is gone --
+> `.github/workflows/ci.yml` and `nightly.yml` with it. What the work found on the way is worth
+> keeping in the record, because most of it was not about the workflows at all: the clippy step that
+> left `unluminous-app` out, the `assert!(x || true)`, the three adapter tests that reported a pass
+> without running, and five tests that only ever passed on the machine they were written on. Those
+> are all fixed and none of them depended on a runner.
+>
+> What replaces the gate is the release scripts, which run the suite before they will tag anything,
+> so a release cannot be made from a checkout whose tests do not pass. The screenshot suite is still
+> run by hand, because it needs a graphics card and a person to look at any image that changed --
+> which is the one rule a script must not be allowed to satisfy on its own, and was never something a
+> runner satisfied either.
+
+
 - `.github/workflows/ci.yml` and `nightly.yml` exist and are well designed. Measured through the
   GitHub API on 2026-09-13: the `ci.yml` workflow has 56 runs and zero successes. Runs up to
   4 September had five jobs, all failing. Every run from 9 September onward has **zero jobs**, which

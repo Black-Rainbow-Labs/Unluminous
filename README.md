@@ -910,17 +910,14 @@ Unluminous windows sharing one `mcp.port` is the behaviour rather than a collisi
 cargo test
 ```
 
-Four layers, **2,776 tests**, and a change should leave all four green. They run on every push and
-every pull request, on Windows and on macOS — `.github/workflows/ci.yml`. The macOS screenshot
-baselines are stale and that job is red until somebody accepts them once on a Mac with the images
-open, which is said in the workflow rather than hidden behind `continue-on-error`: a job that is
-allowed to fail is a job nobody reads.
+Four layers, **2,776 tests**, and a change should leave all four green. **They run on the machine
+that makes the change, and nowhere else.** There is no continuous integration here, by choice: the
+release scripts run the suite before they will tag anything, so a release cannot be made from a
+checkout whose tests do not pass, and that is the gate.
 
-There is a fifth workflow, `nightly.yml`, and one script beside it. The six end-to-end tests in
-`crates/unluminous-app/tests/agent_board.rs` start a real agent, so they cost money and minutes and
-are `#[ignore]`d — which left the deepest tests in the repository with no scheduled run at all. They
-have one now: the workflow for a repository with a key on it, and `tools/nightly.ps1 -Register` for
-the machine that already has one. Both say plainly when they covered nothing.
+The six end-to-end tests in `crates/unluminous-app/tests/agent_board.rs` start a real agent, so they
+cost money and minutes and are `#[ignore]`d. `tools/nightly.ps1 -Register` schedules them on a machine
+that has a key, and says plainly when it covered nothing.
 
 There is a fifth thing, which is not a layer because nothing fails it: **`tools/agent-study/` watches
 an agent drive a real window** through instructions phrased the way a person speaks, and grades what

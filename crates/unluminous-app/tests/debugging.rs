@@ -21,10 +21,8 @@ mod common;
 use common::*;
 
 use egui_kittest::kittest::Queryable;
-use egui_kittest::Harness;
 use unluminous_app::app::actions::Action;
 use unluminous_app::app::actions::DebugAction;
-use unluminous_app::UnluminousApp;
 use unluminous_core::Command;
 use unluminous_dap::Message;
 
@@ -36,168 +34,6 @@ use unluminous_dap::Message;
 // already use: when a real debugger answers is not something a test can know, and a picture that
 // depended on it would differ between runs. The session runs the whole state machine over those
 // messages, so what is drawn is what a real adapter sending them would have drawn.
-
-/// A folder holding one real Rust file to set breakpoints in.
-///
-/// Its own folder for `folding_folder`'s reason: `sample_folder`'s file count is in the status bar of
-/// a dozen accepted screenshots, and another file there would change every one of them.
-fn debug_folder(name: &str) -> std::path::PathBuf {
-    fixture(
-        &format!("unluminous-screenshot-debug/{name}"),
-        &[(
-            "main.rs",
-            "fn main() {\n\
-        \x20   let attempts = 3;\n\
-        \x20   let items = vec![1, 2, 3];\n\
-        \x20   let total = attempts + items.len();\n\
-        \x20   println!(\"{total}\");\n\
-         }\n",
-        )],
-    )
-}
-
-/// A window on that folder with `main.rs` open.
-fn debug_harness(name: &str) -> Harness<'static, UnluminousApp> {
-    let folder = debug_folder(name);
-    let mut harness = harness_in(&folder);
-    harness.get_by_label_contains("main.rs").click();
-    harness.run();
-    harness.run();
-    harness
-}
-
-/// What the adapter would have said, so a whole session is a list of values with no process in it.
-fn answer(request_seq: i64, command: &str, body: serde_json::Value) -> Message {
-    Message::Response {
-        seq: 900 + request_seq,
-        request_seq,
-        command: command.to_owned(),
-        success: true,
-        message: None,
-        body,
-    }
-}
-
-/// The seq the session really used for `command`, out of a batch of what it asked for.
-///
-/// Nothing about the order or the numbering is assumed: the test answers what was asked, exactly as
-/// an adapter would. One `stopped` produces two requests at once, which is why the batch is read
-/// whole rather than one request at a time.
-fn seq_of(asked: &[serde_json::Value], command: &str) -> i64 {
-    asked
-        .iter()
-        .find(|frame| frame["command"] == command)
-        .and_then(|frame| frame["seq"].as_i64())
-        .unwrap_or_else(|| panic!("the session should have asked for {command}: {asked:#?}"))
-}
-
-/// The two together, for the many places only one request is outstanding.
-fn asked_for(harness: &mut Harness<'static, UnluminousApp>, command: &str) -> i64 {
-    let batch = asked(harness);
-    seq_of(&batch, command)
-}
-
-/// Hand a message to the session and let the window settle.
-fn feed_debug(harness: &mut Harness<'static, UnluminousApp>, message: Message) {
-    harness.state_mut().debug.as_mut().expect("a session").feed(message);
-    harness.run();
-}
-
-/// Everything an ordinary adapter offers.
-fn capabilities() -> serde_json::Value {
-    serde_json::json!({
-        "supportsConfigurationDoneRequest": true,
-        "supportsSetVariable": true,
-        "supportsConditionalBreakpoints": true,
-        "supportsLogPoints": true,
-        "supportsTerminateRequest": true,
-        // `task-1696`: the two the value tooltip asks about. A real CodeLLDB and a real js-debug
-        // both offer them, and with them absent the popup would fall back to the `watch` context and
-        // draw its root with no field — which is a different test, not this fixture's job.
-        "supportsEvaluateForHovers": true,
-        "supportsSetExpression": true,
-    })
-}
-
-/// Drive a detached session from nothing to stopped at line 4 of `main.rs`, with three locals.
-///
-/// The whole lifecycle, in the protocol's own order, answering what the session really asked for.
-fn paused_harness(name: &str) -> Harness<'static, UnluminousApp> {
-    let mut harness = debug_harness(name);
-    let path = debug_folder(name).join("main.rs");
-    harness
-        .state_mut()
-        .new_detached_debug_session("lldb", configuration("app", "target/debug/app.exe"));
-    harness.state_mut().show_the_debug_tile(true);
-    harness.run();
-
-    let initialize = asked_for(&mut harness, "initialize");
-    feed_debug(&mut harness, answer(initialize, "initialize", capabilities()));
-    // The launch went out with it; the adapter then says it is ready for breakpoints.
-    asked_for(&mut harness, "launch");
-    feed_debug(&mut harness, Message::Initialized);
-    let done = asked_for(&mut harness, "configurationDone");
-    feed_debug(&mut harness, answer(done, "configurationDone", serde_json::Value::Null));
-
-    feed_debug(
-        &mut harness,
-        Message::Stopped(unluminous_dap::Stopped {
-            reason: "breakpoint".to_owned(),
-            thread: Some(1),
-            description: None,
-            text: None,
-            all_threads: true,
-        }),
-    );
-    // One `stopped` asks for both at once, so the batch is read whole.
-    let batch = asked(&mut harness);
-    let threads = seq_of(&batch, "threads");
-    let stack = seq_of(&batch, "stackTrace");
-    feed_debug(
-        &mut harness,
-        answer(threads, "threads", serde_json::json!({ "threads": [{ "id": 1, "name": "main" }] })),
-    );
-    feed_debug(
-        &mut harness,
-        answer(
-            stack,
-            "stackTrace",
-            serde_json::json!({ "stackFrames": [
-                { "id": 1000, "name": "app::main", "line": 4, "source": { "path": path.to_string_lossy() } },
-                { "id": 1001, "name": "core::ops::function::FnOnce::call_once", "line": 250, "presentationHint": "subtle" }
-            ]}),
-        ),
-    );
-    let scopes = asked_for(&mut harness, "scopes");
-    feed_debug(
-        &mut harness,
-        answer(
-            scopes,
-            "scopes",
-            serde_json::json!({ "scopes": [
-                { "name": "Locals", "variablesReference": 7, "expensive": false },
-                { "name": "Registers", "variablesReference": 8, "expensive": true }
-            ]}),
-        ),
-    );
-    let variables = asked_for(&mut harness, "variables");
-    feed_debug(
-        &mut harness,
-        answer(
-            variables,
-            "variables",
-            serde_json::json!({ "variables": [
-                { "name": "attempts", "value": "3", "type": "i32", "variablesReference": 0 },
-                { "name": "items", "value": "Vec<i32>(len:3)", "type": "alloc::vec::Vec<i32>", "variablesReference": 17 },
-                { "name": "total", "value": "6", "type": "usize", "variablesReference": 0 },
-                // One the debugger could not read, which every real session has: it is listed in the
-                // tree in the debugger's own words and **not** painted at the end of a line.
-                { "name": "step", "value": "<optimized out>", "variablesReference": 0 }
-            ]}),
-        ),
-    );
-    harness
-}
 
 /// The reverse request js-debug sends, with the shape a real one has.
 ///
@@ -1079,8 +915,9 @@ fn concise_debug_replies_lead_with_the_paused_frame_and_locals() {
 ///
 /// **`#[ignore]`d**, which is `agent_board.rs`'s rule and `task-1922`'s correction: a test that
 /// returns early with a message on a machine with no adapter *reports a pass*, so a suite with three
-/// of them in it says it checked something it never ran. `nightly.yml` runs it with `--ignored` where
-/// an adapter is installed, and the early return below stays as the second guard for that run.
+/// of them in it says it checked something it never ran. `tools/nightly.ps1` runs it with `--ignored`
+/// on a machine where an adapter is installed, and the early return below stays as the second guard
+/// for that run.
 #[test]
 #[ignore = "needs codelldb or lldb-dap on PATH, or UNLUMINOUS_LLDB_ADAPTER"]
 fn a_real_debugger_binds_a_breakpoint_in_a_file_that_is_not_open() {

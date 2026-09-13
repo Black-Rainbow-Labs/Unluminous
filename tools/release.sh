@@ -151,21 +151,22 @@ if [ -n "$dirty" ]; then
 fi
 
 step 'Running the suite'
-# `task-1922`: a release was tagged, installed and published before CI on the same push had answered
-# anything, and CI had not answered anything for 56 runs. This is the `suite` job of
-# `.github/workflows/ci.yml`, run here, so a release cannot be made from a workspace whose tests do
-# not pass.
+# `task-1922`: a release was tagged, installed and published before anything had run the tests. It is
+# the whole gate now rather than a second opinion -- `task-1928` took the continuous integration out,
+# so this is the only thing that runs the suite before a tag, and a release cannot be made from a
+# workspace whose tests do not pass.
 #
 # The screenshot suite is deliberately not here. It needs a graphics card and it needs a person to
-# open any image that changed, which is the rule a script must not be allowed to satisfy on its own;
-# it runs on CI on the same push, and the line below says so rather than leaving it unsaid.
+# open any image that changed, which is the one rule a script must not be allowed to satisfy on its
+# own -- and with no continuous integration there is nowhere else it runs either. So a release says
+# plainly that it did not run it, rather than leaving that unsaid.
 if [ "$skip_tests" = 1 ]; then
     echo 'Skipped by --skip-tests.'
 else
     cargo test --manifest-path "$repo/Cargo.toml" --workspace --exclude unluminous-app
     cargo test --manifest-path "$repo/Cargo.toml" -p unluminous-app --lib --bins
     echo 'The window through wgpu is not run here: it needs a graphics card and a person to look at'
-    echo 'any image that changed. It runs on CI on this push.'
+    echo 'any image that changed. Run it by hand: cargo test -p unluminous-app --tests'
 fi
 
 # Everything GitHub needs is checked here, before anything is changed, so a missing credential cannot

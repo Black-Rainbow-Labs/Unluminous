@@ -7,10 +7,10 @@
   deepest tests in the repository, every one of them `#[ignore]`d because they take minutes and cost
   tokens.
 
-  `.github/workflows/nightly.yml` is the scheduled run for anybody who has put a key on the
-  repository. **This is the scheduled run for this machine**, which is where the key and the agent
-  already are, and it is here because a nightly that needs a secret nobody has set is a nightly that
-  covers nothing.
+  **This is the scheduled run, and the only one.** There is no continuous integration on this
+  repository -- `task-1928` took it out -- so a nightly that ran anywhere else would have nowhere to
+  run. This machine is where the key and the agent already are, which is the argument for it being
+  here anyway: a nightly that needs a secret nobody has set is a nightly that covers nothing.
 
   It runs them one at a time, writes what happened into `_agent_output/nightly/`, and says on the
   console whether they passed. Nothing here writes a key anywhere: `ANTHROPIC_API_KEY` and
