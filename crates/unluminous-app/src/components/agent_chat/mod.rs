@@ -26,6 +26,7 @@ pub mod settings_page;
 
 use egui::{Color32, CornerRadius, Pos2, Rect, Stroke, Vec2};
 
+use crate::components::controls;
 use crate::services::agent_chat::{AgentChat, Parts};
 use crate::services::plugin_ui::{Look, Request};
 use crate::services::vello_canvas::{Fill, Lift};
@@ -410,9 +411,16 @@ fn empty(ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
     }
     icon::chat(&painter, badge.center(), look.palette.board_accent);
     pen = badge.bottom() + 14.0 * scale;
-    centred(&painter, area, pen, "How can I help?", look.font_size * 1.2, look.palette.text_strong);
+    controls::centred_line(
+        &painter,
+        area,
+        pen,
+        "How can I help?",
+        look.font_size * 1.2,
+        look.palette.text_strong,
+    );
     pen += look.font_size * 1.7;
-    centred(
+    controls::centred_line(
         &painter,
         area,
         pen,
@@ -446,7 +454,7 @@ fn empty(ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
         } else {
             painter.rect_filled(chip, CornerRadius::same((13.0 * scale) as u8), ground);
         }
-        centred(
+        controls::centred_line(
             &painter,
             chip,
             chip.center().y - look.font_size * 0.45,
@@ -467,13 +475,6 @@ fn empty(ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
 pub const STARTERS: [&str; 4] =
     ["Explain this file", "Find the bug", "Write a test", "Summarise the diff"];
 
-/// A line of text centred in `area` at `y`.
-fn centred(painter: &egui::Painter, area: Rect, y: f32, said: &str, size: f32, tint: Color32) {
-    let galley = painter.layout_no_wrap(said.to_owned(), egui::FontId::proportional(size), tint);
-    let at = Pos2::new(area.center().x - galley.size().x / 2.0, y);
-    painter.galley(at, galley, tint);
-}
-
 /// The conversations kept, drawn over the conversation area.
 fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
     let session: &unluminous_chat::Session = parts.session;
@@ -482,7 +483,7 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     let scale = look.scale();
     let painter = ui.painter_at(area);
     if history.is_empty() {
-        centred(
+        controls::centred_line(
             &painter,
             area,
             area.top() + 20.0 * scale,

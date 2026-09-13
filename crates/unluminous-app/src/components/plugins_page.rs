@@ -14,7 +14,7 @@
 
 use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
-use crate::components::modal;
+use crate::components::{controls, modal};
 use crate::services::plugins::{Plugin, Plugins};
 use crate::theme::{color, icon, size};
 
@@ -102,12 +102,11 @@ fn header(ui: &mut egui::Ui, area: Rect, state: &mut PluginsState, plugins: &Plu
         let response = ui.interact(rect, ui.id().with(("plugins-tab", name)), Sense::click());
         let chosen = state.tab == tab;
         if chosen {
-            ui.painter().rect(
+            controls::pill_with_stroke(
+                ui.painter(),
                 rect,
-                CornerRadius::same(size::CONTROL_CORNER),
-                color::selected_row(),
+                size::CONTROL_CORNER,
                 Stroke::new(1.0, color::accent()),
-                egui::StrokeKind::Inside,
             );
         } else if response.hovered() {
             ui.painter().rect_filled(
@@ -254,7 +253,7 @@ fn row(
     let response = ui.interact(rect, ui.id().with(("plugin-row", id)), Sense::click());
     let pill = rect.shrink2(Vec2::new(6.0, 2.0));
     if chosen {
-        ui.painter().rect_filled(pill, CornerRadius::same(5), color::selected_row());
+        controls::pill(ui.painter(), pill, 5);
     } else if response.hovered() {
         ui.painter().rect_filled(pill, CornerRadius::same(5), color::control());
     }

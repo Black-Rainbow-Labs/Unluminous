@@ -372,10 +372,10 @@ fn show_frames(ui: &mut egui::Ui, area: Rect, debug: &DebugState, outcome: &mut 
                 ui.allocate_exact_size(Vec2::new(list.width(), ROW), Sense::click());
             let selected = debug.frame == Some(frame.id);
             if selected {
-                ui.painter().rect_filled(
+                controls::pill(
+                    ui.painter(),
                     rect.shrink2(Vec2::new(6.0, 2.0)),
-                    CornerRadius::same(size::CONTROL_CORNER),
-                    color::selected_row(),
+                    size::CONTROL_CORNER,
                 );
             } else if response.hovered() {
                 ui.painter().rect_filled(
@@ -800,10 +800,7 @@ fn tint(enabled: bool) -> egui::Color32 {
 /// The whole of it is still what `debug variables` prints, because a command line has no width.
 pub fn elide(value: &str) -> String {
     let flat = value.replace('\n', " ");
-    match flat.chars().count() > VALUE_LIMIT {
-        true => format!("{}\u{2026}", flat.chars().take(VALUE_LIMIT).collect::<String>()),
-        false => flat,
-    }
+    controls::truncate_chars(&flat, VALUE_LIMIT, VALUE_LIMIT)
 }
 
 /// The last part of a path, which is what a frame's row shows.

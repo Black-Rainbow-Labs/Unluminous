@@ -262,12 +262,11 @@ fn draw_tab(
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
     }
     if active {
-        painter.rect(
+        controls::pill_with_stroke(
+            &painter,
             tab,
-            CornerRadius::same(4),
-            color::selected_row(),
+            4,
             Stroke::new(1.0, color::accent().gamma_multiply(0.7)),
-            egui::StrokeKind::Inside,
         );
     } else if response.hovered() {
         painter.rect_filled(tab, CornerRadius::same(4), color::control());
@@ -403,6 +402,9 @@ pub(crate) fn grid(
     // Everything below the tabs takes clicks, so a click anywhere in the grid moves the keyboard to the
     // tile.
     let response = ui.interact(area, ui.id().with(id), Sense::click_and_drag());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Grid: {id}"))
+    });
 
     let Some(session) = session else {
         let painter = ui.painter_at(area);

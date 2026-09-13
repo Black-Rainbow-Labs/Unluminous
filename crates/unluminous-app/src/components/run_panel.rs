@@ -683,12 +683,11 @@ fn draw_tab(
         .interact(tab, ui.id().with(("run-tab", index)), Sense::click())
         .on_hover_text(format!("Run: {name} \u{00B7} {}", state.label()));
     if active {
-        painter.rect(
+        controls::pill_with_stroke(
+            &painter,
             tab,
-            CornerRadius::same(4),
-            color::selected_row(),
+            4,
             Stroke::new(1.0, color::accent().gamma_multiply(0.7)),
-            egui::StrokeKind::Inside,
         );
     } else if response.hovered() {
         painter.rect_filled(tab, CornerRadius::same(4), color::control());

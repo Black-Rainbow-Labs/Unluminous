@@ -209,6 +209,140 @@ pub fn marked_text(
     painter.layout_job(job)
 }
 
+/// The fill behind a chosen row in any list: `SELECTED_ROW`, at the radius the caller's row is drawn
+/// with.
+///
+/// `design/style-guide.md` calls this "a row in a list": the same pill draws the open file in the
+/// explorer, the chosen page in Settings, the chosen plugin, and the chosen commit in the history.
+/// The radius is given rather than fixed, because it is not the same number everywhere — a
+/// completion row is 4, a modal row is 5, a matched line in a preview is 3, a file tab is square —
+/// and unifying it would change what is drawn, which the screenshot tests compare pixel for pixel.
+pub fn pill(painter: &egui::Painter, rect: Rect, radius: u8) {
+    painter.rect_filled(rect, CornerRadius::same(radius), color::selected_row());
+}
+
+/// The same pill with a stroke traced round its own edge in one shape, for a tab strip's own
+/// "chosen" mark rather than a plain row.
+///
+/// It is one call to `Painter::rect`, exactly as every site that needs it already made, rather than
+/// this function's fill followed by a second, stroke-only shape: two shapes stacked would very
+/// likely paint the same pixels, but the screenshot tests compare images rather than reasoning about
+/// tessellation, so the one call that was always made is kept as one call.
+pub fn pill_with_stroke(painter: &egui::Painter, rect: Rect, radius: u8, stroke: Stroke) {
+    painter.rect(
+        rect,
+        CornerRadius::same(radius),
+        color::selected_row(),
+        stroke,
+        egui::StrokeKind::Inside,
+    );
+}
+
+/// A colour part of the way between two others, linear per channel.
+///
+/// The gutter's blame column uses it to fade an entry's tint by how old the commit is; the
+/// scrollbar uses it to fade the thumb between its quiet and its used colour. Both wrote out the
+/// same three lines of arithmetic under a different name (`mix`, `along`/`amount`) with no shared
+/// version.
+pub fn mix(from: Color32, to: Color32, amount: f32) -> Color32 {
+    let amount = amount.clamp(0.0, 1.0);
+    let channel = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * amount).round() as u8;
+    Color32::from_rgb(
+        channel(from.r(), to.r()),
+        channel(from.g(), to.g()),
+        channel(from.b(), to.b()),
+    )
+}
+
+/// `text` unchanged, unless it is longer than `threshold` characters, in which case the first `keep`
+/// characters are followed by an ellipsis.
+///
+/// This is the shape the debug tile's value column and the run widget's name button both wrote out
+/// by hand, as a character count rather than a measured width, because each needs the length before
+/// anything is drawn — the debug tile flattens a whole value onto one row, and the run widget's
+/// button is sized by the title bar before it is painted. `threshold` and `keep` are given
+/// separately rather than as one number because the two callers do not agree on what "at the limit"
+/// means: the run widget wants the ellipsis included in its own limit, so it keeps one character
+/// fewer than the threshold it cuts at; the debug tile wants everything up to its limit kept
+/// whichever way, so its ellipsis is one character past it. Collapsing that difference into a single
+/// number would move the cut point by one character for whichever caller did not get to keep its own
+/// convention.
+pub fn truncate_chars(text: &str, threshold: usize, keep: usize) -> String {
+    if text.chars().count() <= threshold {
+        return text.to_owned();
+    }
+    format!("{}\u{2026}", text.chars().take(keep).collect::<String>())
+}
+
+/// How a [`chip`] is filled: a stroke round its own outline with nothing behind it, or its own
+/// colour painted underneath the text.
+pub enum ChipFill {
+    Outline(Stroke),
+    Tint(Color32),
+}
+
+/// A short label in a chip rounded fully into a pill by its own height — the Agent-Tasks board's
+/// sprint status and epic marks are both this shape, one outlined and one filled.
+///
+/// `at` is the point the caller already has to place it from: the chip's own left edge when `left`
+/// is true, its right edge otherwise, because a row places some marks working left to right and some
+/// working right to left. `pad` is the room either side of the measured text, both padding numbers
+/// answered separately because the two callers on the board do not use the same ones, and unifying
+/// them would change what is drawn. Returns how wide the chip came out, which is what a caller
+/// subtracts to place the next mark along the row.
+#[allow(clippy::too_many_arguments)]
+pub fn chip(
+    painter: &egui::Painter,
+    at: Pos2,
+    left: bool,
+    text: &str,
+    font_size: f32,
+    tint: Color32,
+    fill: ChipFill,
+    pad: Vec2,
+) -> f32 {
+    let galley =
+        painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(font_size), tint);
+    let top_left = Pos2::new(
+        if left { at.x } else { at.x - galley.size().x - pad.x },
+        at.y - galley.size().y / 2.0 - pad.y / 2.0,
+    );
+    let chip = Rect::from_min_size(top_left, galley.size() + pad);
+    let radius = CornerRadius::same((chip.height() / 2.0) as u8);
+    match fill {
+        ChipFill::Outline(stroke) => {
+            painter.rect(chip, radius, Color32::TRANSPARENT, stroke, egui::StrokeKind::Inside);
+        }
+        ChipFill::Tint(colour) => {
+            painter.rect_filled(chip, radius, colour);
+        }
+    }
+    painter.galley(Pos2::new(chip.min.x + pad.x / 2.0, at.y - galley.size().y / 2.0), galley, tint);
+    chip.width()
+}
+
+/// A line of text centred horizontally in `area`, its top at `y`.
+///
+/// The one piece of the Agent-Chat pane's empty conversation screen that is genuinely the same
+/// wherever it appears — the greeting, the subtitle, a starter's own label and the "no
+/// conversations yet" notice are all one line, centred, at a size and a colour the caller chooses.
+/// The empty states in the other two provider panes are not this shape: the board's own notices are
+/// left-anchored rather than centred, and the database pane's wraps inside a fixed width and sits
+/// above a button, so unifying either of those into this would change what they draw rather than
+/// only where the code for it lives.
+pub fn centred_line(
+    painter: &egui::Painter,
+    area: Rect,
+    y: f32,
+    text: &str,
+    size: f32,
+    tint: Color32,
+) {
+    let galley = painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(size), tint);
+    let at = Pos2::new(area.center().x - galley.size().x / 2.0, y);
+    painter.galley(at, galley, tint);
+}
+
 /// A button showing the current value, which opens a list when clicked.
 ///
 /// `contents` draws the list and returns what was chosen, so the caller decides what a choice is: the
@@ -599,7 +733,7 @@ pub fn menu_row(
     let sense = if enabled { Sense::click() } else { Sense::hover() };
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), sense);
     if response.hovered() && enabled {
-        ui.painter().rect_filled(rect, CornerRadius::same(4), color::selected_row());
+        pill(ui.painter(), rect, 4);
     }
     let painter = ui.painter();
     let tint =

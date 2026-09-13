@@ -281,7 +281,10 @@ pub fn show(
         let spaced: String = name.chars().flat_map(|c| [c, ' ']).collect();
         let font = egui::FontId::proportional(view.at(10.5));
         // The heading has to stop before the button on the right. A long folder name is cut short with an
-        // ellipsis rather than run underneath it.
+        // ellipsis rather than run underneath it. This measures the drawn width rather than counting
+        // characters, and it does not reuse `controls::truncate_chars` for that reason: the heading is
+        // hand letter-spaced, a real character followed by a space, so cutting has to remove that pair
+        // together, and `controls::truncate_chars` counts one character at a time.
         let available = area.width() - view.at(16.0) - view.at(46.0);
         let mut heading = spaced.trim_end().to_owned();
         let mut galley = painter.layout_no_wrap(heading.clone(), font.clone(), color::text_dim());
@@ -913,7 +916,7 @@ fn file_row(
     // hover already uses, so two rows are never drawn as though both were open — `task-1693`, and
     // the note at the top of this file.
     if open {
-        ui.painter().rect_filled(pill, CornerRadius::same(5), color::selected_row());
+        crate::components::controls::pill(ui.painter(), pill, 5);
     } else if selected || (response.hovered() && openable) {
         ui.painter().rect_filled(pill, CornerRadius::same(5), color::control());
     }

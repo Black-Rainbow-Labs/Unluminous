@@ -131,7 +131,9 @@ fn pages(explorer: &DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>, strip:
 /// What the tab shows before anything has been opened.
 ///
 /// Not an empty rectangle: the two things somebody can do from here are drawn as buttons, which is
-/// what makes an empty state a place to start rather than a place to leave.
+/// what makes an empty state a place to start rather than a place to leave. It does not call
+/// `controls::centred_line`: the message wraps inside a box of its own width and sits above a
+/// button, where that helper only ever draws one unwrapped line.
 fn nothing_open(
     explorer: &DatabaseExplorer,
     ui: &mut egui::Ui,

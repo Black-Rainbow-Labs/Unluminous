@@ -30,6 +30,9 @@ pub struct PictureOutcome {
 pub fn show(ui: &mut egui::Ui, area: Rect, picture: &mut Picture, name: &str) -> PictureOutcome {
     let mut outcome = PictureOutcome::default();
     let response = ui.interact(area, ui.id().with(("picture", name)), Sense::click_and_drag());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Picture: {name}"))
+    });
     if response.clicked() || response.drag_started() {
         outcome.take_focus = true;
     }

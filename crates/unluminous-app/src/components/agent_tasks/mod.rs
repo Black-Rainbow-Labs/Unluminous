@@ -326,7 +326,7 @@ fn rail(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) 
                 ui.painter().rect_filled(
                     at,
                     egui::CornerRadius::same(radius as u8),
-                    egui::Color32::from_white_alpha(16),
+                    crate::theme::color::hover_wash().gamma_multiply(16.0 / 255.0),
                 );
             }
         } else if here {
@@ -604,7 +604,7 @@ pub(crate) fn primary_button(
             ui.painter().rect_filled(
                 area,
                 egui::CornerRadius::same(14),
-                egui::Color32::from_white_alpha(22),
+                crate::theme::color::hover_wash().gamma_multiply(22.0 / 255.0),
             );
         }
     } else {
@@ -663,7 +663,7 @@ pub(crate) fn chooser_button(
             ui.painter().rect_filled(
                 area,
                 egui::CornerRadius::same((area.height() / 2.0) as u8),
-                egui::Color32::from_white_alpha(14),
+                crate::theme::color::hover_wash().gamma_multiply(14.0 / 255.0),
             );
         }
     } else {
@@ -727,7 +727,11 @@ pub(crate) fn round_button(
             ),
         );
         if response.hovered() {
-            ui.painter().circle_filled(area.center(), radius, egui::Color32::from_white_alpha(24));
+            ui.painter().circle_filled(
+                area.center(),
+                radius,
+                crate::theme::color::hover_wash().gamma_multiply(24.0 / 255.0),
+            );
         }
     } else {
         let flat = match response.hovered() {

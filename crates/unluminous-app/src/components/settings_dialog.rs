@@ -371,7 +371,7 @@ fn page_row(ui: &mut egui::Ui, row: Rect, title: &str, chosen: bool, indent: f32
         ui.interact(row, ui.id().with(("settings-page", title.to_owned())), Sense::click());
     let pill = row.shrink2(Vec2::new(8.0, 1.0));
     if chosen {
-        ui.painter().rect_filled(pill, CornerRadius::same(5), color::selected_row());
+        controls::pill(ui.painter(), pill, 5);
     } else if response.hovered() {
         ui.painter().rect_filled(pill, CornerRadius::same(5), color::control());
     }
@@ -732,7 +732,7 @@ fn theme_row(
     let response = ui.interact(row, ui.id().with(("theme", name)), Sense::click());
     let painter = ui.painter_at(row);
     if chosen {
-        painter.rect_filled(row, CornerRadius::same(5), color::selected_row());
+        controls::pill(&painter, row, 5);
     } else if response.hovered() {
         painter.rect_filled(row, CornerRadius::same(5), color::control());
     }

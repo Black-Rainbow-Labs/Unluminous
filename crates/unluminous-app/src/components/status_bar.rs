@@ -154,9 +154,10 @@ pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) {
 /// `message` laid out in one line, cut short with an ellipsis when it will not fit in `room`.
 ///
 /// Measured rather than counted, because the font is proportional and a count of characters would be
-/// wrong by a word either way. The first guess is the proportion that fits and the loop takes one
-/// character at a time from there, which is a handful of layouts for a long sentence and none at all
-/// for the usual message, which fits whole.
+/// wrong by a word either way — which is also why this does not call `controls::truncate_chars`,
+/// whose whole point is to cut by a character count known before anything is laid out. The first
+/// guess is the proportion that fits and the loop takes one character at a time from there, which is
+/// a handful of layouts for a long sentence and none at all for the usual message, which fits whole.
 fn elided(
     painter: &egui::Painter,
     message: &str,

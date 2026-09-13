@@ -38,6 +38,7 @@
 use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use super::{clipped_in, darken, lighten, primary_button, text, PAD};
+use crate::components::controls;
 use crate::services::agent_tasks::model::{Priority, Sprint, SprintStatus, Status, Task};
 use crate::services::agent_tasks::{AgentTasks, Group, View, SWATCHES};
 use crate::services::plugin_ui::{Look, Request};
@@ -605,21 +606,16 @@ fn badge(painter: &egui::Painter, look: &Look<'_>, at: Pos2, sprint: &Sprint) ->
         SprintStatus::Planned => ("PLANNED", look.palette.text_dim),
         SprintStatus::Completed => ("COMPLETED", look.palette.text_faint),
     };
-    let size = look.font_size - 3.0;
-    let galley = painter.layout_no_wrap(said.to_owned(), egui::FontId::proportional(size), tint);
-    let chip = Rect::from_min_size(
-        Pos2::new(at.x, at.y - galley.size().y / 2.0 - 3.0),
-        galley.size() + Vec2::new(16.0, 6.0),
-    );
-    painter.rect(
-        chip,
-        CornerRadius::same((chip.height() / 2.0) as u8),
-        egui::Color32::TRANSPARENT,
-        Stroke::new(1.0, tint.gamma_multiply(0.55)),
-        egui::StrokeKind::Inside,
-    );
-    painter.galley(Pos2::new(chip.min.x + 8.0, at.y - galley.size().y / 2.0), galley, tint);
-    chip.width()
+    controls::chip(
+        painter,
+        at,
+        true,
+        said,
+        look.font_size - 3.0,
+        tint,
+        controls::ChipFill::Outline(Stroke::new(1.0, tint.gamma_multiply(0.55))),
+        Vec2::new(16.0, 6.0),
+    )
 }
 
 /// A small text button that lives in a heading, laid out from the right.
@@ -671,7 +667,7 @@ fn quiet_button_named(
         ui.painter().rect_filled(
             area,
             CornerRadius::same((area.height() / 2.0) as u8),
-            egui::Color32::from_white_alpha(16),
+            crate::theme::color::hover_wash().gamma_multiply(16.0 / 255.0),
         );
     }
     ui.painter().galley(
@@ -721,7 +717,7 @@ fn row(
         ui.painter().rect_filled(
             area,
             CornerRadius::same(radius as u8),
-            egui::Color32::from_white_alpha(10),
+            crate::theme::color::hover_wash().gamma_multiply(10.0 / 255.0),
         );
     }
     // The coloured edge naming the epic, which is `.row-task`'s own `border-left-color` and what a card on
@@ -831,22 +827,16 @@ fn epic_chip(
         .and_then(crate::services::plugins::colour)
         .map(|found| egui::Color32::from_rgb(found.r, found.g, found.b))
         .unwrap_or(look.palette.text_dim);
-    let galley = painter.layout_no_wrap(
-        name.to_owned(),
-        egui::FontId::proportional(look.font_size - 3.0),
+    controls::chip(
+        painter,
+        at,
+        false,
+        name,
+        look.font_size - 3.0,
         tint,
-    );
-    let chip = Rect::from_min_size(
-        Pos2::new(at.x - galley.size().x - 14.0, at.y - galley.size().y / 2.0 - 3.0),
-        galley.size() + Vec2::new(14.0, 6.0),
-    );
-    painter.rect_filled(
-        chip,
-        CornerRadius::same((chip.height() / 2.0) as u8),
-        tint.gamma_multiply(0.16),
-    );
-    painter.galley(Pos2::new(chip.min.x + 7.0, at.y - galley.size().y / 2.0), galley, tint);
-    chip.width()
+        controls::ChipFill::Tint(tint.gamma_multiply(0.16)),
+        Vec2::new(14.0, 6.0),
+    )
 }
 
 /// Who the ticket is assigned to, as the small disc a card draws.
@@ -1183,7 +1173,11 @@ fn swatch(
             Stroke::new(1.6, look.palette.text_strong),
         );
     } else if response.hovered() {
-        ui.painter().circle_filled(area.center(), radius, egui::Color32::from_white_alpha(24));
+        ui.painter().circle_filled(
+            area.center(),
+            radius,
+            crate::theme::color::hover_wash().gamma_multiply(24.0 / 255.0),
+        );
     }
     response.widget_info(|| {
         egui::WidgetInfo::selected(

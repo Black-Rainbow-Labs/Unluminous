@@ -219,6 +219,17 @@ palette! {
     /// The same folder when it is open. Atom Material Icons' one loud move, and the reason
     /// `folder` and `icon` are two roles rather than one.
     folder_open = Color32::from_rgb(0x48, 0x9F, 0xF8);
+
+    /// A translucent wash painted over a control on hover, when nothing more specific applies.
+    ///
+    /// The Agent-Tasks board painted this seven times as a bare `Color32::from_white_alpha(n)`, a
+    /// different `n` at each call site and no name any of them shared. `from_white_alpha(n)` is a
+    /// colour whose every channel is `n`, so `hover_wash().gamma_multiply(n as f32 / 255.0)`
+    /// reproduces it exactly — `no_component_writes_a_colour_of_its_own`'s round trip test proves
+    /// this for every `n` from 0 to 255. The strength stays the caller's own number rather than
+    /// becoming a second role: the seven washes are not all the same strength, and folding the
+    /// strength into the palette as well as the colour would change what each one draws.
+    hover_wash = Color32::WHITE;
 }
 
 /// Colours that are another colour, and the marks a person makes on their own text.
@@ -819,6 +830,20 @@ mod tests {
             "the improved marks are what a window comes up in"
         );
         assert_eq!(IconSet::parse("atom"), None);
+    }
+
+    /// `color::hover_wash()` is `Color32::WHITE`, and every one of the board's hover washes used
+    /// to be `Color32::from_white_alpha(n)` for its own `n`. This is the proof that
+    /// `hover_wash().gamma_multiply(n as f32 / 255.0)` draws the same colour `from_white_alpha(n)`
+    /// always did, for every `n` a `u8` can hold, so moving the seven call sites onto the shared
+    /// role could not have changed a pixel.
+    #[test]
+    fn a_gamma_multiplied_hover_wash_reproduces_every_white_alpha_the_board_used() {
+        for n in 0..=255u8 {
+            let expected = Color32::from_white_alpha(n);
+            let actual = color::hover_wash().gamma_multiply(n as f32 / 255.0);
+            assert_eq!(actual, expected, "at alpha {n}");
+        }
     }
 }
 

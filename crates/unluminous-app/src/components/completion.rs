@@ -128,7 +128,7 @@ fn draw_row(
     // One pill, drawn one way: the same `SELECTED_ROW` fill the explorer's open file and every menu
     // row's hover already use.
     if chosen {
-        painter.rect_filled(area, CornerRadius::same(4), color::selected_row());
+        controls::pill(painter, area, 4);
     } else if response.hovered() {
         painter.rect_filled(area, CornerRadius::same(4), color::control());
     }

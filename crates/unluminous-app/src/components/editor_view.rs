@@ -916,6 +916,7 @@ pub fn paint_frame(ui: &egui::Ui, area: Rect, color: Color32) {
 pub fn allocate(ui: &mut egui::Ui) -> (Rect, egui::Response) {
     let size = ui.available_size();
     let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Editor"));
     (rect, response)
 }
 

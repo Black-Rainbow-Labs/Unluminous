@@ -30,6 +30,7 @@
 
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
+use crate::components::controls;
 use crate::theme::{color, icon};
 
 /// How tall the strip is. The same as the terminal tile's header, so the two horizontal strips in
@@ -166,6 +167,9 @@ pub fn show(
     // window with the editing area: `task-1771` asks for that at the top of every pane, and this strip is
     // what the editing area has instead of a header.
     let empty = ui.interact(area, ui.id().with(("tab-strip-empty", pane)), Sense::CLICK);
+    empty.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Tab strip empty part")
+    });
     outcome.twice_on_the_empty_part = empty.double_clicked();
 
     let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(area));
@@ -245,7 +249,7 @@ fn draw_tab(
     }
     let painter = ui.painter();
     if active {
-        painter.rect_filled(rect, CornerRadius::ZERO, color::selected_row());
+        controls::pill(painter, rect, 0);
         // The accent line, quiet in a pane that has not got the keyboard, so which pane is being
         // typed into can be seen at a glance.
         let line = if at.focused { color::accent() } else { color::accent().gamma_multiply(0.35) };

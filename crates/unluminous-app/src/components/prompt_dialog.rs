@@ -96,7 +96,9 @@ pub struct PromptOutcome {
 pub fn show(ctx: &egui::Context, prompt: &mut Prompt) -> PromptOutcome {
     let mut outcome = PromptOutcome::default();
     let closed = modal("unluminous-prompt", ctx, |ui, area| {
-        header(ui, area, &prompt.title, &mut outcome.cancelled);
+        if modal::header(ui, area, &prompt.title) {
+            outcome.cancelled = true;
+        }
         let body = body_rect(area);
         note(ui, body, &prompt.note);
 
@@ -154,7 +156,9 @@ pub struct Confirmation {
 pub fn confirm(ctx: &egui::Context, question: &Confirmation) -> PromptOutcome {
     let mut outcome = PromptOutcome::default();
     let closed = modal("unluminous-confirm", ctx, |ui, area| {
-        header(ui, area, &question.title, &mut outcome.cancelled);
+        if modal::header(ui, area, &question.title) {
+            outcome.cancelled = true;
+        }
         note(ui, body_rect(area), &question.note);
         buttons(ui, area, &question.confirm, true, &mut outcome);
     });
@@ -166,10 +170,10 @@ pub fn confirm(ctx: &egui::Context, question: &Confirmation) -> PromptOutcome {
 
 /// The frame both of them are drawn in, which is the frame `design/style-guide.md` describes.
 ///
-/// `components::modal` owns that frame, and owns the dragging and the resizing with it, so the
-/// prompt and the confirmation are moved and resized exactly as the Settings window and the git
-/// dialogs are. This function is what remains of the copy that used to live here: the two sizes, and
-/// the name the placement is remembered under.
+/// `components::modal` owns that frame, the header and the footer, and owns the dragging and the
+/// resizing with it, so the prompt and the confirmation are moved, resized and headed exactly as
+/// the Settings window and the git dialogs are. What is left here is the two sizes, and the name the
+/// placement is remembered under.
 fn modal(id: &str, ctx: &egui::Context, contents: impl FnOnce(&mut egui::Ui, Rect)) -> bool {
     let (_, close) = modal::show(ctx, id, WIDTH, HEIGHT, |ui, area| contents(ui, area));
     close
@@ -180,31 +184,6 @@ fn body_rect(area: Rect) -> Rect {
         Pos2::new(area.left() + 20.0, area.top() + HEADER + 16.0),
         Pos2::new(area.right() - 20.0, area.bottom() - FOOTER),
     )
-}
-
-fn header(ui: &mut egui::Ui, area: Rect, title: &str, cancelled: &mut bool) {
-    let bar = Rect::from_min_size(area.min, Vec2::new(area.width(), HEADER));
-    let painter = ui.painter_at(area);
-    painter.rect_filled(bar, CornerRadius { nw: 10, ne: 10, sw: 0, se: 0 }, color::title_bar());
-    let galley = painter.layout_no_wrap(
-        title.to_owned(),
-        egui::FontId::proportional(13.0),
-        color::text_strong(),
-    );
-    painter.galley(
-        Pos2::new(area.left() + 20.0, bar.center().y - galley.size().y / 2.0),
-        galley,
-        color::text_strong(),
-    );
-    let close =
-        Rect::from_center_size(Pos2::new(area.right() - 24.0, bar.center().y), Vec2::splat(22.0));
-    if crate::components::controls::icon_button(ui, close, "Close", crate::theme::icon::cross) {
-        *cancelled = true;
-    }
-    painter.line_segment(
-        [Pos2::new(bar.left(), bar.bottom()), Pos2::new(bar.right(), bar.bottom())],
-        Stroke::new(1.0, color::divider()),
-    );
 }
 
 fn note(ui: &mut egui::Ui, body: Rect, text: &str) {

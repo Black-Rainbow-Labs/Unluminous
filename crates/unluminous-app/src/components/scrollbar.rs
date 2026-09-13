@@ -31,8 +31,9 @@
 //! every other pane. It lands inside the editing area's right hand padding, so no letter is ever
 //! drawn underneath it.
 
-use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Vec2};
+use egui::{CornerRadius, Pos2, Rect, Sense, Vec2};
 
+use crate::components::controls::mix;
 use crate::theme::color;
 
 /// How far in from the right edge the bar sits. See the note above about the window's resize grip.
@@ -198,13 +199,6 @@ pub fn paint(ui: &egui::Ui, bar: &Bar, id: &str, active: bool) {
         CornerRadius::same(4),
         mix(color::control(), color::text_dim(), strength),
     );
-}
-
-/// A colour part of the way between two, which is how the thumb fades.
-fn mix(from: Color32, to: Color32, along: f32) -> Color32 {
-    let along = along.clamp(0.0, 1.0);
-    let each = |from: u8, to: u8| (from as f32 + (to as f32 - from as f32) * along).round() as u8;
-    Color32::from_rgb(each(from.r(), to.r()), each(from.g(), to.g()), each(from.b(), to.b()))
 }
 
 /// How far up the bar is: 1 while it is being used, 0 once it has settled, and on its way between

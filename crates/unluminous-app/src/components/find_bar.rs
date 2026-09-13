@@ -68,7 +68,8 @@ pub fn show(ui: &mut egui::Ui, area: Rect, find: &mut Find) -> Outcome {
     // The pointer belongs to the bar over its own rectangle. Without this a click on Replace All
     // also lands in the text underneath and moves the caret, so the replacement happens somewhere
     // else -- which is the shape of fault the browser pane's `is_any_open` test exists for.
-    ui.interact(bar, ui.id().with("find-bar"), egui::Sense::click_and_drag());
+    let ground = ui.interact(bar, ui.id().with("find-bar"), egui::Sense::click_and_drag());
+    ground.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Find bar"));
     let painter = ui.painter_at(bar);
     painter.rect(
         bar,
@@ -102,7 +103,7 @@ fn find_row(ui: &mut egui::Ui, row: Rect, find: &mut Find, outcome: &mut Outcome
     // Two function pointers rather than one closure over `find.replacing`, because `icon_button`
     // takes a `fn` -- a drawing is a fixed mark rather than something a caller builds.
     let mark = if find.replacing { pointing_down } else { pointing_right };
-    if controls::icon_button(ui, toggle, "Replace", mark) {
+    if controls::icon_button(ui, toggle, "Show Replace", mark) {
         find.replacing = !find.replacing;
     }
     pen += ROW;

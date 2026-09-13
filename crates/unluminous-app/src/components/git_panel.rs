@@ -18,7 +18,7 @@ use egui::{Pos2, Rect, Sense, Vec2};
 use unluminous_git::status::Entry;
 use unluminous_git::Status;
 
-use crate::components::modal;
+use crate::components::{controls, modal};
 use crate::theme::{color, icon, size};
 
 const WIDTH: f32 = 780.0;
@@ -130,12 +130,11 @@ fn tabs(ui: &mut egui::Ui, body: Rect, panel: &mut CommitPanel) -> f32 {
         let response = ui.interact(rect, ui.id().with(("commit-tab", name)), Sense::click());
         let chosen = panel.tab == tab;
         if chosen {
-            ui.painter().rect(
+            controls::pill_with_stroke(
+                ui.painter(),
                 rect,
-                egui::CornerRadius::same(size::CONTROL_CORNER),
-                color::selected_row(),
+                size::CONTROL_CORNER,
                 egui::Stroke::new(1.0, color::accent()),
-                egui::StrokeKind::Inside,
             );
         } else if response.hovered() {
             ui.painter().rect_filled(

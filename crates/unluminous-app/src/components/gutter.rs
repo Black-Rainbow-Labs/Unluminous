@@ -50,6 +50,7 @@
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Vec2};
 use unluminous_core::Layout;
 
+use crate::components::controls::mix;
 use crate::theme::{color, icon};
 
 /// The empty strip between the numbers and the text.
@@ -436,6 +437,7 @@ pub fn show(
         return outcome;
     }
     let response = ui.interact(area, ui.id().with("gutter"), Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Gutter"));
     if response.secondary_clicked() {
         outcome.context_menu = response.interact_pointer_pos().or_else(|| response.hover_pos());
     }
@@ -755,13 +757,6 @@ fn draw_blame(
         author,
         color::text_strong(),
     );
-}
-
-/// Blend two colours, which is how the blame tint follows a commit's age.
-fn mix(from: Color32, to: Color32, amount: f32) -> Color32 {
-    let amount = amount.clamp(0.0, 1.0);
-    let blend = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * amount).round() as u8;
-    Color32::from_rgb(blend(from.r(), to.r()), blend(from.g(), to.g()), blend(from.b(), to.b()))
 }
 
 #[cfg(test)]

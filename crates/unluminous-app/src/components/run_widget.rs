@@ -109,11 +109,7 @@ impl WidgetState {
 
 /// A name cut short at [`NAME_LIMIT`] with an ellipsis, or left alone when it fits.
 fn elide(name: &str) -> String {
-    if name.chars().count() <= NAME_LIMIT {
-        return name.to_owned();
-    }
-    let kept: String = name.chars().take(NAME_LIMIT - 1).collect();
-    format!("{kept}\u{2026}")
+    controls::truncate_chars(name, NAME_LIMIT, NAME_LIMIT - 1)
 }
 
 /// How much room the widget wants, which the title bar leaves clear at its right hand end.
@@ -282,7 +278,7 @@ fn configuration_row(ui: &mut egui::Ui, row: &Row, selected: bool) -> Option<Act
     let play_response =
         ui.interact(play, ui.id().with(("run-row-play", &row.name)), Sense::click());
     if response.hovered() || play_response.hovered() {
-        ui.painter().rect_filled(rect, CornerRadius::same(4), color::selected_row());
+        controls::pill(ui.painter(), rect, 4);
     }
     let painter = ui.painter();
     let mut left = rect.left() + 8.0;

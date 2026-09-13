@@ -890,7 +890,7 @@ fn show_preview(ui: &mut egui::Ui, area: Rect, state: &mut References) {
             let painter = ui.painter();
             let on_the_match = number == matched_line;
             if on_the_match {
-                painter.rect_filled(rect, egui::CornerRadius::same(3), color::selected_row());
+                controls::pill(painter, rect, 3);
             }
             let tint = if on_the_match { color::text_strong() } else { color::text_dim() };
             modal::label(

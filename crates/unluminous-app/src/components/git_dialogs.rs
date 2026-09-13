@@ -9,7 +9,7 @@
 use egui::{Pos2, Rect, Vec2};
 use unluminous_git::{Branch, Commit, PullStrategy, PushTarget, Remote, ResetMode, Status};
 
-use crate::components::modal;
+use crate::components::{controls, modal};
 use crate::theme::color;
 
 /// Which dialog is open. Only one can be, because they are all modal.
@@ -297,11 +297,7 @@ fn reset(
         let chosen = dialogs.reset_mode == index;
         let response = ui.interact(row, ui.id().with(("reset-mode", index)), egui::Sense::click());
         if chosen {
-            ui.painter().rect_filled(
-                row.shrink2(Vec2::new(0.0, 1.0)),
-                egui::CornerRadius::same(5),
-                color::selected_row(),
-            );
+            controls::pill(ui.painter(), row.shrink2(Vec2::new(0.0, 1.0)), 5);
         }
         let tint = if chosen { color::text_strong() } else { color::text_control() };
         let x = modal::label(ui.painter(), row, row.left() + 10.0, mode.name(), tint, 12.5);

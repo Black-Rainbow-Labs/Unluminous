@@ -683,7 +683,7 @@ pub fn row(
     let response = ui.interact(rect, ui.id().with(("modal-row", id)), Sense::click());
     let pill = rect.shrink2(Vec2::new(8.0, 1.0));
     if chosen {
-        ui.painter().rect_filled(pill, CornerRadius::same(5), color::selected_row());
+        controls::pill(ui.painter(), pill, 5);
     } else if response.hovered() {
         ui.painter().rect_filled(pill, CornerRadius::same(5), color::control());
     }
