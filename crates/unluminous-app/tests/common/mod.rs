@@ -32,6 +32,7 @@ use unluminous_app::components::title_bar::MenuPlacement;
 use unluminous_app::services::run_configurations::Configuration;
 use unluminous_app::UnluminousApp;
 use unluminous_core::Command;
+use unluminous_dap::Message;
 
 pub const WINDOW: [f32; 2] = [1180.0, 740.0];
 
@@ -662,6 +663,63 @@ pub fn configuration(name: &str, command: &str) -> Configuration {
 // above, which set the same states up by hand; what is unproven, and what these prove, is that the
 // command line reaches those states at all.
 
+/// Every catalogue command this test binary has driven, and which way each drive came out.
+///
+/// `task-1922` §5.4 asks for dispatch coverage as a rule rather than as a habit:
+/// `command_line.rs` walks `catalogue::COMMANDS` and fails naming any command no test in that file
+/// has driven. This is the set that walk reads, and it is written to by every helper below that
+/// sends a command line or a request to the window, so a command driven anywhere in the binary
+/// counts. It is the same mechanism `unluminous-cli/src/documentation.rs` already uses to keep a
+/// command from existing without a section in the reference: a command that exists and is not
+/// tested is a failing test.
+///
+/// **Per test binary**, because a `static` is, so the walk in `command_line.rs` sees what
+/// `command_line.rs` drove and nothing else. That is what its message means.
+static DRIVEN: OnceLock<std::sync::Mutex<std::collections::HashMap<String, Ways>>> =
+    OnceLock::new();
+
+/// Which ways one command has been driven.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Ways {
+    pub succeeded: bool,
+    pub refused: bool,
+}
+
+/// Write down that `command` -- a wire name, `tab.open` -- was driven, and how it answered.
+///
+/// The wire name rather than the line, because the line is what somebody typed and the wire name is
+/// what the catalogue calls it. Anything the catalogue does not know is dropped rather than
+/// recorded, so a deliberately misspelled command in a test does not invent a row.
+pub fn note_a_drive(command: &str, ok: bool) {
+    let Some(known) = unluminous_cli::catalogue::find(command) else { return };
+    let mut set = DRIVEN.get_or_init(Default::default).lock().expect("the drive record");
+    let ways = set.entry(known.wire()).or_default();
+    match ok {
+        true => ways.succeeded = true,
+        false => ways.refused = true,
+    }
+}
+
+/// The same, for a command line rather than a wire name, when there is no reply to read one out of.
+///
+/// The first two words are what name a command, so they are what is looked up: parsing the whole
+/// line the way the client does would also decide whether the arguments after those two words are
+/// well formed, and a line holding a path with a space in it would then be recorded as no command at
+/// all. Which command it was is the only question here.
+pub fn note_a_driven_line(line: &str, ok: bool) {
+    let words: Vec<&str> = line.split_whitespace().take(2).collect();
+    let named = unluminous_cli::catalogue::find(&words.join(" "))
+        .or_else(|| words.first().and_then(|first| unluminous_cli::catalogue::find(first)));
+    if let Some(command) = named {
+        note_a_drive(&command.wire(), ok);
+    }
+}
+
+/// What has been driven so far, for the walk that asks whether the catalogue is covered.
+pub fn commands_driven() -> std::collections::HashMap<String, Ways> {
+    DRIVEN.get_or_init(Default::default).lock().expect("the drive record").clone()
+}
+
 /// Run a command line against the window and take the reply, insisting it was answered.
 pub fn run(
     harness: &mut Harness<'static, UnluminousApp>,
@@ -672,6 +730,9 @@ pub fn run(
         .state_mut()
         .run_command_line(line, &ctx)
         .unwrap_or_else(|| panic!("`{line}` was not answered on the frame it was asked"));
+    // The reply's own name rather than the line's, because the reply is what the window dispatched
+    // on: a line that would not parse answers with an empty name, which [`note_a_drive`] drops.
+    note_a_drive(&reply.command, reply.ok);
     harness.run();
     reply
 }
@@ -698,6 +759,7 @@ pub fn did_while_waiting(
         .state_mut()
         .run_command_line(line, &ctx)
         .unwrap_or_else(|| panic!("`{line}` was not answered on the frame it was asked"));
+    note_a_drive(&reply.command, reply.ok);
     harness.step();
     assert!(reply.ok, "`{line}` was refused: {}", reply.message);
     reply.result
@@ -908,6 +970,9 @@ pub fn drove(harness: &mut Harness<'static, UnluminousApp>, line: &str) {
     let ctx = harness.ctx.clone();
     let answered = harness.state_mut().run_command_line(line, &ctx);
     assert!(answered.is_none(), "`{line}` should hold until its frames are drawn");
+    // A command that holds until its frames are drawn is a command that worked; there is no reply to
+    // read it out of, so the record is written here rather than in `run`.
+    note_a_driven_line(line, true);
     // Bounded, because a gesture that never drained would otherwise hang the test rather than fail it.
     for _ in 0..600 {
         let Some(events) = harness.state_mut().take_the_next_input_frame() else { break };
@@ -957,4 +1022,200 @@ pub fn fixture(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
         }
     }
     root
+}
+
+// ============================================================================================
+// A debug session with no adapter behind it.
+//
+// `task-1687`'s own trick, and `task-1922` moved it here: a session fed fixed DAP messages runs the
+// whole state machine over exactly the messages a real adapter would have sent, so what is drawn is
+// what a real adapter sending them would have drawn and the picture is the same on every run. It is
+// `tests/debugging.rs`'s fixture and `tests/command_line.rs`'s as well, because the dispatch
+// coverage walk has to drive the fifteen `debug` commands that need a program stopped somewhere and
+// a second copy of this would be a second copy to keep in step.
+
+/// A folder holding one real Rust file to set breakpoints in.
+///
+/// Its own folder for `folding_folder`'s reason: `sample_folder`'s file count is in the status bar of
+/// a dozen accepted screenshots, and another file there would change every one of them.
+pub fn debug_folder(name: &str) -> std::path::PathBuf {
+    fixture(
+        &format!("unluminous-screenshot-debug/{name}"),
+        &[(
+            "main.rs",
+            "fn main() {\n\
+        \x20   let attempts = 3;\n\
+        \x20   let items = vec![1, 2, 3];\n\
+        \x20   let total = attempts + items.len();\n\
+        \x20   println!(\"{total}\");\n\
+         }\n",
+        )],
+    )
+}
+
+/// A window on that folder with `main.rs` open.
+pub fn debug_harness(name: &str) -> Harness<'static, UnluminousApp> {
+    let folder = debug_folder(name);
+    let mut harness = harness_in(&folder);
+    harness.get_by_label_contains("main.rs").click();
+    harness.run();
+    harness.run();
+    harness
+}
+
+/// What the adapter would have said, so a whole session is a list of values with no process in it.
+pub fn answer(request_seq: i64, command: &str, body: serde_json::Value) -> Message {
+    Message::Response {
+        seq: 900 + request_seq,
+        request_seq,
+        command: command.to_owned(),
+        success: true,
+        message: None,
+        body,
+    }
+}
+
+/// The seq the session really used for `command`, out of a batch of what it asked for.
+///
+/// Nothing about the order or the numbering is assumed: the test answers what was asked, exactly as
+/// an adapter would. One `stopped` produces two requests at once, which is why the batch is read
+/// whole rather than one request at a time.
+pub fn seq_of(asked: &[serde_json::Value], command: &str) -> i64 {
+    asked
+        .iter()
+        .find(|frame| frame["command"] == command)
+        .and_then(|frame| frame["seq"].as_i64())
+        .unwrap_or_else(|| panic!("the session should have asked for {command}: {asked:#?}"))
+}
+
+/// The two together, for the many places only one request is outstanding.
+pub fn asked_for(harness: &mut Harness<'static, UnluminousApp>, command: &str) -> i64 {
+    let batch = asked(harness);
+    seq_of(&batch, command)
+}
+
+/// Hand a message to the session and let the window settle.
+pub fn feed_debug(harness: &mut Harness<'static, UnluminousApp>, message: Message) {
+    harness.state_mut().debug.as_mut().expect("a session").feed(message);
+    harness.run();
+}
+
+/// Everything an ordinary adapter offers.
+pub fn capabilities() -> serde_json::Value {
+    serde_json::json!({
+        "supportsConfigurationDoneRequest": true,
+        "supportsSetVariable": true,
+        "supportsConditionalBreakpoints": true,
+        "supportsLogPoints": true,
+        "supportsTerminateRequest": true,
+        // `task-1696`: the two the value tooltip asks about. A real CodeLLDB and a real js-debug
+        // both offer them, and with them absent the popup would fall back to the `watch` context and
+        // draw its root with no field — which is a different test, not this fixture's job.
+        "supportsEvaluateForHovers": true,
+        "supportsSetExpression": true,
+    })
+}
+
+/// Drive a detached session from nothing to stopped at line 4 of `main.rs`, with three locals.
+///
+/// The whole lifecycle, in the protocol's own order, answering what the session really asked for.
+pub fn paused_harness(name: &str) -> Harness<'static, UnluminousApp> {
+    let mut harness = debug_harness(name);
+    let path = debug_folder(name).join("main.rs");
+    harness
+        .state_mut()
+        .new_detached_debug_session("lldb", configuration("app", "target/debug/app.exe"));
+    harness.state_mut().show_the_debug_tile(true);
+    harness.run();
+
+    let initialize = asked_for(&mut harness, "initialize");
+    feed_debug(&mut harness, answer(initialize, "initialize", capabilities()));
+    // The launch went out with it; the adapter then says it is ready for breakpoints.
+    asked_for(&mut harness, "launch");
+    feed_debug(&mut harness, Message::Initialized);
+    let done = asked_for(&mut harness, "configurationDone");
+    feed_debug(&mut harness, answer(done, "configurationDone", serde_json::Value::Null));
+
+    stop_the_session_again(&mut harness, &path, 4, "breakpoint");
+    harness
+}
+
+/// Tell a detached session the program has stopped again, and answer everything it then asks for.
+///
+/// The tail of [`paused_harness`], made a function of its own by `task-1922` because the dispatch
+/// coverage walk in `tests/command_line.rs` drives the five commands that **resume** the program --
+/// `continue`, the three steps and `run-to` -- and after each of those the session is running again,
+/// so the next one is correctly refused with "the program is not stopped". Every one of those five
+/// would otherwise need a paused window of its own.
+///
+/// Nothing about the order or the numbering is assumed: what is answered is what the session really
+/// asked for, exactly as an adapter would. `variablesReference` values die on every resume, so the
+/// scope and the variables are handed back fresh each time.
+///
+/// `reason` is the adapter's own word for why it stopped -- `breakpoint`, `step`, `exception` -- and
+/// it is a parameter because the debug tile draws it, so a picture accepted of a session stopped at
+/// a breakpoint is a picture of that word.
+pub fn stop_the_session_again(
+    harness: &mut Harness<'static, UnluminousApp>,
+    path: &std::path::Path,
+    line: u32,
+    reason: &str,
+) {
+    feed_debug(
+        harness,
+        Message::Stopped(unluminous_dap::Stopped {
+            reason: reason.to_owned(),
+            thread: Some(1),
+            description: None,
+            text: None,
+            all_threads: true,
+        }),
+    );
+    // One `stopped` asks for both at once, so the batch is read whole.
+    let batch = asked(harness);
+    let threads = seq_of(&batch, "threads");
+    let stack = seq_of(&batch, "stackTrace");
+    feed_debug(
+        harness,
+        answer(threads, "threads", serde_json::json!({ "threads": [{ "id": 1, "name": "main" }] })),
+    );
+    feed_debug(
+        harness,
+        answer(
+            stack,
+            "stackTrace",
+            serde_json::json!({ "stackFrames": [
+                { "id": 1000, "name": "app::main", "line": line, "source": { "path": path.to_string_lossy() } },
+                { "id": 1001, "name": "core::ops::function::FnOnce::call_once", "line": 250, "presentationHint": "subtle" }
+            ]}),
+        ),
+    );
+    let scopes = asked_for(harness, "scopes");
+    feed_debug(
+        harness,
+        answer(
+            scopes,
+            "scopes",
+            serde_json::json!({ "scopes": [
+                { "name": "Locals", "variablesReference": 7, "expensive": false },
+                { "name": "Registers", "variablesReference": 8, "expensive": true }
+            ]}),
+        ),
+    );
+    let variables = asked_for(harness, "variables");
+    feed_debug(
+        harness,
+        answer(
+            variables,
+            "variables",
+            serde_json::json!({ "variables": [
+                { "name": "attempts", "value": "3", "type": "i32", "variablesReference": 0 },
+                { "name": "items", "value": "Vec<i32>(len:3)", "type": "alloc::vec::Vec<i32>", "variablesReference": 17 },
+                { "name": "total", "value": "6", "type": "usize", "variablesReference": 0 },
+                // One the debugger could not read, which every real session has: it is listed in the
+                // tree in the debugger's own words and **not** painted at the end of a line.
+                { "name": "step", "value": "<optimized out>", "variablesReference": 0 }
+            ]}),
+        ),
+    );
 }

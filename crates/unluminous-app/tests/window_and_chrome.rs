@@ -12,7 +12,7 @@
 //! focus is pressed by a space, so typing one closed the window. That is furniture behaving badly
 //! rather than a fault in the editing area.
 //!
-//! **42 of the 132 tests here take a picture**, and the rest drive the window and read its state
+//! **42 of the 138 tests here take a picture**, and the rest drive the window and read its state
 //! back.
 
 mod common;
@@ -2870,6 +2870,129 @@ fn a_wide_picture_is_scaled_down_to_the_width_of_the_pane() {
     std::fs::remove_dir_all(&folder).ok();
 }
 
+/// The counterpart of `cargo run --example markdown_check`, run automatically as part of the suite
+/// rather than left for somebody to remember to run by hand.
+///
+/// It walks the repository for every `.md` and `.markdown` file, skipping the same names the example
+/// skips, renders each one with `unluminous_core::markdown::render` and checks the same four
+/// invariants the example's own `problems` function checks: the spans cover the text exactly, there
+/// is one paragraph style and one source line for every preview line, the source lines never go
+/// backwards, and everything a picture, a diagram or a panel names is inside the text.
+/// `unluminous-core`'s own `markdown::tests` module checks the same four against a battery of short
+/// fixtures written by hand; this checks them against the hundred and some real files this
+/// repository is actually written in, which is `markdown_check`'s own reason for existing — nobody
+/// writing a fixture thinks to write the shape of Markdown that breaks a parser, and files written
+/// by hand over months already hold it.
+///
+/// Reading the repository from a test is fine here in the one way it is ever fine: what is read is
+/// the checked-in Markdown files themselves, which travel with the code and answer the same way on
+/// every machine that runs the suite, unlike a person's own settings, projects or fonts, which a
+/// test must never depend on because those differ from one machine to the next.
+/// `every_accepted_image_is_named_by_a_test`, near the top of this file, already reads this same
+/// repository's own test sources for the same reason.
+///
+/// The walk and the four checks are copies of the example's own `collect` and `problems` functions
+/// rather than calls into them, because an example is a separate binary a test cannot call into and
+/// the example itself is not to change: its printed table is what a person reads when a file breaks.
+#[test]
+fn every_markdown_file_in_the_repository_renders_with_no_broken_invariant() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut files = Vec::new();
+    collect_markdown_files(&root, &mut files);
+    assert!(
+        files.len() >= 50,
+        "found only {} markdown files under {}, which looks like a broken walk rather than a small \
+         repository",
+        files.len(),
+        root.display()
+    );
+
+    let options = unluminous_core::markdown::Options::new(
+        unluminous_core::CharStyle::default(),
+        unluminous_core::PreviewColors::default(),
+        Some("Courier".to_owned()),
+    );
+
+    let mut broken = Vec::new();
+    for path in &files {
+        let Ok(source) = std::fs::read_to_string(path) else { continue };
+        let preview = unluminous_core::markdown::render(&source, &options);
+        for problem in markdown_preview_problems(&preview) {
+            broken.push(format!("{}: {problem}", path.display()));
+        }
+    }
+    assert!(
+        broken.is_empty(),
+        "{} problem(s) found among {} markdown files:\n{}",
+        broken.len(),
+        files.len(),
+        broken.join("\n")
+    );
+}
+
+/// Every `.md` and `.markdown` file under a folder, leaving out what a build wrote.
+///
+/// Copied from `examples/markdown_check.rs`'s own `collect`; see
+/// `every_markdown_file_in_the_repository_renders_with_no_broken_invariant` for why it is a copy
+/// rather than a shared call.
+fn collect_markdown_files(folder: &std::path::Path, into: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(folder) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        if name.starts_with('.') || matches!(name.as_str(), "target" | "node_modules" | "releases")
+        {
+            continue;
+        }
+        if path.is_dir() {
+            collect_markdown_files(&path, into);
+        } else if path.extension().is_some_and(|end| end == "md" || end == "markdown") {
+            into.push(path);
+        }
+    }
+}
+
+/// The four things that must be true of every preview whatever the source was.
+///
+/// Copied from `examples/markdown_check.rs`'s own `problems`, for the same reason
+/// `collect_markdown_files` above is a copy.
+fn markdown_preview_problems(preview: &unluminous_core::Preview) -> Vec<String> {
+    let lines = preview.text.len_lines();
+    let mut out = Vec::new();
+    if preview.chars.total_len() != preview.text.len_bytes() {
+        out.push(format!(
+            "the spans cover {} bytes of {}",
+            preview.chars.total_len(),
+            preview.text.len_bytes()
+        ));
+    }
+    if preview.paragraphs.len() != lines {
+        out.push(format!("{} paragraph styles for {lines} lines", preview.paragraphs.len()));
+    }
+    if preview.source_lines.len() != lines {
+        out.push(format!("{} source lines for {lines} lines", preview.source_lines.len()));
+    }
+    if !preview.source_lines.windows(2).all(|pair| pair[0] <= pair[1]) {
+        out.push("the source lines go backwards".to_owned());
+    }
+    for image in &preview.images {
+        if image.paragraph >= lines {
+            out.push(format!("a picture at paragraph {} of {lines}", image.paragraph));
+        }
+    }
+    for diagram in &preview.diagrams {
+        if diagram.paragraph >= lines {
+            out.push(format!("a diagram at paragraph {} of {lines}", diagram.paragraph));
+        }
+    }
+    for panel in &preview.panels {
+        if panel.paragraphs.end > lines || panel.paragraphs.start >= panel.paragraphs.end {
+            out.push(format!("a panel over {:?} of {lines}", panel.paragraphs));
+        }
+    }
+    out
+}
+
 #[test]
 fn the_shortcut_on_the_menu_opens_go_to_file() {
     let mut harness = harness("");
@@ -3498,4 +3621,1231 @@ fn the_palette_offers_the_entries_wp4_added_and_names_their_chords() {
             assert_eq!(found.unwrap().1, chord, "{name}");
         }
     }
+}
+
+// ==============================================================================================
+// task-1922 §5.4: no action is a silent no operation
+//
+// `UnluminousApp::run_action` is the one place a menu row, a key chord or `unluminous-cli action
+// run` turns into a change, and nothing asked whether each of its arms does anything at all. The
+// walk below runs every value of every [`Action`] against a window put into the state that action
+// needs, and fails when the window came out of it unchanged **and** with nothing new in the status
+// bar. Unluminous's own rule is that a control which cannot apply is absent and one that cannot be
+// used just now is dimmed and says why; one that quietly does nothing is neither.
+//
+// **Exhaustive by construction.** Rust has no reflection, so the list of actions is written out by
+// hand -- and [`variant_name`] beside it is an exhaustive `match` over `&Action` with no wildcard
+// arm, so a variant added to `Action` stops this file compiling until somebody writes a line for
+// it. [`EVERY_VARIANT`] is the set of names that match can return, and the walk fails while a name
+// in it is neither driven nor named on [`CANNOT_BE_DRIVEN`]. The four sub enums that carry a menu's
+// worth of entries of their own are held the same way, because each of their values is a distinct
+// menu row rather than one row with a parameter.
+//
+// **What counts as having done something** is a signature of the whole window. `status --json` is
+// most of it -- the editor, the tabs, the panes, the panels, the explorer, the terminal, who holds
+// the keyboard, the modal that is open, the settings, git, the project and the status bar
+// **message** -- so one comparison covers both halves of the rule at once. The read-only commands
+// beside it answer for what `status` does not carry: the collapsed blocks, the marked passages, the
+// canvas, the runs, the debugger and the breakpoints. The last few values no command answers for at
+// all are read off the window itself.
+//
+// A signature that differs for a reason other than the action is harmless, because the walk only
+// fails when nothing differed. A signature too narrow to see what an action really changed is the
+// fault that matters, and is why it is as wide as it is.
+
+use std::path::PathBuf;
+use std::sync::OnceLock;
+
+use unluminous_app::app::actions::{
+    DebugAction, FoldAction, GitAction, HighlightColor, RunAction, SpaceAction,
+};
+use unluminous_app::app::dock::{Panel, Side};
+use unluminous_app::services::space::Kind;
+
+/// Every variant of [`Action`], by the name [`variant_name`] answers with.
+///
+/// Written out because Rust cannot be asked. What keeps it in step with the enum is the exhaustive
+/// match below, which stops this file compiling when a variant is added, and the walk, which fails
+/// while a name here is neither driven nor excluded.
+const EVERY_VARIANT: &[&str] = &[
+    "NewWindow",
+    "OpenFolder",
+    "OpenFile",
+    "OpenWebAddress",
+    "OpenInBrowser",
+    "GoToFile",
+    "FindInFiles",
+    "CheckForUpdates",
+    "Find",
+    "Replace",
+    "FindNext",
+    "FindPrevious",
+    "GoToDefinition",
+    "FindReferences",
+    "RenameSymbol",
+    "CompleteWord",
+    "NavigateBack",
+    "NavigateForward",
+    "ToggleLineComment",
+    "ToggleBlockComment",
+    "DuplicateLines",
+    "MoveLines",
+    "JoinLines",
+    "SortLines",
+    "TrimTrailingWhitespace",
+    "GoToLine",
+    "GoToMatchingBracket",
+    "CommandPalette",
+    "ReopenClosedTab",
+    "OpenRecent",
+    "ForgetRecent",
+    "Save",
+    "SaveAs",
+    "CloseWindow",
+    "Settings",
+    "Undo",
+    "Redo",
+    "Cut",
+    "Copy",
+    "Paste",
+    "SelectAll",
+    "SetViewMode",
+    "ToggleExplorer",
+    "ToggleEditor",
+    "ToggleMaximisedPane",
+    "ToggleLineNumbers",
+    "ChangeFontSize",
+    "ResetFontSize",
+    "ToggleTerminal",
+    "ToggleRunTile",
+    "ToggleDebugTile",
+    "Dock",
+    "ResetPanelLayout",
+    "Space",
+    "Run",
+    "Debug",
+    "CloseTab",
+    "NextTab",
+    "PreviousTab",
+    "SplitRight",
+    "MoveTabRight",
+    "MoveTabLeft",
+    "Unsplit",
+    "UnsplitAll",
+    "NextPane",
+    "PreviousPane",
+    "SelectOpenFile",
+    "NewTerminalTab",
+    "CloseTerminalTab",
+    "RenameTerminalTab",
+    "NewFile",
+    "NewFolder",
+    "CutPath",
+    "CopyPath",
+    "CopyPathReference",
+    "PasteInto",
+    "RenamePath",
+    "DeletePath",
+    "RevealPath",
+    "ReloadPath",
+    "Git",
+    "Highlight",
+    "ClearHighlight",
+    "ClearHighlights",
+    "Fold",
+    "About",
+    "Quit",
+    "PluginPane",
+    "PluginCommand",
+    "PluginTab",
+];
+
+/// The name of the variant `action` is.
+///
+/// **No wildcard arm**, which is the whole reason it exists: a variant added to [`Action`] fails to
+/// compile here until somebody writes a line for it, and the line they write is the reminder to add
+/// the action to [`every_step`] or to [`CANNOT_BE_DRIVEN`].
+fn variant_name(action: &Action) -> &'static str {
+    match action {
+        Action::NewWindow => "NewWindow",
+        Action::OpenFolder => "OpenFolder",
+        Action::OpenFile => "OpenFile",
+        Action::OpenWebAddress => "OpenWebAddress",
+        Action::OpenInBrowser(_) => "OpenInBrowser",
+        Action::GoToFile => "GoToFile",
+        Action::FindInFiles => "FindInFiles",
+        Action::CheckForUpdates => "CheckForUpdates",
+        Action::Find => "Find",
+        Action::Replace => "Replace",
+        Action::FindNext => "FindNext",
+        Action::FindPrevious => "FindPrevious",
+        Action::GoToDefinition => "GoToDefinition",
+        Action::FindReferences => "FindReferences",
+        Action::RenameSymbol => "RenameSymbol",
+        Action::CompleteWord => "CompleteWord",
+        Action::NavigateBack => "NavigateBack",
+        Action::NavigateForward => "NavigateForward",
+        Action::ToggleLineComment => "ToggleLineComment",
+        Action::ToggleBlockComment => "ToggleBlockComment",
+        Action::DuplicateLines => "DuplicateLines",
+        Action::MoveLines { .. } => "MoveLines",
+        Action::JoinLines => "JoinLines",
+        Action::SortLines => "SortLines",
+        Action::TrimTrailingWhitespace => "TrimTrailingWhitespace",
+        Action::GoToLine => "GoToLine",
+        Action::GoToMatchingBracket => "GoToMatchingBracket",
+        Action::CommandPalette => "CommandPalette",
+        Action::ReopenClosedTab => "ReopenClosedTab",
+        Action::OpenRecent(_) => "OpenRecent",
+        Action::ForgetRecent => "ForgetRecent",
+        Action::Save => "Save",
+        Action::SaveAs => "SaveAs",
+        Action::CloseWindow => "CloseWindow",
+        Action::Settings => "Settings",
+        Action::Undo => "Undo",
+        Action::Redo => "Redo",
+        Action::Cut => "Cut",
+        Action::Copy => "Copy",
+        Action::Paste => "Paste",
+        Action::SelectAll => "SelectAll",
+        Action::SetViewMode(_) => "SetViewMode",
+        Action::ToggleExplorer => "ToggleExplorer",
+        Action::ToggleEditor => "ToggleEditor",
+        Action::ToggleMaximisedPane => "ToggleMaximisedPane",
+        Action::ToggleLineNumbers => "ToggleLineNumbers",
+        Action::ChangeFontSize { .. } => "ChangeFontSize",
+        Action::ResetFontSize => "ResetFontSize",
+        Action::ToggleTerminal => "ToggleTerminal",
+        Action::ToggleRunTile => "ToggleRunTile",
+        Action::ToggleDebugTile => "ToggleDebugTile",
+        Action::Dock { .. } => "Dock",
+        Action::ResetPanelLayout => "ResetPanelLayout",
+        Action::Space(_) => "Space",
+        Action::Run(_) => "Run",
+        Action::Debug(_) => "Debug",
+        Action::CloseTab => "CloseTab",
+        Action::NextTab => "NextTab",
+        Action::PreviousTab => "PreviousTab",
+        Action::SplitRight => "SplitRight",
+        Action::MoveTabRight => "MoveTabRight",
+        Action::MoveTabLeft => "MoveTabLeft",
+        Action::Unsplit => "Unsplit",
+        Action::UnsplitAll => "UnsplitAll",
+        Action::NextPane => "NextPane",
+        Action::PreviousPane => "PreviousPane",
+        Action::SelectOpenFile => "SelectOpenFile",
+        Action::NewTerminalTab => "NewTerminalTab",
+        Action::CloseTerminalTab => "CloseTerminalTab",
+        Action::RenameTerminalTab => "RenameTerminalTab",
+        Action::NewFile(_) => "NewFile",
+        Action::NewFolder(_) => "NewFolder",
+        Action::CutPath(_) => "CutPath",
+        Action::CopyPath(_) => "CopyPath",
+        Action::CopyPathReference(_) => "CopyPathReference",
+        Action::PasteInto(_) => "PasteInto",
+        Action::RenamePath(_) => "RenamePath",
+        Action::DeletePath(_) => "DeletePath",
+        Action::RevealPath(_) => "RevealPath",
+        Action::ReloadPath(_) => "ReloadPath",
+        Action::Git(_) => "Git",
+        Action::Highlight(_) => "Highlight",
+        Action::ClearHighlight => "ClearHighlight",
+        Action::ClearHighlights => "ClearHighlights",
+        Action::Fold(_) => "Fold",
+        Action::About => "About",
+        Action::Quit => "Quit",
+        Action::PluginPane { .. } => "PluginPane",
+        Action::PluginCommand { .. } => "PluginCommand",
+        Action::PluginTab { .. } => "PluginTab",
+    }
+}
+
+/// Every entry on the Git menu, by name.
+const EVERY_GIT: &[&str] = &[
+    "Commit",
+    "Add",
+    "ShowDiff",
+    "CompareWithRevision",
+    "ShowHistory",
+    "ShowCurrentRevision",
+    "Rollback",
+    "Annotate",
+    "Push",
+    "Pull",
+    "Fetch",
+    "Merge",
+    "Rebase",
+    "Continue",
+    "Abort",
+    "Branches",
+    "Switch",
+    "NewBranch",
+    "NewTag",
+    "ResetHead",
+    "Stash",
+    "Unstash",
+    "Remotes",
+    "Clone",
+    "Exclude",
+    "Refresh",
+];
+
+fn git_variant_name(action: &GitAction) -> &'static str {
+    match action {
+        GitAction::Commit => "Commit",
+        GitAction::Add(_) => "Add",
+        GitAction::ShowDiff(_) => "ShowDiff",
+        GitAction::CompareWithRevision(_) => "CompareWithRevision",
+        GitAction::ShowHistory(_) => "ShowHistory",
+        GitAction::ShowCurrentRevision => "ShowCurrentRevision",
+        GitAction::Rollback(_) => "Rollback",
+        GitAction::Annotate => "Annotate",
+        GitAction::Push => "Push",
+        GitAction::Pull => "Pull",
+        GitAction::Fetch => "Fetch",
+        GitAction::Merge => "Merge",
+        GitAction::Rebase => "Rebase",
+        GitAction::Continue => "Continue",
+        GitAction::Abort => "Abort",
+        GitAction::Branches => "Branches",
+        GitAction::Switch(_) => "Switch",
+        GitAction::NewBranch => "NewBranch",
+        GitAction::NewTag => "NewTag",
+        GitAction::ResetHead => "ResetHead",
+        GitAction::Stash => "Stash",
+        GitAction::Unstash => "Unstash",
+        GitAction::Remotes => "Remotes",
+        GitAction::Clone => "Clone",
+        GitAction::Exclude => "Exclude",
+        GitAction::Refresh => "Refresh",
+    }
+}
+
+/// Everything the Run menu and the run widget can ask for.
+const EVERY_RUN: &[&str] = &["Start", "Stop", "Rerun", "Select", "CurrentFile", "Edit"];
+
+fn run_variant_name(action: &RunAction) -> &'static str {
+    match action {
+        RunAction::Start(_) => "Start",
+        RunAction::Stop(_) => "Stop",
+        RunAction::Rerun(_) => "Rerun",
+        RunAction::Select(_) => "Select",
+        RunAction::CurrentFile => "CurrentFile",
+        RunAction::Edit => "Edit",
+    }
+}
+
+/// Everything the Run menu's debug half, the debug tile and the gutter's menu can ask for.
+const EVERY_DEBUG: &[&str] = &[
+    "Start",
+    "CurrentFile",
+    "Stop",
+    "Resume",
+    "StepOver",
+    "StepInto",
+    "StepOut",
+    "Pause",
+    "RunToCursor",
+    "ToggleBreakpoint",
+    "EditBreakpoint",
+    "ToggleBreakpointEnabled",
+    "ShowValue",
+    "EvaluateExpression",
+    "ToggleTile",
+    "InstallAdapter",
+];
+
+fn debug_variant_name(action: &DebugAction) -> &'static str {
+    match action {
+        DebugAction::Start(_) => "Start",
+        DebugAction::CurrentFile => "CurrentFile",
+        DebugAction::Stop => "Stop",
+        DebugAction::Resume => "Resume",
+        DebugAction::StepOver => "StepOver",
+        DebugAction::StepInto => "StepInto",
+        DebugAction::StepOut => "StepOut",
+        DebugAction::Pause => "Pause",
+        DebugAction::RunToCursor => "RunToCursor",
+        DebugAction::ToggleBreakpoint => "ToggleBreakpoint",
+        DebugAction::EditBreakpoint => "EditBreakpoint",
+        DebugAction::ToggleBreakpointEnabled => "ToggleBreakpointEnabled",
+        DebugAction::ShowValue => "ShowValue",
+        DebugAction::EvaluateExpression => "EvaluateExpression",
+        DebugAction::ToggleTile => "ToggleTile",
+        DebugAction::InstallAdapter(_) => "InstallAdapter",
+    }
+}
+
+/// Everything the canvas's own menus can ask for.
+const EVERY_SPACE: &[&str] = &[
+    "Toggle",
+    "Add",
+    "Fit",
+    "OpenAddModal",
+    "NewView",
+    "Manage",
+    "RenameView",
+    "DuplicateView",
+    "DeleteView",
+    "RenameNode",
+    "CloseNode",
+    "ChooseFolder",
+    "RestartNode",
+    "ResumeSession",
+    "StartWhatWasRunning",
+    "Disconnect",
+    "CarryLines",
+];
+
+fn space_variant_name(action: &SpaceAction) -> &'static str {
+    match action {
+        SpaceAction::Toggle => "Toggle",
+        SpaceAction::Add(_) => "Add",
+        SpaceAction::Fit => "Fit",
+        SpaceAction::OpenAddModal => "OpenAddModal",
+        SpaceAction::NewView => "NewView",
+        SpaceAction::Manage => "Manage",
+        SpaceAction::RenameView => "RenameView",
+        SpaceAction::DuplicateView => "DuplicateView",
+        SpaceAction::DeleteView => "DeleteView",
+        SpaceAction::RenameNode => "RenameNode",
+        SpaceAction::CloseNode => "CloseNode",
+        SpaceAction::ChooseFolder => "ChooseFolder",
+        SpaceAction::RestartNode => "RestartNode",
+        SpaceAction::ResumeSession => "ResumeSession",
+        SpaceAction::StartWhatWasRunning => "StartWhatWasRunning",
+        SpaceAction::Disconnect => "Disconnect",
+        SpaceAction::CarryLines(_) => "CarryLines",
+    }
+}
+
+/// The actions no test can run, and why each one cannot.
+///
+/// `task-1922` §5.4 asks for each to be named rather than for anything to be quietly skipped, and
+/// the walk fails when an action on this list is stepped anyway, so the list cannot grow stale in
+/// the direction that hides something. Each name is read back through `Action::from_name`, so a
+/// name that stops being an action fails here too.
+const CANNOT_BE_DRIVEN: &[(&str, &str)] = &[
+    ("new-window", "it starts a second Unluminous process"),
+    ("open-recent", "it starts a second Unluminous process on the project it names"),
+    (
+        "open-folder",
+        "it opens the platform's own folder chooser and waits for somebody to click in it",
+    ),
+    ("open-file", "it opens the platform's own file chooser and waits for somebody to click in it"),
+    ("save-as", "it opens the platform's own save dialog and waits for somebody to click in it"),
+    (
+        "space-choose-folder",
+        "it opens the platform's own folder chooser and waits for somebody to click in it",
+    ),
+    ("quit", "it closes the window, and the walk has the rest of the actions still to run"),
+    ("close-window", "the same: it closes the window"),
+    (
+        "reveal-path",
+        "it hands the path to the operating system's own file manager, which opens a window on \
+         this machine",
+    ),
+    (
+        "check-for-updates",
+        "it asks GitHub for the latest release, and a test does not reach the network",
+    ),
+    ("debug-install", "it downloads and installs a debug adapter onto this machine"),
+    (
+        "paste",
+        "it reads the machine's own clipboard, and whether it does anything at all is decided by \
+         what somebody left on it; a test cannot set that without taking the clipboard away from \
+         whoever is using the machine",
+    ),
+];
+
+/// Which window an action needs behind it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Where {
+    /// A project holding a Rust file with blocks in it, a Markdown file and a local page.
+    Project,
+    /// The same project, in a real git repository.
+    Repository,
+    /// A debug session stopped at line 4 with three locals in scope, fed the messages a real
+    /// adapter would have sent.
+    Paused,
+    /// A project whose own settings folder holds a manifest that contributes a tab, because no
+    /// plugin that ships contributes one.
+    ContributedTab,
+}
+
+type Ready = fn(&mut Harness<'static, UnluminousApp>);
+
+/// One action, and what the window needs before it can apply.
+struct Step {
+    action: Action,
+    /// Command lines run before the action, after the shared preparation.
+    lines: Vec<String>,
+    /// The same, for what no command line can set up.
+    ready: Option<Ready>,
+    place: Where,
+}
+
+impl Step {
+    fn new(action: Action) -> Self {
+        Step { action, lines: Vec::new(), ready: None, place: Where::Project }
+    }
+
+    fn after(mut self, lines: &[&str]) -> Self {
+        self.lines = lines.iter().map(|line| (*line).to_owned()).collect();
+        self
+    }
+
+    fn ready_with(mut self, ready: Ready) -> Self {
+        self.ready = Some(ready);
+        self
+    }
+
+    fn at(mut self, place: Where) -> Self {
+        self.place = place;
+        self
+    }
+}
+
+/// The project the walk runs in.
+///
+/// `src/main.rs` holds a function called from another, a comment, two blocks that can be collapsed,
+/// a line ending in whitespace and a bracket whose partner is four lines down -- between them, what
+/// a dozen of the actions below need in order to have something to do.
+fn walk_folder() -> PathBuf {
+    fixture(
+        "unluminous-1922-actions",
+        &[
+            ("readme.md", "# Readme\n\nSome prose, in a file that has a preview.\n"),
+            ("page.html", "<h1>A page</h1>\n"),
+            (
+                "src/main.rs",
+                "fn helper(value: usize) -> usize {\n    // a comment\n    let total = value + 1;\n    total   \n}\n\nfn main() {\n    let answer = helper(2);\n    println!(\"{answer}\");\n}\n",
+            ),
+            ("src/other.rs", "pub fn other() {}\n"),
+            ("docs/one.md", "# One\n"),
+        ],
+    )
+}
+
+/// A real repository for the Git menu, built once rather than once an action.
+///
+/// `git_folder` rebuilds its repository on every call, which is right for a test that changes one
+/// and wrong for twenty six windows that each want a repository to act on. What they do to it
+/// between them does not matter: each needs *a* repository with a committed file and an uncommitted
+/// change in it, and every one of them gets a window of its own on this one.
+fn walk_repository() -> PathBuf {
+    static ROOT: OnceLock<PathBuf> = OnceLock::new();
+    ROOT.get_or_init(|| git_folder("unluminous-1922-actions")).clone()
+}
+
+/// A project whose settings folder contributes a tab, which no plugin that ships does.
+fn walk_tab_folder() -> PathBuf {
+    static ROOT: OnceLock<PathBuf> = OnceLock::new();
+    ROOT.get_or_init(|| {
+        let folder = copy_out_of_the_repository(&walk_folder(), "unluminous-1922-actions-tab");
+        let plugin = folder.join(".unluminous-settings").join("plugins").join("agent-tasks");
+        std::fs::create_dir_all(&plugin).expect("a plugin folder");
+        std::fs::write(
+            plugin.join("plugin.conf"),
+            "plugin.id = agent-tasks\nplugin.name = Agent-Tasks\nplugin.kind = ui\n\
+             ui.provider = agent-tasks\ntab.id = board\ntab.label = Agent-Tasks\n",
+        )
+        .expect("a manifest that contributes a tab");
+        folder
+    })
+    .clone()
+}
+
+/// A window of the kind this step needs, with nothing done to it yet.
+fn window_for(place: Where) -> Harness<'static, UnluminousApp> {
+    match place {
+        Where::Project => harness_in(&walk_folder()),
+        Where::Repository => {
+            let mut harness = harness_in(&walk_repository());
+            settle_the_walk(&mut harness, Where::Repository);
+            harness
+        }
+        Where::Paused => paused_harness("unluminous-1922-actions"),
+        Where::ContributedTab => {
+            let folder = walk_tab_folder();
+            let mut harness = harness_in(&folder);
+            harness.state_mut().use_store(unluminous_app::services::store::Store::at(
+                folder.join(".unluminous-settings"),
+            ));
+            for _ in 0..4 {
+                harness.step();
+            }
+            harness
+        }
+    }
+}
+
+/// What every window of this kind has done to it before the step's own preparation.
+fn shared_preparation(place: Where) -> &'static [&'static str] {
+    match place {
+        // `version.ts` holds changes git has not been told about, so the entries that stage, diff
+        // and roll one back have something to work on.
+        Where::Repository => &["tab open version.ts --permanent", "window message walking"],
+        Where::Paused => &["window message walking"],
+        _ => &[
+            "tab open src/main.rs --permanent",
+            "editor select --from-line 3 --to-line 3",
+            "window message walking",
+        ],
+    }
+}
+
+/// Run a command line and take what it answered, without insisting that it worked.
+///
+/// The walk's preparation is allowed to be refused -- a line that cannot apply to this window has
+/// not left it in a worse state than it was -- and the signature's own reads are asked of windows
+/// holding a picture, a page or nothing, where some of them are correctly refused. What is compared
+/// is the answer, so a refusal is part of the signature rather than a failure.
+fn ask(harness: &mut Harness<'static, UnluminousApp>, line: &str) -> serde_json::Value {
+    let ctx = harness.ctx.clone();
+    let answered = harness.state_mut().run_command_line(line, &ctx);
+    harness.step();
+    match answered {
+        Some(reply) => serde_json::json!({ "ok": reply.ok, "result": reply.result }),
+        // A command that holds its answer open for a later frame. Nothing the signature reads does,
+        // and a preparation line that did has still been dispatched.
+        None => serde_json::Value::Null,
+    }
+}
+
+/// What the window has asked to be put on the system clipboard.
+///
+/// Read straight after the action rather than as part of the signature, because the commands are
+/// drained into each frame's output and the signature draws a dozen frames of its own. `Copy`,
+/// `Cut` and `Copy Path` change nothing else at all, which is what it is here for.
+fn copied_by_the_window(harness: &Harness<'static, UnluminousApp>) -> String {
+    harness
+        .output()
+        .platform_output
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            egui::OutputCommand::CopyText(text) => Some(text.clone()),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+/// Draw a few frames, and wait for git when there is a repository behind the window.
+///
+/// Every entry on the Git menu that is not a dialog sends a request to `unluminous_git::Worker`,
+/// which answers on a thread, so what it did reaches the window some frames later. Everything else
+/// here has finished by the time `run_action` returns.
+///
+/// **Quiet for several turns rather than quiet once.** `GitState::is_busy` reads
+/// `Worker::running()`, which the worker thread sets when it picks a request up -- so for the first
+/// moments after a request is sent the worker is not running anything yet and the window looks
+/// settled. Waiting for one quiet turn read the repository back before git had touched it, which is
+/// what made `git add`, `git fetch`, `git merge --continue` and `git merge --abort` all look like
+/// entries that do nothing at all.
+///
+/// It answers with **every line the status bar showed while it waited**, not only the one left at
+/// the end, because a git command's own answer does not survive the settling: `Reply::Done` puts
+/// git's words in the status bar and asks for the repository and the log to be read again, and
+/// `Reply::Log` clears the status bar when it arrives. So `Add`, `Fetch`, `Continue` and `Abort`
+/// each say what git said for a few frames and then say nothing, and a window read afterwards looks
+/// exactly like a window nothing happened to. A sentence that reached the status bar is the second
+/// half of the rule whether or not it is still there a moment later.
+fn settle_the_walk(harness: &mut Harness<'static, UnluminousApp>, place: Where) -> Vec<String> {
+    let mut said: Vec<String> = Vec::new();
+    match place {
+        Where::Repository => {
+            let mut quiet = 0;
+            for _ in 0..400 {
+                pump(harness);
+                note_the_status_bar(harness, &mut said);
+                match harness.state().git.as_ref().is_some_and(|git| git.is_busy()) {
+                    true => quiet = 0,
+                    false => quiet += 1,
+                }
+                if quiet >= 10 {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(15));
+            }
+            for _ in 0..3 {
+                harness.step();
+                note_the_status_bar(harness, &mut said);
+            }
+        }
+        _ => {
+            for _ in 0..4 {
+                harness.step();
+                note_the_status_bar(harness, &mut said);
+            }
+        }
+    }
+    said
+}
+
+/// Write down what the status bar is showing, if it is not already written down.
+///
+/// Both lines, because they are two different sentences: `UnluminousApp::message` is the window's
+/// own and `GitState::message` is whatever the git worker last answered with.
+fn note_the_status_bar(harness: &Harness<'static, UnluminousApp>, said: &mut Vec<String>) {
+    let state = harness.state();
+    let line = format!(
+        "{:?} / {:?}",
+        state.message,
+        state.git.as_ref().and_then(|git| git.message.clone())
+    );
+    if !said.contains(&line) {
+        said.push(line);
+    }
+}
+
+/// The whole window as one value, which is what deciding whether an action did anything compares.
+fn signature(harness: &mut Harness<'static, UnluminousApp>) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for line in [
+        "status --json",
+        "fold list --json",
+        "highlight list --all --json",
+        "space view --json",
+        "space connections --json",
+        "run list --json",
+        "run status --json",
+        "debug status --json",
+        "debug breakpoint list --json",
+        "terminal list --json",
+        "plugins list --json",
+        // The whole of what git says about the repository, which `status`'s own `git` section
+        // narrows to a branch and a count -- so staging a file, which leaves the count where it
+        // was, is a change only this one can see.
+        "git status --json",
+        "editor text",
+    ] {
+        parts.push(format!("{line} -> {}", ask(harness, line)));
+    }
+    // And the values no command answers for. Each is here because an action below changes it and
+    // nothing above would have shown it.
+    let state = harness.state();
+    // Whether the editing area is showing, which `status` does not answer: its `panels` are
+    // `dock::Panel::ALL`, and the editing area is not one of them -- it is what the panels leave.
+    parts.push(format!("editing area showing -> {}", state.editor_visible));
+    // And whether the tab that is showing is annotated with blame, which is the whole of what
+    // `Annotate` does and which nothing else here would see.
+    parts.push(format!("blame -> {}", state.files.active().blame.is_some()));
+    parts.push(format!("explorer clipboard -> {:?}", state.clipboard));
+    parts.push(format!("find bar -> {:?}", state.find));
+    parts.push(format!("references or rename -> {}", state.references.is_some()));
+    parts.push(format!("recent projects -> {:?}", state.recent));
+    parts.push(format!("explorer selection -> {:?}", state.selected));
+    parts.push(format!("run configurations dialog -> {:?}", state.run_dialog));
+    parts.push(format!("expression box -> {}", state.evaluate.is_some()));
+    parts.push(format!("breakpoint dialog -> {}", state.breakpoint_dialog.is_some()));
+    parts.push(format!("add a node -> {}", state.space.adding.is_some()));
+    parts.push(format!("manage the canvases -> {}", state.space.managing.is_some()));
+    parts.push(format!("in hand -> {:?}", state.space.in_hand));
+    parts.push(format!("closing -> {}", state.closing));
+    parts.push(format!("completion list -> {}", state.completion().is_some()));
+    parts.push(format!("value tooltip -> {}", state.value_tooltip_is_open()));
+    for pane in ["agent-tasks/board", "agent-chat/chat"] {
+        parts.push(format!("{pane} -> {}", showing(harness, pane)));
+    }
+    parts.join("\n")
+}
+
+// ------------------------------------------------------------------ what each action needs first
+
+fn a_canvas_with_a_chosen_node(harness: &mut Harness<'static, UnluminousApp>) {
+    let node = harness.state_mut().new_detached_space_node(Kind::Editor, egui::pos2(40.0, 40.0));
+    ask(harness, &format!("space focus {node}"));
+}
+
+/// Two nodes, and the camera moved off them, so putting every node on the screen is a change.
+fn a_canvas_the_camera_is_off(harness: &mut Harness<'static, UnluminousApp>) {
+    harness.state_mut().new_detached_space_node(Kind::Editor, egui::pos2(40.0, 40.0));
+    harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(600.0, 320.0));
+    for _ in 0..4 {
+        harness.step();
+    }
+    ask(harness, "space camera --x 900 --y 900");
+}
+
+/// Two terminal nodes with a wire between them, and the wire in hand -- which is what a right click
+/// on one puts there, and what each of the three entries on a wire's own menu reads.
+fn a_wire_in_hand(harness: &mut Harness<'static, UnluminousApp>) {
+    hold_a_wire(harness, false);
+}
+
+/// The same, with the wire already carrying lines, so turning that off is a change.
+fn a_wire_in_hand_carrying_lines(harness: &mut Harness<'static, UnluminousApp>) {
+    hold_a_wire(harness, true);
+}
+
+fn hold_a_wire(harness: &mut Harness<'static, UnluminousApp>, carrying: bool) {
+    // Detached, because a terminal node started the ordinary way runs a real shell.
+    let from = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    let to = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(600.0, 40.0));
+    let pipe = if carrying { " --pipe lines" } else { "" };
+    ask(harness, &format!("space connect {from} {to}{pipe}"));
+    let wires = ask(harness, "space connections --json");
+    harness.state_mut().space.in_hand.wire =
+        wires["result"]["connections"][0]["connection"].as_u64();
+}
+
+fn a_terminal_tab(harness: &mut Harness<'static, UnluminousApp>) {
+    harness.state_mut().new_detached_terminal_tab(20, 60);
+    harness.step();
+}
+
+fn a_project_that_has_been_open_before(harness: &mut Harness<'static, UnluminousApp>) {
+    harness.state_mut().recent = vec![PathBuf::from("/a/project")];
+}
+
+fn a_path_held_to_be_pasted(harness: &mut Harness<'static, UnluminousApp>) {
+    let ctx = harness.ctx.clone();
+    let readme = walk_folder().join("readme.md");
+    harness.state_mut().run_action(Action::CopyPath(readme), &ctx);
+    harness.step();
+}
+
+fn a_breakpoint_on_the_caret_line(harness: &mut Harness<'static, UnluminousApp>) {
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::Debug(DebugAction::ToggleBreakpoint), &ctx);
+    harness.step();
+}
+
+fn a_run_that_has_started(harness: &mut Harness<'static, UnluminousApp>) {
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::Run(RunAction::Start(None)), &ctx);
+    for _ in 0..20 {
+        harness.step();
+    }
+}
+
+/// The file on disk changed underneath the tab, so reading it again is a change.
+fn the_file_changed_underneath(harness: &mut Harness<'static, UnluminousApp>) {
+    std::fs::write(walk_folder().join("src/other.rs"), "pub fn other() { let changed = 1; }\n")
+        .expect("rewrite src/other.rs");
+    harness.step();
+}
+
+fn a_jump_to_go_back_from(harness: &mut Harness<'static, UnluminousApp>) {
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::GoToDefinition, &ctx);
+    harness.step();
+}
+
+fn a_jump_that_has_been_gone_back_from(harness: &mut Harness<'static, UnluminousApp>) {
+    a_jump_to_go_back_from(harness);
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::NavigateBack, &ctx);
+    harness.step();
+}
+
+// ------------------------------------------------------------------------------- the whole walk
+
+/// Every action the walk runs, with what its window needs first.
+fn every_step() -> Vec<Step> {
+    let folder = walk_folder();
+    let readme = folder.join("readme.md");
+    let mut steps: Vec<Step> = vec![
+        Step::new(Action::OpenWebAddress),
+        Step::new(Action::OpenInBrowser(folder.join("page.html"))),
+        Step::new(Action::GoToFile),
+        Step::new(Action::FindInFiles),
+        Step::new(Action::Find),
+        Step::new(Action::Replace),
+        Step::new(Action::FindNext).after(&["editor find total"]),
+        Step::new(Action::FindPrevious).after(&["editor find total"]),
+        // The caret on the call to `helper`, which is the one name in this file that is defined
+        // somewhere else in it.
+        Step::new(Action::GoToDefinition).after(&["editor caret --line 8 --column 20"]),
+        Step::new(Action::FindReferences).after(&["editor caret --line 8 --column 20"]),
+        Step::new(Action::RenameSymbol).after(&["editor caret --line 8 --column 20"]),
+        // Part way through a word, so there is a stem with something longer to offer, and with the
+        // editing area holding the keyboard, which is what `Complete Word` asks about first.
+        Step::new(Action::CompleteWord)
+            .after(&["pane focus 0", "editor caret --line 4 --column 8"]),
+        Step::new(Action::NavigateBack).ready_with(a_jump_to_go_back_from),
+        Step::new(Action::NavigateForward).ready_with(a_jump_that_has_been_gone_back_from),
+        Step::new(Action::ToggleLineComment),
+        Step::new(Action::ToggleBlockComment),
+        Step::new(Action::DuplicateLines),
+        Step::new(Action::MoveLines { down: true }),
+        Step::new(Action::MoveLines { down: false }),
+        Step::new(Action::JoinLines),
+        // Three lines that are not in order, so sorting them really moves one.
+        Step::new(Action::SortLines).after(&["editor select --from-line 7 --to-line 9"]),
+        Step::new(Action::TrimTrailingWhitespace),
+        Step::new(Action::GoToLine),
+        // Beside the brace that opens `fn main`, whose partner is three lines down.
+        Step::new(Action::GoToMatchingBracket).after(&["editor caret --line 7 --column 12"]),
+        Step::new(Action::CommandPalette),
+        Step::new(Action::ReopenClosedTab)
+            .after(&["tab open src/other.rs --permanent", "tab close"]),
+        Step::new(Action::ForgetRecent).ready_with(a_project_that_has_been_open_before),
+        Step::new(Action::Save).after(&["editor insert x"]),
+        Step::new(Action::Settings),
+        Step::new(Action::Undo).after(&["editor insert x"]),
+        Step::new(Action::Redo).after(&["editor insert x", "editor undo"]),
+        Step::new(Action::Cut),
+        Step::new(Action::Copy),
+        Step::new(Action::SelectAll),
+        // The three view modes are about a file that has a preview, and the raw one is where a tab
+        // opens, so it is switched away from first or it would be asked to do what is already done.
+        Step::new(Action::SetViewMode(ViewMode::Raw))
+            .after(&["tab open readme.md --permanent", "editor view preview"]),
+        Step::new(Action::SetViewMode(ViewMode::SideBySide))
+            .after(&["tab open readme.md --permanent"]),
+        Step::new(Action::SetViewMode(ViewMode::Preview))
+            .after(&["tab open readme.md --permanent"]),
+        Step::new(Action::ToggleExplorer),
+        Step::new(Action::ToggleEditor),
+        Step::new(Action::ToggleMaximisedPane),
+        Step::new(Action::ToggleLineNumbers),
+        Step::new(Action::ChangeFontSize { larger: true }),
+        Step::new(Action::ChangeFontSize { larger: false }),
+        Step::new(Action::ResetFontSize).after(&["settings set appearance.font.size 20"]),
+        Step::new(Action::ToggleTerminal),
+        Step::new(Action::ToggleRunTile),
+        Step::new(Action::ToggleDebugTile),
+        Step::new(Action::ResetPanelLayout).after(&["panel dock terminal left"]),
+        Step::new(Action::CloseTab),
+        Step::new(Action::NextTab).after(&["tab open src/other.rs --permanent"]),
+        Step::new(Action::PreviousTab).after(&["tab open src/other.rs --permanent"]),
+        Step::new(Action::SplitRight).after(&["tab open src/other.rs --permanent"]),
+        // A second pane, with the keyboard put back in the first, so there is one to the right.
+        Step::new(Action::MoveTabRight).after(&[
+            "tab open src/other.rs --permanent",
+            "pane split",
+            "pane focus 0",
+        ]),
+        Step::new(Action::MoveTabLeft).after(&["tab open src/other.rs --permanent", "pane split"]),
+        Step::new(Action::Unsplit).after(&["tab open src/other.rs --permanent", "pane split"]),
+        Step::new(Action::UnsplitAll).after(&["tab open src/other.rs --permanent", "pane split"]),
+        Step::new(Action::NextPane).after(&["tab open src/other.rs --permanent", "pane split"]),
+        Step::new(Action::PreviousPane).after(&["tab open src/other.rs --permanent", "pane split"]),
+        // Put away and filtered, which is the state the entry exists to get out of.
+        Step::new(Action::SelectOpenFile).after(&["explorer hide", "explorer filter zzz"]),
+        Step::new(Action::NewTerminalTab),
+        Step::new(Action::CloseTerminalTab).ready_with(a_terminal_tab),
+        Step::new(Action::RenameTerminalTab).ready_with(a_terminal_tab),
+        Step::new(Action::NewFile(folder.join("docs"))),
+        Step::new(Action::NewFolder(folder.join("docs"))),
+        Step::new(Action::CutPath(readme.clone())),
+        Step::new(Action::CopyPath(readme.clone())),
+        Step::new(Action::CopyPathReference(readme.clone())),
+        Step::new(Action::PasteInto(folder.join("docs"))).ready_with(a_path_held_to_be_pasted),
+        Step::new(Action::RenamePath(readme.clone())),
+        Step::new(Action::DeletePath(readme.clone())),
+        Step::new(Action::ReloadPath(folder.join("src/other.rs")))
+            .after(&["tab open src/other.rs --permanent"])
+            .ready_with(the_file_changed_underneath),
+        Step::new(Action::ClearHighlight).after(&[
+            "highlight add --from-line 3 --to-line 3",
+            "editor caret --line 3 --column 10",
+        ]),
+        Step::new(Action::ClearHighlights).after(&["highlight add --from-line 3 --to-line 3"]),
+        Step::new(Action::About),
+        Step::new(Action::PluginPane { pane: "agent-tasks/board".to_owned() }),
+        // A plugin command that changes the window rather than one that answers with data: this is
+        // the half of the plugin contract Unluminous owns, and it is what puts a pane on the screen.
+        Step::new(Action::PluginCommand {
+            plugin: "agent-tasks".to_owned(),
+            command: "open-pane".to_owned(),
+        }),
+        Step::new(Action::PluginTab { tab: "agent-tasks/board".to_owned() })
+            .at(Where::ContributedTab),
+        // The debug half that needs no session: both of these are refusals in the status bar, which
+        // is the other half of the rule.
+        Step::new(Action::Debug(DebugAction::Start(None))),
+        Step::new(Action::Debug(DebugAction::CurrentFile)),
+        Step::new(Action::Debug(DebugAction::ToggleBreakpoint)),
+        Step::new(Action::Debug(DebugAction::EditBreakpoint))
+            .ready_with(a_breakpoint_on_the_caret_line),
+        Step::new(Action::Debug(DebugAction::ToggleBreakpointEnabled))
+            .ready_with(a_breakpoint_on_the_caret_line),
+        Step::new(Action::Debug(DebugAction::ToggleTile)),
+        // And the half that needs a program stopped somewhere.
+        Step::new(Action::Debug(DebugAction::Stop)).at(Where::Paused),
+        Step::new(Action::Debug(DebugAction::Resume)).at(Where::Paused),
+        Step::new(Action::Debug(DebugAction::StepOver)).at(Where::Paused),
+        Step::new(Action::Debug(DebugAction::StepInto)).at(Where::Paused),
+        Step::new(Action::Debug(DebugAction::StepOut)).at(Where::Paused),
+        Step::new(Action::Debug(DebugAction::Pause)).at(Where::Paused),
+        Step::new(Action::Debug(DebugAction::RunToCursor)).at(Where::Paused),
+        Step::new(Action::Debug(DebugAction::ShowValue))
+            .at(Where::Paused)
+            .after(&["editor caret --line 4 --column 12"]),
+        Step::new(Action::Debug(DebugAction::EvaluateExpression)).at(Where::Paused),
+    ];
+
+    // The Run menu, against a configuration that prints a word and stops.
+    let a_configuration = ["run add echoing cmd /c echo hello", "run select echoing"];
+    for action in
+        [RunAction::Start(None), RunAction::Rerun(None), RunAction::CurrentFile, RunAction::Edit]
+    {
+        steps.push(Step::new(Action::Run(action)).after(&a_configuration));
+    }
+    steps.push(
+        Step::new(Action::Run(RunAction::Stop(None)))
+            .after(&a_configuration)
+            .ready_with(a_run_that_has_started),
+    );
+    // Choosing one that is not already chosen, or the entry would correctly do nothing.
+    steps.push(Step::new(Action::Run(RunAction::Select("echoing".to_owned()))).after(&[
+        "run add echoing cmd /c echo hello",
+        "run add other cmd /c echo other",
+        "run select other",
+    ]));
+
+    // The Git menu, against a real repository.
+    for action in GitAction::ALL {
+        steps.push(Step::new(Action::Git(action.clone())).at(Where::Repository));
+    }
+    // The one entry that is not on a menu: the branch flyout's row, which names the branch it is
+    // about. The branch that is already checked out, so nothing reaches a remote or moves a file.
+    steps.push(Step::new(Action::Git(GitAction::Switch("main".to_owned()))).at(Where::Repository));
+
+    // The canvas.
+    steps.push(Step::new(Action::Space(SpaceAction::Toggle)).after(&["space show"]));
+    for kind in Kind::ALL {
+        steps.push(Step::new(Action::Space(SpaceAction::Add(kind))).after(&["space show"]));
+    }
+    for action in [
+        SpaceAction::OpenAddModal,
+        SpaceAction::NewView,
+        SpaceAction::Manage,
+        SpaceAction::RenameView,
+        SpaceAction::DuplicateView,
+    ] {
+        steps.push(Step::new(Action::Space(action)).after(&["space show"]));
+    }
+    steps.push(
+        Step::new(Action::Space(SpaceAction::Fit))
+            .after(&["space show"])
+            .ready_with(a_canvas_the_camera_is_off),
+    );
+    // The last view cannot be deleted, so there are two.
+    steps.push(
+        Step::new(Action::Space(SpaceAction::DeleteView))
+            .after(&["space show", "space new-view Second"]),
+    );
+    for action in [
+        SpaceAction::RenameNode,
+        SpaceAction::CloseNode,
+        SpaceAction::RestartNode,
+        SpaceAction::ResumeSession,
+        SpaceAction::StartWhatWasRunning,
+    ] {
+        steps.push(
+            Step::new(Action::Space(action))
+                .after(&["space show"])
+                .ready_with(a_canvas_with_a_chosen_node),
+        );
+    }
+    steps.push(
+        Step::new(Action::Space(SpaceAction::Disconnect))
+            .after(&["space show"])
+            .ready_with(a_wire_in_hand),
+    );
+    steps.push(
+        Step::new(Action::Space(SpaceAction::CarryLines(true)))
+            .after(&["space show"])
+            .ready_with(a_wire_in_hand),
+    );
+    steps.push(
+        Step::new(Action::Space(SpaceAction::CarryLines(false)))
+            .after(&["space show"])
+            .ready_with(a_wire_in_hand_carrying_lines),
+    );
+
+    // The four colours the editor's right click menu offers, over the selected line.
+    for colour in HighlightColor::ALL {
+        steps.push(Step::new(Action::Highlight(colour)));
+    }
+
+    // The six things that can be done to a block. Two of them are about blocks that are already
+    // collapsed, and one falls back to the selection when nothing is marked -- so it is given a
+    // mark, which is what the entry is named after.
+    for action in FoldAction::ALL {
+        let step = Step::new(Action::Fold(action));
+        steps.push(match action {
+            FoldAction::None_ | FoldAction::ExpandRecursively => {
+                step.after(&["fold collapse --all"])
+            }
+            FoldAction::Others => step.after(&["highlight add --from-line 3 --to-line 3"]),
+            _ => step,
+        });
+    }
+
+    // A panel to each of the four edges. Moved somewhere else first, because docking a panel to the
+    // side it is already on is a row that would correctly do nothing.
+    for panel in Panel::ALL {
+        for side in Side::ALL {
+            let elsewhere = if side == Side::Left { Side::Right } else { Side::Left };
+            let line = format!("panel dock {} {}", panel.name(), elsewhere.name());
+            steps.push(Step::new(Action::Dock { panel, side }).after(&[line.as_str()]));
+        }
+    }
+
+    steps
+}
+
+/// Every `Action` runs, and every one of them changes the window or says why it cannot.
+///
+/// `task-1922` §5.4. Read the section comment above this one for what the signature is and why the
+/// exclusion list is written down rather than skipped.
+#[test]
+fn every_action_changes_the_window_or_says_why_it_cannot() {
+    let steps = every_step();
+    let mut faults: Vec<String> = Vec::new();
+
+    // A path, because a dozen of the actions below are about a file and `from_name` keeps the one
+    // it is given. Which file does not matter here: none of the excluded ones is run.
+    let a_path = walk_folder().join("readme.md");
+    let excluded: Vec<Action> = CANNOT_BE_DRIVEN
+        .iter()
+        .map(|(name, _)| {
+            Action::from_name(name, Some(a_path.clone())).unwrap_or_else(|| {
+                panic!("`{name}` is on CANNOT_BE_DRIVEN and is not the name of an action")
+            })
+        })
+        .collect();
+
+    // The list cannot go stale in the direction that hides something: an action that is excluded
+    // and stepped anyway is a fault rather than a skip.
+    for step in &steps {
+        let name = step.action.name();
+        if let Some((_, reason)) = CANNOT_BE_DRIVEN.iter().find(|(listed, _)| *listed == name) {
+            faults.push(format!(
+                "`{name}` is on CANNOT_BE_DRIVEN -- {reason} -- and the walk runs it anyway. Take \
+                 it off the list."
+            ));
+        }
+    }
+    let mut named: Vec<String> = Vec::new();
+    for step in &steps {
+        let name = step.action.name();
+        if named.contains(&name) {
+            faults.push(format!("two steps are both called `{name}`"));
+        }
+        named.push(name);
+    }
+
+    // Every variant of `Action` and of the four sub enums is either walked or excluded, and nothing
+    // walked names a variant the lists above have not heard of.
+    let every: Vec<&Action> =
+        steps.iter().map(|step| &step.action).chain(excluded.iter()).collect();
+    fn covered(names: &[&str], seen: Vec<&'static str>, what: &str, faults: &mut Vec<String>) {
+        for name in names {
+            if !seen.contains(name) {
+                faults.push(format!(
+                    "{what}::{name} is neither walked nor on CANNOT_BE_DRIVEN. Add a step for it, \
+                     or add it to the list with the reason it cannot be run."
+                ));
+            }
+        }
+        for name in &seen {
+            if !names.contains(name) {
+                faults.push(format!("{what}::{name} is walked and is not in the list beside it"));
+            }
+        }
+    }
+    covered(
+        EVERY_VARIANT,
+        every.iter().map(|action| variant_name(action)).collect(),
+        "Action",
+        &mut faults,
+    );
+    covered(
+        EVERY_GIT,
+        every
+            .iter()
+            .filter_map(|action| match action {
+                Action::Git(what) => Some(git_variant_name(what)),
+                _ => None,
+            })
+            .collect(),
+        "GitAction",
+        &mut faults,
+    );
+    covered(
+        EVERY_RUN,
+        every
+            .iter()
+            .filter_map(|action| match action {
+                Action::Run(what) => Some(run_variant_name(what)),
+                _ => None,
+            })
+            .collect(),
+        "RunAction",
+        &mut faults,
+    );
+    covered(
+        EVERY_DEBUG,
+        every
+            .iter()
+            .filter_map(|action| match action {
+                Action::Debug(what) => Some(debug_variant_name(what)),
+                _ => None,
+            })
+            .collect(),
+        "DebugAction",
+        &mut faults,
+    );
+    covered(
+        EVERY_SPACE,
+        every
+            .iter()
+            .filter_map(|action| match action {
+                Action::Space(what) => Some(space_variant_name(what)),
+                _ => None,
+            })
+            .collect(),
+        "SpaceAction",
+        &mut faults,
+    );
+
+    // Then the walk itself. A window of its own for each, because an action that leaves a modal
+    // open, a tab closed or a panel somewhere else is the next action's starting state otherwise,
+    // and a walk whose preparation quietly stopped working would report faults that are not there.
+    let began = std::time::Instant::now();
+    for step in &steps {
+        let name = step.action.name();
+        let mut harness = window_for(step.place);
+        for line in shared_preparation(step.place) {
+            ask(&mut harness, line);
+        }
+        for line in &step.lines {
+            ask(&mut harness, line);
+        }
+        if let Some(ready) = step.ready {
+            ready(&mut harness);
+        }
+        let said_before = settle_the_walk(&mut harness, step.place);
+
+        let before = signature(&mut harness);
+        let ctx = harness.ctx.clone();
+        harness.state_mut().run_action(step.action.clone(), &ctx);
+        harness.step();
+        let copied = copied_by_the_window(&harness);
+        let said_after = settle_the_walk(&mut harness, step.place);
+        let after = signature(&mut harness);
+
+        if before == after && said_before == said_after && copied.is_empty() {
+            faults.push(format!(
+                "`{name}` on a {:?} window changed nothing and said nothing. Either it is a silent \
+                 no operation, or the window it was given was not one it can apply to -- the step \
+                 for it is `{:?}`.",
+                step.place, step.lines
+            ));
+        }
+    }
+
+    println!(
+        "{} actions walked in {:.1}s, {} of them excluded",
+        steps.len(),
+        began.elapsed().as_secs_f32(),
+        CANNOT_BE_DRIVEN.len()
+    );
+    assert!(faults.is_empty(), "{} faults:\n  {}", faults.len(), faults.join("\n  "));
 }

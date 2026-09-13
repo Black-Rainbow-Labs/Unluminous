@@ -1,18 +1,31 @@
 //! The command line, driven through a real window.
 //!
-//! These go through the whole of the command line path apart from the socket: the words are parsed
-//! against `unluminous_cli::catalogue`, dispatched by `UnluminousApp::run_cli`, and what is checked
-//! afterwards is the window's own state — not the reply's opinion of itself. A command that says it
-//! opened a file and a window with that file open are two different claims, and only the second one
-//! is worth testing.
+//! Most of these go through the whole of the command line path apart from the socket: the words are
+//! parsed against `unluminous_cli::catalogue`, dispatched by `UnluminousApp::run_cli`, and what is
+//! checked afterwards is the window's own state — not the reply's opinion of itself. A command that
+//! says it opened a file and a window with that file open are two different claims, and only the
+//! second one is worth testing.
 //!
-//! **Not one of the 38 tests here takes a picture.** What a command does to the rendering is
+//! **Two of them do include the socket**, and they are the only tests anywhere that run the real
+//! `unluminous-cli` program against a real window: one runs `status --section keyboard` down the
+//! channel, and one spawns `mcp serve` and calls a tool through it. They are at the end of the file.
+//!
+//! **And one of them is a rule rather than a test of anything in particular.**
+//! `every_catalogue_command_is_driven_both_ways` drives every command in the catalogue to a success
+//! and to a refusal and then walks `catalogue::COMMANDS`, failing and naming any command nothing
+//! drove. That is `unluminous-cli/src/documentation.rs`'s own mechanism applied to the window: a
+//! command that exists and is not tested is a failing test. Nothing runs this suite on a push, so it
+//! is the only thing that will notice a command being added untested.
+//!
+//! **Not one of the 46 tests here takes a picture.** What a command does to the rendering is
 //! covered by the files beside this one, which set the same states up by hand; what is unproven, and
 //! what these prove, is that the command line reaches those states at all.
 
 mod common;
 
 use common::*;
+
+use std::sync::OnceLock;
 
 use egui::{vec2, Modifiers};
 use egui_kittest::kittest::Queryable;
@@ -1348,4 +1361,1035 @@ fn the_palette_is_a_modal_the_command_line_can_drive_like_go_to_file() {
     assert_eq!(refused(&mut harness, "modal accept 0"), "not-applicable");
     assert_eq!(did(&mut harness, "modal state")["open"], "command-palette");
     did(&mut harness, "modal cancel");
+}
+
+// =================================================================================================
+// Dispatch coverage as a rule.
+//
+// `task-1922` §5.4: this file drives every catalogue command to a success and to a refusal, and a
+// walk of `catalogue::COMMANDS` fails naming any command it did not drive. It is the mechanism
+// `unluminous-cli/src/documentation.rs` already uses to keep a command from existing without a
+// section in the reference, applied to the window: a command that exists and is not tested is a
+// failing test.
+//
+// **It is one test rather than a test a command.** The walk has to read what the drives wrote down,
+// and `cargo test` gives every test its own thread and no order, so a walk in a test of its own
+// would be asking about drives that may not have happened yet. So the drives are functions this one
+// test calls in turn, and `common::commands_driven` is what it reads afterwards -- which every other
+// test in this file also writes to, through `did`, `refused` and `drove`, so a command driven
+// anywhere in the binary counts.
+
+/// What a drive in the walk is, and what came of it.
+///
+/// Faults are collected rather than asserted one at a time. There are two hundred and fourteen
+/// commands here: a walk that stopped at the first would take two hundred runs to settle, where one
+/// that reports all of them takes a handful.
+#[derive(Default)]
+struct Coverage {
+    faults: Vec<String>,
+}
+
+impl Coverage {
+    /// Drive `line` and expect the window to do it.
+    ///
+    /// A command that answers on a **later** frame -- a screenshot, a reference search, one of the
+    /// waits -- is a command the window accepted, so it counts as a drive: `run_command_line` hands
+    /// back nothing for one of those, which is what `None` here means.
+    fn works(&mut self, harness: &mut Harness<'static, UnluminousApp>, line: &str) {
+        let ctx = harness.ctx.clone();
+        match harness.state_mut().run_command_line(line, &ctx) {
+            Some(reply) => {
+                note_a_drive(&reply.command, reply.ok);
+                if !reply.ok {
+                    self.faults.push(format!("`{line}` was refused: {}", reply.message));
+                }
+            }
+            None => note_a_driven_line(line, true),
+        }
+        harness.step();
+    }
+
+    /// Drive `line` and expect the window to refuse it, in a way a script can match on.
+    fn refuses(&mut self, harness: &mut Harness<'static, UnluminousApp>, line: &str) {
+        let ctx = harness.ctx.clone();
+        match harness.state_mut().run_command_line(line, &ctx) {
+            Some(reply) => {
+                note_a_drive(&reply.command, reply.ok);
+                if reply.ok {
+                    self.faults
+                        .push(format!("`{line}` should have been refused: {}", reply.message));
+                }
+                if reply.command.is_empty() {
+                    self.faults.push(format!(
+                        "`{line}` was refused before it reached the window, so it says nothing about \
+                         the command: {}",
+                        reply.message
+                    ));
+                }
+            }
+            None => self.faults.push(format!("`{line}` should have been refused, and was held")),
+        }
+        harness.step();
+    }
+
+    /// Drive `line` for its own sake, expecting nothing of it.
+    ///
+    /// For the handful of lines that are there to put the window into the state the next drive needs,
+    /// where whether that one worked is not what is being asked.
+    fn sets_up(&mut self, harness: &mut Harness<'static, UnluminousApp>, line: &str) {
+        let ctx = harness.ctx.clone();
+        if let Some(reply) = harness.state_mut().run_command_line(line, &ctx) {
+            note_a_drive(&reply.command, reply.ok);
+        }
+        harness.step();
+    }
+}
+
+/// The commands no test can drive to a success, and why each one cannot.
+///
+/// `task-1922` §5.4 asks for this to be named rather than for anything to be quietly skipped, and
+/// the walk fails if a command is on this list **and** was driven anyway, so the list cannot grow
+/// stale in the direction that hides something. Nothing is excluded from the **refusal** half: a
+/// value a command has no name for is refused before the window dispatches anything, so every
+/// command in the catalogue is refusable including the ones below.
+const CANNOT_BE_MADE_TO_SUCCEED: &[(&str, &str)] = &[
+    // The client answers these without a running Unluminous, so `run_cli` never sees one. They are
+    // tested in `unluminous-cli` itself, where they live.
+    ("instances", "the client answers it; it reads the instance files and never reaches a window"),
+    ("launch", "the client answers it, by starting a second Unluminous process"),
+    ("commands", "the client answers it, out of the catalogue it already holds"),
+    ("version", "the client answers it, out of its own build information"),
+    ("mcp.serve", "the client answers it, by becoming a Model Context Protocol server"),
+    ("mcp.install", "the client answers it, by rewriting an agent's own configuration on this machine"),
+    ("mcp.config", "the client answers it, out of the catalogue and this machine's paths"),
+    ("mcp.tools", "the client answers it, out of the catalogue it already holds"),
+    // And the four that do reach the window and must not be allowed to finish.
+    ("quit", "it ends the window, and the walk has the rest of the catalogue still to drive"),
+    ("update.check", "it asks GitHub for the latest release, and a test does not reach the network"),
+    ("debug.install", "it downloads and installs a debug adapter onto this machine"),
+    ("explorer.reveal", "it hands the path to the operating system's own file manager"),
+    // Three that need something a window with no web view behind it has not got.
+    ("browser.back", "it needs a rendered page with somewhere behind it, and a test window renders none"),
+    ("browser.forward", "it needs a rendered page with somewhere ahead of it, and a test window renders none"),
+    ("browser.reload", "it drives the one native view, which a test window has not got: `Browser::showing` is None, so the tab is never the one being rendered"),
+];
+
+/// Every command in the catalogue is driven to a success and to a refusal.
+#[test]
+fn every_catalogue_command_is_driven_both_ways() {
+    let mut coverage = Coverage::default();
+    refuse_a_value_no_command_has_a_name_for(&mut coverage);
+    drive_the_window_and_the_tabs(&mut coverage);
+    drive_the_editing_commands(&mut coverage);
+    drive_the_panels_and_the_explorer(&mut coverage);
+    drive_the_modals_and_the_settings(&mut coverage);
+    drive_the_terminal_and_the_runs(&mut coverage);
+    drive_the_canvas(&mut coverage);
+    drive_a_paused_debugger(&mut coverage);
+    drive_a_repository(&mut coverage);
+    drive_a_contributed_tab(&mut coverage);
+    drive_the_project(&mut coverage);
+
+    let driven = commands_driven();
+    let mut missing = Vec::new();
+    for command in unluminous_cli::catalogue::COMMANDS {
+        let wire = command.wire();
+        let ways = driven.get(&wire).copied().unwrap_or_default();
+        let excluded = CANNOT_BE_MADE_TO_SUCCEED.iter().find(|(name, _)| *name == wire);
+        match excluded {
+            Some((_, reason)) if ways.succeeded => missing.push(format!(
+                "`{}` is on the list of what cannot be made to succeed -- {reason} -- and something \
+                 drove it to a success anyway. Take it off the list.",
+                command.typed()
+            )),
+            Some(_) => {}
+            None if !ways.succeeded => missing.push(format!(
+                "`{}` is never driven to a success by any test in this file. Add a drive, or add it \
+                 to CANNOT_BE_MADE_TO_SUCCEED with the reason.",
+                command.typed()
+            )),
+            None => {}
+        }
+        if !ways.refused {
+            missing.push(format!(
+                "`{}` is never driven to a refusal by any test in this file.",
+                command.typed()
+            ));
+        }
+    }
+
+    let faults: Vec<String> = coverage.faults.into_iter().chain(missing).collect();
+    assert!(faults.is_empty(), "{} faults:\n  {}", faults.len(), faults.join("\n  "));
+}
+
+/// A value a command has no name for is a usage refusal, whatever the command.
+///
+/// `task-1804`'s rule -- a key the schema offered but this command does not name is refused rather
+/// than dropped -- asked of every command at once. It is the refusal half of the coverage above for
+/// every one of them, which is why the exclusion list is only about successes: this is decided in
+/// `unknown_argument_refusal`, before anything is dispatched, so it is safe to ask even of `quit`.
+///
+/// The request is built by hand rather than typed as a line, because the client's own parser refuses
+/// an unknown flag before it sends anything -- which is right, and is a different rule tested in
+/// `a_command_line_that_will_not_parse_is_refused_before_anything_happens`. What is under test here
+/// is the window's half, reached the way the MCP server reaches it: an `arguments` object written by
+/// something that is not `unluminous-cli`.
+fn refuse_a_value_no_command_has_a_name_for(coverage: &mut Coverage) {
+    let mut harness = harness_in(&dispatch_folder());
+    for command in unluminous_cli::catalogue::COMMANDS {
+        let mut arguments = serde_json::Map::new();
+        arguments.insert("unluminous-no-such-value".to_owned(), serde_json::json!("x"));
+        let request = unluminous_cli::protocol::Request::new("", &command.wire(), arguments);
+        let ctx = harness.ctx.clone();
+        let Some(reply) = harness.state_mut().run_cli_for_test(&request, &ctx) else {
+            coverage.faults.push(format!(
+                "`{}` held rather than refusing a value it has no name for",
+                command.typed()
+            ));
+            continue;
+        };
+        note_a_drive(&reply.command, reply.ok);
+        match reply.error {
+            Some(failure) if failure.code == "usage" => {}
+            Some(failure) => coverage.faults.push(format!(
+                "`{}` refused a value it has no name for with `{}` rather than `usage`: {}",
+                command.typed(),
+                failure.code,
+                failure.message
+            )),
+            None => coverage.faults.push(format!(
+                "`{}` took a value it has no name for and called it a success: {}",
+                command.typed(),
+                reply.message
+            )),
+        }
+        harness.step();
+    }
+}
+
+/// The project the walk drives, small enough that a tree and a file list are quick to read.
+///
+/// `src/main.rs` has a function called from another, a comment, a block that can be folded and a
+/// bracket on line 1 whose partner is on line 5 -- four of the drives below want one of those.
+fn dispatch_folder() -> std::path::PathBuf {
+    fixture(
+        "unluminous-dispatch-coverage",
+        &[
+            ("readme.md", "# Readme\n\nSome prose with teh word in it.\n"),
+            ("notes.txt", "notes one\nnotes two\n"),
+            (
+                "src/main.rs",
+                "fn helper(value: usize) -> usize {\n    // a comment\n    let total = value + 1;\n    total\n}\n\nfn main() {\n    let answer = helper(2);\n    println!(\"{answer}\");\n}\n",
+            ),
+            ("src/other.rs", "pub fn other() {}\n"),
+            ("docs/one.md", "# One\n"),
+        ],
+    )
+}
+
+/// `status`, the window itself, the browser tabs, the file tabs and the panes.
+fn drive_the_window_and_the_tabs(coverage: &mut Coverage) {
+    let mut harness = harness_in(&dispatch_folder());
+    let c = coverage;
+
+    c.works(&mut harness, "status --json");
+    c.works(&mut harness, "mcp status --json");
+    c.works(&mut harness, "window focus");
+    c.works(&mut harness, "window size --width 1100 --height 720");
+    c.works(&mut harness, "window position --x 40 --y 40");
+    c.works(&mut harness, "window message Ready for the next step");
+
+    // Before anything has been closed, so there is genuinely nothing to reopen.
+    c.refuses(&mut harness, "tab reopen");
+    c.works(&mut harness, "tab open readme.md");
+    c.refuses(&mut harness, "tab open no-such-file.md");
+    c.works(&mut harness, "tab list --json");
+    c.works(&mut harness, "tab show readme.md");
+    c.refuses(&mut harness, "tab show 99");
+    c.works(&mut harness, "tab open src/main.rs --permanent");
+    c.works(&mut harness, "tab next");
+    c.works(&mut harness, "tab previous");
+    c.works(&mut harness, "tab move 0");
+    c.refuses(&mut harness, "tab move 0 --tab no-such.md");
+    c.works(&mut harness, "tab save");
+    c.works(&mut harness, "tab reload --discard");
+    c.refuses(&mut harness, "tab close no-such-file.md");
+    c.works(&mut harness, "tab open notes.txt");
+    c.works(&mut harness, "tab close notes.txt");
+    c.works(&mut harness, "tab reopen");
+    c.works(&mut harness, "tab save-as copy.md");
+
+    c.works(&mut harness, "pane list --json");
+    c.works(&mut harness, "pane split");
+    c.works(&mut harness, "pane focus 1");
+    c.refuses(&mut harness, "pane focus 9");
+    c.works(&mut harness, "pane width 0 0.35");
+    c.refuses(&mut harness, "pane width 9 0.35");
+    c.works(&mut harness, "pane move left");
+    c.refuses(&mut harness, "pane move sideways");
+    // `pane move left` takes the tab out of the pane it was in, and a pane with nothing in it is
+    // not kept -- which is `OpenFiles::tidy`'s own invariant. So the area has to be split again
+    // before there is anything for these two to undo.
+    c.sets_up(&mut harness, "pane split");
+    c.works(&mut harness, "pane unsplit");
+    c.refuses(&mut harness, "pane unsplit-all");
+    c.sets_up(&mut harness, "pane split");
+    c.works(&mut harness, "pane unsplit-all");
+
+    // A browser tab, which is an ordinary tab holding a page rather than a text document. Nothing is
+    // fetched: there is no web view behind a test window, so what is under test is the tab.
+    c.works(&mut harness, "browser open https://example.com/");
+    c.works(&mut harness, "browser status --json");
+    c.refuses(&mut harness, "browser open");
+    c.sets_up(&mut harness, "tab open readme.md");
+    c.refuses(&mut harness, "browser status --json");
+    c.refuses(&mut harness, "browser reload");
+
+    // Last, because it is answered on a later frame and leaves the window waiting for one.
+    c.works(
+        &mut harness,
+        &format!("window screenshot {}", dispatch_folder().join("shot.png").display()),
+    );
+}
+
+/// Everything that reads or changes the document: the caret, the text, the folds and the marks.
+fn drive_the_editing_commands(coverage: &mut Coverage) {
+    let mut harness = harness_in(&dispatch_folder());
+    let c = coverage;
+
+    // Before anything has jumped, so there is genuinely nowhere to go back to.
+    c.sets_up(&mut harness, "tab open src/main.rs");
+    c.refuses(&mut harness, "editor navigate-back");
+    c.refuses(&mut harness, "editor navigate-forward");
+    c.works(&mut harness, "editor definition helper --open --json");
+    c.works(&mut harness, "editor navigate-back");
+    c.works(&mut harness, "editor navigate-forward");
+    // **`editor definition` has no refusal of its own**, and that is `task-1675`'s honesty rule
+    // rather than an omission: a name nothing defines answers "no definition found", and a name
+    // asked about from a file whose own language names no definers is still answered out of the
+    // project index. Its refusal is the one every command has, in
+    // `refuse_a_value_no_command_has_a_name_for`.
+
+    c.works(&mut harness, "editor status --json");
+    c.works(&mut harness, "editor text");
+    c.works(&mut harness, "editor caret --line 3 --column 5");
+    c.works(&mut harness, "editor select --all");
+    c.works(&mut harness, "editor scroll --top");
+    c.works(&mut harness, "editor complete --stem he --limit 5 --json");
+    c.refuses(&mut harness, "editor complete --choose no_such_candidate_at_all");
+
+    // **The four that read the file as it was written come before the ones that change it.** Line 1
+    // column 34 is the brace that closes on line 5, and `total` is a word in the text: a drive that
+    // had already commented a line out or duplicated one would be asking about a different file.
+    c.works(&mut harness, "editor caret --line 1 --column 34");
+    c.works(&mut harness, "editor bracket --json");
+    c.works(&mut harness, "editor find total --json");
+    c.works(&mut harness, "editor replace total sum --all --json");
+    c.works(&mut harness, "editor references helper --json");
+    c.works(&mut harness, "editor rename helper2 --name helper --json");
+
+    c.works(&mut harness, "editor insert Hello");
+    c.works(&mut harness, "editor undo");
+    c.works(&mut harness, "editor redo");
+    c.works(&mut harness, "editor indent");
+    c.works(&mut harness, "editor dedent");
+    c.works(&mut harness, "editor comment --toggle");
+    c.works(&mut harness, "editor lines duplicate");
+    c.refuses(&mut harness, "editor lines nonsense");
+    c.works(&mut harness, "editor trim");
+    c.works(&mut harness, "editor set-text hello");
+    c.refuses(&mut harness, "editor set-text --from-file no-such-file.md");
+    c.works(&mut harness, "editor undo");
+    c.sets_up(&mut harness, "tab reload --discard");
+
+    // A source file has no preview, which is the absent control rule reaching the command line.
+    c.works(&mut harness, "editor view raw");
+    c.refuses(&mut harness, "editor view preview");
+    c.refuses(&mut harness, "editor preview --json");
+    c.refuses(&mut harness, "editor preview-select --all");
+    c.sets_up(&mut harness, "tab open readme.md");
+    c.works(&mut harness, "editor view preview");
+    c.works(&mut harness, "editor preview --json");
+    c.works(&mut harness, "editor preview-select --all");
+    c.sets_up(&mut harness, "editor view raw");
+
+    c.sets_up(&mut harness, "tab open src/main.rs");
+    c.works(&mut harness, "fold list --json");
+    c.works(&mut harness, "fold collapse --all");
+    c.works(&mut harness, "fold expand --all");
+    c.works(&mut harness, "fold toggle --line 1");
+    c.refuses(&mut harness, "fold toggle --line 9999");
+    c.refuses(&mut harness, "fold collapse --line 9999");
+    c.refuses(&mut harness, "fold expand --line 9999");
+    c.refuses(&mut harness, "fold others --selection");
+    c.sets_up(&mut harness, "editor select --from-line 3 --to-line 3");
+    c.works(&mut harness, "fold others");
+    c.sets_up(&mut harness, "fold expand --all");
+
+    c.works(&mut harness, "highlight add --from-line 1 --to-line 2");
+    c.refuses(&mut harness, "highlight add --text no_such_text_anywhere");
+    c.works(&mut harness, "highlight list --json");
+    c.works(&mut harness, "highlight clear --all");
+    c.works(&mut harness, "highlight apply --json-text []");
+    c.refuses(&mut harness, "highlight apply --from-file no-such.json");
+
+    // The gestures, which hold until their frames have been drawn, so each goes through `drove`.
+    for line in [
+        "input move 300 220",
+        "input click 300 220",
+        "input key Escape",
+        "input text hi",
+        "input wheel -3",
+        "input drag 300 220 --to-x 360 --to-y 260",
+    ] {
+        drove(&mut harness, line);
+    }
+    c.refuses(&mut harness, "input key NoSuchKeyName");
+    c.refuses(&mut harness, "input wheel nonsense");
+    c.refuses(&mut harness, "input click nonsense 220");
+    c.refuses(&mut harness, "input move nonsense 220");
+    c.refuses(&mut harness, "input drag nonsense 220");
+    c.refuses(&mut harness, "input text");
+}
+
+/// The panels, the explorer and the actions.
+fn drive_the_panels_and_the_explorer(coverage: &mut Coverage) {
+    let folder = copy_out_of_the_repository(&dispatch_folder(), "unluminous-dispatch-explorer");
+    let mut harness = harness_in(&folder);
+    let c = coverage;
+
+    c.works(&mut harness, "panel list --json");
+    c.works(&mut harness, "panel dock terminal right");
+    c.refuses(&mut harness, "panel dock nosuchpanel right");
+    c.refuses(&mut harness, "panel dock terminal sideways");
+    c.works(&mut harness, "panel size terminal --height 320");
+    c.refuses(&mut harness, "panel size nosuchpanel --height 320");
+    c.works(&mut harness, "panel zoom explorer 1.35");
+    c.refuses(&mut harness, "panel zoom nosuchpanel 1.35");
+    c.works(&mut harness, "panel reset");
+
+    c.works(&mut harness, "explorer show");
+    c.works(&mut harness, "explorer hide");
+    c.works(&mut harness, "explorer toggle");
+    c.works(&mut harness, "explorer width 320");
+    c.works(&mut harness, "explorer filter one");
+    c.sets_up(&mut harness, "explorer filter");
+    c.works(&mut harness, "explorer expand src");
+    c.refuses(&mut harness, "explorer expand no-such-folder");
+    c.works(&mut harness, "explorer collapse src");
+    c.refuses(&mut harness, "explorer collapse no-such-folder");
+    c.works(&mut harness, "explorer tree --json");
+    c.works(&mut harness, "explorer files --limit 20 --json");
+    c.works(&mut harness, "explorer select readme.md");
+    c.refuses(&mut harness, "explorer select no-such-file.md");
+    c.sets_up(&mut harness, "tab open src/main.rs");
+    c.works(&mut harness, "explorer select-open-file");
+    c.works(&mut harness, "explorer new-folder made");
+    c.refuses(&mut harness, "explorer new-folder made");
+    c.works(&mut harness, "explorer new-file made/today.md");
+    c.refuses(&mut harness, "explorer new-file made/today.md");
+    c.works(&mut harness, "explorer move made/today.md docs");
+    c.refuses(&mut harness, "explorer move no-such-file.md docs");
+    c.works(&mut harness, "explorer delete docs/today.md");
+    c.refuses(&mut harness, "explorer delete no-such-file.md");
+    c.works(&mut harness, "explorer reload");
+
+    c.works(&mut harness, "action list --json");
+    c.works(&mut harness, "action find line numbers --json");
+    c.works(&mut harness, "action run toggle-line-numbers");
+    c.refuses(&mut harness, "action run no-such-action");
+
+    c.works(&mut harness, "plugins list --json");
+    c.works(&mut harness, "plugins show mermaid --json");
+    c.refuses(&mut harness, "plugins show no-such-plugin --json");
+    c.works(&mut harness, "plugins disable mermaid");
+    c.works(&mut harness, "plugins enable mermaid");
+    c.refuses(&mut harness, "plugins enable no-such-plugin");
+    c.works(&mut harness, "plugins install mermaid");
+    c.refuses(&mut harness, "plugins install no-such-plugin");
+    c.works(&mut harness, "plugins reload --json");
+    c.works(&mut harness, "plugins pane agent-tasks/board --show");
+    c.refuses(&mut harness, "plugins pane no-such/pane --show");
+    c.works(&mut harness, "plugins run agent-tasks board --json");
+    c.refuses(&mut harness, "plugins run no-such-plugin board");
+    c.works(&mut harness, "plugins view agent-tasks --json");
+    c.refuses(&mut harness, "plugins view no-such-plugin");
+    c.refuses(&mut harness, "plugins tab no-such/tab --open");
+
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// The modals, the settings, the themes and the project's recent list.
+fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
+    let mut harness = harness_in(&dispatch_folder());
+    let c = coverage;
+
+    c.works(&mut harness, "modal list --json");
+    c.works(&mut harness, "modal state --json");
+    // Before one is open, so there is genuinely none to move, size, reset or cancel.
+    c.refuses(&mut harness, "modal cancel");
+    c.refuses(&mut harness, "modal move --x 10");
+    c.refuses(&mut harness, "modal size --width 800");
+    c.refuses(&mut harness, "modal reset");
+    c.works(&mut harness, "modal open go-to-file --query one");
+    c.refuses(&mut harness, "modal open no-such-modal");
+    c.works(&mut harness, "modal type one");
+    c.works(&mut harness, "modal results --limit 5 --json");
+    c.works(&mut harness, "modal move --x 60 --y 60");
+    c.works(&mut harness, "modal size --width 900 --height 600");
+    c.works(&mut harness, "modal reset");
+    c.works(&mut harness, "modal choose 0");
+    c.works(&mut harness, "modal accept");
+    c.sets_up(&mut harness, "modal open go-to-file --query nothing-matches-this");
+    c.refuses(&mut harness, "modal choose 0");
+    c.refuses(&mut harness, "modal accept 0");
+    c.works(&mut harness, "modal cancel");
+
+    c.works(&mut harness, "settings list --json");
+    c.works(&mut harness, "settings get appearance.font.size");
+    c.refuses(&mut harness, "settings get no.such.key");
+    c.works(&mut harness, "settings set appearance.font.size 20");
+    c.refuses(&mut harness, "settings set no.such.key 1");
+    c.works(&mut harness, "settings reset appearance.font.size");
+    c.refuses(&mut harness, "settings reset no.such.key");
+    c.works(&mut harness, "settings fonts --json");
+
+    c.works(&mut harness, "theme list --json");
+    c.works(&mut harness, "theme show --json");
+    c.refuses(&mut harness, "theme show no-such-theme --json");
+    c.works(&mut harness, "theme set unluminous/dark");
+    c.refuses(&mut harness, "theme set no-such-theme");
+
+    c.works(&mut harness, "project recent --json");
+}
+
+/// The terminal tabs and the run configurations.
+fn drive_the_terminal_and_the_runs(coverage: &mut Coverage) {
+    let mut harness = harness_in(&dispatch_folder());
+    let c = coverage;
+
+    c.works(&mut harness, "terminal list --json");
+    c.works(&mut harness, "terminal show");
+    c.works(&mut harness, "terminal hide");
+    c.works(&mut harness, "terminal toggle");
+    c.works(&mut harness, "terminal height 400");
+    c.refuses(&mut harness, "terminal select 9");
+    c.refuses(&mut harness, "terminal close 9");
+    c.refuses(&mut harness, "terminal rename build --tab 9");
+    c.refuses(&mut harness, "terminal move 0 --tab 9");
+    c.refuses(&mut harness, "terminal send hello --tab 9");
+    c.refuses(&mut harness, "terminal read --tab 9");
+
+    // **A detached tab rather than `terminal new`.** A real shell answers when it answers, which is
+    // `new_detached_terminal_tab`'s own bargain and the terminal's screenshots' rule. `terminal new`
+    // is driven once at the end, where nothing after it depends on what it printed.
+    harness.state_mut().new_detached_terminal_tab(20, 60);
+    harness.run();
+    c.works(&mut harness, "terminal select 0");
+    c.works(&mut harness, "terminal rename build");
+    c.works(&mut harness, "terminal move 0");
+    c.works(&mut harness, "terminal send hello");
+    c.works(&mut harness, "terminal read");
+    c.works(&mut harness, "terminal close 0");
+    c.works(&mut harness, "terminal new");
+
+    c.works(&mut harness, "run list --json");
+    // Before one has been added, so there is genuinely nothing to start or read.
+    c.refuses(&mut harness, "run output --tail 5");
+    c.refuses(&mut harness, "run start");
+    c.works(&mut harness, "run add echoing cmd /c echo hello");
+    c.refuses(&mut harness, "run add echoing cmd /c echo hello");
+    c.works(&mut harness, "run select echoing");
+    c.refuses(&mut harness, "run select no-such-run");
+    c.works(&mut harness, "run status --json");
+    c.works(&mut harness, "run start echoing");
+    for _ in 0..40 {
+        harness.step();
+    }
+    c.works(&mut harness, "run output --tail 5");
+    c.works(&mut harness, "run stop");
+    c.works(&mut harness, "run rerun");
+    for _ in 0..40 {
+        harness.step();
+    }
+    c.refuses(&mut harness, "run rerun no-such-run");
+    c.refuses(&mut harness, "run stop no-such-run");
+    c.refuses(&mut harness, "run remove no-such-run");
+    c.works(&mut harness, "run remove echoing");
+}
+
+/// The canvas, its six kinds of node, and the commands that reach into one.
+fn drive_the_canvas(coverage: &mut Coverage) {
+    let mut harness = harness_in(&dispatch_folder());
+    let c = coverage;
+
+    c.works(&mut harness, "space show");
+    c.works(&mut harness, "space view --json");
+    c.works(&mut harness, "space list");
+    c.works(&mut harness, "space here");
+    c.works(&mut harness, "space views");
+    c.works(&mut harness, "space manage");
+    c.works(&mut harness, "space camera --fit");
+    c.works(&mut harness, "space new-view Rendering");
+    c.works(&mut harness, "space open-view Rendering");
+    c.refuses(&mut harness, "space open-view Nosuchview");
+    c.works(&mut harness, "space rename-view Rendering Second");
+    c.works(&mut harness, "space duplicate-view Second");
+    c.works(&mut harness, "space delete-view Second");
+    c.refuses(&mut harness, "space delete-view Nosuchview");
+    c.sets_up(&mut harness, "space open-view Main");
+
+    // **Detached nodes for the three that would start something.** A terminal node runs a real shell
+    // and a browser node wants a web view; `new_detached_space_node` is `task-1904`'s own answer, and
+    // it is what `tests/canvas_space.rs` builds every one of its nodes with.
+    let terminal = harness.state_mut().new_detached_space_node(
+        unluminous_app::services::space::Kind::Terminal,
+        egui::pos2(40.0, 40.0),
+    );
+    let browser = harness.state_mut().new_detached_space_node(
+        unluminous_app::services::space::Kind::Browser,
+        egui::pos2(400.0, 40.0),
+    );
+    let tree = harness.state_mut().new_detached_space_node(
+        unluminous_app::services::space::Kind::Folder,
+        egui::pos2(40.0, 300.0),
+    );
+    harness.run();
+    let editor = did(&mut harness, "space add editor --path src/main.rs")["node"]
+        .as_u64()
+        .expect("the node the command made");
+    let chat = did(&mut harness, "space add chat")["node"].as_u64().expect("the chat node");
+    let tasks = did(&mut harness, "space add tasks")["node"].as_u64().expect("the tasks node");
+    c.refuses(&mut harness, "space add nonsense");
+
+    for (line, refusal) in [
+        (format!("space move {terminal} --x 60"), "space move 99 --x 60"),
+        (format!("space size {terminal} --width 500"), "space size 99 --width 500"),
+        (format!("space title {terminal} named"), "space title 99 named"),
+        (format!("space focus {terminal}"), "space focus 99"),
+        (format!("space font {terminal} --size 16"), "space font 99 --size 16"),
+        (format!("space zoom {terminal} --bigger"), "space zoom 99 --bigger"),
+        (format!("space send {terminal} hello"), "space send 99 hello"),
+        (format!("space read {terminal}"), "space read 99"),
+        (format!("space restart {terminal}"), "space restart 99"),
+        (format!("space editor {editor} src/other.rs"), "space editor 99 src/other.rs"),
+        (format!("space folder {tree} rows"), "space folder 99 rows"),
+        (format!("space chat {chat} state"), "space chat 99 state"),
+        (
+            format!("space address {browser} https://example.com/"),
+            "space address 99 https://example.com/",
+        ),
+        (format!("space browser {browser} url"), "space browser 99 url"),
+        (format!("space here --node {terminal}"), "space here --node 99"),
+    ] {
+        c.works(&mut harness, &line);
+        c.refuses(&mut harness, refusal);
+    }
+
+    c.works(&mut harness, &format!("space connect {terminal} {editor}"));
+    c.refuses(&mut harness, "space connect 99 98");
+    let connections = did(&mut harness, "space connections --json");
+    let connection = connections["connections"][0]["connection"]
+        .as_u64()
+        .expect("the connection that was just made");
+    c.works(&mut harness, &format!("space disconnect {connection}"));
+    c.refuses(&mut harness, "space disconnect 99");
+    c.works(&mut harness, &format!("space remove {tasks}"));
+    c.refuses(&mut harness, "space remove 99");
+    c.works(&mut harness, "space hide");
+}
+
+/// The debugger, against a session with no adapter behind it.
+///
+/// Fifteen of the nineteen `debug` commands answer "nothing is being debugged" until something is, so
+/// the walk drives them against [`paused_harness`] -- a session fed the DAP messages a real adapter
+/// would have sent, stopped at line 4 of a real file with three locals in scope. It is
+/// `tests/debugging.rs`'s own fixture, which is why `task-1922` moved it into `common`.
+fn drive_a_paused_debugger(coverage: &mut Coverage) {
+    let mut fresh = harness_in(&dispatch_folder());
+    let c = coverage;
+
+    // The refusals first, in a window where nothing is being debugged, because that is what most of
+    // them refuse for.
+    c.works(&mut fresh, "debug adapters --json");
+    c.works(&mut fresh, "debug status --json");
+    c.refuses(&mut fresh, "debug output --tail 5");
+    c.refuses(&mut fresh, "debug frames --json");
+    c.refuses(&mut fresh, "debug variables --json");
+    c.refuses(&mut fresh, "debug evaluate items");
+    c.refuses(&mut fresh, "debug hover --line 3 --column 9");
+    c.refuses(&mut fresh, "debug set-value Locals/count 7");
+    c.refuses(&mut fresh, "debug set-expression self.count 7");
+    c.refuses(&mut fresh, "debug watch add attempts");
+    c.refuses(&mut fresh, "debug stop");
+    c.refuses(&mut fresh, "debug continue");
+    c.refuses(&mut fresh, "debug step-over");
+    c.refuses(&mut fresh, "debug step-into");
+    c.refuses(&mut fresh, "debug step-out");
+    c.refuses(&mut fresh, "debug run-to src/main.rs 3");
+    c.refuses(&mut fresh, "debug start");
+    c.works(&mut fresh, "debug breakpoint add src/main.rs 3");
+    c.works(&mut fresh, "debug breakpoint list --json");
+    c.works(&mut fresh, "debug breakpoint disable src/main.rs 3");
+    c.works(&mut fresh, "debug breakpoint enable src/main.rs 3");
+    c.works(&mut fresh, "debug breakpoint remove src/main.rs 3");
+    c.works(&mut fresh, "debug breakpoint clear");
+    c.refuses(&mut fresh, "debug breakpoint nonsense");
+
+    let mut harness = paused_harness("dispatch-coverage");
+    c.works(&mut harness, "debug output --tail 5");
+    c.works(&mut harness, "debug frames --json");
+    c.works(&mut harness, "debug variables --json");
+    c.works(&mut harness, "debug watch add attempts");
+    c.works(&mut harness, "debug watch list --json");
+    c.works(&mut harness, "debug watch remove attempts");
+    c.refuses(&mut harness, "debug watch nonsense");
+    c.works(&mut harness, "debug evaluate attempts");
+    c.works(&mut harness, "debug hover --line 4 --column 9");
+    c.works(&mut harness, "debug set-value Locals/attempts 7");
+    c.works(&mut harness, "debug set-expression attempts 9");
+    // **Each of these five resumes the program**, so the session is running again the moment it
+    // answers and the next one is correctly refused. `stop_the_session_again` is the adapter saying
+    // it has stopped once more, which is what a real one sends after a step.
+    let stopped_at = debug_folder("dispatch-coverage").join("main.rs");
+    for line in ["debug step-over", "debug step-into", "debug step-out", "debug continue"] {
+        c.works(&mut harness, line);
+        stop_the_session_again(&mut harness, &stopped_at, 4, "step");
+    }
+    c.works(&mut harness, "debug run-to main.rs 5");
+    stop_the_session_again(&mut harness, &stopped_at, 5, "breakpoint");
+    c.works(&mut harness, "debug start");
+    c.works(&mut harness, "debug stop");
+}
+
+/// The git commands, against a real repository built in a temporary folder.
+fn drive_a_repository(coverage: &mut Coverage) {
+    let mut nothing = harness_in(&dispatch_folder());
+    let c = coverage;
+    // A folder that is not a repository refuses four of the five, which is the state most people
+    // meet first.
+    c.refuses(&mut nothing, "git status --json");
+    c.refuses(&mut nothing, "git branches --json");
+    c.refuses(&mut nothing, "git switch main");
+
+    let mut harness = git_harness("dispatch-coverage");
+    settle(&mut harness, "the repository", |app| {
+        app.git.as_ref().is_some_and(|git| !git.is_busy())
+    });
+    c.works(&mut harness, "git status --json");
+    c.works(&mut harness, "git actions --json");
+    c.works(&mut harness, "git branches --json");
+    c.works(&mut harness, "git action annotate");
+    c.refuses(&mut harness, "git action no-such-action");
+    let current = did(&mut harness, "git branches --json")["current"]
+        .as_str()
+        .expect("the branch it is on")
+        .to_owned();
+    c.works(&mut harness, &format!("git switch {current}"));
+    c.refuses(&mut harness, "git switch no-such-branch");
+}
+
+/// `plugins tab`, which needs a plugin that contributes one.
+///
+/// **From a manifest written for this walk**, because no plugin that ships contributes a tab -- the
+/// reason `a_contributed_tab_opens_in_the_editing_area_beside_the_file_tabs` already gives. Unluminous's
+/// tab machinery is part of the plugin contract, so it is driven through a manifest that asks for one
+/// rather than left undriven until some plugin happens to want a tab again.
+fn drive_a_contributed_tab(coverage: &mut Coverage) {
+    let folder = copy_out_of_the_repository(&dispatch_folder(), "unluminous-dispatch-plugin-tab");
+    let settings = folder.join(".unluminous-settings");
+    let plugin = settings.join("plugins").join("agent-tasks");
+    std::fs::create_dir_all(&plugin).expect("a plugin folder");
+    std::fs::write(
+        plugin.join("plugin.conf"),
+        "plugin.id = agent-tasks\nplugin.name = Agent-Tasks\nplugin.kind = ui\n\
+         ui.provider = agent-tasks\ntab.id = board\ntab.label = Agent-Tasks\n",
+    )
+    .expect("a manifest that contributes a tab");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().use_store(unluminous_app::services::store::Store::at(&settings));
+    harness.run();
+    coverage.works(&mut harness, "plugins tab agent-tasks/board --open");
+    coverage.works(&mut harness, "plugins tab agent-tasks/board --close");
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Opening another project, which takes the window away from the one it was on.
+///
+/// Last, and in a window of its own, for that reason.
+fn drive_the_project(coverage: &mut Coverage) {
+    let mut harness = harness_in(&dispatch_folder());
+    coverage.refuses(&mut harness, "project open no-such-folder-anywhere");
+    let second = fixture("unluminous-dispatch-coverage-second", &[("second.md", "# Second\n")]);
+    coverage.works(&mut harness, &format!("project open {}", second.display()));
+}
+
+// =================================================================================================
+// The socket, and the Model Context Protocol server, driven end to end.
+//
+// `task-1922` §5.4. Every other test in this file calls `run_command_line` or `run_cli_for_test`
+// directly, which is the whole command line path **apart from the socket** -- and the socket is
+// where the token, the queue, the deadline and the frame that answers live. These two are the only
+// tests anywhere that run the real `unluminous-cli` program against a real window, so each is kept
+// small and made to fail for one reason.
+
+/// Where the built `unluminous-cli` is, beside the test binary that is running.
+///
+/// **Not `CARGO_BIN_EXE_unluminous-cli`**, which cargo sets only for the tests of the package that
+/// declares the binary -- `unluminous-cli`'s own -- and this is `unluminous-app`'s. The test binary
+/// is at `target/<profile>/deps/<name>-<hash>.exe`, so the program is two folders up, which is the
+/// same place `cargo build` puts it in whichever profile this run is using.
+///
+/// It is **built on demand** when it is not there, because `cargo test -p unluminous-app` has no
+/// reason to build another package's binary and a test that quietly verified nothing on a fresh
+/// checkout would be worse than one that waits. `cargo test` holds the build lock only while it is
+/// building, so a build started from inside a test that is already running does not deadlock
+/// against it.
+fn the_command_line_program() -> Option<std::path::PathBuf> {
+    static BUILT: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
+    BUILT
+        .get_or_init(|| {
+            let name = format!("unluminous-cli{}", std::env::consts::EXE_SUFFIX);
+            let beside = std::env::current_exe()
+                .ok()?
+                .parent()?
+                .parent()
+                .map(|profile| profile.join(&name))?;
+            if beside.exists() {
+                return Some(beside);
+            }
+            let manifest =
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.toml");
+            let built = std::process::Command::new(
+                std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()),
+            )
+            .args(["build", "-p", "unluminous-cli", "--manifest-path"])
+            .arg(&manifest)
+            .status();
+            match built {
+                Ok(status) if status.success() && beside.exists() => Some(beside),
+                _ => None,
+            }
+        })
+        .clone()
+}
+
+/// A window with its command channel open, and the folder its instance file was written into.
+///
+/// `UnluminousApp::open_control_channel` says it is called from `main.rs` and nowhere else, because
+/// a test must not open a port, write an instance file into the person's settings folder, or leave
+/// a listener behind. Two of those three are answered here: `UNLUMINOUS_INSTANCES` moves the
+/// instance file into a folder of this test's own, which `unluminous_cli::instances::folder` reads
+/// and the child process is given as well, and `Server`'s own `Drop` takes the file away again. The
+/// third stands -- the listener goes with the process, as it does in the released binary -- and it
+/// is a loopback port on an address the operating system chose, which is what `bind` guarantees.
+/// Held for the length of each of the two tests below, so only one of them has a channel open.
+///
+/// **Two windows in one process cannot both advertise.** An instance file is named after the process
+/// id, and both of these windows are this one test binary, so the second to start would write over
+/// the first's file and the first to finish would take it away. `UNLUMINOUS_INSTANCES` is a process
+/// wide variable as well, and each of these tests points it somewhere of its own. So they take it in
+/// turns, which costs a few seconds and is the only thing that makes either of them honest when
+/// `cargo test` runs them on two threads.
+static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn a_window_on_a_port(name: &str) -> (Harness<'static, UnluminousApp>, std::path::PathBuf) {
+    let instances = std::env::temp_dir().join(format!("unluminous-instances/{name}"));
+    std::fs::remove_dir_all(&instances).ok();
+    std::fs::create_dir_all(&instances).expect("a folder for the instance file");
+    // Read by `instances::folder` in this process when the channel opens, and handed to the child
+    // below so both halves look in the same place. Safe in this edition, and set to the same value
+    // by every test here, so two running at once cannot disagree about it.
+    std::env::set_var("UNLUMINOUS_INSTANCES", &instances);
+
+    let folder = fixture(
+        &format!("unluminous-socket/{name}"),
+        &[("readme.md", "# Readme\n"), ("notes.txt", "notes\n")],
+    );
+    let mut harness = harness_in(&folder);
+    let ctx = harness.ctx.clone();
+    harness.state_mut().open_control_channel(&ctx);
+    harness.run();
+    // Asked the way anything else would ask: `mcp status` reports what is really happening rather
+    // than what the settings say, and whether there is a command channel at all is one of its
+    // fields.
+    assert_eq!(
+        did(&mut harness, "mcp status --json")["controlChannel"],
+        serde_json::json!(true),
+        "the window should be listening; it is what the rest of this test drives"
+    );
+    (harness, instances)
+}
+
+/// Draw frames until `finished` answers, so the window can pick a request up and answer it.
+///
+/// A request reaches the window only at the top of a frame -- `pump_control` is called from
+/// `UnluminousApp::ui` -- so a test that spawned a program and then waited for it would wait for
+/// ever. The wait is bounded so a fault is a failure rather than a run that never ends.
+fn step_until(
+    harness: &mut Harness<'static, UnluminousApp>,
+    what: &str,
+    mut finished: impl FnMut() -> bool,
+) {
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while std::time::Instant::now() < until {
+        if finished() {
+            return;
+        }
+        harness.step();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    panic!("{what} did not happen within thirty seconds");
+}
+
+/// The real `unluminous-cli`, over the real socket, answered by a real window.
+///
+/// `status --section keyboard` because it is the one answer that is about the window rather than
+/// about a document: `holder`, `textBox`, `node` and `pane` are four different questions and a
+/// window with nothing set up still answers all four. What is checked is the reply's shape, not its
+/// wording.
+#[test]
+fn the_command_line_program_drives_a_real_window_over_the_socket() {
+    // Declared first, so it is released last -- after the harness, and so after the `Server`
+    // inside it has taken its instance file away again.
+    let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|held| held.into_inner());
+    let Some(program) = the_command_line_program() else {
+        panic!("unluminous-cli could not be found beside the test binary and could not be built");
+    };
+    let (mut harness, instances) = a_window_on_a_port("status");
+    let pid = std::process::id().to_string();
+
+    let mut child = std::process::Command::new(&program)
+        .args(["--instance", &pid, "status", "--section", "keyboard", "--json"])
+        .env("UNLUMINOUS_INSTANCES", &instances)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("start unluminous-cli");
+
+    // The child blocks on the window's answer and the window only answers on a frame, so the frames
+    // are drawn here while it waits.
+    step_until(&mut harness, "unluminous-cli answering", || {
+        matches!(child.try_wait(), Ok(Some(_)))
+    });
+    let answer = child.wait_with_output().expect("read what unluminous-cli said");
+    let said = String::from_utf8_lossy(&answer.stdout).to_string();
+    assert!(
+        answer.status.success(),
+        "unluminous-cli failed: {said}{}",
+        String::from_utf8_lossy(&answer.stderr)
+    );
+
+    let reply: serde_json::Value =
+        serde_json::from_str(&said).unwrap_or_else(|problem| panic!("{problem}: {said}"));
+    assert_eq!(reply["ok"], serde_json::json!(true), "{said}");
+    assert_eq!(reply["command"], serde_json::json!("status"), "{said}");
+    let keyboard = &reply["result"]["keyboard"];
+    assert!(keyboard.is_object(), "the keyboard section is the whole of the answer: {said}");
+    for field in ["holder", "textBox"] {
+        assert!(!keyboard[field].is_null(), "the keyboard section has no {field}: {said}");
+    }
+    // The one section that was asked for and nothing else, which is the rule `status --section`
+    // keeps and is the half a test calling `run_cli` directly already covers. Here it is proof the
+    // whole answer travelled down the socket rather than being assembled by the client.
+    assert!(reply["result"]["tabs"].is_null(), "only the section asked for comes back: {said}");
+
+    std::fs::remove_dir_all(&instances).ok();
+}
+
+/// The Model Context Protocol server, spawned against the same window, listed and called.
+///
+/// `mcp serve` is the one command held back from the tools it generates, and it is also the one
+/// nothing could test without a second process: the server reads its requests off standard input
+/// and drives the window down the same socket `unluminous-cli` uses. So what is under test is the
+/// whole of that path -- a `tools/list` answered out of the catalogue, then a `tools/call` that
+/// becomes a request on the window's queue -- and the state change is read back through the window
+/// rather than believed from the reply.
+#[test]
+fn the_mcp_server_lists_its_tools_and_calls_one_against_a_real_window() {
+    // Declared first, so it is released last -- after the harness, and so after the `Server`
+    // inside it has taken its instance file away again.
+    let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|held| held.into_inner());
+    let Some(program) = the_command_line_program() else {
+        panic!("unluminous-cli could not be found beside the test binary and could not be built");
+    };
+    let (mut harness, instances) = a_window_on_a_port("mcp");
+    let pid = std::process::id().to_string();
+
+    let mut child = std::process::Command::new(&program)
+        .args(["mcp", "serve", "--instance", &pid])
+        .env("UNLUMINOUS_INSTANCES", &instances)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("start the MCP server");
+
+    // Read on a thread of its own, because the window has to go on drawing while the server thinks.
+    let stdout = child.stdout.take().expect("the server's standard output");
+    let (lines, from_the_server) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        for line in std::io::BufReader::new(stdout).lines().map_while(Result::ok) {
+            if lines.send(line).is_err() {
+                return;
+            }
+        }
+    });
+
+    let mut ask = |request: serde_json::Value| {
+        use std::io::Write;
+        let standard_input = child.stdin.as_mut().expect("the server's standard input");
+        writeln!(standard_input, "{request}").expect("write a request");
+        standard_input.flush().expect("flush the request");
+    };
+
+    ask(serde_json::json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }));
+    ask(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": "unluminous_tab",
+            "arguments": { "command": "open", "arguments": { "path": "notes.txt" } }
+        }
+    }));
+
+    let mut answers: Vec<serde_json::Value> = Vec::new();
+    step_until(&mut harness, "the MCP server answering both requests", || {
+        while let Ok(line) = from_the_server.try_recv() {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
+                answers.push(value);
+            }
+        }
+        answers.len() >= 2
+    });
+    child.kill().ok();
+    child.wait().ok();
+
+    let listed = answers.iter().find(|answer| answer["id"] == 1).expect("an answer to tools/list");
+    let names: Vec<&str> = listed["result"]["tools"]
+        .as_array()
+        .expect("the tools")
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect();
+    assert!(names.contains(&"unluminous_tab"), "no tool for the tab area: {names:?}");
+
+    let called = answers.iter().find(|answer| answer["id"] == 2).expect("an answer to tools/call");
+    assert_eq!(called["result"]["isError"], serde_json::json!(false), "{called}");
+
+    // **Read back through the window**, which is the half a reply cannot stand in for: a tool that
+    // says it opened a file and a window with that file open are two different claims.
+    harness.run();
+    let open: Vec<String> = harness
+        .state()
+        .files
+        .paths()
+        .iter()
+        .filter_map(|path| path.file_name().map(|name| name.to_string_lossy().to_string()))
+        .collect();
+    assert!(open.contains(&"notes.txt".to_owned()), "the tool call opened nothing: {open:?}");
+
+    std::fs::remove_dir_all(&instances).ok();
 }

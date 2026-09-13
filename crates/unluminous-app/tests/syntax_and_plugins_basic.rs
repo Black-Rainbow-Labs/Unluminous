@@ -9,7 +9,7 @@
 //! asserted: what the picture looks like. Every accepted image was opened and looked at before it
 //! was accepted.
 //!
-//! **13 of the 21 tests here take a picture**, and `every_diagram_type_is_drawn_in_the_real_window`
+//! **13 of the 22 tests here take a picture**, and `every_diagram_type_is_drawn_in_the_real_window`
 //! alone takes twenty of them, one per diagram type.
 
 mod common;
@@ -708,4 +708,56 @@ fn the_command_line_can_read_what_a_diagram_came_out_as() {
     assert!(answer["width"].as_f64().unwrap_or(0.0) > 0.0);
     let text = answer["text"].to_string();
     assert!(text.contains("Where the work went"), "it reads the words back: {text}");
+}
+
+/// The counterpart of `cargo run --example mermaid_check`, run automatically as part of the suite
+/// rather than left for somebody to remember to run by hand.
+///
+/// It walks the same `sample-diagrams` folder the example reads and calls the same
+/// `unluminous_core::mermaid::render`, through the same `FixedMetrics` stub the layout tests use, so it
+/// needs no window and no graphics card. Reading that folder from a test is fine here in a way a test
+/// must not usually be: the files in it are checked into this repository, so they are the same on
+/// every machine that runs the suite, unlike a person's own settings, projects or fonts, which would
+/// answer differently from one machine to the next.
+///
+/// Every refusal is collected rather than the first one stopping the test, so a change that breaks
+/// two diagram types is reported as two rather than one at a time. The folder is also asserted
+/// non-empty, so a walk that silently found nothing cannot pass as though every diagram drew.
+///
+/// This does not also run `mermaid::check::properties` on each scene. That function's last check
+/// wants the words a diagram's own labels should hold, which for an arbitrary sample means reading
+/// the source and pulling its labels back out by hand for each diagram type — exactly the parsing
+/// `mermaid::render` has already done once. The properties are exercised with real wanted labels by
+/// every renderer's own tests in `unluminous-core`; what this test adds is the same drawing check
+/// `mermaid_check` runs, over the whole folder, so it stays a test rather than a second copy of those.
+#[test]
+fn every_sample_diagram_lays_out_with_no_refusal() {
+    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sample-diagrams");
+    let metrics = unluminous_core::metrics::FixedMetrics::default();
+    let options = unluminous_core::mermaid::Options::new(&metrics);
+
+    let mut names: Vec<std::path::PathBuf> = std::fs::read_dir(&folder)
+        .unwrap_or_else(|problem| panic!("read {}: {problem}", folder.display()))
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "mmd"))
+        .collect();
+    names.sort();
+    assert!(!names.is_empty(), "found no .mmd files in {}", folder.display());
+
+    let mut refusals = Vec::new();
+    for path in &names {
+        let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let source = std::fs::read_to_string(path).expect("read the sample");
+        if let Err(problem) = unluminous_core::mermaid::render(&source, &options) {
+            refusals.push(format!("{name}: {}", problem.message()));
+        }
+    }
+    assert!(
+        refusals.is_empty(),
+        "{} of {} sample diagrams refused to draw:\n{}",
+        refusals.len(),
+        names.len(),
+        refusals.join("\n")
+    );
 }
