@@ -41,14 +41,21 @@ impl GitState {
     /// Start working on the repository `folder` is in, if it is in one.
     pub fn open(folder: &Path, waker: Arc<dyn Fn() + Send + Sync>) -> Option<Self> {
         let repository = Repository::discover(folder)?;
-        Some(Self::from_repository(repository, waker))
+        Self::from_repository(repository, waker)
     }
 
     /// Start working on an already discovered repository.
-    pub fn from_repository(repository: Repository, waker: Arc<dyn Fn() + Send + Sync>) -> Self {
-        let mut worker = Worker::start(repository.clone(), waker);
+    ///
+    /// `None` when the thread could not be started, which is `task-1922` B6. A machine too short of
+    /// threads to start one more should lose git for this session; it should not lose the editor,
+    /// which is what an `expect` here did.
+    pub fn from_repository(
+        repository: Repository,
+        waker: Arc<dyn Fn() + Send + Sync>,
+    ) -> Option<Self> {
+        let mut worker = Worker::start(repository.clone(), waker).ok()?;
         worker.send(Request::Refresh);
-        Self {
+        Some(Self {
             repository,
             worker,
             snapshot: Snapshot::default(),
@@ -58,7 +65,7 @@ impl GitState {
             recent_messages: Vec::new(),
             message: None,
             read: false,
-        }
+        })
     }
 
     /// Ask the thread for something.

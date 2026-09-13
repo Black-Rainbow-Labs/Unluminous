@@ -196,22 +196,34 @@ pub type Waker = Arc<dyn Fn() + Send + Sync>;
 
 /// The thread, and the two channels to it.
 pub struct Worker {
-    requests: Sender<Request>,
+    requests: Option<Sender<Request>>,
     replies: Receiver<Reply>,
     /// What is running now, for the status bar. `None` when the thread is idle.
     running: Option<String>,
     /// How many requests have been sent and not yet answered.
     outstanding: usize,
+    /// The thread, kept so that [`Worker::drop`] can wait for it.
+    thread: Option<std::thread::JoinHandle<()>>,
+    /// The `git` the thread is running, so that [`Worker::drop`] can kill it.
+    ///
+    /// The thread installs this as its own in `command::put_this_thread_s_children_in`, so a child
+    /// started over there is reachable from here -- which is the window's thread, where `Drop` runs.
+    child: std::sync::Arc<crate::command::Running>,
 }
 
 impl Worker {
     /// Start a thread working on `repository`.
-    pub fn start(repository: Repository, waker: Waker) -> Self {
+    pub fn start(repository: Repository, waker: Waker) -> std::io::Result<Self> {
         let (request_sender, request_receiver) = std::sync::mpsc::channel::<Request>();
         let (reply_sender, reply_receiver) = std::sync::mpsc::channel::<Reply>();
-        std::thread::Builder::new()
+        let child = std::sync::Arc::new(crate::command::Running::default());
+        let theirs = std::sync::Arc::clone(&child);
+        let thread = std::thread::Builder::new()
             .name("unluminous-git".to_owned())
             .spawn(move || {
+                // Every `git` this thread starts goes into the slot the `Worker` also holds, so a
+                // window closing mid fetch can reach the process rather than leaving it running.
+                crate::command::put_this_thread_s_children_in(theirs);
                 // The loop ends when the sender is dropped, which happens when the window closes.
                 for request in request_receiver {
                     let label = request.label();
@@ -221,16 +233,25 @@ impl Worker {
                     }
                     waker();
                 }
-            })
-            .expect("a thread to run git on");
-        Self { requests: request_sender, replies: reply_receiver, running: None, outstanding: 0 }
+            })?;
+        Ok(Self {
+            requests: Some(request_sender),
+            replies: reply_receiver,
+            running: None,
+            outstanding: 0,
+            thread: Some(thread),
+            child,
+        })
     }
 
     /// Ask for something. Returns false when the thread has gone, which only happens if it could not
     /// be started.
     pub fn send(&mut self, request: Request) -> bool {
         let label = request.label();
-        match self.requests.send(request) {
+        let Some(requests) = self.requests.as_ref() else {
+            return false;
+        };
+        match requests.send(request) {
             Ok(()) => {
                 self.outstanding += 1;
                 self.running = Some(label);
@@ -260,6 +281,27 @@ impl Worker {
 
     pub fn is_busy(&self) -> bool {
         self.outstanding > 0
+    }
+}
+
+/// **Kill the git that is running, close the channel, and wait for the thread.** `task-1922` B5.
+///
+/// This is `unluminous_db::Worker::drop`'s shape, which is the one the review named as right. Before
+/// it there was no `Drop` at all: the `JoinHandle` was thrown away at `start` and `command::run` used
+/// `Command::output()`, which keeps the child to itself -- so a worker dropped mid fetch left `git`
+/// running with nobody reading it. That is the fault `task-1769` fixed for terminals.
+///
+/// **Killed before it is waited for**, which is why this is three steps rather than one. The thread
+/// reads the next request between jobs, so a worker in the middle of a fetch would not notice the
+/// closed channel until the fetch finished -- and the join would then block the window for as long
+/// as the network took. Killing the child first is what makes the wait short.
+impl Drop for Worker {
+    fn drop(&mut self) {
+        self.child.stop();
+        self.requests.take();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
     }
 }
 
@@ -398,6 +440,77 @@ mod tests {
                 .label(),
             "Merging feature",
             "the label names what it is working on, not just what kind of thing it is"
+        );
+    }
+
+    /// **Dropping a worker kills the git it is running and waits for its thread.** `task-1922` B5.
+    ///
+    /// A fetch from a listener that accepts the connection and then says nothing stands in for a
+    /// fetch over a slow network, because when a real network call comes back is not something a
+    /// test can know and this is. `git://` rather than `https://` on purpose: the git protocol is
+    /// spoken by git's own process, so the thing that hangs is the child this crate started and the
+    /// kill reaches it directly.
+    ///
+    /// Two things are asserted and neither alone would be enough:
+    ///
+    /// - the drop returns in far less time than the fetch would take, which is what the kill buys.
+    ///   With the join and no kill it would wait out the whole fetch, on the window's own thread.
+    /// - the thread has really ended, read off the strong count of the slot it holds. Without a
+    ///   `Drop` at all -- which is how this was -- the drop is instant and the thread is simply
+    ///   abandoned, so the timing on its own would pass on the code this fixes.
+    ///
+    /// What this does **not** claim is that every descendant dies. A `pre-commit` hook inherits
+    /// git's own standard output, so killing git leaves the hook holding the pipe this thread is
+    /// reading; that is a process tree rather than a child, and reaping one is `unluminous-terminal`'s
+    /// job object rather than anything here.
+    #[test]
+    fn dropping_a_worker_kills_the_git_it_is_running_and_waits_for_its_thread() {
+        let root = std::env::temp_dir().join("unluminous-git-tests").join("worker-drop");
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::create_dir_all(&root).expect("make the folder");
+        assert!(crate::command::run(&root, &["init", "--initial-branch=main"]).ok);
+
+        // Accepts, and then says nothing at all. Held open for the length of the test by the thread
+        // below, which is what makes git wait rather than fail.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+        let port = listener.local_addr().expect("the address").port();
+        // Held for far longer than the assertion below allows, and deliberately never joined: if
+        // the connection were released early, git would finish by itself and the test would pass
+        // whether or not anything killed it. The thread is asleep and the process ends with the
+        // suite.
+        std::thread::spawn(move || {
+            let held = listener.incoming().next();
+            std::thread::sleep(std::time::Duration::from_secs(60));
+            drop(held);
+        });
+        assert!(
+            crate::command::run(&root, &["remote", "add", "slow", &format!("git://127.0.0.1:{port}/x")])
+                .ok
+        );
+
+        let repository = Repository::discover(&root).expect("a repository");
+        let mut worker = Worker::start(repository, Arc::new(|| {})).expect("a worker");
+        let slot = std::sync::Arc::clone(&worker.child);
+        assert!(worker.send(Request::Fetch));
+
+        // Wait until git is really connected, rather than for a number of milliseconds somebody
+        // guessed. The slot holding a child is what says so.
+        let waited = std::time::Instant::now();
+        while std::sync::Arc::strong_count(&slot) == 2
+            && waited.elapsed() < std::time::Duration::from_secs(20)
+        {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+
+        let dropping = std::time::Instant::now();
+        drop(worker);
+        let took = dropping.elapsed();
+        assert!(took < std::time::Duration::from_secs(10), "the drop waited out the fetch: {took:?}");
+        assert_eq!(
+            std::sync::Arc::strong_count(&slot),
+            1,
+            "the thread has ended, so nothing but this test still holds the slot"
         );
     }
 }

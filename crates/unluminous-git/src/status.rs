@@ -229,7 +229,7 @@ pub fn parse(text: &str) -> Status {
             _ => {}
         }
     }
-    status.entries.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
+    status.entries.sort_by_key(|a| a.path.to_lowercase());
     status
 }
 

@@ -1295,7 +1295,7 @@ impl UnluminousApp {
         // back to one this system has.
         self.settings = settings;
         if self.settings.font_family.is_empty()
-            || !self.renderer.families().iter().any(|family| *family == self.settings.font_family)
+            || !self.renderer.families().contains(&self.settings.font_family)
         {
             self.settings.font_family = self.renderer.default_family();
         }
@@ -2855,7 +2855,7 @@ impl UnluminousApp {
         }
         let was_selected = self.run_selected.clone();
         self.forget_the_adapter_search();
-        let configuration = Configuration::new(&format!("Install {adapter}"), &command);
+        let configuration = Configuration::new(format!("Install {adapter}"), &command);
         match self.start_a_run(configuration) {
             Ok(()) => self.message = Some(format!("Installing {adapter}: {command}")),
             Err(problem) => self.message = Some(problem),
@@ -5134,7 +5134,7 @@ impl UnluminousApp {
             return false;
         }
         let waker = self.thread_waker();
-        self.git = discovered.map(|repository| GitState::from_repository(repository, waker));
+        self.git = discovered.and_then(|repository| GitState::from_repository(repository, waker));
         self.git_looked = true;
         self.files.forget_git();
         true
@@ -5988,7 +5988,7 @@ impl UnluminousApp {
             }
             std::fs::read_to_string(path).ok()
         };
-        file_move::plan(&project, &self.plugins.grammars(), from, to, &read)
+        file_move::plan(&project, self.plugins.grammars(), from, to, &read)
     }
 
     /// Point every tab that was on a moved file at where the file went.
@@ -7599,13 +7599,14 @@ impl UnluminousApp {
         // The dividers between the panes, added after every pane for the reason
         // `components::splitter` records: the editing area takes drags over the whole of its
         // rectangle, so a divider added earlier sits underneath one and never sees the pointer.
-        for pane in 0..pane_rects.len().saturating_sub(1) {
+        let dividers = pane_rects.len().saturating_sub(1);
+        for (pane, rect) in pane_rects.iter().enumerate().take(dividers) {
             if !self.editor_visible {
                 break;
             }
             let edge = Rect::from_min_size(
-                Pos2::new(pane_rects[pane].right(), pane_rects[pane].top()),
-                Vec2::new(1.0, pane_rects[pane].height()),
+                Pos2::new(rect.right(), rect.top()),
+                Vec2::new(1.0, rect.height()),
             );
             let name = format!("pane-{pane}");
             let drag = splitter::show(ui, edge, &name, splitter::Axis::Upright);
@@ -10490,6 +10491,15 @@ impl UnluminousApp {
     /// True when a copy would take what the preview has selected rather than what the document has.
     pub fn preview_holds_the_selection(&self) -> bool {
         self.reading_preview && !self.files.active().preview_selection.is_empty()
+    }
+
+    /// Whether a copy would be about the preview rather than about the source beside it.
+    ///
+    /// This is the flag a press in a preview sets and a press in an editing area clears, and it is a
+    /// different question from `preview_holds_the_selection`: a plain click places a caret and
+    /// selects nothing, so the preview can own the click while holding an empty selection.
+    pub fn is_reading_the_preview(&self) -> bool {
+        self.reading_preview
     }
 
     /// Select the whole of the preview, which is what `Select All` means while it is being read.
