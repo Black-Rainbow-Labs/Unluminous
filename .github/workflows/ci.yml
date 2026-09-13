@@ -47,6 +47,15 @@ on:
   pull_request:
   workflow_dispatch:
 
+# **One run of this workflow per branch at a time.** `task-1922`: pushing twice in a few minutes
+# started a second run of five jobs while the first five were still going, and the second one got no
+# runner at all -- every job of it failed in under seven seconds with no runner assigned and no step
+# run, which reads as a red workflow and is not one. Superseding the older run is what a person
+# actually wants from a second push anyway: the answer they are waiting for is about the newer commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   # A backtrace on the one run nobody can reproduce is worth more than the noise it costs.
