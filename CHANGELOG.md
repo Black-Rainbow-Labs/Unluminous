@@ -8,6 +8,16 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- A code review of Unluminous, and the plan that acts on it (`task-1922`)
+- CI has produced no jobs since 7 September because a `with:` block was orphaned (`task-1922`)
+- Rustfmt over the workspace, no other change (`task-1922`)
+- CI lints everything, the macOS images are marked, and a release runs the suite (`task-1922`)
+- Clippy over every target, and B7 to B20 (`task-1922`)
+- Re-accept the Windows screenshots, and three faults found by looking at them (`task-1922`)
+- The first green CI run found two things this machine could not (`task-1922`)
+
+## 0.44.1 — 2026-09-12
+
 - Nodes that can be typed into, and controls that fit their own text (`task-1914`)
 
 ## 0.44.0 — 2026-09-12

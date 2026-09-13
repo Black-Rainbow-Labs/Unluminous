@@ -23,7 +23,7 @@
 //
 // Usage:
 //   node tools/changelog.mjs             writes CHANGELOG.md
-//   node tools/changelog.mjs --check     exits 1 if the file on disk is not what would be written
+//   node tools/changelog.mjs --check     exits 1 if the file's released sections are stale
 //   node tools/changelog.mjs --stdout    prints it instead of writing it
 
 import { execFileSync } from 'node:child_process'
@@ -110,6 +110,28 @@ function changelog() {
   return out.join('\n')
 }
 
+/**
+ * A changelog with its `## Unreleased` section taken out, which is what `--check` compares.
+ *
+ * `task-1922`: the check compared the whole file, and the file holds a section built from every
+ * commit made since the last tag -- so it was wrong the moment anybody committed anything, and the
+ * `checks` job went red on every ordinary push. A gate that is red whenever work is in progress is a
+ * gate nobody reads, which is the fault this ticket exists to fix, one file along.
+ *
+ * What the check is really about is the **released** history: a version whose entries have gone
+ * stale, or a release with no section at all. Both release scripts rewrite the whole file, Unreleased
+ * and all, so nothing is lost by leaving that one section out of the comparison.
+ */
+function released(text) {
+  const lines = text.split('\n')
+  const heading = lines.findIndex((line) => line.startsWith('## Unreleased'))
+  if (heading === -1) {
+    return text.trimEnd()
+  }
+  const next = lines.findIndex((line, at) => at > heading && line.startsWith('## '))
+  return next === -1 ? '' : lines.slice(next).join('\n').trimEnd()
+}
+
 const wanted = changelog()
 const path = join(repo, 'CHANGELOG.md')
 if (process.argv.includes('--stdout')) {
@@ -121,11 +143,11 @@ if (process.argv.includes('--stdout')) {
   } catch {
     have = ''
   }
-  if (have.trimEnd() !== wanted.trimEnd()) {
+  if (released(have) !== released(wanted)) {
     console.error('CHANGELOG.md is not what the history says. Run: node tools/changelog.mjs')
     process.exit(1)
   }
-  console.log('CHANGELOG.md is up to date.')
+  console.log("CHANGELOG.md's released sections are up to date.")
 } else {
   writeFileSync(path, wanted, 'utf8')
   const releaseCount = releases().length
