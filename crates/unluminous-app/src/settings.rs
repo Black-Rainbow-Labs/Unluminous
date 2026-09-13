@@ -480,261 +480,320 @@ impl Page {
     }
 }
 
-/// The settings a person chooses.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Settings {
-    /// The family the editor sets text in.
-    pub font_family: String,
-    /// The point size the editor sets text in.
-    pub font_size: f32,
-    /// How opaque the window background is, which is what lets the desktop show through.
-    pub opacity: f32,
-    /// The point size the terminal sets its grid in.
-    pub terminal_font_size: f32,
-    /// The program a new terminal runs. Empty means the one this machine says the person has, which
-    /// `unluminous_terminal::session` decides and which is PowerShell on Windows.
-    pub terminal_shell: String,
-    /// Whether the editing area has a column of line numbers down its left.
-    pub line_numbers: bool,
-    /// Whether the completion popup arrives while you type, or waits to be asked.
-    pub suggestions: Suggestions,
-    /// What line breaks a file is written back with. See [`LineEndings`].
-    pub line_endings: LineEndings,
-    /// Whether the window asks for a newer version as it opens. See [`UpdateCheck`].
-    pub update_check: UpdateCheck,
-    /// Extra patterns the project index leaves out, beyond `.gitignore` and the build folders.
-    ///
-    /// `task-1804` §7.3: the index skipped three hardcoded folder names and read no ignore file at
-    /// all, so `editor definition` answered out of a gitignored scratch copy of the whole project.
-    /// `.gitignore` is now read; this is the person's own list beside it, for the folder that is not
-    /// a repository and for the pattern a repository has a reason not to ignore.
-    ///
-    /// Written as one line of comma separated patterns, in `.gitignore`'s own syntax, because that
-    /// is the syntax a person already knows and the one the reader beside it implements.
-    pub exclude: String,
-    /// Whether the debugger's value tooltip arrives when the pointer rests on a name.
-    pub value_tooltip: ValueTooltip,
-    /// Whether a plugin that asked for the decoration renderer gets it.
-    ///
-    /// The soft shadows, inset shadows and gradients `services::vello_canvas` draws behind a plugin's pane.
-    /// Off, the board draws flat, which is what it did before `task-1765`. It is a setting for the reason
-    /// the opacity is one: it is the person's window, and drawing depth costs a rasterisation on the frame
-    /// a board changes.
-    pub plugin_chrome: bool,
-    /// Whether this Unluminous hosts the MCP server over HTTP, so an agent can reach it at a URL.
-    pub mcp_enabled: bool,
-    /// The port it listens on when it does.
-    pub mcp_port: u16,
-    /// How many tools the catalogue is cut into for an agent. See `unluminous_cli::mcp::tools`.
-    pub mcp_tools: unluminous_cli::mcp::Shape,
-    /// Which areas of the catalogue the hosted server offers, separated by commas.
-    ///
-    /// Empty means all of them, which is what it always did. `task-1804` §4.2 measured what all
-    /// of them costs -- 18% of a local model's window before a question is asked -- and this is the
-    /// same lever `mcp serve --areas` gives the server an agent launches itself.
-    pub mcp_areas: String,
-    /// Which theme the window is painted in, as `<plugin>/<theme>` — `themes-bundle-1/dracula`.
-    ///
-    /// Empty means `unluminous/dark`, which is the palette Unluminous shipped with. Empty rather than the key
-    /// written out, for `terminal_shell`'s reason once more: a settings file that names nothing is a file
-    /// that asks for whatever this Unluminous's default is, and one that names a theme whose plugin has been
-    /// switched off falls back to it rather than to nothing.
-    pub theme: String,
-    /// One colour used for everything the accent means, over whatever the theme said.
-    ///
-    /// Written as `#RRGGBB`, empty meaning the theme's own. Material Theme UI's best known setting.
-    pub accent: String,
-    /// Which drawn icon set is used, from `plugins::ICON_SETS`. Empty means the theme's own choice,
-    /// which is what `Follow the theme` is on the Theme page.
-    pub icons: String,
-    /// The family the window's own text is set in — menus, the explorer, the status bar.
-    ///
-    /// Empty means the editor's family, which is what the interface was always set in and is why this can
-    /// be added without anything moving. The reference editor's `Appearance -> Use custom font`.
-    pub ui_font_family: String,
-    /// The point size the window's own text is set in. [`DEFAULT_UI_FONT_SIZE`] leaves egui exactly as it
-    /// was.
-    pub ui_font_size: f32,
-    /// Where each debug adapter lives, when this machine keeps one somewhere Unluminous would not look.
-    ///
-    /// `debug.lldb`, `debug.node` — one entry per name in `plugins::DEBUGGERS`, and empty meaning
-    /// "whatever this machine has", which is `Settings::shell()`'s sentence made once more. It is a
-    /// path rather than a preference, so a settings file copied to another machine names nothing.
-    pub debug_adapters: Vec<(String, String)>,
+/// Declares one setting Unluminous remembers between runs: its field, its default, the settings file key
+/// it is read and written by, and how it is read. `theme::mod`'s `palette!` solves the same problem
+/// for a colour, for the reason its own comment gives: "writing them out would be five places to
+/// forget a name." This is that answer for [`Settings`].
+///
+/// Four kinds, because a setting is not one shape the way a colour is:
+///
+/// - `text` / `text_raw` / `text_lower` -- a `String`, cleared out of the file rather than written
+///   empty (`Values::set_or_clear`, which every text setting already did -- see the comment inside
+///   the generated `write_into` for why). `text` trims what is read; `text_raw` keeps it exactly,
+///   which only the editor's own font family needs, since a font name can start or end with a space;
+///   `text_lower` also lowercases, which only the icon set name needs.
+/// - `number` -- an `f32`, clamped to a range on the way in and written with a fixed number of
+///   decimal places.
+/// - `flag` -- a `bool`, written as the words `true`/`false`.
+/// - `coded` -- a value with its own `name()`/`parse()`, such as [`Suggestions`]. Read with `parse`
+///   and written with `name()`, so a value this version does not recognise leaves the setting at
+///   whatever `Settings::new()` gave it -- the same refusal `plugin.kind` gives a manifest naming
+///   something it does not have.
+///
+/// A setting that fits none of the four is declared in `extra`, the way `theme::mod`'s own `derived`
+/// module sits beside `palette!` for the colours that are computed rather than named: `mcp.port`
+/// clamps into a `u16` rather than an `f32` range, and the debug adapter paths are one row a name in
+/// `services::plugins::DEBUGGERS` rather than a single value. `extra` takes the field declarations
+/// (with their own doc comments), their defaults, the settings file keys that belong to no single
+/// field, and a `read`/`write` closure -- called as an ordinary function with the same
+/// `values`/`settings` the generated code already has, rather than by splicing the closure's own
+/// statements into the generated function body. `macro_rules!` is mixed-site hygienic, so an
+/// identifier written where this macro is invoked and one written inside the macro's own definition
+/// are different hygiene contexts; a closure call binds its parameters by position rather than by
+/// matching names across those contexts, which is what makes this safe.
+macro_rules! settings {
+    (
+        text {
+            $(
+                $(#[$tnote:meta])*
+                $tname:ident = $tdefault:expr => $tkey:literal;
+            )*
+        }
+        text_raw {
+            $(
+                $(#[$rnote:meta])*
+                $rname:ident = $rdefault:expr => $rkey:literal;
+            )*
+        }
+        text_lower {
+            $(
+                $(#[$lnote:meta])*
+                $lname:ident = $ldefault:expr => $lkey:literal;
+            )*
+        }
+        number {
+            $(
+                $(#[$nnote:meta])*
+                $nname:ident = $ndefault:expr => $nkey:literal, $nmin:expr, $nmax:expr, $nfmt:literal;
+            )*
+        }
+        flag {
+            $(
+                $(#[$fnote:meta])*
+                $fname:ident = $fdefault:expr => $fkey:literal;
+            )*
+        }
+        coded {
+            $(
+                $(#[$cnote:meta])*
+                $cname:ident : $cty:ty = $cdefault:expr => $ckey:literal;
+            )*
+        }
+        extra {
+            fields {
+                $( $(#[$xnote:meta])* pub $xname:ident : $xty:ty, )*
+            }
+            keys { $( $xkey:literal ),* $(,)? }
+            defaults {
+                $( $xdname:ident : $xddefault:expr, )*
+            }
+            read = $read:expr;
+            write = $write:expr;
+        }
+    ) => {
+        /// The settings a person chooses.
+        #[derive(Debug, Clone, PartialEq)]
+        pub struct Settings {
+            $( $(#[$tnote])* pub $tname: String, )*
+            $( $(#[$rnote])* pub $rname: String, )*
+            $( $(#[$lnote])* pub $lname: String, )*
+            $( $(#[$nnote])* pub $nname: f32, )*
+            $( $(#[$fnote])* pub $fname: bool, )*
+            $( $(#[$cnote])* pub $cname: $cty, )*
+            $( $(#[$xnote])* pub $xname: $xty, )*
+        }
+
+        impl Settings {
+            /// The settings an Unluminous that has never been run has. The family is decided by the
+            /// renderer, because it depends on what the system has installed, so it is left empty here
+            /// and filled in by the window.
+            pub fn new() -> Self {
+                Self {
+                    $( $tname: $tdefault, )*
+                    $( $rname: $rdefault, )*
+                    $( $lname: $ldefault, )*
+                    $( $nname: $ndefault, )*
+                    $( $fname: $fdefault, )*
+                    $( $cname: $cdefault, )*
+                    $( $xdname: $xddefault, )*
+                }
+            }
+
+            /// Every settings file key [`Settings::read_from`] reads and [`Settings::write_into`]
+            /// writes that names exactly one field -- `theme::Palette::NAMES`'s counterpart for a
+            /// setting. The `debug.lldb`/`debug.node` keys are not here: they are one row a name in
+            /// `services::plugins::DEBUGGERS` rather than a fixed compile time set, and are covered by
+            /// their own test instead.
+            pub const NAMES: &'static [&'static str] = &[
+                $( $tkey, )*
+                $( $rkey, )*
+                $( $lkey, )*
+                $( $nkey, )*
+                $( $fkey, )*
+                $( $ckey, )*
+                $( $xkey, )*
+            ];
+
+            pub fn read_from(values: &Values) -> Self {
+                let mut settings = Self::new();
+                $( if let Some(v) = values.text($tkey) { settings.$tname = v.trim().to_owned(); } )*
+                $( if let Some(v) = values.text($rkey) { settings.$rname = v.to_owned(); } )*
+                $( if let Some(v) = values.text($lkey) { settings.$lname = v.trim().to_lowercase(); } )*
+                $( if let Some(v) = values.number($nkey) { settings.$nname = v.clamp($nmin, $nmax); } )*
+                $( if let Some(v) = values.flag($fkey) { settings.$fname = v; } )*
+                $(
+                    if let Some(v) = values.text($ckey).and_then(<$cty>::parse) {
+                        settings.$cname = v;
+                    }
+                )*
+                ($read)(values, &mut settings);
+                settings
+            }
+
+            pub fn write_into(&self, values: &mut Values) {
+                // **A setting that has gone back to its default is taken out of the file, not left in
+                // it.** Every `text`/`text_raw`/`text_lower` setting means "whatever this Unluminous's own
+                // default is" by having *no line at all* -- a blank `terminal.shell` would read as a
+                // shell called nothing, and a blank `appearance.theme` as a theme called nothing -- and
+                // `settings::save_with` merges over the file that is already there. Written with an
+                // `if !is_empty` alone, a value that was cleared stayed in the file and came back at
+                // the next start: choosing Monokai Pro and then choosing Unluminous Dark again would have
+                // come up in Monokai Pro tomorrow, and `Follow the theme` and `The theme's own` are
+                // first class choices on the Theme page rather than corners. Found by driving a real
+                // window.
+                $( values.set_or_clear($tkey, &self.$tname); )*
+                $( values.set_or_clear($rkey, &self.$rname); )*
+                $( values.set_or_clear($lkey, &self.$lname); )*
+                $( values.set($nkey, format!($nfmt, self.$nname)); )*
+                $( values.set($fkey, if self.$fname { "true" } else { "false" }); )*
+                $( values.set($ckey, self.$cname.name()); )*
+                ($write)(self, values);
+            }
+        }
+
+        impl Default for Settings {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+    };
+}
+
+settings! {
+    text {
+        /// The program a new terminal runs. Empty means the one this machine says the person has, which
+        /// `unluminous_terminal::session` decides and which is PowerShell on Windows.
+        terminal_shell = String::new() => "terminal.shell";
+        /// Extra patterns the project index leaves out, beyond `.gitignore` and the build folders.
+        ///
+        /// `task-1804` §7.3: the index skipped three hardcoded folder names and read no ignore file at
+        /// all, so `editor definition` answered out of a gitignored scratch copy of the whole project.
+        /// `.gitignore` is now read; this is the person's own list beside it, for the folder that is not
+        /// a repository and for the pattern a repository has a reason not to ignore.
+        ///
+        /// Written as one line of comma separated patterns, in `.gitignore`'s own syntax, because that
+        /// is the syntax a person already knows and the one the reader beside it implements.
+        exclude = String::new() => "editor.exclude";
+        /// Which areas of the catalogue the hosted server offers, separated by commas.
+        ///
+        /// Empty means all of them, which is what it always did. `task-1804` §4.2 measured what all
+        /// of them costs -- 18% of a local model's window before a question is asked -- and this is the
+        /// same lever `mcp serve --areas` gives the server an agent launches itself.
+        mcp_areas = String::new() => "mcp.areas";
+        /// Which theme the window is painted in, as `<plugin>/<theme>` — `themes-bundle-1/dracula`.
+        ///
+        /// Empty means `unluminous/dark`, which is the palette Unluminous shipped with. Empty rather than the key
+        /// written out, for `terminal_shell`'s reason once more: a settings file that names nothing is a file
+        /// that asks for whatever this Unluminous's default is, and one that names a theme whose plugin has been
+        /// switched off falls back to it rather than to nothing.
+        theme = String::new() => "appearance.theme";
+        /// One colour used for everything the accent means, over whatever the theme said.
+        ///
+        /// Written as `#RRGGBB`, empty meaning the theme's own. Material Theme UI's best known setting.
+        accent = String::new() => "appearance.accent";
+        /// The family the window's own text is set in — menus, the explorer, the status bar.
+        ///
+        /// Empty means the editor's family, which is what the interface was always set in and is why this can
+        /// be added without anything moving. The reference editor's `Appearance -> Use custom font`.
+        ui_font_family = String::new() => "appearance.ui.font.family";
+    }
+
+    text_raw {
+        /// The family the editor sets text in.
+        font_family = String::new() => "appearance.font.family";
+    }
+
+    text_lower {
+        /// Which drawn icon set is used, from `plugins::ICON_SETS`. Empty means the theme's own choice,
+        /// which is what `Follow the theme` is on the Theme page.
+        icons = String::new() => "appearance.icons";
+    }
+
+    number {
+        /// The point size the editor sets text in.
+        font_size = DEFAULT_FONT_SIZE => "appearance.font.size", MIN_FONT_SIZE, MAX_FONT_SIZE, "{:.0}";
+        /// How opaque the window background is, which is what lets the desktop show through.
+        opacity = DEFAULT_OPACITY => "appearance.background.opacity", MIN_OPACITY, 1.0, "{:.3}";
+        /// The point size the terminal sets its grid in.
+        terminal_font_size = 13.0 => "terminal.font.size", 6.0, 48.0, "{:.0}";
+        /// The point size the window's own text is set in. [`DEFAULT_UI_FONT_SIZE`] leaves egui exactly as it
+        /// was.
+        ui_font_size = DEFAULT_UI_FONT_SIZE => "appearance.ui.font.size", MIN_UI_FONT_SIZE, MAX_UI_FONT_SIZE, "{:.1}";
+    }
+
+    flag {
+        /// Whether the editing area has a column of line numbers down its left.
+        line_numbers = true => "editor.line_numbers";
+        /// Whether a plugin that asked for the decoration renderer gets it.
+        ///
+        /// The soft shadows, inset shadows and gradients `services::vello_canvas` draws behind a plugin's pane.
+        /// Off, the board draws flat, which is what it did before `task-1765`. It is a setting for the reason
+        /// the opacity is one: it is the person's window, and drawing depth costs a rasterisation on the frame
+        /// a board changes.
+        plugin_chrome = true => "plugins.chrome";
+        /// Whether this Unluminous hosts the MCP server over HTTP, so an agent can reach it at a URL.
+        mcp_enabled = false => "mcp.enabled";
+    }
+
+    coded {
+        /// Whether the completion popup arrives while you type, or waits to be asked.
+        suggestions: Suggestions = Suggestions::Automatic => "editor.suggestions";
+        /// What line breaks a file is written back with. See [`LineEndings`].
+        line_endings: LineEndings = LineEndings::Keep => "editor.line_ending";
+        /// Whether the window asks for a newer version as it opens. See [`UpdateCheck`].
+        update_check: UpdateCheck = UpdateCheck::Off => "update.check";
+        /// Whether the debugger's value tooltip arrives when the pointer rests on a name.
+        value_tooltip: ValueTooltip = ValueTooltip::Automatic => "debug.value_tooltip";
+        /// How many tools the catalogue is cut into for an agent. See `unluminous_cli::mcp::tools`.
+        mcp_tools: unluminous_cli::mcp::Shape = unluminous_cli::mcp::Shape::default() => "mcp.tools";
+    }
+
+    extra {
+        fields {
+            /// The port it listens on when it does.
+            pub mcp_port: u16,
+            /// Where each debug adapter lives, when this machine keeps one somewhere Unluminous would not look.
+            ///
+            /// `debug.lldb`, `debug.node` — one entry per name in `plugins::DEBUGGERS`, and empty meaning
+            /// "whatever this machine has", which is `Settings::shell()`'s sentence made once more. It is a
+            /// path rather than a preference, so a settings file copied to another machine names nothing.
+            pub debug_adapters: Vec<(String, String)>,
+        }
+        keys { "mcp.port" }
+        defaults {
+            mcp_port: unluminous_cli::mcp::DEFAULT_PORT,
+            debug_adapters: Vec::new(),
+        }
+        read = |values: &Values, settings: &mut Settings| {
+            if let Some(port) = values.number("mcp.port") {
+                settings.mcp_port = clamp_port(port);
+            }
+            for name in crate::services::plugins::DEBUGGERS {
+                if let Some(path) = values
+                    .text(&format!("debug.{name}"))
+                    .map(str::trim)
+                    .filter(|path| !path.is_empty())
+                {
+                    settings.debug_adapters.push(((*name).to_owned(), path.to_owned()));
+                }
+            }
+        };
+        // Written only once one has been chosen, exactly as the shell is, so a settings file does
+        // not name a path that exists on one machine and not on the next — and taken out again when
+        // it is cleared, for `write_into`'s own reason. The list is walked rather than the vec,
+        // because an adapter that was cleared is not in the vec at all.
+        write = |settings: &Settings, values: &mut Values| {
+            values.set("mcp.port", settings.mcp_port.to_string());
+            for name in crate::services::plugins::DEBUGGERS {
+                values.set_or_clear(
+                    &format!("debug.{name}"),
+                    settings.debug_adapter(name).unwrap_or_default(),
+                );
+            }
+        };
+    }
 }
 
 impl Settings {
-    /// The settings an Unluminous that has never been run has. The family is decided by the renderer, because
-    /// it depends on what the system has installed, so it is left empty here and filled in by the window.
-    pub fn new() -> Self {
-        Self {
-            font_family: String::new(),
-            font_size: DEFAULT_FONT_SIZE,
-            opacity: DEFAULT_OPACITY,
-            terminal_font_size: 13.0,
-            // Empty rather than a name, because which shell is right is a question about the machine
-            // Unluminous is running on, and the settings file is copied between machines.
-            terminal_shell: String::new(),
-            // On, because a line number is useful in prose as well as in code and a person who does
-            // not want one can put it away from the gutter's own menu.
-            line_numbers: true,
-            // On, which is what the reference editor's own "Show suggestions as you type" is, and what the
-            // ticket asked for: suggestions that arrive rather than ones you have to remember to
-            // ask for.
-            suggestions: Suggestions::Automatic,
-            // Keep, and the type's own comment argues it: any other default rewrites somebody's file
-            // the first time they type in it.
-            line_endings: LineEndings::Keep,
-            // Off. See the type's own comment: nothing is sent unless somebody asks.
-            update_check: UpdateCheck::Off,
-            // Empty. `.gitignore` is read whether or not this names anything, and a pattern here is
-            // an addition to it rather than a replacement for it.
-            exclude: String::new(),
-            // On, which is what the reference editor's own `Show value tooltip` is: the whole point of the
-            // feature is that the value is there when you look at the name, rather than being
-            // something to remember to ask for.
-            value_tooltip: ValueTooltip::Automatic,
-            // On. A board that draws flat is the board `task-1765` was filed about.
-            plugin_chrome: true,
-            // Off, and the reason is worth writing down rather than being read off as timidity.
-            // The MCP server an agent launches over its own pipes needs no port and no setting: it
-            // lives as long as the conversation and nothing is listening when nobody is asking,
-            // which is what `Settings -> Tools -> MCP`'s install buttons set up. A fixed open port
-            // that will run `terminal send` for anything that can reach it is a different
-            // proposition, and it should be a thing somebody turned on rather than a thing they
-            // were given.
-            mcp_enabled: false,
-            mcp_port: unluminous_cli::mcp::DEFAULT_PORT,
-            mcp_tools: unluminous_cli::mcp::Shape::default(),
-            // Empty: every area, which is what a configuration that names none has always meant.
-            mcp_areas: String::new(),
-            // The four `task-1776` added, each empty or at the number that changes nothing, so an Unluminous
-            // that has never been run is painted in exactly the palette it always was.
-            theme: String::new(),
-            accent: String::new(),
-            icons: String::new(),
-            ui_font_family: String::new(),
-            ui_font_size: DEFAULT_UI_FONT_SIZE,
-            // Empty, for `terminal_shell`'s reason: where `lldb-dap` lives is a question about this
-            // machine, and the settings file is copied between machines.
-            debug_adapters: Vec::new(),
-        }
-    }
-
-    pub fn read_from(values: &Values) -> Self {
-        let mut settings = Self::new();
-        if let Some(family) = values.text("appearance.font.family") {
-            settings.font_family = family.to_owned();
-        }
-        if let Some(size) = values.number("appearance.font.size") {
-            settings.font_size = size.clamp(MIN_FONT_SIZE, MAX_FONT_SIZE);
-        }
-        if let Some(opacity) = values.number("appearance.background.opacity") {
-            settings.opacity = opacity.clamp(MIN_OPACITY, 1.0);
-        }
-        if let Some(size) = values.number("terminal.font.size") {
-            settings.terminal_font_size = size.clamp(6.0, 48.0);
-        }
-        if let Some(shell) = values.text("terminal.shell") {
-            settings.terminal_shell = shell.trim().to_owned();
-        }
-        if let Some(on) = values.flag("editor.line_numbers") {
-            settings.line_numbers = on;
-        }
-        if let Some(chosen) = values.text("debug.value_tooltip").and_then(ValueTooltip::parse) {
-            settings.value_tooltip = chosen;
-        }
-        if let Some(chosen) = values.text("editor.suggestions").and_then(Suggestions::parse) {
-            settings.suggestions = chosen;
-        }
-        if let Some(chosen) = values.text("editor.line_ending").and_then(LineEndings::parse) {
-            settings.line_endings = chosen;
-        }
-        if let Some(chosen) = values.text("update.check").and_then(UpdateCheck::parse) {
-            settings.update_check = chosen;
-        }
-        if let Some(patterns) = values.text("editor.exclude") {
-            settings.exclude = patterns.trim().to_owned();
-        }
-        if let Some(on) = values.flag("plugins.chrome") {
-            settings.plugin_chrome = on;
-        }
-        if let Some(on) = values.flag("mcp.enabled") {
-            settings.mcp_enabled = on;
-        }
-        if let Some(port) = values.number("mcp.port") {
-            settings.mcp_port = clamp_port(port);
-        }
-        if let Some(shape) = values.text("mcp.tools").and_then(unluminous_cli::mcp::Shape::parse) {
-            settings.mcp_tools = shape;
-        }
-        if let Some(areas) = values.text("mcp.areas") {
-            settings.mcp_areas = areas.trim().to_owned();
-        }
-        if let Some(theme) = values.text("appearance.theme") {
-            settings.theme = theme.trim().to_owned();
-        }
-        if let Some(accent) = values.text("appearance.accent") {
-            settings.accent = accent.trim().to_owned();
-        }
-        if let Some(icons) = values.text("appearance.icons") {
-            settings.icons = icons.trim().to_lowercase();
-        }
-        if let Some(family) = values.text("appearance.ui.font.family") {
-            settings.ui_font_family = family.trim().to_owned();
-        }
-        if let Some(size) = values.number("appearance.ui.font.size") {
-            settings.ui_font_size = size.clamp(MIN_UI_FONT_SIZE, MAX_UI_FONT_SIZE);
-        }
-        for name in crate::services::plugins::DEBUGGERS {
-            if let Some(path) =
-                values.text(&format!("debug.{name}")).map(str::trim).filter(|path| !path.is_empty())
-            {
-                settings.debug_adapters.push(((*name).to_owned(), path.to_owned()));
-            }
-        }
-        settings
-    }
-
-    pub fn write_into(&self, values: &mut Values) {
-        // **A setting that has gone back to its default is taken out of the file, not left in it.**
-        // Seven of these mean "whatever this Unluminous's own default is" by having *no line at all* — a
-        // blank `terminal.shell` would read as a shell called nothing, and a blank `appearance.theme`
-        // as a theme called nothing — and `settings::save_with` merges over the file that is already
-        // there. Written with an `if !is_empty` alone, a value that was cleared stayed in the file and
-        // came back at the next start: choosing Monokai Pro and then choosing Unluminous Dark again would
-        // have come up in Monokai Pro tomorrow, and `Follow the theme` and `The theme's own` are
-        // first-class choices on the Theme page rather than corners. Found by driving a real window.
-        values.set_or_clear("appearance.font.family", &self.font_family);
-        values.set("appearance.font.size", format!("{:.0}", self.font_size));
-        values.set("appearance.background.opacity", format!("{:.3}", self.opacity));
-        values.set("terminal.font.size", format!("{:.0}", self.terminal_font_size));
-        values.set_or_clear("terminal.shell", &self.terminal_shell);
-        values.set_or_clear("appearance.theme", &self.theme);
-        values.set_or_clear("appearance.accent", &self.accent);
-        values.set_or_clear("appearance.icons", &self.icons);
-        values.set_or_clear("appearance.ui.font.family", &self.ui_font_family);
-        values.set("appearance.ui.font.size", format!("{:.1}", self.ui_font_size));
-        values.set("editor.line_numbers", if self.line_numbers { "true" } else { "false" });
-        values.set("editor.suggestions", self.suggestions.name());
-        values.set("editor.line_ending", self.line_endings.name());
-        values.set("update.check", self.update_check.name());
-        values.set_or_clear("editor.exclude", &self.exclude);
-        values.set("debug.value_tooltip", self.value_tooltip.name());
-        values.set("plugins.chrome", if self.plugin_chrome { "true" } else { "false" });
-        values.set("mcp.enabled", if self.mcp_enabled { "true" } else { "false" });
-        values.set("mcp.port", self.mcp_port.to_string());
-        values.set("mcp.tools", self.mcp_tools.name());
-        values.set_or_clear("mcp.areas", &self.mcp_areas);
-        // Written only once one has been chosen, exactly as the shell is, so a settings file does
-        // not name a path that exists on one machine and not on the next — and taken out again when it
-        // is cleared, for the reason at the top of this function. The list is walked rather than the
-        // vec, because an adapter that was cleared is not in the vec at all.
-        for name in crate::services::plugins::DEBUGGERS {
-            values.set_or_clear(
-                &format!("debug.{name}"),
-                self.debug_adapter(name).unwrap_or_default(),
-            );
+    /// Set, or clear, which path this machine's settings give for the debug adapter called `name`.
+    ///
+    /// The write half of [`Settings::debug_adapter`], for the one place besides `read_from` that needs
+    /// to change the vector rather than only read it -- the Editor page's Debugger section.
+    pub fn set_debug_adapter(&mut self, name: &str, path: String) {
+        self.debug_adapters.retain(|(known, _)| known != name);
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            self.debug_adapters.push((name.to_owned(), trimmed.to_owned()));
         }
     }
 
@@ -810,12 +869,6 @@ impl Settings {
             size: Some(self.font_size),
             ..unluminous_core::StyleChange::default()
         }
-    }
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -1224,6 +1277,42 @@ pub fn save_with(store: &Store, settings: &Settings, panes: &Panes, plugin_panes
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What `settings!` declares is exactly what `read_from`/`write_into` used to name by hand, so a
+    /// name quietly dropped while moving a field into the macro is caught here rather than only by a
+    /// value happening to survive a round trip. `debug.lldb`/`debug.node` are not in this list: they
+    /// are one row a name in `DEBUGGERS` rather than a fixed key, and
+    /// `an_adapter_path_is_only_written_once_it_has_been_chosen` is what covers them.
+    #[test]
+    fn the_named_settings_are_exactly_the_ones_the_file_used_to_read_and_write() {
+        let mut expected = vec![
+            "terminal.shell",
+            "editor.exclude",
+            "mcp.areas",
+            "appearance.theme",
+            "appearance.accent",
+            "appearance.ui.font.family",
+            "appearance.font.family",
+            "appearance.icons",
+            "appearance.font.size",
+            "appearance.background.opacity",
+            "terminal.font.size",
+            "appearance.ui.font.size",
+            "editor.line_numbers",
+            "plugins.chrome",
+            "mcp.enabled",
+            "editor.suggestions",
+            "editor.line_ending",
+            "update.check",
+            "debug.value_tooltip",
+            "mcp.tools",
+            "mcp.port",
+        ];
+        expected.sort_unstable();
+        let mut actual: Vec<&str> = Settings::NAMES.to_vec();
+        actual.sort_unstable();
+        assert_eq!(actual, expected, "a name was added or lost in the settings! declaration");
+    }
 
     #[test]
     fn settings_survive_being_written_and_read_back() {

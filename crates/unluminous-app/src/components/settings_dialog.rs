@@ -14,7 +14,7 @@ use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 use crate::components::controls;
 use crate::components::mcp_page::{self, McpState};
 use crate::components::modal;
-use crate::components::plugins_page::{self, PluginsOutcome, PluginsState};
+use crate::components::plugins_page::{self, PluginsState};
 use crate::services::plugins::Plugins;
 use crate::settings::{
     LineEndings, Page, Settings, Suggestions, UpdateCheck, ValueTooltip, FONT_SIZES, MIN_OPACITY,
@@ -58,21 +58,47 @@ impl SettingsWindow {
     }
 }
 
+/// What the page that was drawn this frame reported.
+///
+/// One enum rather than a `changed: bool` beside a `plugins: PluginsOutcome`, because `contents` draws
+/// exactly one page a frame and only that page's own controls could have produced anything: an
+/// ordinary setting changing and the Plugins page asking to install something cannot both be true of
+/// one frame, so they are alternatives of one value rather than two fields that would need to agree.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum PageOutcome {
+    /// Nothing on the page changed this frame.
+    #[default]
+    Nothing,
+    /// An ordinary setting changed, so the window applies it and writes the settings file.
+    Changed,
+    /// The Plugins page asked to install a plugin, by id.
+    Install(String),
+    /// The Plugins page asked to uninstall a plugin, by id.
+    Uninstall(String),
+    /// The Plugins page asked to switch a plugin on or off, by id and the state it asked for.
+    SetEnabled(String, bool),
+}
+
 /// What happened in the Settings window this frame.
-#[derive(Debug, Default, PartialEq)]
+///
+/// `closed` stays its own field rather than folding into [`PageOutcome`]: closing is asked from the
+/// footer or the window's own corner cross, answered by the modal's own `Escape` and drag handling,
+/// and is genuinely independent of whatever the page drew -- a person can close the window from any
+/// page, having changed nothing on it or having just changed something. A settings change has a
+/// safety net besides this outcome (the window's own caller also compares the settings before and
+/// after), a plugin action has none, so folding `closed` into the same enum would mean a `Closed`
+/// arriving on the same frame as an `Install` silently drops the install with nothing to catch it.
+/// Kept apart, neither can be lost.
+///
+/// There is no field for which contributed page slot was drawn any more. `contents` already draws it
+/// through the `plugin_page` closure `show` is given -- that is where the real work happens -- and
+/// nothing outside this module ever read the `Option<(usize, Rect)>` this struct used to carry for
+/// it. A field nothing reaches is not a state worth keeping.
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct SettingsOutcome {
-    /// A setting was changed, so the window applies it and writes the settings file.
-    pub changed: bool,
-    /// The window was closed.
     pub closed: bool,
-    /// What the Plugins page asked for.
-    pub plugins: PluginsOutcome,
-    /// Which contributed page to draw, and where.
-    ///
-    /// Only the window can reach a plugin's provider, so the dialog says which slot and hands over the
-    /// rectangle, and the window draws it there. That is the arrangement `components::activity_bar`
-    /// already uses: it reports what was pressed rather than acting on it.
-    pub plugin_page: Option<(usize, Rect)>,
+    /// What the page that was showing asked for.
+    pub page: PageOutcome,
 }
 
 /// What the window tells the Settings dialog about the machine it is running on.
@@ -125,11 +151,8 @@ pub fn show(
             contents(ui, area, state, settings, context, plugin_page)
         });
 
-    outcome.changed = inner.changed;
-    let inner_closed = inner.closed;
-    outcome.plugins = inner.plugins;
-    outcome.plugin_page = inner.plugin_page;
-    if inner_closed || should_close {
+    outcome.page = inner.page;
+    if inner.closed || should_close {
         state.open = false;
         outcome.closed = true;
     }
@@ -183,16 +206,22 @@ fn contents(
     show_list(ui, list, state, context.plugin_pages);
     match state.page {
         Page::Appearance => {
-            outcome.changed |= appearance_page(ui, page_area, settings, context.families);
+            if appearance_page(ui, page_area, settings, context.families) {
+                outcome.page = PageOutcome::Changed;
+            }
         }
         Page::Theme => {
-            outcome.changed |= theme_page(ui, page_area, settings, context.plugins);
+            if theme_page(ui, page_area, settings, context.plugins) {
+                outcome.page = PageOutcome::Changed;
+            }
         }
         Page::Editor => {
-            outcome.changed |= editor_page(ui, page_area, settings);
+            if editor_page(ui, page_area, settings) {
+                outcome.page = PageOutcome::Changed;
+            }
         }
         Page::Plugins => {
-            outcome.plugins = plugins_page::show(
+            let result = plugins_page::show(
                 ui,
                 page_area,
                 &mut state.plugins,
@@ -200,12 +229,23 @@ fn contents(
                 context.installed_on_disk,
                 context.icon_for,
             );
+            outcome.page = if let Some(id) = result.install {
+                PageOutcome::Install(id)
+            } else if let Some(id) = result.uninstall {
+                PageOutcome::Uninstall(id)
+            } else if let Some((id, on)) = result.set_enabled {
+                PageOutcome::SetEnabled(id, on)
+            } else {
+                PageOutcome::Nothing
+            };
         }
         Page::Terminal => {
-            outcome.changed |= terminal_page(ui, page_area, settings);
+            if terminal_page(ui, page_area, settings) {
+                outcome.page = PageOutcome::Changed;
+            }
         }
         Page::Mcp => {
-            outcome.changed |= mcp_page::show(
+            if mcp_page::show(
                 ui,
                 page_area,
                 &mut state.mcp,
@@ -213,14 +253,17 @@ fn contents(
                 context.mcp_running,
                 context.unluminous_cli,
             )
-            .changed;
+            .changed
+            {
+                outcome.page = PageOutcome::Changed;
+            }
         }
         // A contributed page is drawn by its own plugin. The window hands over a closure that can reach
         // the provider, and it is called here rather than after this function returns, because the modal
-        // is an area of its own and anything painted into the window underneath it is covered.
+        // is an area of its own and anything painted into the window underneath it is covered. Nothing
+        // to report back through `outcome` -- the drawing already happened.
         Page::Plugin(slot) => {
             plugin_page(ui, slot as usize, page_area);
-            outcome.plugin_page = Some((slot as usize, page_area));
         }
     }
 
@@ -865,6 +908,33 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> bool {
         area,
         pen,
         "While a program is stopped, resting the pointer on a name shows what it holds, and a structure opens into its fields, which can be typed over. Off, nothing appears until you ask: Show Value on the Debug menu.",
+    );
+
+    // `debug.lldb` / `debug.node`, walked from the registry rather than named twice, so a third
+    // adapter needs no change here. Empty means what `services::debuggers` already looks for on its
+    // own; a path here is only for the machine that keeps one somewhere that search would not find.
+    for name in crate::services::plugins::DEBUGGERS {
+        let row = row_at(area, pen);
+        label(ui, area, row, &format!("{name} path:"));
+        let current = settings.debug_adapter(name).unwrap_or_default().to_owned();
+        let mut edited = current.clone();
+        modal::field(
+            ui,
+            Rect::from_min_size(Pos2::new(area.left() + 130.0, row.top()), Vec2::new(300.0, 28.0)),
+            &format!("{name} adapter path"),
+            &mut edited,
+        );
+        if edited != current {
+            settings.set_debug_adapter(name, edited);
+            changed = true;
+        }
+        pen += 34.0;
+    }
+    pen = note(
+        ui,
+        area,
+        pen,
+        "Leave empty to search the usual places; the debug tile offers to install one when none is found.",
     );
 
     // `task-1804` §7.1. What a file is written back with, and what the index leaves out.

@@ -8230,16 +8230,14 @@ impl UnluminousApp {
         for (plugin, request) in std::mem::take(&mut page_asked) {
             self.act_on_a_plugin_request(&plugin, request, ui.ctx());
         }
-        if let Some(id) = settings_outcome.plugins.install {
-            self.install_plugin(&id);
+        let page_changed = settings_outcome.page == settings_dialog::PageOutcome::Changed;
+        match settings_outcome.page {
+            settings_dialog::PageOutcome::Install(id) => self.install_plugin(&id),
+            settings_dialog::PageOutcome::Uninstall(id) => self.uninstall_plugin(&id),
+            settings_dialog::PageOutcome::SetEnabled(id, on) => self.set_plugin_enabled(&id, on),
+            settings_dialog::PageOutcome::Nothing | settings_dialog::PageOutcome::Changed => {}
         }
-        if let Some(id) = settings_outcome.plugins.uninstall {
-            self.uninstall_plugin(&id);
-        }
-        if let Some((id, on)) = settings_outcome.plugins.set_enabled {
-            self.set_plugin_enabled(&id, on);
-        }
-        if settings_outcome.changed || self.settings != before {
+        if page_changed || self.settings != before {
             self.apply_settings(&before);
         }
 

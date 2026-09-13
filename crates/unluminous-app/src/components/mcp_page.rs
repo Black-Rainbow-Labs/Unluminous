@@ -234,6 +234,27 @@ fn server_section(
         outcome.changed = true;
     }
     pen += 32.0;
+
+    let areas_row = row_at(area, pen);
+    label(ui, area, areas_row, "Areas:");
+    let before_areas = settings.mcp_areas.clone();
+    crate::components::modal::field(
+        ui,
+        Rect::from_min_size(Pos2::new(area.left() + 70.0, areas_row.top()), Vec2::new(300.0, 28.0)),
+        "MCP areas",
+        &mut settings.mcp_areas,
+    );
+    if settings.mcp_areas != before_areas {
+        outcome.changed = true;
+    }
+    pen += 34.0;
+    pen = note(
+        ui,
+        area,
+        pen,
+        "Which parts of the catalogue this offers, such as editor,git. Empty offers everything.",
+    );
+
     pen = note(
         ui,
         area,
