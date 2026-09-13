@@ -109,6 +109,40 @@ pub struct Hover {
     pub at_definition: bool,
 }
 
+/// What a rename in the modal was asked about, which is what decides the default ticks.
+///
+/// Three fields on `UnluminousApp` before, written in one breath at each of the two places a rename
+/// starts and read in one breath at each of the two places the rows are ticked. Nothing else touched
+/// any of them, and a window in which one of the three had been written and the other two had not was
+/// not a state anything produced — it was a state four assignments in two files had to keep out of by
+/// agreeing with each other.
+///
+/// **All three can vary independently, so this is a struct rather than an enum.** `kind` is `None`
+/// when nothing in the project defines the name, `here` is `None` when the rename was asked in a tab
+/// that has never been saved, and `ticked_up_to` counts up on its own as the search streams. None of
+/// the three implies either of the others, so there is no pair of them to fold into a variant — which
+/// is the opposite finding from [`SymbolIndexState`], where two of three fields could not disagree.
+///
+/// What the `Option` around it says is the one thing the three fields could not: whether a rename has
+/// been started at all. It is only ever read while a `Purpose::Rename` modal is open, and the two
+/// places that open one are the two places that write this, so `None` and a rename modal cannot both
+/// be true.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RenameInProgress {
+    /// What the name being renamed resolved to, which is what decides how widely the change set is
+    /// ticked by default. Taken when the modal opens, while the caret is still where the question
+    /// was asked from.
+    pub kind: Option<SymbolKind>,
+    /// The file the rename was asked in, which is what "this file only" means.
+    pub here: Option<PathBuf>,
+    /// How many of the rename's rows have had a default tick worked out for them.
+    ///
+    /// The search streams, so this counts up as batches land: what is ticked by default is the tail
+    /// that has just arrived, and everything above it is left as it is — which after the first batch
+    /// means it belongs to whoever has been clicking the boxes.
+    pub ticked_up_to: usize,
+}
+
 /// Convert a byte range from disk text into the LF-only range a `Document` opens.
 fn document_range(text: &str, range: std::ops::Range<usize>) -> std::ops::Range<usize> {
     let returns_before_start = text[..range.start].matches("\r\n").count();
@@ -705,13 +739,26 @@ impl UnluminousApp {
         self.tree.reload();
         let waker = self.thread_waker();
         self.references = Some(References::open(Purpose::Rename, &name, waker));
-        // What the name resolves to decides how widely the rename is ticked, and the answer is
-        // worked out now, while the caret is still where the question was asked from.
-        let path = self.files.active().path().map(Path::to_path_buf);
-        let candidates = self.candidates_for(&name, path.as_deref(), offset);
-        self.rename_kind = candidates.first().map(|candidate| candidate.kind);
-        self.rename_here = path;
-        self.rename_ticked_up_to = 0;
+        self.begin_a_rename(&name, offset);
+    }
+
+    /// Record what a rename is about: what the name resolves to, and the file it was asked in.
+    ///
+    /// Called by both halves of the feature — [`Self::rename_symbol`] for the modal and
+    /// `cli_rename` for `editor rename` — so the default scope a person sees and the default scope
+    /// an agent gets are worked out by the same five lines rather than by two copies of them.
+    ///
+    /// The answer is taken **now**, while the caret is still where the question was asked from: the
+    /// modal takes the keyboard and the search runs for as long as it runs, so by the time there are
+    /// rows to tick the caret is nowhere in particular.
+    pub(crate) fn begin_a_rename(&mut self, name: &str, offset: usize) {
+        let here = self.files.active().path().map(Path::to_path_buf);
+        let candidates = self.candidates_for(name, here.as_deref(), offset);
+        self.rename = Some(RenameInProgress {
+            kind: candidates.first().map(|candidate| candidate.kind),
+            here,
+            ticked_up_to: 0,
+        });
     }
 
     /// Show several candidate definitions rather than jumping to a guess.
@@ -771,15 +818,19 @@ impl UnluminousApp {
     /// the tail — the rows that arrived since the last time this ran — and everything above it is
     /// left exactly as it is, which after the first batch means it is theirs.
     fn tick_the_default_rows(&mut self) {
-        let kind = self.rename_kind;
-        let here = self.rename_here.clone();
+        let Some(rename) = self.rename.as_ref() else {
+            return;
+        };
+        let kind = rename.kind;
+        let here = rename.here.clone();
+        let ticked_up_to = rename.ticked_up_to;
         let Some(modal) = self.references.as_mut() else {
             return;
         };
         if modal.purpose != Purpose::Rename {
             return;
         }
-        let decided = self.rename_ticked_up_to.min(modal.hits().len());
+        let decided = ticked_up_to.min(modal.hits().len());
         if decided == modal.hits().len() {
             return;
         }
@@ -789,7 +840,9 @@ impl UnluminousApp {
             let same_file = here.as_deref() == Some(hit.path.as_path());
             ticks[index] = super::symbols::ticked_by_default(hit.role, kind, same_file);
         }
-        self.rename_ticked_up_to = ticks.len();
+        if let Some(rename) = self.rename.as_mut() {
+            rename.ticked_up_to = ticks.len();
+        }
         modal.set_ticks(ticks);
     }
 

@@ -56,6 +56,41 @@ pub enum Gesture {
     Wiring { from: NodeId, at: Pos2 },
 }
 
+/// When the canvas's own state is being read back out of what is running behind it.
+///
+/// There were two walks of the nodes, each with its own `match` over the six kinds, and the two matches
+/// disagreed in three arms — which is exactly the shape a reader cannot check, because the reason for each
+/// disagreement was in a comment on one of them and nowhere near the other. There is one walk now and this
+/// is the difference between the two moments, said once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Reading {
+    /// The ordinary pass, once a frame, while the window is still drawing.
+    ///
+    /// Everything a node holds is read here, and a terminal is asked what it is running on a clock rather
+    /// than on every frame — see [`SpaceState::asked_what_is_running`].
+    EveryFrame,
+    /// The last reading there will be, from `on_exit`, before anything is killed.
+    ///
+    /// **What each terminal node is running, asked before anything is killed.** It is read from the
+    /// pseudoterminal, so a killed session answers nothing — and the ordinary reading is on a clock, at
+    /// `WATCH_INTERVAL`, so a program started inside the last three quarters of a second would otherwise
+    /// never be written down at all. The Codex Sol review of `task-1907` found that. One last reading costs
+    /// one syscall a node and closes the window between the last tick and the window going. A browser node
+    /// and a chat node are read here for the same reason with a different clock: a page moves whenever
+    /// somebody clicks a link and a chat starts a conversation of its own, and the last of either before a
+    /// window closes can land after the last frame that read it.
+    ///
+    /// **A File Editor node and a Folder node are deliberately not read here**, and that is the one place
+    /// the two moments must not be made the same. The ordinary pass only runs once the view showing has
+    /// been brought to life, because what it writes is derived from the live state and before the nodes are
+    /// started that state is *empty* — so an editor node read too early writes an empty tab list over the
+    /// saved one, which is the `task-1906` fault measured on the installed build. `on_exit` has no such
+    /// guard and cannot have one, so it asks only about the three values that are read from something
+    /// running rather than from the window. Neither of those two loses anything by being left out: a caret
+    /// and a scroll only move on a frame, and the frame that moved them has already written them down.
+    OnTheWayOut,
+}
+
 /// Which node, wire or view a right click was on, so the menu's entries can be parameterless.
 ///
 /// `actions::tab_menu`'s rule: a right click **shows** what it was over before the menu is drawn, so
@@ -2343,7 +2378,20 @@ impl UnluminousApp {
         working
     }
 
-    /// Take down where each node's own file and rows are being read, so they come back there.
+    /// The ordinary pass: take down what every node holds, once a frame.
+    ///
+    /// The name the frame calls the reading by, and the one a test asks for. [`Reading::EveryFrame`] is
+    /// what it means.
+    pub fn note_where_the_nodes_are_reading(&mut self) {
+        self.note_the_live_state_into_the_nodes(Reading::EveryFrame);
+    }
+
+    /// Take down what each node is really doing, so it comes back doing it.
+    ///
+    /// A File Editor node's caret and scroll and its tabs, a Folder node's scroll, a terminal node's
+    /// foreground program, a browser node's page and a chat node's conversation: six values that live in
+    /// something running and are mirrored into the canvas's own state so that `space.conf` can hold them.
+    /// [`Reading`] says which of them this moment can answer for.
     ///
     /// **Derived rather than reported**, which is `follow_the_open_file`'s rule and the reason this is one
     /// function rather than a line at each of the places a caret or a scroll can move: a list of the places
@@ -2351,25 +2399,36 @@ impl UnluminousApp {
     /// is the report — the three fields it fills in were written to `space.conf` and read back from it since
     /// `task-1904`, and nothing ever put a value in one.
     ///
-    /// **Only when the number changed**, because `Space::change` marks the canvas dirty and a canvas that
+    /// **Only when the value changed**, because `Space::change` marks the canvas dirty and a canvas that
     /// wrote `space.conf` on every frame of a scroll would write a file sixty times a second — which is
-    /// `Space::is_dirty`'s whole reason for existing.
-    pub fn note_where_the_nodes_are_reading(&mut self) {
+    /// `Space::is_dirty`'s whole reason for existing. Each arm compares before it calls `change`, and the
+    /// three that are a node each of their own do the comparing in their own function.
+    pub(crate) fn note_the_live_state_into_the_nodes(&mut self, reading: Reading) {
         // **A terminal is asked what it is running on a clock, not on every frame.** See
-        // `SpaceState::asked_what_is_running`: it is a syscall where everything else here is a field.
-        let now = std::time::Instant::now();
-        let ask_what_is_running = self
-            .space
-            .asked_what_is_running
-            .is_none_or(|last| now.duration_since(last) >= crate::app::WATCH_INTERVAL);
-        if ask_what_is_running {
-            self.space.asked_what_is_running = Some(now);
-        }
+        // `SpaceState::asked_what_is_running`: it is a syscall where everything else here is a field. On the
+        // way out there is no next tick to wait for, so it is asked whatever the clock says — and the clock
+        // is left alone, because nothing is going to read it again.
+        let ask_what_is_running = match reading {
+            Reading::OnTheWayOut => true,
+            Reading::EveryFrame => {
+                let now = std::time::Instant::now();
+                let due = self
+                    .space
+                    .asked_what_is_running
+                    .is_none_or(|last| now.duration_since(last) >= crate::app::WATCH_INTERVAL);
+                if due {
+                    self.space.asked_what_is_running = Some(now);
+                }
+                due
+            }
+        };
         let nodes: Vec<(NodeId, Kind)> =
             self.space.space.current().nodes.iter().map(|node| (node.id, node.kind())).collect();
         for (node, kind) in nodes {
             match kind {
-                Kind::Editor => {
+                // The two that are read out of the window rather than out of something running, and are
+                // therefore only asked while the window is still drawing. `Reading::OnTheWayOut` says why.
+                Kind::Editor if reading == Reading::EveryFrame => {
                     self.remember_a_nodes_tabs(node);
                     let Some(index) = self.files.tab_in_node(node) else { continue };
                     let caret = self.files.at(index).document.selection().head;
@@ -2393,7 +2452,7 @@ impl UnluminousApp {
                         });
                     }
                 }
-                Kind::Folder => {
+                Kind::Folder if reading == Reading::EveryFrame => {
                     let scroll = self.space.live.scroll_of(node);
                     let moved = match &self.space.space.current().node(node).map(|node| &node.state)
                     {
@@ -2408,40 +2467,15 @@ impl UnluminousApp {
                         });
                     }
                 }
+                // The three that are read out of something running — a pseudoterminal, a native view, a
+                // chat's own thread — and can therefore change without a frame having looked at them. Those
+                // are what `Reading::OnTheWayOut` is for.
                 Kind::Terminal if ask_what_is_running => {
                     self.note_what_a_node_is_running(node);
                 }
                 Kind::Browser => self.note_where_a_node_is_browsing(node),
                 Kind::Chat => self.note_which_conversation_a_node_is_on(node),
-                Kind::Terminal | Kind::Tasks => {}
-            }
-        }
-    }
-
-    /// Take down what every node holds that is read from something live, whatever the clock says.
-    ///
-    /// **What `on_exit` calls**, and the reason it has to exist: a terminal's program is read from its
-    /// pseudoterminal on a clock, at `WATCH_INTERVAL`, and `on_exit` kills the sessions — so a program started
-    /// inside the last three quarters of a second was never written down and there was nothing left to ask
-    /// afterwards. The Codex Sol review of `task-1907` found that.
-    ///
-    /// A browser node is here for the same reason with a different clock: its page moves whenever somebody
-    /// clicks a link, and the last click before a window closes can land after the last frame that read it.
-    pub(crate) fn note_what_the_nodes_hold_now(&mut self) {
-        let nodes: Vec<(NodeId, Kind)> =
-            self.space.space.current().nodes.iter().map(|node| (node.id, node.kind())).collect();
-        for (node, kind) in nodes {
-            match kind {
-                Kind::Terminal => self.note_what_a_node_is_running(node),
-                // **And where each page is**, for the same reason: a click on a link moves the tab and the
-                // ordinary reading writes it down, but the last click before a window closes may land after
-                // the last frame that read it. `on_exit` closes that window too.
-                Kind::Browser => self.note_where_a_node_is_browsing(node),
-                // **A chat node's conversation is asked for the same way**, because a conversation the
-                // chat itself started - which is what an empty node does the first time it is drawn - is
-                // an id the node has never been told.
-                Kind::Chat => self.note_which_conversation_a_node_is_on(node),
-                Kind::Folder | Kind::Editor | Kind::Tasks => {}
+                Kind::Editor | Kind::Folder | Kind::Terminal | Kind::Tasks => {}
             }
         }
     }

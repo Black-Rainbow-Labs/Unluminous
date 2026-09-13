@@ -1252,12 +1252,9 @@ impl UnluminousApp {
                 );
             }
         }
-        // The same resolution the modal does, so the default scope is the same one a person sees.
-        let path = self.files.active().path().map(Path::to_path_buf);
-        let candidates = self.candidates_for(&from, path.as_deref(), offset);
-        self.rename_kind = candidates.first().map(|candidate| candidate.kind);
-        self.rename_here = path;
-        self.rename_ticked_up_to = 0;
+        // The same resolution the modal does, through the same function, so the default scope is the
+        // same one a person sees.
+        self.begin_a_rename(&from, offset);
         self.tree.reload();
         let waker = self.thread_waker();
         self.references = Some(References::open(references::Purpose::Rename, &from, waker));
@@ -1389,8 +1386,12 @@ impl UnluminousApp {
 
     /// Tick the rows a command line rename asks for: the same default rules, with the flags on top.
     fn tick_for_the_command_line(&mut self, rename: &CliRename) {
-        let kind = self.rename_kind;
-        let here = self.rename_here.clone();
+        // `cli_rename` calls `begin_a_rename` before it opens this modal, so there is always
+        // something here. It falls back rather than returning because the `--scope` and `--include`
+        // flags decide most of the answer on their own: a return would tick nothing at all, where
+        // an unresolved name only loses the part of the default that depends on what it resolved to.
+        let (kind, here) =
+            self.rename.as_ref().map_or((None, None), |asked| (asked.kind, asked.here.clone()));
         let Some(modal) = self.references.as_mut() else {
             return;
         };

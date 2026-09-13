@@ -1046,18 +1046,8 @@ pub struct UnluminousApp {
     /// The word under the pointer while the modifier is held, and where a click on it would go.
     /// Cached against the text revision and the word, so a resting pointer costs one comparison.
     pub(crate) hover: Option<symbols::Hover>,
-    /// What the name being renamed resolved to, which is what decides how widely the change set is
-    /// ticked by default. Taken when the modal opens, while the caret is still where the question
-    /// was asked from.
-    pub(crate) rename_kind: Option<unluminous_core::symbols::SymbolKind>,
-    /// The file the rename was asked in, which is what "this file only" means.
-    pub(crate) rename_here: Option<PathBuf>,
-    /// How many of the rename's rows have had a default tick worked out for them.
-    ///
-    /// The search streams, so this counts up as batches land: what is ticked by default is the tail
-    /// that has just arrived, and everything above it is left as it is — which after the first
-    /// batch means it belongs to whoever has been clicking the boxes.
-    pub(crate) rename_ticked_up_to: usize,
+    /// What the rename modal was asked about, while one is open. See [`symbols::RenameInProgress`].
+    pub(crate) rename: Option<symbols::RenameInProgress>,
     /// Where the caret has been, so `Navigate Back` can go there. Travel history rather than state:
     /// bounded, and not written to disk.
     pub(crate) back: Vec<symbols::Place>,
@@ -1296,9 +1286,7 @@ impl UnluminousApp {
             references: None,
             symbol_index: SymbolIndexState::NotStarted,
             hover: None,
-            rename_kind: None,
-            rename_here: None,
-            rename_ticked_up_to: 0,
+            rename: None,
             back: Vec::new(),
             forward: Vec::new(),
             about: None,
@@ -2026,12 +2014,11 @@ impl eframe::App for UnluminousApp {
     /// and this is the same path taken deliberately so it happens while the window is still here to
     /// wait for it.
     fn on_exit(&mut self) {
-        // **What each terminal node is running, asked before anything is killed.** It is read from the
-        // pseudoterminal, so a killed session answers nothing — and the ordinary reading is on a clock, at
-        // `WATCH_INTERVAL`, so a program started inside the last three quarters of a second would otherwise
-        // never be written down at all. The Codex Sol review of `task-1907` found that. One last reading here
-        // costs one syscall a node and closes the window between the last tick and the window going.
-        self.note_what_the_nodes_hold_now();
+        // **What each node holds, asked one last time before anything is killed.** It is read from the
+        // pseudoterminal, the native view and the chat's own thread, all three of which answer nothing once
+        // they have been stopped. `space::Reading::OnTheWayOut` says which of the six values this moment can
+        // answer for and why the other two are left out.
+        self.note_the_live_state_into_the_nodes(space::Reading::OnTheWayOut);
         // **Before the sessions are killed**, because a screen is read out of a live terminal and a killed one
         // has nothing to read. `task-1908`.
         self.write_the_screens_down();
