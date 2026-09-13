@@ -1364,6 +1364,102 @@ fn the_palette_is_a_modal_the_command_line_can_drive_like_go_to_file() {
 }
 
 // =================================================================================================
+// A value of a kind the command cannot use.
+//
+// `task-1922` B13. `Request::number` answers `None` both when a key is absent and when its value
+// will not parse, so six commands took a word where they take a number, did nothing about it, and
+// reported `ok`. Each of the six is here, with the same command given a real number beside it --
+// because a refusal that also refused the working form would be a worse fault than the one it
+// closes. The walk over the whole catalogue is `refuse_a_word_where_a_command_takes_a_number`,
+// beside the other rule in the coverage section below.
+
+/// Refuse `line`, insisting it was a usage refusal, and hand back the sentence.
+///
+/// [`refused`] answers with the code alone, and what is under test here is that the sentence names
+/// the key and quotes what arrived: a refusal that said only "usage" would leave a caller exactly
+/// where the silent success left them.
+fn refusal(harness: &mut Harness<'static, UnluminousApp>, line: &str) -> String {
+    let reply = run(harness, line);
+    assert!(!reply.ok, "`{line}` should have been refused, and was not");
+    assert_eq!(
+        reply.error.as_ref().map(|failure| failure.code.as_str()),
+        Some("usage"),
+        "`{line}` should be a usage refusal: {}",
+        reply.message
+    );
+    reply.message
+}
+
+#[test]
+fn window_size_refuses_a_width_that_is_not_a_number() {
+    let mut harness = harness_in(&sample_folder());
+    let said = refusal(&mut harness, "window size --width nonsense");
+    assert!(said.contains("width"), "{said}");
+    assert!(said.contains("nonsense"), "{said}");
+    did(&mut harness, "window size --width 1100 --height 720");
+}
+
+#[test]
+fn window_position_refuses_an_x_that_is_not_a_number() {
+    let mut harness = harness_in(&sample_folder());
+    let said = refusal(&mut harness, "window position --x nonsense");
+    assert!(said.contains("x"), "{said}");
+    assert!(said.contains("nonsense"), "{said}");
+    did(&mut harness, "window position --x 40 --y 40");
+}
+
+#[test]
+fn explorer_width_refuses_a_width_that_is_not_a_number() {
+    let mut harness = harness_in(&sample_folder());
+    let before = harness.state().panes.explorer_width;
+    let said = refusal(&mut harness, "explorer width nonsense");
+    assert!(said.contains("points"), "{said}");
+    assert!(said.contains("nonsense"), "{said}");
+    assert_eq!(harness.state().panes.explorer_width, before, "nothing moved");
+    did(&mut harness, "explorer width 400");
+    assert_eq!(harness.state().panes.explorer_width, 400.0);
+}
+
+#[test]
+fn terminal_height_refuses_a_height_that_is_not_a_number() {
+    let mut harness = harness_in(&sample_folder());
+    let before = harness.state().panes.terminal_height;
+    let said = refusal(&mut harness, "terminal height nonsense");
+    assert!(said.contains("points"), "{said}");
+    assert!(said.contains("nonsense"), "{said}");
+    assert_eq!(harness.state().panes.terminal_height, before, "nothing moved");
+    did(&mut harness, "terminal height 400");
+    assert_eq!(harness.state().panes.terminal_height, 400.0);
+}
+
+#[test]
+fn editor_caret_refuses_a_line_that_is_not_a_number() {
+    let mut harness = harness_in(&sample_folder());
+    did(&mut harness, "tab open notes.txt --permanent");
+    // The sample files are one line each, so the document is given some lines to aim at first.
+    did(&mut harness, "editor set-text alpha\\nbravo\\ncharlie");
+    did(&mut harness, "editor caret --line 1 --column 1");
+    let said = refusal(&mut harness, "editor caret --line nonsense");
+    assert!(said.contains("line"), "{said}");
+    assert!(said.contains("nonsense"), "{said}");
+    let at = harness.state().caret_position();
+    assert_eq!((at.line, at.column), (1, 1), "the caret did not move");
+    did(&mut harness, "editor caret --line 2 --column 1");
+    let at = harness.state().caret_position();
+    assert_eq!((at.line, at.column), (2, 1), "a real number still moves it");
+}
+
+#[test]
+fn explorer_tree_refuses_a_limit_that_is_not_a_number() {
+    let mut harness = harness_in(&sample_folder());
+    let said = refusal(&mut harness, "explorer tree --limit nonsense");
+    assert!(said.contains("limit"), "{said}");
+    assert!(said.contains("nonsense"), "{said}");
+    let tree = did(&mut harness, "explorer tree --limit 5");
+    assert!(tree["rows"].as_array().unwrap().len() <= 5, "the limit is still honoured");
+}
+
+// =================================================================================================
 // Dispatch coverage as a rule.
 //
 // `task-1922` §5.4: this file drives every catalogue command to a success and to a refusal, and a
@@ -1479,6 +1575,7 @@ const CANNOT_BE_MADE_TO_SUCCEED: &[(&str, &str)] = &[
 fn every_catalogue_command_is_driven_both_ways() {
     let mut coverage = Coverage::default();
     refuse_a_value_no_command_has_a_name_for(&mut coverage);
+    refuse_a_word_where_a_command_takes_a_number(&mut coverage);
     drive_the_window_and_the_tabs(&mut coverage);
     drive_the_editing_commands(&mut coverage);
     drive_the_panels_and_the_explorer(&mut coverage);
@@ -1565,6 +1662,64 @@ fn refuse_a_value_no_command_has_a_name_for(coverage: &mut Coverage) {
         }
         harness.step();
     }
+}
+
+/// Every name the catalogue declares a number is refused a word, whatever the command.
+///
+/// `task-1922` B13's rule asked of the whole catalogue at once, which is why the six above do not
+/// have to be joined by a seventh when a name is marked a number later: this finds it. Like its
+/// sibling above it needs no exclusions, because `wrong_number_refusal` decides before anything is
+/// dispatched, so it is safe to ask even of `quit`.
+///
+/// The request is built by hand rather than typed as a line, for the same reason
+/// `refuse_a_value_no_command_has_a_name_for` builds one: what is under test is the window's half,
+/// reached the way the MCP server reaches it.
+fn refuse_a_word_where_a_command_takes_a_number(coverage: &mut Coverage) {
+    let mut harness = harness_in(&dispatch_folder());
+    let mut asked = 0;
+    for command in unluminous_cli::catalogue::COMMANDS {
+        for name in unluminous_cli::catalogue::value_names(command) {
+            match unluminous_cli::catalogue::kind_of(command, name) {
+                Some(unluminous_cli::catalogue::Kind::Whole)
+                | Some(unluminous_cli::catalogue::Kind::Number) => {}
+                _ => continue,
+            }
+            asked += 1;
+            let mut arguments = serde_json::Map::new();
+            arguments.insert(name.to_owned(), serde_json::json!("nonsense"));
+            let request = unluminous_cli::protocol::Request::new("", &command.wire(), arguments);
+            let ctx = harness.ctx.clone();
+            let Some(reply) = harness.state_mut().run_cli_for_test(&request, &ctx) else {
+                coverage.faults.push(format!(
+                    "`{}` held rather than refusing a word for {name}",
+                    command.typed()
+                ));
+                continue;
+            };
+            note_a_drive(&reply.command, reply.ok);
+            match reply.error {
+                Some(failure) if failure.code == "usage" => assert!(
+                    failure.message.contains(name) && failure.message.contains("nonsense"),
+                    "`{}` refused a word for {name} without saying which or what: {}",
+                    command.typed(),
+                    failure.message
+                ),
+                Some(failure) => coverage.faults.push(format!(
+                    "`{}` refused a word for {name} with `{}` rather than `usage`: {}",
+                    command.typed(),
+                    failure.code,
+                    failure.message
+                )),
+                None => coverage.faults.push(format!(
+                    "`{}` took a word for {name} and called it a success: {}",
+                    command.typed(),
+                    reply.message
+                )),
+            }
+            harness.step();
+        }
+    }
+    assert!(asked > 100, "only {asked} names are declared numbers, which cannot be right");
 }
 
 /// The project the walk drives, small enough that a tree and a file list are quick to read.

@@ -1385,6 +1385,11 @@ mod tests {
         //            height records. The six cost about 600 tokens between them; a third of that
         //            came back by shortening the summaries, which is where a summary should be
         //            shortened.
+        //   26,996   `task-1922` B13 typing the hundred and fifty-one numeric keys as `integer` or
+        //            `number` rather than `string`. Fourteen tokens, because `integer` is one
+        //            character longer than `string` and `number` is the same length, so the ceiling
+        //            did not move. It is recorded because a reader comparing the number above
+        //            against `mcp tools --count` should find the two agree.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
