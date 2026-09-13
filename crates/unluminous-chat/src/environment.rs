@@ -64,8 +64,19 @@ impl Environment {
     }
 
     /// One variable, or nothing.
+    ///
+    /// **The name is compared without case on Windows and with it everywhere else**, because that is
+    /// what each platform means by a variable's name: Windows treats `Path`, `PATH` and `path` as one
+    /// variable, and Unix treats them as three. `task-1922` found this by turning CI on: the Windows
+    /// runner holds it as `Path`, so `is_whole` answered no, `search_path` answered `None`, and an
+    /// agent started from that window was handed no `PATH` to be found on -- which is the fault
+    /// `task-1905` recorded from the other end. It has never failed on the machine this is developed
+    /// on, where every shell in use spells it `PATH`.
     pub fn variable(&self, name: &str) -> Option<&str> {
-        self.variables.iter().find(|(named, _)| named == name).map(|(_, value)| value.as_str())
+        self.variables
+            .iter()
+            .find(|(named, _)| same_name(named, name))
+            .map(|(_, value)| value.as_str())
     }
 
     /// The `PATH` a program is looked for on, which is a variable and is also asked for on its own.
@@ -98,11 +109,22 @@ impl Environment {
 
     /// Add or replace one variable, which is what a caller that knows something this does not means.
     pub fn with(mut self, name: &str, value: &str) -> Environment {
-        match self.variables.iter_mut().find(|(named, _)| named == name) {
+        match self.variables.iter_mut().find(|(named, _)| same_name(named, name)) {
             Some((_, held)) => *held = value.to_owned(),
             None => self.variables.push((name.to_owned(), value.to_owned())),
         }
         self
+    }
+}
+
+/// Whether two environment variable names are the same name.
+///
+/// Windows looks a variable up without regard to case and Unix looks it up exactly, so this is one
+/// question with two right answers and the platform decides which. See [`Environment::variable`].
+fn same_name(one: &str, other: &str) -> bool {
+    match cfg!(windows) {
+        true => one.eq_ignore_ascii_case(other),
+        false => one == other,
     }
 }
 
@@ -235,6 +257,33 @@ mod tests {
         let only_a_path = Environment::from([("PATH", "/usr/bin:/bin")]);
         assert!(!only_a_path.is_whole(), "a PATH alone would start a child with no HOME");
         assert!(Environment::of_this_process().is_whole(), "this process's own is whole");
+    }
+
+    /// **A variable is found however Windows spelt its name.** `task-1922`.
+    ///
+    /// Found by turning CI on: the Windows runner holds `Path` rather than `PATH`, so
+    /// `Environment::of_this_process().is_whole()` answered no and `search_path` answered `None` --
+    /// which means a child started from that window is handed no `PATH` to be found on. It has never
+    /// failed on the machine this is developed on, where every shell in use spells it `PATH`.
+    #[test]
+    fn a_variable_is_found_however_the_platform_spelt_its_name() {
+        let given = Environment::from([("Path", "/usr/bin"), ("UserProfile", "/home/someone")]);
+        match cfg!(windows) {
+            true => {
+                assert_eq!(given.variable("PATH"), Some("/usr/bin"), "Windows has one PATH");
+                assert!(given.is_whole(), "and it is a whole environment");
+                assert_eq!(
+                    given.with("PATH", "/bin").variables().len(),
+                    2,
+                    "replacing, not adding"
+                );
+            }
+            false => {
+                assert_eq!(given.variable("PATH"), None, "Unix has three different variables");
+                assert!(!given.is_whole());
+                assert_eq!(given.with("PATH", "/bin").variables().len(), 3, "a different name");
+            }
+        }
     }
 
     #[test]

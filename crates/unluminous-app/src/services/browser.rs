@@ -546,6 +546,16 @@ impl ResourceStamp {
     }
 }
 
+/// **Unreachable rather than dead where there is no web view.** `task-1922`: `cargo clippy
+/// --workspace --all-targets` on Linux, which is where the `checks` job runs, reports this and the
+/// four items below as never used -- because the one thing that reaches them, the protocol callback
+/// at `resources.resolve(...)`, is inside `#[cfg(any(windows, target_os = "macos"))]`.
+///
+/// They stay compiled everywhere rather than being put behind the same `cfg`, because what they hold
+/// is the rule that a local page may only read under its own registered root: the tests that drive
+/// the traversal refusals need no browser runtime, and losing them on a platform would be losing the
+/// checks on the one part of this file that is about what a page may reach.
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
 #[derive(Debug, Default)]
 struct LocalRoot {
     root: PathBuf,
@@ -592,6 +602,7 @@ impl LocalResourceStore {
     }
 
     /// Resolve one custom-origin request without exposing paths outside the registered root.
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     fn resolve(&self, id: u64, method: &str, uri: &str) -> ResourceReply {
         if method != "GET" && method != "HEAD" {
             return ResourceReply::empty(405);
@@ -612,6 +623,7 @@ impl LocalResourceStore {
     }
 
     /// Resolve and canonicalize the URL path, returning nothing for every escape and miss.
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     fn safe_path(&self, id: u64, uri: &str) -> Option<PathBuf> {
         let root = self.0.lock().ok()?.get(&id)?.root.clone();
         let url = Url::parse(uri).ok()?;
@@ -631,6 +643,7 @@ impl LocalResourceStore {
     }
 
     /// Remember a served resource so change detection polls only what the page used.
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     fn record(&self, id: u64, path: &Path) {
         let Some(stamp) = ResourceStamp::of(path) else { return };
         let Ok(mut roots) = self.0.lock() else { return };
@@ -661,6 +674,9 @@ impl LocalResourceStore {
 }
 
 /// A protocol response independent of Wry, so its security can be tested with no browser runtime.
+///
+/// Unreachable where there is no web view. See [`LocalRoot`].
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ResourceReply {
     status: u16,
@@ -670,6 +686,7 @@ struct ResourceReply {
 
 impl ResourceReply {
     /// A response with no body, used for misses and refused methods.
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     fn empty(status: u16) -> Self {
         Self { status, mime: "text/plain; charset=utf-8".to_owned(), bytes: Vec::new() }
     }
@@ -733,6 +750,7 @@ fn canonical(url: &str) -> String {
 /// scheme is refused in silence — the pane keeps showing the page it was already on while the toolbar
 /// says it is loading the new one, which is what pointing the shared view at another tab looked like
 /// until this existed.
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
 fn engine_url(url: &str) -> String {
     if !cfg!(windows) {
         return url.to_owned();
