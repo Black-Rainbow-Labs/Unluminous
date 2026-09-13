@@ -30,7 +30,7 @@ use unluminous_chat::model::{Message, Part, Role};
 use unluminous_chat::provider::{Provider, Wire, WIRES};
 use unluminous_chat::{Client, Conversation, Session, State};
 
-use crate::services::plugin_ui::{Answer, Context, Look, Request, UiProvider};
+use crate::services::plugin_ui::{self, Answer, Context, Look, Request, UiProvider};
 use crate::services::store::Values;
 
 use store::{Store, Summary};
@@ -140,15 +140,9 @@ impl Configuration {
     /// with a list to avoid.
     pub fn of(values: &Values) -> (Self, Vec<String>) {
         let mut configuration = Self { providers: Vec::new(), ..Self::default() };
-        let mut refused = Vec::new();
-        let count = values.number("providers").unwrap_or(0.0).max(0.0) as usize;
-        for index in 0..count.min(32) {
-            match provider_at(values, index) {
-                Ok(Some(provider)) => configuration.providers.push(provider),
-                Ok(None) => {}
-                Err(problem) => refused.push(problem),
-            }
-        }
+        let (providers, mut refused) =
+            plugin_ui::read_numbered_rows(values, "provider", 32, provider_at);
+        configuration.providers = providers;
         // A file that names no provider at all — or whose every row was refused — gets the three
         // that ship, because a pane with no endpoint is a pane that cannot do anything and a person
         // who wanted none would have switched the plugin off.
@@ -214,19 +208,16 @@ impl Configuration {
         values.set("permission", self.permission.name());
         values.set("system", self.system.replace('\n', " "));
         values.set("history", self.history.to_string());
-        std::fs::create_dir_all(folder)
-            .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
-        std::fs::write(
-            folder.join(Self::FILE),
-            values.to_text_headed(
-                "# The Agent-Chat plugin's settings. `Settings -> Agent-Chat` writes this file and reads it back.\n\
-                 # `wire` is `claude-cli` or `codex-cli` for a row that runs the agent installed on this machine —\n\
-                 # those need no key at all — or `openai`, `anthropic` or `responses` for one that sends to a URL.\n\
-                 # A row that sends names the environment variable its key comes from; the key itself is never\n\
-                 # written here or anywhere else by Unluminous.",
-            ),
+        plugin_ui::write_values(
+            folder,
+            Self::FILE,
+            &values,
+            "# The Agent-Chat plugin's settings. `Settings -> Agent-Chat` writes this file and reads it back.\n\
+             # `wire` is `claude-cli` or `codex-cli` for a row that runs the agent installed on this machine —\n\
+             # those need no key at all — or `openai`, `anthropic` or `responses` for one that sends to a URL.\n\
+             # A row that sends names the environment variable its key comes from; the key itself is never\n\
+             # written here or anywhere else by Unluminous.",
         )
-        .map_err(|problem| format!("{} could not be written: {problem}", folder.display()))
     }
 
     /// The endpoint that is used, which is the chosen one or the first there is.
@@ -1253,7 +1244,7 @@ impl UiProvider for AgentChat {
     }
 
     fn command(&mut self, command: &str, arguments: &[String]) -> Result<Answer, String> {
-        let rest = arguments.join(" ");
+        let rest = plugin_ui::rest(arguments, 0);
         match command {
             // The window's own name for "put this pane on the screen", which `run_plugin_command`
             // acts on: the menu entry, the rail button and the command line are one path.
@@ -1391,7 +1382,7 @@ impl UiProvider for AgentChat {
                 .with(serde_json::json!({ "tools": self.configuration.tools })))
             }
             "view" => Ok(Answer::said("the pane").with(self.view_value())),
-            other => Err(format!("`{other}` is not one of Agent-Chat's commands.")),
+            other => Err(self.refuse(other)),
         }
     }
 
@@ -1879,7 +1870,7 @@ mod tests {
             // Some of them need an argument, and refusing for want of one is still answering.
             if let Err(problem) = answered {
                 assert!(
-                    !problem.contains("is not one of Agent-Chat's commands"),
+                    !problem.contains("there is no `"),
                     "{name} is listed and not answered: {problem}"
                 );
             }

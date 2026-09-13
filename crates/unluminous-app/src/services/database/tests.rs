@@ -400,10 +400,7 @@ fn every_command_answers_or_refuses_with_a_sentence_naming_what_it_takes() {
         assert!(!summary.is_empty(), "{name} says nothing about itself");
         let answered = explorer.command(name, &[]);
         if let Err(why) = &answered {
-            assert!(
-                !why.contains("is not one of the Database plugin's commands"),
-                "{name} is listed and not answered"
-            );
+            assert!(!why.contains("there is no `"), "{name} is listed and not answered");
         }
     }
 }

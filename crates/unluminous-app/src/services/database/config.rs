@@ -14,6 +14,7 @@ use std::path::Path;
 
 use unluminous_db::source::{Engine, Secret, Source, SslMode};
 
+use crate::services::plugin_ui;
 use crate::services::store::Values;
 
 /// How many rows a result keeps before it says there are more.
@@ -66,18 +67,15 @@ impl Configuration {
 
     pub fn of(values: &Values) -> (Self, Vec<String>) {
         let mut out = Configuration::default();
-        let mut refused = Vec::new();
         if let Some(size) = values.number("page_size") {
             out.page_size = (size as usize).clamp(1, 100_000);
         }
         out.chosen = values.text("chosen").unwrap_or_default().to_owned();
-        let count = values.number("sources").unwrap_or_default() as usize;
-        for index in 0..count.min(200) {
-            match one(values, index) {
-                Ok(source) => out.sources.push(source),
-                Err(why) => refused.push(why),
-            }
-        }
+        let (sources, refused) =
+            plugin_ui::read_numbered_rows(values, "source", 200, |values, index| {
+                one(values, index).map(Some)
+            });
+        out.sources = sources;
         // A chosen name that is not a source any more points at nothing, which would leave the tree
         // with a heading and no rows. The first source is the honest fallback.
         if !out.sources.iter().any(|source| source.name == out.chosen) {
@@ -115,19 +113,16 @@ impl Configuration {
                 Secret::None | Secret::Typed(_) => {}
             }
         }
-        std::fs::create_dir_all(folder)
-            .map_err(|why| format!("{} could not be made: {why}", folder.display()))?;
-        std::fs::write(
-            folder.join(Self::FILE),
-            values.to_text_headed(
-                "The data sources the Database plugin knows about.\n\
-                 Written by Unluminous; safe to edit by hand.\n\n\
-                 No password is here and none ever will be: `password.env` names an environment\n\
-                 variable and `password.keychain` names an entry in this machine's own keychain,\n\
-                 and the value is read at the moment a connection is opened and never held.",
-            ),
+        plugin_ui::write_values(
+            folder,
+            Self::FILE,
+            &values,
+            "The data sources the Database plugin knows about.\n\
+             Written by Unluminous; safe to edit by hand.\n\n\
+             No password is here and none ever will be: `password.env` names an environment\n\
+             variable and `password.keychain` names an entry in this machine's own keychain,\n\
+             and the value is read at the moment a connection is opened and never held.",
         )
-        .map_err(|why| format!("{} could not be written: {why}", Self::FILE))
     }
 
     pub fn source(&self, name: &str) -> Option<&Source> {

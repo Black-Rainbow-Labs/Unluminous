@@ -15,7 +15,7 @@ use unluminous_db::source::{Secret, Source};
 use unluminous_db::value::Value;
 
 use crate::services::database::{ColumnForm, DatabaseExplorer, Page, Sheet, SourceForm, TableForm};
-use crate::services::plugin_ui::{Answer, UiProvider};
+use crate::services::plugin_ui::{self, Answer, UiProvider};
 
 /// Every command, with the one line `plugins show database` prints for each.
 pub const LIST: &[(&str, &str)] = &[
@@ -63,7 +63,7 @@ pub fn run(
     command: &str,
     arguments: &[String],
 ) -> Result<Answer, String> {
-    let rest = arguments.join(" ");
+    let rest = plugin_ui::rest(arguments, 0);
     let rest = rest.trim().to_owned();
     match command {
         // `open-tab` is still accepted and does the same thing, because it is a name that was in the
@@ -152,10 +152,7 @@ pub fn run(
         "password" => password(explorer, &rest),
         "read-only" => read_only(explorer, &rest),
         "view" => Ok(Answer::said("the database plugin").with(explorer.view())),
-        other => Err(format!(
-            "`{other}` is not one of the Database plugin's commands. It has {}.",
-            LIST.iter().map(|(name, _)| *name).collect::<Vec<&str>>().join(", ")
-        )),
+        other => Err(explorer.refuse(other)),
     }
 }
 
@@ -931,7 +928,7 @@ fn new_table(explorer: &mut DatabaseExplorer, arguments: &[String]) -> Result<An
         return Err("there is no data source to make a table in. `use <name>` first.".to_owned());
     }
     explorer.connect(&source)?;
-    let where_it_goes = arguments.first().map(String::as_str).unwrap_or_default();
+    let where_it_goes = plugin_ui::argument(arguments, 0).unwrap_or_default();
     // **A bare word that names a schema is the schema, not the table.** `new-table main` is what the
     // tree's own menu means by a right click on a schema — open the dialog *there* — and reading it
     // as `<name>` instead put `main` in the Name field and composed `CREATE TABLE "main"."main"`.

@@ -45,10 +45,11 @@
 //! because a scheme that repainted the editing area would take the transparency away — and the rule a
 //! Mermaid diagram's own `style` directive already meets, which is read and ignored.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use egui::Color32;
 
+use crate::services::store::Values;
 use crate::services::vello_canvas::Chrome;
 use crate::settings::Settings;
 use crate::theme::{color, size};
@@ -586,6 +587,21 @@ pub trait UiProvider: std::fmt::Debug {
     /// Every command this provider answers, with one line each, for `unluminous-cli plugin show`.
     fn commands(&self) -> Vec<(&'static str, &'static str)>;
 
+    /// What to answer a command this provider does not have.
+    ///
+    /// Built from [`Self::commands`], so the verb and the whole list of verbs this provider does
+    /// answer are said once, in the same words, however the command arrived — a menu entry, a
+    /// button in the pane, or `unluminous-cli plugin run`. Before this existed each provider wrote its
+    /// own refusal by hand, and Agent-Chat's did not name a single one of its own commands, which
+    /// left an agent that mistyped a verb with nothing to try next.
+    fn refuse(&self, name: &str) -> String {
+        format!(
+            "there is no `{name}` command on `{}`: {}",
+            self.id(),
+            self.commands().iter().map(|(name, _)| *name).collect::<Vec<&str>>().join(", ")
+        )
+    }
+
     /// What the pane is showing, as data.
     ///
     /// Not optional. Unluminous's rule is that everything a person can do in the window an agent can do
@@ -674,6 +690,77 @@ pub trait UiProvider: std::fmt::Debug {
 
     /// Called when the plugin is switched off, when the project changes, or when the window closes.
     fn close(&mut self);
+}
+
+/// One positional argument of a command line, or `None` past the end of it.
+///
+/// A command a provider answers is `&[String]`, and every provider needs the same thing out of it: the
+/// word at position `at`. Indexing past the end panics, which is what each provider's own version of
+/// this was written to avoid, so this is that arithmetic kept in one place rather than three.
+pub fn argument(arguments: &[String], at: usize) -> Option<&str> {
+    arguments.get(at).map(String::as_str)
+}
+
+/// Everything from `from` on, joined by spaces.
+///
+/// What a text argument is: `todo-add task-27 Read the old importer` carries the text as the rest of
+/// the line from position 1 on. Empty past the end of the line — `arguments[from..]` would panic on a
+/// short one, and a command line that takes the window down is worse than one that says what it
+/// needed.
+pub fn rest(arguments: &[String], from: usize) -> String {
+    match arguments.len() > from {
+        true => arguments[from..].join(" "),
+        false => String::new(),
+    }
+}
+
+/// Read a numbered list of rows out of a provider's own `Values` file.
+///
+/// `<prefix>s = N` says how many there are, and `<prefix>.0.*` through `<prefix>.<N-1>.*` are the rows
+/// themselves — the shape Agent-Chat's endpoints and the Database plugin's data sources are both
+/// written in. `parse` reads one row by its index and answers `Ok(None)` for a row with nothing in it,
+/// `Ok(Some(row))` for one that read, or the sentence a bad row is refused with. A bad row is collected
+/// rather than stopping the read, so one wrong line does not hide every row after it — the rule
+/// `plugin.kind`, `language.renders` and every other registry in the manifest already keep.
+///
+/// `cap` bounds how many rows are read whatever the file claims, so a corrupted count cannot make this
+/// loop for longer than the file could possibly hold.
+pub fn read_numbered_rows<T>(
+    values: &Values,
+    prefix: &str,
+    cap: usize,
+    parse: impl Fn(&Values, usize) -> Result<Option<T>, String>,
+) -> (Vec<T>, Vec<String>) {
+    let mut rows = Vec::new();
+    let mut refused = Vec::new();
+    let count = values.number(&format!("{prefix}s")).unwrap_or(0.0).max(0.0) as usize;
+    for index in 0..count.min(cap) {
+        match parse(values, index) {
+            Ok(Some(row)) => rows.push(row),
+            Ok(None) => {}
+            Err(why) => refused.push(why),
+        }
+    }
+    (rows, refused)
+}
+
+/// Write a provider's own settings file: `<folder>/<file>`, with `header` as the comment at its top.
+///
+/// The three providers each did this by hand, with the folder made first and the file written second,
+/// and each spelling the two failures — the folder could not be made, and the file could not be
+/// written — slightly differently. One function means one wording, naming the full path in both, and a
+/// caller only has to build the `Values` its own configuration is made of.
+pub fn write_values(
+    folder: &Path,
+    file: &str,
+    values: &Values,
+    header: &str,
+) -> Result<(), String> {
+    std::fs::create_dir_all(folder)
+        .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
+    let path = folder.join(file);
+    std::fs::write(&path, values.to_text_headed(header))
+        .map_err(|problem| format!("{} could not be written: {problem}", path.display()))
 }
 
 /// Build the provider named `name`, or `None` when this version has no such name.
@@ -780,6 +867,106 @@ mod tests {
         assert_eq!(ground.a(), 128, "half opacity is half alpha");
         settings.opacity = 1.0;
         assert_eq!(Look::of(&settings, &renderer).ground(look.palette.editor).a(), 255);
+    }
+
+    /// A provider with no default `refuse` override, so the test drives the trait's own default rather
+    /// than one provider's copy of it.
+    #[derive(Debug)]
+    struct Stub;
+
+    impl UiProvider for Stub {
+        fn id(&self) -> &'static str {
+            "stub"
+        }
+        fn open(&mut self, _context: &Context) -> Result<(), String> {
+            Ok(())
+        }
+        fn is_open(&self) -> bool {
+            true
+        }
+        fn pane(&mut self, _ui: &mut egui::Ui, _look: &Look<'_>) -> Vec<Request> {
+            Vec::new()
+        }
+        fn settings(&mut self, _ui: &mut egui::Ui, _look: &Look<'_>) -> Vec<Request> {
+            Vec::new()
+        }
+        fn command(&mut self, command: &str, _arguments: &[String]) -> Result<Answer, String> {
+            Err(self.refuse(command))
+        }
+        fn commands(&self) -> Vec<(&'static str, &'static str)> {
+            vec![("open-pane", "Show the pane."), ("close", "Close it.")]
+        }
+        fn view(&self) -> serde_json::Value {
+            serde_json::Value::Null
+        }
+        fn close(&mut self) {}
+    }
+
+    #[test]
+    fn a_refusal_names_the_verb_and_every_verb_this_provider_answers() {
+        let stub = Stub;
+        let refused = stub.refuse("nope");
+        assert!(refused.contains("`nope`"), "{refused}");
+        assert!(refused.contains("stub"), "{refused}");
+        assert!(refused.contains("open-pane"), "{refused}");
+        assert!(refused.contains("close"), "{refused}");
+    }
+
+    #[test]
+    fn argument_and_rest_answer_and_stop_rather_than_panic_past_the_end() {
+        let words: Vec<String> = ["move-task", "task-1", "done"].map(str::to_owned).into();
+        assert_eq!(argument(&words, 0), Some("move-task"));
+        assert_eq!(argument(&words, 2), Some("done"));
+        assert_eq!(argument(&words, 3), None, "there is no fourth word");
+        assert_eq!(rest(&words, 1), "task-1 done");
+        assert_eq!(rest(&words, 3), "", "past the end is empty, not a panic");
+        assert_eq!(rest(&words, 30), "", "far past the end is still empty");
+    }
+
+    #[test]
+    fn a_numbered_row_that_is_empty_is_skipped_and_a_bad_one_is_collected() {
+        let values = Values::parse(
+            "widgets = 3\n\
+             widget.0.name = ok\n\
+             widget.2.name = bad\n\
+             widget.2.colour = not-a-colour\n",
+        );
+        let (rows, refused) = read_numbered_rows(&values, "widget", 200, |values, index| {
+            let Some(name) = values.text(&format!("widget.{index}.name")) else { return Ok(None) };
+            match values.text(&format!("widget.{index}.colour")) {
+                None => Ok(Some(name.to_owned())),
+                Some(colour) => Err(format!("`{name}` names `{colour}`, which is not a colour")),
+            }
+        });
+        // Row 1 has no `name` line at all, so it is skipped rather than counted as bad; row 2 has a
+        // name and a colour that does not parse, so it is refused rather than dropped in silence.
+        assert_eq!(rows, vec!["ok".to_owned()]);
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert!(refused[0].contains("bad"), "{refused:?}");
+    }
+
+    #[test]
+    fn a_numbered_rows_count_is_never_read_past_its_cap() {
+        // A corrupted count must not turn a settings file into an unbounded loop.
+        let values = Values::parse("widgets = 1000000\nwidget.0.name = one\n");
+        let (rows, refused) = read_numbered_rows(&values, "widget", 5, |values, index| {
+            Ok(values.text(&format!("widget.{index}.name")).map(str::to_owned))
+        });
+        assert_eq!(rows, vec!["one".to_owned()]);
+        assert!(refused.is_empty());
+    }
+
+    #[test]
+    fn write_values_makes_the_folder_and_writes_the_file_with_its_header() {
+        let folder = std::env::temp_dir()
+            .join(format!("unluminous-plugin-ui-write-values-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        let mut values = Values::new();
+        values.set("name", "a value");
+        write_values(&folder, "settings.conf", &values, "a header line").expect("written");
+        let text = std::fs::read_to_string(folder.join("settings.conf")).expect("the file");
+        assert!(text.contains("a header line"), "{text}");
+        assert!(text.contains("name = a value"), "{text}");
     }
 }
 
