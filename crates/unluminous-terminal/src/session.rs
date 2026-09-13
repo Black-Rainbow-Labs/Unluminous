@@ -1789,22 +1789,37 @@ Start-Sleep -Seconds 900"
 
     #[test]
     fn the_environment_unluminous_started_with_is_still_there_underneath() {
-        // Laid **over** the inherited environment rather than replacing it. A child with no `PATH`
-        // is a bug nobody enjoys finding, and it is the one thing this could get wrong silently:
-        // the program would still start, because Unluminous names it in full.
+        // **The child writes a file, and the test reads the file.** `task-1922`: this used to read
+        // the marker off the pseudoconsole's screen, and it failed three releases in a row on a
+        // loaded machine with the screen holding `""` and the program *ended with 0* -- the shell
+        // ran, and what it wrote never arrived. That is the shape `run_configurations` already
+        // measured about `cmd /c echo something`: a program that writes and exits inside a
+        // millisecond can lose its output to the console host, which is why
+        // `a_program_that_prints_and_stops_leaves_what_it_printed_in_its_tab` exists at all.
+        //
+        // Nothing about a pseudoconsole is what this test is about. What it is about is that
+        // `Session::spawn` lays `settings.env` **over** the inherited environment rather than
+        // replacing it -- a child with no `PATH` is a bug nobody enjoys finding, and it is the one
+        // thing this could get wrong silently, because the program would still start: Unluminous
+        // names it in full. A file says what the child really saw, with no timing in the answer.
         let name = if cfg!(target_os = "windows") { "windir" } else { "HOME" };
-        // **The program waits after it has printed, and that is not padding.** `task-1922`: this
-        // test failed two releases running, on a machine with four agents on it, with the screen
-        // holding `""` and the program *ended with 0* -- so the shell ran, echoed, and the bytes
-        // never reached the emulator. That is the shape `services::run_configurations` already
-        // measured and wrote down: `cmd /c echo something` writes and exits inside a millisecond,
-        // and a pseudoconsole whose client is gone that quickly loses what it wrote. Keeping the
-        // shell alive until the marker has been read takes the race away; the session is dropped
-        // straight afterwards, which reaps the whole tree.
+        let folder = std::env::temp_dir().join("unluminous-terminal-tests").join("inherited");
+        std::fs::create_dir_all(&folder).expect("make the folder");
+        // Named after this process, because two runs of this binary at once would otherwise read
+        // and delete one another's answer -- which is the fault `sample_folder`'s `OnceLock` exists
+        // for in the screenshot tests, in a smaller shape.
+        let wrote = folder.join(format!("seen-{}.txt", std::process::id()));
+        std::fs::remove_file(&wrote).ok();
+        // Written whatever the variable holds, and in brackets, so an empty answer and a missing
+        // one are told apart: `cmd` echoes `%windir%` back literally when it is not defined.
         let (shell_flag, command) = if cfg!(target_os = "windows") {
-            ("/c", format!("if defined {name} echo [inherited]& pause>nul"))
+            // **No quotes round the path**, and the folder is one with no space in it. `cmd /c`
+            // strips the outer quotes of the whole command only while there are no others inside
+            // it; with a quoted path in the middle it reads the lot as a program name and exits 1,
+            // which is exactly what it did.
+            ("/c", format!("echo [%{name}%]>{}", wrote.display()))
         } else {
-            ("-c", format!("[ -n \"${name}\" ] && echo \"[inherited]\"; sleep 300"))
+            ("-c", format!("echo \"[${name}]\" > '{}'", wrote.display()))
         };
         let settings = SessionSettings {
             shell: Some(test_shell()),
@@ -1817,27 +1832,30 @@ Start-Sleep -Seconds 900"
         let mut session =
             Session::spawn(&settings, Size::new(8, 60), waker).expect("start the program");
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-        loop {
+        let said = loop {
             session.pump();
-            if session.snapshot().contains("[inherited]") {
-                break;
+            if let Ok(text) = std::fs::read_to_string(&wrote) {
+                let text = text.trim().to_owned();
+                if !text.is_empty() {
+                    break text;
+                }
             }
-            // **The exit code is in the message because the screen alone cannot say which of two
-            // things went wrong.** `task-1922`: this failed once, during a release, with the screen
-            // holding `""` -- and an empty screen is both "the shell never started" and "the shell
-            // ran and `windir` was not there to echo". Those are a loaded machine and a real fault,
-            // and telling them apart afterwards from a 30 second timeout was not possible.
             assert!(
                 std::time::Instant::now() < deadline,
-                "the inherited environment should still be there, the screen holds {:?} and the                  program has {}",
-                session.snapshot().text(),
+                "the program never wrote the file, and it has {}",
                 match session.exit_code() {
                     Some(code) => format!("ended with {code}"),
                     None => "not ended".to_owned(),
                 }
             );
             std::thread::sleep(std::time::Duration::from_millis(25));
-        }
+        };
+        std::fs::remove_file(&wrote).ok();
+        assert!(
+            said != format!("[%{name}%]") && said != "[]",
+            "the inherited environment should still be there, and the child saw {said:?}"
+        );
+        assert!(said.starts_with('[') && said.ends_with(']'), "the child wrote {said:?}");
     }
 
     #[test]
