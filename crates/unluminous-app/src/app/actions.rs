@@ -1188,15 +1188,10 @@ pub struct MenuState {
 /// the application menu first whatever it is called. Inside the window it is drawn first for the same
 /// reason, so the bar reads `Unluminous  File  Edit  View` on both platforms.
 pub fn menus(state: &MenuState) -> Vec<Menu> {
-    let mut found = vec![
-        unluminous_menu(),
-        file_menu(state),
-        edit_menu(state),
-        find_menu(state),
-        view_menu(state),
-        run_menu(state),
-        git_menu(state),
-    ];
+    let mut found = vec![unluminous_menu(), file_menu(state), edit_menu(state)];
+    // `Code` is absent for a file that holds no lines, so it is pushed rather than listed.
+    found.extend(code_menu(state));
+    found.extend([find_menu(state), view_menu(state), run_menu(state), git_menu(state)]);
     // Then **one** `Plugins` menu holding a submenu per plugin, in the order the plugins are listed.
     // `task-1848`: "Plugins menu items at the top should be moved to a Plugins menu item, which lists
     // each plugin, and has sub menus for their options."
@@ -1846,11 +1841,6 @@ fn edit_menu(state: &MenuState) -> Menu {
             .not_from_the_keyboard(),
         Entry::with_shortcut("Select All", Action::SelectAll, Shortcut::command(egui::Key::A)),
     ];
-    let lines = line_edit_entries(state);
-    if !lines.is_empty() {
-        entries.push(Entry::Separator);
-        entries.extend(lines);
-    }
     entries.push(Entry::Separator);
     entries.push(Entry::Submenu { name: "Highlight".to_owned(), entries: highlight_menu(state) });
     let completion = completion_entries(state);
@@ -1867,6 +1857,36 @@ fn edit_menu(state: &MenuState) -> Menu {
         Shortcut::command(egui::Key::Comma),
     ));
     Menu { name: "Edit".to_owned(), entries }
+}
+
+/// `Code`: the nine things that change the lines rather than the words. `task-1922` WP4.
+///
+/// **A menu of its own, and it is here for the reason `find_menu` below is here.** Its note records
+/// that `task-1804` added four searching entries to `Edit` and the menu then ran off the bottom of a
+/// 740 point window, so `Settings` could not be reached at all -- by a person or by a test -- and
+/// nothing said so. WP4 added nine editing entries to the same menu and it happened again, and this
+/// time something did say so: eleven tests that open Settings from the Edit menu failed at once.
+///
+/// A submenu is not the answer and was not the answer then either, because `controls::menu_rows`
+/// draws one as a heading with its entries in the same list rather than as a flyout, so it costs the
+/// same height. `menu_rows` scrolls a menu that will not fit, so nothing is ever *lost*; a menu
+/// somebody has to scroll is simply not an answer.
+///
+/// The name is the reference editor's own for exactly this group -- commenting, duplicating, moving
+/// and joining lines are what its `Code` menu holds. It goes **after `Edit`**, which moves `Find`,
+/// `View`, `Run` and `Git` one place along, and that is a real cost paid once: a menu bar whose
+/// entries shift is a menu bar somebody's hand has to relearn, which is the argument the `Plugins`
+/// menu is added last for. It is paid here because `Code` belongs beside `Edit` and nowhere else,
+/// and because the alternative was leaving `Settings` unreachable.
+///
+/// **Absent when nothing in it can apply**, which is the rule for a control that can never apply: a
+/// picture and a rendered page hold no lines, so there is no menu rather than a menu of dimmed rows.
+fn code_menu(state: &MenuState) -> Option<Menu> {
+    let entries = line_edit_entries(state);
+    match entries.is_empty() {
+        true => None,
+        false => Some(Menu { name: "Code".to_owned(), entries }),
+    }
 }
 
 /// `Find`: every way of asking where something is, and the two of changing it.

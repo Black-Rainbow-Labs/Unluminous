@@ -18,8 +18,8 @@ use crate::components::plugins_page::{self, PluginsState};
 use crate::components::scrollbar;
 use crate::services::plugins::Plugins;
 use crate::settings::{
-    LineEndings, Page, Settings, Suggestions, UpdateCheck, ValueTooltip, FONT_SIZES, MIN_OPACITY,
-    TERMINAL_FONT_SIZES, UI_FONT_SIZES,
+    Indent, LineEndings, Page, Settings, Suggestions, UpdateCheck, ValueTooltip, FONT_SIZES,
+    MIN_OPACITY, TERMINAL_FONT_SIZES, UI_FONT_SIZES,
 };
 use crate::theme::{color, icon, size};
 
@@ -990,6 +990,17 @@ fn swatch_button(
 
 /// `Editor > Editor`: what the gutter down the left of the editing area shows, and whether
 /// completions arrive unasked.
+/// What an indent is called where a person reads it.
+///
+/// `Indent::name` is the word the settings file and the command line are written with -- `tabs`,
+/// `spaces:4` -- and this is the row. Two spellings of one value, as `line_ending_name` already is.
+fn indent_name(indent: Indent) -> String {
+    match indent {
+        Indent::Tab => "Tabs".to_owned(),
+        Indent::Spaces(width) => format!("{width} spaces"),
+    }
+}
+
 fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn {
     let mut changed = false;
     let mut pen = breadcrumb(ui, area, Page::Editor);
@@ -1023,6 +1034,63 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn 
         "A list of names appears under the caret once two letters of a word have been typed, in a file whose language a plugin claims. Off, nothing appears until you ask: Ctrl+Space, or Complete Word on the Edit menu, which work either way.",
     );
     pen += 44.0;
+    // `task-1922` WP4. Three rows about what a key types, which is the one thing on this page a
+    // person changes because of how they were taught to write code rather than because of what
+    // Unluminous does.
+    pen = section(ui, area, pen, "Indentation");
+    let indent_row = row_at(area, pen);
+    label(ui, area, indent_row, "One indent is:");
+    if let Some(chosen) = controls::dropdown(
+        ui,
+        Rect::from_min_size(
+            Pos2::new(area.left() + 130.0, indent_row.top()),
+            Vec2::new(180.0, 28.0),
+        ),
+        &indent_name(settings.indent),
+        "One indent is",
+        None,
+        |ui| {
+            let mut chosen = None;
+            let widths = (Indent::MIN_WIDTH..=Indent::MAX_WIDTH).map(Indent::Spaces);
+            for option in std::iter::once(Indent::Tab).chain(widths) {
+                let selected = settings.indent == option;
+                if ui.selectable_label(selected, indent_name(option)).clicked() {
+                    chosen = Some(option);
+                }
+            }
+            chosen
+        },
+    ) {
+        settings.indent = chosen;
+        changed = true;
+    }
+    pen += 34.0;
+    pen = note(
+        ui,
+        area,
+        pen,
+        "What the Tab key types where nothing is selected. Indenting a selection still moves each line by one character, which is what Tab over a selection has always done.",
+    );
+    let row = row_at(area, pen);
+    changed |=
+        checkbox(ui, row, "Indent a new line like the one above it", &mut settings.auto_indent);
+    pen += 32.0;
+    pen = note(
+        ui,
+        area,
+        pen,
+        "Pressing Enter starts the new line with the whitespace the line it was started from begins with.",
+    );
+    let row = row_at(area, pen);
+    changed |= checkbox(ui, row, "Trim trailing whitespace on save", &mut settings.trim_on_save);
+    pen += 32.0;
+    pen = note(
+        ui,
+        area,
+        pen,
+        "Off by default, and never on a Markdown file, where two spaces at the end of a line are a line break.",
+    );
+    pen += 12.0;
     pen = section(ui, area, pen, "Debugger");
     // The same shape as the pair above, for the same reason: `manual` is already the off switch,
     // because Show Value and the command line work either way.
