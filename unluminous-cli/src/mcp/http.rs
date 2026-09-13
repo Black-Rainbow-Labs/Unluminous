@@ -80,7 +80,7 @@ impl Endpoint {
         port: u16,
         server: Server<D>,
     ) -> std::io::Result<Self> {
-        let listener = bind(port)?;
+        let listener = bind_soon(port)?;
         let port = listener.local_addr()?.port();
         listener.set_nonblocking(true)?;
         let running = Arc::new(AtomicBool::new(true));
@@ -132,6 +132,39 @@ impl Drop for Endpoint {
 /// Loopback only. Split out so a test can assert on the address without starting a thread: an MCP
 /// endpoint reachable from the network would be an editor — and a shell — anybody could drive, and
 /// that is the one thing here that must never quietly change.
+/// Bind `port`, waiting out a connection the operating system is still holding on to.
+///
+/// `task-1922`: **the listener closing is not the whole of it.** A connection this endpoint
+/// served has the listening port as its own local port, and the side that closes first keeps the
+/// pair for a couple of minutes afterwards. On Windows that is enough to refuse a bind, because
+/// `TcpListener::bind` there does not set `SO_REUSEADDR` -- deliberately, since on Windows that
+/// option lets another program take a port out from under one that is using it.
+///
+/// What that means for a person is real rather than theoretical: changing `mcp.port` or
+/// `mcp.tools` drops the endpoint and starts a new one on the same port in the next statement, and
+/// the new one was refused with `address in use` if anything had spoken to the old one. It was
+/// found by CI, where the test that asserts the port comes back failed and here it never had.
+///
+/// A second is long enough for the state to clear on a loopback connection and short enough that a
+/// port genuinely held by another window still answers quickly, which is the case the refusal is
+/// written for.
+fn bind_soon(port: u16) -> std::io::Result<TcpListener> {
+    // Port zero is the operating system choosing, which can never be in use.
+    if port == 0 {
+        return bind(port);
+    }
+    let deadline = std::time::Instant::now() + LINGER;
+    loop {
+        match bind(port) {
+            Ok(listener) => return Ok(listener),
+            Err(problem) if std::time::Instant::now() >= deadline => return Err(problem),
+            Err(_) => std::thread::sleep(POLL),
+        }
+    }
+}
+
+/// How long [`bind_soon`] waits for a port the operating system has not finished with.
+const LINGER: Duration = Duration::from_secs(1);
 fn bind(port: u16) -> std::io::Result<TcpListener> {
     TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, port)))
 }
@@ -539,11 +572,14 @@ mod tests {
         let parsed: Value = serde_json::from_str(body_of(&back)).expect("json");
         assert_eq!(parsed["id"], json!(7));
 
-        // Dropping waits for the accept loop, so the port is free **by the time drop returns** and
-        // not merely soon afterwards. Asserted with no sleep and no retry, because that is the
-        // whole difference: changing the port or the tool shape drops the old endpoint and starts
-        // a new one on the same port in the next statement, and "soon" is not good enough for that.
+        // Dropping waits for the accept loop, so a new endpoint can take the same port straight
+        // afterwards. Asserted through `Endpoint::start`, which is the path the window really uses:
+        // changing `mcp.port` or `mcp.tools` drops the old endpoint and starts a new one on the same
+        // port in the next statement. A bare `bind` was asserted here before and it was asserting
+        // something else -- that the operating system had also finished with the connection this
+        // test had just made on that port, which on Windows it has not. See `bind_soon`.
         drop(endpoint);
-        assert!(bind(port).is_ok(), "the port should be free the moment the endpoint is dropped");
+        Endpoint::start(port, a_server())
+            .expect("a new endpoint starts on the same port the moment the old one is dropped");
     }
 }

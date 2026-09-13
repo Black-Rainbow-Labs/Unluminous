@@ -1900,6 +1900,9 @@ Start-Sleep -Seconds 900"
         );
     }
 
+    /// The prefix Windows puts on a canonical path, which `cmd.exe` reads as a network share.
+    const VERBATIM: &str = r"\\?\";
+
     #[test]
     #[cfg(target_os = "windows")]
     fn a_shell_starts_in_the_folder_it_was_given_even_when_the_path_is_verbatim() {
@@ -1918,7 +1921,7 @@ Start-Sleep -Seconds 900"
 
         let settings = SessionSettings {
             shell: Some(test_shell()),
-            working_directory: Some(verbatim),
+            working_directory: Some(verbatim.clone()),
             ..SessionSettings::default()
         };
         let waker: Waker = Arc::new(|| {});
@@ -1930,7 +1933,13 @@ Start-Sleep -Seconds 900"
         // the shell saying it started there.
         session.send(b"echo [%CD%]\r".to_vec());
 
-        let wanted = format!("[{}]", folder.to_string_lossy()).to_lowercase();
+        // **The canonical form, not the one `temp_dir` gave.** `task-1922`: on a GitHub Windows
+        // runner `TEMP` is the 8.3 short name ending `RUNNER~1`, and the shell prints the long
+        // one -- so the two spellings of one folder never matched, and the test waited out its
+        // thirty seconds against a screen that was saying exactly the right thing. `canonicalize`
+        // resolves a short name to the long one, which is what `%CD%` prints.
+        let plain = verbatim.to_string_lossy().trim_start_matches(VERBATIM).to_owned();
+        let wanted = format!("[{plain}]").to_lowercase();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
         loop {
             session.pump();
