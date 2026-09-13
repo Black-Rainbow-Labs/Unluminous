@@ -47,11 +47,17 @@ on:
   pull_request:
   workflow_dispatch:
 
-# **One run of this workflow per branch at a time.** `task-1922`: pushing twice in a few minutes
-# started a second run of five jobs while the first five were still going, and the second one got no
-# runner at all -- every job of it failed in under seven seconds with no runner assigned and no step
-# run, which reads as a red workflow and is not one. Superseding the older run is what a person
-# actually wants from a second push anyway: the answer they are waiting for is about the newer commit.
+# **One run of this workflow per branch at a time.** Superseding the older run is what a person wants
+# from a second push: the answer they are waiting for is about the newer commit, and two runs of a
+# thirty minute screenshot job over one branch spend twice the minutes to answer one question.
+#
+# It was added for a reason that turned out to be the wrong one, which is worth writing down rather
+# than quietly correcting. A run whose five jobs all failed in under seven seconds with no runner and
+# no step run looked like two runs competing. It was not: the run's own annotation says *"The job was
+# not started because recent account payments have failed or your spending limit needs to be
+# increased."* That shape of failure is a billing answer wearing the costume of a broken workflow, and
+# the place it is written down is the check run's annotations rather than any job log -- there is no
+# log at all, so `gh run view --log` reports a missing blob and says nothing. `task-1922`.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
