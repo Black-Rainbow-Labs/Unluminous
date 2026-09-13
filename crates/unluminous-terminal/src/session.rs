@@ -231,7 +231,20 @@ impl Session {
     pub fn spawn(settings: &SessionSettings, size: Size, waker: Waker) -> std::io::Result<Self> {
         // `TERM` and `COLORTERM` tell the program what it is talking to. Without them a program either
         // draws nothing clever or draws it wrongly.
-        alacritty_terminal::tty::setup_env();
+        //
+        // **Once for the life of the process, and that is a correctness rule rather than a saving.**
+        // `setup_env` calls `std::env::set_var`, which rewrites the process's whole environment
+        // block and is not safe to call while another thread is reading it -- which is exactly what
+        // `CreateProcess` does when a second session is being started. `task-1922` measured the
+        // consequence: with several sessions spawning at once, a child came up with **no `windir`
+        // at all**, which on a real window would be a shell with no `PATH`. It was found by a test
+        // that asks the child what it saw, and it took four releases to catch because a child with
+        // a broken environment still starts: Unluminous names its program in full.
+        //
+        // The values are the same on every call, so calling it once is not a change in what any
+        // child is told. Rust 2024 makes `set_var` `unsafe` for this reason.
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(alacritty_terminal::tty::setup_env);
 
         let shell = settings.shell.clone().unwrap_or_else(default_shell);
         // **The name is what the caller says it is, whatever is really started.** A node restoring its screen
