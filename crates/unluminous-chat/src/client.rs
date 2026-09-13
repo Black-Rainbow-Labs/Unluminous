@@ -84,6 +84,22 @@ pub struct Client {
     wake: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
+/// **A client that goes away takes its agent with it.** `task-1922` B3.
+///
+/// Only `stop` killed the child before this, and `stop` is what the stop button calls. Closing a
+/// conversation mid turn, or a window whose pane held one, dropped the `Client` and left `claude` or
+/// `codex` running -- with nobody reading it, until it next tried to print a line into a pipe whose
+/// other end had gone. This is `unluminous_db::Worker`'s shape: what a worker started, a worker ends.
+///
+/// The per turn thread is not joined. It is asleep in a read that the kill is about to end, and it
+/// holds nothing but a `Sender` into a channel that is going away with this; joining would make
+/// closing a pane wait on a process that has already been told to die.
+impl Drop for Client {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
 impl std::fmt::Debug for Client {
     /// Written by hand because the waker is a closure and a closure has no `Debug`. What is printed
     /// is what a test wants to see: which request is the current one, and whether a window is behind
@@ -221,10 +237,16 @@ impl Client {
                     }
                     true
                 };
-                crate::agent::run(&provider, &ask, &stopping, &running, &say);
+                crate::agent::run(&provider, &ask, &stopping, &running, generation, &say);
             })
             .expect("a thread for a chat turn");
         generation
+    }
+
+    /// The slot the agent child of a turn in flight is held in. For the tests in this file.
+    #[cfg(test)]
+    pub(crate) fn running(&self) -> &Arc<crate::agent::Running> {
+        &self.running
     }
 
     /// Stop whatever is in flight, keeping what has already arrived.
@@ -233,7 +255,10 @@ impl Client {
     /// has none and would otherwise sit in a read until the agent said something of its own accord.
     pub fn stop(&mut self) {
         self.stopping.store(true, Ordering::SeqCst);
-        self.running.stop();
+        // The generation the newest turn was started with, which is the turn that is in flight. A
+        // stop that named no generation could reach a turn that had already replaced this one, which
+        // is `task-1922` B2 from the other end.
+        self.running.stop(self.newest.load(Ordering::SeqCst));
     }
 
     /// Every reply that has arrived since the last time this was asked, newest request only.
@@ -758,6 +783,50 @@ data: [DONE]\n\n";
             "{:?}",
             config.root_certs()
         );
+    }
+
+    /// **Dropping a client kills the agent it left running.** `task-1922` B3.
+    ///
+    /// A long-lived child stands in for the agent, held on the client's own slot at the generation
+    /// the turn in flight would have. Dropping the client must reach it: before `Drop` existed, only
+    /// the stop button did, so closing a conversation mid turn left `claude` running with nobody
+    /// reading it.
+    #[test]
+    fn dropping_a_client_kills_the_agent_it_left_running() {
+        let mut command = match cfg!(windows) {
+            true => {
+                let mut one = std::process::Command::new("ping");
+                one.args(["-n", "60", "127.0.0.1"]);
+                one
+            }
+            false => {
+                let mut one = std::process::Command::new("sleep");
+                one.arg("60");
+                one
+            }
+        };
+        let child = command
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("a long-lived child");
+
+        // The slot is kept alive past the client, so the child can be asked about afterwards. That
+        // is what the turn's own thread does in the real thing.
+        let running = {
+            let client = Client::new();
+            let running = Arc::clone(client.running());
+            running.hold(client.generation(), child);
+            running
+        };
+
+        let mut child = running.take(0).expect("the child is still held");
+        // A killed process is not instant on either platform, so this waits for it rather than
+        // asking once. `wait` returns as soon as it has gone, and hangs for ever if `Drop` did
+        // nothing -- which is the failure this is about, and the test runner's own timeout catches.
+        let ended = child.wait().expect("it can be waited for");
+        assert!(!ended.success(), "a killed program does not succeed: {ended}");
     }
 
     #[test]

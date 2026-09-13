@@ -77,32 +77,59 @@ use crate::wire::Reply;
 /// Empty before the agent has been started and after it has ended, which is what makes
 /// [`Running::stop`] safe to call at any moment — including on a turn that never started, which is
 /// what the stop button does when somebody presses it twice.
+///
+/// **The turn's generation is held beside the child, and every method names the generation it means.**
+/// `task-1922` B2: without it this was one slot that any turn could take out of, and `Client::ask`
+/// stops the turn in flight and then starts the new one. The old turn's thread is woken by exactly
+/// that kill, walks out of its read, asks for its child back — and was handed whichever child was in
+/// the slot, which by then could be the new turn's. It then killed it. So a second question asked
+/// while the first was still running could silently kill the second, and what a person saw was a turn
+/// that started and stopped for no reason.
+///
+/// Naming the generation makes each of the three operations about one turn: a thread can only stop,
+/// hold or take *its own* child, and a turn that has been overtaken is told no.
 #[derive(Default)]
-pub struct Running(Mutex<Option<Child>>);
+pub struct Running(Mutex<Option<(u64, Child)>>);
 
 impl Running {
-    /// Kill whatever is running, if anything is.
+    /// Kill the child of turn `generation`, if that is the turn whose child is held.
     ///
     /// The `Child` and its pipe handles are kept rather than dropped, because the thread that started
     /// the turn is the one that waits for it. What ends the blocked read is the **process**: a dead
     /// child closes its own end of the pipe, so the reader gets the end of its input at once — which
     /// is the half that matters, and the reason this is not simply a flag.
-    pub fn stop(&self) {
+    pub fn stop(&self, generation: u64) {
         if let Ok(mut held) = self.0.lock() {
-            if let Some(child) = held.as_mut() {
-                let _ = child.kill();
+            if let Some((at, child)) = held.as_mut() {
+                if *at == generation {
+                    let _ = child.kill();
+                }
             }
         }
     }
 
-    fn hold(&self, child: Child) {
+    /// Hold turn `generation`'s child, reaping whatever the slot held before it.
+    ///
+    /// A displaced child has already been killed by the `stop` that `Client::ask` makes before it
+    /// starts a new turn, and its own thread will ask for it by generation and be told no — so this
+    /// is the one place left that can wait for it. Without the wait it is a zombie on Unix. The wait
+    /// is inside the lock and returns at once, because the process is already dead.
+    pub(crate) fn hold(&self, generation: u64, child: Child) {
         if let Ok(mut held) = self.0.lock() {
-            *held = Some(child);
+            if let Some((_, mut displaced)) = held.replace((generation, child)) {
+                let _ = displaced.kill();
+                let _ = displaced.wait();
+            }
         }
     }
 
-    fn take(&self) -> Option<Child> {
-        self.0.lock().ok().and_then(|mut held| held.take())
+    /// Take turn `generation`'s child, or nothing when the slot belongs to another turn.
+    pub(crate) fn take(&self, generation: u64) -> Option<Child> {
+        let mut held = self.0.lock().ok()?;
+        match held.as_ref() {
+            Some((at, _)) if *at == generation => held.take().map(|(_, child)| child),
+            _ => None,
+        }
     }
 }
 
@@ -305,6 +332,7 @@ pub fn run(
     ask: &Ask,
     stopping: &AtomicBool,
     running: &Running,
+    generation: u64,
     on_reply: &dyn Fn(Reply) -> bool,
 ) {
     let Some(program) = provider.program_path(&ask.environment) else {
@@ -395,10 +423,10 @@ pub fn run(
     // thread. Both agents read their input to its end before they say anything, and a prompt is a
     // few kilobytes against a pipe buffer measured in the same units — so the write does not block
     // in practice, and if a future agent made it block, the child is held and stopping kills it.
-    running.hold(child);
+    running.hold(generation, child);
     if stopping.load(Ordering::Relaxed) {
-        running.stop();
-        let _ = running.take().map(|mut child| child.wait());
+        running.stop(generation);
+        let _ = running.take(generation).map(|mut child| child.wait());
         return;
     }
     // Written and then **closed**, which is the half that matters: both agents read until the end
@@ -408,7 +436,7 @@ pub fn run(
         let prompt = prompt_for(provider, ask);
         if let Err(problem) = input.write_all(prompt.as_bytes()).and_then(|()| input.flush()) {
             let killed = stopping.load(Ordering::Relaxed);
-            if let Some(mut child) = running.take() {
+            if let Some(mut child) = running.take(generation) {
                 let _ = child.kill();
                 let _ = child.wait();
             }
@@ -444,9 +472,10 @@ pub fn run(
             break;
         }
     }
-    let mut child = match running.take() {
+    let mut child = match running.take(generation) {
         Some(child) => child,
-        // Killed and taken by `Running::stop` — which is exactly what stopping looks like from here.
+        // Killed and taken by `Running::stop`, or displaced by a newer turn — which is exactly what
+        // stopping and being overtaken look like from here.
         None => return,
     };
     if !carried_on {
@@ -569,10 +598,10 @@ impl Decoder {
             }
         }
         match value["type"].as_str().unwrap_or_default() {
-            "system" => {
+            "system"
                 // `init` names the model the session really started with, which is the honest answer
                 // to what is in the header chip — a row that names no model gets the agent's own.
-                if value["subtype"] == "init" {
+                if value["subtype"] == "init" => {
                     if let Some(model) = value["model"].as_str().filter(|one| !one.is_empty()) {
                         if !self.started {
                             self.started = true;
@@ -580,7 +609,6 @@ impl Decoder {
                         }
                     }
                 }
-            }
             "stream_event" => {
                 let event = &value["event"];
                 if !self.started {
@@ -1136,17 +1164,77 @@ mod tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("a long-lived child");
-        running.hold(child);
-        running.stop();
-        let mut child = running.take().expect("the child is still held after being killed");
+        running.hold(1, child);
+        running.stop(1);
+        let mut child = running.take(1).expect("the child is still held after being killed");
         let ended = child.wait().expect("it can be waited for");
         assert!(!ended.success(), "a killed program does not succeed: {ended}");
 
         // And stopping a turn that never started is not an error, which is what pressing the stop
         // button twice does.
         let nothing = Running::default();
-        nothing.stop();
-        assert!(nothing.take().is_none());
+        nothing.stop(1);
+        assert!(nothing.take(1).is_none());
+    }
+
+    /// A long-lived child, for the tests that need a process rather than an agent.
+    fn a_long_lived_child() -> Child {
+        // Its own name on each platform, and both are always there.
+        let mut command = match cfg!(windows) {
+            true => {
+                let mut one = Command::new("ping");
+                one.args(["-n", "60", "127.0.0.1"]);
+                one
+            }
+            false => {
+                let mut one = Command::new("sleep");
+                one.arg("60");
+                one
+            }
+        };
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("a long-lived child")
+    }
+
+    /// **A turn that has been overtaken cannot take the new turn's child.** `task-1922` B2.
+    ///
+    /// `Client::ask` stops the turn in flight and then starts the new one. The kill is what wakes the
+    /// old turn's thread out of a read that has no timeout -- so the old thread runs its cleanup
+    /// *after* the new turn has started, and with one untagged slot it was handed the new turn's
+    /// child and killed it. A second question asked while the first was still running could silently
+    /// kill the second.
+    #[test]
+    fn a_turn_that_has_been_overtaken_cannot_take_the_newer_turn_s_child() {
+        let running = Running::default();
+        let first = a_long_lived_child();
+        let first_id = first.id();
+        running.hold(1, first);
+
+        // What `Client::ask` does: stop the turn in flight, then start the next one.
+        running.stop(1);
+        let second = a_long_lived_child();
+        let second_id = second.id();
+        running.hold(2, second);
+        assert_ne!(first_id, second_id, "two different processes");
+
+        // Now the old thread wakes up and asks for its child back, the way `run` does at the end of
+        // its read loop. It must be told no.
+        assert!(running.take(1).is_none(), "the overtaken turn is not handed the new turn's child");
+        running.stop(1);
+
+        // And the new turn's child is still there, and still alive.
+        let mut child = running.take(2).expect("the newer turn still holds its own child");
+        assert_eq!(child.id(), second_id);
+        assert!(
+            child.try_wait().expect("it can be asked").is_none(),
+            "the newer turn's child is still running"
+        );
+        let _ = child.kill();
+        let _ = child.wait();
     }
 
     #[test]
