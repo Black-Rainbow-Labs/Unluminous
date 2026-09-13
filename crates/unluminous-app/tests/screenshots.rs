@@ -19570,3 +19570,424 @@ fn a_screen_nobody_printed_is_not_kept_for_ever() {
 
     std::fs::remove_dir_all(&folder).ok();
 }
+
+// ---------------------------------------------------------------------------------------------
+// `task-1914`, the QA pass. Four of its seven reports are "I cannot type in X", and each one is a
+// question about **who holds the keyboard** — which until this ticket was the one thing about this
+// window nothing could be asked. `tasks/task-1914-nodes-that-can-be-typed-into-tdd.md` is the design.
+// ---------------------------------------------------------------------------------------------
+
+/// Where a node's body really is on the screen, which is what a click has to be aimed at.
+fn where_a_node_is(harness: &Harness<'static, UnluminousApp>, node: u64) -> egui::Rect {
+    let space = &harness.state().space;
+    let camera = space.space.current().camera;
+    let found = space.space.current().node(node).expect("the node is on the canvas").clone();
+    let parts = unluminous_app::components::space::parts_of(&found);
+    camera.rect_to_screen(space.body.min, parts.body)
+}
+
+/// A rectangle the accessibility tree reported for a control **inside a node**, as screen points.
+///
+/// A node is drawn into a layer of its own carrying the camera, and `egui` hands out a widget's
+/// rectangle in that layer's own coordinates — so a control at `[[50 581] …]` in a node at world 20,20
+/// is nowhere near the point 50,581 of the window. `input` positions are the window's own points, which
+/// is what `window screenshot` writes out, so the two have to be put back together here.
+fn on_the_screen(harness: &Harness<'static, UnluminousApp>, rect: egui::Rect) -> egui::Rect {
+    let space = &harness.state().space;
+    space.space.current().camera.rect_to_screen(space.body.min, rect)
+}
+
+/// Who holds the keyboard, as `unluminous-cli status --section keyboard` answers it.
+fn who_holds_the_keyboard(harness: &mut Harness<'static, UnluminousApp>) -> serde_json::Value {
+    did(harness, "status --section keyboard")["keyboard"].clone()
+}
+
+/// A terminal node clicked in takes the keyboard, and the letters reach its own session.
+///
+/// `task-1914`: *"In base of infinite space, i cant type in a terminal."* Nothing was wrong with the
+/// terminal — see `a_project_that_comes_back_with_a_canvas_gives_it_the_keyboard` for what really was —
+/// but until this there was no test that a key press reached a node's program at all, because a detached
+/// session dropped whatever was sent to it. `Session::sent_to_a_detached_session` is that gap closed.
+#[test]
+fn a_terminal_node_takes_the_keyboard_when_it_is_clicked() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 30.0));
+    // Nothing chosen, which is the state a canvas that has just been read off disk is in.
+    harness.state_mut().space.space.choose(None);
+    harness.run();
+
+    let body = where_a_node_is(&harness, node);
+    let (x, y) = (body.center().x, body.center().y);
+    drove(&mut harness, &format!("input click {x} {y}"));
+
+    let keyboard = who_holds_the_keyboard(&mut harness);
+    assert_eq!(keyboard["holder"], "space", "a click in a node hands the keyboard to the canvas");
+    assert_eq!(keyboard["node"], serde_json::json!(node), "and chooses that node");
+    assert_eq!(keyboard["textBox"], serde_json::json!(false), "no field is holding it");
+
+    drove(&mut harness, "input text ls");
+    let sent = harness
+        .state()
+        .space
+        .live
+        .terminal(node)
+        .expect("the node has a session")
+        .sent_to_a_detached_session();
+    assert_eq!(sent, "ls", "the letters were encoded and sent to the node's own program");
+}
+
+/// A project whose canvas is showing and whose editing area is not gives the canvas the keyboard.
+///
+/// **This is what "i cant type in a terminal" really was.** A window starts on `Focus::Editor`, and a
+/// project restored with the canvas filling the window has no editing area for a key press to reach — so
+/// every letter went to a pane nobody could see. The rule is the narrow one: where **both** are showing
+/// the editing area keeps the keyboard, which is what a text editor should do.
+///
+/// It is also the second half of *"When I reopen after closing, my cursor focus is stuck in the web
+/// browser url"*: nothing holds the focus after a reopen, which `textBox` says here. The address bar only
+/// looked like the place the keys went because it was the one caret drawn on the canvas.
+#[test]
+fn a_project_that_comes_back_with_a_canvas_gives_it_the_keyboard() {
+    use unluminous_app::app::Focus;
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-canvas-keyboard");
+    // A project left with the canvas showing, the editing area put away, and a node chosen.
+    {
+        let mut harness = harness_in(&folder);
+        harness.state_mut().restore_project();
+        did(&mut harness, "space show");
+        let node = did(&mut harness, "space add terminal --x 40 --y 30")["node"].as_u64().expect("id");
+        harness.state_mut().editor_visible = false;
+        harness.state_mut().space.space.choose(Some(node));
+        harness.run();
+    }
+
+    let mut harness = harness_in(&folder);
+    harness.state_mut().restore_project();
+    harness.run();
+    assert!(harness.state().space.visible, "the canvas came back");
+    assert!(!harness.state().editor_visible, "and the editing area is still away");
+    assert_eq!(harness.state().focus, Focus::Space, "so the canvas holds the keyboard");
+    assert!(
+        harness.state().space.space.chosen().is_some(),
+        "and the node it was left on is chosen, so the first key press has somewhere to go",
+    );
+    let keyboard = who_holds_the_keyboard(&mut harness);
+    assert_eq!(keyboard["textBox"], serde_json::json!(false), "nothing is holding a text box");
+
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// And where both are showing, the editing area keeps the keyboard.
+///
+/// The other half of the rule above, and it is a test because it is the half every other test rests on:
+/// widening it to "the canvas takes the keyboard whenever it is showing" would take the keys out of the
+/// editor in every project that has a canvas open beside it.
+#[test]
+fn a_project_showing_both_leaves_the_keyboard_in_the_editing_area() {
+    use unluminous_app::app::Focus;
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-canvas-and-editor");
+    {
+        let mut harness = harness_in(&folder);
+        harness.state_mut().restore_project();
+        did(&mut harness, "space show");
+        harness.run();
+    }
+
+    let mut harness = harness_in(&folder);
+    harness.state_mut().restore_project();
+    harness.run();
+    assert!(harness.state().space.visible, "the canvas came back");
+    assert!(harness.state().editor_visible, "and so did the editing area");
+    assert_eq!(harness.state().focus, Focus::Editor, "which keeps the keyboard");
+
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Which node was chosen is written down, and the restore does not choose a different one.
+///
+/// Opening a File Editor node's tabs chooses that node, because opening a file into a node is using it —
+/// so a canvas with one came back with the keyboard there whatever it was left on, and a canvas with none
+/// came back with the keyboard nowhere at all. The saved choice wins.
+#[test]
+fn which_node_was_chosen_comes_back_with_the_canvas() {
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-canvas-chosen");
+    let terminal = {
+        let mut harness = harness_in(&folder);
+        harness.state_mut().restore_project();
+        did(&mut harness, "space show");
+        let terminal =
+            did(&mut harness, "space add terminal --x 40 --y 30")["node"].as_u64().expect("id");
+        let editor =
+            did(&mut harness, "space add editor --x 700 --y 30")["node"].as_u64().expect("id");
+        did(&mut harness, &format!("space editor {editor} readme.md"));
+        // Left on the terminal, which is not the node the restore will open a file into.
+        did(&mut harness, &format!("space focus {terminal}"));
+        harness.run();
+        terminal
+    };
+
+    let mut harness = harness_in(&folder);
+    harness.state_mut().restore_project();
+    harness.run();
+    assert_eq!(
+        harness.state().space.space.chosen(),
+        Some(terminal),
+        "the canvas came back on the node it was left on, not on the one whose file was opened",
+    );
+
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Enter in a chat node's composer sends, and Shift+Enter puts a new line in the draft.
+///
+/// `task-1914`: *"after i type an agent message in agent chat node, then stop, I can't type any more into
+/// it."* Typing works; **Enter** did not, and a composer that keeps swallowing Enter is one somebody reads
+/// as having stopped taking text.
+///
+/// The fault was in the input mechanism rather than in the composer, which is the kind that makes a test
+/// lie. `composer::show` asks `input.modifiers.is_none()`, and `InputState::modifiers` is built from
+/// `Event::ModifiersChanged` and from nothing else — so every event `services::input` queued carried its
+/// modifiers on the event and left the frame's own state alone, and anything asking the frame was asking
+/// about a keyboard nobody was touching. So this is driven through `input` rather than through
+/// `Harness::key_press`, which sets the real modifiers and could never have found it.
+///
+/// The node's provider is pointed at a program nobody has, so the send is refused before anything is
+/// started and **nothing here runs an agent or reaches a network** — which is
+/// `enter_in_the_composer_sends_and_shift_enter_does_not`'s own arrangement for the pane.
+#[test]
+fn a_chat_node_sends_on_enter_rather_than_putting_a_new_line_in_the_draft() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add chat --x 10 --y 10")["node"].as_u64().expect("id");
+    // Small enough to be **inside the pane**, because a node's contents are clipped to it: a composer
+    // hanging below the canvas is drawn nowhere and can be clicked nowhere.
+    did(&mut harness, &format!("space size {node} --width 520 --height 430"));
+    harness.run();
+    if let Some(chat) = harness.state_mut().space.live.chat_mut(node) {
+        let _ = chat.configuration_mut().choose("claude");
+        chat.configuration_mut().providers[0].command = NO_SUCH_AGENT.to_owned();
+    }
+    harness.run();
+
+    // A press in the composer, which is a `TextEdit` inside a transformed sublayer.
+    let composer = on_the_screen(&harness, harness.get_by_label("Message").rect());
+    drove(&mut harness, &format!("input click {} {}", composer.center().x, composer.center().y));
+    let keyboard = who_holds_the_keyboard(&mut harness);
+    assert_eq!(keyboard["textBox"], serde_json::json!(true), "the composer took the keyboard");
+
+    drove(&mut harness, "input text hello");
+    let draft = |harness: &Harness<'static, UnluminousApp>| {
+        harness.state().space.live.chat(node).expect("the node has a chat").draft.clone()
+    };
+    assert_eq!(draft(&harness), "hello", "the letters reached this node's own draft");
+
+    // Shift+Enter is a new line: nothing is sent and nothing is refused.
+    drove(&mut harness, "input key Enter --shift");
+    let after = did(&mut harness, &format!("space chat {node} state"));
+    assert!(after["problem"].is_null(), "shift+enter did not try to send: {after}");
+    assert_eq!(draft(&harness), "hello
+", "it put a new line in the draft");
+
+    // Enter sends, which here is refused before anything is started — and the refusal names the program
+    // it would have run, which is the only way this test can tell "it sent" from "it did nothing".
+    drove(&mut harness, "input key Enter");
+    let after = did(&mut harness, &format!("space chat {node} state"));
+    let problem = after["problem"].as_str().expect("Enter asked for a send, and it was refused");
+    assert!(problem.contains(NO_SUCH_AGENT), "the refusal names the program: {problem}");
+}
+
+/// The search box of an Agent Tasks node takes the keyboard and what is typed into it.
+///
+/// `task-1914`: *"I cant type in the search of agent tasks node."* A field holding egui's focus makes
+/// **every** other surface stand aside, deliberately, which is why one field that will not take a press
+/// reads as the whole window having stopped answering — so what this asserts is both halves: the box has
+/// the keyboard, and the letters are in the board's own query rather than anywhere else.
+#[test]
+fn the_tasks_node_search_takes_what_is_typed_into_it() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add tasks --x 10 --y 10")["node"].as_u64().expect("id");
+    // Inside the pane, because a node's contents are clipped to it. See `on_the_screen`.
+    did(&mut harness, &format!("space size {node} --width 860 --height 440"));
+    harness.run();
+
+    // Found by its name rather than by arithmetic over the board's own measurements, which is what
+    // every screenshot test here does — the node draws the window's one board, so the box is the same
+    // control the pane's is and answers to the same name.
+    let search = on_the_screen(&harness, harness.get_by_label("Search tasks").rect());
+    drove(&mut harness, &format!("input click {} {}", search.center().x, search.center().y));
+    let keyboard = who_holds_the_keyboard(&mut harness);
+    assert_eq!(keyboard["textBox"], serde_json::json!(true), "the search box took the keyboard");
+
+    drove(&mut harness, "input text batt");
+    let provider = harness.state_mut().plugin_ui.provider("agent-tasks").expect("the board is open");
+    let board = provider
+        .as_any_mut()
+        .and_then(|any| any.downcast_mut::<unluminous_app::services::agent_tasks::AgentTasks>())
+        .expect("the Agent-Tasks provider");
+    assert_eq!(board.query(), "batt", "what was typed is the board's own query");
+}
+
+/// The title bar keeps its drag area while a pane is maximised.
+///
+/// `task-1914`: *"If base of infinite space is maximized, i can't move the main window around, only
+/// resize it."* `ViewportCommand::StartDrag` hands the drag to the operating system's own modal loop, so
+/// no synthetic event can drive it and no test can assert that a window moved. What a test can assert is
+/// that the **control is there and is the size it should be** — and until this ticket it could not even
+/// do that, because the drag area had no `widget_info` and nothing could find it. Every control in
+/// Unluminous has a plain name; this one is `Move window`.
+#[test]
+fn the_title_bar_can_still_be_dragged_while_a_pane_is_maximised() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    harness.run();
+    let before = harness.get_by_label("Move window").rect();
+    assert!(before.width() > 100.0, "the bar has a drag area to begin with: {before:?}");
+
+    did(&mut harness, "action run toggle-maximised-pane");
+    harness.run();
+    let after = harness.get_by_label("Move window").rect();
+    assert!(
+        after.width() >= before.width() - 1.0,
+        "maximising a pane did not take the title bar's drag away: {before:?} -> {after:?}",
+    );
+    assert_eq!(after.top(), before.top(), "and it is still along the top of the window");
+}
+
+/// The pixels of one band of the window, so two frames can be compared without a baseline image.
+///
+/// **A comparison rather than an accepted picture**, because what these ask is not *what does this look
+/// like* but *did anything get drawn where nothing should be* — and that has an answer on any machine,
+/// in any font, without a snapshot for each platform.
+fn pixels_in(harness: &mut Harness<'static, UnluminousApp>, band: egui::Rect) -> Vec<u8> {
+    let scale = harness.ctx.pixels_per_point();
+    let image = harness.render().expect("the window renders");
+    let (left, top) = ((band.left() * scale) as u32, (band.top() * scale) as u32);
+    let (width, height) = ((band.width() * scale) as u32, (band.height() * scale) as u32);
+    assert!(width > 0 && height > 0, "an empty band says nothing: {band:?}");
+    image::imageops::crop_imm(&image, left, top, width, height).to_image().into_raw()
+}
+
+/// A node scrolled off the edge of the canvas draws nothing outside the pane.
+///
+/// `task-1914`'s sweep found an Agent Tasks node's card drawn **over the editing area** when the node was
+/// scrolled off the edge of the canvas. `Ui::set_clip_rect` is an assignment, so a lane writing its own
+/// rectangle over the one it was given threw the pane's edge away — which is the rule
+/// `components::explorer` and `components::markdown_text` each already record, broken again a lane at a
+/// time.
+///
+/// What is compared is a band of the window above the canvas, with the node inside the pane and then
+/// hanging off the top of it. Nothing about that band may change.
+#[test]
+fn a_node_scrolled_off_the_canvas_draws_nothing_outside_the_pane() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add tasks --x 10 --y 10")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space size {node} --width 860 --height 440"));
+    harness.run();
+
+    // The editing area above the canvas, which nothing on the canvas may reach.
+    let body = harness.state().space.body;
+    let above = egui::Rect::from_min_max(
+        egui::pos2(body.left() + 20.0, body.top() - 120.0),
+        egui::pos2(body.right() - 20.0, body.top() - 8.0),
+    );
+    let quiet = pixels_in(&mut harness, above);
+
+    // The same canvas with the node dragged most of the way off the top edge.
+    did(&mut harness, "space camera --y 300");
+    harness.run();
+    let now = pixels_in(&mut harness, above);
+    assert_eq!(quiet.len(), now.len(), "the same band both times");
+    assert!(quiet == now, "a node hanging off the canvas drew something in the window above it");
+}
+
+/// A Folder node draws no file count, so nothing is cut in half by its own bottom edge.
+///
+/// The strip that counts a project's files belongs to the **panel** — `footer_top` has said so since the
+/// node was built — but the count was drawn anyway, centred on a rectangle of no height sitting on the
+/// node's bottom edge. Half of it was inside the node and half below it, and at
+/// `appearance.ui.font.size = 24` the halves are plain to see. `task-1914`'s sweep found it.
+#[test]
+fn a_folder_node_draws_no_file_count_over_its_own_edge() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    harness.run();
+    assert_eq!(
+        harness.query_all_by_label("File count").count(),
+        1,
+        "the explorer panel counts the project's files",
+    );
+
+    did(&mut harness, "space add folder --x 10 --y 10");
+    harness.run();
+    assert_eq!(
+        harness.query_all_by_label("File count").count(),
+        1,
+        "a folder node added no second count, so there is none to be halved by the node's own edge",
+    );
+}
+
+/// A browser node's address is set in a strip its own size, inside the field, at any interface size.
+///
+/// `task-1914`: *"the web browser node url text is not vertically centered in the bar, so its up too high
+/// and partially clipped."* The arithmetic is
+/// `controls::tests::a_fields_text_row_is_measured_at_the_size_the_text_will_be_set_in`; this is the
+/// address bar really asking for it, at the interface size the report came from.
+#[test]
+fn an_address_bar_draws_its_text_inside_its_own_box() {
+    let mut harness = harness("");
+    did(&mut harness, "settings set appearance.ui.font.size 24");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add browser --x 10 --y 10")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space size {node} --width 620 --height 300"));
+    harness.run();
+
+    let address = harness.get_by_label("Address").rect();
+    assert!(
+        address.height() <= 20.0,
+        "the box is a row of the size the address is set in, not of the interface's: {address:?}",
+    );
+    // And inside the node, which is the half the report could see: the strip used to reach past the
+    // field's own border and the top of the words was cut off by it.
+    let found = harness.state().space.space.current().node(node).expect("it is there").clone();
+    let parts = unluminous_app::components::space::parts_of(&found);
+    assert!(
+        parts.body.contains_rect(address),
+        "the address box is inside the node: {address:?} in {:?}",
+        parts.body,
+    );
+}
+
+/// A chat node at its smallest keeps the composer's words inside the node.
+///
+/// The composer is measured for one line and grows to hold what is in it, so a hint too wide for a narrow
+/// field wrapped to three lines and the last of them was drawn below the node's own bottom edge — which is
+/// `composer::hint`'s reason for existing. `Kind::Chat::smallest` is the other half: under it the chat is a
+/// header and a composer with no room between them.
+#[test]
+fn a_chat_node_at_its_smallest_keeps_the_composer_inside_it() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "settings set appearance.ui.font.size 24");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add chat --x 10 --y 10")["node"].as_u64().expect("id");
+    let smallest = Kind::Chat.smallest();
+    did(
+        &mut harness,
+        &format!("space size {node} --width {} --height {}", smallest.x, smallest.y),
+    );
+    harness.run();
+
+    let found = harness.state().space.space.current().node(node).expect("it is there").clone();
+    assert_eq!(found.size, smallest, "a node cannot be dragged below its kind's own floor");
+    let parts = unluminous_app::components::space::parts_of(&found);
+    let composer = harness.get_by_label("Message").rect();
+    assert!(
+        parts.body.contains_rect(composer),
+        "the composer is inside the node: {composer:?} in {:?}",
+        parts.body,
+    );
+}

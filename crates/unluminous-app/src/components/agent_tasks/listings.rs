@@ -274,7 +274,9 @@ pub fn groups(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: 
     let hovered = board.hovered_group();
     // Cut to the body, so a group scrolled half out of it does not draw over the toolbar above.
     let mut column = ui.new_child(egui::UiBuilder::new().max_rect(body));
-    column.set_clip_rect(body);
+    // Intersected rather than replaced, so a listing drawn in a canvas node stays inside the node. See
+    // `lanes::show` for what replacing it looked like.
+    column.set_clip_rect(body.intersect(ui.clip_rect()));
     look.chrome.clip(body, 0.0);
 
     let mut pen = body.min.y - down;
@@ -995,7 +997,7 @@ pub fn epics(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: R
     let asked = board.epic_to_delete();
     let counts: Vec<i64> = epics.iter().map(|epic| board.epic_count(epic.id)).collect();
     let mut grid = ui.new_child(egui::UiBuilder::new().max_rect(body));
-    grid.set_clip_rect(body);
+    grid.set_clip_rect(body.intersect(ui.clip_rect()));
     look.chrome.clip(body, 0.0);
     for (index, epic) in epics.iter().enumerate() {
         let column = index % across;
@@ -1040,7 +1042,7 @@ pub fn epics(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: R
                 Vec2::new(at.width() - 90.0 * scale, 26.0 * scale),
             );
             let mut naming = ui.new_child(egui::UiBuilder::new().max_rect(body));
-            naming.set_clip_rect(body);
+            naming.set_clip_rect(body.intersect(ui.clip_rect()));
             if plain_field(&mut naming, look, field, "Epic name", "Name…", board.epic_name_draft()) {
                 pressed.save_epic_name = Some(id);
             }

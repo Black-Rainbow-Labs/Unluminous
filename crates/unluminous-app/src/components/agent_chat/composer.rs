@@ -65,16 +65,58 @@ pub fn height(parts: &Parts<'_>, look: &Look<'_>, width: f32) -> f32 {
 /// How tall the prompt well is, in unscaled points: one line, grown by what has been typed.
 fn prompt_height(parts: &Parts<'_>, look: &Look<'_>, width: f32) -> f32 {
     let per_line = look.font_size * 1.45;
-    // The lines it takes, counting a wrap at roughly the width of the field — enough to grow the
-    // well as somebody types a paragraph, which is what the page this copies does.
+    PROMPT + (prompt_lines(parts.draft, look, width).saturating_sub(1) as f32) * per_line
+}
+
+/// What the field says while it is empty, in whichever form fits on one line.
+///
+/// `long_is` is how wide [`LONG_HINT`] really lays out at the size it will be drawn — measured by the
+/// caller, which has the fonts, so this is arithmetic a test can check with no window.
+///
+/// **The placeholder names the two ways a picture goes up**, because the button that used to do it is
+/// gone: `task-1848` asked for it to go and for drag and drop and paste to be the routes, and a control
+/// removed with nothing said in its place is a feature nobody finds. It says it only while nothing is
+/// attached, so it is a hint rather than a label.
+///
+/// **And only where there is room for it.** A hint too wide for its field wraps, and a box that grows to
+/// hold three wrapped lines is taller than the well measured for one — so at a chat node's smallest size
+/// the last line of it was drawn below the node's own bottom edge. `task-1914`'s sweep found that. Where
+/// the long form does not fit, the short one is the whole of what somebody needs.
+fn hint(long_is: f32, width: f32, nothing_attached: bool) -> &'static str {
+    if !nothing_attached {
+        return SHORT_HINT;
+    }
+    match long_is <= width - 8.0 {
+        true => LONG_HINT,
+        false => SHORT_HINT,
+    }
+}
+
+/// The long form, which names the two ways a picture goes up.
+const LONG_HINT: &str = "Ask anything… or drop or paste a picture";
+/// The short form, for a field the long one would wrap in.
+const SHORT_HINT: &str = "Ask anything…";
+
+/// How many lines the draft takes at roughly the width of the field.
+///
+/// **One reckoning, read twice**, and that is what makes the box sit in the middle of its well. The
+/// well is measured from this by [`prompt_height`], and the box inside it is asked for exactly this
+/// many rows by [`prompt`], so `Ui::put` centres a box that is the height of the text it holds.
+///
+/// Two answers to it is what `task-1914` reported as *"the placeholder text isn't vertically
+/// centered"*: the box used to be asked for however many rows happened to **fit** in the well, which
+/// at the well's own one-line height is two — and egui lays text out at the top of the box it is
+/// given, so an empty field drew its hint against its top edge with a row of nothing under it.
+///
+/// It counts a wrap at roughly the width of the field rather than laying the text out, because the
+/// well's height has to be known before anything is drawn. `PROMPT_ROWS` is where it stops growing.
+fn prompt_lines(draft: &str, look: &Look<'_>, width: f32) -> usize {
     let across = ((width - SEND - 40.0) / (look.font_size * 0.48)).max(8.0);
-    let lines: usize = parts
-        .draft
+    draft
         .lines()
         .map(|line| ((line.chars().count() as f32 / across).ceil() as usize).max(1))
         .sum::<usize>()
-        .clamp(1, PROMPT_ROWS);
-    PROMPT + (lines.saturating_sub(1) as f32) * per_line
+        .clamp(1, PROMPT_ROWS)
 }
 
 /// Draw the composer and say what was pressed.
@@ -362,7 +404,14 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
 
     parts.state.prompt_focused = false;
     if field.width() > 30.0 {
-        let rows = ((field.height() / (look.font_size * 1.45)).floor() as usize).max(1);
+        // As many rows as there is text, so the box is the height of what is in it and `Ui::put`
+        // centres it in the well. See [`prompt_lines`].
+        let rows = prompt_lines(parts.draft, look, area.width());
+        // How wide the long hint really is, measured rather than guessed at. See [`hint`].
+        let measured = ui.ctx().fonts_mut(|fonts| {
+            let font = egui::FontId::proportional(look.font_size * 0.9);
+            fonts.layout_no_wrap(LONG_HINT.to_owned(), font, Color32::PLACEHOLDER).size().x
+        });
         let prompt_id = ui.id().with("agent-chat-prompt");
         let response = ui.put(
             crate::components::controls::field_takes_the_whole_rectangle(ui, field, 0.0, prompt_id),
@@ -373,11 +422,7 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
                 // to do it is gone: `task-1848` asked for it to go and for drag and drop and paste to be
                 // the routes. A control removed with nothing said in its place is a feature nobody finds.
                 // It says it only while nothing is attached, so it is a hint rather than a label.
-                .hint_text(egui::RichText::new(match parts.attachments.is_empty() {
-                    true => "Ask anything… or drop or paste a picture",
-                    false => "Ask anything…",
-                })
-                .color(look.palette.text_faint))
+                .hint_text(egui::RichText::new(hint(measured, field.width(), parts.attachments.is_empty())).color(look.palette.text_faint))
                 .desired_width(field.width())
                 .desired_rows(rows)
                 .font(egui::FontId::proportional(look.font_size * 0.9))
@@ -510,5 +555,18 @@ mod tests {
         assert_eq!(thousands(0), "0");
         assert_eq!(thousands(999), "999");
         assert_eq!(thousands(18_342), "18.3k");
+    }
+
+    /// A hint too wide for its field is the short one, because a hint that wraps grows the box past the
+    /// well measured for it — which at a chat node's smallest size drew its last line below the node.
+    #[test]
+    fn the_hint_is_the_long_one_only_where_it_fits_on_one_line() {
+        assert_eq!(hint(300.0, 420.0, true), LONG_HINT, "there is room for the long form");
+        assert_eq!(hint(300.0, 240.0, true), SHORT_HINT, "and there is not");
+        // Exactly at the edge counts as fitting, and eight points inside it does not.
+        assert_eq!(hint(300.0, 308.0, true), LONG_HINT);
+        assert_eq!(hint(300.0, 307.0, true), SHORT_HINT);
+        // With something attached it is a hint rather than a label, so it never names the picture.
+        assert_eq!(hint(300.0, 900.0, false), SHORT_HINT);
     }
 }

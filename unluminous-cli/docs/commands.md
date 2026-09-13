@@ -294,9 +294,9 @@ Six commands are typed on their own, because they are about the CLI or about a w
 unluminous-cli status [--section <name>]
 ```
 
-Everything about the window in one answer: its version and build date, the project, the tabs, the panes, the terminal, the modal that is open, the settings and git. Ask for one part with --section and the answer is only that part.
+Everything about the window in one answer: its version and build date, the project, the tabs, the panes, the terminal, who holds the keyboard, the modal that is open, the settings and git. Ask for one part with --section and the answer is only that part. `--section keyboard` is the one to read when typing goes somewhere unexpected: it says which surface Unluminous gave the keys to, and whether a text box anywhere has egui's own focus - while one has, every other surface stands aside.
 
-- `--section <name>` — One part of the answer: editor, tabs, panes, panels, explorer, terminal, modal, settings, git, window, project or message. Several, comma-separated, for more than one. The whole answer when it is left out.
+- `--section <name>` — One part of the answer: editor, tabs, panes, panels, explorer, terminal, keyboard, modal, settings, git, window, project or message. Several, comma-separated, for more than one. The whole answer when it is left out.
 
 ```sh
 unluminous-cli status --json

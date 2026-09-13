@@ -336,7 +336,9 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     }
     let mut acts = Vec::new();
     let mut body = ui.new_child(egui::UiBuilder::new().max_rect(area));
-    body.set_clip_rect(area);
+    // Intersected rather than replaced, so a chat node scrolled half off the canvas does not draw its
+    // transcript over whatever is beside the pane. See `agent_tasks::lanes::show`.
+    body.set_clip_rect(area.intersect(ui.clip_rect()));
     // **The decoration is cut to the conversation, and it has to be.** A `Chrome` records absolute
     // rectangles into one canvas that covers the whole pane, so a bubble scrolled half out of view
     // recorded its whole surface and the canvas painted it over the header above. `egui`'s own clip
@@ -521,7 +523,7 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     }
     let row = look.row_height * scale;
     let mut body = ui.new_child(egui::UiBuilder::new().max_rect(area));
-    body.set_clip_rect(area);
+    body.set_clip_rect(area.intersect(ui.clip_rect()));
     egui::ScrollArea::vertical()
         .id_salt("agent-chat-history")
         .auto_shrink([false, false])

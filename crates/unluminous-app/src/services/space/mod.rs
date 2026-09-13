@@ -380,12 +380,19 @@ impl Space {
         self.current().chosen
     }
 
+    /// Choose a node, which is where the keys and a command with no `--from` go.
+    ///
+    /// **It is written down**, since `task-1914`: a canvas that came back with nothing chosen answered
+    /// every key press with nothing, on a window whose editing area may not even be showing. So this
+    /// marks the canvas dirty, and it compares first — clicking the node that is already chosen, which
+    /// happens on every frame of a drag, must not ask for a write.
     pub fn choose(&mut self, id: Option<NodeId>) {
         let view = self.current_mut();
         if view.chosen == id {
             return;
         }
         view.chosen = id;
+        self.dirty = true;
     }
 
     /// Change a node's own state — its address, its font size, the folders it has open.
@@ -545,10 +552,10 @@ impl Space {
 
     /// Whether two canvases hold the same thing, ignoring whether either needs writing.
     ///
-    /// **What is compared is what is written down**, which is why `View::chosen` is left out beside `dirty`:
-    /// which node has the keyboard is not in `space.conf` at all, so a canvas whose only difference is that is
-    /// a canvas the file already describes. Bringing a view to life chooses the node it opened, which is right
-    /// and is not a change to save.
+    /// **What is compared is what is written down.** `View::chosen` is part of that since `task-1914`, so it
+    /// is compared: a canvas whose only difference is which node the keys go to is a canvas the file on disk
+    /// no longer describes. `bring_the_current_view_to_life` puts the saved choice back after it has opened
+    /// each node's tabs, so a window that opened a project and touched nothing still writes nothing.
     ///
     /// `dirty` is a field of `Space`, so a copy taken while it was clean can never be `==` to the same canvas
     /// once anything has marked it — which makes the derived comparison useless for the one question worth
@@ -567,6 +574,7 @@ impl Space {
                 && mine.camera == theirs.camera
                 && mine.nodes == theirs.nodes
                 && mine.edges == theirs.edges
+                && mine.chosen == theirs.chosen
         })
     }
 

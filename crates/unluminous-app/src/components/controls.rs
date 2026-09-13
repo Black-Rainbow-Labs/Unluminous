@@ -26,7 +26,22 @@ use crate::theme::{color, icon, size};
 /// `left` is how far in from the field's left edge the text starts — 26 points where there is a
 /// magnifier in front of it, 8 where there is not.
 pub fn field_text_rect(ui: &egui::Ui, field: Rect, left: f32) -> Rect {
-    let row = ui.text_style_height(&egui::TextStyle::Body);
+    field_text_rect_at(field, left, ui.text_style_height(&egui::TextStyle::Body))
+}
+
+/// The same, for a field that sets its text in a size of its own rather than in the interface's.
+///
+/// **A field centres the row it is going to draw, and the size that row will be set in is therefore an
+/// argument rather than an assumption.** [`field_text_rect`] measures the strip with
+/// `TextStyle::Body`, which is `appearance.ui.font.size` — 12.5 by default and 24 on the machine
+/// `task-1914` was reported from. A caller that then draws at a fixed size gets a strip measured for
+/// one size holding text set in another: at 24 the browser's address bar was handed a 28 point strip,
+/// drew its 12 point words at the **top** of it, and so put them about six points above the middle of
+/// a 22 point field and over its own border.
+///
+/// `row` is the height the text will really occupy, which is `FontId::proportional(n)`'s own row —
+/// `Ui::fonts(|f| f.row_height(&font))` — so the box and the letters are measured the same way.
+pub fn field_text_rect_at(field: Rect, left: f32, row: f32) -> Rect {
     let width = (field.width() - left - 8.0).max(1.0);
     Rect::from_min_size(
         Pos2::new(field.left() + left, (field.center().y - row / 2.0).round()),
@@ -59,6 +74,13 @@ pub fn field_text_rect(ui: &egui::Ui, field: Rect, left: f32) -> Rect {
 pub fn field_takes_the_whole_rectangle(ui: &egui::Ui, field: Rect, left: f32, id: egui::Id) -> Rect {
     claim_the_field(ui, field, id);
     field_text_rect(ui, field, left)
+}
+
+/// The same claim, for a field whose text is set in a size of its own. See [`field_text_rect_at`].
+pub fn field_takes_the_whole_rectangle_at(ui: &egui::Ui, field: Rect, left: f32, id: egui::Id, font: &egui::FontId) -> Rect {
+    claim_the_field(ui, field, id);
+    let row = ui.ctx().fonts_mut(|fonts| fonts.row_height(font));
+    field_text_rect_at(field, left, row)
 }
 
 /// The claim on its own, for a box that is laid out over the whole of its field rather than in a
@@ -666,4 +688,41 @@ pub fn bar_button(ui: &mut egui::Ui, area: Rect, name: &str, strong: bool) -> eg
         egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name)
     });
     response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A field centres the row it is going to draw, and the size that row will be set in is an argument.
+    ///
+    /// `task-1914`: *"the web browser node url text is not vertically centered in the bar, so its up too
+    /// high and partially clipped."* The numbers here are that report. The address bar's field is 22
+    /// points tall and its words are set at 12, which is a row of about 16 — but the strip was measured
+    /// with `TextStyle::Body`, which is `appearance.ui.font.size` and was **24** on the machine it was
+    /// reported from, a row of 28. So the field was handed a strip taller than itself, `egui` laid the 12
+    /// point text out at the **top** of it, and the address sat above centre with its top cut off by the
+    /// field's own border.
+    #[test]
+    fn a_fields_text_row_is_measured_at_the_size_the_text_will_be_set_in() {
+        let field = Rect::from_min_max(Pos2::new(100.0, 200.0), Pos2::new(400.0, 222.0));
+
+        // The interface's own row at 24 point text, which is what the old reckoning used.
+        let interface = field_text_rect_at(field, 9.0, 28.0);
+        assert!(
+            interface.top() < field.top() && interface.bottom() > field.bottom(),
+            "a 28 point strip cannot fit in a 22 point field: {interface:?} in {field:?}",
+        );
+
+        // The size the address is really set in.
+        let real = field_text_rect_at(field, 9.0, 16.0);
+        assert!(field.contains_rect(real), "the strip is inside the field: {real:?} in {field:?}");
+        assert!(
+            (real.center().y - field.center().y).abs() <= 0.5,
+            "and centred on it: {} against {}",
+            real.center().y,
+            field.center().y,
+        );
+        assert_eq!(real.left(), field.left() + 9.0, "with the caller's own inset in front of it");
+    }
 }

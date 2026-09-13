@@ -1451,6 +1451,16 @@ impl UnluminousApp {
         // called from `main.rs` and by nothing else.
         self.restore_the_space();
         self.space.visible = state.space_visible;
+        // **The keyboard goes to a surface that is on the screen.** `Focus::Editor` is what a window
+        // starts on, and a project whose canvas fills the window has no editing area for the keys to
+        // reach — so every key press went to a pane nobody could see, which `task-1914` reported as
+        // *"In base of infinite space, i cant type in a terminal."*
+        //
+        // The rule is the narrow one: where **both** are showing the editing area keeps the keyboard,
+        // which is what a text editor should do and what every existing test asserts.
+        if self.space.visible && !self.editor_visible {
+            self.focus = Focus::Space;
+        }
         self.written_project = Some(self.project_state());
     }
 

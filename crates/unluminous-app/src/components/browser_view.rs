@@ -133,6 +133,15 @@ pub fn show(
     (outcome, Some(BrowserPlacement::whole(tab.id, browser, focused)))
 }
 
+/// How large the address is set, which is the size the field measures its own row at.
+///
+/// One constant rather than the number written in three places, because the box, the hint and the
+/// strip the box is laid out in all have to agree — see `controls::field_text_rect_at`.
+const ADDRESS_TEXT: f32 = 12.0;
+
+/// The address's font, built from [`ADDRESS_TEXT`].
+const ADDRESS_FONT: FontId = FontId::proportional(ADDRESS_TEXT);
+
 /// The address field: what the tab is on, or what is being typed over it.
 ///
 /// The words `Loading ·` are drawn **beside** the field rather than into it, because a field's text is
@@ -150,13 +159,19 @@ fn address_field(
     // The whole rectangle claims the press and hands the keyboard over on the next frame, which is
     // `controls::field_takes_the_whole_rectangle`'s own rule and the fault `task-1795` fixed in the
     // nineteen fields that came before this one.
-    let text_rect = crate::components::controls::field_takes_the_whole_rectangle(ui, field, 9.0, toolbar.id);
+    //
+    // **Measured at the size the words are really set in**, which is this address bar's own 12 points and
+    // not the interface's row height. `task-1914` reported the difference: with
+    // `appearance.ui.font.size` at 24 the strip was 28 points tall inside a 22 point field, egui laid the
+    // 12 point text out at the top of it, and the address sat above centre with its top clipped by the
+    // field's own border. See `controls::field_text_rect_at`.
+    let text_rect = crate::components::controls::field_takes_the_whole_rectangle_at(ui, field, 9.0, toolbar.id, &ADDRESS_FONT);
     let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
     let response = inner.add(
         egui::TextEdit::singleline(toolbar.typed)
             .id(toolbar.id)
-            .hint_text(egui::RichText::new("Type an address").color(color::text_faint()).size(12.0))
-            .font(FontId::proportional(12.0))
+            .hint_text(egui::RichText::new("Type an address").color(color::text_faint()).size(ADDRESS_TEXT))
+            .font(ADDRESS_FONT)
             .frame(egui::Frame::NONE)
             .desired_width(text_rect.width())
             .text_color(color::text_control()),

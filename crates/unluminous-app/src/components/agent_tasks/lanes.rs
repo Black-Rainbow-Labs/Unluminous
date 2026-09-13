@@ -279,7 +279,11 @@ pub fn show(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Re
         // Intersected with the board's own area, not replaced by the lane's. A lane now keeps its full width even
         // when half of it is off the edge, so its cards' rectangle reaches past the pane and the clip has to be
         // the part of it that is really on screen.
-        lane_ui.set_clip_rect(cards_area.intersect(area));
+        // **And with whatever the caller had cut this `Ui` to**, which on the canvas is the node's own
+        // part of the pane. `Ui::set_clip_rect` is an assignment, so writing the lane's rectangle over it
+        // threw the pane's edge away: `task-1914`'s sweep found a card of a node scrolled off the left of
+        // the canvas drawn over the editing area beside it. It is `components::explorer`'s own rule.
+        lane_ui.set_clip_rect(cards_area.intersect(area).intersect(ui.clip_rect()));
         for (row, task) in cards.iter().enumerate() {
             let top = cards_area.min.y + row as f32 * (card::height(look) + card::GAP) - down;
             tops.push(top);

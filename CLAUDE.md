@@ -833,6 +833,82 @@ somewhere else entirely.
 a flag, so a pane drawn while the canvas holds the keyboard answers no without either caller remembering to
 say so.
 
+### Who holds the keyboard is a question anything can ask
+
+`task-1914`'s QA pass was seven reports and four of them were *"I cannot type in X"* — a terminal node, a
+chat node, the board's search box, the window after a reopen. Every one of those is a question about who
+holds the keyboard, and until that ticket it was the one thing about this window nothing could be asked:
+not a person, not an agent, not a test. Each had to be found by typing and watching where the letters went.
+
+`unluminous-cli status --section keyboard` answers it, in four fields that are four different questions:
+`holder` is Unluminous's own `Focus`, `textBox` is `egui`'s `text_edit_focused`, `node` is which canvas
+node the keys are in, and `pane` is which editing pane. The second is the one that explains the shape of
+those reports: while **any** text box holds the focus, the editing area, every terminal grid and every
+provider stand aside — deliberately, so that typing a filter does not also type into the file behind it —
+so one field somebody cannot get out of reads as the whole window having stopped answering.
+
+Two rules came out of measuring with it, and neither is about a node being broken.
+
+**A canvas that comes back has somewhere for the first key press to go.** `View::chosen` is written to
+`space.conf`, and `bring_the_current_view_to_life` puts the saved choice back after it has opened each
+node's tabs — opening a file into a node chooses that node, because opening a file into a node is using
+it, so a canvas with a File Editor node came back with the keyboard there whatever it was left on and one
+with none came back with the keyboard nowhere at all.
+
+**And the keyboard goes to a surface that is on the screen.** A window starts on `Focus::Editor`, so a
+project restored with the canvas filling the window sent every key to a pane nobody could see. The rule is
+the narrow one: *if the editing area is not showing and the canvas is, the canvas holds the keyboard.*
+Where both are showing the editing area keeps it, which is what a text editor should do and what every
+test written before this asserts.
+
+### A field centres the row it is going to draw
+
+`controls::field_text_rect` measures its strip with `TextStyle::Body`, which is `appearance.ui.font.size`
+— 12.5 by default and **24** on the machine `task-1914` was reported from. A caller that then draws at a
+size of its own gets a strip measured for one size holding text set in another: at 24 the browser node's
+address bar was handed a 28 point strip inside a 22 point field, `egui` laid its 12 point words out at the
+**top** of it, and the address sat above centre with its top cut off by the field's own border. That is
+*"the web browser node url text is not vertically centered in the bar, so its up too high and partially
+clipped."*
+
+`field_text_rect_at` and `field_takes_the_whole_rectangle_at` take the row the text will really occupy, so
+the box and the letters are measured the same way. The pair without `_at` keep the Body row and are what
+every field that draws at the interface size goes on using.
+
+The composer is the same fault in a different shape: it asked for however many rows would **fit** in its
+well, which at the well's own one-line height is two, and `egui` draws a hint at the top of the box it is
+given. It asks for as many rows as there is text now — one reckoning, `composer::prompt_lines`, read both
+by the well that is measured and by the box inside it — so `Ui::put` centres a box that is the height of
+what it holds. And `composer::hint` drops the long form where it would wrap, because a hint that wraps
+grows the box past the well measured for one line.
+
+### `Ui::set_clip_rect` assigns, and on a canvas that matters twice over
+
+`components::explorer` has recorded since `task-1905` that a clip written from a component's own rectangle
+throws away whatever the caller had cut it to. `task-1914`'s sweep found five more of them, and on the
+canvas the consequence is visible in a way it is not in a pane: an Agent Tasks node scrolled off the left
+of the canvas drew one of its cards **over the editing area beside it**, because the lane replaced the
+node's own clip with its own rectangle. The board's lanes, its three listings and the chat pane's
+transcript and history all intersect now.
+
+`a_node_scrolled_off_the_canvas_draws_nothing_outside_the_pane` is how that stays fixed, and the shape of
+it is worth copying: it compares a band of the window **outside** the pane between two frames rather than
+against an accepted picture, so it needs no baseline and answers the same in any font on any machine.
+
+### A node cannot be dragged smaller than its contents can be drawn
+
+`Kind::smallest` is a floor per kind, and two of them were too low. A board at 320 by 240 drew its rail,
+its sprint name and its Add Task button over the whole node and put the first lane's heading on top of its
+own cards; a chat node at 260 by 220 drew the last line of its own placeholder below its bottom edge. The
+board is a rail, a lane and a card at the very least and each of those has a size of its own, so the floor
+says so — 480 by 360, and 300 by 280 for a chat. The alternative is a node that can be dragged to a size
+at which it draws something nobody can read.
+
+And a Folder node draws **no file count**: the strip that counts a project's files belongs to the panel,
+which `footer_top` has said since the node was built, and the count was drawn anyway — centred on a
+rectangle of no height sitting on the node's own bottom edge, so half of it was inside the node and half
+below. The footer is named `File count` now, which is what made a test of it possible at all.
+
 ## A colour is a question, and the list of names is still closed
 
 `task-1776` asks for themes, and the thing in the way was that `theme::color` was forty `const`s read
@@ -4081,6 +4157,10 @@ trade that away to be a shade nearer a screenshot.
 - `tools/release.sh` and `tools/release.ps1` — the one command that releases, on macOS and Linux and on
   Windows: bump, build, install, tag, push, publish. Run it whenever a change is finished, without
   asking.
+- `tasks/task-1914-nodes-that-can-be-typed-into-tdd.md` — the QA pass on the canvas: the diagnostic that
+  turned four "I cannot type in X" reports from guesswork into measurement, what each of the seven really
+  was and which two did not reproduce, the two controls that were drawn at one size inside a box measured
+  at another, and the three faults the visual sweep found that nobody had reported.
 - `tasks/task-1914-testing-without-stealing-focus-tdd.md` — driving the real window without taking the
   keyboard out of whatever a person is typing into: which of the three steps was actually at fault, the
   three ways of photographing a window that is not in front and the one already in the product, why

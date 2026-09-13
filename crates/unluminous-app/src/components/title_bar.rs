@@ -305,6 +305,14 @@ pub fn show(
             ui.id().with("title-drag"),
             Sense::CLICK | Sense::DRAG,
         );
+        // Named, because every control in Unluminous has a plain name — and this one had none, so
+        // nothing could find it and `task-1914`'s *"If base of infinite space is maximized, i can't
+        // move the main window around"* could not be asked about from outside the window. What a test
+        // asserts is that the control is **there and is the size it should be**: `StartDrag` hands the
+        // drag to the operating system's own modal loop, so no synthetic event can drive it.
+        drag.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Move window")
+        });
         if drag.drag_started() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }

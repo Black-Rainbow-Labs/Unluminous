@@ -581,6 +581,15 @@ pub fn show(
     }
 
     // The footer, counting the files and how many are unsaved.
+    //
+    // **A node has none**, which `footer_top` says above and this did not do. `Host::Node` puts
+    // `footer_top` on the node's own bottom edge, so the strip was a rectangle of no height and the count
+    // was drawn centred on it — half inside the node and half below it, cut through the middle by the
+    // node's clip. `task-1914`'s sweep found it, at `appearance.ui.font.size = 24` where a row is tall
+    // enough for the halves to be obvious.
+    if matches!(view.host, Host::Node) {
+        return outcome;
+    }
     let footer = Rect::from_min_max(Pos2::new(area.left(), footer_top), area.right_bottom());
     painter.rect_filled(footer, CornerRadius::ZERO, crate::theme::faded(color::explorer_footer(), view.opacity));
     painter.line_segment(
@@ -598,12 +607,22 @@ pub fn show(
         text = format!("{text}  \u{00B7}  1 unsaved");
     }
     let galley =
-        painter.layout_no_wrap(text, egui::FontId::proportional(view.at(10.5)), color::text_dim());
+        painter.layout_no_wrap(text.clone(), egui::FontId::proportional(view.at(10.5)), color::text_dim());
     painter.galley(
         Pos2::new(footer.left() + view.at(16.0), footer.center().y - galley.size().y / 2.0),
         galley,
         color::text_dim(),
     );
+    // **Named, like everything else in this window.** It is not a control — it senses a hover and nothing
+    // else — but it is a line a person reads, and until this it reached the accessibility tree not at all
+    // and nothing outside the window could ask whether it had been drawn. `WidgetType::Other` rather than
+    // `Label`, for the reason `task-1795` records: egui puts a `Label`'s words in the node's *value* and
+    // leaves it with no name to be found by.
+    let counted = ui.interact(footer, ui.id().with("explorer-file-count"), Sense::hover());
+    counted.widget_info(|| egui::WidgetInfo {
+        current_text_value: Some(text.clone().into()),
+        ..egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "File count")
+    });
 
     outcome
 }

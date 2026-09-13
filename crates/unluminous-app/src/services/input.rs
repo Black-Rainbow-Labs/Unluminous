@@ -38,12 +38,36 @@ pub struct Step {
     pub events: Vec<egui::Event>,
     /// Where the pointer is left after this step, when it moved.
     pub pointer: Option<egui::Pos2>,
+    /// Which modifiers are **held** while this step is fed to a frame.
+    ///
+    /// **Beside the events rather than only inside them, because `egui` keeps two answers and they are
+    /// different questions.** `Event::Key` and `Event::PointerButton` each carry the modifiers that were
+    /// held when they happened; `InputState::modifiers` is the frame's own *state*, which `egui` builds
+    /// from `Event::ModifiersChanged` and which `egui-winit` sends from the real keyboard. Anything
+    /// asking the frame — and `agent_chat::composer` asks it, to tell Enter from Shift+Enter — was
+    /// therefore asking about the physical keyboard rather than about the gesture. Measured on
+    /// `task-1914`: `input key Enter` in a chat node put a new line in the draft and sent nothing,
+    /// because `input.modifiers.is_none()` was answering about a keyboard nobody was touching.
+    ///
+    /// [`Queue::next_frame`] turns a change of this into the `Event::ModifiersChanged` a device sends.
+    pub modifiers: egui::Modifiers,
 }
 
 impl Step {
     /// A step holding one event and moving nothing.
     pub fn of(event: egui::Event) -> Self {
-        Self { events: vec![event], pointer: None }
+        let modifiers = modifiers_of(&event);
+        Self { events: vec![event], pointer: None, modifiers }
+    }
+}
+
+/// The modifiers an event was built with, so a step carries the same state the event does.
+fn modifiers_of(event: &egui::Event) -> egui::Modifiers {
+    match event {
+        egui::Event::Key { modifiers, .. }
+        | egui::Event::PointerButton { modifiers, .. }
+        | egui::Event::MouseWheel { modifiers, .. } => *modifiers,
+        _ => egui::Modifiers::NONE,
     }
 }
 
@@ -64,6 +88,8 @@ pub struct Queue {
     /// A counter rather than a flag, which is the shape `DebugState::reads` already has: two commands
     /// in flight would each see the other's empty queue and answer early.
     done: u64,
+    /// The modifier state the last step was fed under. See [`Step::modifiers`].
+    held: egui::Modifiers,
 }
 
 impl Queue {
@@ -82,7 +108,7 @@ impl Queue {
         self.done
     }
 
-    /// Take the next frame's events, repeating wherever the pointer was left.
+    /// Take the next frame's events.
     ///
     /// Answers nothing when there is nothing to feed, so a frame that was not asked for costs one
     /// comparison — `task-1666`'s rule about anything that runs once a frame.
@@ -92,8 +118,16 @@ impl Queue {
             self.pointer = Some(at);
         }
         self.done += 1;
-        let mut events = Vec::with_capacity(step.events.len() + 1);
-        // The position first, so a press in the same frame lands on the widget the pointer is over
+        let mut events = Vec::with_capacity(step.events.len() + 2);
+        // **A change of modifier state is an event of its own**, which is how `egui` learns it:
+        // `InputState::modifiers` is updated by `Event::ModifiersChanged` and by nothing else, so a key
+        // event carrying `ctrl` tells the frame's own state nothing. `egui-winit` sends one whenever the
+        // real keyboard's modifiers move, and this is that. See [`Step::modifiers`].
+        if step.modifiers != self.held {
+            self.held = step.modifiers;
+            events.push(egui::Event::ModifiersChanged(step.modifiers));
+        }
+        // The position next, so a press in the same frame lands on the widget the pointer is over
         // rather than on whatever it was over before.
         if let Some(at) = self.pointer {
             events.push(egui::Event::PointerMoved(at));
@@ -123,7 +157,12 @@ impl Button {
 
 /// The pointer moves and stays there.
 pub fn moved(at: egui::Pos2) -> Vec<Step> {
-    vec![Step { events: Vec::new(), pointer: Some(at) }]
+    vec![Step { events: Vec::new(), pointer: Some(at), modifiers: egui::Modifiers::NONE }]
+}
+
+/// The same, holding some modifiers, for the frames of a gesture that carries them.
+fn moved_with(at: egui::Pos2, modifiers: egui::Modifiers) -> Vec<Step> {
+    vec![Step { events: Vec::new(), pointer: Some(at), modifiers }]
 }
 
 /// A press and a release at one place: three frames, which is what `egui` needs to call it a click.
@@ -132,7 +171,7 @@ pub fn moved(at: egui::Pos2) -> Vec<Step> {
 /// a pass: a press arriving in the same frame as the first sight of the pointer lands on a window that
 /// has not yet noticed anything is under it.
 pub fn clicked(at: egui::Pos2, button: Button, modifiers: egui::Modifiers, times: usize) -> Vec<Step> {
-    let mut steps = moved(at);
+    let mut steps = moved_with(at, modifiers);
     for _ in 0..times.max(1) {
         steps.push(Step::of(egui::Event::PointerButton {
             pos: at,
@@ -162,7 +201,7 @@ pub fn dragged(
     modifiers: egui::Modifiers,
 ) -> Vec<Step> {
     let steps = steps.clamp(1, 200);
-    let mut out = moved(from);
+    let mut out = moved_with(from, modifiers);
     out.push(Step::of(egui::Event::PointerButton {
         pos: from,
         button: egui::PointerButton::Primary,
@@ -172,7 +211,7 @@ pub fn dragged(
     for step in 1..=steps {
         let along = step as f32 / steps as f32;
         let at = from + (to - from) * along;
-        out.push(Step { events: Vec::new(), pointer: Some(at) });
+        out.push(Step { events: Vec::new(), pointer: Some(at), modifiers });
     }
     out.push(Step::of(egui::Event::PointerButton {
         pos: to,
@@ -229,7 +268,7 @@ pub fn typed(text: &str) -> Vec<Step> {
             });
         }
         events.push(egui::Event::Text(character.to_string()));
-        steps.push(Step { events, pointer: None });
+        steps.push(Step { events, pointer: None, modifiers: egui::Modifiers::NONE });
         if let Some(key) = key {
             steps.push(Step::of(egui::Event::Key {
                 key,
@@ -260,6 +299,15 @@ pub fn wheeled(notches: f32, across: f32, modifiers: egui::Modifiers) -> Vec<Ste
 
 /// How many points one notch of the wheel is, which is `egui-winit`'s own `points_per_scroll_line`.
 pub const NOTCH: f32 = 50.0;
+
+/// One more frame with nothing held, which is a hand coming off the modifier keys.
+///
+/// Every gesture that holds one ends with this, because the state is **held** until something says
+/// otherwise: without it a `--cmd` click would leave the window believing the command key was down for
+/// the rest of the session, and the next ordinary Enter would be read as `Cmd+Enter`.
+pub fn let_go() -> Vec<Step> {
+    vec![Step { events: Vec::new(), pointer: None, modifiers: egui::Modifiers::NONE }]
+}
 
 /// Read a key by the name the command line uses.
 ///
@@ -356,6 +404,42 @@ mod tests {
         }
         assert_eq!(text, "Hi");
         assert_eq!(keys, 2, "one key press a letter");
+    }
+
+    /// A gesture that holds a modifier says so as an event, and lets go afterwards.
+    ///
+    /// `InputState::modifiers` is built from `Event::ModifiersChanged` and from nothing else, so a key
+    /// event carrying `command` leaves the frame's own state alone — and everything that tells `Enter`
+    /// from `Cmd+Enter` asks the frame. `task-1914` measured what that costs: Enter in a chat node put a
+    /// new line in the draft and sent nothing.
+    #[test]
+    fn holding_a_modifier_is_an_event_and_letting_go_is_another() {
+        let command = egui::Modifiers { command: true, ctrl: true, ..egui::Modifiers::NONE };
+        let mut queue = Queue::default();
+        queue.push(pressed(egui::Key::S, command, 1));
+        queue.push(let_go());
+        let mut said = Vec::new();
+        while let Some(events) = queue.next_frame() {
+            for event in events {
+                if let egui::Event::ModifiersChanged(now) = event {
+                    said.push(now);
+                }
+            }
+        }
+        assert_eq!(said, vec![command, egui::Modifiers::NONE], "held, then let go");
+    }
+
+    /// And a gesture that holds nothing says nothing, so an ordinary click costs no extra event.
+    #[test]
+    fn a_gesture_that_holds_nothing_sends_no_modifier_event() {
+        let mut queue = Queue::default();
+        queue.push(clicked(egui::pos2(10.0, 10.0), Button::Primary, egui::Modifiers::NONE, 1));
+        while let Some(events) = queue.next_frame() {
+            assert!(
+                !events.iter().any(|event| matches!(event, egui::Event::ModifiersChanged(_))),
+                "nothing was held, so nothing changed: {events:?}",
+            );
+        }
     }
 
     /// A key that is only a name is read, and one that is nothing is refused rather than guessed at.

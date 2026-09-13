@@ -101,6 +101,13 @@ fn write_a_view(view: &View, at: usize, root: &Path, values: &mut Values) {
     values.set(&format!("{key}.camera.x"), format!("{:.1}", view.camera.at.x));
     values.set(&format!("{key}.camera.y"), format!("{:.1}", view.camera.at.y));
     values.set(&format!("{key}.camera.zoom"), format!("{:.3}", view.camera.zoom));
+    // **Which node was chosen**, because the first key press after a project opens has to have
+    // somewhere to go. `task-1914`: *"In base of infinite space, i cant type in a terminal."* A canvas
+    // that came back with nothing chosen answered every key with nothing, on a window whose editing
+    // area may not even be showing — and to a person that reads as the node being broken.
+    if let Some(chosen) = view.chosen {
+        values.set(&format!("{key}.chosen"), chosen.to_string());
+    }
     for (index, node) in view.nodes.iter().take(NODE_LIMIT).enumerate() {
         write_a_node(node, &format!("{key}.node.{index}"), root, values);
     }
@@ -299,7 +306,13 @@ fn read_a_view(values: &Values, key: &str, id: u64, root: &Path) -> View {
         // two edges one id.
         edges.push(Edge { id: 0, from, to, pipe });
     }
-    View { id, name, nodes, edges, camera, chosen: None }
+    // A node that is not on this canvas any more is not chosen. `Space::tidy` would not catch it:
+    // it takes away an edge naming a node that has gone and says nothing about the choice.
+    let chosen = values
+        .number(&format!("{key}.chosen"))
+        .map(|id| id as u64)
+        .filter(|id| nodes.iter().any(|node| node.id == *id));
+    View { id, name, nodes, edges, camera, chosen }
 }
 
 /// One node, or nothing when its kind is one this version has not got.

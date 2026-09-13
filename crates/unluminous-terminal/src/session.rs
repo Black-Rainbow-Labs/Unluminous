@@ -163,6 +163,16 @@ pub struct Session {
     events: Receiver<Event>,
     /// Writes to the shell. Absent in a detached session, which has no shell.
     notifier: Option<Notifier>,
+    /// What was sent to a session with **no shell behind it**, kept so a test can read it back.
+    ///
+    /// A detached session is what every screenshot test of a terminal uses, and until `task-1914` a key
+    /// press reaching the program was the one thing about one that could not be checked: `send` had
+    /// nowhere to put the bytes and dropped them. Four of that ticket's reports were "I cannot type in
+    /// X", so what the grid really encoded and really sent is exactly what a test has to be able to ask.
+    ///
+    /// `None` for a session with a program, where the bytes go to the program and holding a second copy
+    /// of everything typed would be a transcript nobody asked for.
+    sent_while_detached: Option<std::sync::Mutex<Vec<u8>>>,
     /// Ends the shell, and everything the shell started, when this session goes.
     ///
     /// Shutting the reader loop down drops the pseudoterminal, which is a hangup on Unix and only a
@@ -298,6 +308,7 @@ impl Session {
             term,
             events,
             notifier: Some(notifier),
+            sent_while_detached: None,
             reaper,
             master,
             parser: None,
@@ -330,6 +341,7 @@ impl Session {
             term: Arc::new(FairMutex::new(term)),
             events,
             notifier: None,
+            sent_while_detached: Some(std::sync::Mutex::new(Vec::new())),
             reaper: Reaper::detached(),
             master: crate::foreground::Master::detached(),
             parser: Some(Processor::new()),
@@ -541,9 +553,25 @@ impl Session {
         if bytes.is_empty() {
             return;
         }
+        if let Some(kept) = &self.sent_while_detached {
+            if let Ok(mut kept) = kept.lock() {
+                kept.extend_from_slice(&bytes);
+            }
+        }
         if let Some(notifier) = &self.notifier {
             notifier.notify(bytes);
         }
+    }
+
+    /// What has been sent to a detached session, as text. Empty for a session with a program.
+    ///
+    /// See [`Session::sent_while_detached`] for why this exists.
+    pub fn sent_to_a_detached_session(&self) -> String {
+        self.sent_while_detached
+            .as_ref()
+            .and_then(|kept| kept.lock().ok())
+            .map(|kept| String::from_utf8_lossy(&kept).into_owned())
+            .unwrap_or_default()
     }
 
     /// What the program has asked for, which decides what some keys send.

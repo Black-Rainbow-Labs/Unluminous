@@ -127,8 +127,14 @@ impl Kind {
             Kind::Editor => Vec2::new(240.0, 140.0),
             // Under about this the chat is a header and a composer with no room between them, which is
             // `agent_chat::surface`'s own floor: it draws nothing at all below 40 points of card.
-            Kind::Chat => Vec2::new(260.0, 220.0),
-            Kind::Tasks => Vec2::new(320.0, 240.0),
+            Kind::Chat => Vec2::new(300.0, 280.0),
+            // **Wide and tall enough for the board to lay itself out**, which `task-1914`'s sweep found
+            // 320 by 240 was not: the rail, the sprint name and the Add Task button filled the whole node
+            // and the first lane's heading was drawn over its own cards. The board is one rail, one lane
+            // and one card at the very least, and each of those has a size of its own. A floor is the
+            // honest place to say so — the alternative is a board that can be dragged to a size at which
+            // it draws something nobody can read.
+            Kind::Tasks => Vec2::new(480.0, 360.0),
         }
     }
 }

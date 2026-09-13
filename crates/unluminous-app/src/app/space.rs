@@ -1616,10 +1616,22 @@ impl UnluminousApp {
             true => None,
             false => Some(self.space.space.clone()),
         };
+        // **The saved choice wins over whichever node the restore happened to touch last.** Opening a
+        // File Editor node's tabs chooses that node, because opening a file into a node is using it —
+        // so a canvas with two of them came back with the keyboard in the second one whatever it was
+        // left in, and one with none came back with the keyboard nowhere at all. `task-1914` reported
+        // the second half of that: *"In base of infinite space, i cant type in a terminal."*
+        //
+        // A canvas that had **no** choice written down keeps what the restore chose, which is what
+        // gives a file written by a version before `View::chosen` somewhere for the first key to go.
+        let chosen = self.space.space.chosen();
         self.start_the_canvass_terminals();
         self.open_the_canvass_browsers();
         self.open_the_canvass_editors();
         self.scroll_the_canvass_folders();
+        if chosen.is_some() {
+            self.space.space.choose(chosen);
+        }
         // A restore that really changed the canvas — a node whose file has gone, a terminal given a fresh
         // conversation id — is still dirty and is still written, which is what those cases need.
         if let Some(before) = before {

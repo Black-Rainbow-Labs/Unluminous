@@ -609,6 +609,13 @@ impl UnluminousApp {
         // **The window has to be drawing for any of this to land**, and an idle one is asleep: nothing has
         // happened yet, so nothing has asked for a frame. The wait asks for one on every pass, and
         // `raw_input_hook` asks for the next while any step is left.
+        // **A gesture that held a modifier lets go at the end of it.** The state is held until something
+        // says otherwise, so without this a `--cmd` click would leave the window believing the command
+        // key was down for the rest of the session. See `services::input::let_go`.
+        let mut steps = steps;
+        if modifiers != egui::Modifiers::NONE {
+            steps.extend(input::let_go());
+        }
         let frames = steps.len() as u64;
         self.input.push(steps);
         Outcome::Hold(Waiting::Input {
@@ -1631,10 +1638,48 @@ impl UnluminousApp {
                 "files": self.tree.all_files().len(),
             },
             "terminal": self.terminal_value(),
+            // **Who holds the keyboard**, which is the one thing about this window nothing could be
+            // asked. `task-1914` reported four separate "I cannot type in X" faults and every one of
+            // them was a question about this, answerable only by trying it — so a person, and an agent,
+            // and a test all had to guess. `Focus` is Unluminous's own answer and `text_edit_focused` is
+            // egui's, and the two together are the whole of it: a text box that holds egui's focus makes
+            // **every** surface stand aside, which is why one stuck field reads as "the terminal is
+            // broken".
+            "keyboard": self.keyboard_value(ctx),
             "modal": self.modal_value(ctx),
             "settings": self.settings_value(),
             "git": self.git_value(),
             "message": self.message,
+        })
+    }
+}
+
+impl crate::app::UnluminousApp {
+    /// Who holds the keyboard, as data.
+    ///
+    /// Three answers rather than one, because they are three different questions and a fault in this
+    /// area is always a disagreement between them:
+    ///
+    /// * `holder` is [`crate::app::Focus`], which is Unluminous's own answer: the editing area, the
+    ///   explorer, a terminal tile, the canvas or a plugin.
+    /// * `textBox` is `egui`'s: whether some `TextEdit` anywhere has the focus. While it is true the
+    ///   editing area, every terminal grid and every provider **stands aside**, which is right when
+    ///   somebody is typing in a field and is a window nothing can be typed into when the field that
+    ///   holds it is not on the screen any more.
+    /// * `node` is which canvas node the keyboard is in, when it is in one.
+    fn keyboard_value(&self, ctx: &egui::Context) -> Value {
+        json!({
+            "holder": match self.focus {
+                crate::app::Focus::Editor => "editor",
+                crate::app::Focus::Explorer => "explorer",
+                crate::app::Focus::Terminal => "terminal",
+                crate::app::Focus::Space => "space",
+                crate::app::Focus::Plugin => "plugin",
+            },
+            "textBox": crate::app::text_box_has_the_keyboard(ctx),
+            "modal": crate::app::a_modal_has_the_keyboard(ctx),
+            "node": self.space.chosen(),
+            "pane": self.files.focus().pane(),
         })
     }
 }
@@ -1650,6 +1695,7 @@ const STATUS_SECTIONS: &[(&str, &[&str])] = &[
     ("panels", &["panels"]),
     ("explorer", &["explorer"]),
     ("terminal", &["terminal"]),
+    ("keyboard", &["keyboard"]),
     ("modal", &["modal"]),
     ("settings", &["settings"]),
     ("git", &["git"]),
