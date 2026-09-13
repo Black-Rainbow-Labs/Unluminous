@@ -1041,6 +1041,11 @@ pub fn whole(wire: Wire, body: &str) -> Vec<Reply> {
                         name: item["name"].as_str().unwrap_or_default().to_owned(),
                         arguments: item["arguments"].as_str().unwrap_or("{}").to_owned(),
                     }),
+                    // The summary is what a person reads and the item is what the next request
+                    // replays, for the reason the streamed arm at `response.output_item.done` gives:
+                    // Unluminous sends `store: false`, so the server holds no copy of the reasoning to
+                    // carry on from and a continuation without it is asking the model to resume work
+                    // it can no longer see.
                     Some("reasoning") => {
                         for part in
                             item["summary"].as_array().map(Vec::as_slice).unwrap_or_default()
@@ -1049,6 +1054,7 @@ pub fn whole(wire: Wire, body: &str) -> Vec<Reply> {
                                 replies.push(Reply::Thinking(text.to_owned()));
                             }
                         }
+                        replies.push(Reply::Reasoning(item.clone()));
                     }
                     _ => {}
                 }
@@ -1071,11 +1077,22 @@ pub fn whole(wire: Wire, body: &str) -> Vec<Reply> {
                             replies.push(Reply::Text(text.to_owned()));
                         }
                     }
+                    // **The words and then the block itself**, which is the order the streamed
+                    // decoder produces them in: the deltas are shown as they arrive and the whole
+                    // signed block goes up at `content_block_stop`. What is drawn is the text; what
+                    // is sent next turn is the block, and Anthropic verifies the signature it put on
+                    // it -- so a continuation whose blocks were rebuilt out of the displayed words is
+                    // refused. Dropping it here made a row with streaming switched off work until its
+                    // first tool call and then fail on the request after it.
                     Some("thinking") => {
                         if let Some(text) = block["thinking"].as_str() {
                             replies.push(Reply::Thinking(text.to_owned()));
                         }
+                        replies.push(Reply::Reasoning(block.clone()));
                     }
+                    // A redacted block is encrypted and has no words at all, so there is nothing to
+                    // draw and nothing that could be rebuilt. It is kept or it is lost.
+                    Some("redacted_thinking") => replies.push(Reply::Reasoning(block.clone())),
                     Some("tool_use") => replies.push(Reply::ToolCall {
                         id: block["id"].as_str().unwrap_or_default().to_owned(),
                         name: block["name"].as_str().unwrap_or_default().to_owned(),

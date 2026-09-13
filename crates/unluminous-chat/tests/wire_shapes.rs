@@ -165,6 +165,90 @@ fn an_anthropic_thinking_block_goes_back_up_exactly_as_it_arrived() {
     assert_eq!(input[1], *block, "the reasoning comes before the message it belongs to");
 }
 
+/// **A provider row with streaming switched off loses nothing a streamed one keeps.** `task-1922` B1.
+///
+/// `wire::whole` had three arms the streamed decoder has and it had not: an Anthropic `thinking`
+/// block produced the words and threw the signed block away, `redacted_thinking` had no arm at all,
+/// and a Responses `reasoning` item produced its summary and dropped the item. Every one of those is
+/// the half the *next* request needs: Anthropic verifies the signature it put on a thinking block,
+/// and the Responses shape is sent with `store: false` so the server holds no copy to carry on from.
+///
+/// So a row with `stream = false`, against a thinking model, worked until its first tool call and was
+/// then refused by the API -- on the second request, with nothing on the screen to say why.
+///
+/// This is `an_anthropic_thinking_block_goes_back_up_exactly_as_it_arrived` asked of the other path.
+#[test]
+fn a_whole_answer_keeps_its_signed_reasoning_the_way_a_streamed_one_does() {
+    let body = r#"{
+        "model": "claude-opus-5",
+        "content": [
+            {"type": "thinking", "thinking": "Let me see.", "signature": "sig-abc"},
+            {"type": "redacted_thinking", "data": "opaque"},
+            {"type": "text", "text": "Because."},
+            {"type": "tool_use", "id": "t1", "name": "unluminous_git", "input": {}}
+        ],
+        "usage": {"input_tokens": 3, "output_tokens": 4},
+        "stop_reason": "tool_use"
+    }"#;
+    let replies = wire::whole(Wire::Anthropic, body);
+    assert_eq!(
+        replies[1],
+        Reply::Thinking("Let me see.".to_owned()),
+        "the words are still shown: {replies:?}"
+    );
+    let Reply::Reasoning(block) = &replies[2] else {
+        panic!("the signed block itself, after the words it produced: {replies:?}");
+    };
+    assert_eq!(block["signature"], "sig-abc", "the signature survived");
+    let Reply::Reasoning(redacted) = &replies[3] else {
+        panic!("a redacted block cannot be rebuilt at all, so it must be kept: {replies:?}");
+    };
+    assert_eq!(redacted["type"], "redacted_thinking");
+    assert_eq!(redacted["data"], "opaque");
+
+    // And what is kept goes back up byte for byte, which is the whole reason for keeping it.
+    let mut chat = Conversation::new("c1", "claude");
+    chat.push(Message::said(1, Role::User, "Why?"));
+    let mut answering = Message::said(2, Role::Assistant, "Because.");
+    answering.reasoning.push(block.clone());
+    answering.reasoning.push(redacted.clone());
+    answering.tools.push(ToolCall::new("t1", "unluminous_git", "{}"));
+    chat.push(answering);
+    let sent = wire::request(&provider(Wire::Anthropic), &chat, "", &[], false);
+    let blocks = sent["messages"][1]["content"].as_array().expect("blocks");
+    assert_eq!(blocks[0], *block, "byte for byte, and first");
+    assert_eq!(blocks[1], *redacted);
+}
+
+/// **The Responses shape keeps its reasoning items off the whole-answer path too.** `task-1922` B1.
+#[test]
+fn a_whole_responses_answer_keeps_its_reasoning_items() {
+    let body = r#"{
+        "model": "gpt-5-codex",
+        "output": [
+            {
+                "type": "reasoning",
+                "id": "rs_1",
+                "encrypted_content": "opaque",
+                "summary": [{"type": "summary_text", "text": "Working it out."}]
+            },
+            {"type": "message", "content": [{"type": "output_text", "text": "Because."}]}
+        ],
+        "usage": {"input_tokens": 3, "output_tokens": 4}
+    }"#;
+    let replies = wire::whole(Wire::Responses, body);
+    assert_eq!(
+        replies[1],
+        Reply::Thinking("Working it out.".to_owned()),
+        "the summary is still shown: {replies:?}"
+    );
+    let Reply::Reasoning(item) = &replies[2] else {
+        panic!("the item itself, which is what the next request replays: {replies:?}");
+    };
+    assert_eq!(item["id"], "rs_1");
+    assert_eq!(item["encrypted_content"], "opaque", "the part that cannot be rebuilt");
+}
+
 #[test]
 fn a_stream_whose_lines_end_in_a_lone_carriage_return_is_still_read() {
     // Some servers and some proxies do, and the specification says a blank line is two line endings
