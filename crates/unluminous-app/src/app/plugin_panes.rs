@@ -233,18 +233,29 @@ impl PluginUi {
         }
         let mut built = plugin_ui::provider(provider)
             .ok_or_else(|| format!("this version of Unluminous has no `{provider}` provider"))?;
-        let context = Context {
-            project: self.project.clone(),
-            showing: self.showing_file.clone(),
-            recent_projects: self.recent_projects.clone(),
-            folder: self.settings_folder.as_ref().map(|folder| folder.join(plugin)),
-            wake: self.wake.clone(),
-        };
+        let context = self.context_for(plugin);
         let problem = built.open(&context).err();
         self.loaded.push(Loaded { plugin: plugin.to_owned(), provider: built, problem: problem.clone() });
         match problem {
             Some(problem) => Err(problem),
             None => Ok(self.loaded.last_mut().expect("just pushed").provider.as_mut()),
+        }
+    }
+
+    /// What a provider for `plugin` is opened with: the project, the file showing, the recent folders, its
+    /// own folder under the settings folder, and the waker.
+    ///
+    /// **A function rather than a literal inside `opened`**, because the canvas opens one too: a chat node
+    /// holds an `AgentChat` of its own — see `services::space::node::Kind::Chat` — and it has to be opened
+    /// with the same five things, out of the same folder, or the endpoints somebody configured in
+    /// `Settings -> Agent-Chat` would not reach it.
+    pub fn context_for(&self, plugin: &str) -> Context {
+        Context {
+            project: self.project.clone(),
+            showing: self.showing_file.clone(),
+            recent_projects: self.recent_projects.clone(),
+            folder: self.settings_folder.as_ref().map(|folder| folder.join(plugin)),
+            wake: self.wake.clone(),
         }
     }
 

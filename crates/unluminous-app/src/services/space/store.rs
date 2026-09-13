@@ -42,7 +42,7 @@ use egui::{Pos2, Vec2};
 use crate::services::project_state;
 use crate::services::store::Values;
 
-use super::node::{Browser, Camera, Edge, Editor, Folder, Kind, Node, Pipe, State, Terminal};
+use super::node::{Browser, Camera, Chat, Edge, Editor, Folder, Kind, Node, Pipe, State, Tasks, Terminal};
 use super::{Space, View};
 
 /// The file inside `.unluminous`.
@@ -164,6 +164,31 @@ fn write_a_node(node: &Node, key: &str, root: &Path, values: &mut Values) {
                 values.set(&format!("{key}.font"), format!("{:.0}", editor.font_size));
             }
         }
+        State::Chat(chat) => {
+            // **Which conversation, so each agent comes back on its own.** The pane reopens the newest
+            // because there is one of it; a canvas of chats that all reopened the newest would be several
+            // views of one conversation, which is the thing `Kind::Chat` exists not to be.
+            values.set_or_clear(&format!("{key}.conversation"), &chat.conversation);
+            if (chat.zoom - 1.0).abs() > 0.001 {
+                values.set(&format!("{key}.zoom"), format!("{:.2}", chat.zoom));
+            }
+        }
+        State::Tasks(tasks) => {
+            if (tasks.zoom - 1.0).abs() > 0.001 {
+                values.set(&format!("{key}.zoom"), format!("{:.2}", tasks.zoom));
+            }
+        }
+    }
+}
+
+/// How much bigger or smaller a node was left drawing, or 1.0 when it was never changed.
+///
+/// A zoom a person set is worth coming back with — it is how big they wanted this node — and the three
+/// kinds that keep a multiplier rather than a point size all read it the same way.
+fn read_a_zoom(values: &Values, key: &str) -> f32 {
+    match values.number(&format!("{key}.zoom")).unwrap_or(0.0) {
+        asked if asked > 0.0 => asked,
+        _ => 1.0,
     }
 }
 
@@ -346,6 +371,11 @@ fn read_a_node(values: &Values, key: &str, root: &Path) -> Option<Node> {
             // size already uses.
             font_size: values.number(&format!("{key}.font")).unwrap_or(0.0).max(0.0),
         }),
+        Kind::Chat => State::Chat(Chat {
+            conversation: values.text(&format!("{key}.conversation")).unwrap_or_default().to_owned(),
+            zoom: read_a_zoom(values, key),
+        }),
+        Kind::Tasks => State::Tasks(Tasks { zoom: read_a_zoom(values, key) }),
     };
     Some(Node { id, at, size, title, state })
 }
@@ -362,6 +392,8 @@ mod tests {
         let browser = space.add_node(Kind::Browser, Pos2::new(800.0, 40.0), Some(project));
         let folder = space.add_node(Kind::Folder, Pos2::new(120.0, 500.0), Some(project));
         let editor = space.add_node(Kind::Editor, Pos2::new(500.0, 500.0), Some(project));
+        let chat = space.add_node(Kind::Chat, Pos2::new(900.0, 500.0), Some(project));
+        let tasks = space.add_node(Kind::Tasks, Pos2::new(1400.0, 500.0), Some(project));
         space.change(terminal, |state| {
             if let State::Terminal(terminal) = state {
                 terminal.command = "claude".to_owned();
@@ -387,6 +419,21 @@ mod tests {
                 editor.caret = 4821;
             }
         });
+        // **Which conversation each agent is on and how big it draws**, which is what `task-1914` asks a
+        // canvas of agents to come back with: every one of them reopening the newest would be several
+        // views of one conversation.
+        space.change(chat, |state| {
+            if let State::Chat(chat) = state {
+                chat.conversation = "1730492811".to_owned();
+                chat.zoom = 1.25;
+            }
+        });
+        space.change(tasks, |state| {
+            if let State::Tasks(tasks) = state {
+                tasks.zoom = 0.75;
+            }
+        });
+        space.connect(chat, terminal, Pipe::Off).expect("wired");
         space.connect(terminal, browser, Pipe::Off).expect("wired");
         space.connect(terminal, folder, Pipe::Off).expect("wired");
         space.title_node(terminal, "the agent");
@@ -431,7 +478,7 @@ mod tests {
                 (before, after) => assert_eq!(after, before, "a node's own state came back"),
             }
         }
-        assert_eq!(now.edges.len(), 2);
+        assert_eq!(now.edges.len(), was.edges.len());
         assert_eq!(now.edges[0].from, was.edges[0].from);
         assert_eq!(now.edges[0].to, was.edges[0].to);
     }

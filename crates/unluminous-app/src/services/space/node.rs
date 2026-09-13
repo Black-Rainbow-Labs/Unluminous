@@ -27,10 +27,33 @@ pub enum Kind {
     Browser,
     Folder,
     Editor,
+    /// The Agent-Chat pane, on the canvas, with a conversation of this node's own.
+    ///
+    /// **A node holds its own chat rather than a second view of the pane's**, which is the one thing
+    /// `task-1914` needs that a shared one could not give: *"a node that is able to connect similar to our
+    /// terminal with claude etc so the agent knows how to control/read/etc the nodes it's connected to."*
+    /// Two chats on one canvas wired to different nodes are two agents; two views of one chat are one agent
+    /// that cannot say which node it is. See `services::space::live::Live::chat`.
+    Chat,
+    /// The Agent-Tasks board, on the canvas.
+    ///
+    /// **One board, drawn wherever it is asked for**, which is the opposite of [`Kind::Chat`] and for a
+    /// reason rather than by omission: the board is one SQLite file with one watchdog behind it, and a
+    /// second instance of it would be a second connection to the same tickets, each refreshing without the
+    /// other. So a Tasks node draws the same provider the pane does, and two of them show the same board —
+    /// which they should, because there is one.
+    Tasks,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 4] = [Kind::Terminal, Kind::Browser, Kind::Folder, Kind::Editor];
+    pub const ALL: [Kind; 6] = [
+        Kind::Terminal,
+        Kind::Browser,
+        Kind::Folder,
+        Kind::Editor,
+        Kind::Chat,
+        Kind::Tasks,
+    ];
 
     /// The name the command line and the file on disk use: lower case, one word.
     pub fn name(self) -> &'static str {
@@ -39,6 +62,8 @@ impl Kind {
             Kind::Browser => "browser",
             Kind::Folder => "folder",
             Kind::Editor => "editor",
+            Kind::Chat => "chat",
+            Kind::Tasks => "tasks",
         }
     }
 
@@ -49,6 +74,8 @@ impl Kind {
             Kind::Browser => "Web Browser",
             Kind::Folder => "Folder View",
             Kind::Editor => "File Editor",
+            Kind::Chat => "Agent Chat",
+            Kind::Tasks => "Agent Tasks",
         }
     }
 
@@ -59,6 +86,10 @@ impl Kind {
             Kind::Browser => "A web page, with back, forward, reload and an address.",
             Kind::Folder => "A folder tree, with the explorer's own rows, icons and right click menu.",
             Kind::Editor => "A file, with the editing area's gutter, folding, breakpoints and find.",
+            Kind::Chat => {
+                "An agent, with its own conversation, that can drive the nodes it is wired to."
+            }
+            Kind::Tasks => "The Agent-Tasks board: the lanes, the backlog, the epics and a ticket.",
         }
     }
 
@@ -75,6 +106,11 @@ impl Kind {
             Kind::Browser => Vec2::new(900.0, 620.0),
             Kind::Folder => Vec2::new(320.0, 420.0),
             Kind::Editor => Vec2::new(760.0, 520.0),
+            // The chat pane's own column with room for a few exchanges in it, which is about what the
+            // panel is when somebody drags it wider than the 420 points it opens at.
+            Kind::Chat => Vec2::new(480.0, 620.0),
+            // Wide, because the board is lanes side by side and a narrow one shows one lane.
+            Kind::Tasks => Vec2::new(1020.0, 640.0),
         }
     }
 
@@ -89,6 +125,10 @@ impl Kind {
             Kind::Browser => Vec2::new(260.0, 160.0),
             Kind::Folder => Vec2::new(180.0, 120.0),
             Kind::Editor => Vec2::new(240.0, 140.0),
+            // Under about this the chat is a header and a composer with no room between them, which is
+            // `agent_chat::surface`'s own floor: it draws nothing at all below 40 points of card.
+            Kind::Chat => Vec2::new(260.0, 220.0),
+            Kind::Tasks => Vec2::new(320.0, 240.0),
         }
     }
 }
@@ -103,6 +143,8 @@ pub enum State {
     Browser(Browser),
     Folder(Folder),
     Editor(Editor),
+    Chat(Chat),
+    Tasks(Tasks),
 }
 
 impl State {
@@ -112,6 +154,8 @@ impl State {
             State::Browser(_) => Kind::Browser,
             State::Folder(_) => Kind::Folder,
             State::Editor(_) => Kind::Editor,
+            State::Chat(_) => Kind::Chat,
+            State::Tasks(_) => Kind::Tasks,
         }
     }
 
@@ -131,6 +175,8 @@ impl State {
                 ..Folder::default()
             }),
             Kind::Editor => State::Editor(Editor::default()),
+            Kind::Chat => State::Chat(Chat::default()),
+            Kind::Tasks => State::Tasks(Tasks::default()),
         }
     }
 }
@@ -261,6 +307,41 @@ impl Editor {
     /// The file that was showing, when this node had one.
     pub fn showing(&self) -> Option<&std::path::Path> {
         self.paths.get(self.showing.min(self.paths.len().saturating_sub(1))).map(|path| path.as_path())
+    }
+}
+
+/// An Agent-Chat node: which conversation it is holding, and how big it draws.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Chat {
+    /// The conversation this node is on, as `services::agent_chat::Store` names one.
+    ///
+    /// Empty on a node that has not been drawn yet; filled in from the chat the first time it opens, and
+    /// written to `space.conf`, so a canvas comes back with each agent on the conversation it was left on
+    /// rather than every one of them on the newest — which is what the pane does, because the pane is one.
+    pub conversation: String,
+    /// How much bigger or smaller than its usual size this node draws.
+    ///
+    /// A multiplier, for the reason [`Folder::zoom`] is one: a chat pane has no point size of its own, and
+    /// `Look::zoomed_by` is what reaches every measurement in it. `task-1905`'s rule, kept for a fifth kind.
+    pub zoom: f32,
+}
+
+impl Default for Chat {
+    /// Written by hand for the zoom, which is 1.0 rather than nothing.
+    fn default() -> Self {
+        Self { conversation: String::new(), zoom: 1.0 }
+    }
+}
+
+/// An Agent-Tasks node. It holds only how big it draws, because the board it shows is the window's one.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tasks {
+    pub zoom: f32,
+}
+
+impl Default for Tasks {
+    fn default() -> Self {
+        Self { zoom: 1.0 }
     }
 }
 

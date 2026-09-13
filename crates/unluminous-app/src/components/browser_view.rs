@@ -128,7 +128,9 @@ pub fn show(
         ui.painter().rect_filled(browser, CornerRadius::ZERO, color::editor());
         ui.painter().text(browser.center(), Align2::CENTER_CENTER, "This page is showing in the other pane.", FontId::proportional(13.0), color::text_faint());
     }
-    (outcome, Some(BrowserPlacement { id: tab.id, area: browser, focused }))
+    // **A page in a pane fills its pane, so nothing of it is cut.** A node's own placement is cropped by
+    // `show_a_browser_node`, which is where the canvas is and where the pane's edge is known.
+    (outcome, Some(BrowserPlacement::whole(tab.id, browser, focused)))
 }
 
 /// The address field: what the tab is on, or what is being typed over it.

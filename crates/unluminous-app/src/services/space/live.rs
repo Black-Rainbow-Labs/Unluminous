@@ -63,6 +63,18 @@ pub struct Live {
     scrolls: HashMap<NodeId, f32>,
     /// How big each browser node draws its page. See [`Live::page_zoom_of`].
     page_zooms: HashMap<NodeId, f32>,
+    /// One whole Agent-Chat behind each chat node.
+    ///
+    /// **A chat of its own rather than a second view of the pane's**, which is `Kind::Chat`'s own reason:
+    /// the ticket asks for a node that drives the nodes it is wired to, and two views of one conversation
+    /// are one agent that cannot say which node it is. Each holds its own conversation, its own client and
+    /// its own turn, and they share the store on disk — so the history list is every conversation in this
+    /// window and each node is on one of them.
+    ///
+    /// Here rather than in `services::plugin_ui`, because a node is not a plugin surface: nothing in the
+    /// manifests contributed it, `plugins.chrome` is still what decides whether it draws depth, and a
+    /// window with the Agent-Chat plugin switched off still has a canvas.
+    chats: HashMap<NodeId, crate::services::agent_chat::AgentChat>,
     /// When the pipes were last read, in seconds of the window's own clock.
     read_at: f64,
 }
@@ -76,11 +88,45 @@ impl std::fmt::Debug for Live {
             .field("terminals", &self.terminals.len())
             .field("browsers", &self.browsers.len())
             .field("trees", &self.trees.len())
+            .field("chats", &self.chats.len())
             .finish()
     }
 }
 
 impl Live {
+    // ------------------------------------------------------------------------------- chats
+
+    pub fn chat(&self, node: NodeId) -> Option<&crate::services::agent_chat::AgentChat> {
+        self.chats.get(&node)
+    }
+
+    pub fn chat_mut(
+        &mut self,
+        node: NodeId,
+    ) -> Option<&mut crate::services::agent_chat::AgentChat> {
+        self.chats.get_mut(&node)
+    }
+
+    /// Put an opened chat behind a node. Whatever was there is stopped first, which is what closing one is.
+    pub fn put_a_chat(&mut self, node: NodeId, chat: crate::services::agent_chat::AgentChat) {
+        self.stop_a_chat(node);
+        self.chats.insert(node, chat);
+    }
+
+    /// Which nodes have a chat behind them, in id order, for the frame that catches them all up.
+    pub fn chat_nodes(&self) -> Vec<NodeId> {
+        let mut found: Vec<NodeId> = self.chats.keys().copied().collect();
+        found.sort_unstable();
+        found
+    }
+
+    /// Stop and forget one node's chat, which writes whatever it was holding and ends any turn.
+    fn stop_a_chat(&mut self, node: NodeId) {
+        if let Some(mut chat) = self.chats.remove(&node) {
+            crate::services::plugin_ui::UiProvider::close(&mut chat);
+        }
+    }
+
     // ------------------------------------------------------------------------------- terminals
 
     pub fn terminal(&self, node: NodeId) -> Option<&unluminous_terminal::Session> {
@@ -328,6 +374,7 @@ impl Live {
         self.selected.remove(&node);
         self.scrolls.remove(&node);
         self.page_zooms.remove(&node);
+        self.stop_a_chat(node);
     }
 
     /// Stop and forget everything behind a list of nodes, which is what deleting a view is.
@@ -344,6 +391,7 @@ impl Live {
             .keys()
             .chain(self.browsers.keys())
             .chain(self.trees.keys())
+            .chain(self.chats.keys())
             .copied()
             .collect();
         found.sort_unstable();

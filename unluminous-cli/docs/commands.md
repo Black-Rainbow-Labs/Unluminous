@@ -1591,7 +1591,7 @@ unluminous-cli space add <kind> [--x <points>] [--y <points>] [--width <points>]
 
 Put a node on the view that is showing and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with UNLUMINOUS_SPACE_NODE set to its id so an agent started in it knows which node it is, UNLUMINOUS_SPACE_HINT saying what to run first, and UNLUMINOUS_CLI and UNLUMINOUS_INSTANCE saying where `unluminous-cli` is and which window it drives - it is on nobody's PATH.
 
-- `kind` — terminal, browser, folder or editor.
+- `kind` — terminal, browser, folder, editor, chat or tasks.
 
 - `--x <points>` — Where to put it, in canvas points. The middle of what is showing when it is not given.
 - `--y <points>` — The same, down the canvas.
@@ -1785,6 +1785,26 @@ unluminous-cli space read 7
 unluminous-cli space read 7 --tail 40
 ```
 
+### space chat
+
+```
+unluminous-cli space chat <node> <verb> [words] [--from <node>]
+```
+
+Drive an Agent Chat node's own conversation: `new`, `send`, `stop`, `state`, `messages`, `last`, `attach`, `providers`, `use`, `history`, `open`, `remove`, `tools` and `view`, which are the same verbs `plugins run agent-chat` has and reach the same code. The difference is whose conversation: each chat node holds one of its own, where `plugins run agent-chat` drives the pane's. Like the pane's, `send` does not wait - `state` says when the answer has arrived.
+
+- `node` — The chat node's id, from `space list`.
+- `verb` — What to do: new, send, stop, state, messages, last, attach, providers, use, history, open, remove, tools or view.
+- `words` (optional) — What the verb takes: the message for `send`, the conversation id for `open`, `on` or `off` for `tools`. It is the rest of the line, so a message needs no quoting. Everything after it on the line belongs to it.
+
+- `--from <node>` — Which node is asking. It must be wired to the one it names.
+
+```sh
+unluminous-cli space chat 7 state
+unluminous-cli space chat 7 send Summarise what this project does
+unluminous-cli space chat 7 last --json
+```
+
 ### space restart
 
 ```
@@ -1829,11 +1849,11 @@ unluminous-cli space font 7 --smaller
 unluminous-cli space zoom <node> [--factor <number>] [--bigger] [--smaller] [--reset] [--from <node>]
 ```
 
-How big one node draws what it holds. Each kind walks the number that really decides its size: a terminal and a file editor a point size, a folder view a multiplier over its rows, and a web browser the page's own zoom. With no flag at all it answers the factor the node is drawn at. This is what the modifier wheel over a node does, and it changes nothing about the canvas's own zoom, which is `space camera`.
+How big one node draws what it holds. Each kind walks the number that really decides its size: a terminal and a file editor a point size, a folder view, an agent chat and the tasks board a multiplier over everything they draw, and a web browser the page's own zoom. With no flag at all it answers the factor the node is drawn at. This is what the modifier wheel over a node does, and it changes nothing about the canvas's own zoom, which is `space camera`.
 
 - `node` — The node's id.
 
-- `--factor <number>` — How big, as a multiplier for a folder or a browser, or a point size for a terminal or an editor.
+- `--factor <number>` — How big, as a multiplier for a folder, a chat, the board or a browser, or a point size for a terminal or an editor.
 - `--bigger` — One step up.
 - `--smaller` — One step down.
 - `--reset` — Back to the size the window's own setting gives.

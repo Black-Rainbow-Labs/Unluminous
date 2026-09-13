@@ -644,6 +644,20 @@ impl AgentChat {
     }
 
     /// Start a new conversation, keeping the one that was open.
+    /// Which conversation this chat is on, as [`Store`] names one.
+    ///
+    /// Read back by a chat node so the canvas can write it down: a node that reopened the newest
+    /// conversation would be a second view of whatever the pane last looked at, and a canvas of agents
+    /// would come back as several views of one. See `services::space::node::Chat::conversation`.
+    pub fn conversation_id(&self) -> &str {
+        &self.session.chat.id
+    }
+
+    /// What the header calls this conversation, which is the first thing said in it until it is named.
+    pub fn display_name(&self) -> String {
+        self.session.chat.display_name().to_owned()
+    }
+
     pub fn new_conversation(&mut self) {
         self.stop_before_switching();
         self.write_the_conversation();

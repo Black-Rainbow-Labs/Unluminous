@@ -35,30 +35,15 @@ use crate::services::space::{live::Live, store, Kind, Node, NodeId, Pipe, Space,
 /// How long to wait before writing `space.conf` again after a write failed, in seconds.
 const RETRY_A_FAILED_WRITE: f64 = 2.0;
 
-/// How narrow a browser node's page may be cut to before it is not drawn at all.
+/// The plugin whose settings a chat node reads and whose Settings page configures it.
 ///
-/// **A page reflows when its viewport crosses a stylesheet's breakpoint, which is an absolute width rather than
-/// a fraction of one.** `wry` offers `set_bounds` and nothing else, so a node cut by the pane's edge has its
-/// view's viewport narrowed and a responsive page answers the new width with a different layout — which is
-/// `task-1907`'s report, *"the full browser page is shown but resized to 50% width"*.
-///
-/// The first attempt made this a fraction, nine tenths, and `task-1908` reports what that does: *"the web
-/// browser contents disappear if the node is slightly off screen."* Eighty points off a five hundred point page
-/// was enough to blank it. A fraction is the wrong measure in both directions — a 900 point node cut by a tenth
-/// is 810 points and reflows nothing, while a 700 point node cut by a tenth is 630 and crosses Tailwind's `sm`.
-///
-/// So the number is a width, and it is well below the narrowest breakpoint in common use — Bootstrap's `sm` is
-/// 576 and Tailwind's `sm` is 640. Two things follow, and the second is the one the first attempt got wrong.
-///
-/// A page **wider** than this is drawn cut, because a page that is still hundreds of points wide is in the same
-/// layout it was in and what is missing is simply the part off the edge — which is what cropping looks like.
-///
-/// And a page whose node is **already narrower** than this is drawn cut too, and always: it is in its phone
-/// layout because of the size somebody gave the node, and cutting it further does not change which layout it is
-/// in. There is nothing to protect it from. What the threshold catches is a page reduced to a strip, where the
-/// node keeps its toolbar and says the page is elsewhere.
-const PAGE_REFLOW: f32 = 200.0;
+/// A chat node's chat is its own rather than the registry's — see `Kind::Chat` — but the endpoints, the
+/// permission and the two switches it runs under are one set of choices a person makes once. So the node
+/// reads them out of the same folder the pane does, and `Settings -> Agent-Chat` governs both.
+const AGENT_CHAT: &str = "agent-chat";
 
+/// The plugin an Agent-Tasks node draws, which is the registry's own provider. See `Kind::Tasks`.
+const AGENT_TASKS: &str = "agent-tasks";
 
 
 /// What is being dragged on the canvas right now.
@@ -450,11 +435,11 @@ impl UnluminousApp {
                     self.files.at_mut(index).cached.stale = true;
                 }
             }
-            Kind::Folder => {
-                let was = match &found.state {
-                    State::Folder(folder) => folder.zoom,
-                    _ => 1.0,
-                };
+            // **The three kinds with no point size of their own walk a multiplier**, which is
+            // `task-1771`'s answer for a panel a plugin contributed: the rows, the indents and the
+            // lettering are all the style guide's numbers, and one multiplier reaches every one of them.
+            Kind::Folder | Kind::Chat | Kind::Tasks => {
+                let was = node_zoom_of(&found);
                 let mut zoom = was;
                 for _ in 0..steps.abs() {
                     zoom = crate::settings::step_zoom(zoom, up);
@@ -462,11 +447,7 @@ impl UnluminousApp {
                 if (zoom - was).abs() < 0.001 {
                     return;
                 }
-                self.space.space.change(node, |state| {
-                    if let State::Folder(folder) = state {
-                        folder.zoom = zoom;
-                    }
-                });
+                self.space.space.change(node, |state| set_node_zoom(state, zoom));
             }
             // **A page's own zoom, because a page is not Unluminous's drawing at all.** How big it is
             // drawn is the engine's, and `wry::WebView::zoom` is what changes it.
@@ -583,6 +564,8 @@ impl UnluminousApp {
             Kind::Browser => self.show_a_browser_node(ui, node, body, focused),
             Kind::Folder => self.show_a_folder_node(ui, node, body, focused, has_the_pointer),
             Kind::Editor => self.show_an_editor_node(ui, node, body, focused),
+            Kind::Chat => self.show_a_chat_node(ui, node, body, focused),
+            Kind::Tasks => self.show_a_tasks_node(ui, node, body, focused),
         }
         self.renderer.restore_compositing(was);
     }
@@ -663,47 +646,39 @@ impl UnluminousApp {
             // size would hang out of it. That is what "resize/zoom/etc" asks for, and it costs one call.
             let camera = self.space.space.current().camera;
             let whole = camera.rect_to_screen(self.space.body.min, placement.area);
-            // **Cut to the pane, and the cost of that is stated rather than worked around.**
+            // **The page keeps its whole width and the crop is a separate answer.**
             //
-            // `wry` offers `set_bounds` and nothing else — there is no clipping a native child and no handle to
-            // clip it with — so cutting a dimension narrows the view's *viewport* in that dimension, and
-            // narrowing the width makes a responsive page **relay out** into it. `task-1907` reports what that
-            // looks like: *"the full browser page is shown but resized to 50% width."*
+            // `set_bounds` is the page's *viewport* as well as its position, so cutting it to the pane makes
+            // a responsive page **relay out** into what is left — which is `task-1907`'s *"the full browser
+            // page is shown but resized to 50% width"* and `task-1914`'s report of the same thing at the
+            // canvas's own edge: *"if the node is halfway off the screen on the right, then the page content
+            // width is 50%, rather than just have half the page not shown."*
             //
-            // **Overflowing the pane instead was measured and refused.** Drawing the view at its whole width and
-            // letting the window clip the overhang works on exactly one of four edges: the window here is 1100
-            // by 720 and the canvas pane is `x 36..1100, y 158..688`, so only the right edge is the window's
-            // own. Past the left edge a page would cover the activity rail, past the top the title bar and the
-            // tabs, past the bottom the status bar — a native child is composited above everything egui draws,
-            // so each of those is a page drawn over Unluminous's own furniture.
+            // Overflowing the pane instead is worse and was measured on `task-1907`: only the right edge here
+            // is the window's own, so past the left a page covers the activity rail, past the top the title
+            // bar and the tabs, and past the bottom the status bar — a native child composites above
+            // everything egui draws.
             //
-            // So the page is cut, and `PAGE_REFLOW` is where it stops being drawn at all rather than shown
-            // reflowed. See that constant for why the threshold is where it is.
-            placement.area = whole.intersect(self.space.body);
-            // Below `PAGE_REFLOW` there is nothing worth drawing: not pushed, so the reconciliation hides the
-            // view exactly as it does for a node scrolled off the canvas — one place decides whether a page is
-            // drawn and this is a reason to reach it rather than a second mechanism.
-            if placement.area.width() < PAGE_REFLOW {
-                return;
-            }
+            // So both are sent. `area` is the whole node, which is what the page lays itself out against, and
+            // `visible` is the part of it inside the pane, which is what may be painted.
+            // `services::browser`'s `clip_to_the_visible_part` is where a platform crops to it, and it says
+            // what each one can do.
+            placement.area = whole;
+            placement.visible = whole.intersect(self.space.body);
             // **The camera's zoom is spent on the page's own zoom, because a native child cannot be
             // transformed.** Everything else in a node is drawn into a layer carrying the camera, so it is
             // genuinely scaled; a `WebView` has no such transform, and `set_bounds` alone would make a
             // half-size node **reflow** its page at half the width rather than draw it half as large. The
             // Codex Sol review of `task-1905` named that, and the page's own zoom is the only lever `wry`
             // offers. It is combined with whatever zoom the node was given, so the two compose.
-            //
-            // What it does **not** fix is the clipping: a node hanging off the canvas has its view's viewport
-            // narrowed rather than cropped, so a page laid out against the viewport reflows. There is no
-            // cropping a native child either, and the honest answer is the one `browser_view` already gives
-            // for a second rendered tab — see the note in `show_a_browser_node`.
             let wanted = self.space.live.page_zoom_of(node.id) * camera.zoom;
             if let Some(tab) = self.space.live.browser(node.id).map(|tab| tab.id) {
                 let _ = self.browser.zoom(tab, f64::from(wanted));
             }
-            // A node scrolled off the canvas has nothing on the screen to place, and a rectangle with no
-            // room in it would ask the view to be a pixel wide somewhere on the pane's edge.
-            if placement.area.width() > 1.0 && placement.area.height() > 1.0 {
+            // A node scrolled off the canvas has nothing on the screen to place, and a rectangle with no room
+            // in it would ask the view to be a pixel wide somewhere on the pane's edge. Asked of the
+            // **visible** part, because the whole one is now the node wherever it is.
+            if placement.visible.width() > 1.0 && placement.visible.height() > 1.0 {
                 self.browser_placements.push(placement);
             }
         }
@@ -871,6 +846,24 @@ impl UnluminousApp {
         } else if let Some(path) = outcome.open {
             let _ = self.open_path_permanently(&path);
         }
+        // **A row carried out of a Folder node may be meant for the canvas.** `task-1914`: *"I should be
+        // able to drag a file onto the canvas to have it open into a new file editor node. Or if I drag to
+        // existing file node, it should open the file in a new tab."*
+        //
+        // The pointer comes back in the node's own world points, because a node's contents are drawn into a
+        // layer carrying the camera, and the drag is settled in screen points against every list and every
+        // node in the window — so it is converted here, where the camera is to hand. That is the same
+        // conversion `show_an_editor_nodes_tabs` makes for a tab picked up on a node.
+        if outcome.moved.is_none() {
+            if let Some((path, at, dropped)) = outcome.carrying {
+                let camera = self.space.space.current().camera;
+                self.file_drag = Some(crate::app::FileDrag {
+                    path,
+                    at: camera.to_screen(self.space.body.min, at),
+                    dropped,
+                });
+            }
+        }
     }
 
     /// Open a file a folder node was double clicked in, in a File Editor node wired to it.
@@ -914,6 +907,291 @@ impl UnluminousApp {
         self.open_from_a_folder_node(from, path);
     }
 
+    /// An Agent-Chat node: the whole chat pane, with a conversation of this node's own.
+    ///
+    /// `task-1914`: *"Agent Chat ... We want a node that is able to connect similar to our terminal with
+    /// claude etc so the agent knows how to control/read/etc the nodes it's connected to. Should be the
+    /// exact same as the agent chat pane (image uploads, etc)"*.
+    ///
+    /// **The exact same** is meant literally: `components::agent_chat::pane` is what the panel draws, and
+    /// it is what is called here, so the composer, the picture button, the drop, the paste, the history,
+    /// the provider list, the streaming and the tool blocks all arrive with no code of their own. What is
+    /// different is which `AgentChat` it is handed — this node's, from `space::live::Live` — and that is
+    /// the whole of what makes two chats on one canvas two agents.
+    fn show_a_chat_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
+        self.make_sure_a_node_has_a_chat(node);
+        // The ground first, then the slot the decoration goes in, then the chat's widgets. egui hands a
+        // layer's shapes to the tessellator in the order they arrive, so a ground painted after the slot
+        // would cover the very thing the slot is for — which is the fault `task-1765` records for the
+        // board and `show_plugin_tab` keeps a comment about.
+        {
+            let ground = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer);
+            ui.painter().rect_filled(body, 0, ground.ground(ground.palette.editor));
+        }
+        let slot = ui.painter().add(egui::Shape::Noop);
+        let chrome = self.chrome_for_a_node();
+        let zoom = node_zoom_of(node);
+        let asked = {
+            let highlighter = crate::app::PluginHighlighter { plugins: &self.plugins };
+            let look = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer)
+                .zoomed_by(zoom)
+                .holding_the_keyboard(focused)
+                .colouring_with(&highlighter)
+                .drawing_into(&chrome);
+            let mut chat_ui = ui.new_child(
+                egui::UiBuilder::new().max_rect(body).id_salt(("space-chat", node.id)),
+            );
+            chat_ui.set_clip_rect(ui.clip_rect().intersect(body));
+            match self.space.live.chat_mut(node.id) {
+                Some(chat) => crate::components::agent_chat::pane(chat, &mut chat_ui, &look),
+                None => Vec::new(),
+            }
+        };
+        self.paint_the_chrome(ui, slot, egui::Id::new(("space-chat", node.id)), body, &chrome);
+        for request in asked {
+            self.act_on_a_node_chats_request(node.id, request, ui.ctx());
+        }
+    }
+
+    /// An Agent-Tasks node: the board, on the canvas.
+    ///
+    /// **The window's one board rather than a second copy of it**, which is the opposite of what a chat
+    /// node does and is written down on [`Kind::Tasks`]: the board is one SQLite file with one watchdog
+    /// behind it, so two instances would be two connections to the same tickets, each refreshing without
+    /// the other. `UiProvider::tab` is what is called, not `pane`, because a node is a whole area the way
+    /// the editing area is — the board draws its lanes and its ticket side by side there where a column
+    /// can only show one.
+    ///
+    /// **And the plugin's own switch still decides.** A board on a canvas while `Agent-Tasks` is switched
+    /// off in Settings would be the switch not switching anything, which is the rule `Plugins::renders`
+    /// keeps for a Mermaid diagram: the node says so instead.
+    fn show_a_tasks_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
+        {
+            let ground = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer);
+            ui.painter().rect_filled(body, 0, ground.ground(ground.palette.editor));
+        }
+        if !self.plugin_ui.surfaces().plugins().iter().any(|one| one == AGENT_TASKS) {
+            let painter = ui.painter_at(body);
+            painter.text(
+                body.center(),
+                egui::Align2::CENTER_CENTER,
+                "The Agent-Tasks plugin is switched off.",
+                egui::FontId::proportional(12.0),
+                crate::theme::color::text_faint(),
+            );
+            return;
+        }
+        if let Err(problem) = self.plugin_ui.opened(AGENT_TASKS, AGENT_TASKS) {
+            let painter = ui.painter_at(body);
+            let galley = painter.layout(
+                format!("The board could not be opened.\n\n{problem}"),
+                egui::FontId::proportional(12.0),
+                crate::theme::color::text_dim(),
+                body.width() - 24.0,
+            );
+            painter.galley(body.min + Vec2::splat(12.0), galley, crate::theme::color::text_dim());
+            return;
+        }
+        let slot = ui.painter().add(egui::Shape::Noop);
+        let chrome = self.chrome_for_a_node();
+        let zoom = node_zoom_of(node);
+        let asked = {
+            let highlighter = crate::app::PluginHighlighter { plugins: &self.plugins };
+            let look = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer)
+                .zoomed_by(zoom)
+                .holding_the_keyboard(focused)
+                .colouring_with(&highlighter)
+                .drawing_into(&chrome);
+            let mut board_ui = ui.new_child(
+                egui::UiBuilder::new().max_rect(body).id_salt(("space-tasks", node.id)),
+            );
+            board_ui.set_clip_rect(ui.clip_rect().intersect(body));
+            match self.plugin_ui.provider(AGENT_TASKS) {
+                Some(provider) => provider.tab(&mut board_ui, &look),
+                None => Vec::new(),
+            }
+        };
+        self.paint_the_chrome(ui, slot, egui::Id::new(("space-tasks", node.id)), body, &chrome);
+        for request in asked {
+            self.act_on_a_node_plugins_request(node.id, AGENT_TASKS, request, ui.ctx());
+        }
+    }
+
+    /// Whether a node draws the decoration `egui` cannot, which is the person's own setting and nothing else.
+    ///
+    /// **Three questions decide it for a plugin's pane and one decides it here**, and the missing two are
+    /// missing for a reason rather than by omission: `ui.chrome` is a key in a *manifest*, and no manifest
+    /// contributed a node; `UiProvider::draws_chrome` is asked of a provider that has been opened, and a
+    /// chat node's chat is its own rather than the registry's. What is left is `plugins.chrome`, which is
+    /// the one of the three a person can see and change.
+    fn chrome_for_a_node(&self) -> crate::services::vello_canvas::Chrome {
+        match self.settings.plugin_chrome {
+            true => crate::services::vello_canvas::Chrome::recording(),
+            false => crate::services::vello_canvas::Chrome::off(),
+        }
+    }
+
+    /// Build and open this node's chat, once, the first time it is drawn.
+    ///
+    /// The shape `make_sure_a_node_has_a_tree` already has, and lazy for the reason `PluginUi::opened` is:
+    /// a canvas with four chat nodes on it that nobody has scrolled to costs four rows in `space.conf` and
+    /// nothing else until each is looked at.
+    fn make_sure_a_node_has_a_chat(&mut self, node: &Node) {
+        if self.space.live.chat(node.id).is_some() {
+            return;
+        }
+        let State::Chat(state) = &node.state else { return };
+        let wanted = state.conversation.clone();
+        let context = self.plugin_ui.context_for(AGENT_CHAT);
+        let mut chat = crate::services::agent_chat::AgentChat::new();
+        if let Err(problem) = crate::services::plugin_ui::UiProvider::open(&mut chat, &context) {
+            self.message = Some(problem);
+            return;
+        }
+        // **A node that has been here before comes back on its own conversation; a new one starts one.**
+        // `UiProvider::open` reopens the newest, which is right for the pane because there is one of it
+        // and wrong for a canvas: every chat node would open on whatever the pane last looked at.
+        match wanted.trim().is_empty() {
+            true => chat.new_conversation(),
+            false => {
+                if chat.open_conversation(wanted.trim()).is_err() {
+                    // The conversation was removed since this canvas was written. A fresh one is a better
+                    // answer than an empty pane with a refusal in it, and the node records the new id on
+                    // the next frame through `note_which_conversation_a_node_is_on`.
+                    chat.new_conversation();
+                }
+            }
+        }
+        // **Written down at once rather than on the next reading pass.** `note_where_the_nodes_are_reading`
+        // is what keeps it in step afterwards — a `New` pressed in the node, or another conversation opened
+        // — but it only runs for a project the window remembers, and a chat that started a conversation of
+        // its own the moment it opened would otherwise be a node with nothing recorded until something else
+        // happened to it.
+        let started = chat.conversation_id().to_owned();
+        self.space.live.put_a_chat(node.id, chat);
+        if started != wanted {
+            self.space.space.change(node.id, |state| {
+                if let State::Chat(chat) = state {
+                    chat.conversation = started;
+                }
+            });
+        }
+    }
+
+    /// Act on what one chat node's own chat asked for.
+    ///
+    /// **A copy of `act_on_a_plugin_request` in only the two places it has to be**: an answer goes back to
+    /// *this node's* chat rather than to the registry's provider, and the keyboard is the canvas's rather
+    /// than `Focus::Plugin`'s. Everything else is handed straight on, so a request added to the plugin
+    /// contract is answered here the day it is answered there.
+    fn act_on_a_node_chats_request(
+        &mut self,
+        node: NodeId,
+        request: crate::services::plugin_ui::Request,
+        ctx: &egui::Context,
+    ) {
+        use crate::services::plugin_ui::{Request, UiProvider};
+        match request {
+            Request::ClipboardPicture { id } => {
+                let answer = crate::services::picture::from_the_clipboard();
+                if let Some(chat) = self.space.live.chat_mut(node) {
+                    UiProvider::answered(chat, &id, answer);
+                }
+            }
+            Request::RunCommand { id, command, arguments } => {
+                let arguments = self.what_a_chat_node_is_asking_about(node, &command, arguments);
+                let asked = unluminous_cli::protocol::Request::new("", &command, arguments);
+                let answer = self.run_cli_for_a_plugin(&asked, ctx);
+                if let Some(chat) = self.space.live.chat_mut(node) {
+                    UiProvider::answered(chat, &id, answer);
+                }
+            }
+            Request::TakeTheKeyboard(taking) => {
+                match taking {
+                    true => {
+                        self.space.space.choose(Some(node));
+                        self.take_the_keyboard_for_the_space();
+                    }
+                    false => self.focus = Focus::Editor,
+                }
+                if let Some(chat) = self.space.live.chat_mut(node) {
+                    UiProvider::keyboard(chat, taking);
+                }
+            }
+            // A chat node has no pane and no tab of its own, so the two requests that put one on the
+            // screen are about nothing here. It is already on the canvas.
+            Request::ShowTab | Request::ShowPane(_) => {}
+            other => self.act_on_a_plugin_request(AGENT_CHAT, other, ctx),
+        }
+    }
+
+    /// The same for a node drawing a plugin's own provider, which today is the Agent-Tasks board.
+    fn act_on_a_node_plugins_request(
+        &mut self,
+        node: NodeId,
+        plugin: &str,
+        request: crate::services::plugin_ui::Request,
+        ctx: &egui::Context,
+    ) {
+        use crate::services::plugin_ui::{Request, UiProvider};
+        match request {
+            // The keyboard goes to the canvas rather than to `Focus::Plugin`, because what is holding it
+            // is a node: a board that took `Focus::Plugin` would leave the node drawn unchosen while it
+            // was the thing being typed into.
+            Request::TakeTheKeyboard(taking) => {
+                match taking {
+                    true => {
+                        self.space.space.choose(Some(node));
+                        self.take_the_keyboard_for_the_space();
+                    }
+                    false => self.focus = Focus::Editor,
+                }
+                if let Some(provider) = self.plugin_ui.provider(plugin) {
+                    UiProvider::keyboard(provider, taking);
+                }
+            }
+            other => self.act_on_a_plugin_request(plugin, other, ctx),
+        }
+    }
+
+    /// What a chat node's tool call is allowed to be about, filled in before it is run.
+    ///
+    /// **This is what makes a chat node an agent *in* a node rather than an agent beside one.** A terminal
+    /// node carries `UNLUMINOUS_SPACE_NODE` in its environment and the client sends it, so `space here`
+    /// answers about that node and every `space` command it sends carries `--from`. A chat node has no
+    /// client and no environment, so the window fills the same two in: `space here` is asked as this node,
+    /// and every other `space` command that names a `from` is asked from this node.
+    ///
+    /// **Only where the command really names the key**, read from the catalogue rather than from a list
+    /// here — `task-1804`'s rule is that a key a command does not name is a usage refusal, so filling one
+    /// in blindly would turn `space list` into an error. And only when the model did not say: an agent
+    /// that names a `from` of its own is answered about the node it named, and refused if it may not
+    /// reach it, exactly as one typing at a terminal is.
+    pub fn what_a_chat_node_is_asking_about(
+        &self,
+        node: NodeId,
+        command: &str,
+        mut arguments: serde_json::Map<String, serde_json::Value>,
+    ) -> serde_json::Map<String, serde_json::Value> {
+        let Some(found) = unluminous_cli::catalogue::find(command) else {
+            return arguments;
+        };
+        // `space here` is the one command that asks *which node is calling*; every other one asks what the
+        // caller may reach. Two keys, one meaning, and the catalogue says which of them this command has.
+        let key = match found.wire().as_str() {
+            "space.here" => "node",
+            _ => "from",
+        };
+        if !unluminous_cli::catalogue::value_names(found).contains(&key) {
+            return arguments;
+        }
+        if arguments.contains_key(key) {
+            return arguments;
+        }
+        arguments.insert(key.to_owned(), serde_json::Value::from(node));
+        arguments
+    }
+
     /// An editor node: the editing area's own four hundred lines, on the tab that lives in this node.
     fn show_an_editor_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
         // **A strip of tabs across the top, which is what `show_pane` draws for a pane.** `task-1905` asks
@@ -932,7 +1210,16 @@ impl UnluminousApp {
             }
             // **One tab draws no strip**, because a strip naming the one file a node's own header already
             // names is a row of furniture saying nothing. It appears with the second tab.
-            false => body,
+            //
+            // It is still recorded as somewhere a tab or a file can be dropped, with a strip that was never
+            // drawn: without that, a node showing one file — which is every node the moment it is made —
+            // could not be dropped on at all, and `task-1914` asks for exactly that. `Strip::default` is
+            // `Rect::NOTHING`, and `settle_the_tab_drag` lights the node instead of drawing an insertion
+            // mark in a strip that is nowhere.
+            false => {
+                self.note_where_an_editor_node_is(node, crate::components::file_tabs::Strip::default());
+                body
+            }
         };
         if body.height() < 2.0 {
             return;
@@ -995,6 +1282,17 @@ impl UnluminousApp {
         }
     }
 
+    /// Take down where one File Editor node is on the screen, and where its tabs are inside it.
+    ///
+    /// Read by `settle_the_tab_drag` and `settle_the_file_drag` once every panel and every node has been
+    /// drawn, which is the earliest moment anything knows where all of them are. The rectangle is the whole
+    /// node cut to the canvas, so a node half off the pane takes a drop only over the half that is showing.
+    fn note_where_an_editor_node_is(&mut self, node: &Node, strip: crate::components::file_tabs::Strip) {
+        let camera = self.space.space.current().camera;
+        let on_screen = camera.rect_to_screen(self.space.body.min, node.rect());
+        self.node_tab_strips.push((node.id, on_screen.intersect(self.space.body), strip));
+    }
+
     /// The strip of tabs across the top of a File Editor node.
     ///
     /// What it reports is turned back into an index into the open files here, which is `show_pane`'s own
@@ -1054,9 +1352,8 @@ impl UnluminousApp {
         // **Where this strip drew itself, and where the node is**, for the drag to be settled against once
         // everything has been drawn — which is `settle_the_tab_drag`'s own reason and is what lets a tab be
         // dragged out of a node into a pane, or the other way. `task-1905`.
+        self.note_where_an_editor_node_is(node, outcome.strip.clone());
         let camera = self.space.space.current().camera;
-        let on_screen = camera.rect_to_screen(self.space.body.min, node.rect());
-        self.node_tab_strips.push((node.id, on_screen.intersect(self.space.body), outcome.strip.clone()));
         let at = |within: usize| indices.get(within).copied();
         if let Some((within, pointer)) = outcome.dragging {
             if let Some(file) = at(within) {
@@ -1136,6 +1433,16 @@ impl UnluminousApp {
                 .tab_in_node(node.id)
                 .map(|index| self.files.at(index).name())
                 .unwrap_or_else(|| "File Editor".to_owned()),
+            // **The conversation's own name**, which is what the chat pane's header says: an agent on a
+            // canvas is told apart from the one beside it by what it is talking about, not by its kind.
+            State::Chat(_) => self
+                .space
+                .live
+                .chat(node.id)
+                .map(|chat| chat.display_name())
+                .filter(|name| !name.trim().is_empty())
+                .unwrap_or_else(|| "Agent Chat".to_owned()),
+            State::Tasks(_) => "Agent Tasks".to_owned(),
         }
     }
 
@@ -1922,7 +2229,7 @@ impl UnluminousApp {
     /// keep an idle window drawing for as long as a shell sat at its prompt. What genuinely needs one
     /// is a **pipe**, because reading one is a poll on a clock and nothing else will wake the window
     /// to do it.
-    pub(crate) fn catch_the_space_up(&mut self, now: f64) -> bool {
+    pub(crate) fn catch_the_space_up(&mut self, now: f64, ctx: &egui::Context) -> bool {
         // The view that is showing has everything behind it running, whichever way it came to be
         // showing. Asked rather than told - see `bring_the_current_view_to_life`. Not on the first
         // frame, because starting a pseudoconsole before the window is shown is a fifth of the time
@@ -1985,7 +2292,31 @@ impl UnluminousApp {
             .map(|edge| (edge.from, edge.to))
             .collect();
         self.space.live.carry_the_pipes(now, &carrying);
-        !carrying.is_empty()
+        let a_chat_is_working = self.let_the_chat_nodes_catch_up(ctx);
+        !carrying.is_empty() || a_chat_is_working
+    }
+
+    /// Let every chat node's own chat read whatever arrived on its thread, and act on what it decided.
+    ///
+    /// `let_the_plugins_catch_up`'s own two lines, applied to the chats the canvas owns rather than to the
+    /// registry's providers — and it has to be here for the same reason that one is not left to the pane:
+    /// a turn arrives on a worker thread, and a node scrolled off the canvas is not drawn at all, so a chat
+    /// that only caught up while it was being looked at would lose the answer it was waiting for.
+    fn let_the_chat_nodes_catch_up(&mut self, ctx: &egui::Context) -> bool {
+        use crate::services::plugin_ui::UiProvider;
+        let mut working = false;
+        let mut asked: Vec<(NodeId, crate::services::plugin_ui::Request)> = Vec::new();
+        for node in self.space.live.chat_nodes() {
+            let Some(chat) = self.space.live.chat_mut(node) else { continue };
+            working |= UiProvider::catch_up(chat);
+            asked.extend(UiProvider::asking(chat).into_iter().map(|request| (node, request)));
+        }
+        // After the loop, for the reason every other plugin request is acted on after one: acting on a
+        // request changes the window, and the loop is holding a borrow of the canvas the whole time.
+        for (node, request) in asked {
+            self.act_on_a_node_chats_request(node, request, ctx);
+        }
+        working
     }
 
     /// Take down where each node's own file and rows are being read, so they come back there.
@@ -2061,7 +2392,8 @@ impl UnluminousApp {
                     self.note_what_a_node_is_running(node);
                 }
                 Kind::Browser => self.note_where_a_node_is_browsing(node),
-                Kind::Terminal => {}
+                Kind::Chat => self.note_which_conversation_a_node_is_on(node),
+                Kind::Terminal | Kind::Tasks => {}
             }
         }
     }
@@ -2091,9 +2423,37 @@ impl UnluminousApp {
                 // ordinary reading writes it down, but the last click before a window closes may land after
                 // the last frame that read it. `on_exit` closes that window too.
                 Kind::Browser => self.note_where_a_node_is_browsing(node),
-                Kind::Folder | Kind::Editor => {}
+                // **A chat node's conversation is asked for the same way**, because a conversation the
+                // chat itself started - which is what an empty node does the first time it is drawn - is
+                // an id the node has never been told.
+                Kind::Chat => self.note_which_conversation_a_node_is_on(node),
+                Kind::Folder | Kind::Editor | Kind::Tasks => {}
             }
         }
+    }
+
+    /// Which conversation a chat node is on, written down when it has changed.
+    ///
+    /// **Read back rather than set when it is opened**, which is `note_what_a_node_is_running`'s own rule:
+    /// the chat starts a conversation of its own the first time it opens with nothing to reopen, and a
+    /// `New` pressed in the node changes it again. Compared before `change` is called, because
+    /// `Space::change` marks the canvas dirty whatever the closure did.
+    fn note_which_conversation_a_node_is_on(&mut self, node: NodeId) {
+        let Some(now) = self.space.live.chat(node).map(|chat| chat.conversation_id().to_owned()) else {
+            return;
+        };
+        let was = match self.space.space.current().node(node).map(|found| &found.state) {
+            Some(State::Chat(chat)) => chat.conversation.clone(),
+            _ => return,
+        };
+        if was == now {
+            return;
+        }
+        self.space.space.change(node, |state| {
+            if let State::Chat(chat) = state {
+                chat.conversation = now;
+            }
+        });
     }
 
     /// Where a browser node's page really is, written down when it has moved.
@@ -2948,6 +3308,7 @@ impl UnluminousApp {
             "connections" => self.cli_space_connections(request),
             "camera" => self.cli_space_camera(request),
             "send" => self.cli_space_send(request),
+            "chat" => self.cli_space_chat(request),
             "read" => self.cli_space_read(request),
             "restart" => {
                 let node = match self.a_named_node(request, "node") {
@@ -3438,6 +3799,55 @@ impl UnluminousApp {
     ///
     /// **The scrollback as well as the screen**, which is `run output`'s own distinction and is what a
     /// restored node needs: the commands somebody wants to see again are very often above the fold.
+    /// Drive one chat node's own conversation, through the same function the pane's commands go through.
+    ///
+    /// **The verbs are not written out here.** `AgentChat::command` is `UiProvider::command`, which is what
+    /// `plugins run agent-chat` already calls and what `CLAUDE.md` calls the one path a change goes down —
+    /// so a verb added to the chat is a verb a node has the day it is added, and the two cannot answer
+    /// differently. What this command adds is *whose* conversation: the pane has one and each node has one
+    /// of its own.
+    ///
+    /// A node that has never been drawn has no chat behind it yet, because a chat is opened lazily the
+    /// first time its node is drawn — see `make_sure_a_node_has_a_chat`. That is a refusal naming the
+    /// reason rather than a chat built here, so a canvas nobody has looked at still costs nothing.
+    fn cli_space_chat(&mut self, request: &Request) -> Outcome {
+        let node = match self.a_reachable_node(request, "node", Kind::Chat) {
+            Ok(node) => node,
+            Err(outcome) => return outcome,
+        };
+        let Some(verb) = request.text("verb") else {
+            return no(request, code::USAGE, "Say what to do: state, send, new, stop, last, view.");
+        };
+        let verb = verb.trim().to_owned();
+        let words: Vec<String> = match request.text("words") {
+            Some(words) if !words.trim().is_empty() => vec![words.trim().to_owned()],
+            _ => Vec::new(),
+        };
+        let Some(chat) = self.space.live.chat_mut(node) else {
+            return no(
+                request,
+                code::REFUSED,
+                format!(
+                    "Node {node} has not been drawn yet, so it has no conversation. Show the canvas and scroll to it - `space focus {node}` does both."
+                ),
+            );
+        };
+        match crate::services::plugin_ui::UiProvider::command(chat, &verb, &words) {
+            Ok(answer) => {
+                // The conversation a `new` or an `open` moved to is written down at once, for the reason
+                // `make_sure_a_node_has_a_chat` writes the first one down: the reading pass that would
+                // otherwise catch it only runs for a project the window remembers.
+                self.note_which_conversation_a_node_is_on(node);
+                let mut value = answer.value;
+                if let Some(map) = value.as_object_mut() {
+                    map.insert("node".into(), json!(node));
+                }
+                ok(request, answer.message, value)
+            }
+            Err(problem) => no(request, code::FAILED, problem),
+        }
+    }
+
     fn cli_space_read(&mut self, request: &Request) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Terminal) {
             Ok(node) => node,
@@ -3527,7 +3937,7 @@ impl UnluminousApp {
             self.space.space.change(node, |state| match state {
                 State::Terminal(terminal) => terminal.font_size = 0.0,
                 State::Editor(editor) => editor.font_size = 0.0,
-                State::Folder(folder) => folder.zoom = 1.0,
+                State::Folder(_) | State::Chat(_) | State::Tasks(_) => set_node_zoom(state, 1.0),
                 State::Browser(_) => {}
             });
             if found.kind() == Kind::Browser {
@@ -3555,15 +3965,11 @@ impl UnluminousApp {
                         self.files.at_mut(index).cached.stale = true;
                     }
                 }
-                Kind::Folder => {
+                Kind::Folder | Kind::Chat | Kind::Tasks => {
                     if !(0.25..=4.0).contains(&asked) {
-                        return no(request, code::USAGE, "A folder node's zoom is 0.25 to 4.");
+                        return no(request, code::USAGE, "This node's zoom is 0.25 to 4.");
                     }
-                    self.space.space.change(node, |state| {
-                        if let State::Folder(folder) = state {
-                            folder.zoom = asked;
-                        }
-                    });
+                    self.space.space.change(node, |state| set_node_zoom(state, asked));
                 }
                 Kind::Browser => {
                     if !(0.25..=4.0).contains(&asked) {
@@ -3592,7 +3998,10 @@ impl UnluminousApp {
                 space_view::editor_font_size_of(found.as_ref().expect("it is there"), self.settings.font_size),
                 editor.font_size > 0.0,
             ),
-            Some(State::Folder(folder)) => (folder.zoom, (folder.zoom - 1.0).abs() > 0.001),
+            Some(State::Folder(_) | State::Chat(_) | State::Tasks(_)) => {
+                let zoom = node_zoom_of(found.as_ref().expect("it is there"));
+                (zoom, (zoom - 1.0).abs() > 0.001)
+            }
             Some(State::Browser(_)) => {
                 let zoom = self.space.live.page_zoom_of(node);
                 (zoom, (zoom - 1.0).abs() > 0.001)
@@ -3603,6 +4012,7 @@ impl UnluminousApp {
             Some(Kind::Terminal) => "terminal.font.size",
             Some(Kind::Editor) => "appearance.font.size",
             Some(Kind::Folder) => "a multiplier over its rows",
+            Some(Kind::Chat | Kind::Tasks) => "a multiplier over everything it draws",
             Some(Kind::Browser) => "the page's own zoom",
             None => "",
         };
@@ -3904,6 +4314,34 @@ fn drives(kind: Kind, node: NodeId, from: NodeId) -> String {
         Kind::Browser => format!("space browser {node} go --url <address> --from {from}"),
         Kind::Folder => format!("space folder {node} rows --from {from}"),
         Kind::Editor => format!("space editor {node} <path> --from {from}"),
+        // Neither takes a command of its own: what an agent does with a chat node beside it is read it,
+        // and the board answers to `plugins run agent-tasks`, which is not about the canvas at all.
+        Kind::Chat => format!("space list --view current  # node {node} is an agent, from {from}"),
+        Kind::Tasks => format!("plugins run agent-tasks board  # node {node}, from {from}"),
+    }
+}
+
+/// How much bigger or smaller than its usual size a node draws what it holds.
+///
+/// The three kinds with no point size of their own keep a multiplier, and they keep it in three places -
+/// so this is the one function that answers for all of them rather than a `match` at every caller.
+/// A kind that walks a point size instead answers 1.0, which is what "not scaled" means for it.
+pub(crate) fn node_zoom_of(node: &Node) -> f32 {
+    match &node.state {
+        State::Folder(folder) => folder.zoom,
+        State::Chat(chat) => chat.zoom,
+        State::Tasks(tasks) => tasks.zoom,
+        _ => 1.0,
+    }
+}
+
+/// Put one there. A kind that has none is left alone, which is what makes this safe to call on any state.
+fn set_node_zoom(state: &mut State, zoom: f32) {
+    match state {
+        State::Folder(folder) => folder.zoom = zoom,
+        State::Chat(chat) => chat.zoom = zoom,
+        State::Tasks(tasks) => tasks.zoom = zoom,
+        _ => {}
     }
 }
 

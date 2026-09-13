@@ -740,10 +740,98 @@ running would keep an idle window drawing for as long as a shell sat at its prom
 the first screenshot test panic on `Harness::run exceeded max_steps`. What genuinely needs a frame is
 reading a pipe, which is a poll on a clock.
 
-`unluminous-cli space` is the agent's half — twenty three commands, every one of them going through the
-same function the pointer does. The MCP grouped schema grew from 18,511 tokens to 20,365 to hold it,
-which is the largest single move that number has made and is recorded beside the others in
-`mcp::tools`.
+`unluminous-cli space` is the agent's half — twenty four commands since `task-1914` added `space chat`,
+every one of them going through the same function the pointer does. The MCP grouped schema grew from
+18,511 tokens to 20,365 to hold the first twenty three, which is the largest single move that number has
+made; it is 21,801 today and is recorded beside the others in `mcp::tools`.
+
+### Six kinds of node, and the two that were added are not the same shape as each other
+
+`task-1914` asks for an **Agent Chat** node and an **Agent Tasks** node beside the four `task-1904`
+built, and the two are arranged differently on purpose.
+
+**A chat node holds its own `AgentChat`**, in `space::live::Live` beside the terminal sessions and the
+browser tabs, and it draws `components::agent_chat::pane` — the same function the panel draws with, so
+the composer, the picture button, the drop, the paste, the streaming, the history, the provider list and
+the tool blocks all arrive with no code of their own. What differs is which chat it is handed, and that
+is the whole of what the ticket's second sentence needs: *"a node that is able to connect similar to our
+terminal with claude etc so the agent knows how to control/read/etc the nodes it's connected to."* Two
+views of one conversation are one agent that cannot say which node it is. Which conversation each node is
+on is written to `space.conf`, because a canvas whose agents all reopened the newest would come back as
+several views of one.
+
+**And the wiring is filled in rather than hoped for.** A terminal node carries `UNLUMINOUS_SPACE_NODE`
+and the client sends it; a chat node has no client and no environment, so
+`what_a_chat_node_is_asking_about` puts the node id into the call before it runs — `node` for
+`space here`, which is the one command that asks *which node is calling*, and `from` for every other one.
+It is read from the catalogue rather than from a list, because `task-1804`'s rule is that a key a command
+does not name is a usage refusal, so filling one in blindly would turn `space list` into an error; and a
+`from` the model named is left alone, so an agent asking about a node it is not wired to is refused
+exactly as one typing at a terminal is.
+
+**A tasks node draws the window's one board**, through `UiProvider::tab`, and is deliberately not
+per-node: the board is one SQLite file with one watchdog behind it, so a second instance would be a
+second connection to the same tickets, each refreshing without the other. Two tasks nodes show the same
+board, which they should. With the Agent-Tasks plugin switched off the node says so rather than
+resurrecting it, which is `Plugins::renders`' rule about a Mermaid diagram.
+
+**And a chat node is driven from the command line**, which is not a nicety either: everything a person
+can do in this window an agent can do too, and a chat that could only be typed into would be the one
+surface with no way in. `space chat <node> <verb>` forwards to `UiProvider::command` — the same function
+`plugins run agent-chat` calls — so the verbs are not a second list and the two cannot answer
+differently. What it adds is *whose* conversation. The board needs no such command, because there is one
+board and `plugins run agent-tasks` already reaches it.
+
+Neither node is a plugin surface. No manifest contributed it, so `chrome_for_a_node` asks the one of
+`chrome_for`'s three questions a person can see — `plugins.chrome` — and neither `ui.chrome` nor
+`UiProvider::draws_chrome` is involved. A chat node still reads its endpoints out of the plugin's own
+folder, so `Settings -> Agent-Chat` governs the panel and every node at once.
+
+### A page keeps its whole width, and the crop is a separate answer
+
+`set_bounds` is a native child's **viewport** as well as its position, so a placement cut to the pane is
+what makes a responsive page relay out into what is left — `task-1907` reported it against the window's
+edge and `task-1914` against the canvas's: *"if the node is halfway off the screen on the right, then the
+page content width is 50%, rather than just have half the page not shown."*
+
+A `BrowserPlacement` carries two rectangles now. `area` is the whole node, which is what the page lays
+itself out against, and `visible` is the part of it inside the pane, which is all that may be painted.
+On Windows the crop is a **window region on the container `wry` already creates**: `WebViewExtWindows::hwnd`
+is a real `WS_CHILD` window whose only child is the engine's, so `SetWindowRgn` on it clips the engine
+while `ICoreWebView2Controller::SetBounds` stays at the whole node. The scale comes from
+`GetDpiForWindow` on that same window, which is what `wry` asks, so the two cannot disagree about where a
+logical point is. On macOS there is no container of `wry`'s to mask and the placement says so: the page
+is drawn whole and the part outside the pane is over Unluminous's own furniture.
+
+### Everything that can be dropped on the canvas
+
+`task-1914` asks for two more drops and both are settled where every other one is — after every panel and
+every node has been drawn, which is the earliest moment anything knows where all of them are.
+
+A **tab** let go on the empty canvas breaks out into a File Editor node of its own, through
+`break_a_tab_out_onto_the_canvas`. A **file** carried out of the explorer or out of a Folder node opens as
+a node, or as a new tab when it lands on a File Editor node that is already there, through
+`drop_a_file_onto_the_canvas`. The list a row was picked up in cannot know about a node it has never heard
+of, so `ExplorerOutcome::carrying` reports what is in the air and where the pointer is and decides nothing
+— which is the split `task-1673` gave the tab drag. A drop the list itself claimed is a **move on disk**
+and is not offered twice.
+
+Two things had to change for the second half to be possible at all. **Every File Editor node records where
+it is whether or not it drew a tab strip**: a node showing one file draws none, so it was in no list a drop
+could be settled against and could not be dropped on. And a row's pointer position now comes from
+`Response::interact_pointer_pos` rather than from the frame's raw pointer, because a Folder node's rows are
+drawn into a layer carrying the camera — egui converts a response's position into the layer's own points
+and the raw one is the screen's, so comparing the raw one against the row rectangles answered about
+somewhere else entirely.
+
+### The editing area asks where the tab it is drawing lives
+
+`show_editor` gated the keyboard on `Focus::Editor`, and clicking in a File Editor node ends at
+`Focus::Space` — so the click frame placed the caret and every frame after it dropped the key, which is
+`task-1914`'s *"Im unable to edit files in file editor."* It asks `OpenFiles::focus` now: a pane answers to
+`Focus::Editor` and a node to `Focus::Space`. Told apart by where the tab being drawn lives rather than by
+a flag, so a pane drawn while the canvas holds the keyboard answers no without either caller remembering to
+say so.
 
 ## A colour is a question, and the list of names is still closed
 

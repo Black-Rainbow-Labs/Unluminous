@@ -135,6 +135,9 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Console",
     # `CreateFileW`, for `CONOUT$` in the same place.
     "Win32_Storage_FileSystem",
+    # `GetDpiForWindow`, which is how a browser node's crop is measured in the same physical pixels
+    # `wry` places the view in. See `services::browser`'s `clip_to_the_visible_part`.
+    "Win32_UI_HiDpi",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
     "std",

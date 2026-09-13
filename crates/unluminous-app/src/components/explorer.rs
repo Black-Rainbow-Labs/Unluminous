@@ -167,6 +167,21 @@ pub struct ExplorerOutcome {
     pub focus: bool,
     /// A row was let go over a folder: what was carried, and the folder it landed in.
     pub moved: Option<(PathBuf, PathBuf)>,
+    /// A row is in the air: what it is, where the pointer is, and whether this is the frame it landed on.
+    ///
+    /// **Reported as well as settled here, because a row can be dropped somewhere this component has never
+    /// heard of.** `task-1914` asks that a file dragged out of the explorer onto the Base of Infinite Space
+    /// open there — on an existing File Editor node as a new tab, or on the empty canvas as a node of its
+    /// own — and neither is a folder this list could name. So the same split `task-1673` gave the tab drag:
+    /// the list says what is being carried and where the pointer is, and `UnluminousApp::settle_the_file_drag`
+    /// decides once every panel and every node has been drawn.
+    ///
+    /// The position is in this `Ui`'s own points, which for the panel are the window's and for a Folder
+    /// node are the canvas's world points. The caller knows which it asked for and converts.
+    ///
+    /// [`ExplorerOutcome::moved`] is still the answer for a drop inside the list, so a caller acts on this
+    /// only when that is `None`.
+    pub carrying: Option<(PathBuf, Pos2, bool)>,
     /// The button that hides the panel was pressed.
     pub hide: bool,
     /// True while a row is in the air, which is the one moment the window must not read the tree
@@ -392,7 +407,7 @@ pub fn show(
     // What was drawn, and what is in the air. Both filled in by the loop below and read once it has
     // finished, which is the first moment anything knows where every row ended up.
     let mut drawn: Vec<Drawn> = Vec::new();
-    let mut carried: Option<PathBuf> = None;
+    let mut carried: Option<(PathBuf, Option<Pos2>)> = None;
     let mut released = false;
 
     let mut list = ui.new_child(egui::UiBuilder::new().max_rect(list_rect));
@@ -527,8 +542,8 @@ pub fn show(
     // Where a row being carried would land. After the loop, for the reason `settle_the_tab_drag`
     // runs after the pane loop: this is the earliest moment anything knows where every row is.
     outcome.dragging = carried.is_some();
-    if let Some(source) = &carried {
-        let pointer = ui.input(|input| input.pointer.interact_pos());
+    if let Some((source, pointer)) = &carried {
+        let pointer = *pointer;
         let target = pointer.and_then(|at| drop_target(&drawn, tree.root(), &heading_hit, at, source));
         if let Some(folder) = &target {
             let painter = ui.painter_at(area);
@@ -557,6 +572,11 @@ pub fn show(
             if let Some(folder) = target {
                 outcome.moved = Some((source.clone(), folder));
             }
+        }
+        // Reported whether or not this list could name a target, so a drop outside it can still mean
+        // something to whoever is drawing the rest of the window. See [`ExplorerOutcome::carrying`].
+        if let Some(at) = pointer {
+            outcome.carrying = Some((source.clone(), at, released));
         }
     }
 
@@ -654,6 +674,14 @@ struct RowClick {
     dragged: bool,
     /// True on the frame it was let go.
     dropped: bool,
+    /// Where the pointer is while this row is being dragged, in this `Ui`'s own points.
+    ///
+    /// **`Response::interact_pointer_pos` rather than the frame's raw pointer**, because a Folder node's
+    /// rows are drawn into a layer carrying the camera: egui converts a response's position into the
+    /// layer's own points and the raw one is the screen's, so comparing the raw one against the row
+    /// rectangles answered about somewhere else entirely. The panel is untransformed, where the two are
+    /// the same thing.
+    pointer: Option<Pos2>,
     /// Clicked at all, whether or not the file can be opened. What the selection follows, because
     /// a file Unluminous cannot show the text of can still be the one you meant to delete.
     picked: bool,
@@ -686,12 +714,12 @@ impl RowClick {
         path: &std::path::Path,
         directory: bool,
         drawn: &mut Vec<Drawn>,
-        carried: &mut Option<PathBuf>,
+        carried: &mut Option<(PathBuf, Option<Pos2>)>,
         released: &mut bool,
     ) {
         drawn.push(Drawn { rect: self.rect, path: path.to_path_buf(), directory });
         if self.dragged || self.dropped {
-            *carried = Some(path.to_path_buf());
+            *carried = Some((path.to_path_buf(), self.pointer));
         }
         if self.dropped {
             *released = true;
@@ -711,6 +739,7 @@ impl RowClick {
             rect: response.rect,
             dragged: response.dragged(),
             dropped: response.drag_stopped(),
+            pointer: response.interact_pointer_pos(),
             picked: response.clicked() || response.double_clicked(),
         }
     }

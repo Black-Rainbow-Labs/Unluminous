@@ -16964,6 +16964,289 @@ fn closing_a_node_closes_every_tab_on_it() {
     assert!(harness.state().files.tabs_on_nodes().is_empty(), "and deleting the view took them too");
 }
 
+/// A File Editor node can be typed into.
+///
+/// `task-1914`: *"Im unable to edit files in file editor. I should be able to type, etc."*
+///
+/// `show_editor` asked whether `Focus` was `Focus::Editor` before it read a key, and clicking in a node
+/// leaves it at `Focus::Space` — so the click frame placed the caret and every frame after it dropped the
+/// key. What it asks now is **where the tab being drawn lives**: a pane answers to `Focus::Editor` and a
+/// node to `Focus::Space`, which is what `focused` already decided for it.
+///
+/// The keys are given to the window rather than to a synthesised press inside the node, because a node's
+/// contents are drawn into a transformed sublayer — the reason `open_from_a_folder_node_for_a_test` exists.
+/// What is asserted is the document, which is the thing the report is about.
+#[test]
+fn a_file_editor_node_takes_the_keyboard_and_the_letters_reach_its_file() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space size {node} --width 620 --height 320"));
+    did(&mut harness, &format!("space editor {node} notes.txt"));
+    // Which is what a click in the node does: it chooses the node and hands the keyboard to the canvas.
+    did(&mut harness, &format!("space focus {node}"));
+    harness.run();
+    let index = harness.state().files.tab_in_node(node).expect("the node has the file");
+    let was = harness.state().files.at(index).document.text().to_string();
+
+    harness.input_mut().events.push(egui::Event::Text("Z".to_owned()));
+    harness.step();
+    harness.run();
+    let index = harness.state().files.tab_in_node(node).expect("the node still has the file");
+    let now = harness.state().files.at(index).document.text().to_string();
+    assert_ne!(now, was, "the letter reached the node's own file");
+    assert!(now.contains('Z'), "and it is the letter that was typed: {now:?}");
+
+    // And a pane is left alone by the same press, because the keyboard is the canvas's.
+    let in_a_pane = harness
+        .state()
+        .files
+        .iter()
+        .filter(|file| file.home.pane().is_some())
+        .all(|file| !file.document.text().to_string().contains('Z'));
+    assert!(in_a_pane, "the editing area behind the canvas took none of it");
+}
+
+/// A tab dropped on the empty canvas breaks out into a File Editor node of its own.
+///
+/// `task-1914`: *"I should be able to drag tabs onto the canvas and it break out into a new node."*
+///
+/// The drop is made through the one function the pointer reaches — `break_a_tab_out_onto_the_canvas`,
+/// which `settle_the_tab_drag` calls — rather than through a synthesised pointer, because the canvas draws
+/// its nodes into transformed sublayers and a press at the rectangle the accessibility tree reports lands
+/// where the widget in the layer's own coordinates is not. That is `a_tab_is_dragged_between_a_node_and_a_pane`'s
+/// own arrangement.
+#[test]
+fn a_tab_dropped_on_the_empty_canvas_becomes_a_node() {
+    use unluminous_app::app::files::Home;
+    let folder = sample_folder();
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    did(&mut harness, "tab open readme.md --permanent");
+    harness.run();
+    let carried = harness.state().files.index_of(&folder.join("readme.md")).expect("it is open");
+    assert!(harness.state().files.at(carried).home.pane().is_some(), "it starts in a pane");
+    let nodes_before = harness.state().space.space.current().nodes.len();
+
+    let middle = harness.state().space.body.center();
+    let node = harness.state_mut().break_a_tab_out_onto_the_canvas(carried, middle);
+    harness.run();
+    assert_eq!(
+        harness.state().space.space.current().nodes.len(),
+        nodes_before + 1,
+        "a node was made where it was let go",
+    );
+    let moved = harness.state().files.index_of(&folder.join("readme.md")).expect("it is still open");
+    assert_eq!(harness.state().files.at(moved).home, Home::Node(node), "and the tab lives on it");
+    // The node is under the pointer rather than starting at it, so what is where the drop happened is the
+    // node's own header - the part it is dragged by.
+    let made = harness.state().space.space.current().node(node).cloned().expect("the node");
+    let camera = harness.state().space.space.current().camera;
+    let on_screen = camera.rect_to_screen(harness.state().space.body.min, made.rect());
+    assert!(on_screen.contains(middle), "the node covers the point it was let go at: {on_screen:?}");
+
+    // And the editing area still has a tab, which is `move_to_node`'s own promise.
+    assert!(harness.state().files.iter().any(|file| file.home.pane().is_some()));
+}
+
+/// A file dropped on the canvas opens as a node, and one dropped on a node opens as a tab there.
+///
+/// `task-1914`: *"Folder explorer - I should be able to drag a file onto the canvas to have it open into a
+/// new file editor node. Or if I drag to existing file node, it should open the file in a new tab."*
+///
+/// Both go through `drop_a_file_onto_the_canvas`, which is what `settle_the_file_drag` calls when a row
+/// carried out of the explorer or out of a Folder node is let go — the same split `task-1673` gave the tab
+/// drag, because the list a row was picked up in cannot know about a node it has never heard of.
+#[test]
+fn a_file_dropped_on_the_canvas_opens_as_a_node_or_as_a_tab() {
+    use unluminous_app::app::files::Home;
+    let folder = sample_folder();
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    harness.run();
+    let nodes_before = harness.state().space.space.current().nodes.len();
+
+    // Nothing under the pointer: a node of its own, holding the file.
+    let middle = harness.state().space.body.center();
+    let made = harness
+        .state_mut()
+        .drop_a_file_onto_the_canvas(&folder.join("readme.md"), middle)
+        .expect("a node was made");
+    harness.run();
+    assert_eq!(harness.state().space.space.current().nodes.len(), nodes_before + 1);
+    let opened = harness.state().files.index_of(&folder.join("readme.md")).expect("it is open");
+    assert_eq!(harness.state().files.at(opened).home, Home::Node(made));
+
+    // **And every File Editor node records where it is whether or not it drew a tab strip**, which is what
+    // makes the second half possible: a node showing one file draws no strip, and before `task-1914` it was
+    // therefore not in the list a drop is settled against and could not be dropped on at all.
+    let recorded = harness.state().node_tab_strips_were_recorded();
+    let (_, over) = recorded
+        .iter()
+        .find(|(node, _)| *node == made)
+        .copied()
+        .expect("a node showing one file is still somewhere a drop can land");
+
+    // A second file, let go over that node: a tab beside the first rather than a second node.
+    let onto = harness
+        .state_mut()
+        .drop_a_file_onto_the_canvas(&folder.join("notes.txt"), over.center())
+        .expect("it opened");
+    harness.run();
+    assert_eq!(onto, made, "it landed on the node it was let go over");
+    assert_eq!(
+        harness.state().space.space.current().nodes.len(),
+        nodes_before + 1,
+        "and no second node was made",
+    );
+    assert_eq!(harness.state().files.tabs_in_node(made).len(), 2, "two tabs on the one node");
+}
+
+/// An Agent Chat node holds a chat of its own, and two of them hold two conversations.
+///
+/// `task-1914`: *"Agent Chat ... We want a node that is able to connect similar to our terminal with claude
+/// etc so the agent knows how to control/read/etc the nodes it's connected to. Should be the exact same as
+/// the agent chat pane (image uploads, etc)"*.
+///
+/// **The exact same pane, and its own conversation.** `components::agent_chat::pane` is the function the
+/// panel draws with and it is what a node draws with, so everything that pane can do a node can do; what is
+/// different is which `AgentChat` it is handed. Two views of one conversation would be one agent that cannot
+/// say which node it is, which is the one thing the connection half of the ticket needs.
+#[test]
+fn a_chat_node_holds_its_own_conversation_and_comes_back_on_it() {
+    use unluminous_app::services::space::{Kind, State};
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let one = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
+    let two = did(&mut harness, "space add chat --x 520 --y 20")["node"].as_u64().expect("id");
+    harness.run();
+
+    assert_eq!(harness.state().space.space.current().node(one).expect("it is there").kind(), Kind::Chat);
+    let first = harness.state().space.live.chat(one).map(|chat| chat.conversation_id().to_owned());
+    let second = harness.state().space.live.chat(two).map(|chat| chat.conversation_id().to_owned());
+    let first = first.expect("the node opened a chat of its own the first time it was drawn");
+    let second = second.expect("and so did the second node");
+    assert_ne!(first, second, "two chat nodes are two agents, not two views of one");
+
+    // **Written down**, so a canvas comes back with each agent where it was left rather than every one of
+    // them on the newest conversation, which is what the pane does because there is one of it.
+    let recorded = match &harness.state().space.space.current().node(one).expect("it is there").state {
+        State::Chat(chat) => chat.conversation.clone(),
+        other => panic!("a chat node holds a chat state, not {other:?}"),
+    };
+    assert_eq!(recorded, first, "the node records which conversation it is on");
+
+    // And `space list` reads it back, which is the half of Unluminous's rule that says an agent reaches
+    // what a person sees.
+    let listed = did(&mut harness, "space list").to_string();
+    assert_eq!(listed.matches("\"kind\":\"chat\"").count(), 2, "both nodes read back as chats: {listed}");
+}
+
+/// A chat node's tool call is asked from that node, so its wires are what it may reach.
+///
+/// A terminal node carries `UNLUMINOUS_SPACE_NODE` in its environment and the client sends it, which is
+/// what makes `space here` answer about that node and every `space` command it sends carry `--from`. A chat
+/// node has no client and no environment, so the window fills the same two in before the call is run.
+///
+/// **Only where the command really names the key**, read from the catalogue: `task-1804`'s rule is that a
+/// key a command does not name is a usage refusal, so filling one in blindly would turn `space list` into
+/// an error. And only when the model did not say, so an agent that names a `--from` of its own is answered
+/// or refused on its own terms.
+#[test]
+fn a_chat_nodes_tool_call_is_asked_from_its_own_node() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let chat = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
+    harness.run();
+
+    let asked = |harness: &Harness<'static, UnluminousApp>, command: &str, given: serde_json::Value| {
+        let map = given.as_object().expect("an object").clone();
+        harness.state().what_a_chat_node_is_asking_about(chat, command, map)
+    };
+
+    // `space here` is the one command that asks *which node is calling*.
+    let here = asked(&harness, "space.here", serde_json::json!({}));
+    assert_eq!(here["node"], serde_json::json!(chat), "space here is asked as this node");
+
+    // Every other `space` command asks what the caller may reach.
+    let send = asked(&harness, "space.send", serde_json::json!({ "node": 9, "text": "hello" }));
+    assert_eq!(send["from"], serde_json::json!(chat), "and the rest are asked from it");
+    assert_eq!(send["node"], serde_json::json!(9), "the target it named is left alone");
+
+    // A `from` the model named is its own, and is answered or refused on its merits.
+    let named = asked(&harness, "space.send", serde_json::json!({ "node": 9, "from": 3 }));
+    assert_eq!(named["from"], serde_json::json!(3), "a from it named is not overwritten");
+
+    // A command that names neither is left exactly as it is: a key a command does not have is a usage
+    // refusal, so filling one in would turn a working call into an error.
+    let listed = asked(&harness, "space.list", serde_json::json!({}));
+    assert!(listed.is_empty(), "space list names no from and gets none: {listed:?}");
+    let opened = asked(&harness, "tab.open", serde_json::json!({ "path": "readme.md" }));
+    assert!(!opened.contains_key("from"), "and neither does a command outside the canvas");
+}
+
+/// A chat node is driven from the command line, through the same function the pane's commands go through.
+///
+/// Unluminous's rule is that everything a person can do in this window an agent can do too, through the same
+/// code — so a chat node that could only be typed into would be the one surface in the window with no way
+/// in. `space chat` forwards to `UiProvider::command`, which is what `plugins run agent-chat` already
+/// calls, so the verbs are not a second list and the two cannot answer differently. What it adds is
+/// *whose* conversation: the pane has one and each node has one of its own.
+#[test]
+fn a_chat_node_answers_the_command_line_about_its_own_conversation() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
+    let terminal = did(&mut harness, "space add terminal --x 700 --y 20")["node"].as_u64().expect("id");
+    harness.run();
+
+    let state = did(&mut harness, &format!("space chat {node} state"));
+    assert_eq!(state["node"], serde_json::json!(node), "the answer names the node it is about");
+    assert_eq!(state["busy"], serde_json::json!(false), "nothing has been sent, so nothing is running");
+
+    // A new conversation is a new conversation on **this** node, and the canvas records it.
+    let was = harness.state().space.live.chat(node).expect("it opened").conversation_id().to_owned();
+    let made = did(&mut harness, &format!("space chat {node} new"));
+    harness.run();
+    let now = harness.state().space.live.chat(node).expect("still there").conversation_id().to_owned();
+    assert_ne!(now, was, "`new` moved it to another conversation");
+    assert_eq!(made["id"], serde_json::json!(now), "and the reply named the one it moved to");
+    let recorded = match &harness.state().space.space.current().node(node).expect("it is there").state {
+        unluminous_app::services::space::State::Chat(chat) => chat.conversation.clone(),
+        other => panic!("a chat node holds a chat state, not {other:?}"),
+    };
+    assert_eq!(recorded, now, "the canvas wrote down where the node ended up");
+
+    // A node that is not a chat is refused by kind, which is `a_reachable_node`'s own answer.
+    let refused = run(&mut harness, &format!("space chat {terminal} state"));
+    assert!(!refused.ok, "a terminal node has no conversation");
+
+    // And a verb the chat has not got is refused with the chat's own words rather than swallowed.
+    let unknown = run(&mut harness, &format!("space chat {node} nonsense"));
+    assert!(!unknown.ok, "an unknown verb is refused: {}", unknown.message);
+}
+
+/// An Agent Tasks node draws the window's one board.
+///
+/// `task-1914` asks for it beside the chat node — *"Agent Tasks - similar to agent chat."* It is
+/// deliberately **not** per-node, which is written down on `Kind::Tasks`: the board is one SQLite file with
+/// one watchdog behind it, so two instances would be two connections to the same tickets, each refreshing
+/// without the other. Two Tasks nodes therefore show the same board, which they should, because there is one.
+#[test]
+fn a_tasks_node_draws_the_windows_own_board() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add tasks --x 20 --y 20")["node"].as_u64().expect("id");
+    harness.run();
+    assert_eq!(harness.state().space.space.current().node(node).expect("it is there").kind(), Kind::Tasks);
+    // The node is what opened the provider: nothing has pressed the rail button and no pane is showing.
+    assert!(
+        harness.state().plugin_ui.view_of("agent-tasks").is_some(),
+        "drawing the node opened the board, lazily, the way pressing its rail button would",
+    );
+}
+
 /// A tab is dragged out of a File Editor node into a pane, and back.
 ///
 /// `task-1905` gives a node a strip of tabs, and a strip that could not be dragged out of would be the one
@@ -18081,7 +18364,7 @@ fn a_browser_nodes_page_is_placed_inside_the_node() {
 
     let body = harness.state().space.body;
     let placements = harness.state().browser_placements();
-    let (_, page) = placements.first().copied().expect("the node's page was placed");
+    let page = placements.first().copied().expect("the node's page was placed").area;
     // Inside the canvas, which is what "contained to the node" means at the outer edge.
     assert!(body.contains_rect(page), "the page is at {page:?} and the canvas is {body:?}");
     // And inside the node itself, under its own toolbar.
@@ -18104,7 +18387,7 @@ fn a_browser_nodes_page_is_placed_inside_the_node() {
     // exactly the case that is now put away.
     did(&mut harness, "space camera --x 40 --y 150");
     harness.run();
-    let (_, panned) = harness.state().browser_placements().first().copied().expect("still placed");
+    let panned = harness.state().browser_placements().first().copied().expect("still placed").area;
     assert_ne!(panned.min, was.min, "the page should have moved with the canvas");
     let node_now = camera_of(&harness).rect_to_screen(
         harness.state().space.body.min,
@@ -18118,7 +18401,7 @@ fn a_browser_nodes_page_is_placed_inside_the_node() {
     // kept its world size would hang out of it.
     did(&mut harness, "space camera --zoom 0.5");
     harness.run();
-    let (_, smaller) = harness.state().browser_placements().first().copied().expect("still placed");
+    let smaller = harness.state().browser_placements().first().copied().expect("still placed").area;
     assert!(smaller.width() < was.width() * 0.75, "the page was {was:?} and is now {smaller:?}");
     let on_screen = camera_of(&harness).rect_to_screen(
         harness.state().space.body.min,
@@ -18163,10 +18446,14 @@ fn only_one_browser_node_is_placed_however_many_there_are() {
     // `reconcile`, which points the one view at the last placement it was given; the rule this asserts is
     // the weaker and true one: a placement names a tab that really exists on a node.
     let placements = harness.state().browser_placements();
-    for (id, rect) in &placements {
-        assert!(*id == one || *id == two, "a placement named tab {id}, which is neither node's");
+    for placement in &placements {
+        let (id, rect) = (placement.id, placement.visible);
+        assert!(id == one || id == two, "a placement named tab {id}, which is neither node's");
         assert!(rect.width() > 1.0 && rect.height() > 1.0, "tab {id} was placed at {rect:?}");
-        assert!(harness.state().space.body.contains_rect(*rect), "tab {id} is outside the canvas");
+        // **The part that may be painted, not the whole page.** Since `task-1914` a placement carries
+        // both: `area` is the node wherever it is, because that is what the page lays itself out against,
+        // and `visible` is what the platform crops it to. The canvas is the ceiling for the second.
+        assert!(harness.state().space.body.contains_rect(rect), "tab {id} is outside the canvas");
     }
 }
 
@@ -18994,60 +19281,80 @@ fn a_node_that_was_not_left_running_anything_is_refused_with_a_sentence() {
     assert!(reply.message.contains("not left running"), "{}", reply.message);
 }
 
-/// A page a little off the edge is still drawn, and one cut to a strip is not.
+/// A page cut by the edge of the canvas keeps its whole width and is cropped to what is showing.
 ///
 /// `task-1907`: *"there's an issue with the browser node. it resizes the content when it's pushed against the
 /// edge of the main window. e.g. if the node itself is 50% off the page/view, the full browser page is shown but
-/// resized to 50% width."* `wry` offers `set_bounds` and nothing else — there is no clipping a native child —
-/// so a node hanging off the edge has its view's **viewport** narrowed rather than cropped, and a page laid out
-/// against the viewport reflows into it. What was drawn was not a picture of the page the node is on.
+/// resized to 50% width."* And `task-1914` again: *"if the node is halfway off the screen on the right, then the
+/// page content width is 50%, rather than just have half the page not shown."*
 ///
-/// **And `task-1908` reports the first attempt at this being far too eager**: *"the web browser contents
-/// disappear if the node is slightly off screen."* A fraction of the width was the wrong measure, because what
-/// makes a page reflow is its viewport crossing a stylesheet's breakpoint, which is an absolute width. See
-/// `PAGE_REFLOW`.
+/// `set_bounds` is the page's **viewport** as well as its position, so a placement cut to the pane makes a
+/// responsive page relay out into what is left. Two rectangles are sent instead: `area`, which is the whole
+/// node and is what the page lays itself out against, and `visible`, which is the part inside the pane and is
+/// all a platform lets it paint. `services::browser`'s `clip_to_the_visible_part` is where the crop happens.
+///
+/// **The measurement is the placement rather than a picture**, because a native child is composited by the
+/// operating system over the surface `ViewportCommand::Screenshot` captures — no screenshot Unluminous takes has
+/// ever held a page. What is asserted is the two rectangles the host is handed.
 #[test]
-fn a_browser_page_is_cut_by_the_edge_until_there_is_nothing_worth_drawing() {
+fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
     use unluminous_app::services::space::Kind;
     let mut harness = harness("");
     did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(120.0, 90.0));
+    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(20.0, 20.0));
+    // Small enough to sit wholly inside the canvas at the camera's home, so the first reading is a page
+    // nothing has cut and the ones after it are the same page with the edge taken off.
+    did(&mut harness, &format!("space size {node} --width 360 --height 220"));
     harness
         .state_mut()
         .new_detached_space_page(node, "https://example.com/")
         .expect("a tab with no view behind it");
     harness.run();
-    assert!(
-        !harness.state().browser_placements().is_empty(),
-        "the page is drawn while the node is whole"
-    );
+    let whole = harness.state().browser_placements().first().copied().expect("the page is drawn");
+    assert_eq!(whole.visible, whole.area, "nothing is cut while the node is inside the pane");
+    let width = whole.area.width();
 
-    // **Slightly off the edge keeps its page**, which is `task-1908`'s report against the first attempt at
-    // this: a fraction of the width was the wrong measure, and eighty points off a five hundred point page
-    // blanked it. What decides a reflow is the absolute width the page is left with — see `PAGE_REFLOW`.
-    did(&mut harness, "space camera --x 60 --y 0");
+    // Half the node off the right hand edge of the canvas. The page still lays itself out at the node's
+    // own width, and only the part of it inside the pane may be painted. The **node** is moved rather than
+    // the camera, so the arithmetic is one anybody reading this can check: the camera is at the origin, so
+    // a node at world x is drawn x points in from the canvas's left edge.
+    let body = harness.state().space.body;
+    did(&mut harness, &format!("space move {node} --x {} --y 20", body.width() - 180.0));
     harness.run();
+    let cut = harness.state().browser_placements().first().copied().expect("the page is still drawn");
     assert!(
-        !harness.state().browser_placements().is_empty(),
-        "a page a little off the edge is still drawn"
+        (cut.area.width() - width).abs() < 0.5,
+        "the page lays itself out at the node's whole width, not at what is left: {} against {width}",
+        cut.area.width()
     );
+    assert!(
+        cut.visible.width() < cut.area.width() - 1.0,
+        "and what may be painted is cut by the pane: {} against {}",
+        cut.visible.width(),
+        cut.area.width()
+    );
+    assert!(cut.visible.right() <= body.right() + 0.5, "cut to the pane");
 
-    // Cut down to a strip, and there is nothing worth drawing. The node is 900 points wide and starts at
-    // world 120, so a camera at 880 leaves 140 of it on the canvas.
-    did(&mut harness, "space camera --x 880 --y 0");
+    // Cut to a strip, and it is still a strip of the same page rather than a page put away - which is
+    // what cropping means, and what `task-1908`'s report about a page vanishing near the edge asks for.
+    did(&mut harness, &format!("space move {node} --x {} --y 20", body.width() - 40.0));
+    harness.run();
+    let strip = harness.state().browser_placements().first().copied().expect("a strip is still a page");
+    assert!((strip.area.width() - width).abs() < 0.5, "still the whole page");
+    assert!(strip.visible.width() < 100.0, "and a strip of it showing");
+
+    // Right off the canvas there is nothing on the screen to place.
+    did(&mut harness, &format!("space move {node} --x {} --y 20", body.width() + 200.0));
     harness.run();
     assert!(
         harness.state().browser_placements().is_empty(),
-        "a page cut below `PAGE_REFLOW` is put away rather than reflowed into what is left"
+        "a node with nothing of it on the canvas places no page"
     );
 
-    // And it comes back when the node does.
-    did(&mut harness, "space camera --x 0 --y 0");
+    did(&mut harness, &format!("space move {node} --x 20 --y 20"));
     harness.run();
-    assert!(
-        !harness.state().browser_placements().is_empty(),
-        "the page comes back when the node is whole again"
-    );
+    let back = harness.state().browser_placements().first().copied().expect("the page comes back");
+    assert_eq!(back.visible, back.area, "and it is whole again");
 }
 
 /// A page followed to a new address is what the node comes back on.

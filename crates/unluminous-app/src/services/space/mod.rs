@@ -676,6 +676,13 @@ fn node_as_json(node: &Node) -> serde_json::Value {
             map.insert("caret".into(), editor.caret.into());
             map.insert("scroll".into(), editor.scroll.into());
         }
+        State::Chat(chat) => {
+            map.insert("conversation".into(), chat.conversation.clone().into());
+            map.insert("zoom".into(), chat.zoom.into());
+        }
+        State::Tasks(tasks) => {
+            map.insert("zoom".into(), tasks.zoom.into());
+        }
     }
     value
 }

@@ -283,8 +283,27 @@ impl BrowserTab {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BrowserPlacement {
     pub id: u64,
+    /// Where the page lays itself out, in the window's own points.
+    ///
+    /// **The whole of it, even the part nobody can see.** A page is laid out against the viewport it is
+    /// given, so narrowing this is what makes a responsive page reflow — which is `task-1914`'s report
+    /// about a node half off the canvas: *"the page content width is 50%, rather than just have half the
+    /// page not shown"*. What is cut is [`BrowserPlacement::visible`] instead.
     pub area: Rect,
+    /// The part of [`BrowserPlacement::area`] that may be painted, in the same points.
+    ///
+    /// Equal to `area` for a page in a pane, which fills its pane. Smaller for a node hanging off the edge
+    /// of the canvas, and a platform that can crop a native child crops it here. See
+    /// `native::clip_to_the_visible_part` for what that costs on each platform.
+    pub visible: Rect,
     pub focused: bool,
+}
+
+impl BrowserPlacement {
+    /// A placement that is wholly visible, which is every page drawn in a pane.
+    pub fn whole(id: u64, area: Rect, focused: bool) -> Self {
+        Self { id, area, visible: area, focused }
+    }
 }
 
 /// A command shared by the browser toolbar and `unluminous-cli browser`.
@@ -739,6 +758,9 @@ mod native {
     struct NativeView {
         webview: WebView,
         bounds: Option<wry::Rect>,
+        /// The last pair [`clip_to_the_visible_part`] was given, so a frame that changed neither costs
+        /// no call into the window manager. `wry::Rect` is not comparable, so this keeps egui's own.
+        clip: Option<(egui::Rect, egui::Rect)>,
         visible: bool,
     }
 
@@ -852,7 +874,7 @@ mod native {
                 })
                 .build_as_child(parent)
                 .map_err(|problem| format!("Unluminous could not start the browser: {problem}"))?;
-            self.view = Some(NativeView { webview, bounds: None, visible: false });
+            self.view = Some(NativeView { webview, bounds: None, clip: None, visible: false });
             Ok(())
         }
 
@@ -900,16 +922,83 @@ mod native {
     }
 
     /// Keep the view inside its pane and change native state only when the answer moved.
+    ///
+    /// **The bounds are the whole page and the crop is a separate question.** `set_bounds` is the page's
+    /// viewport as well as its position, so cutting it is what reflows a responsive page — see
+    /// [`clip_to_the_visible_part`], which takes the part that may be painted off the same placement.
     fn place(view: &mut NativeView, placement: &BrowserPlacement) {
         let bounds = browser_rect(placement.area);
         if view.bounds != Some(bounds) && view.webview.set_bounds(bounds).is_ok() {
             view.bounds = Some(bounds);
+        }
+        if view.clip != Some((placement.area, placement.visible)) {
+            clip_to_the_visible_part(view, placement.area, placement.visible);
+            view.clip = Some((placement.area, placement.visible));
         }
         set_visible(view, true);
         if placement.focused {
             let _ = view.webview.focus();
         }
     }
+
+    /// Crop the native child to the part of it that may be painted, without touching its viewport.
+    ///
+    /// **On Windows this is a window region on the container `wry` already makes.** `WebViewExtWindows::hwnd`
+    /// is that container: a real `WS_CHILD` window whose only child is the engine's own, so a region set on
+    /// it clips the engine and leaves `ICoreWebView2Controller::SetBounds` — the page's viewport — at the
+    /// whole node. That is what makes a node hanging off the canvas show *part of a page* rather than a page
+    /// laid out into a narrower box, which is `task-1914`'s report.
+    ///
+    /// The scale is asked of the same window `wry` asks, `GetDpiForWindow`, so the two cannot disagree about
+    /// where a logical point is. `SetWindowRgn` takes ownership of the region and the system deletes it, so
+    /// nothing is deleted here; a placement that is wholly visible passes `None`, which is how a region is
+    /// taken off again.
+    ///
+    /// **On macOS there is no crop and the placement is honest about it.** A `WKWebView` is an `NSView` and
+    /// its superview is the window's content view, which does not clip its subviews — there is no container
+    /// of `wry`'s to put a mask on, and adding one would mean reaching into the view hierarchy `wry` owns.
+    /// So the bounds are the whole page there and the part outside the pane is drawn over Unluminous's own
+    /// furniture, which is the trade the caller states in `show_a_browser_node`.
+    #[cfg(windows)]
+    fn clip_to_the_visible_part(view: &NativeView, area: egui::Rect, visible: egui::Rect) {
+        use windows_sys::Win32::Foundation::HWND;
+        use windows_sys::Win32::Graphics::Gdi::{CreateRectRgn, SetWindowRgn};
+        use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
+        use wry::WebViewExtWindows as _;
+
+        let hwnd = view.webview.hwnd().0 as HWND;
+        if hwnd.is_null() {
+            return;
+        }
+        // Whole, so the region comes off entirely rather than being set to the window's own size — a
+        // region that happens to match is still a region, and one rounding point of difference would
+        // shave a column of pixels off a page nothing is covering.
+        if visible.contains_rect(area) {
+            unsafe { SetWindowRgn(hwnd, std::ptr::null_mut(), 1) };
+            return;
+        }
+        let dpi = unsafe { GetDpiForWindow(hwnd) };
+        // `0` is what `GetDpiForWindow` answers for a handle it does not like, and 96 is one physical
+        // pixel to one point — which is `wry`'s own fallback in `webview2::util::hwnd_dpi`.
+        let scale = f64::from(if dpi == 0 { 96 } else { dpi }) / 96.0;
+        let physical = |value: f32| (f64::from(value) * scale).round() as i32;
+        let left = physical(visible.left() - area.left()).max(0);
+        let top = physical(visible.top() - area.top()).max(0);
+        let right = physical(visible.right() - area.left()).max(left);
+        let bottom = physical(visible.bottom() - area.top()).max(top);
+        let region = unsafe { CreateRectRgn(left, top, right, bottom) };
+        if region.is_null() {
+            return;
+        }
+        // The system owns the region from here and deletes it when the window is destroyed or the next
+        // one replaces it, so it is not deleted here even when the call fails — `SetWindowRgn` documents
+        // that it takes ownership.
+        unsafe { SetWindowRgn(hwnd, region, 1) };
+    }
+
+    /// The same question on a platform whose native child cannot be cropped. See the Windows half.
+    #[cfg(not(windows))]
+    fn clip_to_the_visible_part(_view: &NativeView, _area: egui::Rect, _visible: egui::Rect) {}
 
     /// Show or hide the native child and lower an inactive Windows renderer's memory target.
     fn set_visible(view: &mut NativeView, visible: bool) {
@@ -998,10 +1087,12 @@ mod tests {
     /// of `task-1905`.
     #[test]
     fn the_native_view_goes_to_the_topmost_placement() {
-        let placed = |id: u64, focused: bool| BrowserPlacement {
-            id,
-            area: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(100.0, 100.0)),
-            focused,
+        let placed = |id: u64, focused: bool| {
+            BrowserPlacement::whole(
+                id,
+                egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(100.0, 100.0)),
+                focused,
+            )
         };
         // Back to front: 1 was drawn first and 2 is on top.
         let both = [placed(1, false), placed(2, false)];
@@ -1125,7 +1216,7 @@ mod tests {
     #[test]
     fn one_placement_is_chosen_and_an_occluded_frame_chooses_none() {
         let area = Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::splat(100.0));
-        let panes = [BrowserPlacement { id: 1, area, focused: false }, BrowserPlacement { id: 2, area, focused: true }];
+        let panes = [BrowserPlacement::whole(1, area, false), BrowserPlacement::whole(2, area, true)];
         assert_eq!(choose(&panes, false).map(|placement| placement.id), Some(2), "the focused pane holds the view");
         assert_eq!(choose(&panes[..1], false).map(|placement| placement.id), Some(1), "with no focus, the first drawn");
         assert_eq!(choose(&panes, true), None, "an egui surface over the pane takes the view off the screen");

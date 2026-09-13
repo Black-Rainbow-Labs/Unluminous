@@ -570,6 +570,8 @@ fn kind_mark(kind: Kind) -> fn(&egui::Painter, Pos2, Color32) {
         Kind::Browser => icon::image,
         Kind::Folder => icon::folder,
         Kind::Editor => icon::editing_area,
+        Kind::Chat => icon::chat,
+        Kind::Tasks => icon::board,
     }
 }
 
@@ -689,6 +691,29 @@ fn grip_rect(rect: Rect, grip: Grip, reach: f32) -> Rect {
             Pos2::new(rect.right() - reach * 2.0, rect.bottom() + reach),
         ),
     }
+}
+
+/// Light the rectangle a thing being dragged would land in.
+///
+/// **Where an insertion mark cannot be drawn.** `file_tabs::insertion_mark` puts a bar in a strip, which is
+/// the right answer when the thing being carried is joining a row of tabs; a File Editor node showing one
+/// file draws no strip at all, and a file dropped on the empty canvas is not joining anything. Both of those
+/// are answered by saying where the thing would be instead, which is what every window manager's own drop
+/// preview does and what `dock::regions` already draws for a panel being moved to an edge.
+///
+/// A rectangle with no room in it is not drawn: a node scrolled almost off the canvas would otherwise be a
+/// line of accent colour along the pane's edge.
+pub fn landing_mark(painter: &egui::Painter, area: Rect) {
+    if area.width() < 4.0 || area.height() < 4.0 {
+        return;
+    }
+    painter.rect(
+        area,
+        egui::CornerRadius::same(6),
+        look_accent().gamma_multiply(0.12),
+        egui::Stroke::new(1.5, look_accent()),
+        egui::StrokeKind::Inside,
+    );
 }
 
 /// What an empty canvas says, so that a pane nobody has put anything on does not look broken.

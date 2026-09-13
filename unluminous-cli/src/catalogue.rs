@@ -1278,7 +1278,7 @@ pub const COMMANDS: &[Command] = &[
         area: "space",
         verb: "add",
         summary: "Put a node on the view that is showing and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with UNLUMINOUS_SPACE_NODE set to its id so an agent started in it knows which node it is, UNLUMINOUS_SPACE_HINT saying what to run first, and UNLUMINOUS_CLI and UNLUMINOUS_INSTANCE saying where `unluminous-cli` is and which window it drives - it is on nobody's PATH.",
-        arguments: &[argument("kind", true, "terminal, browser, folder or editor.")],
+        arguments: &[argument("kind", true, "terminal, browser, folder, editor, chat or tasks.")],
         flags: &[
             option("x", "points", "Where to put it, in canvas points. The middle of what is showing when it is not given."),
             option("y", "points", "The same, down the canvas."),
@@ -1421,6 +1421,23 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         area: "space",
+        verb: "chat",
+        summary: "Drive an Agent Chat node's own conversation: `new`, `send`, `stop`, `state`, `messages`, `last`, `attach`, `providers`, `use`, `history`, `open`, `remove`, `tools` and `view`, which are the same verbs `plugins run agent-chat` has and reach the same code. The difference is whose conversation: each chat node holds one of its own, where `plugins run agent-chat` drives the pane's. Like the pane's, `send` does not wait - `state` says when the answer has arrived.",
+        arguments: &[
+            argument("node", true, "The chat node's id, from `space list`."),
+            argument("verb", true, "What to do: new, send, stop, state, messages, last, attach, providers, use, history, open, remove, tools or view."),
+            rest("words", false, "What the verb takes: the message for `send`, the conversation id for `open`, `on` or `off` for `tools`. It is the rest of the line, so a message needs no quoting."),
+        ],
+        flags: &[option("from", "node", "Which node is asking. It must be wired to the one it names.")],
+        examples: &[
+            "unluminous-cli space chat 7 state",
+            "unluminous-cli space chat 7 send Summarise what this project does",
+            "unluminous-cli space chat 7 last --json",
+        ],
+        local: false,
+    },
+    Command {
+        area: "space",
         verb: "restart",
         summary: "Start a terminal node's program again in the same folder. With `--resume` it starts the agent on the conversation it named, which Claude takes and Codex does not. With `--running` it types the program the node was last seen running into the shell it already has, which is what a node comes back as when somebody typed an agent into a plain terminal rather than giving the node a command.",
         arguments: &[argument("node", true, "The terminal node's id.")],
@@ -1448,10 +1465,10 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "space",
         verb: "zoom",
-        summary: "How big one node draws what it holds. Each kind walks the number that really decides its size: a terminal and a file editor a point size, a folder view a multiplier over its rows, and a web browser the page's own zoom. With no flag at all it answers the factor the node is drawn at. This is what the modifier wheel over a node does, and it changes nothing about the canvas's own zoom, which is `space camera`.",
+        summary: "How big one node draws what it holds. Each kind walks the number that really decides its size: a terminal and a file editor a point size, a folder view, an agent chat and the tasks board a multiplier over everything they draw, and a web browser the page's own zoom. With no flag at all it answers the factor the node is drawn at. This is what the modifier wheel over a node does, and it changes nothing about the canvas's own zoom, which is `space camera`.",
         arguments: &[argument("node", true, "The node's id.")],
         flags: &[
-            option("factor", "number", "How big, as a multiplier for a folder or a browser, or a point size for a terminal or an editor."),
+            option("factor", "number", "How big, as a multiplier for a folder, a chat, the board or a browser, or a point size for a terminal or an editor."),
             switch("bigger", "One step up."),
             switch("smaller", "One step down."),
             switch("reset", "Back to the size the window's own setting gives."),
