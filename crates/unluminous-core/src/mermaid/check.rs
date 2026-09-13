@@ -136,8 +136,8 @@ fn holds_the_words(scene: &Scene, wanted: &[&str]) {
     let texts = scene.texts();
     let run_together = texts.join(" ");
     for words in wanted {
-        let found = texts.iter().any(|drawn| drawn.contains(words))
-            || run_together.contains(words.trim());
+        let found =
+            texts.iter().any(|drawn| drawn.contains(words)) || run_together.contains(words.trim());
         assert!(found, "the scene does not say `{words}`. It says: {texts:?}");
     }
 }

@@ -125,11 +125,7 @@ mod tests {
             let bytes: Vec<u8> = (0..length).map(|index| (index * 7 % 256) as u8).collect();
             let text = encode(&bytes);
             assert_eq!(text.len() % 4, 0, "base64 is a multiple of four characters");
-            assert_eq!(
-                decode(&text).as_deref(),
-                Some(bytes.as_slice()),
-                "at length {length}"
-            );
+            assert_eq!(decode(&text).as_deref(), Some(bytes.as_slice()), "at length {length}");
         }
     }
 
@@ -165,7 +161,8 @@ mod tests {
         assert_eq!(media, "image/png");
         assert_eq!(bytes, vec![0x89, 0x50, 0x4E, 0x47]);
         // A charset after the media type is ignored rather than taken as part of it.
-        let (media, _) = from_data_url("data:image/jpeg;charset=binary;base64,//8=").expect("a data url");
+        let (media, _) =
+            from_data_url("data:image/jpeg;charset=binary;base64,//8=").expect("a data url");
         assert_eq!(media, "image/jpeg");
         // And something that is not one answers nothing rather than half an answer.
         assert!(from_data_url("https://example.com/cat.png").is_none());

@@ -21,13 +21,13 @@ use egui::{vec2, Modifiers};
 use egui_kittest::kittest::Queryable;
 use egui_kittest::wgpu::WgpuTestRenderer;
 use egui_kittest::{Harness, SnapshotResults};
-use unluminous_app::UnluminousApp;
-use unluminous_app::app::ViewMode;
 use unluminous_app::app::actions::{Action, FoldAction, HighlightColor, RunAction};
+use unluminous_app::app::ViewMode;
 use unluminous_app::components::about_dialog::About;
 use unluminous_app::components::title_bar::MenuPlacement;
 use unluminous_app::settings;
 use unluminous_app::theme::size;
+use unluminous_app::UnluminousApp;
 use unluminous_core::{Align, Color, Command, StyleChange};
 
 const WINDOW: [f32; 2] = [1180.0, 740.0];
@@ -123,7 +123,8 @@ fn build_sample_folder() -> std::path::PathBuf {
     std::fs::write(root.join("notes.txt"), "notes\n").expect("write notes.txt");
     std::fs::write(root.join("chapters/one.md"), "# One\n").expect("write chapters/one.md");
     std::fs::write(root.join("chapters/two.md"), "# Two\n").expect("write chapters/two.md");
-    std::fs::write(root.join("chapters/appendix/tables.txt"), "tables\n").expect("write the deep file");
+    std::fs::write(root.join("chapters/appendix/tables.txt"), "tables\n")
+        .expect("write the deep file");
     std::fs::write(root.join("drafts/idea.md"), "an idea\n").expect("write drafts/idea.md");
     // A file Unluminous has no special handling for. It opens as plain text, which is what
     // `tasks/improvements.md` asks for.
@@ -166,19 +167,17 @@ fn write_sample_picture(path: &std::path::Path) {
 fn harness(text: &str) -> Harness<'static, UnluminousApp> {
     let folder = sample_folder();
     let text = text.to_owned();
-    let mut harness = builder()
-        .with_size(vec2(WINDOW[0], WINDOW[1]))
-        .build_eframe(move |cc| {
-            let mut app = UnluminousApp::with_text(folder, &text);
-            // The same setup the released binary does, and for the same reason: the fonts have to be
-            // installed before the first frame.
-            app.prepare(&cc.egui_ctx);
-            // A plugin's decoration is rasterised on the processor, and `vello_cpu` picks the widest SIMD it
-            // has. Pinned here so an accepted image is a property of the code rather than of the machine that
-            // took it — the same reason the terminal's screenshots feed fixed bytes to a session with no shell.
-            app.draw_deterministically();
-            app
-        });
+    let mut harness = builder().with_size(vec2(WINDOW[0], WINDOW[1])).build_eframe(move |cc| {
+        let mut app = UnluminousApp::with_text(folder, &text);
+        // The same setup the released binary does, and for the same reason: the fonts have to be
+        // installed before the first frame.
+        app.prepare(&cc.egui_ctx);
+        // A plugin's decoration is rasterised on the processor, and `vello_cpu` picks the widest SIMD it
+        // has. Pinned here so an accepted image is a property of the code rather than of the machine that
+        // took it — the same reason the terminal's screenshots feed fixed bytes to a session with no shell.
+        app.draw_deterministically();
+        app
+    });
     harness.run();
     harness
 }
@@ -186,23 +185,25 @@ fn harness(text: &str) -> Harness<'static, UnluminousApp> {
 /// Build the application on a folder of its own, for a test that needs a second window.
 fn harness_in(folder: &std::path::Path) -> Harness<'static, UnluminousApp> {
     let folder = folder.to_path_buf();
-    let mut harness = builder()
-        .with_size(vec2(WINDOW[0], WINDOW[1]))
-        .build_eframe(move |cc| {
-            let mut app = UnluminousApp::new(folder);
-            app.prepare(&cc.egui_ctx);
-            // A plugin's decoration is rasterised on the processor, and `vello_cpu` picks the widest SIMD it
-            // has. Pinned here so an accepted image is a property of the code rather than of the machine that
-            // took it — the same reason the terminal's screenshots feed fixed bytes to a session with no shell.
-            app.draw_deterministically();
-            app
-        });
+    let mut harness = builder().with_size(vec2(WINDOW[0], WINDOW[1])).build_eframe(move |cc| {
+        let mut app = UnluminousApp::new(folder);
+        app.prepare(&cc.egui_ctx);
+        // A plugin's decoration is rasterised on the processor, and `vello_cpu` picks the widest SIMD it
+        // has. Pinned here so an accepted image is a property of the code rather than of the machine that
+        // took it — the same reason the terminal's screenshots feed fixed bytes to a session with no shell.
+        app.draw_deterministically();
+        app
+    });
     harness.run();
     harness
 }
 
 /// Select `range` and run `command`, then let the application settle.
-fn select_and(harness: &mut Harness<'static, UnluminousApp>, range: std::ops::Range<usize>, commands: &[Command]) {
+fn select_and(
+    harness: &mut Harness<'static, UnluminousApp>,
+    range: std::ops::Range<usize>,
+    commands: &[Command],
+) {
     harness.state_mut().command(Command::PlaceCaret { offset: range.start, extend: false });
     harness.state_mut().command(Command::PlaceCaret { offset: range.end, extend: true });
     for command in commands {
@@ -217,7 +218,11 @@ fn select_and(harness: &mut Harness<'static, UnluminousApp>, range: std::ops::Ra
 /// soon as the text is edited. An earlier version of these tests counted wrongly and left the first
 /// letter of a line out of the selection, which the screenshot showed as one small letter in front of a
 /// large word.
-fn select_phrase(harness: &mut Harness<'static, UnluminousApp>, phrase: &str, commands: &[Command]) {
+fn select_phrase(
+    harness: &mut Harness<'static, UnluminousApp>,
+    phrase: &str,
+    commands: &[Command],
+) {
     let text = harness.state().document().text().to_string();
     let start = text
         .find(phrase)
@@ -297,7 +302,6 @@ fn report(results: SnapshotResults) {
     assert!(errors.is_empty(), "snapshot differences: {errors:#?}");
 }
 
-
 /// Copy a folder to a place that is not inside any git repository.
 ///
 /// A window looks for a repository the moment it opens, and what it finds goes in the status bar and
@@ -353,7 +357,8 @@ fn git_folder(name: &str) -> std::path::PathBuf {
     .expect("write sqlClient.ts");
     git(&["add", "-A"]);
     git(&["commit", "--date", "2026-01-14T09:00:00+00:00", "-m", "the first commit"]);
-    std::fs::write(root.join("version.ts"), "export const version = '0.1.0';\n").expect("write version.ts");
+    std::fs::write(root.join("version.ts"), "export const version = '0.1.0';\n")
+        .expect("write version.ts");
     // The second commit also touches the annotated file, so blame has two authors and two dates in
     // it and the column really shows its gradient rather than one flat colour.
     std::fs::write(
@@ -476,7 +481,10 @@ fn typing_on_the_keyboard_puts_text_in_the_document() {
     harness.run();
     harness.input_mut().events.push(egui::Event::Text("A second line.".to_owned()));
     harness.run();
-    assert_eq!(harness.state().document().text().to_string(), "Unluminous typed this.\nA second line.");
+    assert_eq!(
+        harness.state().document().text().to_string(),
+        "Unluminous typed this.\nA second line."
+    );
     harness.snapshot(shot("typed_text"));
 }
 
@@ -554,7 +562,8 @@ fn a_selection_is_highlighted_behind_part_of_a_line_only() {
     let mut harness = harness("Select only the middle words of this line, not the rest of it.");
     select_and(&mut harness, 12..28, &[]);
     assert_eq!(harness.state().document().selected_text(), "the middle words");
-    let rects = harness.state().layout().selection_rects(harness.state().document().selection().range());
+    let rects =
+        harness.state().layout().selection_rects(harness.state().document().selection().range());
     assert_eq!(rects.len(), 1, "the selection is inside one line, so it is one rectangle");
     harness.snapshot(shot("selection"));
 }
@@ -569,7 +578,10 @@ fn select_all_then_pressing_bold_makes_the_whole_document_bold() {
     open_text_options(&mut harness);
     harness.get_by_label("Bold").click();
     harness.run();
-    assert!(harness.state().document().chars().style_at(4).bold, "the toolbar button should have applied bold");
+    assert!(
+        harness.state().document().chars().style_at(4).bold,
+        "the toolbar button should have applied bold"
+    );
     harness.snapshot(shot("bold_all"));
 }
 
@@ -614,14 +626,21 @@ fn the_keyboard_shortcut_for_bold_does_the_same_as_the_button() {
     harness.run();
     harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::B);
     harness.run();
-    assert!(harness.state().document().chars().style_at(2).bold, "command plus B should turn bold on");
+    assert!(
+        harness.state().document().chars().style_at(2).bold,
+        "command plus B should turn bold on"
+    );
 }
 
 #[test]
 fn three_font_sizes_stand_at_three_visibly_different_heights() {
     let mut harness = harness("Small size here\nMedium size here\nLarge size here");
     select_phrase(&mut harness, "Small size here", &[Command::ApplyStyle(StyleChange::size(11.0))]);
-    select_phrase(&mut harness, "Medium size here", &[Command::ApplyStyle(StyleChange::size(24.0))]);
+    select_phrase(
+        &mut harness,
+        "Medium size here",
+        &[Command::ApplyStyle(StyleChange::size(24.0))],
+    );
     select_phrase(&mut harness, "Large size here", &[Command::ApplyStyle(StyleChange::size(44.0))]);
     collapse(&mut harness);
     let heights: Vec<f32> = harness.state().layout().lines.iter().map(|line| line.height).collect();
@@ -655,10 +674,14 @@ fn the_same_sentence_is_shown_in_each_installed_family() {
     let mut harness = harness(text.trim_end());
     for family in &families {
         let line = format!("The quick brown fox in {family}");
-        select_phrase(&mut harness, &line, &[
-            Command::ApplyStyle(StyleChange::family(family.clone())),
-            Command::ApplyStyle(StyleChange::size(22.0)),
-        ]);
+        select_phrase(
+            &mut harness,
+            &line,
+            &[
+                Command::ApplyStyle(StyleChange::family(family.clone())),
+                Command::ApplyStyle(StyleChange::size(22.0)),
+            ],
+        );
     }
     collapse(&mut harness);
     harness.snapshot(shot("font_family"));
@@ -705,7 +728,8 @@ fn alignment_actually_moves_the_text_within_the_width() {
 
 #[test]
 fn double_spacing_puts_the_lines_twice_as_far_apart() {
-    let text = "First line of the paragraph.\nSecond line of the paragraph.\nThird line of the paragraph.";
+    let text =
+        "First line of the paragraph.\nSecond line of the paragraph.\nThird line of the paragraph.";
     let mut results = SnapshotResults::new();
 
     let mut single = harness(text);
@@ -791,7 +815,9 @@ fn the_background_fades_with_the_slider_and_the_text_stays_opaque() {
 
     let mut results = SnapshotResults::new();
     let mut measurements = Vec::new();
-    for (opacity, expected_alpha, name) in [(0.15_f32, 38_u8, "opacity_low"), (1.0_f32, 255, "opacity_high")] {
+    for (opacity, expected_alpha, name) in
+        [(0.15_f32, 38_u8, "opacity_low"), (1.0_f32, 255, "opacity_high")]
+    {
         let mut harness = harness("TEXT STAYS OPAQUE");
         harness.state_mut().command(Command::SelectAll);
         // Bold at 64 point, so that the strokes are thick and a good number of pixels reach full
@@ -910,24 +936,35 @@ fn a_document_holding_every_feature_at_once_renders() {
     let mut harness = harness(
         "Unluminous\nA text editor written in Rust.\nbold italic underline struck\ncoloured text here\nThis last paragraph is centred and double spaced so that the paragraph settings show up next to the character settings.",
     );
-    select_phrase(&mut harness, "Unluminous", &[
-        Command::ApplyStyle(StyleChange::size(40.0)),
-        Command::ToggleBold,
-        Command::SetAlign(Align::Center),
-    ]);
-    select_phrase(&mut harness, "A text editor written in Rust.", &[
-        Command::ApplyStyle(StyleChange::size(18.0)),
-    ]);
+    select_phrase(
+        &mut harness,
+        "Unluminous",
+        &[
+            Command::ApplyStyle(StyleChange::size(40.0)),
+            Command::ToggleBold,
+            Command::SetAlign(Align::Center),
+        ],
+    );
+    select_phrase(
+        &mut harness,
+        "A text editor written in Rust.",
+        &[Command::ApplyStyle(StyleChange::size(18.0))],
+    );
     select_phrase(&mut harness, "bold", &[Command::ToggleBold]);
     select_phrase(&mut harness, "italic", &[Command::ToggleItalic]);
     select_phrase(&mut harness, "underline", &[Command::ToggleUnderline]);
     select_phrase(&mut harness, "struck", &[Command::ToggleStrikethrough]);
     select_phrase(&mut harness, "coloured", &[Command::ApplyStyle(StyleChange::color(Color::RED))]);
-    select_phrase(&mut harness, "text here", &[Command::ApplyStyle(StyleChange::color(Color::GREEN))]);
-    select_phrase(&mut harness, "This last paragraph", &[
-        Command::SetAlign(Align::Center),
-        Command::SetLineSpacing(2.0),
-    ]);
+    select_phrase(
+        &mut harness,
+        "text here",
+        &[Command::ApplyStyle(StyleChange::color(Color::GREEN))],
+    );
+    select_phrase(
+        &mut harness,
+        "This last paragraph",
+        &[Command::SetAlign(Align::Center), Command::SetLineSpacing(2.0)],
+    );
     collapse(&mut harness);
     harness.snapshot(shot("everything"));
 }
@@ -971,7 +1008,11 @@ fn viewport_commands(harness: &Harness<'static, UnluminousApp>) -> Vec<String> {
 /// Two of them inside egui's double click window is what `double_clicked` reads. `click_at` further
 /// down sends one click and moves the pointer first; this one exists because a double click has to be
 /// two presses with nothing between them.
-fn click_repeatedly_at(harness: &mut Harness<'static, UnluminousApp>, pos: egui::Pos2, times: usize) {
+fn click_repeatedly_at(
+    harness: &mut Harness<'static, UnluminousApp>,
+    pos: egui::Pos2,
+    times: usize,
+) {
     for _ in 0..times {
         for pressed in [true, false] {
             harness.input_mut().events.push(egui::Event::PointerButton {
@@ -1066,7 +1107,10 @@ fn the_status_bar_counts_the_line_and_column_from_one() {
     let mut harness = harness("first line\nsecond line");
     harness.state_mut().command(Command::MoveDocumentStart { extend: false });
     harness.run();
-    assert_eq!(harness.state().caret_position(), unluminous_app::components::status_bar::Position { line: 1, column: 1 });
+    assert_eq!(
+        harness.state().caret_position(),
+        unluminous_app::components::status_bar::Position { line: 1, column: 1 }
+    );
     harness.state_mut().command(Command::MoveDocumentEnd { extend: false });
     harness.run();
     assert_eq!(
@@ -1156,7 +1200,10 @@ fn the_window_always_has_either_a_panel_or_the_editing_area() {
     did(&mut harness, "action run toggle-editor");
     harness.run();
     assert!(!harness.state().editor_visible, "the editing area is hidden as asked");
-    assert!(harness.state().explorer_visible, "and the explorer came back, so there is something to look at");
+    assert!(
+        harness.state().explorer_visible,
+        "and the explorer came back, so there is something to look at"
+    );
 
     // The other way round: with the editing area hidden, hiding the explorer brings the editing area back.
     did(&mut harness, "action run toggle-explorer");
@@ -1187,8 +1234,6 @@ fn the_explorer_can_be_hidden_and_brought_back() {
     assert!(harness.state().explorer_visible);
 }
 
-
-
 #[test]
 fn the_formatting_controls_are_behind_the_font_button_and_all_reachable_by_name() {
     let mut harness = harness("some text");
@@ -1201,9 +1246,17 @@ fn the_formatting_controls_are_behind_the_font_button_and_all_reachable_by_name(
     );
     open_text_options(&mut harness);
     for name in [
-        "Bold", "Italic", "Underline", "Strikethrough",
-        "Left", "Center", "Right", "Justify",
-        "Single", "One and a half", "Double",
+        "Bold",
+        "Italic",
+        "Underline",
+        "Strikethrough",
+        "Left",
+        "Center",
+        "Right",
+        "Justify",
+        "Single",
+        "One and a half",
+        "Double",
     ] {
         harness.get_by_label(name);
     }
@@ -1236,10 +1289,7 @@ fn a_code_file_has_no_text_tools_and_nothing_below_them_moves() {
         code.query_by_label("Text options").is_none(),
         "a Rust file has no formatting to offer"
     );
-    assert!(
-        code.query_by_label("Raw Markdown").is_none(),
-        "and nothing to preview either"
-    );
+    assert!(code.query_by_label("Raw Markdown").is_none(), "and nothing to preview either");
     let without_tools = code.state().editor_area().top();
     assert!(
         (with_tools - without_tools).abs() < 0.5,
@@ -1282,7 +1332,10 @@ fn a_text_file_keeps_the_formatting_and_loses_the_view_modes() {
     harness.run();
     harness.get_by_label("Text options");
     for mode in ["Raw Markdown", "Side by side", "Markdown preview"] {
-        assert!(harness.query_by_label(mode).is_none(), "{mode} has nothing to show for a .txt file");
+        assert!(
+            harness.query_by_label(mode).is_none(),
+            "{mode} has nothing to show for a .txt file"
+        );
     }
 }
 
@@ -1306,17 +1359,15 @@ fn the_window_matches_the_design() {
     let sample = copy_out_of_the_repository(&sample, "unluminous-screenshot-sample");
 
     let folder = sample.clone();
-    let mut harness = builder()
-        .with_size(vec2(1264.0, 751.0))
-        .build_eframe(move |cc| {
-            let mut app = UnluminousApp::new(folder);
-            app.prepare(&cc.egui_ctx);
-            // A plugin's decoration is rasterised on the processor, and `vello_cpu` picks the widest SIMD it
-            // has. Pinned here so an accepted image is a property of the code rather than of the machine that
-            // took it — the same reason the terminal's screenshots feed fixed bytes to a session with no shell.
-            app.draw_deterministically();
-            app
-        });
+    let mut harness = builder().with_size(vec2(1264.0, 751.0)).build_eframe(move |cc| {
+        let mut app = UnluminousApp::new(folder);
+        app.prepare(&cc.egui_ctx);
+        // A plugin's decoration is rasterised on the processor, and `vello_cpu` picks the widest SIMD it
+        // has. Pinned here so an accepted image is a property of the code rather than of the machine that
+        // took it — the same reason the terminal's screenshots feed fixed bytes to a session with no shell.
+        app.draw_deterministically();
+        app
+    });
     harness.run();
     // Open the two folders and the file, through the explorer, as a person would.
     harness.get_by_label_contains("chapters").click();
@@ -1330,12 +1381,12 @@ fn the_window_matches_the_design() {
         harness.state().document().text().to_string().starts_with("# Unluminous"),
         "welcome.md should be open in the editor"
     );
-    assert_eq!(harness.state().tree.file_count(), 5, "four Markdown or text files plus one Rust file");
     assert_eq!(
-        harness.state().tree.openable_count(),
+        harness.state().tree.file_count(),
         5,
-        "all five hold text, so all five open"
+        "four Markdown or text files plus one Rust file"
     );
+    assert_eq!(harness.state().tree.openable_count(), 5, "all five hold text, so all five open");
     assert_eq!(
         harness.state().caret_position(),
         unluminous_app::components::status_bar::Position { line: 1, column: 1 }
@@ -1644,7 +1695,10 @@ fn the_preview_lays_out_headings_taller_than_body_text() {
         .find(|line| line.runs.iter().any(|run| line.run_clusters(run).len() > 20))
         .map(|line| line.height)
         .expect("one line of body text");
-    assert!(heading > body, "the heading line ({heading}) should be taller than a body line ({body})");
+    assert!(
+        heading > body,
+        "the heading line ({heading}) should be taller than a body line ({body})"
+    );
 }
 
 #[test]
@@ -1764,7 +1818,8 @@ fn the_explorer_draws_only_the_rows_that_are_on_screen() {
     // Named so they sort in the order they are numbered, because the explorer sorts by name and
     // `entry100` sorts before `entry2`.
     for index in 0..600 {
-        std::fs::write(folder.join(format!("entry{index:04}.txt")), "text\n").expect("write a file");
+        std::fs::write(folder.join(format!("entry{index:04}.txt")), "text\n")
+            .expect("write a file");
     }
     harness.state_mut().open_folder(&folder);
     harness.run();
@@ -1799,7 +1854,10 @@ fn opening_a_folder_clears_the_filter_and_brings_the_explorer_back() {
     let folder = sample_folder();
     harness.state_mut().open_folder(&folder);
     harness.run();
-    assert!(harness.state().filter.is_empty(), "a filter from the old folder should not carry over");
+    assert!(
+        harness.state().filter.is_empty(),
+        "a filter from the old folder should not carry over"
+    );
     assert!(harness.state().explorer_visible, "opening a folder shows the explorer");
 }
 
@@ -1844,17 +1902,15 @@ fn save_as_and_save_are_reachable_without_the_menu() {
     std::fs::create_dir_all(&folder).expect("make the folder");
     let text = "saved through the File menu";
     let owned = folder.clone();
-    let mut harness = builder()
-        .with_size(vec2(WINDOW[0], WINDOW[1]))
-        .build_eframe(move |cc| {
-            let mut app = UnluminousApp::with_text(owned, text);
-            app.prepare(&cc.egui_ctx);
-            // A plugin's decoration is rasterised on the processor, and `vello_cpu` picks the widest SIMD it
-            // has. Pinned here so an accepted image is a property of the code rather than of the machine that
-            // took it — the same reason the terminal's screenshots feed fixed bytes to a session with no shell.
-            app.draw_deterministically();
-            app
-        });
+    let mut harness = builder().with_size(vec2(WINDOW[0], WINDOW[1])).build_eframe(move |cc| {
+        let mut app = UnluminousApp::with_text(owned, text);
+        app.prepare(&cc.egui_ctx);
+        // A plugin's decoration is rasterised on the processor, and `vello_cpu` picks the widest SIMD it
+        // has. Pinned here so an accepted image is a property of the code rather than of the machine that
+        // took it — the same reason the terminal's screenshots feed fixed bytes to a session with no shell.
+        app.draw_deterministically();
+        app
+    });
     harness.run();
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::Save, &ctx);
@@ -2028,7 +2084,14 @@ fn a_plugins_own_configuration_is_listed_read_and_written_through_settings() {
             .as_array()
             .expect("the rows")
             .iter()
-            .map(|row| row.as_str().unwrap_or_default().split_whitespace().next().unwrap_or_default().to_owned())
+            .map(|row| {
+                row.as_str()
+                    .unwrap_or_default()
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned()
+            })
             .collect()
     };
     assert!(
@@ -2123,7 +2186,10 @@ fn the_terminal_page_holds_the_font_size_and_the_shell() {
     // `task-1670`: the shell is a setting because the default cannot be right for everybody, and this
     // is where a person who wants `cmd.exe` back asks for it.
     harness.get_by_label("Terminal shell");
-    assert!(harness.query_by_label("Background opacity").is_none(), "that is on the Appearance page");
+    assert!(
+        harness.query_by_label("Background opacity").is_none(),
+        "that is on the Appearance page"
+    );
     harness.snapshot(shot("settings_terminal"));
 }
 
@@ -2361,11 +2427,7 @@ fn a_pinch_too_small_to_ask_for_a_size_is_kept_rather_than_thrown_away() {
         harness.run();
         harness.run();
     }
-    assert_eq!(
-        harness.state().settings.font_size,
-        20.0,
-        "four small pinches add up to one size"
-    );
+    assert_eq!(harness.state().settings.font_size, 20.0, "four small pinches add up to one size");
 }
 
 /// A file long enough to be scrolled about in, one short line a paragraph so nothing wraps.
@@ -2746,7 +2808,10 @@ fn two_presses_on_a_panels_header_fill_the_window_with_it_and_two_more_put_it_ba
     double_click_at(&mut harness, header.center());
     assert_eq!(harness.state().maximised_pane(), None);
     assert!(harness.state().editor_visible);
-    assert!(harness.state().terminal.visible, "the terminal was showing before, so it is showing again");
+    assert!(
+        harness.state().terminal.visible,
+        "the terminal was showing before, so it is showing again"
+    );
 }
 
 /// The editing area has a tab strip where every other pane has a header, so that is its top.
@@ -2803,7 +2868,11 @@ fn maximising_is_not_an_arrangement_and_a_toggle_inside_it_ends_it() {
     assert!(harness.state().run.visible);
     did(&mut harness, "action run toggle-maximised-pane");
     harness.run();
-    assert_eq!(harness.state().maximised_pane(), Some(Some(Panel::Run)), "the run tile, not the terminal");
+    assert_eq!(
+        harness.state().maximised_pane(),
+        Some(Some(Panel::Run)),
+        "the run tile, not the terminal"
+    );
     assert!(harness.state().run.visible && !harness.state().terminal.visible);
 }
 
@@ -2833,7 +2902,11 @@ fn escape_puts_a_maximised_pane_back_and_does_nothing_when_none_is() {
     assert_eq!(harness.state().focus, unluminous_app::app::Focus::Explorer);
     did(&mut harness, "action run toggle-maximised-pane");
     harness.run();
-    assert_eq!(harness.state().maximised_pane(), Some(Some(Panel::Explorer)), "the pane with the keys");
+    assert_eq!(
+        harness.state().maximised_pane(),
+        Some(Some(Panel::Explorer)),
+        "the pane with the keys"
+    );
     harness.key_press(egui::Key::Escape);
     harness.run();
     assert!(harness.state().terminal.visible, "the terminal came back");
@@ -3105,9 +3178,16 @@ fn a_document_taller_than_its_pane_has_a_scrollbar_that_can_be_dragged() {
     let from = egui::pos2(track.center().x, track.top() + 10.0);
     drag(&mut harness, from, egui::pos2(track.center().x, track.center().y));
     let scrolled = harness.state().files.active().scroll;
-    assert!(scrolled > 100.0, "dragging the thumb should have scrolled the file, it is at {scrolled}");
+    assert!(
+        scrolled > 100.0,
+        "dragging the thumb should have scrolled the file, it is at {scrolled}"
+    );
     // And it stops where the page stops rather than running off the end.
-    drag(&mut harness, egui::pos2(track.center().x, track.center().y), egui::pos2(track.center().x, track.bottom() + 400.0));
+    drag(
+        &mut harness,
+        egui::pos2(track.center().x, track.center().y),
+        egui::pos2(track.center().x, track.bottom() + 400.0),
+    );
     let bottom = harness.state().files.active().scroll;
     let overflow = harness.state().layout().height - harness.state().editor_area().height()
         + unluminous_app::theme::size::EDITOR_PADDING_Y * 2.0;
@@ -3151,7 +3231,8 @@ fn scrolling_the_source_scrolls_the_preview_with_it() {
     // pages of different heights.
     let paragraph = harness.state().layout().paragraph_at_y(source).0;
     let map = harness.state().preview_source_lines();
-    let line = map.get(harness.state().preview_layout().paragraph_at_y(preview).0).copied().unwrap_or(0);
+    let line =
+        map.get(harness.state().preview_layout().paragraph_at_y(preview).0).copied().unwrap_or(0);
     assert!(
         line.abs_diff(paragraph) <= 1,
         "the source is at line {paragraph} and the preview is showing line {line}"
@@ -3166,7 +3247,8 @@ fn scrolling_the_preview_scrolls_the_source_with_it() {
     harness.run();
     // The wheel over the preview, which is the right hand half of the editing area.
     let source_area = harness.state().editor_area();
-    let over_the_preview = egui::pos2(source_area.right() + source_area.width() / 2.0, source_area.center().y);
+    let over_the_preview =
+        egui::pos2(source_area.right() + source_area.width() / 2.0, source_area.center().y);
     harness.input_mut().events.push(egui::Event::PointerMoved(over_the_preview));
     harness.run();
     harness.input_mut().events.push(egui::Event::MouseWheel {
@@ -3196,17 +3278,13 @@ fn the_two_halves_do_not_chase_each_other_when_nothing_is_touched() {
     harness.state_mut().files.active_mut().scroll = 900.0;
     harness.run();
     harness.run();
-    let settled = (
-        harness.state().files.active().scroll,
-        harness.state().files.active().preview_scroll,
-    );
+    let settled =
+        (harness.state().files.active().scroll, harness.state().files.active().preview_scroll);
     for _ in 0..30 {
         harness.run();
     }
-    let after = (
-        harness.state().files.active().scroll,
-        harness.state().files.active().preview_scroll,
-    );
+    let after =
+        (harness.state().files.active().scroll, harness.state().files.active().preview_scroll);
     assert!(
         (settled.0 - after.0).abs() < 0.5 && (settled.1 - after.1).abs() < 0.5,
         "left alone for thirty frames the view moved from {settled:?} to {after:?}"
@@ -3233,7 +3311,11 @@ fn a_tab_can_be_dragged_along_the_strip_to_rearrange_it() {
         vec!["readme.md", "program.rs", "notes.txt"],
         "the tab should have been carried to the end of the strip"
     );
-    assert_eq!(harness.state().files.active().name(), "notes.txt", "and be showing where it landed");
+    assert_eq!(
+        harness.state().files.active().name(),
+        "notes.txt",
+        "and be showing where it landed"
+    );
     harness.snapshot(shot("tab_dragged_along_the_strip"));
 }
 
@@ -3267,7 +3349,8 @@ fn a_tab_can_be_dragged_from_one_pane_into_the_other() {
 #[test]
 fn right_clicking_the_project_name_opens_the_same_menu_a_folder_does() {
     let mut harness = harness("");
-    let heading = harness.get_by_label(&sample_folder().file_name().unwrap().to_string_lossy()).rect();
+    let heading =
+        harness.get_by_label(&sample_folder().file_name().unwrap().to_string_lossy()).rect();
     harness.input_mut().events.push(egui::Event::PointerButton {
         pos: heading.center(),
         button: egui::PointerButton::Secondary,
@@ -3283,13 +3366,13 @@ fn right_clicking_the_project_name_opens_the_same_menu_a_folder_does() {
     });
     harness.run();
     let opened = harness.state().explorer_menu.clone();
-    let (_, path, directory, _) = opened.expect("the project's name should open the explorer's menu");
+    let (_, path, directory, _) =
+        opened.expect("the project's name should open the explorer's menu");
     assert_eq!(path, sample_folder(), "the menu is about the project folder");
     assert!(directory, "and it is a folder, so `New -> File` makes a file inside it");
     harness.run();
     harness.snapshot(shot("project_name_menu"));
 }
-
 
 // ------------------------------------------------------------------- task-1693
 
@@ -3386,8 +3469,7 @@ fn a_maximised_window_offers_no_resize_grips() {
     for grip in ["top", "bottom", "left", "right"] {
         harness.get_by_label(&format!("Resize window: {grip}"));
     }
-    let ids: Vec<egui::ViewportId> =
-        harness.input().viewports.keys().copied().collect();
+    let ids: Vec<egui::ViewportId> = harness.input().viewports.keys().copied().collect();
     for id in ids {
         if let Some(viewport) = harness.input_mut().viewports.get_mut(&id) {
             viewport.maximized = Some(true);
@@ -3477,13 +3559,7 @@ fn with_terminal(text: &str, rows: usize, columns: usize) -> Harness<'static, Un
 }
 
 fn feed(harness: &mut Harness<'static, UnluminousApp>, bytes: &[u8]) {
-    harness
-        .state_mut()
-        .terminal
-        .tabs
-        .active_mut()
-        .expect("a terminal tab")
-        .feed(bytes);
+    harness.state_mut().terminal.tabs.active_mut().expect("a terminal tab").feed(bytes);
     harness.run();
 }
 
@@ -3516,7 +3592,9 @@ fn the_terminal_draws_colour_bold_and_the_other_attributes() {
     bytes.extend_from_slice(
         b"\x1b[1mbold\x1b[0m \x1b[3mitalic\x1b[0m \x1b[4munderline\x1b[0m \x1b[9mstruck\x1b[0m \x1b[7minverse\x1b[0m \x1b[2mdim\x1b[0m\r\n",
     );
-    bytes.extend_from_slice(b"\x1b[48;5;24m background \x1b[0m \x1b[38;2;255;120;0mtrue colour\x1b[0m\r\n");
+    bytes.extend_from_slice(
+        b"\x1b[48;5;24m background \x1b[0m \x1b[38;2;255;120;0mtrue colour\x1b[0m\r\n",
+    );
     feed(&mut harness, &bytes);
     harness.snapshot(shot("terminal_colours"));
 }
@@ -3595,10 +3673,7 @@ fn a_terminal_tab_is_renamed_from_its_own_menu() {
     // Choosing it puts the menu away and opens the prompt, seeded with what the tab is called now.
     harness.state_mut().terminal_menu = None;
     choose(&mut harness, Action::RenameTerminalTab);
-    assert_eq!(
-        harness.state().prompt.as_ref().expect("the prompt is open").value,
-        "detached 2",
-    );
+    assert_eq!(harness.state().prompt.as_ref().expect("the prompt is open").value, "detached 2",);
     if let Some(prompt) = harness.state_mut().prompt.as_mut() {
         prompt.value = "the build".to_owned();
     }
@@ -3713,7 +3788,14 @@ fn the_terminal_is_told_the_new_size_when_the_tile_is_dragged() {
     );
     assert_eq!(short.columns, tall.columns, "its width did not change");
     assert!(
-        harness.state().terminal.tabs.active().expect("a tab").snapshot().contains("before the resize"),
+        harness
+            .state()
+            .terminal
+            .tabs
+            .active()
+            .expect("a tab")
+            .snapshot()
+            .contains("before the resize"),
         "and what was written is still there"
     );
     results.add(harness.try_snapshot(shot("terminal_short")));
@@ -3749,12 +3831,20 @@ fn the_view_menu_shows_and_hides_the_terminal() {
     harness.run();
     assert!(harness.state().terminal.visible, "the terminal should have opened");
     assert_eq!(harness.state().terminal.tabs.count(), 1, "with a shell in it");
-    assert_eq!(harness.state().focus, unluminous_app::app::Focus::Terminal, "and the keyboard in it");
+    assert_eq!(
+        harness.state().focus,
+        unluminous_app::app::Focus::Terminal,
+        "and the keyboard in it"
+    );
 
     harness.state_mut().run_action(Action::ToggleTerminal, &ctx);
     harness.run();
     assert!(!harness.state().terminal.visible);
-    assert_eq!(harness.state().focus, unluminous_app::app::Focus::Editor, "the keyboard comes back");
+    assert_eq!(
+        harness.state().focus,
+        unluminous_app::app::Focus::Editor,
+        "the keyboard comes back"
+    );
 }
 
 /// Typing goes to the program in the terminal rather than to the document.
@@ -3837,9 +3927,7 @@ fn the_recent_projects_are_remembered_across_windows() {
     // A second window reads the same list, which is what makes it a list of recent projects rather than of
     // this window's projects.
     let mut second_window = harness_in(&first);
-    second_window
-        .state_mut()
-        .use_store(unluminous_app::services::store::Store::at(&store_folder));
+    second_window.state_mut().use_store(unluminous_app::services::store::Store::at(&store_folder));
     second_window.run();
     assert!(
         second_window.state().recent.iter().any(|path| path.ends_with("unluminous-project-two")),
@@ -4018,17 +4106,15 @@ fn the_rest_of_the_menu_still_works_while_a_text_box_has_the_keyboard() {
     std::fs::create_dir_all(&folder).expect("make the folder");
     let text = "saved while the filter box had the keyboard";
     let owned = folder.clone();
-    let mut harness = builder()
-        .with_size(vec2(WINDOW[0], WINDOW[1]))
-        .build_eframe(move |cc| {
-            let mut app = UnluminousApp::with_text(owned, text);
-            app.prepare(&cc.egui_ctx);
-            // A plugin's decoration is rasterised on the processor, and `vello_cpu` picks the widest SIMD it
-            // has. Pinned here so an accepted image is a property of the code rather than of the machine that
-            // took it — the same reason the terminal's screenshots feed fixed bytes to a session with no shell.
-            app.draw_deterministically();
-            app
-        });
+    let mut harness = builder().with_size(vec2(WINDOW[0], WINDOW[1])).build_eframe(move |cc| {
+        let mut app = UnluminousApp::with_text(owned, text);
+        app.prepare(&cc.egui_ctx);
+        // A plugin's decoration is rasterised on the processor, and `vello_cpu` picks the widest SIMD it
+        // has. Pinned here so an accepted image is a property of the code rather than of the machine that
+        // took it — the same reason the terminal's screenshots feed fixed bytes to a session with no shell.
+        app.draw_deterministically();
+        app
+    });
     harness.run();
     harness.state_mut().menu_placement = MenuPlacement::InWindow;
     harness.run();
@@ -4107,7 +4193,9 @@ fn enter_in_the_commit_message_is_a_new_line_and_the_command_key_commits() {
     // a new line, which is what `modal::Confirm::CommandEnter` is for.
     let mut harness = git_harness("commit-enter");
     let ctx = harness.ctx.clone();
-    harness.state_mut().run_action(Action::Git(unluminous_app::app::actions::GitAction::Commit), &ctx);
+    harness
+        .state_mut()
+        .run_action(Action::Git(unluminous_app::app::actions::GitAction::Commit), &ctx);
     harness.run();
     settle(&mut harness, "the history the panel asks for", |app| {
         app.git.as_ref().is_some_and(|git| git.message.is_none() && !git.history.is_empty())
@@ -4144,7 +4232,10 @@ fn enter_in_the_commit_message_is_a_new_line_and_the_command_key_commits() {
         .run_action(Action::Git(unluminous_app::app::actions::GitAction::Add(None)), &ctx);
     settle(&mut harness, "the file to be staged", |app| {
         app.git.as_ref().is_some_and(|git| {
-            git.snapshot.status.entry("version.ts").is_some_and(unluminous_git::status::Entry::staged)
+            git.snapshot
+                .status
+                .entry("version.ts")
+                .is_some_and(unluminous_git::status::Entry::staged)
         })
     });
     // The panel is still open from above — `Git -> Commit` is a toggle, so asking for it again
@@ -4170,7 +4261,9 @@ fn typing_a_commit_message_leaves_the_document_alone() {
     let mut harness = git_harness("keyboard");
     let ctx = harness.ctx.clone();
     let before = harness.state().document().text().to_string();
-    harness.state_mut().run_action(Action::Git(unluminous_app::app::actions::GitAction::Commit), &ctx);
+    harness
+        .state_mut()
+        .run_action(Action::Git(unluminous_app::app::actions::GitAction::Commit), &ctx);
     harness.run();
     settle(&mut harness, "the history the panel asks for", |app| {
         app.git.as_ref().is_some_and(|git| git.message.is_none() && !git.history.is_empty())
@@ -4248,7 +4341,11 @@ fn the_menu_shortcuts_work_from_the_keyboard() {
     ] {
         harness.key_press_modifiers(Modifiers::COMMAND, key);
         harness.run();
-        assert_eq!(harness.state().view_mode(), expected, "command and {key:?} should switch the view");
+        assert_eq!(
+            harness.state().view_mode(),
+            expected,
+            "command and {key:?} should switch the view"
+        );
     }
 
     // Command and zero puts the explorer away and brings it back.
@@ -4305,7 +4402,6 @@ fn a_shell_that_will_not_start_says_so_rather_than_leaving_an_empty_tile() {
     );
     harness.snapshot(shot("terminal_will_not_start"));
 }
-
 
 // ---------------------------------------------------------------------------------------------
 // task-1649: the gutter, the tabs, the menus, git and the plugins.
@@ -4414,20 +4510,23 @@ fn a_tab_can_be_closed_and_the_last_one_leaves_an_untitled_document() {
     assert_eq!(harness.state().files.active().name(), "readme.md");
     harness.state_mut().close_tab(0);
     harness.run();
-    assert_eq!(harness.state().files.active().name(), "untitled", "never a window with no document");
+    assert_eq!(
+        harness.state().files.active().name(),
+        "untitled",
+        "never a window with no document"
+    );
 }
 
 #[test]
 fn the_explorers_own_menu_holds_what_can_be_done_to_a_file() {
     let folder = sample_folder();
     let mut harness = harness_in(&folder);
-    harness.state_mut().explorer_menu =
-        Some((
-            egui::pos2(120.0, 260.0),
-            folder.join("readme.md"),
-            false,
-            unluminous_app::app::actions::Aim::AtARow,
-        ));
+    harness.state_mut().explorer_menu = Some((
+        egui::pos2(120.0, 260.0),
+        folder.join("readme.md"),
+        false,
+        unluminous_app::app::actions::Aim::AtARow,
+    ));
     harness.run();
     // Asked for by names this menu alone has: `File` is also a menu in the bar, and `New` is a
     // heading rather than a control, because a submenu inside the window is drawn as a heading with
@@ -4580,7 +4679,9 @@ fn the_window_reads_the_repository_it_is_opened_in() {
 fn the_commit_panel_shows_the_changes_and_the_unversioned_files() {
     let mut harness = git_harness("commit");
     let ctx = harness.ctx.clone();
-    harness.state_mut().run_action(Action::Git(unluminous_app::app::actions::GitAction::Commit), &ctx);
+    harness
+        .state_mut()
+        .run_action(Action::Git(unluminous_app::app::actions::GitAction::Commit), &ctx);
     harness.run();
     // Waited for, because opening the panel asks for the recent commit messages and the status bar
     // says so while it does. Whether that message is still there when the picture is taken depends
@@ -4601,7 +4702,9 @@ fn the_commit_panel_shows_the_changes_and_the_unversioned_files() {
 fn the_branches_dialog_lists_the_branches() {
     let mut harness = git_harness("branches");
     let ctx = harness.ctx.clone();
-    harness.state_mut().run_action(Action::Git(unluminous_app::app::actions::GitAction::Branches), &ctx);
+    harness
+        .state_mut()
+        .run_action(Action::Git(unluminous_app::app::actions::GitAction::Branches), &ctx);
     harness.run();
     harness.get_by_label("main");
     harness.snapshot(shot("git_branches"));
@@ -4611,10 +4714,15 @@ fn the_branches_dialog_lists_the_branches() {
 fn the_gutter_annotates_with_git_blame_and_colours_by_age() {
     let mut harness = git_harness("blame");
     let folder = harness.state().tree.root().to_path_buf();
-    harness.state_mut().open_path_permanently(&folder.join("sqlClient.ts")).expect("the file opens");
+    harness
+        .state_mut()
+        .open_path_permanently(&folder.join("sqlClient.ts"))
+        .expect("the file opens");
     harness.run();
     let ctx = harness.ctx.clone();
-    harness.state_mut().run_action(Action::Git(unluminous_app::app::actions::GitAction::Annotate), &ctx);
+    harness
+        .state_mut()
+        .run_action(Action::Git(unluminous_app::app::actions::GitAction::Annotate), &ctx);
     for _ in 0..600 {
         pump(&mut harness);
         if harness.state().files.active().blame.is_some() {
@@ -4629,7 +4737,10 @@ fn the_gutter_annotates_with_git_blame_and_colours_by_age() {
     let authors: Vec<&str> = blame.iter().map(|row| row.author.as_str()).collect();
     assert!(authors.contains(&"Sam"), "the second commit's lines carry its author: {authors:?}");
     let ages: Vec<f32> = blame.iter().map(|row| row.age).collect();
-    assert!(ages.contains(&0.0) && ages.contains(&1.0), "oldest and newest are both drawn: {ages:?}");
+    assert!(
+        ages.contains(&0.0) && ages.contains(&1.0),
+        "oldest and newest are both drawn: {ages:?}"
+    );
     harness.snapshot(shot("gutter_blame"));
 }
 
@@ -4641,7 +4752,10 @@ fn a_typescript_file_is_coloured_by_its_plugin() {
     let folder = copy_out_of_the_repository(&git_folder("syntax"), "unluminous-screenshot-syntax");
     std::fs::remove_dir_all(folder.join(".git")).ok();
     let mut harness = harness_in(&folder);
-    harness.state_mut().open_path_permanently(&folder.join("sqlClient.ts")).expect("the file opens");
+    harness
+        .state_mut()
+        .open_path_permanently(&folder.join("sqlClient.ts"))
+        .expect("the file opens");
     harness.run();
     harness.run();
     // The colours are in the document's own spans, so the test can check them without looking at
@@ -4852,7 +4966,13 @@ fn the_theme_page_lists_every_theme_with_the_colours_it_is_made_of() {
     harness.state_mut().settings_window.page = unluminous_app::settings::Page::Theme;
     harness.run();
     harness.run();
-    for name in ["Unluminous Dark", "Islands Dracula Colorful", "Material Deep Ocean", "Monokai Pro", "One Dark"] {
+    for name in [
+        "Unluminous Dark",
+        "Islands Dracula Colorful",
+        "Material Deep Ocean",
+        "Monokai Pro",
+        "One Dark",
+    ] {
         harness.get_by_label(name);
     }
     harness.get_by_label("Icon set");
@@ -4939,7 +5059,10 @@ fn an_accent_is_set_over_the_theme_and_cleared_back_to_it() {
     run(&mut harness, "theme set unluminous/dark --accent #FF79C6");
     harness.run();
     assert_eq!(unluminous_app::theme::color::accent(), egui::Color32::from_rgb(0xFF, 0x79, 0xC6));
-    assert_eq!(unluminous_app::theme::color::folder_open(), egui::Color32::from_rgb(0xFF, 0x79, 0xC6));
+    assert_eq!(
+        unluminous_app::theme::color::folder_open(),
+        egui::Color32::from_rgb(0xFF, 0x79, 0xC6)
+    );
     assert_eq!(
         unluminous_app::theme::color::editor(),
         egui::Color32::from_rgb(0x1A, 0x1F, 0x26),
@@ -4991,15 +5114,27 @@ fn the_icon_set_follows_the_theme_and_the_setting_wins() {
 
     run(&mut harness, "theme set \"One Dark\"");
     harness.run();
-    assert_eq!(unluminous_app::theme::icons(), unluminous_app::theme::IconSet::Classic, "One Dark names them");
+    assert_eq!(
+        unluminous_app::theme::icons(),
+        unluminous_app::theme::IconSet::Classic,
+        "One Dark names them"
+    );
 
     run(&mut harness, "theme set \"One Dark\" --icons material");
     harness.run();
-    assert_eq!(unluminous_app::theme::icons(), unluminous_app::theme::IconSet::Material, "and the setting wins");
+    assert_eq!(
+        unluminous_app::theme::icons(),
+        unluminous_app::theme::IconSet::Material,
+        "and the setting wins"
+    );
 
     run(&mut harness, "theme set \"One Dark\" --icons follow");
     harness.run();
-    assert_eq!(unluminous_app::theme::icons(), unluminous_app::theme::IconSet::Classic, "and follow gives it back");
+    assert_eq!(
+        unluminous_app::theme::icons(),
+        unluminous_app::theme::IconSet::Classic,
+        "and follow gives it back"
+    );
 }
 
 /// `theme show` answers with the whole palette by name, so an agent can read a colour without a
@@ -5013,7 +5148,10 @@ fn theme_list_and_show_answer_in_a_payload_proportionate_to_the_question() {
     assert_eq!(themes[0]["key"], "unluminous/dark");
     assert_eq!(themes[0]["active"], true);
     assert!(themes[0]["colours"]["accent"].is_string(), "six colours a theme is recognised by");
-    assert!(themes[0]["colours"].as_object().expect("an object").len() <= 6, "not the whole palette");
+    assert!(
+        themes[0]["colours"].as_object().expect("an object").len() <= 6,
+        "not the whole palette"
+    );
 
     let shown = did(&mut harness, "theme show \"Monokai Pro\"");
     assert_eq!(shown["icons"], "material");
@@ -5025,7 +5163,6 @@ fn theme_list_and_show_answer_in_a_payload_proportionate_to_the_question() {
         "the whole palette, by the names a manifest sets"
     );
 }
-
 
 /// Run the window until `ready` is true, or give up.
 ///
@@ -5050,7 +5187,11 @@ fn nudge(harness: &mut Harness<'static, UnluminousApp>) {
     }
 }
 
-fn settle(harness: &mut Harness<'static, UnluminousApp>, what: &str, ready: impl Fn(&UnluminousApp) -> bool) {
+fn settle(
+    harness: &mut Harness<'static, UnluminousApp>,
+    what: &str,
+    ready: impl Fn(&UnluminousApp) -> bool,
+) {
     for _ in 0..600 {
         pump(harness);
         if ready(harness.state()) {
@@ -5091,7 +5232,10 @@ fn every_git_operation_can_be_driven_from_the_window() {
     harness.state_mut().run_action(git(GitAction::Add(None)), &ctx);
     settle(&mut harness, "the file to be staged", |app| {
         app.git.as_ref().is_some_and(|git| {
-            git.snapshot.status.entry("version.ts").is_some_and(unluminous_git::status::Entry::staged)
+            git.snapshot
+                .status
+                .entry("version.ts")
+                .is_some_and(unluminous_git::status::Entry::staged)
         })
     });
     assert!(
@@ -5124,12 +5268,15 @@ fn every_git_operation_can_be_driven_from_the_window() {
     harness.state_mut().run_prompt_for_test(prompt);
     harness.state_mut().prompt = None;
     settle(&mut harness, "the branch", |app| {
-        app.git.as_ref().is_some_and(|git| git.snapshot.status.branch.as_deref() == Some("from-unluminous"))
+        app.git
+            .as_ref()
+            .is_some_and(|git| git.snapshot.status.branch.as_deref() == Some("from-unluminous"))
     });
     assert_eq!(ask_git(&root, &["branch", "--show-current"]), "from-unluminous");
 
     // ---- stash a change and bring it back ------------------------------------------------------
-    std::fs::write(root.join("version.ts"), "export const version = 'stashed';\n").expect("change it");
+    std::fs::write(root.join("version.ts"), "export const version = 'stashed';\n")
+        .expect("change it");
     harness.state_mut().run_action(git(GitAction::Stash), &ctx);
     nudge(&mut harness);
     let mut prompt = harness.state_mut().prompt.take().expect("a prompt for the message");
@@ -5160,10 +5307,7 @@ fn every_git_operation_can_be_driven_from_the_window() {
     // ---- roll the change back, which is confirmed first ---------------------------------------
     harness.state_mut().run_action(git(GitAction::Rollback(None)), &ctx);
     nudge(&mut harness);
-    assert!(
-        harness.state().confirmation.is_some(),
-        "rollback cannot be undone, so it asks first"
-    );
+    assert!(harness.state().confirmation.is_some(), "rollback cannot be undone, so it asks first");
     harness.get_by_label("ROLL BACK").click();
     settle(&mut harness, "the rollback", |app| {
         app.git.as_ref().is_some_and(|git| git.snapshot.status.entry("version.ts").is_none())
@@ -5234,9 +5378,9 @@ fn every_git_operation_can_be_driven_from_the_window() {
 #[test]
 fn the_window_can_be_resized_from_every_edge_and_every_corner() {
     let harness = harness("");
-    for grip in [
-        "top", "bottom", "left", "right", "top left", "top right", "bottom left", "bottom right",
-    ] {
+    for grip in
+        ["top", "bottom", "left", "right", "top left", "top right", "bottom left", "bottom right"]
+    {
         harness.get_by_label(&format!("Resize window: {grip}"));
     }
 }
@@ -5333,10 +5477,7 @@ fn a_picture_opens_in_a_tab_that_shows_it() {
     let picture = harness.state().files.active().picture.as_ref().expect("a picture");
     assert_eq!(picture.problem, None, "it should have decoded");
     assert_eq!(picture.size, [160, 100]);
-    assert!(
-        harness.query_by_label("Text options").is_none(),
-        "a picture has no text to format"
-    );
+    assert!(harness.query_by_label("Text options").is_none(), "a picture has no text to format");
     harness.snapshot(shot("picture"));
 }
 
@@ -5370,10 +5511,7 @@ fn the_keyboard_zooms_a_picture_and_leaves_the_editors_font_alone() {
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::ResetFontSize, &ctx);
     harness.run();
-    assert!(
-        (scale(&harness) - fitted).abs() < 0.001,
-        "resetting should fit it back into the area"
-    );
+    assert!((scale(&harness) - fitted).abs() < 0.001, "resetting should fit it back into the area");
 }
 
 /// A picture cannot be edited, so saving one must not write an empty file over it.
@@ -5542,9 +5680,7 @@ fn matches(harness: &Harness<'static, UnluminousApp>) -> Vec<String> {
         .expect("the search should be open")
         .hits()
         .iter()
-        .map(|hit| {
-            format!("{}:{}", hit.path.file_name().unwrap().to_string_lossy(), hit.line)
-        })
+        .map(|hit| format!("{}:{}", hit.path.file_name().unwrap().to_string_lossy(), hit.line))
         .collect()
 }
 
@@ -5625,7 +5761,10 @@ fn escape_shuts_find_in_files() {
 // them for the same reason.
 
 /// Where the modal with this id sits and how big it is, read back from egui's own memory.
-fn placement(harness: &Harness<'static, UnluminousApp>, id: &str) -> unluminous_app::components::modal::Placement {
+fn placement(
+    harness: &Harness<'static, UnluminousApp>,
+    id: &str,
+) -> unluminous_app::components::modal::Placement {
     unluminous_app::components::modal::placement(&harness.ctx, id)
 }
 
@@ -5870,7 +6009,8 @@ fn the_divider_in_find_in_files_moves_the_split_between_the_results_and_the_prev
     // And it is a pane like any other, so a double click puts it back.
     double_click(&mut harness, "Resize find results");
     assert!(
-        (harness.state().panes.find_split - unluminous_app::components::find_in_files::SPLIT).abs() < 0.001
+        (harness.state().panes.find_split - unluminous_app::components::find_in_files::SPLIT).abs()
+            < 0.001
     );
 }
 
@@ -5904,7 +6044,6 @@ fn the_preview_under_the_results_follows_the_one_that_is_chosen() {
 // program answers is not something a test can know, and a picture that depended on it would differ
 // between runs. What is being looked at is the drawing, and the drawing is the same either way.
 
-
 use unluminous_app::services::run_configurations::{Configuration, RunConfigurations};
 
 /// A configuration, spelled out.
@@ -5922,13 +6061,7 @@ fn with_run(name: &str, command: &str, rows: usize) -> Harness<'static, Unlumino
 
 /// Feed bytes to the run that is showing, as a program writing them would.
 fn feed_run(harness: &mut Harness<'static, UnluminousApp>, bytes: &[u8]) {
-    harness
-        .state_mut()
-        .run
-        .active_mut()
-        .expect("a run")
-        .session
-        .feed(bytes);
+    harness.state_mut().run.active_mut().expect("a run").session.feed(bytes);
     harness.run();
 }
 
@@ -5961,9 +6094,7 @@ fn a_run_that_ended_keeps_its_tab_and_the_strip_says_what_it_ended_with() {
         b"running 12 tests\r\n\x1b[31mtest the_thing ... FAILED\x1b[0m\r\n\r\ntest result: FAILED. 11 passed; 1 failed\r\n",
     );
     // A second run, so the picture holds a finished tab and a running one side by side.
-    harness
-        .state_mut()
-        .new_detached_run(configuration("Dev server", "node server.js"), 10, 96);
+    harness.state_mut().new_detached_run(configuration("Dev server", "node server.js"), 10, 96);
     harness.run();
     feed_run(&mut harness, b"Listening on http://localhost:3000\r\n");
     let at = harness.state().run.index_of("cargo test").expect("the first run");
@@ -6017,7 +6148,10 @@ fn the_run_widget_draws_its_three_states_in_the_title_bar() {
 
     // Idle: a configuration chosen, nothing running.
     let mut harness = harness("");
-    harness.state_mut().run_configurations.add_permanent(configuration("Dev server", "node server.js --port 3000"));
+    harness
+        .state_mut()
+        .run_configurations
+        .add_permanent(configuration("Dev server", "node server.js --port 3000"));
     harness.state_mut().run_selected = Some("Dev server".to_owned());
     harness.run();
     harness.get_by_label("Choose a run configuration");
@@ -6133,7 +6267,8 @@ fn the_debug_tile_says_what_is_missing_and_offers_to_install_it() {
                 configured: false,
                 programs: vec!["codelldb", "lldb-dap"],
                 languages: vec!["Rust".to_owned()],
-                comes_from: "lldb-dap ships with LLVM, and codelldb is the CodeLLDB extension's adapter",
+                comes_from:
+                    "lldb-dap ships with LLVM, and codelldb is the CodeLLDB extension's adapter",
                 install: "winget install --id LLVM.LLVM -e".to_owned(),
                 settings_key: "debug.lldb".to_owned(),
                 caveat: "",
@@ -6158,7 +6293,10 @@ fn with_nothing_to_run_the_widget_is_the_play_button_that_opens_the_dialog() {
     assert!(harness.state().run_rows().is_empty(), "nothing to suggest in the sample folder");
     harness.get_by_label("Add a run configuration").click();
     harness.run();
-    assert!(harness.state().run_dialog.open, "the play button opens the dialog when nothing is chosen");
+    assert!(
+        harness.state().run_dialog.open,
+        "the play button opens the dialog when nothing is chosen"
+    );
 }
 
 #[test]
@@ -6202,7 +6340,10 @@ fn the_flyout_lists_the_permanents_the_temporaries_and_the_suggestions() {
         .state_mut()
         .run_configurations
         .add_permanent(configuration("Dev server", "node server.js --port 3000"));
-    harness.state_mut().run_configurations.add_temporary(configuration("server.js", "node server.js"));
+    harness
+        .state_mut()
+        .run_configurations
+        .add_temporary(configuration("server.js", "node server.js"));
     harness.state_mut().run_selected = Some("Dev server".to_owned());
     harness.run();
 
@@ -6332,15 +6473,12 @@ fn a_program_that_prints_and_stops_leaves_what_it_printed_in_its_tab() {
 #[test]
 fn the_run_configurations_dialog_lists_them_on_the_left_and_edits_one_on_the_right() {
     let mut harness = harness("");
-    harness
-        .state_mut()
-        .run_configurations
-        .add_permanent(Configuration {
-            name: "Dev server".to_owned(),
-            command: "node server.js --port 3000".to_owned(),
-            directory: "backend".to_owned(),
-            env: "PORT=3000; DEBUG=app:*".to_owned(),
-        });
+    harness.state_mut().run_configurations.add_permanent(Configuration {
+        name: "Dev server".to_owned(),
+        command: "node server.js --port 3000".to_owned(),
+        directory: "backend".to_owned(),
+        env: "PORT=3000; DEBUG=app:*".to_owned(),
+    });
     harness.state_mut().run_configurations.add_permanent(configuration("cargo run", "cargo run"));
     harness.state_mut().run_selected = Some("Dev server".to_owned());
     choose(&mut harness, Action::Run(RunAction::Edit));
@@ -6413,7 +6551,8 @@ run.selected = Dev server
     harness.state_mut().restore_project();
     harness.run();
     assert_eq!(harness.state().run_configurations.permanent().len(), 1);
-    let held = harness.state().run_configurations.find("Dev server").expect("it came back").1.clone();
+    let held =
+        harness.state().run_configurations.find("Dev server").expect("it came back").1.clone();
     assert_eq!(held.command, "node server.js");
     assert_eq!(held.directory, "backend");
     assert_eq!(held.env, "PORT=3000");
@@ -6422,9 +6561,12 @@ run.selected = Dev server
     assert!(harness.state().run.is_empty(), "with nothing in it: a run is not restarted");
 
     // A remembered choice that nothing answers to any more is dropped rather than offered.
-    std::fs::write(folder.join("workspace.conf"), "run.selected = server.js
-")
-        .expect("write the workspace");
+    std::fs::write(
+        folder.join("workspace.conf"),
+        "run.selected = server.js
+",
+    )
+    .expect("write the workspace");
     let mut harness = harness_in(&root);
     harness.state_mut().restore_project();
     harness.run();
@@ -6435,7 +6577,10 @@ run.selected = Dev server
 #[test]
 fn a_temporary_has_a_save_button_that_keeps_it_and_a_permanent_does_not() {
     let mut harness = harness("");
-    harness.state_mut().run_configurations.add_temporary(configuration("server.js", "node server.js"));
+    harness
+        .state_mut()
+        .run_configurations
+        .add_temporary(configuration("server.js", "node server.js"));
     harness.state_mut().run_configurations.add_permanent(configuration("cargo run", "cargo run"));
     harness.state_mut().run_dialog.open(Some("cargo run".to_owned()));
     harness.run();
@@ -6463,7 +6608,10 @@ fn a_temporary_has_a_save_button_that_keeps_it_and_a_permanent_does_not() {
 // command line reaches those states at all.
 
 /// Run a command line against the window and take the reply, insisting it was answered.
-fn run(harness: &mut Harness<'static, UnluminousApp>, line: &str) -> unluminous_cli::protocol::Reply {
+fn run(
+    harness: &mut Harness<'static, UnluminousApp>,
+    line: &str,
+) -> unluminous_cli::protocol::Reply {
     let ctx = harness.ctx.clone();
     let reply = harness
         .state_mut()
@@ -6486,7 +6634,10 @@ fn did(harness: &mut Harness<'static, UnluminousApp>, line: &str) -> serde_json:
 /// reply lands. `Harness::run` gives it four steps to settle and panics otherwise, which is right
 /// for a settled window and wrong here — the rule `task-1654` already wrote down about waiting
 /// loops, wearing a different hat.
-fn did_while_waiting(harness: &mut Harness<'static, UnluminousApp>, line: &str) -> serde_json::Value {
+fn did_while_waiting(
+    harness: &mut Harness<'static, UnluminousApp>,
+    line: &str,
+) -> serde_json::Value {
     let ctx = harness.ctx.clone();
     let reply = harness
         .state_mut()
@@ -6518,7 +6669,8 @@ fn late_repository_project() -> (std::path::PathBuf, std::path::PathBuf) {
     std::fs::create_dir_all(&project).expect("make the late repository project");
     let initialized = unluminous_git::command::run(&ancestor, &["init", "--initial-branch=main"]);
     assert!(initialized.ok, "initialize the ancestor: {}", initialized.message());
-    std::fs::write(project.join("before.txt"), "before repository creation\n").expect("write before.txt");
+    std::fs::write(project.join("before.txt"), "before repository creation\n")
+        .expect("write before.txt");
     (ancestor, project)
 }
 
@@ -6532,11 +6684,15 @@ fn git_status_rediscovers_a_repository_created_after_the_window_opened() {
     });
     let before = did(&mut harness, "git status --json");
     assert_eq!(before["rootRelation"], "ancestor");
-    assert_eq!(std::path::PathBuf::from(before["root"].as_str().unwrap()).canonicalize().unwrap(), ancestor.canonicalize().unwrap());
+    assert_eq!(
+        std::path::PathBuf::from(before["root"].as_str().unwrap()).canonicalize().unwrap(),
+        ancestor.canonicalize().unwrap()
+    );
 
     let initialized = unluminous_git::command::run(&project, &["init", "--initial-branch=master"]);
     assert!(initialized.ok, "initialize the project: {}", initialized.message());
-    std::fs::write(project.join("after.txt"), "after repository creation\n").expect("write after.txt");
+    std::fs::write(project.join("after.txt"), "after repository creation\n")
+        .expect("write after.txt");
     let ctx = harness.ctx.clone();
     assert!(harness.state_mut().run_command_line("git status --json", &ctx).is_none());
     settle(&mut harness, "the project repository", |app| {
@@ -6551,7 +6707,10 @@ fn git_status_rediscovers_a_repository_created_after_the_window_opened() {
     assert_eq!(after["rootRelation"], "project");
     assert_eq!(after["branch"], "master");
     assert_eq!(after["changed"].as_array().map(Vec::len), Some(2));
-    assert_eq!(std::path::PathBuf::from(after["root"].as_str().unwrap()).canonicalize().unwrap(), project.canonicalize().unwrap());
+    assert_eq!(
+        std::path::PathBuf::from(after["root"].as_str().unwrap()).canonicalize().unwrap(),
+        project.canonicalize().unwrap()
+    );
 
     let window = did(&mut harness, "status --json");
     assert_eq!(window["git"]["rootRelation"], "project");
@@ -6569,7 +6728,11 @@ fn git_status_rediscovers_a_repository_created_after_the_window_opened() {
 /// motion. The editing area needs more, because the frame a drag *starts* on is the frame the caret
 /// is placed on, and it takes a second movement before there is anything selected — which is exactly
 /// what a person does with the mouse and is the gesture `task-1666` reported.
-fn drag_through(harness: &mut Harness<'static, UnluminousApp>, from: egui::Pos2, path: &[egui::Pos2]) {
+fn drag_through(
+    harness: &mut Harness<'static, UnluminousApp>,
+    from: egui::Pos2,
+    path: &[egui::Pos2],
+) {
     let modifiers = Modifiers::default();
     harness.input_mut().events.push(egui::Event::PointerMoved(from));
     harness.run();
@@ -6678,8 +6841,7 @@ fn typing_a_letter_lays_out_the_line_it_was_typed_into_and_leaves_the_rest_alone
     harness.run();
     harness.run();
 
-    let before: Vec<f32> =
-        harness.state().layout().lines.iter().map(|line| line.y).collect();
+    let before: Vec<f32> = harness.state().layout().lines.iter().map(|line| line.y).collect();
     let count = before.len();
     assert!(count > 2000, "the fixture is meant to be long: {count} lines");
 
@@ -7009,11 +7171,7 @@ fn the_command_line_speaks_to_a_terminal_tab_that_is_not_showing() {
     let text = read["text"].as_str().expect("the screen as text");
     assert!(text.contains("the first shell is here"), "{text:?}");
     assert!(!text.contains("the second shell is here"), "{text:?}");
-    assert_eq!(
-        harness.state().terminal.tabs.active_index(),
-        1,
-        "reading a tab does not show it"
-    );
+    assert_eq!(harness.state().terminal.tabs.active_index(), 1, "reading a tab does not show it");
     // And a read with no --tab reads the tab that is showing.
     let read_default = did(&mut harness, "terminal read");
     assert!(read_default["text"]
@@ -7141,12 +7299,13 @@ fn status_answers_for_the_section_that_was_asked_for() {
 
     // The sentence is one line about the whole window and does not change with the section.
     let whole = did(&mut harness, "status");
-    for part in ["project", "tabs", "editor", "explorer", "terminal", "modal", "settings", "git", "panes"] {
+    for part in
+        ["project", "tabs", "editor", "explorer", "terminal", "modal", "settings", "git", "panes"]
+    {
         assert!(whole.get(part).is_some(), "no section is still the whole window: {part}");
     }
     assert_eq!(
-        whole["panes"]["count"],
-        panes["panes"]["count"],
+        whole["panes"]["count"], panes["panes"]["count"],
         "the section and the whole agree about the window"
     );
 
@@ -7239,7 +7398,11 @@ fn action_list_answers_for_the_menu_that_was_asked_for() {
     assert!(
         actions.iter().all(|entry| entry["menu"] == serde_json::json!("View")),
         "only the menu that was asked for: {:?}",
-        actions.iter().map(|entry| entry["menu"].as_str().unwrap_or_default()).collect::<Vec<_>>().join(", ")
+        actions
+            .iter()
+            .map(|entry| entry["menu"].as_str().unwrap_or_default())
+            .collect::<Vec<_>>()
+            .join(", ")
     );
 
     // Several at once, and a submenu names its own rows.
@@ -7277,10 +7440,8 @@ fn settings_list_keeps_a_long_value_and_its_help_apart() {
         .iter()
         .map(|row| row.as_str().expect("a row").to_owned())
         .collect();
-    let row = rows
-        .iter()
-        .find(|row| row.starts_with("debug.lldb"))
-        .expect("the row for debug.lldb");
+    let row =
+        rows.iter().find(|row| row.starts_with("debug.lldb")).expect("the row for debug.lldb");
     assert!(
         row.contains(&format!("{long}  Where")),
         "the value and the help are two columns apart: {row}"
@@ -7412,19 +7573,14 @@ fn a_value_named_the_way_the_usage_line_spells_it_takes_effect() {
     assert!(reply.ok, "{}", reply.message);
     let opened = over_the_wire(&mut harness, "tab.list", serde_json::json!({}));
     let tabs = opened.result["tabs"].as_array().expect("the tabs").clone();
-    let readme_tab =
-        tabs.iter().find(|tab| tab["name"] == "readme.md").expect("readme.md is open");
+    let readme_tab = tabs.iter().find(|tab| tab["name"] == "readme.md").expect("readme.md is open");
     assert_eq!(
         readme_tab["transient"], false,
         "--permanent is the same flag as permanent, so the tab is kept"
     );
 
     // And the proof that it means something: a transient tab is the one the next file replaces.
-    over_the_wire(
-        &mut harness,
-        "tab.open",
-        serde_json::json!({ "path": notes.to_string_lossy() }),
-    );
+    over_the_wire(&mut harness, "tab.open", serde_json::json!({ "path": notes.to_string_lossy() }));
     let after = over_the_wire(&mut harness, "tab.list", serde_json::json!({}));
     let names: Vec<String> = after.result["tabs"]
         .as_array()
@@ -7567,14 +7723,16 @@ fn every_command_in_the_catalogue_is_one_the_window_knows() {
             continue;
         }
         let ctx = harness.ctx.clone();
-        let request = unluminous_cli::protocol::Request::new("", &command.wire(), Default::default());
+        let request =
+            unluminous_cli::protocol::Request::new("", &command.wire(), Default::default());
         let reply = match harness.state_mut().run_cli_for_test(&request, &ctx) {
             Some(reply) => reply,
             None => continue, // answered on a later frame, which is an answer
         };
         if let Some(failure) = reply.error {
             assert_ne!(
-                failure.code, "unknown-command",
+                failure.code,
+                "unknown-command",
                 "the window does not know `{}`, which the catalogue offers",
                 command.typed()
             );
@@ -7586,21 +7744,29 @@ fn every_command_in_the_catalogue_is_one_the_window_knows() {
 /// `task-1756`: the agent command and explorer action both create ordinary rendered tabs.
 #[test]
 fn browser_tabs_open_through_the_shared_cli_and_action_paths() {
-    let folder = std::env::temp_dir().join(format!("unluminous-browser-paths-{}", std::process::id()));
+    let folder =
+        std::env::temp_dir().join(format!("unluminous-browser-paths-{}", std::process::id()));
     std::fs::create_dir_all(&folder).expect("make the browser project");
     let first = folder.join("index.html");
     let second = folder.join("other.htm");
     std::fs::write(&first, "<title>First</title>").expect("write first page");
     std::fs::write(&second, "<title>Second</title>").expect("write second page");
     let mut harness = harness_in(&folder);
-    let opened = over_the_wire(&mut harness, "browser.open", serde_json::json!({ "address": "index.html" }));
+    let opened =
+        over_the_wire(&mut harness, "browser.open", serde_json::json!({ "address": "index.html" }));
     assert!(opened.ok, "the command opens local HTML: {:?}", opened.error);
     let first = first.canonicalize().expect("canonical first page");
-    assert_eq!(harness.state().files.active().browser.as_ref().and_then(|tab| tab.location.source_path()), Some(first.as_path()));
+    assert_eq!(
+        harness.state().files.active().browser.as_ref().and_then(|tab| tab.location.source_path()),
+        Some(first.as_path())
+    );
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::OpenInBrowser(second.clone()), &ctx);
     let second = second.canonicalize().expect("canonical second page");
-    assert_eq!(harness.state().files.active().browser.as_ref().and_then(|tab| tab.location.source_path()), Some(second.as_path()));
+    assert_eq!(
+        harness.state().files.active().browser.as_ref().and_then(|tab| tab.location.source_path()),
+        Some(second.as_path())
+    );
     let status = over_the_wire(&mut harness, "browser.status", serde_json::json!({}));
     assert_eq!(status.result["url"].as_str().map(|url| url.ends_with("/other.htm")), Some(true));
 
@@ -7632,17 +7798,31 @@ fn browser_tabs_open_through_the_shared_cli_and_action_paths() {
     ] {
         let reply = over_the_wire(&mut harness, command, arguments);
         assert!(!reply.ok, "{command} answers about a web page");
-        assert!(reply.error.as_ref().is_some_and(|problem| problem.message.contains("browser")), "{command}: {:?}", reply.error);
+        assert!(
+            reply.error.as_ref().is_some_and(|problem| problem.message.contains("browser")),
+            "{command}: {:?}",
+            reply.error
+        );
     }
     let editor = over_the_wire(&mut harness, "editor.status", serde_json::json!({}));
     assert_eq!(editor.result["browser"], serde_json::json!(true));
     let tabs = over_the_wire(&mut harness, "tab.list", serde_json::json!({}));
-    assert_eq!(tabs.result["tabs"].as_array().map(|tabs| tabs.iter().filter(|tab| tab["browser"] == serde_json::json!(true)).count()), Some(2));
+    assert_eq!(
+        tabs.result["tabs"].as_array().map(|tabs| tabs
+            .iter()
+            .filter(|tab| tab["browser"] == serde_json::json!(true))
+            .count()),
+        Some(2)
+    );
 
     // One window renders one page at a time, so `browser back` on a tab the view is not pointed at
     // is refused rather than driving somebody else's page.
     let elsewhere = over_the_wire(&mut harness, "browser.status", serde_json::json!({}));
-    assert_eq!(elsewhere.result["showing"], serde_json::json!(false), "no native view exists in a test window");
+    assert_eq!(
+        elsewhere.result["showing"],
+        serde_json::json!(false),
+        "no native view exists in a test window"
+    );
 
     // The toolbar reaches the same host the command line does: with no native view behind it in a
     // test window, `Reload` comes back as the host's own refusal rather than doing nothing.
@@ -7656,7 +7836,10 @@ fn browser_tabs_open_through_the_shared_cli_and_action_paths() {
     // registered, and the tab that is showing goes back to being a document.
     let closed = over_the_wire(&mut harness, "tab.close", serde_json::json!({}));
     assert!(closed.ok, "a rendered tab closes: {:?}", closed.error);
-    assert!(!harness.state().files.active().is_browser() || harness.state().files.active().browser.as_ref().map(|tab| tab.id) != Some(2));
+    assert!(
+        !harness.state().files.active().is_browser()
+            || harness.state().files.active().browser.as_ref().map(|tab| tab.id) != Some(2)
+    );
 }
 
 // Highlighting a passage (`task-1663`).
@@ -7721,7 +7904,10 @@ fn choosing_a_colour_marks_the_selection_and_shuts_the_menu() {
     assert!(harness.state().text_menu.is_none(), "choosing a colour puts the menu away");
     let marks = harness.state().document().highlights();
     assert_eq!(marks.len(), 1);
-    assert_eq!(marks.iter().next().unwrap().color, unluminous_core::Rgba::new(0x48, 0x9F, 0xF8, 0x59));
+    assert_eq!(
+        marks.iter().next().unwrap().color,
+        unluminous_core::Rgba::new(0x48, 0x9F, 0xF8, 0x59)
+    );
 }
 
 #[test]
@@ -7738,13 +7924,8 @@ fn three_passages_in_three_colours_are_drawn_behind_the_writing() {
         harness.run();
     }
     collapse(&mut harness);
-    let colours: Vec<String> = harness
-        .state()
-        .document()
-        .highlights()
-        .iter()
-        .map(|mark| mark.color.to_hex())
-        .collect();
+    let colours: Vec<String> =
+        harness.state().document().highlights().iter().map(|mark| mark.color.to_hex()).collect();
     assert_eq!(colours, vec!["#FEBC2E59", "#7FCA9859", "#B4588C59"], "in the order they appear");
     harness.snapshot(shot("highlights"));
 }
@@ -7755,9 +7936,7 @@ fn clearing_takes_the_one_under_the_caret_and_leaves_the_others_drawn() {
     let ctx = harness.ctx.clone();
     for phrase in ["quick brown fox", "black quartz", "five dozen liquor jugs"] {
         select_phrase(&mut harness, phrase, &[]);
-        harness
-            .state_mut()
-            .run_action(Action::Highlight(HighlightColor::Yellow), &ctx);
+        harness.state_mut().run_action(Action::Highlight(HighlightColor::Yellow), &ctx);
         harness.run();
     }
     // The caret inside the second one, as a right click on it would leave it.
@@ -7923,13 +8102,19 @@ fn a_bulk_request_marks_passages_across_several_files_in_one_call() {
     did(&mut harness, "tab open chapters/one.md");
     let marks = harness.state().document().highlights();
     assert_eq!(marks.len(), 1);
-    assert_eq!(marks.iter().next().unwrap().color, unluminous_core::Rgba::new(0xFF, 0x00, 0xFF, 0x80));
+    assert_eq!(
+        marks.iter().next().unwrap().color,
+        unluminous_core::Rgba::new(0xFF, 0x00, 0xFF, 0x80)
+    );
 
     // And clearing everything really does clear the open file as well as the closed ones.
     let cleared = did(&mut harness, "highlight clear --all");
     assert_eq!(cleared["cleared"], 3);
     assert!(harness.state().document().highlights().is_empty());
-    assert_eq!(did(&mut harness, "highlight list --all")["highlights"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        did(&mut harness, "highlight list --all")["highlights"].as_array().unwrap().len(),
+        0
+    );
 }
 
 #[test]
@@ -7938,7 +8123,11 @@ fn a_colour_that_is_not_a_colour_is_refused_with_the_names_that_are() {
     did(&mut harness, "tab open readme.md --permanent");
     let reply = run(&mut harness, "highlight add --from-line 1 --color puce");
     assert!(!reply.ok);
-    assert!(reply.message.contains("yellow"), "the refusal should name the colours: {}", reply.message);
+    assert!(
+        reply.message.contains("yellow"),
+        "the refusal should name the colours: {}",
+        reply.message
+    );
     assert_eq!(refused(&mut harness, "highlight add --from-line 9 --to-line 2"), "usage");
 }
 
@@ -7991,8 +8180,8 @@ fn diagram_folder() -> std::path::PathBuf {
         .get_or_init(|| {
             let root = std::env::temp_dir().join("unluminous-mermaid-samples");
             std::fs::create_dir_all(&root).expect("make the folder");
-            let from = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../sample-diagrams");
+            let from =
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sample-diagrams");
             for entry in std::fs::read_dir(&from).expect("read sample-diagrams").flatten() {
                 let path = entry.path();
                 if path.is_file() {
@@ -8023,9 +8212,26 @@ fn every_diagram_type_is_drawn_in_the_real_window() {
     // graph can tell you.
     let mut results = SnapshotResults::new();
     for name in [
-        "flowchart", "sequence", "class", "state", "er", "requirement", "pie", "gantt", "journey",
-        "gitgraph", "mindmap", "timeline", "quadrant", "xychart", "sankey", "block", "packet",
-        "kanban", "radar", "treemap",
+        "flowchart",
+        "sequence",
+        "class",
+        "state",
+        "er",
+        "requirement",
+        "pie",
+        "gantt",
+        "journey",
+        "gitgraph",
+        "mindmap",
+        "timeline",
+        "quadrant",
+        "xychart",
+        "sankey",
+        "block",
+        "packet",
+        "kanban",
+        "radar",
+        "treemap",
     ] {
         let mut harness = diagram_harness(&format!("{name}.mmd"), ViewMode::Preview);
         assert!(
@@ -8079,7 +8285,10 @@ fn side_by_side_shows_a_mermaid_source_and_its_diagram_at_once() {
     harness.run();
     let half = harness.state().editor_area().width();
     assert!(half < whole, "the source gives up half its width: {whole} then {half}");
-    assert!(harness.query_by_label("Diagram: state.mmd").is_some(), "the diagram is drawn beside it");
+    assert!(
+        harness.query_by_label("Diagram: state.mmd").is_some(),
+        "the diagram is drawn beside it"
+    );
     harness.snapshot(shot("mermaid_side_by_side"));
 }
 
@@ -8113,7 +8322,10 @@ fn a_diagram_type_unluminous_does_not_draw_is_named_rather_than_left_blank() {
 fn mermaid_blocks_in_a_markdown_file_are_drawn_in_its_preview() {
     let folder = diagram_folder();
     let mut harness = harness_in(&folder);
-    harness.state_mut().open_path_permanently(&folder.join("in-markdown.md")).expect("the file opens");
+    harness
+        .state_mut()
+        .open_path_permanently(&folder.join("in-markdown.md"))
+        .expect("the file opens");
     harness.state_mut().set_view_mode(ViewMode::Preview);
     harness.run();
 
@@ -8141,7 +8353,10 @@ fn switching_the_mermaid_plugin_off_withdraws_the_diagrams() {
     // the feature away, in the same frame, in both of the places it appears.
     let folder = diagram_folder();
     let mut harness = harness_in(&folder);
-    harness.state_mut().open_path_permanently(&folder.join("in-markdown.md")).expect("the file opens");
+    harness
+        .state_mut()
+        .open_path_permanently(&folder.join("in-markdown.md"))
+        .expect("the file opens");
     harness.state_mut().set_view_mode(ViewMode::Preview);
     harness.run();
     assert_eq!(harness.state().preview_diagrams().len(), 3);
@@ -8172,7 +8387,10 @@ fn a_diagram_is_laid_out_once_however_many_frames_it_is_drawn_for() {
     // sixty layouts a second for a picture that has not changed.
     let folder = diagram_folder();
     let mut harness = harness_in(&folder);
-    harness.state_mut().open_path_permanently(&folder.join("flowchart.mmd")).expect("the file opens");
+    harness
+        .state_mut()
+        .open_path_permanently(&folder.join("flowchart.mmd"))
+        .expect("the file opens");
     harness.state_mut().set_view_mode(ViewMode::Preview);
     harness.run();
     let after_first = harness.state().mermaid_scene_count();
@@ -8221,7 +8439,10 @@ fn the_explorer_opens_out_the_folders_above_the_file_that_is_showing_and_scrolls
     // row on the screen.
     let folder = sample_folder();
     let mut harness = harness_in(&folder);
-    harness.state_mut().open_path_permanently(&folder.join("chapters/appendix/tables.txt")).expect("the file opens");
+    harness
+        .state_mut()
+        .open_path_permanently(&folder.join("chapters/appendix/tables.txt"))
+        .expect("the file opens");
     harness.run();
     assert_eq!(harness.state().files.active().name(), "tables.txt");
     let open = harness.state().tree.expanded_folders();
@@ -8241,7 +8462,10 @@ fn a_folder_shut_by_hand_is_not_opened_again_until_the_tab_changes() {
     // purpose, and a reveal that ran every frame would open it again before the pointer was up.
     let folder = sample_folder();
     let mut harness = harness_in(&folder);
-    harness.state_mut().open_path_permanently(&folder.join("chapters/one.md")).expect("the file opens");
+    harness
+        .state_mut()
+        .open_path_permanently(&folder.join("chapters/one.md"))
+        .expect("the file opens");
     harness.run();
     assert!(harness.state().tree.expanded_folders().contains(&folder.join("chapters")));
     harness.state_mut().tree.toggle(&folder.join("chapters"));
@@ -8254,7 +8478,10 @@ fn a_folder_shut_by_hand_is_not_opened_again_until_the_tab_changes() {
     // Showing a different file and then this one again is a change, so it is revealed again.
     harness.state_mut().open_path_permanently(&folder.join("readme.md")).expect("the file opens");
     harness.run();
-    harness.state_mut().open_path_permanently(&folder.join("chapters/one.md")).expect("the file opens");
+    harness
+        .state_mut()
+        .open_path_permanently(&folder.join("chapters/one.md"))
+        .expect("the file opens");
     harness.run();
     assert!(
         harness.state().tree.expanded_folders().contains(&folder.join("chapters")),
@@ -8424,12 +8651,19 @@ fn the_command_line_scrolls_the_explorer_to_the_file_that_is_showing() {
 fn a_split_project_opens_split_again() {
     // The whole round trip through `.unluminous`, on a folder of its own so that no other test's window
     // is reading or writing the same state file.
-    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screenshot-split-project");
+    let folder =
+        copy_out_of_the_repository(&sample_folder(), "unluminous-screenshot-split-project");
     {
         let mut harness = harness_in(&folder);
         harness.state_mut().restore_project();
-        harness.state_mut().open_path_permanently(&folder.join("readme.md")).expect("the file opens");
-        harness.state_mut().open_path_permanently(&folder.join("program.rs")).expect("the file opens");
+        harness
+            .state_mut()
+            .open_path_permanently(&folder.join("readme.md"))
+            .expect("the file opens");
+        harness
+            .state_mut()
+            .open_path_permanently(&folder.join("program.rs"))
+            .expect("the file opens");
         harness.run();
         let ctx = harness.ctx.clone();
         harness.state_mut().run_action(Action::SplitRight, &ctx);
@@ -8523,8 +8757,11 @@ fn caret_on(harness: &mut Harness<'static, UnluminousApp>, needle: &str, into: u
 /// Wait for the references modal's own search to finish.
 fn settle_the_references(harness: &mut Harness<'static, UnluminousApp>) {
     for _ in 0..400 {
-        let searching =
-            harness.state().references.as_ref().is_some_and(unluminous_app::components::references::References::is_searching);
+        let searching = harness
+            .state()
+            .references
+            .as_ref()
+            .is_some_and(unluminous_app::components::references::References::is_searching);
         if !searching {
             break;
         }
@@ -8654,13 +8891,8 @@ fn choosing_a_file_heading_shows_that_files_first_reference() {
     harness.get_by_label(&references_heading("caret.rs")).click();
     harness.run();
     harness.run();
-    let (path, line) = harness
-        .state()
-        .references
-        .as_ref()
-        .expect("the modal")
-        .scrolled_to()
-        .expect("somewhere");
+    let (path, line) =
+        harness.state().references.as_ref().expect("the modal").scrolled_to().expect("somewhere");
     assert_eq!(path.file_name().unwrap(), "caret.rs");
     // The first reference *in the list*, which within a file is the first code one: the textual
     // matches are listed after them, so a heading previews the answer rather than a mention of it.
@@ -8854,14 +9086,8 @@ fn the_rename_modal_is_the_preview_and_the_ticks_are_the_change_set() {
     // A name this language could not hold is refused, with the reason in the footer.
     harness.state_mut().references.as_mut().expect("the modal").new_name = "match".to_owned();
     harness.run();
-    let refusal = harness
-        .state()
-        .references
-        .as_ref()
-        .expect("the modal")
-        .refusal
-        .clone()
-        .expect("a refusal");
+    let refusal =
+        harness.state().references.as_ref().expect("the modal").refusal.clone().expect("a refusal");
     assert!(refusal.contains("keyword"), "{refusal}");
 
     // And a collision is a warning rather than a refusal, because the mechanism cannot know whether
@@ -8914,7 +9140,8 @@ fn point_of(harness: &Harness<'static, UnluminousApp>, offset: usize) -> egui::P
     let scroll = harness.state().files.active().scroll;
     egui::pos2(
         area.left() + unluminous_app::components::editor_view::PADDING + caret.x + 1.0,
-        area.top() + unluminous_app::theme::size::EDITOR_PADDING_Y - scroll + caret.y
+        area.top() + unluminous_app::theme::size::EDITOR_PADDING_Y - scroll
+            + caret.y
             + caret.height / 2.0,
     )
 }
@@ -9090,7 +9317,10 @@ fn import_folder() -> std::path::PathBuf {
 fn import_harness() -> Harness<'static, UnluminousApp> {
     let folder = import_folder();
     let mut harness = harness_in(&folder);
-    harness.state_mut().open_path_permanently(&folder.join("src/app/main.ts")).expect("the file opens");
+    harness
+        .state_mut()
+        .open_path_permanently(&folder.join("src/app/main.ts"))
+        .expect("the file opens");
     for _ in 0..600 {
         pump(&mut harness);
         let ready = harness
@@ -9284,7 +9514,10 @@ fn a_hypothetical_completion_stem_changes_nothing_in_the_document() {
         .filter_map(|row| row["name"].as_str())
         .collect();
     assert_eq!(result["stem"], "ar");
-    assert!(names.contains(&"Caret"), "the project index was ranked for the supplied stem: {names:?}");
+    assert!(
+        names.contains(&"Caret"),
+        "the project index was ranked for the supplied stem: {names:?}"
+    );
     assert_eq!(harness.state().document().text().to_string(), before_text);
     assert_eq!(harness.state().document().selection(), before_selection);
     assert_eq!(harness.state().document().revision(), before_revision);
@@ -9334,9 +9567,11 @@ fn typing_a_word_offers_the_names_it_could_become() {
     harness.get_by_label("Completion Drawing");
     // The list is drawn under the caret's own line.
     let anchor = harness.state().completion_anchor().expect("the popup was drawn");
-    assert!(anchor.pane.contains_rect(
-        unluminous_app::components::completion::where_it_goes(8, anchor.caret, anchor.pane)
-    ));
+    assert!(anchor.pane.contains_rect(unluminous_app::components::completion::where_it_goes(
+        8,
+        anchor.caret,
+        anchor.pane
+    )));
     harness.snapshot(shot("completion_list"));
 }
 
@@ -9352,7 +9587,8 @@ fn the_list_flips_above_the_caret_at_the_bottom_of_the_pane() {
     assert!(harness.state().completion().is_some(), "{:?}", completions(&harness));
     let anchor = harness.state().completion_anchor().expect("the popup was drawn");
     let rows = harness.state().completion().expect("open").shown().len();
-    let area = unluminous_app::components::completion::where_it_goes(rows, anchor.caret, anchor.pane);
+    let area =
+        unluminous_app::components::completion::where_it_goes(rows, anchor.caret, anchor.pane);
     assert!(
         area.bottom() <= anchor.caret.top(),
         "the caret is at the bottom of the pane, so the list belongs above it: {area:?} against {:?}",
@@ -9557,7 +9793,10 @@ fn enter_answers_a_question_that_has_no_field_in_it_and_reaches_nothing_behind_i
     let mut harness = harness_in(&folder);
     did(&mut harness, &format!("tab open {}", folder.join("readme.md").display()));
 
-    did(&mut harness, &format!("action run delete-path --path {}", folder.join("readme.md").display()));
+    did(
+        &mut harness,
+        &format!("action run delete-path --path {}", folder.join("readme.md").display()),
+    );
     assert!(harness.state().confirmation.is_some(), "the question is asked");
     harness.key_press(egui::Key::Enter);
     harness.run();
@@ -9577,7 +9816,10 @@ fn a_modal_takes_the_keyboard_from_the_editing_area_and_the_explorer() {
     harness.state_mut().command(unluminous_core::Command::PlaceCaret { offset: 0, extend: false });
     harness.run();
 
-    did(&mut harness, &format!("action run delete-path --path {}", folder.join("readme.md").display()));
+    did(
+        &mut harness,
+        &format!("action run delete-path --path {}", folder.join("readme.md").display()),
+    );
     harness.key_press(egui::Key::Enter);
     harness.run();
     assert_eq!(
@@ -9592,7 +9834,10 @@ fn a_modal_takes_the_keyboard_from_the_editing_area_and_the_explorer() {
     let mut harness = harness_in(&folder);
     did(&mut harness, &format!("tab open {}", folder.join("app/main.ts").display()));
     let before = harness.state().document().text().to_string();
-    did(&mut harness, &format!("action run delete-path --path {}", folder.join("app/main.ts").display()));
+    did(
+        &mut harness,
+        &format!("action run delete-path --path {}", folder.join("app/main.ts").display()),
+    );
     harness.input_mut().events.push(egui::Event::Text("typed".to_owned()));
     harness.run();
     assert_eq!(harness.state().document().text().to_string(), before);
@@ -9618,7 +9863,10 @@ fn the_explorers_menu_holds_delete_and_it_asks_before_anything_goes() {
         .collect();
     assert!(names.contains(&"Delete".to_owned()), "the menu holds it: {names:?}");
 
-    did(&mut harness, &format!("action run delete-path --path {}", folder.join("readme.md").display()));
+    did(
+        &mut harness,
+        &format!("action run delete-path --path {}", folder.join("readme.md").display()),
+    );
     let question = harness.state().confirmation.clone().expect("the question is asked");
     assert!(question.note.contains("readme.md"), "it names the file: {}", question.note);
     assert!(
@@ -9640,7 +9888,10 @@ fn confirming_the_question_takes_the_file_off_the_disk_and_closes_its_tab() {
     did(&mut harness, &format!("tab open {}", folder.join("readme.md").display()));
     assert!(harness.state().files.paths().contains(&folder.join("readme.md")));
 
-    did(&mut harness, &format!("action run delete-path --path {}", folder.join("readme.md").display()));
+    did(
+        &mut harness,
+        &format!("action run delete-path --path {}", folder.join("readme.md").display()),
+    );
     did(&mut harness, "modal accept");
     harness.run();
     assert!(!folder.join("readme.md").exists(), "the file has gone");
@@ -9654,7 +9905,10 @@ fn confirming_the_question_takes_the_file_off_the_disk_and_closes_its_tab() {
 fn cancelling_the_question_leaves_the_file_exactly_where_it_was() {
     let folder = scratch_folder("cancel");
     let mut harness = harness_in(&folder);
-    did(&mut harness, &format!("action run delete-path --path {}", folder.join("readme.md").display()));
+    did(
+        &mut harness,
+        &format!("action run delete-path --path {}", folder.join("readme.md").display()),
+    );
     did(&mut harness, "modal cancel");
     harness.run();
     assert!(folder.join("readme.md").is_file());
@@ -9694,7 +9948,8 @@ fn the_arrow_keys_walk_the_selection_and_a_letter_hands_the_keyboard_back() {
     did(&mut harness, &format!("explorer select {}", folder.join("app").display()));
     let rows: Vec<std::path::PathBuf> =
         harness.state().tree.rows().iter().map(|row| row.entry.path.clone()).collect();
-    let at = rows.iter().position(|row| *row == folder.join("app")).expect("the app folder is a row");
+    let at =
+        rows.iter().position(|row| *row == folder.join("app")).expect("the app folder is a row");
 
     harness.key_press(egui::Key::ArrowDown);
     harness.run();
@@ -9976,7 +10231,10 @@ fn the_command_line_keeps_a_configuration_and_lists_it_with_the_suggestions() {
     );
     // The directory and the environment go in as flags, and a second one of the same name is
     // refused rather than quietly replacing what was there.
-    did(&mut harness, "run add build cargo build --release --directory crates --env \"RUST_LOG=debug\"");
+    did(
+        &mut harness,
+        "run add build cargo build --release --directory crates --env \"RUST_LOG=debug\"",
+    );
     let held = harness.state().run_configurations.find("build").expect("build").1.clone();
     assert_eq!(held.command, "cargo build --release");
     assert_eq!(held.directory, "crates");
@@ -10053,9 +10311,7 @@ fn adding_a_configuration_whose_program_cannot_be_found_says_so_and_still_adds_i
 fn the_command_line_reads_what_a_run_has_written() {
     // A detached run, so what is being tested is the reading rather than a program's timing.
     let mut harness = harness("");
-    harness
-        .state_mut()
-        .new_detached_run(configuration("Dev server", "node server.js"), 10, 60);
+    harness.state_mut().new_detached_run(configuration("Dev server", "node server.js"), 10, 60);
     harness.run();
     feed_run(&mut harness, b"Listening on http://localhost:3000\r\nGET / 200\r\nGET /a 200\r\n");
 
@@ -10077,9 +10333,7 @@ fn the_command_line_reads_what_a_run_has_written() {
 #[test]
 fn the_command_line_says_whether_a_run_is_going_and_what_it_ended_with() {
     let mut harness = harness("");
-    harness
-        .state_mut()
-        .new_detached_run(configuration("cargo test", "cargo test"), 8, 60);
+    harness.state_mut().new_detached_run(configuration("cargo test", "cargo test"), 8, 60);
     harness.run();
     let going = did(&mut harness, "run status");
     assert_eq!(going["state"], "running");
@@ -10103,9 +10357,7 @@ fn the_command_line_says_whether_a_run_is_going_and_what_it_ended_with() {
 #[test]
 fn stopping_a_run_from_the_command_line_leaves_the_tab_and_what_it_wrote() {
     let mut harness = harness("");
-    harness
-        .state_mut()
-        .new_detached_run(configuration("Dev server", "node server.js"), 8, 60);
+    harness.state_mut().new_detached_run(configuration("Dev server", "node server.js"), 8, 60);
     harness.run();
     feed_run(&mut harness, b"Listening on http://localhost:3000\r\n");
     // The first stop is the polite one, so the run is still going.
@@ -10254,7 +10506,10 @@ fn collapse_all_but_highlighted_leaves_the_marked_passage_showing() {
     // Mark the `if` inside `add`, which is line 5 and is inside two blocks.
     let start = harness.state().document().text().line_to_byte(4);
     let end = harness.state().document().text().line_to_byte(6);
-    harness.state_mut().document_mut().highlight(start..end, unluminous_core::Rgba::new(0xC9, 0xA2, 0x27, 0x66));
+    harness
+        .state_mut()
+        .document_mut()
+        .highlight(start..end, unluminous_core::Rgba::new(0xC9, 0xA2, 0x27, 0x66));
     harness.run();
 
     let ctx = harness.ctx.clone();
@@ -10350,8 +10605,14 @@ fn a_fold_stays_on_its_block_when_a_line_is_typed_above_it() {
     harness.run();
     harness.run();
     // A line typed at the very top of the file, which moves every byte below it.
-    harness.state_mut().document_mut().apply(unluminous_core::Command::PlaceCaret { offset: 0, extend: false });
-    harness.state_mut().document_mut().apply(unluminous_core::Command::Insert("// a new line\n".to_owned()));
+    harness
+        .state_mut()
+        .document_mut()
+        .apply(unluminous_core::Command::PlaceCaret { offset: 0, extend: false });
+    harness
+        .state_mut()
+        .document_mut()
+        .apply(unluminous_core::Command::Insert("// a new line\n".to_owned()));
     harness.run();
     harness.run();
     // The same function, now one line further down, and still collapsed: the arrow and the badge.
@@ -10763,7 +11024,8 @@ fn a_checkout_under_a_running_window_leaves_the_breakpoints_working() {
     // The checkout: something outside Unluminous puts back a longer `main.rs` **and** the breakpoints file
     // that belongs with it, where the same statement is now line 5. Both at once, which is what makes
     // this recoverable at all — the offset and the bytes it counts into stay consistent.
-    let after = "// restored\n// by a checkout\nfn main() {\n    let a = 1;\n    let b = a + 1;\n}\n";
+    let after =
+        "// restored\n// by a checkout\nfn main() {\n    let a = 1;\n    let b = a + 1;\n}\n";
     std::fs::write(&source, after).expect("check the file out again");
     let restored = offset_of_line(after, 5);
     std::fs::write(
@@ -10848,7 +11110,8 @@ fn a_breakpoint_in_a_shut_file_with_windows_line_breaks_names_the_line_it_is_on(
         source.push_str(&format!("    let value{line} = {line};\n"));
     }
     source.push_str("    let answer = 1;\n}\n");
-    let stop_at = source.lines().position(|line| line.contains("let answer")).expect("the line") + 1;
+    let stop_at =
+        source.lines().position(|line| line.contains("let answer")).expect("the line") + 1;
     // Written with Windows line breaks, which is the whole of the case.
     std::fs::write(folder.join("src").join("report.rs"), source.replace('\n', "\r\n"))
         .expect("write report.rs");
@@ -10953,7 +11216,10 @@ fn a_breakpoint_binds_wherever_the_editor_is_scrolled() {
 
         // `main.rs` is always the open tab, so that there is something to scroll in both cases and
         // the shut case still has a document the window is drawing.
-        harness.state_mut().open_path_permanently(&folder.join("src").join("main.rs")).expect("the file opens");
+        harness
+            .state_mut()
+            .open_path_permanently(&folder.join("src").join("main.rs"))
+            .expect("the file opens");
         harness.run();
         if open {
             harness.state_mut().open_path_permanently(&report).expect("the file opens");
@@ -10992,7 +11258,10 @@ fn a_breakpoint_binds_wherever_the_editor_is_scrolled() {
         // This is the one the fault fails. What crosses the wire is **text**, and the adapter has no
         // `Path` to compare with — it matches the string against its debug information.
         if cfg!(windows) {
-            assert!(!sent.contains('/'), "{name}: a Windows path with a forward slash in it: {sent}");
+            assert!(
+                !sent.contains('/'),
+                "{name}: a Windows path with a forward slash in it: {sent}"
+            );
         }
 
         // The adapter binds it, and the program stops there.
@@ -11144,10 +11413,10 @@ fn the_value_tooltip_shows_a_structure_and_opens_it_into_its_fields() {
     // rather than once a frame — before `task-1696` this jump ran every frame it was true, so the
     // caret could not be moved at all while a program was stopped and this would ask about the first
     // word on the stopped line every time.
-    harness.state_mut().document_mut().apply(unluminous_core::Command::PlaceCaret {
-        offset: offset + 2,
-        extend: false,
-    });
+    harness
+        .state_mut()
+        .document_mut()
+        .apply(unluminous_core::Command::PlaceCaret { offset: offset + 2, extend: false });
     harness.run();
     assert_eq!(
         harness.state().document().selection().head,
@@ -11163,7 +11432,18 @@ fn the_value_tooltip_shows_a_structure_and_opens_it_into_its_fields() {
         .state()
         .value_tooltip
         .as_ref()
-        .unwrap_or_else(|| panic!("a tooltip: msg={:?} hover={:?}", harness.state().message, harness.state().debug.as_ref().and_then(|d| d.hover.as_ref()).map(|h| h.expression.clone())))
+        .unwrap_or_else(|| {
+            panic!(
+                "a tooltip: msg={:?} hover={:?}",
+                harness.state().message,
+                harness
+                    .state()
+                    .debug
+                    .as_ref()
+                    .and_then(|d| d.hover.as_ref())
+                    .map(|h| h.expression.clone())
+            )
+        })
         .expression
         .clone();
     assert_eq!(asking, "items", "the word the caret is on");
@@ -11215,10 +11495,10 @@ fn a_row_of_the_value_tooltip_can_be_typed_over() {
     // rather than once a frame — before `task-1696` this jump ran every frame it was true, so the
     // caret could not be moved at all while a program was stopped and this would ask about the first
     // word on the stopped line every time.
-    harness.state_mut().document_mut().apply(unluminous_core::Command::PlaceCaret {
-        offset: offset + 2,
-        extend: false,
-    });
+    harness
+        .state_mut()
+        .document_mut()
+        .apply(unluminous_core::Command::PlaceCaret { offset: offset + 2, extend: false });
     harness.run();
     choose(&mut harness, Action::Debug(DebugAction::ShowValue));
     harness.run();
@@ -11230,12 +11510,8 @@ fn a_row_of_the_value_tooltip_can_be_typed_over() {
 
     // The root of a tooltip has no container reference, so `setVariable` cannot name it and
     // `setExpression` is what changes it. The adapter offered it, so the field is drawn.
-    harness
-        .state_mut()
-        .value_tooltip
-        .as_mut()
-        .expect("a tooltip")
-        .editing = Some(("attempts".to_owned(), "9".to_owned()));
+    harness.state_mut().value_tooltip.as_mut().expect("a tooltip").editing =
+        Some(("attempts".to_owned(), "9".to_owned()));
     harness.run();
     harness.get_by_label("Set Value: attempts");
     harness.snapshot(shot("debug_value_tooltip_editing"));
@@ -11429,13 +11705,11 @@ fn concise_debug_replies_lead_with_the_paused_frame_and_locals() {
     assert!(status.get("frames").is_none(), "ordinary replies do not carry a stack: {status:#?}");
     assert!(status.get("variables").is_none());
     assert!(status.get("watches").is_none());
-    assert!(
-        status["lines"]
-            .as_array()
-            .expect("spoken locals")
-            .iter()
-            .any(|line| line.as_str().is_some_and(|line| line.contains("total: usize = 6")))
-    );
+    assert!(status["lines"]
+        .as_array()
+        .expect("spoken locals")
+        .iter()
+        .any(|line| line.as_str().is_some_and(|line| line.contains("total: usize = 6"))));
 
     let ordinary = did(&mut harness, "debug frames");
     assert_eq!(ordinary["lines"].as_array().map(Vec::len), Some(1));
@@ -11591,10 +11865,8 @@ fn a_real_debugger_binds_a_breakpoint_in_a_file_that_is_not_open() {
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
 
-    let status = harness
-        .state_mut()
-        .run_command_line("debug status", &ctx)
-        .expect("answered at once");
+    let status =
+        harness.state_mut().run_command_line("debug status", &ctx).expect("answered at once");
     assert_eq!(status.result["paused"], true, "{}", status.message);
     assert_eq!(status.result["line"], stop_at, "{}", status.message);
 
@@ -11615,10 +11887,8 @@ fn a_real_debugger_binds_a_breakpoint_in_a_file_that_is_not_open() {
     );
 
     // The value the program really computed, read out of the file that was never opened: 1+..+40.
-    let variables = harness
-        .state_mut()
-        .run_command_line("debug variables", &ctx)
-        .expect("answered at once");
+    let variables =
+        harness.state_mut().run_command_line("debug variables", &ctx).expect("answered at once");
     let printed: Vec<String> = variables.result["lines"]
         .as_array()
         .expect("the rows")
@@ -11715,10 +11985,7 @@ fn a_real_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
     // Line 6, `let answer = total;` — after the loop, so `total` is 10 by the time it is reached.
     let set = harness
         .state_mut()
-        .run_command_line(
-            &format!("debug breakpoint add {} 6", source.display()),
-            &ctx,
-        )
+        .run_command_line(&format!("debug breakpoint add {} 6", source.display()), &ctx)
         .expect("answered at once");
     assert!(set.ok, "{}", set.message);
 
@@ -11759,31 +12026,23 @@ fn a_real_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
 
     // Where it stopped, as the debugger says it — asserted on text, which is the only thing about a
     // real adapter that is the same on every machine.
-    let status = harness
-        .state_mut()
-        .run_command_line("debug status", &ctx)
-        .expect("answered at once");
+    let status =
+        harness.state_mut().run_command_line("debug status", &ctx).expect("answered at once");
     assert!(status.ok, "{}", status.message);
     assert_eq!(status.result["paused"], true);
     assert_eq!(status.result["line"], 6, "{}", status.message);
 
-    let frames = harness
-        .state_mut()
-        .run_command_line("debug frames", &ctx)
-        .expect("answered at once");
+    let frames =
+        harness.state_mut().run_command_line("debug frames", &ctx).expect("answered at once");
     let listed = frames.result["lines"].as_array().expect("the frames");
     assert!(
-        listed
-            .iter()
-            .any(|line| line.as_str().expect("a line").contains("counter.rs:6")),
+        listed.iter().any(|line| line.as_str().expect("a line").contains("counter.rs:6")),
         "the top frame should be the line it stopped on: {listed:#?}"
     );
 
     // And the value the program really computed. `total` is 1+2+3+4.
-    let variables = harness
-        .state_mut()
-        .run_command_line("debug variables", &ctx)
-        .expect("answered at once");
+    let variables =
+        harness.state_mut().run_command_line("debug variables", &ctx).expect("answered at once");
     let printed: Vec<String> = variables.result["lines"]
         .as_array()
         .expect("the rows")
@@ -11797,10 +12056,8 @@ fn a_real_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
 
     // Stepping over the assignment makes `answer` the same number, which is the other half of the
     // feature: the program really moved.
-    let stepped = harness
-        .state_mut()
-        .run_command_line("debug step-over", &ctx)
-        .expect("answered at once");
+    let stepped =
+        harness.state_mut().run_command_line("debug step-over", &ctx).expect("answered at once");
     assert!(stepped.ok, "{}", stepped.message);
     loop {
         harness.step();
@@ -11814,10 +12071,8 @@ fn a_real_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
         assert!(std::time::Instant::now() < deadline, "the step did not land in time");
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
-    let variables = harness
-        .state_mut()
-        .run_command_line("debug variables", &ctx)
-        .expect("answered at once");
+    let variables =
+        harness.state_mut().run_command_line("debug variables", &ctx).expect("answered at once");
     let printed: Vec<String> = variables.result["lines"]
         .as_array()
         .expect("the rows")
@@ -11937,28 +12192,22 @@ fn a_real_node_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
 
-    let status = harness
-        .state_mut()
-        .run_command_line("debug status", &ctx)
-        .expect("answered at once");
+    let status =
+        harness.state_mut().run_command_line("debug status", &ctx).expect("answered at once");
     assert!(status.ok, "{}", status.message);
     assert_eq!(status.result["paused"], true);
     assert_eq!(status.result["line"], 6, "{}", status.message);
 
-    let frames = harness
-        .state_mut()
-        .run_command_line("debug frames", &ctx)
-        .expect("answered at once");
+    let frames =
+        harness.state_mut().run_command_line("debug frames", &ctx).expect("answered at once");
     let listed = frames.result["lines"].as_array().expect("the frames");
     assert!(
         listed.iter().any(|line| line.as_str().expect("a line").contains("counter.js:6")),
         "the top frame should be the line it stopped on: {listed:#?}"
     );
 
-    let variables = harness
-        .state_mut()
-        .run_command_line("debug variables", &ctx)
-        .expect("answered at once");
+    let variables =
+        harness.state_mut().run_command_line("debug variables", &ctx).expect("answered at once");
     let printed: Vec<String> = variables.result["lines"]
         .as_array()
         .expect("the rows")
@@ -11979,13 +12228,8 @@ fn a_real_node_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
     // and is a bound rather than a wait.
     let mut moved = false;
     for _ in 0..6 {
-        let before = harness
-            .state()
-            .debug
-            .as_ref()
-            .expect("the session")
-            .location()
-            .map(|(_, line)| line);
+        let before =
+            harness.state().debug.as_ref().expect("the session").location().map(|(_, line)| line);
         let stepped = harness
             .state_mut()
             .run_command_line("debug step-over", &ctx)
@@ -12001,13 +12245,8 @@ fn a_real_node_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
             assert!(std::time::Instant::now() < deadline, "the step did not land in time");
             std::thread::sleep(std::time::Duration::from_millis(25));
         }
-        let after = harness
-            .state()
-            .debug
-            .as_ref()
-            .expect("the session")
-            .location()
-            .map(|(_, line)| line);
+        let after =
+            harness.state().debug.as_ref().expect("the session").location().map(|(_, line)| line);
         if after != before {
             moved = true;
             break;
@@ -12222,7 +12461,9 @@ fn window_commands(harness: &Harness<'static, UnluminousApp>) -> Vec<String> {
 }
 
 /// Whether any of the three window buttons holds the keyboard.
-fn a_window_button_holds_the_keyboard(harness: &mut Harness<'static, UnluminousApp>) -> Option<String> {
+fn a_window_button_holds_the_keyboard(
+    harness: &mut Harness<'static, UnluminousApp>,
+) -> Option<String> {
     ["Close", "Minimise", "Maximise"].into_iter().find_map(|label| {
         let held = harness.get_all_by_label(label).any(|node| node.is_focused());
         held.then(|| label.to_owned())
@@ -12324,7 +12565,10 @@ fn an_idle_window_always_asks_to_be_woken_again() {
         .get(&egui::ViewportId::ROOT)
         .expect("the window's own output")
         .repaint_delay;
-    assert!(asked_for <= unluminous_app::app::HEARTBEAT, "and still after a frame of typing: {asked_for:?}");
+    assert!(
+        asked_for <= unluminous_app::app::HEARTBEAT,
+        "and still after a frame of typing: {asked_for:?}"
+    );
 }
 
 /// What holds egui's keyboard focus this frame.
@@ -12549,7 +12793,11 @@ fn the_file_panel_can_be_dragged_into_the_strip_along_the_bottom() {
     let rect = harness.state().panel_area(Panel::Explorer);
     assert!(rect.left() < 60.0, "a strip starts at the left of the panes: {rect:?}");
     assert!(rect.bottom() > 700.0, "and reaches the bottom of them: {rect:?}");
-    assert!(harness.state().editor_area().left() < 90.0, "the document has the left back: {}", harness.state().editor_area().left());
+    assert!(
+        harness.state().editor_area().left() < 90.0,
+        "the document has the left back: {}",
+        harness.state().editor_area().left()
+    );
     harness.snapshot(shot("panel_explorer_docked_bottom"));
 }
 
@@ -12783,11 +13031,19 @@ fn the_board_contributes_a_pane_and_no_tab() {
         .expect("the agent-tasks plugin");
     assert_eq!(board["kind"], "ui");
     assert_eq!(board["provider"], "agent-tasks");
-    let contributes: Vec<&str> =
-        board["contributes"].as_array().expect("what it adds").iter().filter_map(|it| it.as_str()).collect();
+    let contributes: Vec<&str> = board["contributes"]
+        .as_array()
+        .expect("what it adds")
+        .iter()
+        .filter_map(|it| it.as_str())
+        .collect();
     // `task-1848`: "Agent tasks should be its own pane, rather than a tab." Turned round rather than
     // deleted, so the shape stays pinned whichever way it is.
-    assert_eq!(contributes, ["pane", "menu", "settings page"], "a pane, a menu and a page, and no tab");
+    assert_eq!(
+        contributes,
+        ["pane", "menu", "settings page"],
+        "a pane, a menu and a page, and no tab"
+    );
 
     // The board takes no dock slot. Agent-Chat's pane does — `task-1767` — so this is checked by name
     // rather than by slot number: which number a pane is in comes from the manifests and moves when a
@@ -12798,8 +13054,12 @@ fn the_board_contributes_a_pane_and_no_tab() {
     );
     let _ = Panel::Plugin(0);
     let panels = did(&mut harness, "panel list");
-    let names: Vec<&str> =
-        panels["panels"].as_array().expect("the panels").iter().filter_map(|it| it["panel"].as_str()).collect();
+    let names: Vec<&str> = panels["panels"]
+        .as_array()
+        .expect("the panels")
+        .iter()
+        .filter_map(|it| it["panel"].as_str())
+        .collect();
     assert_eq!(
         names,
         ["explorer", "terminal", "run", "debug", "space"],
@@ -12925,10 +13185,9 @@ fn a_contributed_tab_opens_in_the_editing_area_beside_the_file_tabs() {
     // about the board.
     let tabs = did(&mut harness, "status --section tabs");
     let rows = tabs["tabs"].as_array().expect("the tabs");
-    let board = rows
-        .iter()
-        .find(|tab| tab["name"] == "Agent-Tasks")
-        .unwrap_or_else(|| panic!("the board's tab should be called what its manifest calls it: {rows:?}"));
+    let board = rows.iter().find(|tab| tab["name"] == "Agent-Tasks").unwrap_or_else(|| {
+        panic!("the board's tab should be called what its manifest calls it: {rows:?}")
+    });
     assert_eq!(board["modified"], false, "a plugin tab is never modified");
     // And saving it writes nothing, rather than writing an empty `untitled.md` into the project.
     let before: Vec<std::path::PathBuf> = std::fs::read_dir(sample_folder())
@@ -12948,7 +13207,11 @@ fn a_contributed_tab_opens_in_the_editing_area_beside_the_file_tabs() {
     let tabs_showing = harness.state().files.len();
     did(&mut harness, "plugins tab agent-tasks/board --open");
     harness.run();
-    assert_eq!(harness.state().files.len(), tabs_showing, "asking twice does not open a second one");
+    assert_eq!(
+        harness.state().files.len(),
+        tabs_showing,
+        "asking twice does not open a second one"
+    );
 
     // **The rail button toggles, and that is `task-1848`**: "I can't untoggle it to hide it. It should
     // always open/close." `open_the_plugin_tab` only ever opened, so the button could be pressed once and
@@ -13058,10 +13321,7 @@ fn no_two_controls_in_the_rail_share_a_name() {
     harness.run();
     for name in ["Agent-Chat pane", "Agent-Tasks pane", "Database pane"] {
         let found = harness.get_all_by_label(name).count();
-        assert_eq!(
-            found, 1,
-            "`{name}` should name exactly one control and names {found}"
-        );
+        assert_eq!(found, 1, "`{name}` should name exactly one control and names {found}");
     }
     // And with the menu bar drawn in the window, each plugin's plain name is the heading of its submenu
     // under `Plugins` — which is the name the rail buttons had to give way to, and the collision that
@@ -13093,7 +13353,10 @@ fn nothing_the_plugin_owns_is_built_until_its_button_is_pressed() {
     // plugin code. Here it is the difference between opening a database when Unluminous starts and opening it
     // when somebody first looks at the board.
     let mut harness = harness("");
-    assert!(!harness.state().plugin_ui.is_open("agent-tasks"), "not opened by loading the manifest");
+    assert!(
+        !harness.state().plugin_ui.is_open("agent-tasks"),
+        "not opened by loading the manifest"
+    );
     did(&mut harness, "plugins pane agent-tasks/board --show");
     assert!(harness.state().plugin_ui.is_open("agent-tasks"), "opened by being shown");
     // And switching it off closes it, so it drops the board file it held.
@@ -13162,7 +13425,11 @@ fn the_board_can_be_read_and_changed_entirely_from_the_command_line() {
         .iter()
         .filter_map(|lane| lane["status"].as_str())
         .collect();
-    assert_eq!(lanes, ["new", "qa_failed", "in_progress", "agent_done"], "four lanes, in drawn order");
+    assert_eq!(
+        lanes,
+        ["new", "qa_failed", "in_progress", "agent_done"],
+        "four lanes, in drawn order"
+    );
 
     let made = did(&mut harness, "plugins run agent-tasks new-task Rewrite the importer");
     assert_eq!(made["task"], "task-1");
@@ -13170,15 +13437,19 @@ fn the_board_can_be_read_and_changed_entirely_from_the_command_line() {
     assert_eq!(with_one["total"], 1);
     let new_lane = with_one["lanes"].as_array().expect("the lanes")[0].clone();
     assert_eq!(new_lane["count"], 1);
-    assert_eq!(new_lane["cards"].as_array().expect("the cards")[0]["title"], "Rewrite the importer");
+    assert_eq!(
+        new_lane["cards"].as_array().expect("the cards")[0]["title"],
+        "Rewrite the importer"
+    );
 
     // Todos and comments, which are what the card's two counts are.
     did(&mut harness, "plugins run agent-tasks todo-add task-1 Read the old importer");
     did(&mut harness, "plugins run agent-tasks todo-add task-1 Write the new one");
     did(&mut harness, "plugins run agent-tasks todo-done task-1 1");
     did(&mut harness, "plugins run agent-tasks comment task-1 The format changed in April.");
-    let card = did(&mut harness, "plugins view agent-tasks")["lanes"].as_array().expect("the lanes")[0]
-        ["cards"]
+    let card = did(&mut harness, "plugins view agent-tasks")["lanes"]
+        .as_array()
+        .expect("the lanes")[0]["cards"]
         .as_array()
         .expect("the cards")[0]
         .clone();
@@ -13222,7 +13493,10 @@ fn the_search_finds_a_ticket_by_its_key_its_title_or_its_description() {
     did(&mut harness, "plugins run agent-tasks new-task Plugin architecture for UI");
     did(&mut harness, "plugins run agent-tasks new-task Rewrite the importer");
     let found = did(&mut harness, "plugins run agent-tasks search plugin");
-    assert_eq!(found["found"].as_array().expect("what it found"), &vec![serde_json::json!("task-1")]);
+    assert_eq!(
+        found["found"].as_array().expect("what it found"),
+        &vec![serde_json::json!("task-1")]
+    );
     let by_key = did(&mut harness, "plugins run agent-tasks search task-2");
     assert_eq!(by_key["found"].as_array().expect("what it found").len(), 1);
     let nothing = did(&mut harness, "plugins run agent-tasks search mermaid");
@@ -13242,9 +13516,17 @@ fn plugins_show_lists_every_command_the_board_answers() {
         .iter()
         .filter_map(|command| command["command"].as_str())
         .collect();
-    for expected in
-        ["board", "task", "new-task", "move-task", "todo-add", "comment", "start", "resume", "search"]
-    {
+    for expected in [
+        "board",
+        "task",
+        "new-task",
+        "move-task",
+        "todo-add",
+        "comment",
+        "start",
+        "resume",
+        "search",
+    ] {
         assert!(commands.contains(&expected), "`{expected}` is not offered: {commands:?}");
     }
     assert!(
@@ -13282,16 +13564,29 @@ fn a_manifest_changed_by_hand_takes_effect_on_a_reload_with_no_restart() {
     assert_eq!(shown["bundled"], false, "the one on disk is the one that loaded");
     let listed = did(&mut harness, "plugins list");
     assert!(
-        listed["plugins"].as_array().expect("the plugins").iter().any(|it| it["id"] == "agent-tasks"),
+        listed["plugins"]
+            .as_array()
+            .expect("the plugins")
+            .iter()
+            .any(|it| it["id"] == "agent-tasks"),
         "it is installed"
     );
-    assert_eq!(pane_label(&harness, "agent-tasks/board"), "The Board", "the label came from the file");
+    assert_eq!(
+        pane_label(&harness, "agent-tasks/board"),
+        "The Board",
+        "the label came from the file"
+    );
     // Change the file and reload. No restart, and the window is different in the same frame.
-    std::fs::write(plugin.join("plugin.conf"), manifest("Tickets", "bottom")).expect("a changed manifest");
+    std::fs::write(plugin.join("plugin.conf"), manifest("Tickets", "bottom"))
+        .expect("a changed manifest");
     let reloaded = did(&mut harness, "plugins reload");
     assert!(reloaded["refused"].as_array().expect("what was refused").is_empty());
     harness.run();
-    assert_eq!(pane_label(&harness, "agent-tasks/board"), "Tickets", "the reload read the file again");
+    assert_eq!(
+        pane_label(&harness, "agent-tasks/board"),
+        "Tickets",
+        "the reload read the file again"
+    );
     // And a manifest that will not parse is skipped with its reason rather than stopping Unluminous.
     std::fs::write(plugin.join("plugin.conf"), "plugin.id = agent-tasks\nplugin.kind = wasm\n")
         .expect("a manifest Unluminous refuses");
@@ -13315,7 +13610,11 @@ fn the_plugins_pane_takes_the_windows_own_transparency_and_font() {
     let look = Look::of(&harness.state().settings, &harness.state().renderer);
     assert_eq!(look.opacity, 0.5);
     assert_eq!(look.font_size, 17.0);
-    assert_eq!(look.ground(look.palette.editor).a(), 128, "half opacity reaches the pane's own ground");
+    assert_eq!(
+        look.ground(look.palette.editor).a(),
+        128,
+        "half opacity reaches the pane's own ground"
+    );
 }
 
 /// The board in a narrow editing area, which is the layout the pane used to be for.
@@ -13330,14 +13629,20 @@ fn the_board_in_a_narrow_editing_area() {
     // Narrow, by giving most of the width to the explorer, which is what a 420 point pane used to be.
     did(&mut harness, "panel size explorer --width 700");
     did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
-    did(&mut harness, "plugins run agent-tasks new-task Unluminous \u{2014} Plugin architecture for UI");
+    did(
+        &mut harness,
+        "plugins run agent-tasks new-task Unluminous \u{2014} Plugin architecture for UI",
+    );
     did(&mut harness, "plugins run agent-tasks new-task Rust vector db");
     did(&mut harness, "plugins run agent-tasks new-task Rust vector synthetic testing");
     did(&mut harness, "plugins run agent-tasks move-task task-2 in_progress 0");
     did(&mut harness, "plugins run agent-tasks move-task task-3 in_progress 1");
     did(&mut harness, "plugins run agent-tasks todo-add task-2 Read the pgvector docs");
     did(&mut harness, "plugins run agent-tasks todo-done task-2 1");
-    did(&mut harness, "plugins run agent-tasks comment task-2 Graded against a configured baseline.");
+    did(
+        &mut harness,
+        "plugins run agent-tasks comment task-2 Graded against a configured baseline.",
+    );
     // `new-task` opens the ticket it made, so the lanes are asked for by name rather than assumed.
     did(&mut harness, "plugins run agent-tasks board");
     harness.run();
@@ -13348,7 +13653,10 @@ fn the_board_in_a_narrow_editing_area() {
 fn the_board_as_a_tab_filling_the_editing_area() {
     let mut harness = harness("");
     did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
-    did(&mut harness, "plugins run agent-tasks new-task Unluminous \u{2014} Plugin architecture for UI");
+    did(
+        &mut harness,
+        "plugins run agent-tasks new-task Unluminous \u{2014} Plugin architecture for UI",
+    );
     did(&mut harness, "plugins run agent-tasks new-task Rust vector db");
     did(&mut harness, "plugins run agent-tasks move-task task-2 agent_done 0");
     did(&mut harness, "plugins run agent-tasks board");
@@ -13368,7 +13676,10 @@ fn the_board_with_its_decoration_switched_off() {
     let mut harness = harness("");
     did(&mut harness, "settings set plugins.chrome false");
     did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
-    did(&mut harness, "plugins run agent-tasks new-task Unluminous \u{2014} Plugin architecture for UI");
+    did(
+        &mut harness,
+        "plugins run agent-tasks new-task Unluminous \u{2014} Plugin architecture for UI",
+    );
     did(&mut harness, "plugins run agent-tasks new-task Rust vector db");
     did(&mut harness, "plugins run agent-tasks move-task task-2 agent_done 0");
     did(&mut harness, "plugins run agent-tasks board");
@@ -13392,7 +13703,10 @@ fn the_board_with_its_decoration_switched_off() {
 fn the_same_board_in_two_windows_is_the_same_picture() {
     fn board(harness: &mut Harness<'static, UnluminousApp>) {
         did(harness, "plugins run agent-tasks new-sprint Current Sprint");
-        did(harness, "plugins run agent-tasks new-task Unluminous \u{2014} Plugin architecture for UI");
+        did(
+            harness,
+            "plugins run agent-tasks new-task Unluminous \u{2014} Plugin architecture for UI",
+        );
         did(harness, "plugins run agent-tasks new-task Rust vector db");
         did(harness, "plugins run agent-tasks move-task task-2 in_progress 0");
         did(harness, "plugins run agent-tasks board");
@@ -13429,7 +13743,8 @@ fn the_board_keeps_add_task_at_the_width_the_rail_appears_at() {
     // A board of its own, for the reason `a_window_with_its_own_board` gives: this one adds a sprint with a
     // deliberately long name, and adding it to somebody's real board is both a change to their file and a
     // test that fails the second time it is run.
-    let mut harness = a_window_with_its_own_board("the_board_keeps_add_task_at_the_width_the_rail_appears_at");
+    let mut harness =
+        a_window_with_its_own_board("the_board_keeps_add_task_at_the_width_the_rail_appears_at");
     did(&mut harness, "plugins pane agent-tasks/board --show");
     // **Docked to a side and made narrow**, which is the only way to give this pane a small width: the
     // manifest docks it to the **bottom**, so it is as wide as the window whatever the explorer does, and
@@ -13437,8 +13752,14 @@ fn the_board_keeps_add_task_at_the_width_the_rail_appears_at() {
     did(&mut harness, "plugins pane agent-tasks/board --side right");
     harness.state_mut().set_plugin_pane_width_for("agent-tasks/board", 360.0);
     did(&mut harness, "settings set appearance.font.size 32");
-    did(&mut harness, "plugins run agent-tasks new-sprint A sprint with a long enough name to crowd the row");
-    did(&mut harness, "plugins run agent-tasks new-task Unluminous \u{2014} Plugin architecture for UI");
+    did(
+        &mut harness,
+        "plugins run agent-tasks new-sprint A sprint with a long enough name to crowd the row",
+    );
+    did(
+        &mut harness,
+        "plugins run agent-tasks new-task Unluminous \u{2014} Plugin architecture for UI",
+    );
     did(&mut harness, "plugins run agent-tasks board");
     harness.run();
     // **`+ Add Task` survived, which is the whole of the point.** At this width there is no room for the
@@ -13498,7 +13819,8 @@ fn a_board_with_sprints(name: &str) -> Harness<'static, UnluminousApp> {
     did(&mut harness, "plugins run agent-tasks epic-colour Unluminous #8B6BFF");
     did(&mut harness, "plugins run agent-tasks new-epic Rust-Db");
     did(&mut harness, "plugins run agent-tasks epic-colour Rust-Db #FFB648");
-    for title in ["Upgrade and GPU stuck", "Unluminous agent chat plugin", "Rust db scoring system"] {
+    for title in ["Upgrade and GPU stuck", "Unluminous agent chat plugin", "Rust db scoring system"]
+    {
         did(&mut harness, &format!("plugins run agent-tasks new-task {title}"));
     }
     did(&mut harness, "plugins run agent-tasks back");
@@ -13517,7 +13839,9 @@ fn a_board_with_sprints(name: &str) -> Harness<'static, UnluminousApp> {
 /// backlog last, rows rather than cards, and a ticket dragged from one group to another changes its sprint.
 #[test]
 fn the_backlog_groups_by_sprint_and_a_row_dragged_between_them_moves_the_ticket() {
-    let mut harness = a_board_with_sprints("the_backlog_groups_by_sprint_and_a_row_dragged_between_them_moves_the_ticket");
+    let mut harness = a_board_with_sprints(
+        "the_backlog_groups_by_sprint_and_a_row_dragged_between_them_moves_the_ticket",
+    );
     did(&mut harness, "plugins run agent-tasks view backlog");
     harness.run();
     harness.get_by_label("August 2nd Half");
@@ -13553,7 +13877,8 @@ fn the_backlog_groups_by_sprint_and_a_row_dragged_between_them_moves_the_ticket(
 /// The Completed view is the same shape with the finished sprints, and each of them folds.
 #[test]
 fn the_completed_view_groups_finished_sprints_and_each_one_folds() {
-    let mut harness = a_board_with_sprints("the_completed_view_groups_finished_sprints_and_each_one_folds");
+    let mut harness =
+        a_board_with_sprints("the_completed_view_groups_finished_sprints_and_each_one_folds");
     did(&mut harness, "plugins run agent-tasks sprint-complete August 2nd Half");
     did(&mut harness, "plugins run agent-tasks view completed");
     harness.run();
@@ -13568,7 +13893,9 @@ fn the_completed_view_groups_finished_sprints_and_each_one_folds() {
 /// The Epics view: a card an epic, with the seven colours, a rename and a delete that asks first.
 #[test]
 fn the_epics_view_is_a_grid_of_cards_that_can_be_renamed_recoloured_and_deleted() {
-    let mut harness = a_board_with_sprints("the_epics_view_is_a_grid_of_cards_that_can_be_renamed_recoloured_and_deleted");
+    let mut harness = a_board_with_sprints(
+        "the_epics_view_is_a_grid_of_cards_that_can_be_renamed_recoloured_and_deleted",
+    );
     did(&mut harness, "plugins run agent-tasks view epics");
     harness.run();
     // **The card is asked for by one of its controls, not by the epic's bare name.** No control on an
@@ -13659,7 +13986,8 @@ fn the_reviews_findings_about_the_boards_commands() {
 /// Everything a person can do to a sprint or an epic, an agent can do too.
 #[test]
 fn the_sprints_and_the_epics_are_driven_entirely_from_the_command_line() {
-    let mut harness = a_board_with_sprints("the_sprints_and_the_epics_are_driven_entirely_from_the_command_line");
+    let mut harness =
+        a_board_with_sprints("the_sprints_and_the_epics_are_driven_entirely_from_the_command_line");
     // A sprint is named by its name, which is what is on the screen.
     did(&mut harness, "plugins run agent-tasks sprint-rename September October");
     did(&mut harness, "plugins run agent-tasks sprint-activate October");
@@ -13683,7 +14011,10 @@ fn the_sprints_and_the_epics_are_driven_entirely_from_the_command_line() {
     );
     // And the refusals name what there is, which is what a caller who guessed wrong needs.
     assert_eq!(refused(&mut harness, "plugins run agent-tasks sprint-activate Nonesuch"), "failed");
-    assert_eq!(refused(&mut harness, "plugins run agent-tasks epic-colour Unluminous sideways"), "failed");
+    assert_eq!(
+        refused(&mut harness, "plugins run agent-tasks epic-colour Unluminous sideways"),
+        "failed"
+    );
 }
 
 /// `task-1771`: *"when an agent finishes a task and moves it to agent done, for some reason a side panel is
@@ -13701,7 +14032,10 @@ fn reading_a_ticket_answers_with_it_and_leaves_the_board_showing_the_lanes() {
     did(&mut harness, "plugins run agent-tasks todo-add task-1 Weigh the four mechanisms");
     did(&mut harness, "plugins run agent-tasks todo-add task-1 Write the manifest keys");
     did(&mut harness, "plugins run agent-tasks todo-done task-1 1");
-    did(&mut harness, "plugins run agent-tasks comment task-1 Zed and Lapce both have no UI surface.");
+    did(
+        &mut harness,
+        "plugins run agent-tasks comment task-1 Zed and Lapce both have no UI surface.",
+    );
     // `+ Add Task` opens what it made, so that its six fields can be filled in; put it away again, because
     // what is being measured here is what **reading** does.
     did(&mut harness, "plugins run agent-tasks back");
@@ -13793,7 +14127,11 @@ fn the_window_gives_the_plugins_a_turn_on_the_clock() {
         "a card with no recorded session has no worker to nudge or reclaim"
     );
     let board = did(&mut harness, "plugins view agent-tasks");
-    assert_eq!(board["lanes"].as_array().expect("the lanes")[2]["count"], 1, "and it was left alone");
+    assert_eq!(
+        board["lanes"].as_array().expect("the lanes")[2]["count"],
+        1,
+        "and it was left alone"
+    );
 }
 
 #[test]
@@ -13817,9 +14155,7 @@ fn a_pane_that_asks_for_a_project_is_absent_when_there_is_none() {
     assert!(problems.is_empty(), "the manifest should parse: {problems:?}");
     let mut ui = unluminous_app::app::plugin_panes::PluginUi::default();
     ui.refresh(&plugins);
-    let slot = ui
-        .slot_of("needs-a-project/board")
-        .expect("the contributed pane");
+    let slot = ui.slot_of("needs-a-project/board").expect("the contributed pane");
     ui.set_project(Some(folder.clone()));
     assert!(ui.applies(slot), "with a project open, `in_project` applies");
     ui.set_project(None);
@@ -13956,10 +14292,7 @@ fn a_command_with_its_arguments_missing_is_refused_rather_than_taking_the_window
         let reply = run(&mut harness, line);
         // Either it was refused with a sentence, or it did something harmless. What must not happen is a
         // panic, and reaching this assertion at all is what proves there was none.
-        assert!(
-            reply.ok || !reply.message.is_empty(),
-            "`{line}` was refused with nothing to read"
-        );
+        assert!(reply.ok || !reply.message.is_empty(), "`{line}` was refused with nothing to read");
     }
     // And the ticket is still there afterwards, which is what proves nothing was left half done. By its key
     // rather than by the board's count: `new-sprint` with no name names itself and succeeds, which makes an empty
@@ -14068,11 +14401,8 @@ fn sending_a_ticket_back_from_agent_done_to_qa_failed_asks_its_agent_to_come_bac
 /// The same field the Settings page writes and the chooser under the New lane cycles, so a test that reads it
 /// here is reading what both of them changed.
 fn chosen_agent(harness: &mut Harness<'static, UnluminousApp>) -> String {
-    let provider = harness
-        .state_mut()
-        .plugin_ui
-        .provider("agent-tasks")
-        .expect("the board is open");
+    let provider =
+        harness.state_mut().plugin_ui.provider("agent-tasks").expect("the board is open");
     let tasks = provider
         .as_any_mut()
         .and_then(|any| any.downcast_mut::<unluminous_app::services::agent_tasks::AgentTasks>())
@@ -14099,10 +14429,18 @@ fn the_arrow_keys_move_a_ring_round_the_board_and_enter_opens_what_it_is_on() {
     harness.run();
     harness.key_press(egui::Key::ArrowDown);
     harness.run();
-    assert_eq!(chosen_card(&mut harness), Some(("new".to_owned(), 0)), "the first press lands on the first card");
+    assert_eq!(
+        chosen_card(&mut harness),
+        Some(("new".to_owned(), 0)),
+        "the first press lands on the first card"
+    );
     harness.key_press(egui::Key::ArrowDown);
     harness.run();
-    assert_eq!(chosen_card(&mut harness), Some(("new".to_owned(), 1)), "and down moves down the lane");
+    assert_eq!(
+        chosen_card(&mut harness),
+        Some(("new".to_owned(), 1)),
+        "and down moves down the lane"
+    );
     // Past the last card stops at the last card rather than wrapping to the top.
     harness.key_press(egui::Key::ArrowDown);
     harness.run();
@@ -14118,7 +14456,8 @@ fn the_arrow_keys_move_a_ring_round_the_board_and_enter_opens_what_it_is_on() {
     // Enter opens the ticket the ring is on.
     harness.key_press(egui::Key::Enter);
     harness.run();
-    let provider = harness.state_mut().plugin_ui.provider("agent-tasks").expect("the board is open");
+    let provider =
+        harness.state_mut().plugin_ui.provider("agent-tasks").expect("the board is open");
     let tasks = provider
         .as_any_mut()
         .and_then(|any| any.downcast_mut::<unluminous_app::services::agent_tasks::AgentTasks>())
@@ -14132,7 +14471,8 @@ fn the_arrow_keys_move_a_ring_round_the_board_and_enter_opens_what_it_is_on() {
 
 /// Which card the keyboard's ring is on: the lane's name and how far down it.
 fn chosen_card(harness: &mut Harness<'static, UnluminousApp>) -> Option<(String, usize)> {
-    let provider = harness.state_mut().plugin_ui.provider("agent-tasks").expect("the board is open");
+    let provider =
+        harness.state_mut().plugin_ui.provider("agent-tasks").expect("the board is open");
     let tasks = provider
         .as_any_mut()
         .and_then(|any| any.downcast_mut::<unluminous_app::services::agent_tasks::AgentTasks>())
@@ -14161,10 +14501,12 @@ fn a_ticket_can_name_its_jira_issue_and_copy_the_link_to_it() {
     let mut copied = String::new();
     for _ in 0..4 {
         harness.step();
-        if let Some(text) = harness.output().platform_output.commands.iter().find_map(|command| match command {
-            egui::OutputCommand::CopyText(text) => Some(text.clone()),
-            _ => None,
-        }) {
+        if let Some(text) =
+            harness.output().platform_output.commands.iter().find_map(|command| match command {
+                egui::OutputCommand::CopyText(text) => Some(text.clone()),
+                _ => None,
+            })
+        {
             copied = text;
             break;
         }
@@ -14198,7 +14540,8 @@ fn a_person_can_change_their_own_comment_and_cannot_change_an_agents() {
     harness.get_by_label("Edit the comment by human just now").click();
     harness.run();
     {
-        let provider = harness.state_mut().plugin_ui.provider("agent-tasks").expect("the board is open");
+        let provider =
+            harness.state_mut().plugin_ui.provider("agent-tasks").expect("the board is open");
         let tasks = provider
             .as_any_mut()
             .and_then(|any| any.downcast_mut::<unluminous_app::services::agent_tasks::AgentTasks>())
@@ -14264,10 +14607,7 @@ fn the_detail_can_name_a_ticket_add_a_todo_and_post_a_comment() {
     did(&mut harness, "plugins run agent-tasks new-task");
     harness.run();
     let board = harness.state_mut();
-    let provider = board
-        .plugin_ui
-        .provider("agent-tasks")
-        .expect("the board is open");
+    let provider = board.plugin_ui.provider("agent-tasks").expect("the board is open");
     // Reaching the provider by its own type is what a button in the pane does; the command line path is
     // covered elsewhere.
     let tasks = provider
@@ -14314,7 +14654,9 @@ fn a_description_and_a_comment_are_read_as_markdown_or_as_their_source() {
         .and_then(|provider| provider.as_any_mut())
         .and_then(|any| any.downcast_mut::<unluminous_app::services::agent_tasks::AgentTasks>())
         .expect("the Agent-Tasks provider");
-    tasks.save_the_description("# A heading\n\nSome prose, and `code`.\n").expect("the description");
+    tasks
+        .save_the_description("# A heading\n\nSome prose, and `code`.\n")
+        .expect("the description");
     harness.run();
     did(&mut harness, "plugins run agent-tasks comment task-1 ## From a person\n\n- one\n- two");
     harness.run();
@@ -14353,12 +14695,10 @@ fn a_description_and_a_comment_are_read_as_markdown_or_as_their_source() {
         "that comment is being read as its source"
     );
     did(&mut harness, &format!("plugins run agent-tasks show comment {id} markdown"));
-    assert!(
-        did(&mut harness, "plugins view agent-tasks")["showing"]["comments_as_source"]
-            .as_array()
-            .expect("the list")
-            .is_empty()
-    );
+    assert!(did(&mut harness, "plugins view agent-tasks")["showing"]["comments_as_source"]
+        .as_array()
+        .expect("the list")
+        .is_empty());
 
     // A word that is neither, and a comment that is not on this ticket, are refused with what there is.
     let reply = run(&mut harness, "plugins run agent-tasks show description sideways");
@@ -14395,7 +14735,8 @@ fn choosing_in_each_dropdown_writes_the_field_it_names() {
     pick(&mut harness, "Priority", "high");
     pick(&mut harness, "Assignee", "codex");
     // The model list follows the agent that was just chosen, which is the reason `Assignee` is chosen first.
-    let codex_model = agent::models_for(Assignee::Codex, None).first().cloned().expect("a Codex model");
+    let codex_model =
+        agent::models_for(Assignee::Codex, None).first().cloned().expect("a Codex model");
     pick(&mut harness, "Model", &codex_model);
     pick(&mut harness, "Effort", "high");
     pick(&mut harness, "Status", "IN PROGRESS");
@@ -14574,7 +14915,6 @@ fn the_ticket_modal_holds_every_section_the_browser_board_has() {
     );
 }
 
-
 /// `Enter` while typing in a ticket does not close it.
 ///
 /// `task-28`: pressing `Enter` in the description or the comment box shut the modal, because the footer
@@ -14616,14 +14956,20 @@ fn a_ticket_in_full_as_a_modal() {
     let mut harness = harness("");
     did(&mut harness, "plugins pane agent-tasks/board --show");
     did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
-    did(&mut harness, "plugins run agent-tasks new-task Unluminous \u{2014} Plugin architecture for UI");
+    did(
+        &mut harness,
+        "plugins run agent-tasks new-task Unluminous \u{2014} Plugin architecture for UI",
+    );
     did(&mut harness, "plugins run agent-tasks close");
     did(&mut harness, "plugins run agent-tasks priority task-1 high");
     did(&mut harness, "plugins run agent-tasks todo-add task-1 Weigh the four mechanisms");
     did(&mut harness, "plugins run agent-tasks todo-add task-1 Write the manifest keys");
     did(&mut harness, "plugins run agent-tasks todo-add task-1 Draw the pane and the modal");
     did(&mut harness, "plugins run agent-tasks todo-done task-1 1");
-    did(&mut harness, "plugins run agent-tasks comment task-1 Zed and Lapce both have no UI surface at all.");
+    did(
+        &mut harness,
+        "plugins run agent-tasks comment task-1 Zed and Lapce both have no UI surface at all.",
+    );
     did(&mut harness, "plugins run agent-tasks open task-1");
     harness.run();
     harness.state_mut().plugin_ui.provider("agent-tasks").expect("the board");
@@ -14695,8 +15041,11 @@ fn with_the_chat(
     harness: &mut Harness<'static, UnluminousApp>,
     act: impl FnOnce(&mut unluminous_app::services::agent_chat::AgentChat),
 ) {
-    let provider =
-        harness.state_mut().plugin_ui.opened("agent-chat", "agent-chat").expect("the chat provider");
+    let provider = harness
+        .state_mut()
+        .plugin_ui
+        .opened("agent-chat", "agent-chat")
+        .expect("the chat provider");
     let chat = provider
         .as_any_mut()
         .and_then(|any| any.downcast_mut::<unluminous_app::services::agent_chat::AgentChat>())
@@ -14743,7 +15092,11 @@ fn the_chat_contributes_a_pane_on_the_right_with_a_button_in_the_rail() {
         .iter()
         .filter_map(|it| it.as_str())
         .collect();
-    assert_eq!(contributes, ["pane", "menu", "settings page"], "a pane, a menu and a page, and no tab");
+    assert_eq!(
+        contributes,
+        ["pane", "menu", "settings page"],
+        "a pane, a menu and a page, and no tab"
+    );
 
     // It is in a dock slot, so the rail has a button for it and the dock has a column for it.
     let slot =
@@ -14797,7 +15150,10 @@ fn the_chat_pane_still_draws_after_the_panels_are_reset() {
     did(&mut harness, "plugins pane agent-chat/chat --hide");
     did(&mut harness, "plugins pane agent-chat/chat --show");
     harness.run();
-    assert!(harness.state().plugin_pane_is_showing(slot), "a hide and a show is not enough to lose it");
+    assert!(
+        harness.state().plugin_pane_is_showing(slot),
+        "a hide and a show is not enough to lose it"
+    );
 
     // The video's own baseline: the panels put back, and a handful of settings written.
     did(&mut harness, "panel reset");
@@ -14998,10 +15354,16 @@ fn an_answer_that_is_still_arriving_shows_what_has_come_so_far() {
     did(&mut harness, "plugins pane agent-chat/chat --show");
     harness.run();
     with_the_chat(&mut harness, |chat| {
-        chat.session_mut().ask(unluminous_chat::Message::said(0, unluminous_chat::Role::User, "Explain the fold."));
-        chat.session_mut().reply(unluminous_chat::Reply::Started { model: "claude-opus-5".to_owned() });
+        chat.session_mut().ask(unluminous_chat::Message::said(
+            0,
+            unluminous_chat::Role::User,
+            "Explain the fold.",
+        ));
         chat.session_mut()
-            .reply(unluminous_chat::Reply::Text("A hidden paragraph produces no lines and keeps".to_owned()));
+            .reply(unluminous_chat::Reply::Started { model: "claude-opus-5".to_owned() });
+        chat.session_mut().reply(unluminous_chat::Reply::Text(
+            "A hidden paragraph produces no lines and keeps".to_owned(),
+        ));
     });
     assert_eq!(did_while_waiting(&mut harness, "plugins view agent-chat")["state"], "streaming");
     harness.snapshot(shot("agent_chat_streaming").as_str());
@@ -15025,13 +15387,18 @@ fn a_tool_the_model_asked_for_is_run_by_the_window_and_its_answer_comes_back() {
     did(&mut harness, "plugins run agent-chat tools on");
     with_the_chat(&mut harness, |chat| {
         chat.configuration_mut().tool_limit = 1;
-        chat.session_mut().ask(unluminous_chat::Message::said(0, unluminous_chat::Role::User, "What is open?"));
+        chat.session_mut().ask(unluminous_chat::Message::said(
+            0,
+            unluminous_chat::Role::User,
+            "What is open?",
+        ));
         chat.session_mut().reply(unluminous_chat::Reply::ToolCall {
             id: "t1".to_owned(),
             name: "unluminous_tab".to_owned(),
             arguments: "{\"command\":\"list\"}".to_owned(),
         });
-        chat.session_mut().reply(unluminous_chat::Reply::Finished { reason: "tool_use".to_owned() });
+        chat.session_mut()
+            .reply(unluminous_chat::Reply::Finished { reason: "tool_use".to_owned() });
     });
     // Two steps: one for `let_the_plugins_catch_up` to hand the call over and the window to run it,
     // one for the answer to land in the conversation.
@@ -15073,10 +15440,19 @@ fn a_tool_call_is_shown_while_it_runs_and_when_it_has_finished() {
     with_the_chat(&mut harness, |chat| {
         let chat = chat.session_mut();
         let id = chat.chat.next_id();
-        chat.chat.push(unluminous_chat::Message::said(id, unluminous_chat::Role::User, "What does git say?"));
+        chat.chat.push(unluminous_chat::Message::said(
+            id,
+            unluminous_chat::Role::User,
+            "What does git say?",
+        ));
         let id = chat.chat.next_id();
-        let mut answering = unluminous_chat::Message::said(id, unluminous_chat::Role::Assistant, "Let me look.");
-        answering.tools.push(unluminous_chat::ToolCall::new("t1", "unluminous_git", "{\"command\":\"status\"}"));
+        let mut answering =
+            unluminous_chat::Message::said(id, unluminous_chat::Role::Assistant, "Let me look.");
+        answering.tools.push(unluminous_chat::ToolCall::new(
+            "t1",
+            "unluminous_git",
+            "{\"command\":\"status\"}",
+        ));
         chat.chat.push(answering);
     });
     harness.snapshot(shot("agent_chat_tool_running").as_str());
@@ -15113,10 +15489,8 @@ fn a_picture_attached_to_a_question_is_drawn_in_the_bubble_it_was_sent_with() {
     did(&mut harness, "plugins pane agent-chat/chat --show");
     harness.run();
     let picture = sample_folder().join("picture.png");
-    let attached = did(
-        &mut harness,
-        &format!("plugins run agent-chat attach {}", picture.display()),
-    );
+    let attached =
+        did(&mut harness, &format!("plugins run agent-chat attach {}", picture.display()));
     assert_eq!(attached["attachments"], 1);
     assert_eq!(
         did(&mut harness, "plugins view agent-chat")["attachments"][0]["name"],
@@ -15129,7 +15503,9 @@ fn a_picture_attached_to_a_question_is_drawn_in_the_bubble_it_was_sent_with() {
         let parts = chat.take_the_attachments();
         let id = chat.session_mut().chat.next_id();
         let mut asked = unluminous_chat::Message::new(id, unluminous_chat::Role::User);
-        asked.parts.push(unluminous_chat::Part::Text("What is wrong with this diagram?".to_owned()));
+        asked
+            .parts
+            .push(unluminous_chat::Part::Text("What is wrong with this diagram?".to_owned()));
         asked.parts.extend(parts);
         chat.session_mut().chat.push(asked);
         let id = chat.session_mut().chat.next_id();
@@ -15143,7 +15519,8 @@ fn a_picture_attached_to_a_question_is_drawn_in_the_bubble_it_was_sent_with() {
     assert_eq!(view["attachments"].as_array().map(Vec::len), Some(0), "the draft was emptied");
     // Named and measured rather than printed: a base64 payload in a command line's answer is a
     // screenful of nothing anybody can read.
-    let pictures = view["conversation"]["messages"][0]["pictures"].as_array().expect("the pictures");
+    let pictures =
+        view["conversation"]["messages"][0]["pictures"].as_array().expect("the pictures");
     assert_eq!(pictures[0]["name"], "picture.png");
     assert_eq!(pictures[0]["media"], "image/png");
     assert!(pictures[0]["bytes"].as_u64().is_some_and(|bytes| bytes > 0));
@@ -15175,7 +15552,10 @@ fn a_chat_opened_after_a_file_is_told_which_file_is_showing() {
     );
 
     // And it follows the tab from then on, because that is the same announcement.
-    did(&mut harness, &format!("tab open {} --permanent", sample_folder().join("notes.txt").display()));
+    did(
+        &mut harness,
+        &format!("tab open {} --permanent", sample_folder().join("notes.txt").display()),
+    );
     harness.run();
     let followed = did(&mut harness, "plugins view agent-chat")["showing"]
         .as_str()
@@ -15191,10 +15571,15 @@ fn a_refusal_is_drawn_in_the_servers_own_words() {
     did(&mut harness, "plugins pane agent-chat/chat --show");
     harness.run();
     with_the_chat(&mut harness, |chat| {
-        chat.session_mut().ask(unluminous_chat::Message::said(0, unluminous_chat::Role::User, "Hello?"));
+        chat.session_mut().ask(unluminous_chat::Message::said(
+            0,
+            unluminous_chat::Role::User,
+            "Hello?",
+        ));
         chat.session_mut().reply(unluminous_chat::Reply::Text("Half an ans".to_owned()));
-        chat.session_mut()
-            .reply(unluminous_chat::Reply::Failed("HTTP 429: rate_limit_error: too many requests".to_owned()));
+        chat.session_mut().reply(unluminous_chat::Reply::Failed(
+            "HTTP 429: rate_limit_error: too many requests".to_owned(),
+        ));
     });
     let view = did(&mut harness, "plugins view agent-chat");
     assert_eq!(view["state"], "failed");
@@ -15375,7 +15760,11 @@ fn the_chat_answers_the_command_line() {
 
     // The conversation as data, which is what a screenshot cannot answer.
     with_the_chat(&mut harness, |chat| {
-        chat.session_mut().ask(unluminous_chat::Message::said(0, unluminous_chat::Role::User, "Hello"));
+        chat.session_mut().ask(unluminous_chat::Message::said(
+            0,
+            unluminous_chat::Role::User,
+            "Hello",
+        ));
         chat.session_mut().reply(unluminous_chat::Reply::Text("Hello yourself.".to_owned()));
         chat.session_mut().reply(unluminous_chat::Reply::Finished { reason: "stop".to_owned() });
     });
@@ -15438,7 +15827,8 @@ fn enter_in_the_composer_sends_and_shift_enter_does_not() {
     harness.get_by_label("Message").type_text("Are you there?");
     harness.run();
     assert_eq!(
-        did(&mut harness, "plugins view agent-chat")["draft"], "Are you there?",
+        did(&mut harness, "plugins view agent-chat")["draft"],
+        "Are you there?",
         "what was typed reached the draft"
     );
 
@@ -15592,8 +15982,7 @@ fn a_path_can_be_pasted_into_the_sqlite_file_field() {
     harness.run();
     harness.get_by_label("SQLite").click();
     harness.run();
-    let box_rect =
-        harness.get_by_role_and_label(egui::accesskit::Role::TextInput, "File").rect();
+    let box_rect = harness.get_by_role_and_label(egui::accesskit::Role::TextInput, "File").rect();
     press_at(&mut harness, egui::Pos2::new(box_rect.left() - 4.0, box_rect.center().y));
     harness.input_mut().events.push(egui::Event::Paste("C:/tmp/pasted.db".to_owned()));
     harness.run();
@@ -15653,7 +16042,10 @@ fn the_database_plugin_contributes_a_pane_a_menu_and_a_page() {
         .expect("the tree's pane is in a slot");
     // `Database pane`, because the plugin's menu is called `Database` and no two controls in one window
     // may share a name.
-    assert!(harness.get_all_by_label("Database pane").count() > 0, "the rail draws a button for it");
+    assert!(
+        harness.get_all_by_label("Database pane").count() > 0,
+        "the rail draws a button for it"
+    );
     let shown = did(&mut harness, "plugins pane database/explorer --show");
     assert_eq!(shown["showing"], true);
     assert_eq!(shown["side"], "right", "where the reference editor docks its Database tool window");
@@ -15690,7 +16082,10 @@ fn the_database_tree_reads_a_source_one_level_at_a_time() {
     harness.get_by_label("library").click();
     until_the_database_settles(&mut harness);
     let connected = did(&mut harness, "plugins view database");
-    assert_eq!(connected["sources"][0]["connected"], true, "pressing the row opened the connection");
+    assert_eq!(
+        connected["sources"][0]["connected"], true,
+        "pressing the row opened the connection"
+    );
     assert_eq!(connected["tree"][0]["schemas"], serde_json::json!(["main"]));
     assert!(
         connected["tree"][0]["items"].as_array().is_some_and(Vec::is_empty),
@@ -15706,7 +16101,10 @@ fn the_database_tree_reads_a_source_one_level_at_a_time() {
         .iter()
         .filter_map(|item| item["name"].as_str())
         .collect();
-    assert!(named.contains(&"album") && named.contains(&"tag") && named.contains(&"album_tags"), "{named:?}");
+    assert!(
+        named.contains(&"album") && named.contains(&"tag") && named.contains(&"album_tags"),
+        "{named:?}"
+    );
 
     // The folders and then one table's columns, which is the fourth level and the last.
     harness.get_by_label("tables").click();
@@ -15760,7 +16158,10 @@ fn a_view_is_drawn_read_only_with_the_reason_where_the_buttons_were() {
 fn a_console_runs_a_statement_and_shows_what_came_back() {
     let mut harness = a_database("console");
     did_while_waiting(&mut harness, "plugins run database console library");
-    did_while_waiting(&mut harness, "plugins run database query select title, year from album order by year");
+    did_while_waiting(
+        &mut harness,
+        "plugins run database query select title, year from album order by year",
+    );
     until_the_database_settles(&mut harness);
     let state = did(&mut harness, "plugins run database state");
     assert_eq!(state["running"], false);
@@ -15778,7 +16179,10 @@ fn a_statement_that_returns_no_rows_fills_the_output_tab() {
     did_while_waiting(&mut harness, "plugins run database console library");
     // No quoted literal in the statement: the command line takes the quotes off, which is right for
     // every other command and is why a value with spaces in it belongs in the grid rather than here.
-    did_while_waiting(&mut harness, "plugins run database query update album set year = 2000 where id = 1");
+    did_while_waiting(
+        &mut harness,
+        "plugins run database query update album set year = 2000 where id = 1",
+    );
     until_the_database_settles(&mut harness);
     let result = did(&mut harness, "plugins run database result");
     assert!(result["result"].is_null(), "no grid for a statement that returned no rows");
@@ -15855,7 +16259,8 @@ fn a_read_only_data_source_refuses_a_write_before_anything_is_sent() {
     let mut harness = harness("");
     did(&mut harness, &format!("plugins run database add-source library {}", file.display()));
     assert_eq!(
-        did(&mut harness, "plugins view database")["sources"][0]["read_only"], false,
+        did(&mut harness, "plugins view database")["sources"][0]["read_only"],
+        false,
         "a new data source is writable",
     );
     did(&mut harness, "plugins run database read-only library on");
@@ -16059,7 +16464,8 @@ fn a_right_click_on_a_table_offers_a_new_table() {
     harness.get_by_label("New Table…").click();
     harness.run();
     assert_eq!(
-        did(&mut harness, "plugins view database")["modal"], "new-table",
+        did(&mut harness, "plugins view database")["modal"],
+        "new-table",
         "choosing the row opened the dialog",
     );
 }
@@ -16080,7 +16486,8 @@ fn the_new_table_modal_shows_the_statement_it_will_send() {
     harness.run();
     assert!(harness.get_all_by_label("Table name").count() > 0, "the dialog is up");
     assert_eq!(
-        harness.get_by_label("Table name").value(), Some(String::new()),
+        harness.get_by_label("Table name").value(),
+        Some(String::new()),
         "the schema is where it goes, not what it is called",
     );
 
@@ -16328,8 +16735,12 @@ fn a_vector_is_drawn_as_a_vector_rather_than_as_its_bytes() {
     // **The vector column is in the result at all**, which is the line that decides whether any of
     // this is true of the grid: it arrives through a hidden column, so `select *` would have left it
     // out and drawn the title and the body of a row whose whole point is the embedding beside them.
-    let columns: Vec<&str> =
-        page["rows"]["columns"].as_array().expect("columns").iter().filter_map(|column| column["name"].as_str()).collect();
+    let columns: Vec<&str> = page["rows"]["columns"]
+        .as_array()
+        .expect("columns")
+        .iter()
+        .filter_map(|column| column["name"].as_str())
+        .collect();
     assert!(columns.contains(&"vector"), "{columns:?}");
 
     let read = did(&mut harness, "plugins run database vector 1 vector");
@@ -16370,7 +16781,6 @@ fn showing_a_tab_that_was_already_laid_out_does_not_lay_it_out_again() {
     assert!(!harness.state().layout().lines.is_empty(), "with its lines still in place");
 }
 
-
 // ------------------------------------------------------------- the Base of Infinite Space (`task-1904`)
 
 /// A canvas with one node of each kind on it, wired, ready to be photographed.
@@ -16382,22 +16792,26 @@ fn a_canvas() -> Harness<'static, UnluminousApp> {
     let folder = sample_folder();
     let mut harness = harness("");
     did(&mut harness, "space show");
-    let terminal = harness
-        .state_mut()
-        .new_detached_space_node(unluminous_app::services::space::Kind::Terminal, egui::pos2(40.0, 30.0));
+    let terminal = harness.state_mut().new_detached_space_node(
+        unluminous_app::services::space::Kind::Terminal,
+        egui::pos2(40.0, 30.0),
+    );
     harness.state_mut().feed_a_space_terminal(
         terminal,
         b"$ cargo test -p unluminous-app\r\n   Compiling unluminous-app\r\n    Finished in 3.59s\r\n$ ",
     );
-    let browser = harness
-        .state_mut()
-        .new_detached_space_node(unluminous_app::services::space::Kind::Browser, egui::pos2(700.0, 30.0));
-    let explorer = harness
-        .state_mut()
-        .new_detached_space_node(unluminous_app::services::space::Kind::Folder, egui::pos2(40.0, 440.0));
-    let editor = harness
-        .state_mut()
-        .new_detached_space_node(unluminous_app::services::space::Kind::Editor, egui::pos2(400.0, 440.0));
+    let browser = harness.state_mut().new_detached_space_node(
+        unluminous_app::services::space::Kind::Browser,
+        egui::pos2(700.0, 30.0),
+    );
+    let explorer = harness.state_mut().new_detached_space_node(
+        unluminous_app::services::space::Kind::Folder,
+        egui::pos2(40.0, 440.0),
+    );
+    let editor = harness.state_mut().new_detached_space_node(
+        unluminous_app::services::space::Kind::Editor,
+        egui::pos2(400.0, 440.0),
+    );
     harness
         .state_mut()
         .open_in_a_space_node(editor, &folder.join("readme.md"))
@@ -16434,9 +16848,10 @@ fn a_canvas_with_one_node_of_each_kind() {
 fn a_terminal_node_at_the_size_a_person_works_at() {
     let mut harness = harness("");
     did(&mut harness, "space show");
-    let terminal = harness
-        .state_mut()
-        .new_detached_space_node(unluminous_app::services::space::Kind::Terminal, egui::pos2(60.0, 40.0));
+    let terminal = harness.state_mut().new_detached_space_node(
+        unluminous_app::services::space::Kind::Terminal,
+        egui::pos2(60.0, 40.0),
+    );
     // Carriage returns as well as line feeds, because a terminal is a grid: a line feed on its own
     // moves down without going back to the first column, and the screenshot showed exactly that as a
     // staircase. **A Rust string literal folds a real CRLF in the source down to one `\n`**, so the
@@ -16446,9 +16861,10 @@ fn a_terminal_node_at_the_size_a_person_works_at() {
         b"$ claude\r\n\r\n  Welcome to Claude Code\r\n\r\n\
           > read crates/unluminous-app/src/app/space.rs\r\n",
     );
-    let browser = harness
-        .state_mut()
-        .new_detached_space_node(unluminous_app::services::space::Kind::Browser, egui::pos2(740.0, 40.0));
+    let browser = harness.state_mut().new_detached_space_node(
+        unluminous_app::services::space::Kind::Browser,
+        egui::pos2(740.0, 40.0),
+    );
     did(&mut harness, &format!("space connect {terminal} {browser} --pipe off"));
     did(&mut harness, &format!("space focus {terminal}"));
     harness.run();
@@ -16606,7 +17022,6 @@ fn a_file_editor_node_is_a_tab_that_lives_on_the_node() {
     assert!(!harness.state().files.is_empty(), "the window always has a tab to type into");
 }
 
-
 /// Where a world point is drawn, for a test that has to press one.
 fn on_the_canvas(harness: &Harness<'static, UnluminousApp>, world: egui::Pos2) -> egui::Pos2 {
     let body = harness.state().space.body;
@@ -16663,10 +17078,8 @@ fn pulling_a_wire_from_one_port_to_another_connects_the_two_nodes() {
     did(&mut harness, "space show");
     let first = did(&mut harness, "space add folder --x 40 --y 60 --width 260 --height 200");
     let second = did(&mut harness, "space add folder --x 500 --y 60 --width 260 --height 200");
-    let (from, to) = (
-        first["node"].as_u64().expect("a node id"),
-        second["node"].as_u64().expect("a node id"),
-    );
+    let (from, to) =
+        (first["node"].as_u64().expect("a node id"), second["node"].as_u64().expect("a node id"));
     harness.run();
     assert!(harness.state().space.space.current().edges.is_empty());
 
@@ -16711,7 +17124,10 @@ fn dragging_the_empty_canvas_pans_it() {
 
     let camera = harness.state().space.space.current().camera;
     let now = camera.to_world(body.min, egui::pos2(held.x - 80.0, held.y + 40.0));
-    assert!((now - was).length() < 1.0, "the point under the pointer came with it: {was:?} to {now:?}");
+    assert!(
+        (now - was).length() < 1.0,
+        "the point under the pointer came with it: {was:?} to {now:?}"
+    );
 }
 
 /// A terminal node is called after the command it runs, not after the program that started it.
@@ -16742,7 +17158,8 @@ fn a_terminal_node_is_called_after_the_command_it_runs() {
     assert_eq!(found.title, "the reviewer");
 
     // And a node with no command of its own is called after the shell that is running in it.
-    let shell = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(700.0, 40.0));
+    let shell =
+        harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(700.0, 40.0));
     harness.run();
     let found = harness.state().space.space.current().node(shell).expect("it is there").clone();
     assert!(!harness.state().name_of_a_node(&found).is_empty());
@@ -16772,7 +17189,10 @@ fn a_tab_opened_while_a_node_has_the_keyboard_goes_to_the_editing_area() {
     assert_eq!(harness.state().files.home_of(opened).pane(), Some(0), "in the editing area");
     // And the node is still showing the file it was given.
     let on_the_node = harness.state().files.tab_in_node(node).expect("the node kept its tab");
-    assert_eq!(harness.state().files.at(on_the_node).path(), Some(folder.join("readme.md").as_path()));
+    assert_eq!(
+        harness.state().files.at(on_the_node).path(),
+        Some(folder.join("readme.md").as_path())
+    );
 }
 
 /// Every panel shows with the editing area hidden, whichever edges they are on.
@@ -16896,7 +17316,11 @@ fn a_nodes_font_reaches_every_tab_in_it_and_leaves_with_none_of_them() {
     harness.run();
     harness.run();
     let showing = harness.state().files.tab_in_node(node).expect("one is showing");
-    assert_eq!(harness.state().files.at(showing).sized_at, Some(30.0), "the tab showing was resized");
+    assert_eq!(
+        harness.state().files.at(showing).sized_at,
+        Some(30.0),
+        "the tab showing was resized"
+    );
 
     // **The other tab in the node**, shown by name: it has to be resized too.
     let tabs = harness.state().files.tabs_in_node(node);
@@ -16914,9 +17338,12 @@ fn a_nodes_font_reaches_every_tab_in_it_and_leaves_with_none_of_them() {
     assert!(harness.state_mut().files.drag_tab(other, 0, 0));
     harness.run();
     harness.run();
-    let moved = harness.state().files.tabs_in(0).into_iter().find(|index| {
-        harness.state().files.at(*index).sized_at.is_some()
-    });
+    let moved = harness
+        .state()
+        .files
+        .tabs_in(0)
+        .into_iter()
+        .find(|index| harness.state().files.at(*index).sized_at.is_some());
     assert_eq!(moved, None, "a tab in a pane is set in the window's own font");
 
     // **And putting the node back to the window's size really restyles.**
@@ -16961,7 +17388,10 @@ fn closing_a_node_closes_every_tab_on_it() {
     assert_eq!(harness.state().files.tabs_in_node(other).len(), 2);
     did(&mut harness, "space delete-view Second");
     harness.run();
-    assert!(harness.state().files.tabs_on_nodes().is_empty(), "and deleting the view took them too");
+    assert!(
+        harness.state().files.tabs_on_nodes().is_empty(),
+        "and deleting the view took them too"
+    );
 }
 
 /// A File Editor node can be typed into.
@@ -17036,14 +17466,18 @@ fn a_tab_dropped_on_the_empty_canvas_becomes_a_node() {
         nodes_before + 1,
         "a node was made where it was let go",
     );
-    let moved = harness.state().files.index_of(&folder.join("readme.md")).expect("it is still open");
+    let moved =
+        harness.state().files.index_of(&folder.join("readme.md")).expect("it is still open");
     assert_eq!(harness.state().files.at(moved).home, Home::Node(node), "and the tab lives on it");
     // The node is under the pointer rather than starting at it, so what is where the drop happened is the
     // node's own header - the part it is dragged by.
     let made = harness.state().space.space.current().node(node).cloned().expect("the node");
     let camera = harness.state().space.space.current().camera;
     let on_screen = camera.rect_to_screen(harness.state().space.body.min, made.rect());
-    assert!(on_screen.contains(middle), "the node covers the point it was let go at: {on_screen:?}");
+    assert!(
+        on_screen.contains(middle),
+        "the node covers the point it was let go at: {on_screen:?}"
+    );
 
     // And the editing area still has a tab, which is `move_to_node`'s own promise.
     assert!(harness.state().files.iter().any(|file| file.home.pane().is_some()));
@@ -17200,7 +17634,10 @@ fn a_chat_node_holds_its_own_conversation_and_comes_back_on_it() {
     let two = did(&mut harness, "space add chat --x 520 --y 20")["node"].as_u64().expect("id");
     harness.run();
 
-    assert_eq!(harness.state().space.space.current().node(one).expect("it is there").kind(), Kind::Chat);
+    assert_eq!(
+        harness.state().space.space.current().node(one).expect("it is there").kind(),
+        Kind::Chat
+    );
     let first = harness.state().space.live.chat(one).map(|chat| chat.conversation_id().to_owned());
     let second = harness.state().space.live.chat(two).map(|chat| chat.conversation_id().to_owned());
     let first = first.expect("the node opened a chat of its own the first time it was drawn");
@@ -17209,16 +17646,21 @@ fn a_chat_node_holds_its_own_conversation_and_comes_back_on_it() {
 
     // **Written down**, so a canvas comes back with each agent where it was left rather than every one of
     // them on the newest conversation, which is what the pane does because there is one of it.
-    let recorded = match &harness.state().space.space.current().node(one).expect("it is there").state {
-        State::Chat(chat) => chat.conversation.clone(),
-        other => panic!("a chat node holds a chat state, not {other:?}"),
-    };
+    let recorded =
+        match &harness.state().space.space.current().node(one).expect("it is there").state {
+            State::Chat(chat) => chat.conversation.clone(),
+            other => panic!("a chat node holds a chat state, not {other:?}"),
+        };
     assert_eq!(recorded, first, "the node records which conversation it is on");
 
     // And `space list` reads it back, which is the half of Unluminous's rule that says an agent reaches
     // what a person sees.
     let listed = did(&mut harness, "space list").to_string();
-    assert_eq!(listed.matches("\"kind\":\"chat\"").count(), 2, "both nodes read back as chats: {listed}");
+    assert_eq!(
+        listed.matches("\"kind\":\"chat\"").count(),
+        2,
+        "both nodes read back as chats: {listed}"
+    );
 }
 
 /// A chat node's tool call is asked from that node, so its wires are what it may reach.
@@ -17238,10 +17680,11 @@ fn a_chat_nodes_tool_call_is_asked_from_its_own_node() {
     let chat = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
     harness.run();
 
-    let asked = |harness: &Harness<'static, UnluminousApp>, command: &str, given: serde_json::Value| {
-        let map = given.as_object().expect("an object").clone();
-        harness.state().what_a_chat_node_is_asking_about(chat, command, map)
-    };
+    let asked =
+        |harness: &Harness<'static, UnluminousApp>, command: &str, given: serde_json::Value| {
+            let map = given.as_object().expect("an object").clone();
+            harness.state().what_a_chat_node_is_asking_about(chat, command, map)
+        };
 
     // `space here` is the one command that asks *which node is calling*.
     let here = asked(&harness, "space.here", serde_json::json!({}));
@@ -17276,24 +17719,32 @@ fn a_chat_node_answers_the_command_line_about_its_own_conversation() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     let node = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
-    let terminal = did(&mut harness, "space add terminal --x 700 --y 20")["node"].as_u64().expect("id");
+    let terminal =
+        did(&mut harness, "space add terminal --x 700 --y 20")["node"].as_u64().expect("id");
     harness.run();
 
     let state = did(&mut harness, &format!("space chat {node} state"));
     assert_eq!(state["node"], serde_json::json!(node), "the answer names the node it is about");
-    assert_eq!(state["busy"], serde_json::json!(false), "nothing has been sent, so nothing is running");
+    assert_eq!(
+        state["busy"],
+        serde_json::json!(false),
+        "nothing has been sent, so nothing is running"
+    );
 
     // A new conversation is a new conversation on **this** node, and the canvas records it.
-    let was = harness.state().space.live.chat(node).expect("it opened").conversation_id().to_owned();
+    let was =
+        harness.state().space.live.chat(node).expect("it opened").conversation_id().to_owned();
     let made = did(&mut harness, &format!("space chat {node} new"));
     harness.run();
-    let now = harness.state().space.live.chat(node).expect("still there").conversation_id().to_owned();
+    let now =
+        harness.state().space.live.chat(node).expect("still there").conversation_id().to_owned();
     assert_ne!(now, was, "`new` moved it to another conversation");
     assert_eq!(made["id"], serde_json::json!(now), "and the reply named the one it moved to");
-    let recorded = match &harness.state().space.space.current().node(node).expect("it is there").state {
-        unluminous_app::services::space::State::Chat(chat) => chat.conversation.clone(),
-        other => panic!("a chat node holds a chat state, not {other:?}"),
-    };
+    let recorded =
+        match &harness.state().space.space.current().node(node).expect("it is there").state {
+            unluminous_app::services::space::State::Chat(chat) => chat.conversation.clone(),
+            other => panic!("a chat node holds a chat state, not {other:?}"),
+        };
     assert_eq!(recorded, now, "the canvas wrote down where the node ended up");
 
     // A node that is not a chat is refused by kind, which is `a_reachable_node`'s own answer.
@@ -17318,7 +17769,10 @@ fn a_tasks_node_draws_the_windows_own_board() {
     did(&mut harness, "space show");
     let node = did(&mut harness, "space add tasks --x 20 --y 20")["node"].as_u64().expect("id");
     harness.run();
-    assert_eq!(harness.state().space.space.current().node(node).expect("it is there").kind(), Kind::Tasks);
+    assert_eq!(
+        harness.state().space.space.current().node(node).expect("it is there").kind(),
+        Kind::Tasks
+    );
     // The node is what opened the provider: nothing has pressed the rail button and no pane is showing.
     assert!(
         harness.state().plugin_ui.view_of("agent-tasks").is_some(),
@@ -17360,11 +17814,8 @@ fn a_tab_is_dragged_between_a_node_and_a_pane() {
     assert!(harness.state_mut().files.drag_tab(carried, 0, 0));
     harness.run();
     assert_eq!(harness.state().files.tabs_in_node(node).len(), 1, "one left on the node");
-    let moved = harness
-        .state()
-        .files
-        .index_of(&folder.join("readme.md"))
-        .expect("it is still open");
+    let moved =
+        harness.state().files.index_of(&folder.join("readme.md")).expect("it is still open");
     assert_eq!(harness.state().files.at(moved).home, Home::Pane(0));
 
     // And back onto the node, which is the half that had no function at all before.
@@ -17410,7 +17861,13 @@ fn a_double_click_in_a_folder_node_opens_a_wired_editor_node() {
         .reaches(tree)
         .into_iter()
         .find(|node| {
-            harness.state().space.space.current().node(*node).is_some_and(|n| n.kind() == Kind::Editor)
+            harness
+                .state()
+                .space
+                .space
+                .current()
+                .node(*node)
+                .is_some_and(|n| n.kind() == Kind::Editor)
         })
         .expect("an editor node was made and wired");
     let showing = harness.state().files.tab_in_node(made).expect("with the file in it");
@@ -17446,7 +17903,8 @@ fn the_modifier_wheel_over_a_node_zooms_the_node_and_not_the_camera() {
     did(&mut harness, &format!("space size {node} --width 500 --height 320"));
     harness.run();
     let camera_was = harness.state().space.space.current().camera;
-    let font_was = did(&mut harness, &format!("space font {node}"))["size"].as_f64().expect("a size");
+    let font_was =
+        did(&mut harness, &format!("space font {node}"))["size"].as_f64().expect("a size");
 
     // The pinch, over the node. `zoom_delta` is what `Ctrl`/`Cmd` with the wheel becomes.
     let body = harness.state().space.body;
@@ -17457,7 +17915,8 @@ fn the_modifier_wheel_over_a_node_zooms_the_node_and_not_the_camera() {
     pump(&mut harness);
     pump(&mut harness);
 
-    let font_now = did(&mut harness, &format!("space font {node}"))["size"].as_f64().expect("a size");
+    let font_now =
+        did(&mut harness, &format!("space font {node}"))["size"].as_f64().expect("a size");
     assert!(font_now > font_was, "the node's letters should be bigger: {font_was} -> {font_now}");
     let camera_now = harness.state().space.space.current().camera;
     assert_eq!(camera_now.zoom, camera_was.zoom, "and the canvas did not zoom with it");
@@ -17560,7 +18019,8 @@ fn space_here_names_every_node_it_is_wired_to_and_the_command_for_each() {
     did(&mut harness, &format!("space connect {agent} {page}"));
     did(&mut harness, &format!("space connect {agent} {tree}"));
     // Something wired *into* the agent as well, so the two directions are told apart.
-    let other = did(&mut harness, "space add terminal --x 700 --y 500")["node"].as_u64().expect("id");
+    let other =
+        did(&mut harness, "space add terminal --x 700 --y 500")["node"].as_u64().expect("id");
     did(&mut harness, &format!("space connect {other} {agent}"));
     harness.run();
 
@@ -17571,10 +18031,8 @@ fn space_here_names_every_node_it_is_wired_to_and_the_command_for_each() {
 
     let reaches = answer["reaches"].as_array().expect("what it reaches").clone();
     assert_eq!(reaches.len(), 2, "the browser and the folder");
-    let for_the_page = reaches
-        .iter()
-        .find(|one| one["node"] == page)
-        .expect("the browser it is wired to");
+    let for_the_page =
+        reaches.iter().find(|one| one["node"] == page).expect("the browser it is wired to");
     // The command, written out with both ids in it and `--from` already there.
     assert_eq!(
         for_the_page["command"],
@@ -18005,10 +18463,14 @@ fn everything_a_node_was_left_holding_comes_back() {
     let tabs = harness.state().files.tabs_in_node(editor);
     let middle = tabs[1];
     harness.state_mut().files.show(middle);
-    harness.state_mut().files.at_mut(middle).document.apply(
-        unluminous_core::Command::PlaceCaret { offset: 3, extend: false },
-    );
-    let folder_node = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(700.0, 30.0));
+    harness
+        .state_mut()
+        .files
+        .at_mut(middle)
+        .document
+        .apply(unluminous_core::Command::PlaceCaret { offset: 3, extend: false });
+    let folder_node =
+        harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(700.0, 30.0));
     for _ in 0..4 {
         harness.run();
     }
@@ -18034,7 +18496,11 @@ fn everything_a_node_was_left_holding_comes_back() {
             assert_eq!(state.paths.len(), 3, "every tab came back, not one of them");
             assert_eq!(state.showing, 1, "and the one that was showing is the one showing");
             assert_eq!(state.caret, 3, "at the caret it was left at");
-            assert!((state.scroll - 42.0).abs() < 1.0, "and scrolled where it was: {}", state.scroll);
+            assert!(
+                (state.scroll - 42.0).abs() < 1.0,
+                "and scrolled where it was: {}",
+                state.scroll
+            );
             assert!(state.showing().is_some_and(|path| path.ends_with("notes.txt")), "{state:?}");
         }
         other => panic!("{other:?}"),
@@ -18042,7 +18508,11 @@ fn everything_a_node_was_left_holding_comes_back() {
     let node = back.current().node(folder_node).expect("the folder node came back");
     match &node.state {
         State::Folder(state) => {
-            assert!((state.scroll - 120.0).abs() < 1.0, "its rows came back scrolled: {}", state.scroll);
+            assert!(
+                (state.scroll - 120.0).abs() < 1.0,
+                "its rows came back scrolled: {}",
+                state.scroll
+            );
         }
         other => panic!("{other:?}"),
     }
@@ -18152,9 +18622,12 @@ fn what_was_done_on_a_view_is_kept_when_the_same_frame_switches_away() {
     let tabs = harness.state().files.tabs_in_node(editor);
     let showing = tabs[1];
     harness.state_mut().files.show(showing);
-    harness.state_mut().files.at_mut(showing).document.apply(
-        unluminous_core::Command::PlaceCaret { offset: 5, extend: false },
-    );
+    harness
+        .state_mut()
+        .files
+        .at_mut(showing)
+        .document
+        .apply(unluminous_core::Command::PlaceCaret { offset: 5, extend: false });
     harness.state_mut().space.space.show_view(second);
     for _ in 0..4 {
         harness.run();
@@ -18352,8 +18825,12 @@ fn an_address_typed_into_a_browser_node_is_opened() {
         // On one without, the refusal is about the platform rather than about the address — and the
         // typed address is still in the bar rather than having been silently thrown away.
         None => {
-            assert!(!unluminous_app::services::browser::SUPPORTED, "a supported platform made no tab");
-            let state = harness.state().space.space.current().node(node).cloned().expect("the node");
+            assert!(
+                !unluminous_app::services::browser::SUPPORTED,
+                "a supported platform made no tab"
+            );
+            let state =
+                harness.state().space.space.current().node(node).cloned().expect("the node");
             match &state.state {
                 unluminous_app::services::space::State::Browser(browser) => {
                     assert!(browser.typed.contains("example.com/typed"), "the address was kept");
@@ -18377,10 +18854,7 @@ fn a_half_typed_address_survives_losing_the_focus() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 30.0));
-    harness
-        .state_mut()
-        .new_detached_space_page(node, "https://example.com/first")
-        .expect("a tab");
+    harness.state_mut().new_detached_space_page(node, "https://example.com/first").expect("a tab");
     harness.run();
 
     harness.get_by_label("Address").focus();
@@ -18401,7 +18875,10 @@ fn a_half_typed_address_survives_losing_the_focus() {
         State::Browser(browser) => browser.typed.clone(),
         other => panic!("{other:?}"),
     };
-    assert!(typed.contains("/half"), "the half-typed address was thrown away, the bar holds {typed:?}");
+    assert!(
+        typed.contains("/half"),
+        "the half-typed address was thrown away, the bar holds {typed:?}"
+    );
 
     // And Escape is what puts the page's own address back.
     harness.get_by_label("Address").focus();
@@ -18414,7 +18891,10 @@ fn a_half_typed_address_survives_losing_the_focus() {
         State::Browser(browser) => browser.typed.clone(),
         other => panic!("{other:?}"),
     };
-    assert!(typed.contains("/first"), "Escape should put the page's address back, the bar holds {typed:?}");
+    assert!(
+        typed.contains("/first"),
+        "Escape should put the page's address back, the bar holds {typed:?}"
+    );
 }
 
 /// A browser node's page is placed inside the node, at the size the node is drawn.
@@ -18452,7 +18932,10 @@ fn a_browser_nodes_page_is_placed_inside_the_node() {
         body.min,
         harness.state().space.space.current().node(node).expect("the node").rect(),
     );
-    assert!(on_screen.contains_rect(page), "the page is at {page:?} and the node is at {on_screen:?}");
+    assert!(
+        on_screen.contains_rect(page),
+        "the page is at {page:?} and the node is at {on_screen:?}"
+    );
     assert!(page.width() > 100.0 && page.height() > 100.0, "and it is a page rather than a sliver");
 
     let was = page;
@@ -18472,7 +18955,10 @@ fn a_browser_nodes_page_is_placed_inside_the_node() {
         harness.state().space.body.min,
         harness.state().space.space.current().node(node).expect("the node").rect(),
     );
-    assert!(node_now.contains_rect(panned), "after a pan the page is {panned:?} and the node {node_now:?}");
+    assert!(
+        node_now.contains_rect(panned),
+        "after a pan the page is {panned:?} and the node {node_now:?}"
+    );
     did(&mut harness, "space camera --x 0 --y 0");
     harness.run();
 
@@ -18506,7 +18992,8 @@ fn only_one_browser_node_is_placed_however_many_there_are() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     let first = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 30.0));
-    let second = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 420.0));
+    let second =
+        harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 420.0));
     did(&mut harness, &format!("space size {first} --width 400 --height 300"));
     did(&mut harness, &format!("space size {second} --width 400 --height 300"));
     let one = harness
@@ -18568,9 +19055,10 @@ fn a_page_that_finished_loading_says_so_on_a_node() {
     assert!(!held.loading, "and it is no longer loading");
 
     // A second page, and the history is two deep — which is what makes `Back` mean anything.
-    harness.state_mut().act_on_browser_events(vec![
-        BrowserEvent::LoadFinished { id: tab, url: "https://example.com/two".to_owned() },
-    ]);
+    harness.state_mut().act_on_browser_events(vec![BrowserEvent::LoadFinished {
+        id: tab,
+        url: "https://example.com/two".to_owned(),
+    }]);
     let held = harness.state().space.live.browser(node).cloned().expect("the node's tab");
     assert_eq!(held.current_url(), "https://example.com/two");
     assert!(held.can_go_back(), "two pages is a history");
@@ -18852,7 +19340,11 @@ fn the_branch_widget_names_the_branch_the_repository_is_on() {
     }
     let state = harness.state().branch_state();
     assert_eq!(state.current.as_deref(), Some("main"), "git_folder inits on main");
-    assert!(state.locals.iter().any(|name| name == "main"), "and main is in the list, got {:?}", state.locals);
+    assert!(
+        state.locals.iter().any(|name| name == "main"),
+        "and main is in the list, got {:?}",
+        state.locals
+    );
     assert!(state.applies(), "so the widget is drawn");
     // The button is reachable by name, which is what makes it testable at all.
     harness.get_by_label("Branch");
@@ -18902,9 +19394,10 @@ fn choosing_a_branch_asks_the_worker_to_check_it_out() {
     }
 
     let ctx = harness.ctx.clone();
-    harness
-        .state_mut()
-        .run_action(Action::Git(unluminous_app::app::actions::GitAction::Switch("a-second-branch".to_owned())), &ctx);
+    harness.state_mut().run_action(
+        Action::Git(unluminous_app::app::actions::GitAction::Switch("a-second-branch".to_owned())),
+        &ctx,
+    );
     for _ in 0..600 {
         if harness.state().branch_state().current.as_deref() == Some("a-second-branch") {
             break;
@@ -18932,7 +19425,10 @@ fn switching_to_the_branch_already_on_says_so_rather_than_running_git() {
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
     let ctx = harness.ctx.clone();
-    harness.state_mut().run_action(Action::Git(unluminous_app::app::actions::GitAction::Switch("main".to_owned())), &ctx);
+    harness.state_mut().run_action(
+        Action::Git(unluminous_app::app::actions::GitAction::Switch("main".to_owned())),
+        &ctx,
+    );
     harness.run();
     let said = harness.state().message.clone().unwrap_or_default();
     assert!(said.contains("Already on main"), "said {said:?}");
@@ -18942,8 +19438,14 @@ fn switching_to_the_branch_already_on_says_so_rather_than_running_git() {
 #[test]
 fn the_popup_filters_when_there_are_more_branches_than_it_can_show() {
     use unluminous_app::components::branch_widget::BRANCHES_BEFORE_A_FILTER;
-    assert!(BRANCHES_BEFORE_A_FILTER >= 8, "a threshold low enough to be reached in a real project");
-    assert!(BRANCHES_BEFORE_A_FILTER <= 20, "and high enough that a small project never sees a field");
+    assert!(
+        BRANCHES_BEFORE_A_FILTER >= 8,
+        "a threshold low enough to be reached in a real project"
+    );
+    assert!(
+        BRANCHES_BEFORE_A_FILTER <= 20,
+        "and high enough that a small project never sees a field"
+    );
 }
 
 /// The picture, which is what a person reads to see whether it looks like the bar it sits in.
@@ -19149,7 +19651,8 @@ fn a_browser_node_that_is_not_rendering_still_records_where_it_was_sent() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     let first = did(&mut harness, "space add browser --x 40 --y 40")["node"].as_u64().expect("id");
-    let second = did(&mut harness, "space add browser --x 700 --y 40")["node"].as_u64().expect("id");
+    let second =
+        did(&mut harness, "space add browser --x 700 --y 40")["node"].as_u64().expect("id");
     did(&mut harness, &format!("space browser {first} go --url https://example.com/"));
     did(&mut harness, &format!("space browser {second} go --url https://example.org/"));
     harness.run();
@@ -19215,10 +19718,7 @@ fn an_editor_node_at_its_own_size_has_a_gutter_at_that_size() {
     did(&mut harness, &format!("space zoom {node} --factor 40"));
     harness.run();
     let wide = harness.state().editor_area().left();
-    assert!(
-        wide > narrow,
-        "the gutter grew with the node's own font: {narrow} to {wide}"
-    );
+    assert!(wide > narrow, "the gutter grew with the node's own font: {narrow} to {wide}");
 }
 
 /// The gutter never takes more than its share of the pane, at any type size.
@@ -19241,8 +19741,7 @@ fn a_gutter_never_takes_more_than_its_share_of_the_pane() {
 
     // The editing pane is what is left of the panes area once the explorer has taken its width, and the gutter
     // is the part of it in front of the text.
-    let explorer =
-        harness.state().panel_rect_for_tests(unluminous_app::app::dock::Panel::Explorer);
+    let explorer = harness.state().panel_rect_for_tests(unluminous_app::app::dock::Panel::Explorer);
     let pane_left = explorer.right();
     let pane_width = harness.state().panes_area().right() - pane_left;
     let gutter = harness.state().editor_area().left() - pane_left;
@@ -19253,7 +19752,6 @@ fn a_gutter_never_takes_more_than_its_share_of_the_pane() {
          gutter {gutter} of {pane_width}"
     );
 }
-
 
 /// Zooming the canvas does not relayout a node, which is the promise the crispness change could have broken.
 ///
@@ -19322,11 +19820,16 @@ fn a_terminal_node_records_the_program_running_in_it() {
     let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
     harness.run();
 
-    let running = |harness: &Harness<'static, UnluminousApp>| {
-        match harness.state().space.space.current().node(node).map(|found| &found.state) {
-            Some(State::Terminal(terminal)) => terminal.running.clone(),
-            _ => panic!("a terminal node"),
-        }
+    let running = |harness: &Harness<'static, UnluminousApp>| match harness
+        .state()
+        .space
+        .space
+        .current()
+        .node(node)
+        .map(|found| &found.state)
+    {
+        Some(State::Terminal(terminal)) => terminal.running.clone(),
+        _ => panic!("a terminal node"),
     };
     assert_eq!(running(&harness), "", "a session with no pseudoterminal answers nothing");
 
@@ -19400,7 +19903,8 @@ fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
     let body = harness.state().space.body;
     did(&mut harness, &format!("space move {node} --x {} --y 20", body.width() - 180.0));
     harness.run();
-    let cut = harness.state().browser_placements().first().copied().expect("the page is still drawn");
+    let cut =
+        harness.state().browser_placements().first().copied().expect("the page is still drawn");
     assert!(
         (cut.area.width() - width).abs() < 0.5,
         "the page lays itself out at the node's whole width, not at what is left: {} against {width}",
@@ -19418,7 +19922,8 @@ fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
     // what cropping means, and what `task-1908`'s report about a page vanishing near the edge asks for.
     did(&mut harness, &format!("space move {node} --x {} --y 20", body.width() - 40.0));
     harness.run();
-    let strip = harness.state().browser_placements().first().copied().expect("a strip is still a page");
+    let strip =
+        harness.state().browser_placements().first().copied().expect("a strip is still a page");
     assert!((strip.area.width() - width).abs() < 0.5, "still the whole page");
     assert!(strip.visible.width() < 100.0, "and a strip of it showing");
 
@@ -19462,19 +19967,22 @@ fn a_page_followed_to_a_new_address_is_what_the_node_comes_back_on() {
     harness.state_mut().bring_the_current_view_to_life();
     harness.run();
 
-    let recorded = |harness: &Harness<'static, UnluminousApp>| {
-        match harness.state().space.space.current().node(node).map(|found| &found.state) {
-            Some(State::Browser(browser)) => browser.url.clone(),
-            _ => panic!("a browser node"),
-        }
+    let recorded = |harness: &Harness<'static, UnluminousApp>| match harness
+        .state()
+        .space
+        .space
+        .current()
+        .node(node)
+        .map(|found| &found.state)
+    {
+        Some(State::Browser(browser)) => browser.url.clone(),
+        _ => panic!("a browser node"),
     };
     assert_eq!(recorded(&harness), "https://news.ycombinator.com/");
 
     // A click inside the page, which is an arrival nothing asked for.
     let tab = harness.state().space.live.browser(node).expect("its tab").id;
-    harness
-        .state_mut()
-        .arrived_at_for_tests(tab, "https://example.com/an-article".to_owned());
+    harness.state_mut().arrived_at_for_tests(tab, "https://example.com/an-article".to_owned());
     harness.run();
 
     assert_eq!(
@@ -19503,10 +20011,9 @@ fn a_terminal_node_comes_back_showing_what_was_on_it() {
 
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
-    harness.state_mut().feed_a_space_terminal(
-        node,
-        b"$ ls\r\ntotal 48\r\nsrc  tests  Cargo.toml\r\n$ ",
-    );
+    harness
+        .state_mut()
+        .feed_a_space_terminal(node, b"$ ls\r\ntotal 48\r\nsrc  tests  Cargo.toml\r\n$ ");
     harness.run();
 
     // What the window would write on its way out.
@@ -19526,8 +20033,15 @@ fn a_terminal_node_comes_back_showing_what_was_on_it() {
         shim: std::path::PathBuf::from("/apps/unluminous-cli"),
     };
     let (program, args) = unluminous_cli::restore::command_line(&restore, "zsh", &[]);
-    assert_eq!(program, restore.shim, "the node starts the program that prints and then becomes the shell");
-    assert_eq!(args.last().map(String::as_str), Some("zsh"), "and the shell is the last word of it");
+    assert_eq!(
+        program, restore.shim,
+        "the node starts the program that prints and then becomes the shell"
+    );
+    assert_eq!(
+        args.last().map(String::as_str),
+        Some("zsh"),
+        "and the shell is the last word of it"
+    );
 
     // What that program will print, read by a terminal, is the screen the node was left showing.
     let bytes = std::fs::read(&printing).expect("the screen comes back");
@@ -19657,7 +20171,8 @@ fn a_project_that_comes_back_with_a_canvas_gives_it_the_keyboard() {
         let mut harness = harness_in(&folder);
         harness.state_mut().restore_project();
         did(&mut harness, "space show");
-        let node = did(&mut harness, "space add terminal --x 40 --y 30")["node"].as_u64().expect("id");
+        let node =
+            did(&mut harness, "space add terminal --x 40 --y 30")["node"].as_u64().expect("id");
         harness.state_mut().editor_visible = false;
         harness.state_mut().space.space.choose(Some(node));
         harness.run();
@@ -19787,8 +20302,12 @@ fn a_chat_node_sends_on_enter_rather_than_putting_a_new_line_in_the_draft() {
     drove(&mut harness, "input key Enter --shift");
     let after = did(&mut harness, &format!("space chat {node} state"));
     assert!(after["problem"].is_null(), "shift+enter did not try to send: {after}");
-    assert_eq!(draft(&harness), "hello
-", "it put a new line in the draft");
+    assert_eq!(
+        draft(&harness),
+        "hello
+",
+        "it put a new line in the draft"
+    );
 
     // Enter sends, which here is refused before anything is started — and the refusal names the program
     // it would have run, which is the only way this test can tell "it sent" from "it did nothing".
@@ -19822,7 +20341,8 @@ fn the_tasks_node_search_takes_what_is_typed_into_it() {
     assert_eq!(keyboard["textBox"], serde_json::json!(true), "the search box took the keyboard");
 
     drove(&mut harness, "input text batt");
-    let provider = harness.state_mut().plugin_ui.provider("agent-tasks").expect("the board is open");
+    let provider =
+        harness.state_mut().plugin_ui.provider("agent-tasks").expect("the board is open");
     let board = provider
         .as_any_mut()
         .and_then(|any| any.downcast_mut::<unluminous_app::services::agent_tasks::AgentTasks>())
@@ -19975,10 +20495,7 @@ fn a_chat_node_at_its_smallest_keeps_the_composer_inside_it() {
     did(&mut harness, "space show");
     let node = did(&mut harness, "space add chat --x 10 --y 10")["node"].as_u64().expect("id");
     let smallest = Kind::Chat.smallest();
-    did(
-        &mut harness,
-        &format!("space size {node} --width {} --height {}", smallest.x, smallest.y),
-    );
+    did(&mut harness, &format!("space size {node} --width {} --height {}", smallest.x, smallest.y));
     harness.run();
 
     let found = harness.state().space.space.current().node(node).expect("it is there").clone();

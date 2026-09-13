@@ -170,7 +170,12 @@ fn moved_with(at: egui::Pos2, modifiers: egui::Modifiers) -> Vec<Step> {
 /// **The move is a frame of its own**, because what a widget is hovering is worked out at the start of
 /// a pass: a press arriving in the same frame as the first sight of the pointer lands on a window that
 /// has not yet noticed anything is under it.
-pub fn clicked(at: egui::Pos2, button: Button, modifiers: egui::Modifiers, times: usize) -> Vec<Step> {
+pub fn clicked(
+    at: egui::Pos2,
+    button: Button,
+    modifiers: egui::Modifiers,
+    times: usize,
+) -> Vec<Step> {
     let mut steps = moved_with(at, modifiers);
     for _ in 0..times.max(1) {
         steps.push(Step::of(egui::Event::PointerButton {
@@ -346,10 +351,7 @@ mod tests {
                 "frame {at} does not say where the pointer is: {events:?}",
             );
         }
-        assert!(matches!(
-            frames[1].get(1),
-            Some(egui::Event::PointerButton { pressed: true, .. })
-        ));
+        assert!(matches!(frames[1].get(1), Some(egui::Event::PointerButton { pressed: true, .. })));
         assert!(matches!(
             frames[2].get(1),
             Some(egui::Event::PointerButton { pressed: false, .. })

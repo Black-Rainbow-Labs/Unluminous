@@ -118,9 +118,8 @@ mod tests {
     fn a_wake_escalates_only_once_nothing_has_been_drawn_for_long_enough() {
         // The decision, which is what a test with no run loop can assert. Whether a run loop wakes is
         // not.
-        let due = |since: Option<std::time::Duration>| {
-            since.is_some_and(|silent| silent >= ESCALATE)
-        };
+        let due =
+            |since: Option<std::time::Duration>| since.is_some_and(|silent| silent >= ESCALATE);
         assert!(!due(None), "a window that has drawn nothing yet is starting up");
         assert!(!due(Some(ESCALATE - std::time::Duration::from_millis(1))));
         assert!(due(Some(ESCALATE)));
@@ -129,7 +128,11 @@ mod tests {
 
     #[test]
     fn a_frame_moves_the_clock_off_never() {
-        assert_eq!(LAST_FRAME_MS.load(std::sync::atomic::Ordering::Relaxed), 0, "nothing drawn yet");
+        assert_eq!(
+            LAST_FRAME_MS.load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "nothing drawn yet"
+        );
         a_frame_was_drawn();
         let since = since_the_last_frame().expect("a frame has been drawn");
         assert!(since < ESCALATE, "a frame just drawn is not silence: {since:?}");

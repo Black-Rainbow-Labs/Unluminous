@@ -522,9 +522,7 @@ impl Space {
     pub fn adopt(&mut self, views: Vec<View>, current: ViewId) {
         let largest = views
             .iter()
-            .flat_map(|view| {
-                std::iter::once(view.id).chain(view.nodes.iter().map(|node| node.id))
-            })
+            .flat_map(|view| std::iter::once(view.id).chain(view.nodes.iter().map(|node| node.id)))
             .max()
             .unwrap_or(0);
         self.views = views;
@@ -744,14 +742,18 @@ mod tests {
         let mut space = a_canvas();
         let terminal = space.add_node(Kind::Terminal, Pos2::ZERO, None);
         let editor = space.add_node(Kind::Editor, Pos2::new(700.0, 0.0), None);
-        assert!(space.connect(terminal, terminal, Pipe::Off).is_err(), "a node cannot wire to itself");
+        assert!(
+            space.connect(terminal, terminal, Pipe::Off).is_err(),
+            "a node cannot wire to itself"
+        );
         assert!(space.connect(terminal, 9999, Pipe::Off).is_err(), "there is no such node");
         space.connect(terminal, editor, Pipe::Off).expect("control is fine");
         assert!(space.connect(terminal, editor, Pipe::Off).is_err(), "that edge is already there");
 
         // And a pipe into something with no input to type into names what does apply.
         let second = space.add_node(Kind::Terminal, Pos2::new(0.0, 600.0), None);
-        let refusal = space.connect(second, editor, Pipe::Lines).expect_err("an editor takes no pipe");
+        let refusal =
+            space.connect(second, editor, Pipe::Lines).expect_err("an editor takes no pipe");
         assert!(refusal.contains("space editor"), "the refusal names what does apply: {refusal}");
         space.connect(second, terminal, Pipe::Lines).expect("a terminal does take one");
     }

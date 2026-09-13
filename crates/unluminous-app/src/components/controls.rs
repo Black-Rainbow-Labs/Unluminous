@@ -71,13 +71,24 @@ pub fn field_text_rect_at(field: Rect, left: f32, row: f32) -> Rect {
 /// still the box's, and this catches only the padding round it. `id` is the id the caller then gives
 /// its `TextEdit`, so this hands the keyboard to that box and not to whichever one egui's auto
 /// counter happened to name.
-pub fn field_takes_the_whole_rectangle(ui: &egui::Ui, field: Rect, left: f32, id: egui::Id) -> Rect {
+pub fn field_takes_the_whole_rectangle(
+    ui: &egui::Ui,
+    field: Rect,
+    left: f32,
+    id: egui::Id,
+) -> Rect {
     claim_the_field(ui, field, id);
     field_text_rect(ui, field, left)
 }
 
 /// The same claim, for a field whose text is set in a size of its own. See [`field_text_rect_at`].
-pub fn field_takes_the_whole_rectangle_at(ui: &egui::Ui, field: Rect, left: f32, id: egui::Id, font: &egui::FontId) -> Rect {
+pub fn field_takes_the_whole_rectangle_at(
+    ui: &egui::Ui,
+    field: Rect,
+    left: f32,
+    id: egui::Id,
+    font: &egui::FontId,
+) -> Rect {
     claim_the_field(ui, field, id);
     let row = ui.ctx().fonts_mut(|fonts| fonts.row_height(font));
     field_text_rect_at(field, left, row)
@@ -304,13 +315,12 @@ pub fn flyout<T>(
     width: f32,
     contents: impl FnOnce(&mut egui::Ui) -> T,
 ) -> Option<T> {
-    let response = ui
-        .interact(area, ui.id().with(("flyout", name)), Sense::click())
-        .on_hover_text(name);
+    let response =
+        ui.interact(area, ui.id().with(("flyout", name)), Sense::click()).on_hover_text(name);
     // What the panel will be by the time it is drawn: the click this frame is what toggles it, and
     // the button has to be tinted for the state it is going into rather than the one it is leaving.
-    let open =
-        egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&response)) != response.clicked();
+    let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&response))
+        != response.clicked();
     let painter = ui.painter();
     if open {
         painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::accent());
@@ -395,11 +405,7 @@ pub fn labelled_flyout_with_icon<T>(
         None => area.left() + 9.0,
     };
     let galley = painter.layout_no_wrap(label.to_owned(), egui::FontId::proportional(12.5), tint);
-    painter.galley(
-        Pos2::new(words_from, area.center().y - galley.size().y / 2.0),
-        galley,
-        tint,
-    );
+    painter.galley(Pos2::new(words_from, area.center().y - galley.size().y / 2.0), galley, tint);
     icon::chevron_down(painter, Pos2::new(area.right() - 10.0, area.center().y), color::text_dim());
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), open, name)
@@ -483,8 +489,7 @@ pub fn choice_button_over(
         );
     }
     let tint = if active { color::text_strong() } else { color::text_control() };
-    let galley =
-        painter.layout_no_wrap(label.to_owned(), egui::FontId::proportional(12.5), tint);
+    let galley = painter.layout_no_wrap(label.to_owned(), egui::FontId::proportional(12.5), tint);
     painter.galley(area.center() - galley.size() / 2.0, galley, tint);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), active, announced)
@@ -494,8 +499,11 @@ pub fn choice_button_over(
 
 /// A heading beside a row of controls in a flyout, naming what the row is for.
 pub fn row_label(painter: &egui::Painter, at: Pos2, name: &str) {
-    let galley =
-        painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(11.5), color::text_dim());
+    let galley = painter.layout_no_wrap(
+        name.to_owned(),
+        egui::FontId::proportional(11.5),
+        color::text_dim(),
+    );
     painter.galley(Pos2::new(at.x, at.y - galley.size().y / 2.0), galley, color::text_dim());
 }
 
@@ -596,7 +604,8 @@ pub fn menu_row(
         ui.painter().rect_filled(rect, CornerRadius::same(4), color::selected_row());
     }
     let painter = ui.painter();
-    let tint = if enabled { color::text_control() } else { color::text_faint().gamma_multiply(0.6) };
+    let tint =
+        if enabled { color::text_control() } else { color::text_faint().gamma_multiply(0.6) };
     let left = rect.left() + 8.0 + indent;
     if checked {
         // Drawn, not the character at U+2713. No font in the stack Unluminous hands egui has a shape for
@@ -607,11 +616,7 @@ pub fn menu_row(
         icon::tick(painter, Pos2::new(left + 6.0, rect.center().y), color::accent());
     }
     let label = painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), tint);
-    painter.galley(
-        Pos2::new(left + 18.0, rect.center().y - label.size().y / 2.0),
-        label,
-        tint,
-    );
+    painter.galley(Pos2::new(left + 18.0, rect.center().y - label.size().y / 2.0), label, tint);
     if !shortcut.is_empty() {
         let keys = painter.layout_no_wrap(
             shortcut.to_owned(),
@@ -624,9 +629,7 @@ pub fn menu_row(
             color::text_faint(),
         );
     }
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name)
-    });
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name));
     response.clicked()
 }
 
@@ -641,8 +644,11 @@ pub fn menu_heading(ui: &mut egui::Ui, name: &str, indent: f32) {
     // no name cannot be tested, and a heading is what a submenu's title is drawn as here.
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, name));
     let painter = ui.painter();
-    let label =
-        painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(11.0), color::text_dim());
+    let label = painter.layout_no_wrap(
+        name.to_owned(),
+        egui::FontId::proportional(11.0),
+        color::text_dim(),
+    );
     painter.galley(
         Pos2::new(rect.left() + 8.0 + indent, rect.center().y - label.size().y / 2.0),
         label,
@@ -657,16 +663,14 @@ pub fn icon_button(
     name: &str,
     draw: fn(&egui::Painter, Pos2, Color32),
 ) -> bool {
-    let response = ui
-        .interact(area, ui.id().with(("icon-button", name)), Sense::click())
-        .on_hover_text(name);
+    let response =
+        ui.interact(area, ui.id().with(("icon-button", name)), Sense::click()).on_hover_text(name);
     if response.hovered() {
         ui.painter().rect_filled(area, CornerRadius::same(4), color::control());
     }
     draw(ui.painter(), area.center(), color::text_dim());
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name)
-    });
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
     response.clicked()
 }
 
@@ -684,9 +688,8 @@ pub fn bar_button(ui: &mut egui::Ui, area: Rect, name: &str, strong: bool) -> eg
         label,
         tint,
     );
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name)
-    });
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
     response
 }
 

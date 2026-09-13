@@ -107,9 +107,12 @@ fn skip_over(text: &str, index: usize) -> Option<usize> {
         // MySQL-style backquoted identifiers are not this crate's engines, but skipping them costs a
         // line and stops a pasted statement splitting in the wrong place.
         b'`' => Some(closing(bytes, index, b'`')),
-        b'-' if bytes.get(index + 1) == Some(&b'-') => {
-            Some(bytes[index..].iter().position(|byte| *byte == b'\n').map_or(bytes.len(), |at| index + at))
-        }
+        b'-' if bytes.get(index + 1) == Some(&b'-') => Some(
+            bytes[index..]
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(bytes.len(), |at| index + at),
+        ),
         b'/' if bytes.get(index + 1) == Some(&b'*') => {
             // Block comments nest in PostgreSQL, which is a real difference from C and the reason
             // this counts rather than looking for the first `*/`.
@@ -216,7 +219,8 @@ pub fn create_table(
     if name.is_empty() {
         return Err("a table needs a name.".to_owned());
     }
-    let wanted: Vec<&NewColumn> = columns.iter().filter(|column| !column.name.trim().is_empty()).collect();
+    let wanted: Vec<&NewColumn> =
+        columns.iter().filter(|column| !column.name.trim().is_empty()).collect();
     if wanted.is_empty() {
         return Err("a table needs at least one column.".to_owned());
     }
@@ -239,7 +243,8 @@ pub fn create_table(
                 true => engine.key_column(&column.type_name),
                 false => column.type_name.trim().to_owned(),
             };
-            let mut line = format!("  {} {type_name}", crate::catalog::quoted(column.name.trim(), '"'));
+            let mut line =
+                format!("  {} {type_name}", crate::catalog::quoted(column.name.trim(), '"'));
             // A key column is `NOT NULL` by definition in every engine, so saying it as well would
             // be noise on the line a person reads to check the table.
             if column.not_null && !column.in_key {
@@ -249,10 +254,8 @@ pub fn create_table(
         })
         .collect();
     if !key.is_empty() {
-        let named: Vec<String> = key
-            .iter()
-            .map(|column| crate::catalog::quoted(column.name.trim(), '"'))
-            .collect();
+        let named: Vec<String> =
+            key.iter().map(|column| crate::catalog::quoted(column.name.trim(), '"')).collect();
         lines.push(format!("  PRIMARY KEY ({})", named.join(", ")));
     }
     let qualified = match schema.trim().is_empty() {
@@ -320,7 +323,15 @@ pub fn strip_comments(text: &str) -> String {
 pub fn only_reads(statement: &Statement) -> bool {
     matches!(
         statement.verb().as_str(),
-        "SELECT" | "WITH" | "EXPLAIN" | "SHOW" | "VALUES" | "TABLE" | "PRAGMA" | "DESCRIBE" | "ANALYZE"
+        "SELECT"
+            | "WITH"
+            | "EXPLAIN"
+            | "SHOW"
+            | "VALUES"
+            | "TABLE"
+            | "PRAGMA"
+            | "DESCRIBE"
+            | "ANALYZE"
     )
 }
 
@@ -396,8 +407,14 @@ mod tests {
 
     #[test]
     fn a_verb_is_read_past_the_comments_and_the_space() {
-        assert_eq!(Statement { start: 0, end: 0, text: "  -- go\n  select 1".to_owned() }.verb(), "SELECT");
-        assert_eq!(Statement { start: 0, end: 0, text: "/* x */ update t set a=1".to_owned() }.verb(), "UPDATE");
+        assert_eq!(
+            Statement { start: 0, end: 0, text: "  -- go\n  select 1".to_owned() }.verb(),
+            "SELECT"
+        );
+        assert_eq!(
+            Statement { start: 0, end: 0, text: "/* x */ update t set a=1".to_owned() }.verb(),
+            "UPDATE"
+        );
         assert_eq!(Statement { start: 0, end: 0, text: "\n\n".to_owned() }.verb(), "");
     }
 

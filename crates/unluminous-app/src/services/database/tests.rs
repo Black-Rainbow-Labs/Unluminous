@@ -16,7 +16,8 @@ use crate::services::plugin_ui::{Context, UiProvider};
 
 /// A database file with something in it, in a folder of this test's own.
 fn a_database(name: &str) -> PathBuf {
-    let folder = std::env::temp_dir().join(format!("unluminous-database-plugin-{name}-{}", std::process::id()));
+    let folder = std::env::temp_dir()
+        .join(format!("unluminous-database-plugin-{name}-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&folder);
     let file = folder.join("test.db");
     let _ = std::fs::remove_file(&file);
@@ -56,19 +57,13 @@ fn opened(name: &str) -> (DatabaseExplorer, PathBuf) {
 /// Run a command and take the sentence it answered.
 fn run(explorer: &mut DatabaseExplorer, command: &str, arguments: &[&str]) -> String {
     let arguments: Vec<String> = arguments.iter().map(|word| (*word).to_owned()).collect();
-    explorer
-        .command(command, &arguments)
-        .unwrap_or_else(|why| panic!("{command}: {why}"))
-        .message
+    explorer.command(command, &arguments).unwrap_or_else(|why| panic!("{command}: {why}")).message
 }
 
 /// Run a command and take the value.
 fn value(explorer: &mut DatabaseExplorer, command: &str, arguments: &[&str]) -> serde_json::Value {
     let arguments: Vec<String> = arguments.iter().map(|word| (*word).to_owned()).collect();
-    explorer
-        .command(command, &arguments)
-        .unwrap_or_else(|why| panic!("{command}: {why}"))
-        .value
+    explorer.command(command, &arguments).unwrap_or_else(|why| panic!("{command}: {why}")).value
 }
 
 /// Wait for whatever the workers are doing, with a deadline rather than for ever.
@@ -109,8 +104,12 @@ fn the_tree_reads_one_level_at_a_time() {
     explorer.toggle_schema("test", "main");
     settle(&mut explorer);
     let items = explorer.loaded["test"].items["main"].clone();
-    assert!(items.iter().any(|item| item.name == "member" && item.kind == unluminous_db::Kind::Table));
-    assert!(items.iter().any(|item| item.name == "members" && item.kind == unluminous_db::Kind::View));
+    assert!(items
+        .iter()
+        .any(|item| item.name == "member" && item.kind == unluminous_db::Kind::Table));
+    assert!(items
+        .iter()
+        .any(|item| item.name == "members" && item.kind == unluminous_db::Kind::View));
     assert!(explorer.loaded["test"].columns.is_empty(), "and no columns until a table is opened");
 
     explorer.toggle_table("test", "main", "member");
@@ -127,7 +126,9 @@ fn a_console_runs_the_statement_under_the_caret() {
     let (mut explorer, _) = opened("console");
     let page = value(&mut explorer, "console", &["test"]);
     let id = page["page"].as_u64().expect("a page");
-    if let Some(Page { sheet: Sheet::Console(console), .. }) = explorer.pages.iter_mut().find(|page| page.id == id) {
+    if let Some(Page { sheet: Sheet::Console(console), .. }) =
+        explorer.pages.iter_mut().find(|page| page.id == id)
+    {
         console.text = "select 1;\nselect name from member order by id;".to_owned();
         // The caret on the second line.
         console.caret = 12;
@@ -236,7 +237,9 @@ fn a_read_only_data_source_refuses_a_write_and_the_refusal_names_the_switch() {
     settle(&mut explorer);
     let page = value(&mut explorer, "console", &["test"]);
     let id = page["page"].as_u64().expect("a page");
-    if let Some(Page { sheet: Sheet::Console(console), .. }) = explorer.pages.iter_mut().find(|page| page.id == id) {
+    if let Some(Page { sheet: Sheet::Console(console), .. }) =
+        explorer.pages.iter_mut().find(|page| page.id == id)
+    {
         console.text = "update member set name = 'x'".to_owned();
         console.caret = 0;
     }
@@ -255,7 +258,9 @@ fn a_statement_that_changes_rows_is_sent_without_being_asked_about() {
     settle(&mut explorer);
     let page = value(&mut explorer, "console", &["test"]);
     let id = page["page"].as_u64().expect("a page");
-    if let Some(Page { sheet: Sheet::Console(console), .. }) = explorer.pages.iter_mut().find(|page| page.id == id) {
+    if let Some(Page { sheet: Sheet::Console(console), .. }) =
+        explorer.pages.iter_mut().find(|page| page.id == id)
+    {
         console.text = "delete from member where id = -1".to_owned();
         console.caret = 0;
     }
@@ -299,14 +304,21 @@ fn where_a_password_is_can_be_said_on_the_command_line_and_the_password_itself_c
         Some(Secret::Environment("UNLUMINOUS_DB_TEST".to_owned()))
     );
     run(&mut explorer, "password", &["test", "none"]);
-    assert_eq!(explorer.configuration.source("test").map(|source| source.secret.clone()), Some(Secret::None));
+    assert_eq!(
+        explorer.configuration.source("test").map(|source| source.secret.clone()),
+        Some(Secret::None)
+    );
 
     // And `add-source` takes the variable as an optional third word, so adding a source and saying
     // where its password is are one command. A path is not mistaken for a variable name.
     explorer
         .command(
             "add-source",
-            &["remote".to_owned(), "postgres://me@example.com/db".to_owned(), "UNLUMINOUS_DB_REMOTE".to_owned()],
+            &[
+                "remote".to_owned(),
+                "postgres://me@example.com/db".to_owned(),
+                "UNLUMINOUS_DB_REMOTE".to_owned(),
+            ],
         )
         .expect("added");
     assert_eq!(
@@ -336,7 +348,10 @@ fn a_password_is_never_written_down_and_never_answered_back() {
     // agent can read.
     let (mut explorer, _) = opened("secrets");
     explorer
-        .command("add-source", &["remote".to_owned(), "postgres://me@example.com:5432/db".to_owned()])
+        .command(
+            "add-source",
+            &["remote".to_owned(), "postgres://me@example.com:5432/db".to_owned()],
+        )
         .expect("added");
     if let Some(source) = explorer.configuration.source_mut("remote") {
         source.secret = Secret::Typed("hunter2".to_owned());
@@ -477,7 +492,8 @@ fn a_grids_statement_asks_for_one_more_row_than_it_keeps() {
 #[test]
 fn a_cell_shows_what_is_pending_on_it_rather_than_what_was_read() {
     let mut rows = unluminous_db::Rows::default();
-    rows.columns = vec![unluminous_db::Column::new("id", "int"), unluminous_db::Column::new("name", "text")];
+    rows.columns =
+        vec![unluminous_db::Column::new("id", "int"), unluminous_db::Column::new("name", "text")];
     rows.rows = vec![vec![Value::typed("1"), Value::typed("Jason")]];
     let mut grid = Grid {
         source: "test".to_owned(),
@@ -584,7 +600,10 @@ fn a_source_that_cannot_be_opened_says_so_on_its_own_row_rather_than_silently() 
     // And the tree draws that sentence where the schemas would have been.
     let drawn = crate::components::database::tree::lines(&explorer);
     assert!(
-        drawn.iter().any(|line| matches!(&line.what, crate::components::database::tree::What::Problem { .. })),
+        drawn.iter().any(|line| matches!(
+            &line.what,
+            crate::components::database::tree::What::Problem { .. }
+        )),
         "the tree shows the problem"
     );
 }
@@ -593,7 +612,10 @@ fn a_source_that_cannot_be_opened_says_so_on_its_own_row_rather_than_silently() 
 fn a_url_a_person_could_type_is_what_comes_back_out() {
     let (mut explorer, _) = opened("urls");
     explorer
-        .command("add-source", &["ai".to_owned(), "postgres://postgres@localhost:5432/ai".to_owned()])
+        .command(
+            "add-source",
+            &["ai".to_owned(), "postgres://postgres@localhost:5432/ai".to_owned()],
+        )
         .expect("added");
     let sources = value(&mut explorer, "sources", &[]);
     let url = sources
@@ -618,8 +640,8 @@ fn a_url_a_person_could_type_is_what_comes_back_out() {
 
 /// An Inillucent database with a search table in it, in a folder of this test's own.
 fn an_inillucent_database(name: &str) -> PathBuf {
-    let folder =
-        std::env::temp_dir().join(format!("unluminous-database-inillucent-{name}-{}", std::process::id()));
+    let folder = std::env::temp_dir()
+        .join(format!("unluminous-database-inillucent-{name}-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&folder);
     let file = folder.join("test.rdb");
     let _ = std::fs::remove_file(&file);
@@ -673,7 +695,9 @@ fn a_database_file_is_added_as_the_engine_that_wrote_it() {
     let sources = value(&mut explorer, "sources", &[]);
     let engine = sources
         .as_array()
-        .and_then(|sources| sources.iter().find(|source| source["name"] == serde_json::json!("notes")))
+        .and_then(|sources| {
+            sources.iter().find(|source| source["name"] == serde_json::json!("notes"))
+        })
         .and_then(|source| source["engine"].as_str())
         .unwrap_or_default();
     assert_eq!(engine, "inillucent");
@@ -816,7 +840,11 @@ fn a_search_table_opens_a_console_holding_the_statement_that_searches_it() {
     assert_eq!(opened["dimensions"], serde_json::json!(4));
 
     // And the composed shape is one the engine really answers.
-    run(&mut explorer, "query", &["select title, rank from docs where docs match 'release' order by rank limit 3"]);
+    run(
+        &mut explorer,
+        "query",
+        &["select title, rank from docs where docs match 'release' order by rank limit 3"],
+    );
     settle(&mut explorer);
     let rows = value(&mut explorer, "result", &[]);
     assert_eq!(rows["result"]["rows"][0][0], serde_json::json!("release process"));
@@ -883,4 +911,3 @@ fn a_sqlite_file_added_as_inillucent_is_told_where_to_go() {
     assert!(std::path::Path::new(&built).exists(), "{built}");
     assert_eq!(std::fs::read(&sqlite).expect("the original"), before, "the source is untouched");
 }
-

@@ -41,7 +41,8 @@ pub fn unstage(folder: &Path, paths: &[&str]) -> Outcome {
     // In a repository with no commits yet there is no HEAD to restore from, and `git rm --cached`
     // is the only way to take a file back out of the index. Without this, the very first commit's
     // tick boxes are one-way.
-    let mut arguments: Vec<OsString> = vec!["rm".into(), "--cached".into(), "-r".into(), "--".into()];
+    let mut arguments: Vec<OsString> =
+        vec!["rm".into(), "--cached".into(), "-r".into(), "--".into()];
     arguments.extend(paths.iter().map(OsString::from));
     run(folder, &arguments)
 }
@@ -51,8 +52,13 @@ pub fn unstage(folder: &Path, paths: &[&str]) -> Outcome {
 /// This is Rollback, and it cannot be undone: the changes are not in a commit and not in a stash, so
 /// after this they are nowhere. The window confirms first and says so.
 pub fn rollback(folder: &Path, paths: &[&str]) -> Outcome {
-    let mut arguments: Vec<OsString> =
-        vec!["restore".into(), "--source=HEAD".into(), "--staged".into(), "--worktree".into(), "--".into()];
+    let mut arguments: Vec<OsString> = vec![
+        "restore".into(),
+        "--source=HEAD".into(),
+        "--staged".into(),
+        "--worktree".into(),
+        "--".into(),
+    ];
     arguments.extend(paths.iter().map(OsString::from));
     run(folder, &arguments)
 }
@@ -134,7 +140,8 @@ pub enum ResetMode {
 }
 
 impl ResetMode {
-    pub const ALL: [ResetMode; 4] = [ResetMode::Soft, ResetMode::Mixed, ResetMode::Hard, ResetMode::Keep];
+    pub const ALL: [ResetMode; 4] =
+        [ResetMode::Soft, ResetMode::Mixed, ResetMode::Hard, ResetMode::Keep];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -148,9 +155,13 @@ impl ResetMode {
     /// One line saying what it does, which is what the dialog shows under the name.
     pub fn description(self) -> &'static str {
         match self {
-            ResetMode::Soft => "The commits go. What was in them stays staged, ready to commit again.",
+            ResetMode::Soft => {
+                "The commits go. What was in them stays staged, ready to commit again."
+            }
             ResetMode::Mixed => "The commits go. What was in them stays on disk, not staged.",
-            ResetMode::Hard => "The commits go and so does everything in them. This cannot be undone.",
+            ResetMode::Hard => {
+                "The commits go and so does everything in them. This cannot be undone."
+            }
             ResetMode::Keep => "The commits go. Changes you had not committed are kept.",
         }
     }
@@ -199,7 +210,10 @@ pub fn stashes(folder: &Path) -> Vec<Stash> {
         .stdout
         .lines()
         .filter_map(|line| line.split_once('\u{1f}'))
-        .map(|(name, message)| Stash { name: name.trim().to_owned(), message: message.trim().to_owned() })
+        .map(|(name, message)| Stash {
+            name: name.trim().to_owned(),
+            message: message.trim().to_owned(),
+        })
         .collect()
 }
 
@@ -291,7 +305,10 @@ mod tests {
 
     #[test]
     fn a_clone_lands_in_a_folder_named_after_the_repository() {
-        assert_eq!(clone_folder_name("https://github.com/jasonmcaffee/unluminous.git"), "unluminous");
+        assert_eq!(
+            clone_folder_name("https://github.com/jasonmcaffee/unluminous.git"),
+            "unluminous"
+        );
         assert_eq!(clone_folder_name("https://github.com/jasonmcaffee/unluminous"), "unluminous");
         assert_eq!(clone_folder_name("git@github.com:jasonmcaffee/unluminous.git"), "unluminous");
         assert_eq!(clone_folder_name("https://example.com/thing/"), "thing");

@@ -341,11 +341,8 @@ fn take_ending<'a>(
 ) -> (&'a str, Ending) {
     let trimmed = if at_the_end { text.trim_end() } else { text.trim_start() };
     for (mark, ending) in endings {
-        let found = if at_the_end {
-            trimmed.strip_suffix(mark)
-        } else {
-            trimmed.strip_prefix(mark)
-        };
+        let found =
+            if at_the_end { trimmed.strip_suffix(mark) } else { trimmed.strip_prefix(mark) };
         if let Some(rest) = found {
             return (rest, *ending);
         }
@@ -363,11 +360,7 @@ fn split_count(text: &str, count_last: bool) -> (String, String) {
         return (text.to_owned(), String::new());
     };
     let count = text[open + 1..close].to_owned();
-    let name = if count_last {
-        text[..open].trim()
-    } else {
-        text[close + 1..].trim()
-    };
+    let name = if count_last { text[..open].trim() } else { text[close + 1..].trim() };
     let _ = count_last;
     (name.to_owned(), count)
 }
@@ -392,16 +385,17 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
     let labels: Vec<Label> = diagram
         .relations
         .iter()
-        .map(|relation| text::measure(&relation.label, &label_style, options.metrics, text::EDGE_WRAP))
+        .map(|relation| {
+            text::measure(&relation.label, &label_style, options.metrics, text::EDGE_WRAP)
+        })
         .collect();
 
     let mut graph = layered::Graph { direction: diagram.direction, ..layered::Graph::default() };
     for name in &diagram.namespaces {
         let title = text::measure_unwrapped(name, &options.style(0.95, true), options.metrics);
-        graph.groups.push(GroupSpec {
-            title: Size::new(title.width, title.height + 6.0),
-            parent: None,
-        });
+        graph
+            .groups
+            .push(GroupSpec { title: Size::new(title.width, title.height + 6.0), parent: None });
     }
     for (index, class) in diagram.classes.iter().enumerate() {
         graph.add_node(boxes[index].size, class.group);
@@ -438,7 +432,13 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
     draw_namespaces(&mut scene, diagram, &placed, origin, options);
     draw_relations(&mut scene, diagram, &placed, origin, &labels, options);
     for (index, class) in diagram.classes.iter().enumerate() {
-        draw_class(&mut scene, class, &boxes[index], placed.nodes[index].moved(origin.x, origin.y), options);
+        draw_class(
+            &mut scene,
+            class,
+            &boxes[index],
+            placed.nodes[index].moved(origin.x, origin.y),
+            options,
+        );
     }
     parts::finish(&mut scene);
     scene
@@ -619,8 +619,22 @@ fn draw_relations(
             parts::ending_inset(relation.head),
         );
         scene.add(Item::Line { points: drawn, stroke, dash });
-        parts::ending(scene, relation.head, path[last], parts::heading(&path), theme.line, theme.node_fill);
-        parts::ending(scene, relation.tail, path[0], parts::tail_heading(&path), theme.line, theme.node_fill);
+        parts::ending(
+            scene,
+            relation.head,
+            path[last],
+            parts::heading(&path),
+            theme.line,
+            theme.node_fill,
+        );
+        parts::ending(
+            scene,
+            relation.tail,
+            path[0],
+            parts::tail_heading(&path),
+            theme.line,
+            theme.node_fill,
+        );
         if labels[index].is_empty() {
             // Nothing to draw over them, so they can go now.
             draw_counts(scene, relation, &path, options);
@@ -699,7 +713,8 @@ mod tests {
 
     #[test]
     fn a_class_with_a_block_takes_its_members() {
-        let text = "classDiagram\n class Duck {\n +String beakColour\n +swim()\n +quack() void\n }\n";
+        let text =
+            "classDiagram\n class Duck {\n +String beakColour\n +swim()\n +quack() void\n }\n";
         let diagram = diagram(text);
         assert_eq!(diagram.classes.len(), 1);
         assert_eq!(diagram.classes[0].attributes, vec!["+String beakColour"]);
@@ -718,11 +733,8 @@ mod tests {
         let text = "classDiagram\n\
             A <|-- B\n C *-- D\n E o-- F\n G --> H\n I -- J\n K ..> L\n M ..|> N\n O .. P\n";
         let diagram = diagram(text);
-        let read: Vec<(Ending, Ending, bool)> = diagram
-            .relations
-            .iter()
-            .map(|r| (r.tail, r.head, r.dashed))
-            .collect();
+        let read: Vec<(Ending, Ending, bool)> =
+            diagram.relations.iter().map(|r| (r.tail, r.head, r.dashed)).collect();
         assert_eq!(
             read,
             vec![
@@ -748,7 +760,8 @@ mod tests {
         assert_eq!(relation.tail, Ending::Hollow, "the triangle is at Animal's end");
         assert_eq!(relation.head, Ending::None);
 
-        let scene = check::drawn("classDiagram\n Animal <|-- Dog\n", &options(), &["Animal", "Dog"]);
+        let scene =
+            check::drawn("classDiagram\n Animal <|-- Dog\n", &options(), &["Animal", "Dog"]);
         let boxes = scene.rects();
         assert!(boxes[0].top() < boxes[1].top(), "the parent is drawn above the child");
     }
@@ -775,7 +788,8 @@ mod tests {
 
     #[test]
     fn a_namespace_groups_the_classes_declared_in_it() {
-        let text = "classDiagram\n namespace Shapes {\n class Square\n class Circle\n }\n class Loose\n";
+        let text =
+            "classDiagram\n namespace Shapes {\n class Square\n class Circle\n }\n class Loose\n";
         let diagram = diagram(text);
         assert_eq!(diagram.namespaces, vec!["Shapes"]);
         assert_eq!(diagram.classes[0].group, Some(0));

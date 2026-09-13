@@ -1097,9 +1097,10 @@ mod tests {
         for line in 1..=60 {
             session.feed(format!("line{line}\r\n").as_bytes());
         }
-        assert_eq!(session.written_text(Some(3)).lines().collect::<Vec<_>>(), [
-            "line58", "line59", "line60"
-        ]);
+        assert_eq!(
+            session.written_text(Some(3)).lines().collect::<Vec<_>>(),
+            ["line58", "line59", "line60"]
+        );
         // More than there is is everything there is, not an error and not a padded answer.
         assert_eq!(session.written_text(Some(500)).lines().count(), 60);
         assert_eq!(session.written_text(Some(0)), "");
@@ -1201,7 +1202,11 @@ mod tests {
         session.feed("e\u{0301}".as_bytes());
         let cell = session.snapshot().cell(0, 0).cloned().expect("a cell");
         assert_eq!(cell.character, 'e');
-        assert_eq!(cell.marks, vec!['\u{0301}'], "the accent is drawn over the letter, not after it");
+        assert_eq!(
+            cell.marks,
+            vec!['\u{0301}'],
+            "the accent is drawn over the letter, not after it"
+        );
     }
 
     #[test]
@@ -1317,12 +1322,20 @@ mod tests {
             session.feed(format!("line {line}\r\n").as_bytes());
         }
         let screen = session.snapshot();
-        assert!(screen.contains("line 19"), "the newest output is showing, got {:?}", screen.text());
+        assert!(
+            screen.contains("line 19"),
+            "the newest output is showing, got {:?}",
+            screen.text()
+        );
         assert!(screen.history > 0, "there should be history to scroll back through");
 
         session.scroll(10);
         let scrolled = session.snapshot();
-        assert!(scrolled.contains("line 9"), "scrolling back should show older output, got {:?}", scrolled.text());
+        assert!(
+            scrolled.contains("line 9"),
+            "scrolling back should show older output, got {:?}",
+            scrolled.text()
+        );
         assert!(scrolled.cursor.is_none(), "the cursor is not on the part being looked at");
 
         session.scroll_to_bottom();
@@ -1337,7 +1350,11 @@ mod tests {
         let screen = session.snapshot();
         assert_eq!(screen.rows, 6);
         assert_eq!(screen.columns, 20);
-        assert_eq!(screen.row_text(0), "a line of text", "the text is still there after the resize");
+        assert_eq!(
+            screen.row_text(0),
+            "a line of text",
+            "the text is still there after the resize"
+        );
     }
 
     #[test]
@@ -1431,7 +1448,10 @@ mod tests {
             .args(["-NoProfile", "-NonInteractive", "-Command", &query])
             .output()
             .expect("powershell answers");
-        String::from_utf8_lossy(&out.stdout).lines().filter_map(|line| line.trim().parse().ok()).collect()
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|line| line.trim().parse().ok())
+            .collect()
     }
 
     /// Whether `pid` is still a process at all.
@@ -1461,20 +1481,29 @@ mod tests {
         //
         // So the shell here is deliberately **busy**: it sleeps for fifteen minutes and reads
         // nothing. If dropping the session is the only thing stopping it, it outlives this test.
-        let nonce = format!("unluminous-reap-{}-{}", std::process::id(), std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
+        let nonce = format!(
+            "unluminous-reap-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
         let settings = SessionSettings {
             shell: Some("pwsh.exe".to_owned()),
             args: vec![
                 "-NoProfile".to_owned(),
                 "-Command".to_owned(),
-                format!("# {nonce}
-Start-Sleep -Seconds 900"),
+                format!(
+                    "# {nonce}
+Start-Sleep -Seconds 900"
+                ),
             ],
             working_directory: Some(std::env::temp_dir()),
             ..SessionSettings::default()
         };
-        let session = Session::spawn(&settings, Size::new(14, 160), Arc::new(|| {})).expect("start a shell");
+        let session =
+            Session::spawn(&settings, Size::new(14, 160), Arc::new(|| {})).expect("start a shell");
 
         // Wait for the shell to actually be there before asking anything about it being gone.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
@@ -1486,7 +1515,11 @@ Start-Sleep -Seconds 900"),
             }
             std::thread::sleep(std::time::Duration::from_millis(250));
         }
-        assert_eq!(shells.len(), 1, "exactly one shell, started by this test and named by its nonce");
+        assert_eq!(
+            shells.len(),
+            1,
+            "exactly one shell, started by this test and named by its nonce"
+        );
         let shell = shells[0];
 
         drop(session);
@@ -1501,7 +1534,12 @@ Start-Sleep -Seconds 900"),
         if survived {
             // Never leave the very thing this test is about behind, whether it passes or fails.
             let _ = std::process::Command::new("powershell.exe")
-                .args(["-NoProfile", "-NonInteractive", "-Command", &format!("Stop-Process -Id {shell} -Force -Confirm:$false")])
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    &format!("Stop-Process -Id {shell} -Force -Confirm:$false"),
+                ])
                 .output();
         }
         assert!(!survived, "the shell outlived the session that started it (pid {shell})");
@@ -1518,12 +1556,20 @@ Start-Sleep -Seconds 900"),
         // nothing with it.
         let settings = SessionSettings {
             shell: Some("pwsh.exe".to_owned()),
-            args: vec!["-NoProfile".to_owned(), "-Command".to_owned(), "Start-Sleep -Seconds 30".to_owned()],
+            args: vec![
+                "-NoProfile".to_owned(),
+                "-Command".to_owned(),
+                "Start-Sleep -Seconds 30".to_owned(),
+            ],
             working_directory: Some(std::env::temp_dir()),
             ..SessionSettings::default()
         };
-        let mut session = Session::spawn(&settings, Size::new(14, 160), Arc::new(|| {})).expect("start a shell");
-        assert!(session.reaper.is_held_by_job(), "the program is in a job that ends with this session");
+        let mut session =
+            Session::spawn(&settings, Size::new(14, 160), Arc::new(|| {})).expect("start a shell");
+        assert!(
+            session.reaper.is_held_by_job(),
+            "the program is in a job that ends with this session"
+        );
         session.kill();
         assert!(!session.reaper.is_holding(), "killing hands the job back");
     }
@@ -1586,12 +1632,16 @@ Start-Sleep -Seconds 900"),
     fn a_shell_that_is_told_to_leave_stops_running() {
         let waker: Waker = Arc::new(|| {});
         let settings = SessionSettings { shell: Some(test_shell()), ..SessionSettings::default() };
-        let mut session = Session::spawn(&settings, Size::new(8, 40), waker).expect("start a shell");
+        let mut session =
+            Session::spawn(&settings, Size::new(8, 40), waker).expect("start a shell");
         session.send(b"exit\r".to_vec());
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
         while session.is_running() {
             session.pump();
-            assert!(std::time::Instant::now() < deadline, "the shell did not stop in thirty seconds");
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the shell did not stop in thirty seconds"
+            );
             std::thread::sleep(std::time::Duration::from_millis(25));
         }
     }
@@ -1811,8 +1861,7 @@ Start-Sleep -Seconds 900"),
         // The hard half of `task-1683` §5.3. What is being checked is that the grid survives: a run
         // tab goes on showing the output of a program that is no longer there, which is what makes
         // the evidence outlive the process.
-        let settings =
-            SessionSettings { shell: Some(test_shell()), ..SessionSettings::default() };
+        let settings = SessionSettings { shell: Some(test_shell()), ..SessionSettings::default() };
         let waker: Waker = Arc::new(|| {});
         let mut session =
             Session::spawn(&settings, Size::new(8, 60), waker).expect("start a shell");

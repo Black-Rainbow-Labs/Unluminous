@@ -66,14 +66,29 @@ fn main() {
             let index = database.search_index(&item.name).expect("asked").expect("a search index");
             println!("\n{} declares {}", item.name, index.summary());
             let table = database.table(schema, &item.name).expect("a table");
-            println!("  columns: {}", table.columns.iter().map(|column| column.name.as_str()).collect::<Vec<_>>().join(", "));
+            println!(
+                "  columns: {}",
+                table
+                    .columns
+                    .iter()
+                    .map(|column| column.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
             println!("  vector columns: {:?}", table.vector_columns);
-            println!("  editable: {} ({})", table.can_be_changed(), table.why_not_changeable().unwrap_or_default());
+            println!(
+                "  editable: {} ({})",
+                table.can_be_changed(),
+                table.why_not_changeable().unwrap_or_default()
+            );
 
             // The vectors themselves, which is what the whole thing is for.
             let statement = format!(
                 "select rowid, {} from {}",
-                unluminous_db::catalog::quoted(table.vector_columns.first().map_or("vector", String::as_str), '"'),
+                unluminous_db::catalog::quoted(
+                    table.vector_columns.first().map_or("vector", String::as_str),
+                    '"'
+                ),
                 unluminous_db::catalog::quoted(&item.name, '"')
             );
             let rows = database.query(&statement, 10).expect("rows");
@@ -92,8 +107,16 @@ fn main() {
                 unluminous_db::catalog::quoted(&item.name, '"')
             );
             match database.query(&asked, 10) {
-                Ok(found) => println!("  match 'release': {} row(s), best rank {}", found.rows.len(),
-                    found.rows.first().and_then(|row| row.get(1)).and_then(Value::text).unwrap_or("-")),
+                Ok(found) => println!(
+                    "  match 'release': {} row(s), best rank {}",
+                    found.rows.len(),
+                    found
+                        .rows
+                        .first()
+                        .and_then(|row| row.get(1))
+                        .and_then(Value::text)
+                        .unwrap_or("-")
+                ),
                 Err(why) => println!("  match 'release' refused: {why}"),
             }
         }

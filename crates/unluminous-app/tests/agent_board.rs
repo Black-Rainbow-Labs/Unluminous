@@ -110,7 +110,8 @@ fn the_agent_is_here(program: &str) -> bool {
 /// naming it is how they say an agent may work there. Without it these tests **skip** and say so, rather than
 /// failing on a question nobody can see.
 fn the_folder_the_agent_may_work_in() -> Option<PathBuf> {
-    let named = std::env::var("UNLUMINOUS_TEST_PROJECT").ok().filter(|value| !value.trim().is_empty());
+    let named =
+        std::env::var("UNLUMINOUS_TEST_PROJECT").ok().filter(|value| !value.trim().is_empty());
     let Some(named) = named else {
         eprintln!(
             "skipped: set UNLUMINOUS_TEST_PROJECT to a folder you have already opened Claude Code in, which is how \
@@ -122,7 +123,10 @@ fn the_folder_the_agent_may_work_in() -> Option<PathBuf> {
     };
     let folder = PathBuf::from(named.trim());
     if !folder.is_dir() {
-        eprintln!("skipped: UNLUMINOUS_TEST_PROJECT names {}, which is not a folder", folder.display());
+        eprintln!(
+            "skipped: UNLUMINOUS_TEST_PROJECT names {}, which is not a folder",
+            folder.display()
+        );
         return None;
     }
     Some(folder)
@@ -151,19 +155,23 @@ struct Bench {
 impl Bench {
     /// Build a board with one sprint, in a folder named after the test.
     fn new(name: &str) -> Self {
-        let folder = std::env::temp_dir().join(format!("unluminous-agent-board-{name}-{}", std::process::id()));
+        let folder = std::env::temp_dir()
+            .join(format!("unluminous-agent-board-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         // The **board** is in a folder of its own, so nothing here touches the board on this machine. The agent
         // works in the folder the operator named, because that is the only folder Claude Code will start in
         // without asking a question nobody can answer. See `the_folder_the_agent_may_work_in`.
         std::fs::create_dir_all(&folder).expect("a folder for the board");
-        let project = the_folder_the_agent_may_work_in().expect("a folder for the agent, checked by the caller");
+        let project = the_folder_the_agent_may_work_in()
+            .expect("a folder for the agent, checked by the caller");
 
         // The board's own settings live in this folder too, so nothing here touches the board on this machine.
         let configuration = Configuration {
             database: Some(folder.join("board.sqlite3")),
             project: Some(project.clone()),
-            model: std::env::var("UNLUMINOUS_TEST_MODEL").ok().filter(|value| !value.trim().is_empty()),
+            model: std::env::var("UNLUMINOUS_TEST_MODEL")
+                .ok()
+                .filter(|value| !value.trim().is_empty()),
             lease_minutes: 45,
             ..Configuration::default()
         };
@@ -199,7 +207,11 @@ impl Bench {
     fn ticket(&mut self, title: &str, description: &str) -> String {
         let store = self.on_disk();
         let sprint = store
-            .create_sprint("Current Sprint", unluminous_app::services::agent_tasks::model::SprintStatus::Active, &now())
+            .create_sprint(
+                "Current Sprint",
+                unluminous_app::services::agent_tasks::model::SprintStatus::Active,
+                &now(),
+            )
             .expect("a sprint");
         let task = store
             .create_task(
@@ -208,7 +220,9 @@ impl Bench {
                     description: description.to_owned(),
                     assignee: Assignee::Claude,
                     sprint_id: Some(sprint.id),
-                    model: std::env::var("UNLUMINOUS_TEST_MODEL").ok().filter(|value| !value.trim().is_empty()),
+                    model: std::env::var("UNLUMINOUS_TEST_MODEL")
+                        .ok()
+                        .filter(|value| !value.trim().is_empty()),
                     ..NewTask::default()
                 },
                 &now(),
@@ -239,7 +253,8 @@ impl Bench {
             }
             // A terminal that has stopped running is given a moment — the answer may already be true and simply
             // not read yet — and then the wait ends.
-            let running = self.board.terminals().iter().any(|terminal| terminal.session.is_running());
+            let running =
+                self.board.terminals().iter().any(|terminal| terminal.session.is_running());
             match (running, gone_since) {
                 (true, _) => gone_since = None,
                 (false, None) => gone_since = Some(Instant::now()),
@@ -266,7 +281,8 @@ impl Bench {
                 terminal.task_id,
                 terminal.session.is_running(),
                 match text.trim().is_empty() {
-                    true => "(nothing at all, so it never started or died before printing)".to_owned(),
+                    true =>
+                        "(nothing at all, so it never started or died before printing)".to_owned(),
                     false => text,
                 }
             );
@@ -278,12 +294,9 @@ impl Bench {
         // started from inside another Claude Code session inherits its child session marker, does not get a
         // conversation of its own, and shows the parent's transcript instead of reading the handoff. Run these from
         // a plain terminal.
-        if self
-            .board
-            .terminals()
-            .iter()
-            .any(|terminal| terminal.session.written_text(Some(60)).contains("Transcript saving is off"))
-        {
+        if self.board.terminals().iter().any(|terminal| {
+            terminal.session.written_text(Some(60)).contains("Transcript saving is off")
+        }) {
             eprintln!(
                 "--- the agent inherited a CLAUDE_CODE_CHILD_SESSION marker, so it did not get a conversation of \
                  its own. These tests have to be run from a plain terminal rather than from inside a Claude Code \
@@ -327,7 +340,10 @@ fn write_a_file(name: &str, line: &str) -> String {
 #[test]
 #[ignore = "starts a real agent: run with --ignored"]
 fn a_ticket_is_claimed_and_the_agent_does_the_work() {
-    if !the_agent_is_here("claude") || !there_is_a_key() || the_folder_the_agent_may_work_in().is_none() {
+    if !the_agent_is_here("claude")
+        || !there_is_a_key()
+        || the_folder_the_agent_may_work_in().is_none()
+    {
         return;
     }
     let mut bench = Bench::new("claimed");
@@ -365,7 +381,10 @@ fn a_ticket_is_claimed_and_the_agent_does_the_work() {
 #[test]
 #[ignore = "starts a real agent: run with --ignored"]
 fn the_board_shows_the_agents_work_while_it_is_happening() {
-    if !the_agent_is_here("claude") || !there_is_a_key() || the_folder_the_agent_may_work_in().is_none() {
+    if !the_agent_is_here("claude")
+        || !there_is_a_key()
+        || the_folder_the_agent_may_work_in().is_none()
+    {
         return;
     }
     let mut bench = Bench::new("live");
@@ -402,7 +421,10 @@ fn the_board_shows_the_agents_work_while_it_is_happening() {
 #[test]
 #[ignore = "starts a real agent: run with --ignored"]
 fn a_comment_reaches_the_agent_and_its_answer_comes_back_on_the_board() {
-    if !the_agent_is_here("claude") || !there_is_a_key() || the_folder_the_agent_may_work_in().is_none() {
+    if !the_agent_is_here("claude")
+        || !there_is_a_key()
+        || the_folder_the_agent_may_work_in().is_none()
+    {
         return;
     }
     let mut bench = Bench::new("comment");
@@ -416,7 +438,9 @@ fn a_comment_reaches_the_agent_and_its_answer_comes_back_on_the_board() {
     // A word nothing else would produce, so an answer holding it is an answer to this.
     let word = format!("pomegranate-{}", std::process::id());
     let ready = bench.wait_for("the agent's prompt", move |board| {
-        board.terminal_for(id).is_some_and(|terminal| terminal.session.written_text(Some(40)).len() > 200)
+        board
+            .terminal_for(id)
+            .is_some_and(|terminal| terminal.session.written_text(Some(40)).len() > 200)
     });
     assert!(ready, "the agent never printed a prompt to type into");
     // The command the modal's own `Send to terminal` runs: the comment is written on the board and typed into the
@@ -425,7 +449,10 @@ fn a_comment_reaches_the_agent_and_its_answer_comes_back_on_the_board() {
         .board
         .command(
             "comment-send",
-            &[key.clone(), format!("Post a comment on this ticket whose body is exactly `{word}`.")],
+            &[
+                key.clone(),
+                format!("Post a comment on this ticket whose body is exactly `{word}`."),
+            ],
         )
         .expect("the comment is posted and typed in");
 
@@ -441,7 +468,9 @@ fn a_comment_reaches_the_agent_and_its_answer_comes_back_on_the_board() {
         let store = bench.on_disk();
         let comments = store.comments(id).expect("the comments");
         assert!(
-            comments.iter().any(|comment| comment.author != Author::Human && comment.body.contains(&word)),
+            comments
+                .iter()
+                .any(|comment| comment.author != Author::Human && comment.body.contains(&word)),
             "the answer is on the board file, not only in the window"
         );
     }
@@ -456,7 +485,10 @@ fn a_comment_reaches_the_agent_and_its_answer_comes_back_on_the_board() {
 #[test]
 #[ignore = "starts a real agent: run with --ignored"]
 fn a_resumed_agent_remembers_the_conversation_even_in_agent_done() {
-    if !the_agent_is_here("claude") || !there_is_a_key() || the_folder_the_agent_may_work_in().is_none() {
+    if !the_agent_is_here("claude")
+        || !there_is_a_key()
+        || the_folder_the_agent_may_work_in().is_none()
+    {
         return;
     }
     let mut bench = Bench::new("resume");
@@ -496,16 +528,21 @@ fn a_resumed_agent_remembers_the_conversation_even_in_agent_done() {
 
     let asked = "What word were you asked to remember? Answer with the word and nothing else.";
     let ready = bench.wait_for("the resumed agent's prompt", move |board| {
-        board.terminal_for(id).is_some_and(|terminal| terminal.session.written_text(Some(40)).len() > 200)
+        board
+            .terminal_for(id)
+            .is_some_and(|terminal| terminal.session.written_text(Some(40)).len() > 200)
     });
     assert!(ready, "the resumed agent never printed a prompt");
     bench.board.send(&key, asked).expect("the question is typed in");
     let remembered = bench.wait_for("the word, out of the resumed conversation", move |board| {
-        board
-            .terminal_for(id)
-            .is_some_and(|terminal| terminal.session.written_text(Some(40)).matches(&word).count() >= 1)
+        board.terminal_for(id).is_some_and(|terminal| {
+            terminal.session.written_text(Some(40)).matches(&word).count() >= 1
+        })
     });
-    assert!(remembered, "the resumed agent did not remember the word, so the conversation was not resumed");
+    assert!(
+        remembered,
+        "the resumed agent did not remember the word, so the conversation was not resumed"
+    );
 }
 
 /// A claim whose lease has expired and whose worker is gone is struck, and the board says so.
@@ -560,7 +597,8 @@ fn a_claim_whose_worker_is_gone_is_struck_and_the_board_says_why() {
 
     // What that means, read off the file rather than off the decision.
     let candidates = bench.on_disk().watchdog_candidates(&now(), 45).expect("the candidates");
-    let after = candidates.iter().find(|card| card.key == key).expect("the ticket is still a candidate");
+    let after =
+        candidates.iter().find(|card| card.key == key).expect("the ticket is still a candidate");
     assert_eq!(after.strikes, 1, "the strike is recorded on the row");
     let card = bench.on_disk().task_by_key(&key).expect("a read").expect("the ticket");
     assert_eq!(card.status, Status::InProgress, "a warning does not move the card");

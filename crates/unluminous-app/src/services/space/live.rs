@@ -195,7 +195,11 @@ impl Live {
     /// edge would move the anchor on the first one and leave every later edge with nothing, so a
     /// terminal wired to two others fed only whichever happened to be first — which is the whole
     /// point of the anchor working, applied to the wrong loop. Found by the `task-1904` review.
-    pub fn carry_the_pipes(&mut self, now: f64, edges: &[(NodeId, NodeId)]) -> Vec<(NodeId, String)> {
+    pub fn carry_the_pipes(
+        &mut self,
+        now: f64,
+        edges: &[(NodeId, NodeId)],
+    ) -> Vec<(NodeId, String)> {
         if edges.is_empty() || now - self.read_at < f64::from(PIPE_INTERVAL) {
             return Vec::new();
         }
@@ -454,11 +458,14 @@ mod tests {
         live.follow_from_here(1);
 
         if let Some(session) = live.terminal_mut(1) {
-            session.feed(b"cargo test
-");
+            session.feed(
+                b"cargo test
+",
+            );
         }
         let sent = live.carry_the_pipes(10.0, &[(1, 2), (1, 3)]);
-        let lines: Vec<(NodeId, String)> = sent.into_iter().filter(|(_, line)| line == "cargo test").collect();
+        let lines: Vec<(NodeId, String)> =
+            sent.into_iter().filter(|(_, line)| line == "cargo test").collect();
         let mut reached: Vec<NodeId> = lines.iter().map(|(to, _)| *to).collect();
         reached.sort_unstable();
         assert_eq!(reached, vec![2, 3], "both wires carried the line");

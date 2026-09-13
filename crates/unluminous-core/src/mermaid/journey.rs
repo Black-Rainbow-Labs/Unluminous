@@ -73,7 +73,10 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
         let Ok(score) = parts[1].trim().parse::<f32>() else {
             return Err(Problem::at(
                 line,
-                format!("`{}` is not a score. It should be a number from one to five.", parts[1].trim()),
+                format!(
+                    "`{}` is not a score. It should be a number from one to five.",
+                    parts[1].trim()
+                ),
             ));
         };
         let actors = parts
@@ -141,13 +144,7 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
 }
 
 /// The coloured band naming each section, over the tasks it holds.
-fn draw_bands(
-    scene: &mut Scene,
-    diagram: &Diagram,
-    lefts: &[f32],
-    band: f32,
-    options: &Options,
-) {
+fn draw_bands(scene: &mut Scene, diagram: &Diagram, lefts: &[f32], band: f32, options: &Options) {
     for (index, name) in diagram.sections.iter().enumerate() {
         let members: Vec<usize> = (0..diagram.tasks.len())
             .filter(|&at| diagram.tasks[at].section == Some(index))
@@ -318,7 +315,8 @@ mod tests {
     fn a_better_score_is_drawn_higher_up_than_a_worse_one() {
         // The whole point of the diagram is that a run of scores reads as a line, so which way up it
         // goes is worth a test of its own.
-        let scene = check::drawn("journey\n Bad: 1: Me\n Good: 5: Me\n", &options(), &["Bad", "Good"]);
+        let scene =
+            check::drawn("journey\n Bad: 1: Me\n Good: 5: Me\n", &options(), &["Bad", "Good"]);
         let marks: Vec<Point> = scene
             .items
             .iter()

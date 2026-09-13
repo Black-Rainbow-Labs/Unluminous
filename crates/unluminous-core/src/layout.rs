@@ -86,8 +86,10 @@ impl PlacedCluster {
 
     /// Moves retained offsets after an incremental edit above this unchanged cluster.
     fn move_bytes(&mut self, shift: impl Fn(usize) -> usize) {
-        self.start = u32::try_from(shift(self.start as usize)).expect("a document offset fits in 32 bits");
-        self.end = u32::try_from(shift(self.end as usize)).expect("a document offset fits in 32 bits");
+        self.start =
+            u32::try_from(shift(self.start as usize)).expect("a document offset fits in 32 bits");
+        self.end =
+            u32::try_from(shift(self.end as usize)).expect("a document offset fits in 32 bits");
     }
 
     pub fn right(&self) -> f32 {
@@ -521,11 +523,7 @@ fn runs_over<'a>(
 /// rather than a walk from byte zero.
 fn style_at<'a>(spans: &[(Range<usize>, &'a CharStyle)], offset: usize) -> CharStyle {
     let index = spans.partition_point(|(range, _)| range.end < offset);
-    spans
-        .get(index)
-        .or_else(|| spans.last())
-        .map(|(_, style)| (*style).clone())
-        .unwrap_or_default()
+    spans.get(index).or_else(|| spans.last()).map(|(_, style)| (*style).clone()).unwrap_or_default()
 }
 
 /// Boil one paragraph's inputs down to a number, so that [`relayout`] can tell whether it changed.
@@ -664,7 +662,11 @@ fn lay_out_paragraph<'a>(
             let start = run_bytes.start + offset;
             buffers.clusters.push((
                 run_index,
-                PlacedCluster::new(cluster, start..start + cluster.len(), metrics.advance(cluster, style)),
+                PlacedCluster::new(
+                    cluster,
+                    start..start + cluster.len(),
+                    metrics.advance(cluster, style),
+                ),
             ));
         }
     }
@@ -772,7 +774,8 @@ fn lay_out_paragraph<'a>(
                 placed_clusters.push(cluster.clone());
                 placed_runs.last_mut().expect("checked").clusters.end += 1;
             } else {
-                let start = u32::try_from(placed_clusters.len()).expect("a line's clusters fit in 32 bits");
+                let start =
+                    u32::try_from(placed_clusters.len()).expect("a line's clusters fit in 32 bits");
                 placed_clusters.push(cluster.clone());
                 placed_runs.push(PlacedRun {
                     style: retained_style(&mut buffers.styles, style),
@@ -1222,59 +1225,98 @@ mod tests {
     #[test]
     fn relayout_agrees_with_layout_after_every_shape_of_edit() {
         let edits: Vec<(&str, Box<dyn Fn(&mut Document)>)> = vec![
-            ("a letter typed in the middle", Box::new(|d: &mut Document| {
-                d.apply(Command::PlaceCaret { offset: 30, extend: false });
-                d.apply(Command::Insert("X".to_owned()));
-            })),
-            ("a letter typed at the very start", Box::new(|d: &mut Document| {
-                d.apply(Command::MoveDocumentStart { extend: false });
-                d.apply(Command::Insert("X".to_owned()));
-            })),
-            ("a letter typed at the very end", Box::new(|d: &mut Document| {
-                d.apply(Command::MoveDocumentEnd { extend: false });
-                d.apply(Command::Insert("X".to_owned()));
-            })),
-            ("a paragraph split in two", Box::new(|d: &mut Document| {
-                d.apply(Command::PlaceCaret { offset: 8, extend: false });
-                d.apply(Command::Insert("\n".to_owned()));
-            })),
-            ("a paragraph joined to the one before it", Box::new(|d: &mut Document| {
-                d.apply(Command::PlaceCaret { offset: 20, extend: false });
-                d.apply(Command::DeleteBackward);
-            })),
-            ("the empty paragraph taken away", Box::new(|d: &mut Document| {
-                d.apply(Command::PlaceCaret { offset: 106, extend: false });
-                d.apply(Command::PlaceCaret { offset: 107, extend: true });
-                d.apply(Command::DeleteBackward);
-            })),
-            ("a long stretch deleted", Box::new(|d: &mut Document| {
-                d.apply(Command::PlaceCaret { offset: 5, extend: false });
-                d.apply(Command::PlaceCaret { offset: 70, extend: true });
-                d.apply(Command::DeleteBackward);
-            })),
-            ("everything replaced", Box::new(|d: &mut Document| {
-                d.apply(Command::SelectAll);
-                d.apply(Command::Insert("one\ntwo\nthree".to_owned()));
-            })),
-            ("everything deleted", Box::new(|d: &mut Document| {
-                d.apply(Command::SelectAll);
-                d.apply(Command::DeleteBackward);
-            })),
-            ("a word made bold", Box::new(|d: &mut Document| {
-                d.apply(Command::PlaceCaret { offset: 60, extend: false });
-                d.apply(Command::PlaceCaret { offset: 66, extend: true });
-                d.apply(Command::ToggleBold);
-            })),
-            ("a paragraph centred", Box::new(|d: &mut Document| {
-                d.apply(Command::PlaceCaret { offset: 2, extend: false });
-                d.apply(Command::SetAlign(Align::Center));
-            })),
-            ("the whole document coloured again", Box::new(|d: &mut Document| {
-                d.set_syntax(Color::WHITE, &[(0..3, Color::BLUE), (10..14, Color::GREEN)]);
-            })),
-            ("the font changed everywhere", Box::new(|d: &mut Document| {
-                d.set_base_style(StyleChange::size(24.0));
-            })),
+            (
+                "a letter typed in the middle",
+                Box::new(|d: &mut Document| {
+                    d.apply(Command::PlaceCaret { offset: 30, extend: false });
+                    d.apply(Command::Insert("X".to_owned()));
+                }),
+            ),
+            (
+                "a letter typed at the very start",
+                Box::new(|d: &mut Document| {
+                    d.apply(Command::MoveDocumentStart { extend: false });
+                    d.apply(Command::Insert("X".to_owned()));
+                }),
+            ),
+            (
+                "a letter typed at the very end",
+                Box::new(|d: &mut Document| {
+                    d.apply(Command::MoveDocumentEnd { extend: false });
+                    d.apply(Command::Insert("X".to_owned()));
+                }),
+            ),
+            (
+                "a paragraph split in two",
+                Box::new(|d: &mut Document| {
+                    d.apply(Command::PlaceCaret { offset: 8, extend: false });
+                    d.apply(Command::Insert("\n".to_owned()));
+                }),
+            ),
+            (
+                "a paragraph joined to the one before it",
+                Box::new(|d: &mut Document| {
+                    d.apply(Command::PlaceCaret { offset: 20, extend: false });
+                    d.apply(Command::DeleteBackward);
+                }),
+            ),
+            (
+                "the empty paragraph taken away",
+                Box::new(|d: &mut Document| {
+                    d.apply(Command::PlaceCaret { offset: 106, extend: false });
+                    d.apply(Command::PlaceCaret { offset: 107, extend: true });
+                    d.apply(Command::DeleteBackward);
+                }),
+            ),
+            (
+                "a long stretch deleted",
+                Box::new(|d: &mut Document| {
+                    d.apply(Command::PlaceCaret { offset: 5, extend: false });
+                    d.apply(Command::PlaceCaret { offset: 70, extend: true });
+                    d.apply(Command::DeleteBackward);
+                }),
+            ),
+            (
+                "everything replaced",
+                Box::new(|d: &mut Document| {
+                    d.apply(Command::SelectAll);
+                    d.apply(Command::Insert("one\ntwo\nthree".to_owned()));
+                }),
+            ),
+            (
+                "everything deleted",
+                Box::new(|d: &mut Document| {
+                    d.apply(Command::SelectAll);
+                    d.apply(Command::DeleteBackward);
+                }),
+            ),
+            (
+                "a word made bold",
+                Box::new(|d: &mut Document| {
+                    d.apply(Command::PlaceCaret { offset: 60, extend: false });
+                    d.apply(Command::PlaceCaret { offset: 66, extend: true });
+                    d.apply(Command::ToggleBold);
+                }),
+            ),
+            (
+                "a paragraph centred",
+                Box::new(|d: &mut Document| {
+                    d.apply(Command::PlaceCaret { offset: 2, extend: false });
+                    d.apply(Command::SetAlign(Align::Center));
+                }),
+            ),
+            (
+                "the whole document coloured again",
+                Box::new(|d: &mut Document| {
+                    d.set_syntax(Color::WHITE, &[(0..3, Color::BLUE), (10..14, Color::GREEN)]);
+                }),
+            ),
+            (
+                "the font changed everywhere",
+                Box::new(|d: &mut Document| {
+                    d.set_base_style(StyleChange::size(24.0));
+                }),
+            ),
             ("nothing at all", Box::new(|_d: &mut Document| {})),
         ];
 
@@ -1317,8 +1359,15 @@ mod tests {
     fn relayout_at_another_width_lays_the_whole_thing_out_again() {
         let (rope, spans, paragraphs) = a_document_of_every_shape();
         let narrow = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 200.0);
-        let wide =
-            relayout(narrow, &rope, &spans, &paragraphs, &FixedMetrics::default(), 600.0, &Hidden::none());
+        let wide = relayout(
+            narrow,
+            &rope,
+            &spans,
+            &paragraphs,
+            &FixedMetrics::default(),
+            600.0,
+            &Hidden::none(),
+        );
         let fresh = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 600.0);
         assert_eq!(wide, fresh);
     }
@@ -1368,15 +1417,12 @@ mod tests {
     fn an_edit_measures_the_paragraph_it_touched_and_not_the_document() {
         let metrics = Counting::new();
         let mut document = Document::from_text(
-            &(0..400).map(|i| format!("paragraph number {i}, with a few words in it\n")).collect::<String>(),
+            &(0..400)
+                .map(|i| format!("paragraph number {i}, with a few words in it\n"))
+                .collect::<String>(),
         );
-        let laid = layout(
-            document.text(),
-            document.chars(),
-            document.paragraphs(),
-            &metrics,
-            2000.0,
-        );
+        let laid =
+            layout(document.text(), document.chars(), document.paragraphs(), &metrics, 2000.0);
         let whole = metrics.since();
         assert!(whole > 15_000, "the fixture should be big enough to matter: {whole} clusters");
 
@@ -1417,7 +1463,11 @@ mod tests {
             "splitting a paragraph renumbers the ones below it but lays none of them out again: \
              {touched} clusters were measured"
         );
-        assert_eq!(split.lines.len(), 402, "four hundred paragraphs, one split, and the last empty one");
+        assert_eq!(
+            split.lines.len(),
+            402,
+            "four hundred paragraphs, one split, and the last empty one"
+        );
     }
 
     /// A layout that has never been laid out — the one a tab starts with — is a valid thing to hand
@@ -1425,8 +1475,15 @@ mod tests {
     #[test]
     fn relayout_from_nothing_is_a_full_layout() {
         let (rope, spans, paragraphs) = a_document_of_every_shape();
-        let built =
-            relayout(Layout::default(), &rope, &spans, &paragraphs, &FixedMetrics::default(), 200.0, &Hidden::none());
+        let built = relayout(
+            Layout::default(),
+            &rope,
+            &spans,
+            &paragraphs,
+            &FixedMetrics::default(),
+            200.0,
+            &Hidden::none(),
+        );
         let fresh = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 200.0);
         assert_eq!(built, fresh);
     }
@@ -1478,7 +1535,11 @@ mod tests {
         let text: String = (0..500).map(|i| format!("line number {i}\n")).collect();
         let (rope, spans, paragraphs) = fixture(&text);
         let laid = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 1000.0);
-        assert_eq!(laid.lines.len(), 501, "five hundred lines and the empty one after the last break");
+        assert_eq!(
+            laid.lines.len(),
+            501,
+            "five hundred lines and the empty one after the last break"
+        );
 
         // Every line is 20 tall, so a window 700 tall shows 35 of them.
         let visible = laid.visible_lines(0.0, 700.0);
@@ -1658,7 +1719,10 @@ mod tests {
                 .filter(|c| !c.is_blank())
                 .map(PlacedCluster::right)
                 .fold(0.0_f32, f32::max);
-            assert!((right - 90.0).abs() < 0.01, "a justified line should reach the full width, got {right}");
+            assert!(
+                (right - 90.0).abs() < 0.01,
+                "a justified line should reach the full width, got {right}"
+            );
         }
         let last = result.lines.last().expect("at least one line");
         assert_eq!(last.left(), 0.0, "the last line of a justified paragraph is left aligned");
@@ -1865,9 +1929,11 @@ mod tests {
     #[test]
     fn asking_for_a_height_shorter_than_the_letters_changes_nothing() {
         let (rope, spans, mut paragraphs) = fixture("words");
-        let natural = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 400.0).lines[0].height;
+        let natural =
+            layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 400.0).lines[0].height;
         paragraphs.set(0..1, |style| style.min_height = 1.0);
-        let asked = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 400.0).lines[0].height;
+        let asked =
+            layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 400.0).lines[0].height;
         assert_eq!(asked, natural, "it is a floor, never a ceiling");
     }
 
@@ -1875,8 +1941,12 @@ mod tests {
     fn only_the_lines_between_two_heights_are_reported_as_visible() {
         // Ten lines of three letters, each 20 tall by FixedMetrics, so line n covers y 20n to 20n+20
         // and holds bytes 4n to 4n+3 with the line break after it.
-        let (rope, spans, paragraphs) = fixture("abc
-".repeat(10).trim_end());
+        let (rope, spans, paragraphs) = fixture(
+            "abc
+"
+            .repeat(10)
+            .trim_end(),
+        );
         let result = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 1000.0);
         assert_eq!(result.lines.len(), 10);
 
@@ -1895,8 +1965,12 @@ mod tests {
     #[test]
     fn an_anchor_says_which_line_was_being_looked_at_and_where_in_it() {
         // Ten lines of three letters, 20 tall each by FixedMetrics, holding bytes 4n to 4n+3.
-        let (rope, spans, paragraphs) = fixture(&"abc
-".repeat(10).trim_end());
+        let (rope, spans, paragraphs) = fixture(
+            &"abc
+"
+            .repeat(10)
+            .trim_end(),
+        );
         let laid = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 1000.0);
 
         let top = laid.anchor_at_y(0.0);
@@ -1921,10 +1995,8 @@ the fourth line";
         let rope = Rope::from_str(text);
         let paragraphs = ParagraphStyles::new(rope.len_lines());
         let at = |size: f32| {
-            let spans = StyleSpans::new(
-                rope.len_bytes(),
-                CharStyle { size, ..CharStyle::default() },
-            );
+            let spans =
+                StyleSpans::new(rope.len_bytes(), CharStyle { size, ..CharStyle::default() });
             layout(&rope, &spans, &paragraphs, &ScaledMetrics, 1000.0)
         };
         let small = at(12.0);
@@ -1964,9 +2036,11 @@ the fourth line";
         assert_eq!(wide.y_of_anchor(middle), 0.0, "it is all one line at the wider size");
 
         // And an empty paragraph, whose line starts where it ends, is still a line of its own.
-        let (rope, spans, paragraphs) = fixture("abc
+        let (rope, spans, paragraphs) = fixture(
+            "abc
 
-def");
+def",
+        );
         let laid = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 1000.0);
         let blank = laid.anchor_at_y(laid.lines[1].y);
         assert_eq!(laid.y_of_anchor(blank), laid.lines[1].y, "the empty line between the two");
@@ -2164,10 +2238,15 @@ def");
         after.compact_capacity();
         assert_eq!(after, before, "compaction is a change of capacity and of nothing else");
         assert_eq!(after.lines.capacity(), after.lines.len());
-        let headroom: usize = before.lines.iter().map(|line| line.runs.capacity() - line.runs.len()).sum();
+        let headroom: usize =
+            before.lines.iter().map(|line| line.runs.capacity() - line.runs.len()).sum();
         assert!(headroom > 0, "the fixture is meant to have headroom to release");
         for line in &after.lines {
-            assert_eq!(line.runs.capacity(), line.runs.len(), "a compacted line keeps no run headroom");
+            assert_eq!(
+                line.runs.capacity(),
+                line.runs.len(),
+                "a compacted line keeps no run headroom"
+            );
             assert_eq!(line.cluster_capacity(), line.clusters().count());
         }
     }
@@ -2183,7 +2262,8 @@ def");
         compacted.compact_capacity();
         let edited = format!("X{source}");
         let (rope, spans, paragraphs) = fixture(&edited);
-        let carried = relayout(compacted, &rope, &spans, &paragraphs, &metrics, 200.0, &Hidden::none());
+        let carried =
+            relayout(compacted, &rope, &spans, &paragraphs, &metrics, 200.0, &Hidden::none());
         assert_eq!(carried, layout(&rope, &spans, &paragraphs, &metrics, 200.0));
     }
 }

@@ -110,11 +110,17 @@ fn header(ui: &mut egui::Ui, area: Rect, state: &mut PluginsState, plugins: &Plu
                 egui::StrokeKind::Inside,
             );
         } else if response.hovered() {
-            ui.painter().rect_filled(rect, CornerRadius::same(size::CONTROL_CORNER), color::control());
+            ui.painter().rect_filled(
+                rect,
+                CornerRadius::same(size::CONTROL_CORNER),
+                color::control(),
+            );
         }
         let tint = if chosen { color::text_strong() } else { color::text_control() };
         modal::label(ui.painter(), rect, rect.left() + 12.0, &label, tint, 12.0);
-        response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, name));
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, name)
+        });
         if response.clicked() {
             state.tab = tab;
             state.chosen = None;
@@ -122,7 +128,8 @@ fn header(ui: &mut egui::Ui, area: Rect, state: &mut PluginsState, plugins: &Plu
         pen += width + 8.0;
     }
 
-    let search = Rect::from_min_size(Pos2::new(area.left() + 20.0, top + 30.0), Vec2::new(LIST, 26.0));
+    let search =
+        Rect::from_min_size(Pos2::new(area.left() + 20.0, top + 30.0), Vec2::new(LIST, 26.0));
     ui.painter().rect(
         search,
         CornerRadius::same(size::CONTROL_CORNER),
@@ -130,7 +137,11 @@ fn header(ui: &mut egui::Ui, area: Rect, state: &mut PluginsState, plugins: &Plu
         Stroke::new(1.0, color::control_border()),
         egui::StrokeKind::Inside,
     );
-    icon::magnifier(ui.painter(), Pos2::new(search.left() + 13.0, search.center().y), color::text_faint());
+    icon::magnifier(
+        ui.painter(),
+        Pos2::new(search.left() + 13.0, search.center().y),
+        color::text_faint(),
+    );
     let search_id = ui.id().with("plugins-search");
     let text_rect =
         crate::components::controls::field_takes_the_whole_rectangle(ui, search, 26.0, search_id);
@@ -184,7 +195,9 @@ fn list_of_plugins(
     egui::ScrollArea::vertical().id_salt("plugin-list").show(&mut child, |ui| {
         if showing.is_empty() {
             ui.add_space(8.0);
-            ui.label(egui::RichText::new("  Nothing matches.").size(11.5).color(color::text_faint()));
+            ui.label(
+                egui::RichText::new("  Nothing matches.").size(11.5).color(color::text_faint()),
+            );
         }
         for plugin in &showing {
             let picked = state.chosen.as_deref() == Some(plugin.id.as_str());
@@ -195,7 +208,11 @@ fn list_of_plugins(
             let label = name.clone();
             let response = row(ui, &plugin.id, &label, picked, move |painter, rect| {
                 if let Some(picture) = &picture {
-                    crate::services::icons::draw(painter, Pos2::new(rect.left() + 22.0, rect.center().y), picture);
+                    crate::services::icons::draw(
+                        painter,
+                        Pos2::new(rect.left() + 22.0, rect.center().y),
+                        picture,
+                    );
                 }
                 let tint = if picked { color::text_strong() } else { color::text_control() };
                 modal::label(painter, rect, rect.left() + 40.0, &name, tint, 12.5);
@@ -205,8 +222,10 @@ fn list_of_plugins(
                 );
                 modal::label(painter, lower, rect.left() + 40.0, &under, color::text_faint(), 10.5);
                 if enabled {
-                    let box_rect =
-                        Rect::from_center_size(Pos2::new(rect.right() - 20.0, rect.center().y), Vec2::splat(15.0));
+                    let box_rect = Rect::from_center_size(
+                        Pos2::new(rect.right() - 20.0, rect.center().y),
+                        Vec2::splat(15.0),
+                    );
                     painter.rect_filled(box_rect, CornerRadius::same(3), color::accent());
                     icon::tick(painter, box_rect.center(), color::text_strong());
                 }
@@ -258,7 +277,11 @@ fn detail(
 ) {
     let mut pen = area.top();
     if let Some(picture) = icon_for(&plugin.id) {
-        crate::services::icons::draw(ui.painter(), Pos2::new(area.left() + 10.0, pen + 10.0), &picture);
+        crate::services::icons::draw(
+            ui.painter(),
+            Pos2::new(area.left() + 10.0, pen + 10.0),
+            &picture,
+        );
     }
     let title = ui.painter().layout_no_wrap(
         plugin.name.clone(),

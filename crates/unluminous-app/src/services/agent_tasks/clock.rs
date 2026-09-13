@@ -17,7 +17,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// refused to write a comment because the machine's clock was wrong would be worse than a comment with
 /// an odd date on it.
 pub fn now() -> String {
-    let seconds = SystemTime::now().duration_since(UNIX_EPOCH).map(|since| since.as_secs()).unwrap_or(0);
+    let seconds =
+        SystemTime::now().duration_since(UNIX_EPOCH).map(|since| since.as_secs()).unwrap_or(0);
     from_unix(seconds as i64)
 }
 
@@ -40,7 +41,12 @@ pub fn to_unix(text: &str) -> Option<i64> {
         return None;
     }
     // The separators are checked, because `2026x08x29` parsed perfectly well before and meant nothing.
-    if bytes[4] != b'-' || bytes[7] != b'-' || bytes[10] != b'T' || bytes[13] != b':' || bytes[16] != b':' {
+    if bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || bytes[10] != b'T'
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+    {
         return None;
     }
     let number = |from: usize, to: usize| -> Option<i64> {
@@ -190,9 +196,18 @@ mod tests {
     #[test]
     fn a_leap_day_and_a_century_are_both_right() {
         // 2000 is a leap year and 1900 is not, which is the case a naive rule gets wrong.
-        assert_eq!(from_unix(to_unix("2000-02-29T12:00:00Z").expect("a leap day")), "2000-02-29T12:00:00Z");
-        assert_eq!(from_unix(to_unix("2024-12-31T23:59:59Z").expect("new year's eve")), "2024-12-31T23:59:59Z");
-        assert_eq!(from_unix(to_unix("2100-03-01T00:00:00Z").expect("after a non leap century")), "2100-03-01T00:00:00Z");
+        assert_eq!(
+            from_unix(to_unix("2000-02-29T12:00:00Z").expect("a leap day")),
+            "2000-02-29T12:00:00Z"
+        );
+        assert_eq!(
+            from_unix(to_unix("2024-12-31T23:59:59Z").expect("new year's eve")),
+            "2024-12-31T23:59:59Z"
+        );
+        assert_eq!(
+            from_unix(to_unix("2100-03-01T00:00:00Z").expect("after a non leap century")),
+            "2100-03-01T00:00:00Z"
+        );
     }
 
     #[test]
@@ -212,26 +227,33 @@ mod tests {
         for refused in [
             "",
             "yesterday",
-            "2026-13-01T00:00:00Z",   // there is no thirteenth month
-            "2026-08-00T00:00:00Z",   // there is no zeroth day
-            "2026-02-30T00:00:00Z",   // February never has thirty days
-            "2026-02-29T00:00:00Z",   // and 2026 is not a leap year
-            "2026-04-31T00:00:00Z",   // April has thirty
-            "2026-08-29T24:00:00Z",   // there is no twenty-fourth hour
-            "2026-08-29T22:60:00Z",   // nor a sixtieth minute
-            "2026-08-29T22:49:60Z",   // nor a sixtieth second
-            "2026x08x29T22:49:26Z",   // the separators are checked
-            "2026-08-29 22:49:26",    // and the `T` is one of them
-            "2026-+8-29T22:49:26Z",   // a sign in a fixed width field is not a number
-            "2026-08-29T22:49:26+2",  // a partial offset says nothing
-            "2026-08-29T22:49:26*",   // and neither does that
+            "2026-13-01T00:00:00Z",  // there is no thirteenth month
+            "2026-08-00T00:00:00Z",  // there is no zeroth day
+            "2026-02-30T00:00:00Z",  // February never has thirty days
+            "2026-02-29T00:00:00Z",  // and 2026 is not a leap year
+            "2026-04-31T00:00:00Z",  // April has thirty
+            "2026-08-29T24:00:00Z",  // there is no twenty-fourth hour
+            "2026-08-29T22:60:00Z",  // nor a sixtieth minute
+            "2026-08-29T22:49:60Z",  // nor a sixtieth second
+            "2026x08x29T22:49:26Z",  // the separators are checked
+            "2026-08-29 22:49:26",   // and the `T` is one of them
+            "2026-+8-29T22:49:26Z",  // a sign in a fixed width field is not a number
+            "2026-08-29T22:49:26+2", // a partial offset says nothing
+            "2026-08-29T22:49:26*",  // and neither does that
         ] {
             assert_eq!(to_unix(refused), None, "`{refused}` should be refused");
         }
         // The leap day rule in full, in both directions.
         assert!(to_unix("2024-02-29T00:00:00Z").is_some(), "2024 is a leap year");
-        assert!(to_unix("2000-02-29T00:00:00Z").is_some(), "2000 is, because of the four hundred rule");
-        assert_eq!(to_unix("1900-02-29T00:00:00Z"), None, "1900 is not, because of the hundred rule");
+        assert!(
+            to_unix("2000-02-29T00:00:00Z").is_some(),
+            "2000 is, because of the four hundred rule"
+        );
+        assert_eq!(
+            to_unix("1900-02-29T00:00:00Z"),
+            None,
+            "1900 is not, because of the hundred rule"
+        );
     }
 
     #[test]

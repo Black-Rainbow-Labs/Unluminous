@@ -12,13 +12,13 @@
 use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::components::controls;
-use crate::components::modal;
 use crate::components::mcp_page::{self, McpState};
+use crate::components::modal;
 use crate::components::plugins_page::{self, PluginsOutcome, PluginsState};
 use crate::services::plugins::Plugins;
-use crate::settings::{UpdateCheck, LineEndings, 
-    Page, Settings, Suggestions, ValueTooltip, FONT_SIZES, MIN_OPACITY, TERMINAL_FONT_SIZES,
-    UI_FONT_SIZES,
+use crate::settings::{
+    LineEndings, Page, Settings, Suggestions, UpdateCheck, ValueTooltip, FONT_SIZES, MIN_OPACITY,
+    TERMINAL_FONT_SIZES, UI_FONT_SIZES,
 };
 use crate::theme::{color, icon, size};
 
@@ -110,23 +110,24 @@ pub fn show(
     // through egui's own layout, so the columns line up with the design. `components::modal` is what
     // decides how large that rectangle is and where it sits, which is also what makes the Settings
     // window draggable and resizable along with every other modal.
-    let (inner, should_close) = modal::show(ctx, "unluminous-settings", WIDTH, HEIGHT, |ui, area| {
-        contents(
-            ui,
-            area,
-            state,
-            settings,
-            families,
-            project,
-            plugins,
-            mcp_running,
-            unluminous_cli,
-            installed_on_disk,
-            icon_for,
-            plugin_pages,
-            plugin_page,
-        )
-    });
+    let (inner, should_close) =
+        modal::show(ctx, "unluminous-settings", WIDTH, HEIGHT, |ui, area| {
+            contents(
+                ui,
+                area,
+                state,
+                settings,
+                families,
+                project,
+                plugins,
+                mcp_running,
+                unluminous_cli,
+                installed_on_disk,
+                icon_for,
+                plugin_pages,
+                plugin_page,
+            )
+        });
 
     outcome.changed = inner.changed;
     let inner_closed = inner.closed;
@@ -164,11 +165,7 @@ fn contents(
     // The heading, which names the project the way the reference editor's does.
     let header = Rect::from_min_size(area.min, Vec2::new(area.width(), HEADER));
     let painter = ui.painter_at(area);
-    painter.rect_filled(
-        header,
-        CornerRadius { nw: 10, ne: 10, sw: 0, se: 0 },
-        color::title_bar(),
-    );
+    painter.rect_filled(header, CornerRadius { nw: 10, ne: 10, sw: 0, se: 0 }, color::title_bar());
     let title = if project.is_empty() {
         "Settings".to_owned()
     } else {
@@ -224,9 +221,15 @@ fn contents(
             outcome.changed |= terminal_page(ui, page_area, settings);
         }
         Page::Mcp => {
-            outcome.changed |=
-                mcp_page::show(ui, page_area, &mut state.mcp, settings, mcp_running, unluminous_cli)
-                    .changed;
+            outcome.changed |= mcp_page::show(
+                ui,
+                page_area,
+                &mut state.mcp,
+                settings,
+                mcp_running,
+                unluminous_cli,
+            )
+            .changed;
         }
         // A contributed page is drawn by its own plugin. The window hands over a closure that can reach
         // the provider, and it is called here rather than after this function returns, because the modal
@@ -267,12 +270,7 @@ fn contents(
 }
 
 /// The search box and the list of pages, grouped under their headings.
-fn show_list(
-    ui: &mut egui::Ui,
-    area: Rect,
-    state: &mut SettingsWindow,
-    plugin_pages: &[String],
-) {
+fn show_list(ui: &mut egui::Ui, area: Rect, state: &mut SettingsWindow, plugin_pages: &[String]) {
     let search = Rect::from_min_size(
         Pos2::new(area.left() + 12.0, area.top() + 12.0),
         Vec2::new(area.width() - 24.0, 26.0),
@@ -285,7 +283,11 @@ fn show_list(
         Stroke::new(1.0, color::divider()),
         egui::StrokeKind::Inside,
     );
-    icon::magnifier(&painter, Pos2::new(search.left() + 13.0, search.center().y), color::text_faint());
+    icon::magnifier(
+        &painter,
+        Pos2::new(search.left() + 13.0, search.center().y),
+        color::text_faint(),
+    );
     let search_id = ui.id().with("settings-search");
     let text_rect =
         crate::components::controls::field_takes_the_whole_rectangle(ui, search, 26.0, search_id);
@@ -347,7 +349,11 @@ fn show_list(
             egui::FontId::proportional(11.5),
             color::text_faint(),
         );
-        ui.painter_at(area).galley(Pos2::new(area.left() + 30.0, pen + 4.0), galley, color::text_faint());
+        ui.painter_at(area).galley(
+            Pos2::new(area.left() + 30.0, pen + 4.0),
+            galley,
+            color::text_faint(),
+        );
     }
 }
 
@@ -377,7 +383,8 @@ fn matches_search(page: Page, title: &str, search: &str) -> bool {
 }
 
 fn page_row(ui: &mut egui::Ui, row: Rect, title: &str, chosen: bool, indent: f32) -> bool {
-    let response = ui.interact(row, ui.id().with(("settings-page", title.to_owned())), Sense::click());
+    let response =
+        ui.interact(row, ui.id().with(("settings-page", title.to_owned())), Sense::click());
     let pill = row.shrink2(Vec2::new(8.0, 1.0));
     if chosen {
         ui.painter().rect_filled(pill, CornerRadius::same(5), color::selected_row());
@@ -385,11 +392,8 @@ fn page_row(ui: &mut egui::Ui, row: Rect, title: &str, chosen: bool, indent: f32
         ui.painter().rect_filled(pill, CornerRadius::same(5), color::control());
     }
     let tint = if chosen { color::text_strong() } else { color::text_control() };
-    let galley = ui.painter().layout_no_wrap(
-        title.to_owned(),
-        egui::FontId::proportional(12.5),
-        tint,
-    );
+    let galley =
+        ui.painter().layout_no_wrap(title.to_owned(), egui::FontId::proportional(12.5), tint);
     ui.painter().galley(
         Pos2::new(row.left() + indent, row.center().y - galley.size().y / 2.0),
         galley,
@@ -489,7 +493,10 @@ fn appearance_page(
     };
     if let Some(chosen) = controls::dropdown(
         ui,
-        Rect::from_min_size(Pos2::new(area.left() + 130.0, ui_font_row.top()), Vec2::new(240.0, 28.0)),
+        Rect::from_min_size(
+            Pos2::new(area.left() + 130.0, ui_font_row.top()),
+            Vec2::new(240.0, 28.0),
+        ),
         &ui_family,
         "Interface font family",
         None,
@@ -514,7 +521,10 @@ fn appearance_page(
     label(ui, area, ui_size_row, "Size:");
     if let Some(chosen) = controls::dropdown(
         ui,
-        Rect::from_min_size(Pos2::new(area.left() + 130.0, ui_size_row.top()), Vec2::new(96.0, 28.0)),
+        Rect::from_min_size(
+            Pos2::new(area.left() + 130.0, ui_size_row.top()),
+            Vec2::new(96.0, 28.0),
+        ),
         &format!("{:.1}", settings.ui_font_size),
         "Interface font size",
         None,
@@ -551,9 +561,7 @@ fn appearance_page(
     slider_ui.spacing_mut().slider_width = 220.0;
     let percent = format!("{:.0}%", settings.opacity * 100.0);
     let response = slider_ui.add(
-        egui::Slider::new(&mut settings.opacity, MIN_OPACITY..=1.0)
-            .show_value(false)
-            .text(percent),
+        egui::Slider::new(&mut settings.opacity, MIN_OPACITY..=1.0).show_value(false).text(percent),
     );
     // The slider's own accessible name is the number, so it is named here for a test to find it.
     response.widget_info(|| {
@@ -683,7 +691,10 @@ fn theme_page(
     };
     if let Some(picked) = controls::dropdown(
         ui,
-        Rect::from_min_size(Pos2::new(area.left() + 130.0, icons_row.top()), Vec2::new(200.0, 28.0)),
+        Rect::from_min_size(
+            Pos2::new(area.left() + 130.0, icons_row.top()),
+            Vec2::new(200.0, 28.0),
+        ),
         &shown,
         "Icon set",
         None,
@@ -743,17 +754,31 @@ fn theme_row(
     }
     let tint = if chosen { color::text_strong() } else { color::text_control() };
     let galley = painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), tint);
-    painter.galley(Pos2::new(row.left() + 10.0, row.center().y - galley.size().y / 2.0), galley.clone(), tint);
+    painter.galley(
+        Pos2::new(row.left() + 10.0, row.center().y - galley.size().y / 2.0),
+        galley.clone(),
+        tint,
+    );
     // Where it came from, in the faintest colour, so a bundle's five and Unluminous's own are told apart.
-    let from = painter.layout_no_wrap(plugin.to_owned(), egui::FontId::proportional(11.0), color::text_faint());
+    let from = painter.layout_no_wrap(
+        plugin.to_owned(),
+        egui::FontId::proportional(11.0),
+        color::text_faint(),
+    );
     painter.galley(
         Pos2::new(row.left() + 20.0 + galley.size().x, row.center().y - from.size().y / 2.0),
         from,
         color::text_faint(),
     );
     // The colours it is made of, right aligned, so the list can be read as a set of palettes.
-    let swatches =
-        [palette.editor, palette.explorer, palette.accent, palette.git_added, palette.unsaved, palette.close];
+    let swatches = [
+        palette.editor,
+        palette.explorer,
+        palette.accent,
+        palette.git_added,
+        palette.unsaved,
+        palette.close,
+    ];
     for (index, colour) in swatches.iter().enumerate() {
         let at = Rect::from_center_size(
             Pos2::new(row.right() - 14.0 - (5 - index) as f32 * 18.0, row.center().y),
@@ -786,7 +811,8 @@ fn swatch_button(
     follow: bool,
 ) -> bool {
     let area = Rect::from_center_size(centre, Vec2::splat(24.0));
-    let response = ui.interact(area, ui.id().with(("accent", name)), Sense::click()).on_hover_text(name);
+    let response =
+        ui.interact(area, ui.id().with(("accent", name)), Sense::click()).on_hover_text(name);
     let painter = ui.painter_at(area);
     if follow {
         painter.circle_stroke(centre, 8.0, Stroke::new(2.0, colour));
@@ -828,8 +854,7 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> bool {
     let row = row_at(area, pen);
     let mut automatic = settings.suggestions.is_automatic();
     if checkbox(ui, row, "Suggest completions as you type", &mut automatic) {
-        settings.suggestions =
-            if automatic { Suggestions::Automatic } else { Suggestions::Manual };
+        settings.suggestions = if automatic { Suggestions::Automatic } else { Suggestions::Manual };
         changed = true;
     }
     pen += 32.0;
@@ -864,7 +889,10 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> bool {
     label(ui, area, ending_row, "Line endings:");
     if let Some(chosen) = controls::dropdown(
         ui,
-        Rect::from_min_size(Pos2::new(area.left() + 130.0, ending_row.top()), Vec2::new(180.0, 28.0)),
+        Rect::from_min_size(
+            Pos2::new(area.left() + 130.0, ending_row.top()),
+            Vec2::new(180.0, 28.0),
+        ),
         line_ending_name(settings.line_endings),
         "Line endings",
         None,
@@ -926,8 +954,7 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> bool {
     let row = row_at(area, pen);
     let mut at_start = settings.update_check.at_start();
     if checkbox(ui, row, "Check for a newer version at startup", &mut at_start) {
-        settings.update_check =
-            if at_start { UpdateCheck::Start } else { UpdateCheck::Off };
+        settings.update_check = if at_start { UpdateCheck::Start } else { UpdateCheck::Off };
         changed = true;
     }
     pen += 32.0;
@@ -954,7 +981,8 @@ fn line_ending_name(endings: LineEndings) -> &'static str {
 
 /// A tick box with its label to the right of it, drawn the way every other control here is.
 pub(crate) fn checkbox(ui: &mut egui::Ui, row: Rect, name: &str, value: &mut bool) -> bool {
-    let box_rect = Rect::from_min_size(Pos2::new(row.left(), row.center().y - 8.0), Vec2::splat(16.0));
+    let box_rect =
+        Rect::from_min_size(Pos2::new(row.left(), row.center().y - 8.0), Vec2::splat(16.0));
     let response = ui.interact(row, ui.id().with(("settings-check", name)), Sense::click());
     let painter = ui.painter();
     painter.rect(
@@ -967,8 +995,11 @@ pub(crate) fn checkbox(ui: &mut egui::Ui, row: Rect, name: &str, value: &mut boo
     if *value {
         icon::tick(painter, box_rect.center(), color::text_strong());
     }
-    let galley =
-        painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), color::text_control());
+    let galley = painter.layout_no_wrap(
+        name.to_owned(),
+        egui::FontId::proportional(12.5),
+        color::text_control(),
+    );
     painter.galley(
         Pos2::new(box_rect.right() + 10.0, row.center().y - galley.size().y / 2.0),
         galley,
@@ -1070,7 +1101,11 @@ pub(crate) fn breadcrumb(ui: &mut egui::Ui, area: Rect, page: Page) -> f32 {
             egui::FontId::proportional(13.5),
             color::text_strong(),
         );
-        painter.galley(Pos2::new(area.left() + 24.0, y - title.size().y / 2.0), title, color::text_strong());
+        painter.galley(
+            Pos2::new(area.left() + 24.0, y - title.size().y / 2.0),
+            title,
+            color::text_strong(),
+        );
         return y + 22.0;
     }
     let group = painter.layout_no_wrap(
@@ -1100,10 +1135,17 @@ pub(crate) fn breadcrumb(ui: &mut egui::Ui, area: Rect, page: Page) -> f32 {
 /// A heading inside a page, with a rule running to the right edge, as the reference editor draws one.
 pub(crate) fn section(ui: &mut egui::Ui, area: Rect, top: f32, name: &str) -> f32 {
     let painter = ui.painter_at(area);
-    let galley =
-        painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), color::text_strong());
+    let galley = painter.layout_no_wrap(
+        name.to_owned(),
+        egui::FontId::proportional(12.5),
+        color::text_strong(),
+    );
     let y = top + 12.0;
-    painter.galley(Pos2::new(area.left() + 24.0, y - galley.size().y / 2.0), galley.clone(), color::text_strong());
+    painter.galley(
+        Pos2::new(area.left() + 24.0, y - galley.size().y / 2.0),
+        galley.clone(),
+        color::text_strong(),
+    );
     let from = area.left() + 24.0 + galley.size().x + 12.0;
     painter.line_segment(
         [Pos2::new(from, y), Pos2::new(area.right() - 24.0, y)],
@@ -1118,8 +1160,11 @@ pub(crate) fn row_at(area: Rect, top: f32) -> Rect {
 
 pub(crate) fn label(ui: &mut egui::Ui, area: Rect, row: Rect, text: &str) {
     let painter = ui.painter_at(area);
-    let galley =
-        painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(12.5), color::text_control());
+    let galley = painter.layout_no_wrap(
+        text.to_owned(),
+        egui::FontId::proportional(12.5),
+        color::text_control(),
+    );
     painter.galley(
         Pos2::new(row.left(), row.center().y - galley.size().y / 2.0),
         galley,
@@ -1158,9 +1203,8 @@ pub(crate) fn wide_button(ui: &mut egui::Ui, area: Rect, name: &str) -> bool {
         color::text_strong(),
     );
     painter.galley(area.center() - galley.size() / 2.0, galley, color::text_strong());
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name)
-    });
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
     response.clicked()
 }
 

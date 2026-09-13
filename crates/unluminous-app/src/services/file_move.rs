@@ -284,11 +284,7 @@ fn module_or_outsider(path: &Path, grammar: &Grammar) -> Module {
 }
 
 /// The grammar of the thing being moved, which for a folder is the grammar of a file inside it.
-fn path_grammar<'a>(
-    grammars: &'a Grammars,
-    project: &Project,
-    from: &Path,
-) -> Option<&'a Grammar> {
+fn path_grammar<'a>(grammars: &'a Grammars, project: &Project, from: &Path) -> Option<&'a Grammar> {
     if let Some(grammar) = grammars.for_path(from) {
         return (grammar.imports == Some(ImportStyle::Path)).then_some(grammar);
     }
@@ -558,8 +554,11 @@ fn write_statement(
             true => tail,
             false => format!("{head}{separator}{tail}"),
         };
-        let visibility =
-            if statement.visibility.is_empty() { String::new() } else { format!("{} ", statement.visibility) };
+        let visibility = if statement.visibility.is_empty() {
+            String::new()
+        } else {
+            format!("{} ", statement.visibility)
+        };
         lines.push(format!("{visibility}{keyword} {path};"));
     }
     lines.join(&format!("\n{}", statement.indent))
@@ -614,8 +613,10 @@ fn declare_the_module(
     let (Some(old_name), Some(new_name)) = (old.name(), new.name()) else {
         return;
     };
-    let old_parent = old.parent().and_then(|parent| imports::module_file(project, &parent, grammar));
-    let new_parent = new.parent().and_then(|parent| imports::module_file(project, &parent, grammar));
+    let old_parent =
+        old.parent().and_then(|parent| imports::module_file(project, &parent, grammar));
+    let new_parent =
+        new.parent().and_then(|parent| imports::module_file(project, &parent, grammar));
     match (&old_parent, &new_parent) {
         (Some(here), Some(there)) if here == there => {
             // A rename in place: the declaration stays where it is and changes its name.
@@ -627,10 +628,10 @@ fn declare_the_module(
             };
             match find_declaration(&text, old_name) {
                 Some(found) => {
-                    edits.entry(here.clone()).or_default().push((
-                        found.name.clone(),
-                        new_name.to_owned(),
-                    ));
+                    edits
+                        .entry(here.clone())
+                        .or_default()
+                        .push((found.name.clone(), new_name.to_owned()));
                 }
                 None => notes.push(format!(
                     "{} does not declare `mod {old_name};`, so it was left alone",
@@ -837,10 +838,8 @@ mod tests {
     impl Folder {
         fn new(pairs: &[(&str, &str)]) -> Self {
             let root = PathBuf::from("/p");
-            let texts = pairs
-                .iter()
-                .map(|(path, text)| (root.join(path), (*text).to_owned()))
-                .collect();
+            let texts =
+                pairs.iter().map(|(path, text)| (root.join(path), (*text).to_owned())).collect();
             Self { root, texts }
         }
 
@@ -855,13 +854,8 @@ mod tests {
             let files = self.files();
             let project = Project { root: &self.root, files: &files };
             let read = |path: &Path| self.texts.get(path).cloned();
-            let plan = plan(
-                &project,
-                &grammars(),
-                &self.root.join(from),
-                &self.root.join(to),
-                &read,
-            );
+            let plan =
+                plan(&project, &grammars(), &self.root.join(from), &self.root.join(to), &read);
             let mut out: HashMap<String, String> = HashMap::new();
             for (path, text) in &self.texts {
                 let mut here = path.clone();
@@ -1025,7 +1019,10 @@ mod tests {
             ("q/src/app/mod.rs", "use crate::services::paste::free_name;\n"),
         ]);
         let (after, plan) = folder.after("q/src/services/paste.rs", "q/src/app/paste.rs");
-        assert_eq!(after["q/src/app/mod.rs"], "use crate::app::paste::free_name;\npub mod paste;\n");
+        assert_eq!(
+            after["q/src/app/mod.rs"],
+            "use crate::app::paste::free_name;\npub mod paste;\n"
+        );
         assert_eq!(
             after["q/src/services/mod.rs"], "pub mod file_tree;\n",
             "the declaration is taken out of the module it left"
@@ -1155,10 +1152,7 @@ mod tests {
     fn an_attribute_above_a_declaration_goes_with_it() {
         let folder = Folder::new(&[
             ("q/src/lib.rs", "pub mod app;\npub mod services;\n"),
-            (
-                "q/src/services/mod.rs",
-                "pub mod alpha;\n#[cfg(windows)]\npub mod paste;\n",
-            ),
+            ("q/src/services/mod.rs", "pub mod alpha;\n#[cfg(windows)]\npub mod paste;\n"),
             ("q/src/services/alpha.rs", "\n"),
             ("q/src/services/paste.rs", "pub fn free_name() {}\n"),
             ("q/src/app/mod.rs", "\n"),
@@ -1177,11 +1171,7 @@ mod tests {
             ("q/src/loose/note.txt", "nothing\n"),
         ]);
         let (_, plan) = folder.after("q/src/services/paste.rs", "q/src/loose/paste.rs");
-        assert!(
-            plan.notes.iter().any(|note| note.contains("mod paste;")),
-            "{:?}",
-            plan.notes
-        );
+        assert!(plan.notes.iter().any(|note| note.contains("mod paste;")), "{:?}", plan.notes);
     }
 
     #[test]
@@ -1200,15 +1190,27 @@ mod tests {
     #[test]
     fn a_test_beside_the_crate_names_it_by_its_package_and_follows_the_move() {
         let folder = Folder::new(&[
-            ("q/src/lib.rs", "pub mod app;
+            (
+                "q/src/lib.rs",
+                "pub mod app;
 pub mod services;
-"),
-            ("q/src/services/mod.rs", "pub mod paste;
-"),
-            ("q/src/services/paste.rs", "pub fn free_name() {}
-"),
-            ("q/src/app/mod.rs", "
-"),
+",
+            ),
+            (
+                "q/src/services/mod.rs",
+                "pub mod paste;
+",
+            ),
+            (
+                "q/src/services/paste.rs",
+                "pub fn free_name() {}
+",
+            ),
+            (
+                "q/src/app/mod.rs",
+                "
+",
+            ),
             // Outside `src`, so it is no module of the crate — and `crate::` in it means the test.
             (
                 "q/tests/whole.rs",
@@ -1234,18 +1236,33 @@ pub mod services;
     #[test]
     fn a_statement_naming_a_module_and_its_children_keeps_its_self() {
         let folder = Folder::new(&[
-            ("q/src/lib.rs", "pub mod app;
+            (
+                "q/src/lib.rs",
+                "pub mod app;
 pub mod theme;
-"),
-            ("q/src/theme/mod.rs", "pub mod color;
+",
+            ),
+            (
+                "q/src/theme/mod.rs",
+                "pub mod color;
 pub mod size;
-"),
-            ("q/src/theme/color.rs", "pub const A: u8 = 1;
-"),
-            ("q/src/theme/size.rs", "pub const B: u8 = 2;
-"),
-            ("q/src/app/mod.rs", "use crate::theme::{self, color, size};
-"),
+",
+            ),
+            (
+                "q/src/theme/color.rs",
+                "pub const A: u8 = 1;
+",
+            ),
+            (
+                "q/src/theme/size.rs",
+                "pub const B: u8 = 2;
+",
+            ),
+            (
+                "q/src/app/mod.rs",
+                "use crate::theme::{self, color, size};
+",
+            ),
         ]);
         let (after, _) = folder.after("q/src/theme", "q/src/app/theme");
         assert_eq!(
@@ -1260,12 +1277,18 @@ pub mod theme;
     #[test]
     fn a_use_inside_an_inline_mod_is_left_alone_because_its_anchor_cannot_be_seen() {
         let folder = Folder::new(&[
-            ("q/src/lib.rs", "pub mod app;
+            (
+                "q/src/lib.rs",
+                "pub mod app;
 pub mod services;
-"),
-            ("q/src/services/mod.rs", "pub mod paste;
+",
+            ),
+            (
+                "q/src/services/mod.rs",
+                "pub mod paste;
 pub mod tree;
-"),
+",
+            ),
             (
                 "q/src/services/paste.rs",
                 "pub fn free_name() {}
@@ -1280,10 +1303,16 @@ mod tests {
 }
 ",
             ),
-            ("q/src/services/tree.rs", "pub struct Tree;
-"),
-            ("q/src/app/mod.rs", "
-"),
+            (
+                "q/src/services/tree.rs",
+                "pub struct Tree;
+",
+            ),
+            (
+                "q/src/app/mod.rs",
+                "
+",
+            ),
         ]);
         let (after, _) = folder.after("q/src/services/paste.rs", "q/src/app/paste.rs");
         assert!(
@@ -1296,13 +1325,22 @@ mod tests {
     #[test]
     fn a_crate_path_inside_an_inline_mod_is_still_rewritten() {
         let folder = Folder::new(&[
-            ("q/src/lib.rs", "pub mod app;
+            (
+                "q/src/lib.rs",
+                "pub mod app;
 pub mod services;
-"),
-            ("q/src/services/mod.rs", "pub mod paste;
-"),
-            ("q/src/services/paste.rs", "pub fn free_name() {}
-"),
+",
+            ),
+            (
+                "q/src/services/mod.rs",
+                "pub mod paste;
+",
+            ),
+            (
+                "q/src/services/paste.rs",
+                "pub fn free_name() {}
+",
+            ),
             (
                 "q/src/app/mod.rs",
                 "#[cfg(test)]

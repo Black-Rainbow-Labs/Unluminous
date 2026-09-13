@@ -186,7 +186,8 @@ fn pieces(
         out.push(Piece::Tool { index, body });
     }
     if let Some(failure) = &message.failure {
-        let body = rendered_height(state, look, &format!("failure-{}", message.id), failure, in_block);
+        let body =
+            rendered_height(state, look, &format!("failure-{}", message.id), failure, in_block);
         out.push(Piece::Failure { body });
     }
     (out, bubble, block, text)
@@ -214,13 +215,7 @@ pub fn shape(message: &Message, state: &mut PaneState, look: &Look<'_>, width: f
     let (pieces, bubble, block, text) = pieces(message, state, look, width);
     let height = pieces.iter().map(|piece| piece.height() * scale).sum::<f32>()
         + (pieces.len().saturating_sub(1) as f32) * 6.0 * scale;
-    Shape {
-        pieces,
-        bubble,
-        block,
-        text,
-        height,
-    }
+    Shape { pieces, bubble, block, text, height }
 }
 
 /// Draw the row and say what was pressed.
@@ -234,23 +229,15 @@ pub fn show(
 ) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
-    let Shape {
-        pieces,
-        bubble: bubble_width,
-        block: block_width,
-        text: said,
-        ..
-    } = shape;
+    let Shape { pieces, bubble: bubble_width, block: block_width, text: said, .. } = shape;
     let mine = message.role == Role::User;
     let mut pen = area.top();
     for piece in pieces {
         let height = piece.height() * scale;
         // A bubble is as wide as its words and sits on its own side; a report is as wide as the row
         // and always starts at the left.
-        let wide = matches!(
-            piece,
-            Piece::Tool { .. } | Piece::Failure { .. } | Piece::Thinking { .. }
-        );
+        let wide =
+            matches!(piece, Piece::Tool { .. } | Piece::Failure { .. } | Piece::Thinking { .. });
         let width = match piece {
             Piece::Picture { width, .. } => width,
             _ => match wide {
@@ -264,7 +251,9 @@ pub fn show(
         };
         let rect = Rect::from_min_size(Pos2::new(left, pen), Vec2::new(width, height));
         match piece {
-            Piece::Thinking { body } => acts.extend(thinking(message, state, ui, look, rect, body > 0.0)),
+            Piece::Thinking { body } => {
+                acts.extend(thinking(message, state, ui, look, rect, body > 0.0))
+            }
             Piece::Words { .. } => {
                 bubble(ui, look, rect, mine);
                 let inside = Rect::from_min_size(
@@ -277,7 +266,14 @@ pub fn show(
                 let key = format!("message-{}", message.id);
                 let code = code_colours(look);
                 let made = rendered(state, look, &key, &said, inside.width());
-                crate::components::markdown_text::show_with(ui, inside, made, look.renderer, 0.0, Some(code));
+                crate::components::markdown_text::show_with(
+                    ui,
+                    inside,
+                    made,
+                    look.renderer,
+                    0.0,
+                    Some(code),
+                );
                 // The copy button, which is `.messageActions`: it appears under the pointer rather
                 // than sitting there, because a column of bubbles each with a permanent button on it
                 // is a column of buttons.
@@ -297,7 +293,8 @@ pub fn show(
                         ),
                         Vec2::splat(18.0 * scale),
                     );
-                    if crate::components::controls::icon_button(ui, at, "Copy message", icon::copy) {
+                    if crate::components::controls::icon_button(ui, at, "Copy message", icon::copy)
+                    {
                         acts.push(Act::Copy(said.clone()));
                     }
                 }
@@ -333,18 +330,8 @@ fn bubble(ui: &mut egui::Ui, look: &Look<'_>, rect: Rect, mine: bool) {
     // The corner nearest its own side is squared off, which is `.messageWrapper`'s
     // `border-top-left-radius: 6px` and its mirror for a message from the person.
     let corners = match mine {
-        true => CornerRadius {
-            nw: radius as u8,
-            ne: squared,
-            sw: radius as u8,
-            se: radius as u8,
-        },
-        false => CornerRadius {
-            nw: squared,
-            ne: radius as u8,
-            sw: radius as u8,
-            se: radius as u8,
-        },
+        true => CornerRadius { nw: radius as u8, ne: squared, sw: radius as u8, se: radius as u8 },
+        false => CornerRadius { nw: squared, ne: radius as u8, sw: radius as u8, se: radius as u8 },
     };
     if look.chrome.is_recording() {
         // **The squared corner is the shape, not a patch over it.** `Chrome` used to take one radius, so
@@ -359,12 +346,13 @@ fn bubble(ui: &mut egui::Ui, look: &Look<'_>, rect: Rect, mine: bool) {
             // `Lift::Small`: the reference's shadow pairs are broad and soft, and at `Small` a bubble
             // came out with a one point dark edge and almost no light side — dark and rounded rather
             // than neumorphic.
-            true => look
-                .chrome
-                .raised(rect, corners, Fill::Solid(look.palette.board_card), Lift::Medium),
-            false => look
-                .chrome
-                .sunken(rect, corners, look.palette.board_card, Lift::Medium),
+            true => look.chrome.raised(
+                rect,
+                corners,
+                Fill::Solid(look.palette.board_card),
+                Lift::Medium,
+            ),
+            false => look.chrome.sunken(rect, corners, look.palette.board_card, Lift::Medium),
         }
     } else {
         ui.painter().rect(
@@ -389,12 +377,11 @@ fn thinking(
     let scale = look.scale();
     let mut acts = Vec::new();
     let head = Rect::from_min_size(rect.min, Vec2::new(rect.width(), THINKING_ROW * scale));
-    let response = ui.interact(
-        head,
-        ui.id().with(("agent-chat-thinking", message.id)),
-        Sense::click(),
-    );
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Thinking".to_owned()));
+    let response =
+        ui.interact(head, ui.id().with(("agent-chat-thinking", message.id)), Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Thinking".to_owned())
+    });
     let painter = painter_in(ui, rect);
     icon::disclosure(
         &painter,
@@ -515,12 +502,7 @@ fn picture(
         Vec2::new(wide, tall) * scale,
     );
     if look.chrome.is_recording() {
-        look.chrome.raised(
-            drawn,
-            10.0 * scale,
-            Fill::Solid(look.palette.board_well),
-            Lift::Small,
-        );
+        look.chrome.raised(drawn, 10.0 * scale, Fill::Solid(look.palette.board_well), Lift::Small);
     }
     painter_in(ui, rect).image(
         texture.id(),
@@ -573,8 +555,7 @@ fn tool_block(
     let scale = look.scale();
     let mut acts = Vec::new();
     if look.chrome.is_recording() {
-        look.chrome
-            .sunken(rect, 10.0 * scale, look.palette.board_well, Lift::Small);
+        look.chrome.sunken(rect, 10.0 * scale, look.palette.board_well, Lift::Small);
     } else {
         ui.painter().rect(
             rect,
@@ -601,12 +582,12 @@ fn tool_block(
             Lift::Small,
         );
     }
-    let (tint, drawing): (Color32, fn(&egui::Painter, Pos2, Color32)) = match (tool.is_running(), tool.failed)
-    {
-        (true, _) => (look.palette.attached, icon::run),
-        (false, true) => (crate::theme::color::close(), icon::cross),
-        (false, false) => (look.palette.board_accent, icon::tick),
-    };
+    let (tint, drawing): (Color32, fn(&egui::Painter, Pos2, Color32)) =
+        match (tool.is_running(), tool.failed) {
+            (true, _) => (look.palette.attached, icon::run),
+            (false, true) => (crate::theme::color::close(), icon::cross),
+            (false, false) => (look.palette.board_accent, icon::tick),
+        };
     drawing(&painter, disc, tint);
     let mut pen = disc.x + 14.0 * scale;
     let name_width = painter
@@ -652,40 +633,50 @@ fn tool_block(
         );
         let arguments = fenced(&tool.arguments);
         let code = code_colours(look);
-        let made = rendered(
-            state,
-            look,
-            &format!("tool-args-{}", tool.id),
-            &arguments,
-            inside.width(),
-        );
+        let made =
+            rendered(state, look, &format!("tool-args-{}", tool.id), &arguments, inside.width());
         let used = made.height();
-        crate::components::markdown_text::show_with(ui, inside, made, look.renderer, 0.0, Some(code));
+        crate::components::markdown_text::show_with(
+            ui,
+            inside,
+            made,
+            look.renderer,
+            0.0,
+            Some(code),
+        );
         if let Some(answer) = &tool.answer {
-            let below = Rect::from_min_max(Pos2::new(inside.left(), inside.top() + used), inside.max);
+            let below =
+                Rect::from_min_max(Pos2::new(inside.left(), inside.top() + used), inside.max);
             let text = fenced(answer);
-            let made = rendered(
-                state,
-                look,
-                &format!("tool-answer-{}", tool.id),
-                &text,
-                below.width(),
+            let made =
+                rendered(state, look, &format!("tool-answer-{}", tool.id), &text, below.width());
+            crate::components::markdown_text::show_with(
+                ui,
+                below,
+                made,
+                look.renderer,
+                0.0,
+                Some(code),
             );
-            crate::components::markdown_text::show_with(ui, below, made, look.renderer, 0.0, Some(code));
         }
     }
     acts
 }
 
 /// What the server said when it refused, in its own words.
-fn failure(message: &Message, state: &mut PaneState, ui: &mut egui::Ui, look: &Look<'_>, rect: Rect) {
+fn failure(
+    message: &Message,
+    state: &mut PaneState,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    rect: Rect,
+) {
     let Some(said) = &message.failure else {
         return;
     };
     let scale = look.scale();
     if look.chrome.is_recording() {
-        look.chrome
-            .sunken(rect, 10.0 * scale, look.palette.board_well, Lift::Small);
+        look.chrome.sunken(rect, 10.0 * scale, look.palette.board_well, Lift::Small);
     } else {
         ui.painter().rect_filled(
             rect,
@@ -763,7 +754,13 @@ fn rendered<'a>(
 /// itself in the pixels it will be drawn at, so it was the one quantity going into that arithmetic
 /// still scaled, and it was therefore multiplied by the scale a second time. At 16 pt the scale is 1
 /// and nothing is wrong; at 41 pt a bubble came out two and a half times too tall.
-fn rendered_height(state: &mut PaneState, look: &Look<'_>, key: &str, source: &str, width: f32) -> f32 {
+fn rendered_height(
+    state: &mut PaneState,
+    look: &Look<'_>,
+    key: &str,
+    source: &str,
+    width: f32,
+) -> f32 {
     rendered(state, look, key, source, width).height() / look.scale()
 }
 

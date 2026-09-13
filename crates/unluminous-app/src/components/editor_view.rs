@@ -5,7 +5,9 @@
 //! glyph out of the atlas, so the whole visible document is a single mesh.
 
 use egui::{Color32, Mesh, Pos2, Rect, Sense, Shape, Stroke, Vec2};
-use unluminous_core::{Align, Command, Document, IndentUnit, Layout, LayoutTextView, Rope, Selection, StyleChange};
+use unluminous_core::{
+    Align, Command, Document, IndentUnit, Layout, LayoutTextView, Rope, Selection, StyleChange,
+};
 
 use crate::services::text_renderer::TextRenderer;
 use crate::theme::color;
@@ -198,9 +200,7 @@ pub fn handle_input(
                     egui::Key::ArrowDown => document.move_vertically(layout, 1, shift),
                     egui::Key::Home => document.apply(Command::MoveLineStart { extend: shift }),
                     egui::Key::End => document.apply(Command::MoveLineEnd { extend: shift }),
-                    egui::Key::Backspace if word => {
-                        document.apply(Command::DeleteWordBackward)
-                    }
+                    egui::Key::Backspace if word => document.apply(Command::DeleteWordBackward),
                     egui::Key::Backspace => document.apply(Command::DeleteBackward),
                     egui::Key::Delete => document.apply(Command::DeleteForward),
                     egui::Key::Enter => document.apply(Command::Insert("\n".to_owned())),
@@ -266,10 +266,8 @@ pub fn handle_pointer(
 ) -> PointerOutcome {
     let mut outcome = PointerOutcome::default();
     let mut changed = false;
-    let position = response
-        .interact_pointer_pos()
-        .or_else(|| response.hover_pos())
-        .map(|p| p - text_origin);
+    let position =
+        response.interact_pointer_pos().or_else(|| response.hover_pos()).map(|p| p - text_origin);
     if let Some(local) = position {
         if response.clicked() && !response.dragged() && symbol.resolved() {
             // The word was resolved from where the pointer was, so the click is about that word
@@ -475,7 +473,8 @@ fn paint_inline_values(
         if next.is_some_and(|after| after.paragraph == line.paragraph) {
             continue;
         }
-        let Ok(at) = values.binary_search_by_key(&line.paragraph, |(paragraph, _)| *paragraph) else {
+        let Ok(at) = values.binary_search_by_key(&line.paragraph, |(paragraph, _)| *paragraph)
+        else {
             continue;
         };
         let x = text_origin.x + line.right() + INLINE_GAP;
@@ -562,10 +561,7 @@ pub fn fold_badges(
         return None;
     }
     let collapsed = |paragraph: usize| {
-        folds
-            .binary_search_by_key(&paragraph, |(at, _)| *at)
-            .map(|at| folds[at].1)
-            .unwrap_or(false)
+        folds.binary_search_by_key(&paragraph, |(at, _)| *at).map(|at| folds[at].1).unwrap_or(false)
     };
     let mut pressed = None;
     for line in &layout.lines[lines] {
@@ -573,17 +569,28 @@ pub fn fold_badges(
             continue;
         }
         let area = Rect::from_min_size(
-            Pos2::new(text_origin.x + line.right() + BADGE_GAP, text_origin.y + line.y + (line.height - BADGE_HEIGHT) / 2.0),
+            Pos2::new(
+                text_origin.x + line.right() + BADGE_GAP,
+                text_origin.y + line.y + (line.height - BADGE_HEIGHT) / 2.0,
+            ),
             Vec2::new(BADGE_WIDTH, BADGE_HEIGHT),
         );
         let name = format!("Expand block at line {}", line.paragraph + 1);
-        let response = ui.interact(area, ui.id().with(("fold-badge", line.paragraph)), Sense::click());
+        let response =
+            ui.interact(area, ui.id().with(("fold-badge", line.paragraph)), Sense::click());
         let painter = ui.painter();
         painter.rect(
             area,
             egui::CornerRadius::same(4),
             crate::theme::color::control(),
-            Stroke::new(1.0, if response.hovered() { crate::theme::color::accent() } else { crate::theme::color::control_border() }),
+            Stroke::new(
+                1.0,
+                if response.hovered() {
+                    crate::theme::color::accent()
+                } else {
+                    crate::theme::color::control_border()
+                },
+            ),
             egui::StrokeKind::Inside,
         );
         let tint = crate::theme::color::text_control();
@@ -603,7 +610,13 @@ pub fn fold_badges(
 ///
 /// The Markdown preview uses this. It has no document behind it, only a layout, because it is produced from
 /// the source rather than edited.
-pub fn paint_text(ui: &egui::Ui, renderer: &TextRenderer, text: &Rope, layout: &Layout, text_origin: Pos2) -> usize {
+pub fn paint_text(
+    ui: &egui::Ui,
+    renderer: &TextRenderer,
+    text: &Rope,
+    layout: &Layout,
+    text_origin: Pos2,
+) -> usize {
     let painter = ui.painter();
     let text_view = LayoutTextView::new(layout, text);
     let to_screen = |x: f32, y: f32| Pos2::new(text_origin.x + x, text_origin.y + y);
@@ -635,7 +648,8 @@ pub fn paint_text(ui: &egui::Ui, renderer: &TextRenderer, text: &Rope, layout: &
             for run in &line.runs {
                 // Text is always painted fully opaque. The transparency slider fades the background
                 // behind it and must never make the writing hard to read.
-                let color = Color32::from_rgb(run.style.color.r, run.style.color.g, run.style.color.b);
+                let color =
+                    Color32::from_rgb(run.style.color.r, run.style.color.g, run.style.color.b);
                 for cluster in line.run_clusters(run) {
                     text_view.for_each_character(cluster, |character| {
                         // A rule is drawn rather than lettered, which is what
@@ -858,10 +872,7 @@ fn paint_a_box_cell(
         let right = if to == 1.0 { (at.x + width).ceil() } else { middle_x + thickness };
         add_rule(
             rules,
-            Rect::from_min_max(
-                Pos2::new(left, middle_y),
-                Pos2::new(right, middle_y + thickness),
-            ),
+            Rect::from_min_max(Pos2::new(left, middle_y), Pos2::new(right, middle_y + thickness)),
             color,
         );
     }
@@ -870,10 +881,7 @@ fn paint_a_box_cell(
         let bottom = if to == 1.0 { (at.y + height).round() } else { middle_y + thickness };
         add_rule(
             rules,
-            Rect::from_min_max(
-                Pos2::new(middle_x, top),
-                Pos2::new(middle_x + thickness, bottom),
-            ),
+            Rect::from_min_max(Pos2::new(middle_x, top), Pos2::new(middle_x + thickness, bottom)),
             color,
         );
     }
@@ -900,11 +908,7 @@ fn add_rule(rules: &mut Vec<(Rect, Color32)>, rect: Rect, color: Color32) {
 /// text scrolled out of an editing area must not be drawn over the tabs above it. It is therefore
 /// also the honest answer to "what can be seen", and one function so that the selection, the marks,
 /// the glyphs and the rules cannot come to different answers about it.
-pub fn visible_lines(
-    ui: &egui::Ui,
-    layout: &Layout,
-    text_origin: Pos2,
-) -> std::ops::Range<usize> {
+pub fn visible_lines(ui: &egui::Ui, layout: &Layout, text_origin: Pos2) -> std::ops::Range<usize> {
     let clip = ui.painter().clip_rect();
     layout.visible_lines(clip.top() - text_origin.y, clip.bottom() - text_origin.y)
 }
@@ -925,7 +929,6 @@ pub fn allocate(ui: &mut egui::Ui) -> (Rect, egui::Response) {
 pub fn size_change(size: f32) -> Command {
     Command::ApplyStyle(StyleChange::size(size.clamp(6.0, 144.0)))
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -950,7 +953,8 @@ mod tests {
     }
 
     fn a_long_document(lines: usize) -> (Rope, Layout) {
-        let text: String = (0..lines).map(|i| format!("line number {i} of the document\n")).collect();
+        let text: String =
+            (0..lines).map(|i| format!("line number {i} of the document\n")).collect();
         let rope = Rope::from_str(&text);
         let spans = StyleSpans::new(rope.len_bytes(), CharStyle::default());
         let paragraphs = ParagraphStyles::new(rope.len_lines());

@@ -203,11 +203,8 @@ impl UnluminousApp {
         asked_at: usize,
     ) -> Vec<Candidate> {
         let mut candidates: Vec<Candidate> = Vec::new();
-        let open: Vec<PathBuf> = self
-            .files
-            .iter()
-            .filter_map(|file| file.path().map(Path::to_path_buf))
-            .collect();
+        let open: Vec<PathBuf> =
+            self.files.iter().filter_map(|file| file.path().map(Path::to_path_buf)).collect();
         for index in 0..self.files.len() {
             let Some(path) = self.files.at(index).path().map(Path::to_path_buf) else {
                 continue;
@@ -374,11 +371,7 @@ impl UnluminousApp {
     /// The recorded range first, because it is nearly always still right and confirming it is a
     /// comparison; then the file's definitions, in case an edit outside Unluminous moved it; and nothing
     /// at all when the name has gone, which is reported rather than jumped to.
-    fn confirm_on_disk(
-        &self,
-        candidate: &Candidate,
-        name: &str,
-    ) -> Option<std::ops::Range<usize>> {
+    fn confirm_on_disk(&self, candidate: &Candidate, name: &str) -> Option<std::ops::Range<usize>> {
         let text = std::fs::read_to_string(&candidate.path).ok()?;
         if text.get(candidate.name_range.clone()) == Some(name) {
             return Some(document_range(&text, candidate.name_range.clone()));
@@ -574,7 +567,8 @@ impl UnluminousApp {
                         report.changed += count;
                     }
                 }
-                None => match self.replace_in_a_closed_file(path, listed, needle, match_case, with) {
+                None => match self.replace_in_a_closed_file(path, listed, needle, match_case, with)
+                {
                     Ok(count) => {
                         report.files.push(path.clone());
                         report.changed += count;
@@ -693,10 +687,8 @@ impl UnluminousApp {
 
     /// Show several candidate definitions rather than jumping to a guess.
     fn open_candidates(&mut self, name: &str, candidates: Vec<Candidate>) {
-        let hits = candidates
-            .iter()
-            .filter_map(|candidate| self.candidate_row(candidate, name))
-            .collect();
+        let hits =
+            candidates.iter().filter_map(|candidate| self.candidate_row(candidate, name)).collect();
         self.references = Some(References::candidates(name, hits));
     }
 
@@ -860,13 +852,8 @@ impl UnluminousApp {
         if self.references.as_ref()?.name == wanted {
             return None;
         }
-        let touched: Vec<PathBuf> = self
-            .references
-            .as_ref()?
-            .change()
-            .into_iter()
-            .map(|(path, _)| path)
-            .collect();
+        let touched: Vec<PathBuf> =
+            self.references.as_ref()?.change().into_iter().map(|(path, _)| path).collect();
         if touched.is_empty() || wanted.is_empty() {
             return None;
         }
@@ -934,10 +921,7 @@ impl RenameReport {
             sentence.push_str(&format!(" \u{00B7} {} written to disk", self.files.len()));
         }
         if !self.open.is_empty() {
-            sentence.push_str(&format!(
-                " \u{00B7} {} open, save when ready",
-                self.open.len()
-            ));
+            sentence.push_str(&format!(" \u{00B7} {} open, save when ready", self.open.len()));
         }
         for (path, reason) in &self.skipped {
             sentence.push_str(&format!(" \u{00B7} skipped {}: {reason}", path.display()));
@@ -1058,8 +1042,10 @@ mod tests {
         // where nothing declares it, because a word that *is* a definition pivots to the references
         // instead — which is scenario 8 rather than this one.
         let use_site = app.document().text().to_string().find("layout.draw()").expect("the call");
-        app.document_mut().apply(unluminous_core::Command::PlaceCaret { offset: use_site, extend: false });
-        app.document_mut().apply(unluminous_core::Command::Insert("nowhere_at_all;\n        ".to_owned()));
+        app.document_mut()
+            .apply(unluminous_core::Command::PlaceCaret { offset: use_site, extend: false });
+        app.document_mut()
+            .apply(unluminous_core::Command::Insert("nowhere_at_all;\n        ".to_owned()));
         let offset = at(&app, "nowhere_at_all");
         app.go_to_definition(offset);
         assert!(
@@ -1123,10 +1109,11 @@ mod tests {
         let (folder, mut app) = a_window("unluminous-symbols-open-owns");
         app.open_path_permanently(&folder.join("layout.rs")).expect("the file opens");
         // Rename the definition in the tab without saving it.
-        let offset =
-            app.document().text().to_string().find("fn draw").expect("the definition") + "fn ".len();
+        let offset = app.document().text().to_string().find("fn draw").expect("the definition")
+            + "fn ".len();
         let range = offset..offset + "draw".len();
-        app.document_mut().apply(unluminous_core::Command::ReplaceMany(vec![(range, "sketch".to_owned())]));
+        app.document_mut()
+            .apply(unluminous_core::Command::ReplaceMany(vec![(range, "sketch".to_owned())]));
         let live = app.candidates_for("sketch", None, 0);
         assert_eq!(live.len(), 1, "the tab's live text is what answers: {live:?}");
         assert!(live[0].open, "and it is marked as coming from an open tab");
@@ -1144,7 +1131,11 @@ mod tests {
         let (folder, mut app) = a_window("unluminous-symbols-moved-on-disk");
         app.open_path_permanently(&folder.join("caret.rs")).expect("the file opens");
         // Push `draw` a long way down layout.rs behind the index's back.
-        let moved = format!("{}\n{}", "// a new comment line\n".repeat(20), std::fs::read_to_string(folder.join("layout.rs")).expect("read"));
+        let moved = format!(
+            "{}\n{}",
+            "// a new comment line\n".repeat(20),
+            std::fs::read_to_string(folder.join("layout.rs")).expect("read")
+        );
         std::fs::write(folder.join("layout.rs"), &moved).expect("write");
         let offset = at(&app, "layout.draw()") + "layout.".len();
         app.go_to_definition(offset);
@@ -1194,7 +1185,11 @@ mod tests {
         assert_eq!(app.forward.len(), 1);
 
         app.navigate(false);
-        assert_eq!(app.files.active().path(), Some(folder.join("layout.rs").as_path()), "forward again");
+        assert_eq!(
+            app.files.active().path(),
+            Some(folder.join("layout.rs").as_path()),
+            "forward again"
+        );
 
         // A new jump clears the forward stack, exactly as a browser's does.
         app.navigate(true);
@@ -1211,7 +1206,11 @@ mod tests {
         let (folder, mut app) = a_window("unluminous-symbols-nowhere");
         app.open_path_permanently(&folder.join("caret.rs")).expect("the file opens");
         app.navigate(true);
-        assert!(app.message.as_deref().is_some_and(|said| said.contains("nowhere")), "{:?}", app.message);
+        assert!(
+            app.message.as_deref().is_some_and(|said| said.contains("nowhere")),
+            "{:?}",
+            app.message
+        );
         std::fs::remove_dir_all(&folder).ok();
     }
 
@@ -1306,7 +1305,10 @@ mod tests {
         // The closed file: written once, and every other byte identical.
         let after = std::fs::read_to_string(folder.join("caret.rs")).expect("read caret.rs");
         assert_eq!(after, before.replacen("layout.draw()", "layout.sketch()", 1));
-        assert!(after.contains("// draw the caret"), "the comment was not ticked, so it did not change");
+        assert!(
+            after.contains("// draw the caret"),
+            "the comment was not ticked, so it did not change"
+        );
         std::fs::remove_dir_all(&folder).ok();
     }
 
@@ -1331,7 +1333,11 @@ mod tests {
         assert_eq!(report.skipped.len(), 1, "{report:?}");
         assert_eq!(report.skipped[0].0, folder.join("caret.rs"));
         assert!(report.skipped[0].1.contains("changed"));
-        assert_eq!(report.files, vec![folder.join("layout.rs")], "the other file was still applied");
+        assert_eq!(
+            report.files,
+            vec![folder.join("layout.rs")],
+            "the other file was still applied"
+        );
         assert!(report.sentence("sketch").contains("skipped"), "and the sentence says so");
         std::fs::remove_dir_all(&folder).ok();
     }
@@ -1345,7 +1351,10 @@ mod tests {
         let text = std::fs::read_to_string(&caret).expect("read");
         let word = text.find("paint").expect("paint");
         app.marks.change(&caret, |marks| {
-            marks.add(word..word + "paint".len(), unluminous_core::Rgba::parse("#ffff0080").expect("colour"));
+            marks.add(
+                word..word + "paint".len(),
+                unluminous_core::Rgba::parse("#ffff0080").expect("colour"),
+            );
         });
         // Rename something *before* the mark, so the mark has to move.
         let change = RenameChange {
@@ -1356,7 +1365,15 @@ mod tests {
         let report = app.apply_rename(&change);
         assert_eq!(report.changed, 1, "{report:?}");
         let after = std::fs::read_to_string(&caret).expect("read");
-        let mark = app.marks.highlights(&caret).expect("the mark").iter().next().expect("one").range.clone();
+        let mark = app
+            .marks
+            .highlights(&caret)
+            .expect("the mark")
+            .iter()
+            .next()
+            .expect("one")
+            .range
+            .clone();
         assert_eq!(
             &after[mark.clone()],
             "paint",
@@ -1460,8 +1477,7 @@ mod tests {
         // sees.
         let (folder, mut app) = a_window("unluminous-symbols-streaming-ticks");
         app.open_path_permanently(&folder.join("layout.rs")).expect("the file opens");
-        let offset =
-            app.document().text().to_string().find("fn draw").expect("the definition") + 3;
+        let offset = app.document().text().to_string().find("fn draw").expect("the definition") + 3;
         app.rename_symbol(offset);
         // Work it as the window does, a frame at a time, until the search has answered.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
@@ -1559,7 +1575,8 @@ mod tests {
         app.document_mut().apply(unluminous_core::Command::MoveDocumentEnd { extend: false });
         app.document_mut().apply(unluminous_core::Command::Insert("\n// draw again\n".to_owned()));
         let open = app.open_texts();
-        let (path, text) = open.iter().find(|(path, _)| path.ends_with("layout.rs")).expect("the tab");
+        let (path, text) =
+            open.iter().find(|(path, _)| path.ends_with("layout.rs")).expect("the tab");
         assert!(text.contains("draw again"), "the unsaved edit is what would be searched");
         assert_ne!(
             *text,
@@ -1590,13 +1607,15 @@ mod tests {
         let (folder, mut app) = a_window("unluminous-symbols-cli");
         let context = egui::Context::default();
         app.open_path_permanently(&folder.join("caret.rs")).expect("the file opens");
-        let line = app.document().text().to_string()[..at(&app, "layout.draw()")]
-            .matches('\n')
-            .count()
-            + 1;
+        let line =
+            app.document().text().to_string()[..at(&app, "layout.draw()")].matches('\n').count()
+                + 1;
         let column = "        layout.".len() + 2;
         let reply = app
-            .run_command_line(&format!("editor definition --line {line} --column {column}"), &context)
+            .run_command_line(
+                &format!("editor definition --line {line} --column {column}"),
+                &context,
+            )
             .expect("an answer");
         assert!(reply.ok, "{reply:?}");
         assert_eq!(reply.result["name"], "draw");
@@ -1633,9 +1652,8 @@ mod tests {
         let text = std::fs::read_to_string(&layout).expect("read layout.rs");
         std::fs::write(&layout, text.replace('\n', "\r\n")).expect("write Windows line endings");
         app.open_path_permanently(&folder.join("notes.md")).expect("the file opens");
-        let reply = app
-            .run_command_line("editor definition draw --open", &context)
-            .expect("an answer");
+        let reply =
+            app.run_command_line("editor definition draw --open", &context).expect("an answer");
         assert!(reply.ok, "{reply:?}");
         assert_eq!(reply.result["name"], "draw");
         assert_eq!(reply.result["candidates"].as_array().expect("a list").len(), 1);
@@ -1671,8 +1689,8 @@ mod tests {
     }
 
     #[test]
-    fn a_file_whose_language_says_nothing_refuses_the_symbol_commands_rather_than_answering_emptily()
-    {
+    fn a_file_whose_language_says_nothing_refuses_the_symbol_commands_rather_than_answering_emptily(
+    ) {
         let (folder, mut app) = a_window("unluminous-symbols-cli-not-applicable");
         let context = egui::Context::default();
         app.open_path_permanently(&folder.join("notes.md")).expect("the file opens");

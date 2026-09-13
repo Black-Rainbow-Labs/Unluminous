@@ -48,7 +48,11 @@ impl Outcome {
 
     /// A failure that never reached git at all: it is not installed, or the folder has gone.
     pub fn failed_to_run(problem: &std::io::Error) -> Self {
-        Self { ok: false, stdout: String::new(), stderr: format!("git could not be run: {problem}") }
+        Self {
+            ok: false,
+            stdout: String::new(),
+            stderr: format!("git could not be run: {problem}"),
+        }
     }
 }
 

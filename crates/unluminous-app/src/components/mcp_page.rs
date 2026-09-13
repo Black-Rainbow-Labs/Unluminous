@@ -37,7 +37,9 @@ use unluminous_cli::mcp::install::{self, Client, Wanted};
 use unluminous_cli::mcp::Shape;
 
 use crate::components::controls;
-use crate::components::settings_dialog::{breadcrumb, checkbox, label, note, row_at, section, wide_button};
+use crate::components::settings_dialog::{
+    breadcrumb, checkbox, label, note, row_at, section, wide_button,
+};
 use crate::services::mcp::State;
 use crate::settings::{clamp_port, Page, Settings};
 use crate::theme::{color, size};
@@ -211,7 +213,10 @@ fn server_section(
     label(ui, area, shape_row, "Tools:");
     if let Some(chosen) = controls::dropdown(
         ui,
-        Rect::from_min_size(Pos2::new(shape_row.left() + 54.0, shape_row.top()), Vec2::new(200.0, 28.0)),
+        Rect::from_min_size(
+            Pos2::new(shape_row.left() + 54.0, shape_row.top()),
+            Vec2::new(200.0, 28.0),
+        ),
         shape_name(settings.mcp_tools),
         "MCP tool shape",
         None,

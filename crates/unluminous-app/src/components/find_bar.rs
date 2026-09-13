@@ -45,7 +45,11 @@ pub struct Outcome {
 
 /// How tall the bar is, which the window needs before it draws it so the editing area can be told.
 pub fn height(find: &Find) -> f32 {
-    if find.replacing { ROW * 2.0 + 8.0 } else { ROW + 8.0 }
+    if find.replacing {
+        ROW * 2.0 + 8.0
+    } else {
+        ROW + 8.0
+    }
 }
 
 /// Where the bar sits over an editing area of `area`.
@@ -120,12 +124,14 @@ fn find_row(ui: &mut egui::Ui, row: Rect, find: &mut Find, outcome: &mut Outcome
     // The two toggles, drawn as the words every editor draws: `Aa` for case, `ab` underlined for a
     // whole word. Words rather than drawn marks because these two are conventions a person already
     // knows, and a mark of our own would have to be learnt.
-    let word = Rect::from_min_size(Pos2::new(right - 30.0, row.top() + 3.0), Vec2::new(30.0, ROW - 6.0));
+    let word =
+        Rect::from_min_size(Pos2::new(right - 30.0, row.top() + 3.0), Vec2::new(30.0, ROW - 6.0));
     if controls::choice_button_named(ui, word, "ab", "Whole word", find.whole_word) {
         find.whole_word = !find.whole_word;
     }
     right -= 34.0;
-    let case = Rect::from_min_size(Pos2::new(right - 30.0, row.top() + 3.0), Vec2::new(30.0, ROW - 6.0));
+    let case =
+        Rect::from_min_size(Pos2::new(right - 30.0, row.top() + 3.0), Vec2::new(30.0, ROW - 6.0));
     if controls::choice_button_named(ui, case, "Aa", "Match case", find.match_case) {
         find.match_case = !find.match_case;
     }
@@ -135,11 +141,8 @@ fn find_row(ui: &mut egui::Ui, row: Rect, find: &mut Find, outcome: &mut Outcome
     // not resize as the count changes.
     if let Some(tally) = find.tally() {
         let painter = ui.painter_at(row);
-        let galley = painter.layout_no_wrap(
-            tally,
-            egui::FontId::proportional(11.0),
-            color::text_faint(),
-        );
+        let galley =
+            painter.layout_no_wrap(tally, egui::FontId::proportional(11.0), color::text_faint());
         painter.galley(
             Pos2::new(right - 6.0 - galley.size().x, row.center().y - galley.size().y / 2.0),
             galley.clone(),
@@ -190,8 +193,10 @@ fn replace_row(ui: &mut egui::Ui, row: Rect, find: &mut Find, outcome: &mut Outc
         ("Replace", "Replace", &mut outcome.replace),
     ] {
         let width = if label == "Replace" { 64.0 } else { 56.0 };
-        let button =
-            Rect::from_min_size(Pos2::new(right - width, row.top() + 3.0), Vec2::new(width, ROW - 6.0));
+        let button = Rect::from_min_size(
+            Pos2::new(right - width, row.top() + 3.0),
+            Vec2::new(width, ROW - 6.0),
+        );
         *pressed |= controls::choice_button_named(ui, button, label, announced, false);
         right -= width + 4.0;
     }

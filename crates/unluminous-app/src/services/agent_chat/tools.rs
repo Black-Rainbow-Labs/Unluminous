@@ -132,10 +132,7 @@ pub fn resolve(name: &str, arguments: &Value, shell: bool) -> Result<Resolved, S
             call.command.wire()
         ));
     }
-    Ok(Resolved {
-        command: call.command,
-        arguments: call.arguments,
-    })
+    Ok(Resolved { command: call.command, arguments: call.arguments })
 }
 
 /// The waiting flag this call asked for, if it asked for one.
@@ -173,16 +170,8 @@ mod tests {
             let properties = tool.schema["properties"].as_object().expect("properties");
             // Both of the call's own properties are gone: naming another window is meaningless from
             // inside one, and a frame loop cannot wait.
-            assert!(
-                !properties.contains_key("instance"),
-                "{} still offers `instance`",
-                tool.name
-            );
-            assert!(
-                !properties.contains_key("timeout"),
-                "{} still offers `timeout`",
-                tool.name
-            );
+            assert!(!properties.contains_key("instance"), "{} still offers `instance`", tool.name);
+            assert!(!properties.contains_key("timeout"), "{} still offers `timeout`", tool.name);
         }
         // And the count matches what the MCP server offers, because it is the same generator: a
         // second list would be a second thing to keep in step.
@@ -205,11 +194,13 @@ mod tests {
 
     #[test]
     fn a_tool_that_does_not_exist_is_a_sentence_rather_than_a_panic() {
-        let problem = resolve("unluminous_nothing", &serde_json::json!({}), false).expect_err("a refusal");
+        let problem =
+            resolve("unluminous_nothing", &serde_json::json!({}), false).expect_err("a refusal");
         assert!(problem.contains("unluminous_nothing"), "{problem}");
         // And a verb the area has not got names the ones it has.
-        let problem = resolve("unluminous_tab", &serde_json::json!({ "command": "levitate" }), false)
-            .expect_err("a refusal");
+        let problem =
+            resolve("unluminous_tab", &serde_json::json!({ "command": "levitate" }), false)
+                .expect_err("a refusal");
         assert!(problem.contains("levitate"), "{problem}");
     }
 
@@ -227,8 +218,9 @@ mod tests {
         )
         .expect_err("a refusal");
         assert!(problem.contains("wait-for"), "{problem}");
-        let allowed = resolve("unluminous_terminal", &serde_json::json!({ "command": "read" }), false)
-            .expect("reading without waiting is allowed");
+        let allowed =
+            resolve("unluminous_terminal", &serde_json::json!({ "command": "read" }), false)
+                .expect("reading without waiting is allowed");
         assert_eq!(allowed.command.wire(), "terminal.read");
         // A switch given as `false` is not asking to wait either.
         assert!(resolve(
@@ -241,16 +233,18 @@ mod tests {
 
     #[test]
     fn arguments_that_are_not_an_object_are_refused_rather_than_guessed_at() {
-        let problem =
-            resolve("unluminous_tab", &serde_json::json!("open README.md"), false).expect_err("a refusal");
+        let problem = resolve("unluminous_tab", &serde_json::json!("open README.md"), false)
+            .expect_err("a refusal");
         assert!(problem.contains("not an object"), "{problem}");
         // And null **is** the empty object, because that is what a command taking nothing is called
         // with. An earlier version of this line asserted `is_err() || is_ok()`, which is a tautology
         // and tested nothing at all.
-        let area = resolve("unluminous_git", &Value::Null, false).expect_err("an area tool needs a verb");
+        let area =
+            resolve("unluminous_git", &Value::Null, false).expect_err("an area tool needs a verb");
         assert!(area.contains("needs a `command`"), "{area}");
         let no_arguments =
-            resolve("unluminous_git", &serde_json::json!({ "command": "status" }), false).expect("resolved");
+            resolve("unluminous_git", &serde_json::json!({ "command": "status" }), false)
+                .expect("resolved");
         assert!(no_arguments.arguments.is_empty(), "nothing said is nothing sent");
     }
 
@@ -266,10 +260,7 @@ mod tests {
         )
         .expect_err("a refusal");
         assert!(problem.contains("runs a program"), "{problem}");
-        assert!(
-            problem.contains("Settings"),
-            "the refusal says what to do about it: {problem}"
-        );
+        assert!(problem.contains("Settings"), "the refusal says what to do about it: {problem}");
         // With the switch on it is offered like anything else.
         let allowed = resolve(
             "unluminous_terminal",
@@ -279,7 +270,8 @@ mod tests {
         .expect("allowed once somebody asked for it");
         assert_eq!(allowed.command.wire(), "terminal.send");
         // And reading is never held back, because reading runs nothing.
-        assert!(resolve("unluminous_terminal", &serde_json::json!({ "command": "read" }), false).is_ok());
+        assert!(resolve("unluminous_terminal", &serde_json::json!({ "command": "read" }), false)
+            .is_ok());
     }
 
     #[test]

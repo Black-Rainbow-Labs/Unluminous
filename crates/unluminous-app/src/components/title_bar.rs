@@ -124,10 +124,7 @@ pub fn tools_rect(area: Rect, placement: MenuPlacement, width: f32, run_width: f
     // Whichever of the two moves has to be the one whose width moves, and that is the tools.
     let run = run_rect(area, placement, run_width);
     let right = if run_width > 0.0 { run.left() - 12.0 } else { run.right() };
-    Rect::from_min_max(
-        Pos2::new(right - width, area.top()),
-        Pos2::new(right, area.bottom()),
-    )
+    Rect::from_min_max(Pos2::new(right - width, area.top()), Pos2::new(right, area.bottom()))
 }
 
 /// The rectangle the run widget is drawn into, `run_width` points wide.
@@ -141,10 +138,7 @@ pub fn run_rect(area: Rect, placement: MenuPlacement, run_width: f32) -> Rect {
         MenuPlacement::InWindow => first_button(area, placement).x - BUTTON_MARGIN - 10.0,
         MenuPlacement::Native => area.right() - BUTTON_MARGIN,
     };
-    Rect::from_min_max(
-        Pos2::new(right - run_width, area.top()),
-        Pos2::new(right, area.bottom()),
-    )
+    Rect::from_min_max(Pos2::new(right - run_width, area.top()), Pos2::new(right, area.bottom()))
 }
 
 /// Draw the title bar into `area`.
@@ -189,10 +183,18 @@ pub fn show(
     let lit = ui.rect_contains_pointer(group);
     let buttons: [(Color32, &str); 3] = if buttons_at_left {
         // The order macOS puts them in.
-        [(color::close(), "Close"), (color::minimise(), "Minimise"), (color::maximise(), "Maximise")]
+        [
+            (color::close(), "Close"),
+            (color::minimise(), "Minimise"),
+            (color::maximise(), "Maximise"),
+        ]
     } else {
         // The order Windows puts them in.
-        [(color::minimise(), "Minimise"), (color::maximise(), "Maximise"), (color::close(), "Close")]
+        [
+            (color::minimise(), "Minimise"),
+            (color::maximise(), "Maximise"),
+            (color::close(), "Close"),
+        ]
     };
     for (index, (fill, label)) in buttons.into_iter().enumerate() {
         let centre = Pos2::new(first_centre.x + index as f32 * BUTTON_STEP, first_centre.y);
@@ -300,11 +302,7 @@ pub fn show(
             Rect::from_min_max(Pos2::new(drag_from, area.top()), Pos2::new(drag_to, area.bottom()));
         // Clicks and drags, and no keyboard focus, for the reason given above the window buttons: a
         // double click here resizes the window, and `Enter` on a focused widget counts as a click.
-        let drag = ui.interact(
-            drag_area,
-            ui.id().with("title-drag"),
-            Sense::CLICK | Sense::DRAG,
-        );
+        let drag = ui.interact(drag_area, ui.id().with("title-drag"), Sense::CLICK | Sense::DRAG);
         // Named, because every control in Unluminous has a plain name — and this one had none, so
         // nothing could find it and `task-1914`'s *"If base of infinite space is maximized, i can't
         // move the main window around"* could not be asked about from outside the window. What a test

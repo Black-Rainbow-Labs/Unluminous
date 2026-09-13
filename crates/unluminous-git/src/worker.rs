@@ -32,36 +32,78 @@ pub enum Request {
     /// Which lines of this file differ from the version git has.
     ChangedLines(PathBuf),
     /// The history of one file, or of the repository when there is no path.
-    Log { path: Option<PathBuf>, limit: usize },
+    Log {
+        path: Option<PathBuf>,
+        limit: usize,
+    },
     /// The unified diff of one file.
-    Diff { path: PathBuf, staged: bool, revision: Option<String> },
+    Diff {
+        path: PathBuf,
+        staged: bool,
+        revision: Option<String>,
+    },
     /// The unified diff of one commit.
     ShowCommit(String),
     Add(Vec<String>),
     Unstage(Vec<String>),
     Rollback(Vec<String>),
-    Commit { message: String, amend: bool },
+    Commit {
+        message: String,
+        amend: bool,
+    },
     /// Commit and then push, which is what `COMMIT AND PUSH...` does.
-    CommitAndPush { message: String, amend: bool, target: PushTarget },
+    CommitAndPush {
+        message: String,
+        amend: bool,
+        target: PushTarget,
+    },
     Push(PushTarget),
-    Pull { remote: String, branch: String, strategy: PullStrategy },
+    Pull {
+        remote: String,
+        branch: String,
+        strategy: PullStrategy,
+    },
     Fetch,
-    Merge { branch: String, options: MergeOptions },
+    Merge {
+        branch: String,
+        options: MergeOptions,
+    },
     Rebase(String),
     ResumeMerge(Resume),
     ResumeRebase(Resume),
-    Reset { revision: String, mode: ResetMode },
+    Reset {
+        revision: String,
+        mode: ResetMode,
+    },
     Switch(String),
     CreateBranch(String),
-    DeleteBranch { name: String, force: bool },
+    DeleteBranch {
+        name: String,
+        force: bool,
+    },
     Tag(String),
-    Stash { message: String, include_untracked: bool },
-    Unstash { name: String, drop: bool },
+    Stash {
+        message: String,
+        include_untracked: bool,
+    },
+    Unstash {
+        name: String,
+        drop: bool,
+    },
     DropStash(String),
-    AddRemote { name: String, url: String },
-    SetRemoteUrl { name: String, url: String },
+    AddRemote {
+        name: String,
+        url: String,
+    },
+    SetRemoteUrl {
+        name: String,
+        url: String,
+    },
     RemoveRemote(String),
-    Clone { parent: PathBuf, url: String },
+    Clone {
+        parent: PathBuf,
+        url: String,
+    },
 }
 
 impl Request {
@@ -133,11 +175,20 @@ pub enum Reply {
     ChangedLines(PathBuf, Vec<(usize, crate::LineChange)>),
     Log(Vec<Commit>),
     /// Text to show in a panel, with a title saying what it is of.
-    Text { title: String, body: String },
+    Text {
+        title: String,
+        body: String,
+    },
     /// Something that changed the repository has finished. The label is what it was.
-    Done { label: String, outcome: Outcome },
+    Done {
+        label: String,
+        outcome: Outcome,
+    },
     /// A clone finished, and this is where it landed.
-    Cloned { folder: PathBuf, outcome: Outcome },
+    Cloned {
+        folder: PathBuf,
+        outcome: Outcome,
+    },
 }
 
 /// A function the thread calls to have the window drawn again.
@@ -240,14 +291,22 @@ fn run(repository: &Repository, request: Request, label: &str) -> Reply {
             let outcome = crate::diff::of_path(&root, &path, staged, revision.as_deref());
             Reply::Text {
                 title: format!("Diff \u{2014} {}", path.display()),
-                body: if outcome.stdout.trim().is_empty() { outcome.message() } else { outcome.stdout },
+                body: if outcome.stdout.trim().is_empty() {
+                    outcome.message()
+                } else {
+                    outcome.stdout
+                },
             }
         }
         Request::ShowCommit(hash) => {
             let outcome = crate::diff::of_commit(&root, &hash);
             Reply::Text {
                 title: format!("Commit {}", &hash[..hash.len().min(8)]),
-                body: if outcome.stdout.trim().is_empty() { outcome.message() } else { outcome.stdout },
+                body: if outcome.stdout.trim().is_empty() {
+                    outcome.message()
+                } else {
+                    outcome.stdout
+                },
             }
         }
         Request::Add(paths) => {
@@ -335,7 +394,8 @@ mod tests {
             assert!(!request.label().is_empty(), "{request:?} should say what it is doing");
         }
         assert_eq!(
-            Request::Merge { branch: "feature".to_owned(), options: MergeOptions::default() }.label(),
+            Request::Merge { branch: "feature".to_owned(), options: MergeOptions::default() }
+                .label(),
             "Merging feature",
             "the label names what it is working on, not just what kind of thing it is"
         );

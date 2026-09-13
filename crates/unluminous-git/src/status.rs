@@ -134,10 +134,8 @@ pub struct Status {
 impl Status {
     /// Read the working tree.
     pub fn read(folder: &Path) -> Result<Self, Outcome> {
-        let outcome = run(
-            folder,
-            &["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"],
-        );
+        let outcome =
+            run(folder, &["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"]);
         if !outcome.ok {
             return Err(outcome);
         }
@@ -331,9 +329,7 @@ mod tests {
     #[test]
     fn an_ordinary_change_is_read_on_both_sides() {
         // Staged in the index, changed again on disk.
-        let status = parse(&records(&[
-            "1 MM N... 100644 100644 100644 aaaa bbbb notes.md",
-        ]));
+        let status = parse(&records(&["1 MM N... 100644 100644 100644 aaaa bbbb notes.md"]));
         let entry = &status.entries[0];
         assert_eq!(entry.path, "notes.md");
         assert_eq!(entry.index, State::Modified);
@@ -363,9 +359,8 @@ mod tests {
 
     #[test]
     fn a_conflict_is_reported_as_one() {
-        let status = parse(&records(&[
-            "u UU N... 100644 100644 100644 100644 aaaa bbbb cccc notes.md",
-        ]));
+        let status =
+            parse(&records(&["u UU N... 100644 100644 100644 100644 aaaa bbbb cccc notes.md"]));
         assert!(status.entries[0].conflicted());
         assert_eq!(status.conflicts().len(), 1);
     }
@@ -406,11 +401,7 @@ mod tests {
 
     #[test]
     fn entries_come_back_in_the_order_a_list_shows_them() {
-        let status = parse(&records(&[
-            "? Zebra.txt",
-            "? apple.txt",
-            "? Mango.txt",
-        ]));
+        let status = parse(&records(&["? Zebra.txt", "? apple.txt", "? Mango.txt"]));
         let names: Vec<&str> = status.entries.iter().map(|entry| entry.path.as_str()).collect();
         assert_eq!(names, vec!["apple.txt", "Mango.txt", "Zebra.txt"], "sorted ignoring case");
     }

@@ -89,10 +89,7 @@ impl Reader {
             // an event at all and the whole answer arrived as nothing.
             if let Some(first) = ending_at(&self.buffer, at) {
                 if let Some(second) = ending_at(&self.buffer, at + first) {
-                    return Some(Boundary {
-                        length: at,
-                        taken: at + first + second,
-                    });
+                    return Some(Boundary { length: at, taken: at + first + second });
                 }
             }
             at += 1;
@@ -180,11 +177,7 @@ mod tests {
         assert_eq!(whole[0].data, "{\"a\":1}");
         assert_eq!(whole[2].data, "[DONE]");
         for size in 1..=OPENAI.len() {
-            assert_eq!(
-                read_in_chunks(OPENAI, size),
-                whole,
-                "split into {size} byte chunks"
-            );
+            assert_eq!(read_in_chunks(OPENAI, size), whole, "split into {size} byte chunks");
         }
     }
 
@@ -199,11 +192,7 @@ mod tests {
         assert_eq!(events[0].data, "{\"i\":0}");
         assert_eq!(events[1].name, "message_stop");
         for size in 1..=stream.len() {
-            assert_eq!(
-                read_in_chunks(stream, size).len(),
-                2,
-                "split into {size} byte chunks"
-            );
+            assert_eq!(read_in_chunks(stream, size).len(), 2, "split into {size} byte chunks");
         }
     }
 
@@ -242,10 +231,7 @@ mod tests {
         for size in 1..=stream.len() {
             let events = read_in_chunks(stream, size);
             assert_eq!(events.len(), 1);
-            assert_eq!(
-                events[0].data, "{\"t\":\"café — ok\"}",
-                "split into {size} byte chunks"
-            );
+            assert_eq!(events[0].data, "{\"t\":\"café — ok\"}", "split into {size} byte chunks");
         }
     }
 

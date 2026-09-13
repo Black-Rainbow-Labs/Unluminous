@@ -87,13 +87,7 @@ pub enum Wire {
 /// debuggers, the UI providers and the chrome. A configuration naming a shape this version has not
 /// got is refused with the list rather than loading as an endpoint whose every request fails
 /// obscurely — the rule `language.renders` set and every one since has kept.
-pub const WIRES: &[&str] = &[
-    "claude-cli",
-    "codex-cli",
-    "openai",
-    "anthropic",
-    "responses",
-];
+pub const WIRES: &[&str] = &["claude-cli", "codex-cli", "openai", "anthropic", "responses"];
 
 impl Wire {
     pub fn name(self) -> &'static str {
@@ -442,24 +436,14 @@ fn absolute(path: std::path::PathBuf) -> std::path::PathBuf {
 ///
 /// Nothing is printed or logged. A read that fails answers `None` and says nothing about why.
 fn read_a_keychain_entry(name: &str, environment: &Environment) -> Option<String> {
-    if !name
-        .chars()
-        .all(|one| one.is_ascii_alphanumeric() || matches!(one, '-' | '.' | '_'))
-    {
+    if !name.chars().all(|one| one.is_ascii_alphanumeric() || matches!(one, '-' | '.' | '_')) {
         return None;
     }
     #[cfg(target_os = "macos")]
     let mut command = {
         let found = program("security", environment)?;
         let mut command = std::process::Command::new(found);
-        command.args([
-            "find-generic-password",
-            "-s",
-            "unluminous-agent-chat",
-            "-a",
-            name,
-            "-w",
-        ]);
+        command.args(["find-generic-password", "-s", "unluminous-agent-chat", "-a", name, "-w"]);
         command
     };
     #[cfg(target_os = "linux")]
@@ -526,10 +510,7 @@ mod tests {
         // The registry and the enum cannot disagree, which is what the five registries before this
         // one each have a test for.
         for name in WIRES {
-            assert!(
-                Wire::from_name(name).is_some(),
-                "{name} is registered with no code"
-            );
+            assert!(Wire::from_name(name).is_some(), "{name} is registered with no code");
             assert_eq!(Wire::from_name(name).expect("just checked").name(), *name);
         }
         assert!(Wire::from_name("gemini").is_none());
@@ -593,9 +574,7 @@ mod tests {
         assert_eq!(provider.why_not(&profile), None);
         assert!(provider.has_a_key(&profile));
         let headers = provider.headers(&profile);
-        assert!(headers
-            .iter()
-            .any(|(name, value)| name == "x-api-key" && value == "secret-value"));
+        assert!(headers.iter().any(|(name, value)| name == "x-api-key" && value == "secret-value"));
         assert!(headers.iter().any(|(name, _)| name == "anthropic-version"));
     }
 

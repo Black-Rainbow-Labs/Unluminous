@@ -95,10 +95,9 @@ fn read_axis(piece: &str) -> Option<(String, String)> {
         return None;
     }
     match (piece.find('['), piece.rfind(']')) {
-        (Some(open), Some(close)) if close > open => Some((
-            piece[..open].trim().to_owned(),
-            source::label(&piece[open + 1..close]),
-        )),
+        (Some(open), Some(close)) if close > open => {
+            Some((piece[..open].trim().to_owned(), source::label(&piece[open + 1..close])))
+        }
         _ => Some((piece.to_owned(), source::label(piece))),
     }
 }
@@ -141,11 +140,7 @@ fn read_curve(chart: &Chart, rest: &str, line: &super::source::Line) -> Result<C
     let values = if named.is_empty() {
         listed
     } else {
-        chart
-            .axes
-            .iter()
-            .map(|(id, _)| named.get(id).copied().unwrap_or(0.0))
-            .collect()
+        chart.axes.iter().map(|(id, _)| named.get(id).copied().unwrap_or(0.0)).collect()
     };
     Ok(Curve { name, values })
 }
@@ -180,7 +175,12 @@ fn draw(chart: &Chart, source: &Source, options: &Options) -> Scene {
             .map(|(index, curve)| (curve.name.clone(), options.theme.series(index)))
             .collect();
         if !entries.is_empty() {
-            parts::legend(&mut scene, &entries, Point::new(parts::MARGIN, top + parts::MARGIN), options);
+            parts::legend(
+                &mut scene,
+                &entries,
+                Point::new(parts::MARGIN, top + parts::MARGIN),
+                options,
+            );
         }
     }
     scene.claim(Rect::new(0.0, 0.0, width, centre.y + size / 2.0));
@@ -220,7 +220,13 @@ fn draw_graticule(scene: &mut Scene, chart: &Chart, centre: Point, options: &Opt
     for ring in 1..=chart.rings {
         let distance = RADIUS * ring as f32 / chart.rings as f32;
         let points: Vec<Point> = if chart.round {
-            parts::arc(centre, distance, 0.0, std::f32::consts::TAU, parts::arc_steps(std::f32::consts::TAU))
+            parts::arc(
+                centre,
+                distance,
+                0.0,
+                std::f32::consts::TAU,
+                parts::arc_steps(std::f32::consts::TAU),
+            )
         } else {
             (0..count).map(|index| spoke(centre, index, count, distance)).collect()
         };
@@ -326,7 +332,8 @@ mod tests {
 
     #[test]
     fn an_axis_may_carry_its_own_words() {
-        let chart = chart("radar-beta\n axis a[\"How fast\"], b[\"How right\"], c\n curve x{1,2,3}\n");
+        let chart =
+            chart("radar-beta\n axis a[\"How fast\"], b[\"How right\"], c\n curve x{1,2,3}\n");
         assert_eq!(chart.axes[0], ("a".to_owned(), "How fast".to_owned()));
         assert_eq!(chart.axes[2], ("c".to_owned(), "c".to_owned()));
     }
@@ -335,7 +342,11 @@ mod tests {
     fn named_values_may_come_in_any_order() {
         let text = "radar-beta\n axis one, two, three\n curve x{ three: 30, one: 10, two: 20 }\n";
         let chart = chart(text);
-        assert_eq!(chart.curves[0].values, vec![10.0, 20.0, 30.0], "laid against the axes in order");
+        assert_eq!(
+            chart.curves[0].values,
+            vec![10.0, 20.0, 30.0],
+            "laid against the axes in order"
+        );
     }
 
     #[test]
@@ -346,7 +357,8 @@ mod tests {
 
     #[test]
     fn a_curve_that_is_not_numbers_says_which_line() {
-        let problem = check::refused("radar-beta\n axis a, b, c\n curve x{1, two, 3}\n", &options());
+        let problem =
+            check::refused("radar-beta\n axis a, b, c\n curve x{1, two, 3}\n", &options());
         assert_eq!(problem.line, Some(3));
     }
 
@@ -365,11 +377,7 @@ mod tests {
             axis Speed, Accuracy, Efficiency, Reliability, Quality\n\
             curve TeamA[\"Team A\"]{4, 3, 5, 4, 3}\n curve TeamB[\"Team B\"]{5, 4, 3, 5, 4}\n\
             max 5\n graticule polygon\n ticks 5\n";
-        check::drawn(
-            text,
-            &options(),
-            &["Performance", "Speed", "Quality", "Team A", "Team B"],
-        );
+        check::drawn(text, &options(), &["Performance", "Speed", "Quality", "Team A", "Team B"]);
     }
 
     #[test]

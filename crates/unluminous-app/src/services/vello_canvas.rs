@@ -49,8 +49,8 @@ use vello_cpu::peniko::color::{AlphaColor, Srgb};
 use vello_cpu::peniko::Fill as FillRule;
 use vello_cpu::peniko::{ColorStop, ColorStops, Gradient, GradientKind, LinearGradientPosition};
 use vello_cpu::{
-    CompositeMode, PixelFormat, Pixmap, RasterizerSettings, RenderContext, RenderMode, RenderSettings,
-    Resources,
+    CompositeMode, PixelFormat, Pixmap, RasterizerSettings, RenderContext, RenderMode,
+    RenderSettings, Resources,
 };
 
 /// The largest canvas that will ever be rasterised, in physical pixels a side.
@@ -120,7 +120,6 @@ impl Corners {
     fn representative(self) -> f32 {
         (self.nw + self.ne + self.se + self.sw) / 4.0
     }
-
 }
 
 impl From<f32> for Corners {
@@ -193,7 +192,12 @@ impl Lift {
 pub enum Fill {
     Solid(Color32),
     /// A linear gradient, given as the two ends of its axis so that a diagonal is not a special case.
-    Linear { from: Pos2, to: Pos2, start: Color32, end: Color32 },
+    Linear {
+        from: Pos2,
+        to: Pos2,
+        start: Color32,
+        end: Color32,
+    },
 }
 
 impl Fill {
@@ -225,25 +229,54 @@ pub enum Decor {
     ///
     /// Four radii rather than one, because a chat bubble squares off the corner nearest whoever said it.
     /// See [`Corners`].
-    Rect { rect: Rect, corners: Corners, fill: Fill },
+    Rect {
+        rect: Rect,
+        corners: Corners,
+        fill: Fill,
+    },
     /// A Gaussian blur of a rounded rectangle, outside the shape or inside it.
     ///
     /// `inset` is `vello_cpu`'s own `invert` argument, whose documentation says in as many words that it
     /// is how an inset box shadow is drawn. It is the reason this file exists.
-    Shadow { rect: Rect, radius: f32, blur: f32, colour: Color32, inset: bool },
+    Shadow {
+        rect: Rect,
+        radius: f32,
+        blur: f32,
+        colour: Color32,
+        inset: bool,
+    },
     /// A filled circle: the lane dots, the play button, the agent badge.
-    Disc { centre: Pos2, radius: f32, fill: Fill },
+    Disc {
+        centre: Pos2,
+        radius: f32,
+        fill: Fill,
+    },
     /// An unfilled circle: the ring round the badge of a ticket whose agent is attached.
-    Ring { centre: Pos2, radius: f32, width: f32, colour: Color32 },
+    Ring {
+        centre: Pos2,
+        radius: f32,
+        width: f32,
+        colour: Color32,
+    },
     /// A straight line, which is every divider on the board.
-    Line { from: Pos2, to: Pos2, width: f32, colour: Color32 },
+    Line {
+        from: Pos2,
+        to: Pos2,
+        width: f32,
+        colour: Color32,
+    },
     /// Everything after this is cut to this rounded rectangle, until [`Decor::Unclip`].
     ///
     /// `outside` cuts to everything **outside** it instead, bounded by `bound`. That is what makes an
     /// elevation affordable: a raised surface's shadow is only ever seen in the band around it, and drawing
     /// the whole blurred rectangle underneath an opaque surface was measured at 3.3 ms **a lane** — a
     /// Gaussian evaluated over a third of a million pixels that are then painted over. See §9 of the design.
-    Clip { rect: Rect, corners: Corners, outside: bool, bound: Rect },
+    Clip {
+        rect: Rect,
+        corners: Corners,
+        outside: bool,
+        bound: Rect,
+    },
     Unclip,
 }
 
@@ -591,10 +624,7 @@ impl Canvas {
     /// one, because in the window the fastest is what is wanted. `Level::fallback` is deliberately not used:
     /// it is compiled out on a target whose baseline is already above it.
     pub fn for_tests() -> Self {
-        Self::new(RenderSettings {
-            level: vello_cpu::Level::baseline(),
-            num_threads: 0,
-        })
+        Self::new(RenderSettings { level: vello_cpu::Level::baseline(), num_threads: 0 })
     }
 
     pub fn rasterisations(&self) -> u64 {
@@ -663,8 +693,11 @@ impl Canvas {
             // The name is built here and nowhere else: it is wanted once, when the texture is first made,
             // and formatting one every frame would be an allocation on a frame that draws nothing new.
             none => {
-                *none =
-                    Some(ctx.load_texture(format!("{id:?}-chrome"), image, egui::TextureOptions::LINEAR));
+                *none = Some(ctx.load_texture(
+                    format!("{id:?}-chrome"),
+                    image,
+                    egui::TextureOptions::LINEAR,
+                ));
             }
         }
         self.drawn = Some(Drawn { items: items.to_vec(), rect, scale, width, height });
@@ -727,9 +760,9 @@ impl Canvas {
         let bytes = self.pixmap.data_as_u8_slice();
         let mut colours = Vec::with_capacity(bytes.len() / 4);
         colours.extend(
-            bytes
-                .chunks_exact(4)
-                .map(|pixel| Color32::from_rgba_premultiplied(pixel[0], pixel[1], pixel[2], pixel[3])),
+            bytes.chunks_exact(4).map(|pixel| {
+                Color32::from_rgba_premultiplied(pixel[0], pixel[1], pixel[2], pixel[3])
+            }),
         );
         colours
     }
@@ -742,17 +775,28 @@ impl Canvas {
             }
             Decor::Shadow { rect, radius, blur, colour, inset } => {
                 self.context.set_paint(colour_of(colour));
-                self.context.fill_blurred_rounded_rect(&box_of(rect), radius, blur.max(0.01), inset);
+                self.context.fill_blurred_rounded_rect(
+                    &box_of(rect),
+                    radius,
+                    blur.max(0.01),
+                    inset,
+                );
             }
             Decor::Disc { centre, radius, fill } => {
                 self.set_fill(fill);
-                let circle = Circle::new(Point::new(f64::from(centre.x), f64::from(centre.y)), f64::from(radius));
+                let circle = Circle::new(
+                    Point::new(f64::from(centre.x), f64::from(centre.y)),
+                    f64::from(radius),
+                );
                 self.context.fill_path(&circle.to_path(0.1));
             }
             Decor::Ring { centre, radius, width, colour } => {
                 self.context.set_paint(colour_of(colour));
                 self.context.set_stroke(Stroke::new(f64::from(width)));
-                let circle = Circle::new(Point::new(f64::from(centre.x), f64::from(centre.y)), f64::from(radius));
+                let circle = Circle::new(
+                    Point::new(f64::from(centre.x), f64::from(centre.y)),
+                    f64::from(radius),
+                );
                 self.context.stroke_path(&circle.to_path(0.1));
             }
             Decor::Line { from, to, width, colour } => {
@@ -869,7 +913,9 @@ fn bounds_of(items: &[Decor]) -> Option<Rect> {
                 true => add(rect),
                 false => add(rect.expand(blur * 2.5)),
             },
-            Decor::Disc { centre, radius, .. } => add(Rect::from_center_size(centre, Vec2::splat(radius * 2.0))),
+            Decor::Disc { centre, radius, .. } => {
+                add(Rect::from_center_size(centre, Vec2::splat(radius * 2.0)))
+            }
             Decor::Ring { centre, radius, width, .. } => {
                 add(Rect::from_center_size(centre, Vec2::splat(radius * 2.0 + width)));
             }
@@ -930,10 +976,13 @@ impl Canvases {
     ) -> Option<(egui::TextureId, Rect)> {
         let deterministic = self.deterministic;
         let frame = self.frame;
-        let canvas = self
-            .by_id
-            .entry(id)
-            .or_insert_with(|| if deterministic { Canvas::for_tests() } else { Canvas::default() });
+        let canvas = self.by_id.entry(id).or_insert_with(|| {
+            if deterministic {
+                Canvas::for_tests()
+            } else {
+                Canvas::default()
+            }
+        });
         canvas.last_used = frame;
         canvas.texture_for(ctx, id, rect, ctx.pixels_per_point(), items)
     }
@@ -962,7 +1011,12 @@ mod tests {
     #[test]
     fn a_raised_surface_is_two_shadows_and_the_surface_over_them() {
         let chrome = Chrome::recording();
-        chrome.raised(rect(10.0, 10.0, 100.0, 40.0), 14.0, Fill::Solid(Color32::from_rgb(0x20, 0x25, 0x2E)), Lift::Medium);
+        chrome.raised(
+            rect(10.0, 10.0, 100.0, 40.0),
+            14.0,
+            Fill::Solid(Color32::from_rgb(0x20, 0x25, 0x2E)),
+            Lift::Medium,
+        );
         let items = chrome.take();
         assert_eq!(items.len(), 5, "a band to draw in, two shadows, the unclip, and the surface");
         // The band first, so the two shadows are only evaluated where they can be seen.
@@ -970,7 +1024,10 @@ mod tests {
         // The dark one is down and right, the pale one up and left: the light comes from the same corner
         // everywhere on the board, which is what neumorphism is.
         let (dark, pale) = match (items[1], items[2]) {
-            (Decor::Shadow { rect: dark, inset: false, .. }, Decor::Shadow { rect: pale, inset: false, .. }) => (dark, pale),
+            (
+                Decor::Shadow { rect: dark, inset: false, .. },
+                Decor::Shadow { rect: pale, inset: false, .. },
+            ) => (dark, pale),
             other => panic!("expected two outer shadows, got {other:?}"),
         };
         assert!(dark.min.x > pale.min.x && dark.min.y > pale.min.y);
@@ -987,7 +1044,12 @@ mod tests {
         // is what stops the patch being needed at all.
         let chrome = Chrome::recording();
         let shape = Corners { nw: 5.0, ne: 14.0, se: 14.0, sw: 14.0 };
-        chrome.sunken(rect(0.0, 0.0, 120.0, 40.0), shape, Color32::from_rgb(0x20, 0x25, 0x2E), Lift::Medium);
+        chrome.sunken(
+            rect(0.0, 0.0, 120.0, 40.0),
+            shape,
+            Color32::from_rgb(0x20, 0x25, 0x2E),
+            Lift::Medium,
+        );
         let items = chrome.take();
         assert!(matches!(items[0], Decor::Rect { corners, .. } if corners == shape));
         assert!(matches!(items[1], Decor::Clip { corners, .. } if corners == shape));
@@ -998,10 +1060,18 @@ mod tests {
     #[test]
     fn a_sunken_surface_puts_its_shadows_inside_itself() {
         let chrome = Chrome::recording();
-        chrome.sunken(rect(0.0, 0.0, 40.0, 20.0), 10.0, Color32::from_rgb(0x1B, 0x20, 0x26), Lift::Small);
+        chrome.sunken(
+            rect(0.0, 0.0, 40.0, 20.0),
+            10.0,
+            Color32::from_rgb(0x1B, 0x20, 0x26),
+            Lift::Small,
+        );
         let items = chrome.take();
         assert_eq!(items.len(), 5, "the surface, a clip, two inset shadows and the unclip");
-        assert!(matches!(items[0], Decor::Rect { .. }), "the surface is drawn first, then pressed into");
+        assert!(
+            matches!(items[0], Decor::Rect { .. }),
+            "the surface is drawn first, then pressed into"
+        );
         // Clipped, because the inverted blur paints everything outside the rectangle — see `sunken`.
         assert!(matches!(items[1], Decor::Clip { .. }));
         assert!(items[2..4].iter().all(|item| matches!(item, Decor::Shadow { inset: true, .. })));
@@ -1046,7 +1116,16 @@ mod tests {
         // drawing is a pure function of what is being drawn.
         let draw = || {
             let chrome = Chrome::recording();
-            chrome.raised(rect(4.0, 4.0, 300.0, 101.0), 14.0, Fill::diagonal(rect(4.0, 4.0, 300.0, 101.0), Color32::from_rgb(1, 2, 3), Color32::from_rgb(4, 5, 6)), Lift::Small);
+            chrome.raised(
+                rect(4.0, 4.0, 300.0, 101.0),
+                14.0,
+                Fill::diagonal(
+                    rect(4.0, 4.0, 300.0, 101.0),
+                    Color32::from_rgb(1, 2, 3),
+                    Color32::from_rgb(4, 5, 6),
+                ),
+                Lift::Small,
+            );
             chrome.clip(rect(0.0, 0.0, 320.0, 400.0), 18.0);
             chrome.disc(Pos2::new(20.0, 20.0), 4.5, Fill::Solid(Color32::WHITE));
             chrome.ring(Pos2::new(20.0, 20.0), 8.0, 2.0, Color32::GREEN);
@@ -1104,7 +1183,11 @@ mod tests {
         for _ in 0..10 {
             assert!(canvas.texture_for(&ctx, id, area, 1.0, &items).is_some());
         }
-        assert_eq!(canvas.rasterisations(), 1, "a board nobody touched costs a comparison and nothing else");
+        assert_eq!(
+            canvas.rasterisations(),
+            1,
+            "a board nobody touched costs a comparison and nothing else"
+        );
 
         // A different drawing does rasterise.
         assert!(canvas.texture_for(&ctx, id, area, 1.0, &draw(Lift::Large)).is_some());
@@ -1139,7 +1222,10 @@ mod tests {
         canvas.rasterise(area, 1.0, 40, 40, &chrome.take());
         let at = |x: u16, y: u16| canvas.pixmap.sample(x, y);
         let middle = at(20, 20);
-        assert!(middle.r > 200 && middle.g < 60 && middle.a > 200, "the middle should be red, was {middle:?}");
+        assert!(
+            middle.r > 200 && middle.g < 60 && middle.a > 200,
+            "the middle should be red, was {middle:?}"
+        );
         assert_eq!(at(1, 1).a, 0, "and the canvas is clear where nothing was drawn");
     }
 
@@ -1150,11 +1236,19 @@ mod tests {
         let mut canvas = Canvas::for_tests();
         let area = rect(0.0, 0.0, 60.0, 60.0);
         let chrome = Chrome::recording();
-        chrome.sunken(rect(10.0, 10.0, 40.0, 40.0), 6.0, Color32::from_rgb(0x80, 0x80, 0x80), Lift::Medium);
+        chrome.sunken(
+            rect(10.0, 10.0, 40.0, 40.0),
+            6.0,
+            Color32::from_rgb(0x80, 0x80, 0x80),
+            Lift::Medium,
+        );
         canvas.rasterise(area, 1.0, 60, 60, &chrome.take());
         let edge = canvas.pixmap.sample(13, 13);
         let middle = canvas.pixmap.sample(30, 30);
-        assert!(edge.r < middle.r, "the top left inside a well is darker than its middle: {edge:?} vs {middle:?}");
+        assert!(
+            edge.r < middle.r,
+            "the top left inside a well is darker than its middle: {edge:?} vs {middle:?}"
+        );
         assert_eq!(canvas.pixmap.sample(2, 2).a, 0, "and nothing is painted outside the shape");
     }
 
@@ -1168,7 +1262,10 @@ mod tests {
         canvas.rasterise(area, 1.0, 40, 40, &chrome.take());
         let start = canvas.pixmap.sample(2, 2);
         let end = canvas.pixmap.sample(37, 37);
-        assert!(start.r > end.r + 100, "a diagonal gradient is light at the top left: {start:?} vs {end:?}");
+        assert!(
+            start.r > end.r + 100,
+            "a diagonal gradient is light at the top left: {start:?} vs {end:?}"
+        );
     }
 
     #[test]
@@ -1204,7 +1301,9 @@ mod tests {
         assert!(canvas.texture_for(&ctx, egui::Id::new("test"), huge, 1.0, &items).is_none());
         assert_eq!(canvas.rasterisations(), 0, "nothing that big is ever rasterised");
         // And an empty list is nothing to draw rather than an empty texture.
-        assert!(canvas.texture_for(&ctx, egui::Id::new("test"), rect(0.0, 0.0, 10.0, 10.0), 1.0, &[]).is_none());
+        assert!(canvas
+            .texture_for(&ctx, egui::Id::new("test"), rect(0.0, 0.0, 10.0, 10.0), 1.0, &[])
+            .is_none());
     }
 
     #[test]
@@ -1223,7 +1322,8 @@ mod tests {
         let mut canvas = Canvas::for_tests();
         let ctx = egui::Context::default();
         let pane = rect(0.0, 0.0, 1400.0, 900.0);
-        let (_, drawn) = canvas.texture_for(&ctx, egui::Id::new("test"), pane, 1.0, &items).expect("a texture");
+        let (_, drawn) =
+            canvas.texture_for(&ctx, egui::Id::new("test"), pane, 1.0, &items).expect("a texture");
         assert!(drawn.height() < 200.0, "the canvas is the decoration's own box: {drawn:?}");
         assert!(pane.contains_rect(drawn), "and never larger than the pane");
         assert!(bounds_of(&[]).is_none(), "nothing drawn is no box at all");

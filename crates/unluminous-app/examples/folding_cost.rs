@@ -106,7 +106,8 @@ fn main() {
     );
 
     let expand = timed(5, || {
-        let _ = relayout(shut.clone(), &rope, &spans, &paragraphs, &metrics, width, &Hidden::none());
+        let _ =
+            relayout(shut.clone(), &rope, &spans, &paragraphs, &metrics, width, &Hidden::none());
     });
     println!("  expanding them all again   {expand:8.3} ms");
 
@@ -115,7 +116,8 @@ fn main() {
     let mut edited = text.clone();
     edited.insert(edited.len() / 2, 'x');
     let rope_after = Rope::from_str(&edited);
-    let spans_after = StyleSpans::new(rope_after.len_bytes(), unluminous_core::CharStyle::default());
+    let spans_after =
+        StyleSpans::new(rope_after.len_bytes(), unluminous_core::CharStyle::default());
     let paragraphs_after = ParagraphStyles::new(rope_after.len_lines());
     // The scan shared with the colouring, which is what the window really does.
     let read_after = match reading {

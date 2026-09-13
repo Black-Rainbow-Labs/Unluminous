@@ -272,8 +272,11 @@ impl<'a> Options<'a> {
 /// The one way in. Everything else in this module is reached through here, so a caller never has to
 /// know which of twenty parsers a source belongs to.
 pub fn render(text: &str, options: &Options) -> Result<Scene, Problem> {
-    let source = Source::read(text)
-        .ok_or_else(|| Problem::whole("There is no diagram here: the first line should name one, such as `flowchart TD`."))?;
+    let source = Source::read(text).ok_or_else(|| {
+        Problem::whole(
+            "There is no diagram here: the first line should name one, such as `flowchart TD`.",
+        )
+    })?;
     if source.lines.len() > LINE_LIMIT {
         return Err(Problem::whole(format!(
             "This diagram has more than {LINE_LIMIT} lines, which is more than Unluminous draws."
@@ -328,12 +331,38 @@ mod tests {
         // The whole list from Mermaid's own navigation, so a type that is added to Unluminous later shows
         // up here as a change from NotDrawn rather than as a new line.
         let all = [
-            "flowchart", "graph", "sequenceDiagram", "classDiagram", "stateDiagram",
-            "stateDiagram-v2", "erDiagram", "journey", "gantt", "pie", "quadrantChart",
-            "requirementDiagram", "gitGraph", "c4Diagram", "mindmap", "timeline", "zenuml",
-            "sankey-beta", "xychart-beta", "block-beta", "packet-beta", "kanban", "architecture",
-            "radar-beta", "eventModeling", "treemap", "venn", "ishikawa", "wardley", "cynefin",
-            "treeView", "swimlanes",
+            "flowchart",
+            "graph",
+            "sequenceDiagram",
+            "classDiagram",
+            "stateDiagram",
+            "stateDiagram-v2",
+            "erDiagram",
+            "journey",
+            "gantt",
+            "pie",
+            "quadrantChart",
+            "requirementDiagram",
+            "gitGraph",
+            "c4Diagram",
+            "mindmap",
+            "timeline",
+            "zenuml",
+            "sankey-beta",
+            "xychart-beta",
+            "block-beta",
+            "packet-beta",
+            "kanban",
+            "architecture",
+            "radar-beta",
+            "eventModeling",
+            "treemap",
+            "venn",
+            "ishikawa",
+            "wardley",
+            "cynefin",
+            "treeView",
+            "swimlanes",
         ];
         for keyword in all {
             assert!(kind_of(keyword).is_some(), "{keyword} should be recognised");
@@ -343,8 +372,16 @@ mod tests {
     #[test]
     fn the_ten_unluminous_does_not_draw_are_named_rather_than_mistaken_for_something_else() {
         for keyword in [
-            "c4Diagram", "zenuml", "architecture", "swimlanes", "eventModeling", "venn",
-            "ishikawa", "wardley", "cynefin", "treeView",
+            "c4Diagram",
+            "zenuml",
+            "architecture",
+            "swimlanes",
+            "eventModeling",
+            "venn",
+            "ishikawa",
+            "wardley",
+            "cynefin",
+            "treeView",
         ] {
             let kind = kind_of(keyword).expect("recognised");
             assert!(!kind.is_drawn(), "{keyword} is not drawn");
@@ -376,7 +413,8 @@ mod tests {
     #[test]
     fn a_type_unluminous_does_not_draw_is_a_problem_that_names_it() {
         let metrics = FixedMetrics::default();
-        let problem = render("wardley\nvalue chain\n", &Options::new(&metrics)).expect_err("not drawn");
+        let problem =
+            render("wardley\nvalue chain\n", &Options::new(&metrics)).expect_err("not drawn");
         assert!(problem.unsupported, "this is Unluminous's limitation, not the author's fault");
         assert!(problem.reason.contains("Wardley"), "it says which type: {}", problem.reason);
     }
@@ -518,10 +556,26 @@ mod every_type {
         // The guard on the whole of the rest of this module: a diagram type added to `kind_of`
         // without a sample here would otherwise be tested by nothing at all.
         let drawn: Vec<&'static str> = [
-            "flowchart", "sequenceDiagram", "classDiagram", "stateDiagram-v2", "erDiagram",
-            "requirementDiagram", "pie", "gantt", "journey", "gitGraph", "mindmap", "timeline",
-            "quadrantChart", "xychart-beta", "sankey-beta", "block-beta", "packet-beta", "kanban",
-            "radar-beta", "treemap-beta",
+            "flowchart",
+            "sequenceDiagram",
+            "classDiagram",
+            "stateDiagram-v2",
+            "erDiagram",
+            "requirementDiagram",
+            "pie",
+            "gantt",
+            "journey",
+            "gitGraph",
+            "mindmap",
+            "timeline",
+            "quadrantChart",
+            "xychart-beta",
+            "sankey-beta",
+            "block-beta",
+            "packet-beta",
+            "kanban",
+            "radar-beta",
+            "treemap-beta",
         ]
         .into_iter()
         .filter(|keyword| kind_of(keyword).is_some_and(|kind| kind.is_drawn()))
@@ -584,12 +638,23 @@ mod every_type {
     #[test]
     fn a_type_unluminous_does_not_draw_is_named_rather_than_mis_parsed() {
         for keyword in [
-            "c4Diagram", "zenuml", "architecture", "swimlanes", "eventModeling", "venn",
-            "ishikawa", "wardley", "cynefin", "treeView",
+            "c4Diagram",
+            "zenuml",
+            "architecture",
+            "swimlanes",
+            "eventModeling",
+            "venn",
+            "ishikawa",
+            "wardley",
+            "cynefin",
+            "treeView",
         ] {
             let source = format!("{keyword}\n  something\n  something else\n");
             let problem = render(&source, &options()).expect_err("it should not be drawn");
-            assert!(problem.unsupported, "{keyword} is Unluminous's limitation, not the author's fault");
+            assert!(
+                problem.unsupported,
+                "{keyword} is Unluminous's limitation, not the author's fault"
+            );
             assert!(
                 problem.reason.contains("does not draw"),
                 "{keyword} should say so plainly: {}",

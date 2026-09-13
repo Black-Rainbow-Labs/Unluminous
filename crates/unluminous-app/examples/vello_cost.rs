@@ -47,7 +47,9 @@ fn main() {
     let area = Rect::from_min_size(Pos2::ZERO, Vec2::new(width, height));
 
     println!("A board of {lanes} lanes holding {cards} cards each, in {width} x {height} points.");
-    println!("Excluded: the GPU upload, the board's own layout and text, and everything egui does.\n");
+    println!(
+        "Excluded: the GPU upload, the board's own layout and text, and everything egui does.\n"
+    );
 
     // Recording, which is what every frame pays.
     let began = Instant::now();
@@ -63,7 +65,9 @@ fn main() {
 
     // Rasterising, which only a frame where the drawing changed pays. Twice over: with the SIMD level this
     // processor really has, which is what the window uses, and with the baseline the screenshot tests pin.
-    for (what, asked_for) in [("window", 1.0_f32), ("window", 2.0), ("pinned", 1.0), ("pinned", 2.0)] {
+    for (what, asked_for) in
+        [("window", 1.0_f32), ("window", 2.0), ("pinned", 1.0), ("pinned", 2.0)]
+    {
         let mut canvas = match what {
             "pinned" => Canvas::for_tests(),
             _ => Canvas::default(),
@@ -81,7 +85,12 @@ fn main() {
         let lists: Vec<Vec<_>> = (1..=rounds)
             .map(|round| {
                 let chrome = Chrome::recording();
-                draw_a_board(&chrome, area.translate(Vec2::new(0.0, round as f32 * 0.01)), lanes, cards);
+                draw_a_board(
+                    &chrome,
+                    area.translate(Vec2::new(0.0, round as f32 * 0.01)),
+                    lanes,
+                    cards,
+                );
                 chrome.take()
             })
             .collect();
@@ -126,7 +135,8 @@ fn draw_a_board(chrome: &Chrome, area: Rect, lanes: usize, cards: usize) {
     let accent = Color32::from_rgb(0x48, 0x9F, 0xF8);
 
     // The rail down the left, with its four view buttons and the chosen one lit.
-    let rail = Rect::from_min_size(Pos2::new(area.min.x + 16.0, area.min.y + 8.0), Vec2::new(52.0, 198.0));
+    let rail =
+        Rect::from_min_size(Pos2::new(area.min.x + 16.0, area.min.y + 8.0), Vec2::new(52.0, 198.0));
     chrome.raised(rail, 26.0, Fill::Solid(lane_colour), Lift::Medium);
     for view in 0..4 {
         let at = Rect::from_center_size(
@@ -140,10 +150,15 @@ fn draw_a_board(chrome: &Chrome, area: Rect, lanes: usize, cards: usize) {
     }
 
     // The header: a search well and a primary button with a glow.
-    let search =
-        Rect::from_min_size(Pos2::new(area.max.x - 620.0, area.min.y + 10.0), Vec2::new(460.0, 44.0));
+    let search = Rect::from_min_size(
+        Pos2::new(area.max.x - 620.0, area.min.y + 10.0),
+        Vec2::new(460.0, 44.0),
+    );
     chrome.sunken(search, 22.0, well, Lift::Small);
-    let add = Rect::from_min_size(Pos2::new(area.max.x - 140.0, area.min.y + 10.0), Vec2::new(127.0, 44.0));
+    let add = Rect::from_min_size(
+        Pos2::new(area.max.x - 140.0, area.min.y + 10.0),
+        Vec2::new(127.0, 44.0),
+    );
     chrome.glow(add, 14.0, accent.gamma_multiply(0.42), 9.0);
     chrome.raised(add, 14.0, Fill::diagonal(add, accent, accent), Lift::Small);
 
@@ -158,7 +173,12 @@ fn draw_a_board(chrome: &Chrome, area: Rect, lanes: usize, cards: usize) {
         chrome.clip(lane_area, 18.0);
         // The dot, its halo, and the count pressed into the lane.
         let dot = Pos2::new(lane_area.min.x + 19.0, lane_area.min.y + 28.0);
-        chrome.glow(Rect::from_center_size(dot, Vec2::splat(9.0)), 4.5, accent.gamma_multiply(0.9), 5.0);
+        chrome.glow(
+            Rect::from_center_size(dot, Vec2::splat(9.0)),
+            4.5,
+            accent.gamma_multiply(0.9),
+            5.0,
+        );
         chrome.disc(dot, 4.5, Fill::Solid(accent));
         chrome.sunken(
             Rect::from_min_size(
@@ -175,10 +195,12 @@ fn draw_a_board(chrome: &Chrome, area: Rect, lanes: usize, cards: usize) {
                 Vec2::new(lane_width - 28.0, 100.0),
             );
             chrome.raised(at, 14.0, Fill::Solid(card_colour), Lift::Small);
-            let play = Rect::from_min_size(Pos2::new(at.max.x - 74.0, at.max.y - 32.0), Vec2::splat(30.0));
+            let play =
+                Rect::from_min_size(Pos2::new(at.max.x - 74.0, at.max.y - 32.0), Vec2::splat(30.0));
             chrome.glow(play, 15.0, accent.gamma_multiply(0.45), 6.0);
             chrome.disc(play.center(), 15.0, Fill::diagonal(play, accent, accent));
-            let badge = Rect::from_min_size(Pos2::new(at.max.x - 36.0, at.max.y - 31.0), Vec2::splat(28.0));
+            let badge =
+                Rect::from_min_size(Pos2::new(at.max.x - 36.0, at.max.y - 31.0), Vec2::splat(28.0));
             chrome.disc(badge.center(), 14.0, Fill::diagonal(badge, accent, accent));
             chrome.ring(badge.center(), 17.5, 2.0, accent);
         }

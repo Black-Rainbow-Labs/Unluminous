@@ -410,13 +410,7 @@ struct Walked {
 /// and the filter and the file count have to know about files the user has not gone looking for yet.
 fn walk_files(root: &Path, depth: usize, ignores: &Ignores) -> Walked {
     let mut out = Walked::default();
-    fn walk(
-        root: &Path,
-        directory: &Path,
-        remaining: usize,
-        ignores: &Ignores,
-        out: &mut Walked,
-    ) {
+    fn walk(root: &Path, directory: &Path, remaining: usize, ignores: &Ignores, out: &mut Walked) {
         if remaining == 0 || out.files.len() >= SEARCH_LIMIT * 4 {
             return;
         }
@@ -453,7 +447,6 @@ fn walk_files(root: &Path, depth: usize, ignores: &Ignores) -> Walked {
     walk(root, root, depth, ignores, &mut out);
     out
 }
-
 
 /// Read one directory: folders first, then files, both sorted by name.
 ///
@@ -518,7 +511,8 @@ mod tests_task_28 {
     #[cfg(unix)]
     #[test]
     fn a_folder_holding_a_pipe_is_read_without_opening_it() {
-        let root = std::env::temp_dir().join(format!("unluminous-tree-fifo-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("unluminous-tree-fifo-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("make the folder");
         std::fs::write(root.join("ordinary.txt"), "text").expect("write ordinary.txt");
@@ -562,7 +556,8 @@ mod tests_task_28 {
     /// ignore rules "simply hide things" would break without any other test noticing.
     #[test]
     fn a_gitignore_is_honoured_by_the_index_and_the_explorer_still_shows_everything() {
-        let root = std::env::temp_dir().join(format!("unluminous-tree-ignore-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("unluminous-tree-ignore-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join(".git/info")).expect("make the repository");
         std::fs::create_dir_all(root.join("src")).expect("make src");
@@ -580,9 +575,8 @@ mod tests_task_28 {
         std::fs::write(root.join("debug.log"), "log").expect("write debug.log");
 
         let mut tree = FileTree::new(&root);
-        let named = |tree: &FileTree, name: &str| {
-            tree.all_files().iter().any(|path| path.ends_with(name))
-        };
+        let named =
+            |tree: &FileTree, name: &str| tree.all_files().iter().any(|path| path.ends_with(name));
 
         assert!(named(&tree, "main.rs"), "a source file is in the index");
         assert!(!named(&tree, "bundle.js"), "`dist/` is named in .gitignore");
@@ -591,7 +585,10 @@ mod tests_task_28 {
         assert!(named(&tree, "lib.rs"), "vendor is not ignored by this project, so it stays");
         // **A repository that does not ignore `node_modules` means it.** The three hardcoded names
         // are the fallback for a folder that is not a repository, and this one is.
-        assert!(named(&tree, "index.js"), "the project's own file is what decides inside a repository");
+        assert!(
+            named(&tree, "index.js"),
+            "the project's own file is what decides inside a repository"
+        );
 
         // The `editor.exclude` setting is the person's own line beside the project's.
         tree.set_exclude("vendor/");
@@ -611,7 +608,8 @@ mod tests_task_28 {
     /// they always were and what every project with no `.gitignore` relies on.
     #[test]
     fn a_folder_that_is_not_a_repository_still_skips_the_three_build_folders() {
-        let root = std::env::temp_dir().join(format!("unluminous-tree-plain-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("unluminous-tree-plain-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("target/debug")).expect("make target");
         std::fs::create_dir_all(root.join("src")).expect("make src");
@@ -636,11 +634,13 @@ mod tests_task_28 {
     /// the order of magnitude, not the number.
     #[test]
     fn a_folder_of_two_thousand_extensionless_files_is_read_quickly() {
-        let root = std::env::temp_dir().join(format!("unluminous-tree-many-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("unluminous-tree-many-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("make the folder");
         for index in 0..2000 {
-            std::fs::write(root.join(format!("entry{index}")), "some text in it").expect("write a file");
+            std::fs::write(root.join(format!("entry{index}")), "some text in it")
+                .expect("write a file");
         }
         let started = std::time::Instant::now();
         let tree = FileTree::new(&root);
@@ -723,8 +723,11 @@ mod tests {
         std::fs::write(root.join("notes/deeper/two.txt"), "two").expect("write the deep file");
         // A picture. It is not text, and since `task-1658` it opens all the same, in a tab that shows it.
         // The bytes are the start of a PNG, including the zero byte that says it is not text.
-        std::fs::write(root.join("picture.png"), [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0])
-            .expect("write picture.png");
+        std::fs::write(
+            root.join("picture.png"),
+            [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0],
+        )
+        .expect("write picture.png");
         // A file that is neither text nor a picture, so a test can check that one of those is listed
         // and dimmed.
         std::fs::write(root.join("bundle.zip"), [0x50, 0x4B, 0x03, 0x04, 0])
@@ -751,7 +754,12 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "archive", "notes", "bundle.zip", "notes.txt", "picture.png", "program.rs",
+                "archive",
+                "notes",
+                "bundle.zip",
+                "notes.txt",
+                "picture.png",
+                "program.rs",
                 "readme.md"
             ]
         );
@@ -813,8 +821,15 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "archive", "notes", "deeper", "one.md", "bundle.zip", "notes.txt", "picture.png",
-                "program.rs", "readme.md"
+                "archive",
+                "notes",
+                "deeper",
+                "one.md",
+                "bundle.zip",
+                "notes.txt",
+                "picture.png",
+                "program.rs",
+                "readme.md"
             ]
         );
         std::fs::remove_dir_all(&root).ok();
@@ -932,8 +947,15 @@ mod tests {
         };
         assert_eq!(names("README"), vec!["readme.md"]);
         assert_eq!(names(".md").len(), 2, "readme.md and notes/one.md");
-        assert_eq!(names(".png"), vec!["picture.png"], "the filter finds files Unluminous cannot open too");
-        assert!(names("").is_empty(), "an empty filter matches nothing, so the tree is shown instead");
+        assert_eq!(
+            names(".png"),
+            vec!["picture.png"],
+            "the filter finds files Unluminous cannot open too"
+        );
+        assert!(
+            names("").is_empty(),
+            "an empty filter matches nothing, so the tree is shown instead"
+        );
         assert!(names("nothing at all").is_empty());
         std::fs::remove_dir_all(&root).ok();
     }

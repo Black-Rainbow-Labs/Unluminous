@@ -44,12 +44,26 @@ struct Arrow {
 /// One thing that happens, in the order it was written.
 #[derive(Debug, Clone, PartialEq)]
 enum Event {
-    Message { from: usize, to: usize, arrow: Arrow, text: String },
-    Note { over: Vec<usize>, side: Side, text: String },
+    Message {
+        from: usize,
+        to: usize,
+        arrow: Arrow,
+        text: String,
+    },
+    Note {
+        over: Vec<usize>,
+        side: Side,
+        text: String,
+    },
     /// `loop`, `alt`, `opt`, `par`, `critical`, `break`, `rect`.
-    Open { kind: String, label: String },
+    Open {
+        kind: String,
+        label: String,
+    },
     /// `else`, `and`, `option`.
-    Divide { label: String },
+    Divide {
+        label: String,
+    },
     Close,
     Activate(usize),
     Deactivate(usize),
@@ -198,12 +212,7 @@ fn strip_word<'a>(text: &'a str, word: &str) -> Option<&'a str> {
 }
 
 /// Find or make the participant a piece of text names, reading `A as Alice` when it is there.
-fn participant(
-    diagram: &mut Diagram,
-    text: &str,
-    is_actor: bool,
-    band: Option<usize>,
-) -> usize {
+fn participant(diagram: &mut Diagram, text: &str, is_actor: bool, band: Option<usize>) -> usize {
     let text = text.trim();
     // An inline configuration object — `participant Alice, "alias": "A"` — is read for its name and
     // nothing else, because everything in it is about colour.
@@ -384,17 +393,14 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
         .iter()
         .map(|who| text::measure(&who.label, &style, options.metrics, 160.0))
         .collect();
-    let messages: Vec<Label> = diagram
-        .events
-        .iter()
-        .map(|event| measure_event(event, options))
-        .collect();
+    let messages: Vec<Label> =
+        diagram.events.iter().map(|event| measure_event(event, options)).collect();
 
     // An actor's figure is drawn above its name, so a diagram with one in it needs that much more
     // room at the top before the first row.
     let has_actor = diagram.participants.iter().any(|who| who.is_actor);
-    let title = parts::title(&mut scene, source, options, 0.0)
-        + if has_actor { HEAD_HEIGHT } else { 0.0 };
+    let title =
+        parts::title(&mut scene, source, options, 0.0) + if has_actor { HEAD_HEIGHT } else { 0.0 };
     let frame = measure_frame(diagram, &heads, &messages, title, options);
 
     draw_bands(&mut scene, diagram, &frame, options);
@@ -429,10 +435,8 @@ fn measure_frame(
     title: f32,
     options: &Options,
 ) -> Frame {
-    let widths: Vec<f32> = heads
-        .iter()
-        .map(|label| (label.width + parts::PADDING_X * 2.0).max(70.0))
-        .collect();
+    let widths: Vec<f32> =
+        heads.iter().map(|label| (label.width + parts::PADDING_X * 2.0).max(70.0)).collect();
     // A message's words have to fit between the two columns it joins, so the gap between any two
     // neighbouring columns is widened until the widest message crossing it fits.
     let mut gaps = vec![COLUMN_GAP; diagram.participants.len().saturating_sub(1)];
@@ -445,9 +449,8 @@ fn measure_frame(
             continue;
         }
         let wanted = messages[index].width + 24.0;
-        let spanned: f32 = (left..right)
-            .map(|at| gaps[at] + (widths[at] + widths[at + 1]) / 2.0)
-            .sum();
+        let spanned: f32 =
+            (left..right).map(|at| gaps[at] + (widths[at] + widths[at + 1]) / 2.0).sum();
         if wanted > spanned {
             let extra = (wanted - spanned) / (right - left) as f32;
             for gap in gaps.iter_mut().take(right).skip(left) {
@@ -541,7 +544,12 @@ fn draw_lifelines(scene: &mut Scene, diagram: &Diagram, frame: &Frame, options: 
     }
     for (who, top, bottom) in activations(diagram, frame) {
         scene.add(Item::Rect {
-            rect: Rect::new(frame.columns[who] - BAR / 2.0, top, BAR, (bottom - top).max(ROW / 2.0)),
+            rect: Rect::new(
+                frame.columns[who] - BAR / 2.0,
+                top,
+                BAR,
+                (bottom - top).max(ROW / 2.0),
+            ),
             radius: 2.0,
             fill: Some(Paint::solid(options.theme.accent)),
             stroke: Some(Stroke::new(options.theme.node_stroke, parts::LINE)),
@@ -588,12 +596,8 @@ fn draw_heads(
     let style = parts::text_style(options, 0.95, true, options.theme.text);
     for (index, who) in diagram.participants.iter().enumerate() {
         for (at_the_top, top) in [(true, frame.top), (false, frame.bottom + 6.0)] {
-            let rect = Rect::new(
-                frame.heads[index].left(),
-                top,
-                frame.heads[index].width,
-                HEAD_HEIGHT,
-            );
+            let rect =
+                Rect::new(frame.heads[index].left(), top, frame.heads[index].width, HEAD_HEIGHT);
             if who.is_actor {
                 // The figure goes above the name at the top of the diagram and below it at the
                 // bottom, so it is always on the outside and never lands inside the last block frame.
@@ -632,7 +636,10 @@ fn draw_actor(scene: &mut Scene, rect: Rect, options: &Options) {
     let arm = rect.height * 0.22;
     for points in [
         vec![Point::new(centre.x, shoulder), Point::new(centre.x, foot - arm)],
-        vec![Point::new(centre.x - arm, shoulder + arm * 0.4), Point::new(centre.x + arm, shoulder + arm * 0.4)],
+        vec![
+            Point::new(centre.x - arm, shoulder + arm * 0.4),
+            Point::new(centre.x + arm, shoulder + arm * 0.4),
+        ],
         vec![Point::new(centre.x - arm, foot), Point::new(centre.x, foot - arm)],
         vec![Point::new(centre.x + arm, foot), Point::new(centre.x, foot - arm)],
     ] {
@@ -656,7 +663,18 @@ fn draw_events(
             Event::Message { from, to, arrow, text } => {
                 number += 1;
                 let numbered = diagram.numbered.then_some(number);
-                draw_message(scene, *from, *to, *arrow, text, &labels[index], y, numbered, frame, options);
+                draw_message(
+                    scene,
+                    *from,
+                    *to,
+                    *arrow,
+                    text,
+                    &labels[index],
+                    y,
+                    numbered,
+                    frame,
+                    options,
+                );
             }
             Event::Note { over, side, text } => {
                 let _ = text;
@@ -709,7 +727,14 @@ fn draw_message(
         theme.node_fill,
     );
     if arrow.both {
-        parts::ending(scene, arrow.head, path[0], parts::tail_heading(&path), theme.line, theme.node_fill);
+        parts::ending(
+            scene,
+            arrow.head,
+            path[0],
+            parts::tail_heading(&path),
+            theme.line,
+            theme.node_fill,
+        );
     }
     if label.is_empty() && number.is_none() {
         return;
@@ -745,7 +770,9 @@ fn draw_note(
     let first = *over.first().expect("a note names at least one participant");
     let last = *over.last().expect("a note names at least one participant");
     let rect = match side {
-        Side::Left => Rect::new(frame.columns[first] - width - 24.0, y - height / 2.0, width, height),
+        Side::Left => {
+            Rect::new(frame.columns[first] - width - 24.0, y - height / 2.0, width, height)
+        }
         Side::Right => Rect::new(frame.columns[first] + 24.0, y - height / 2.0, width, height),
         Side::Over => {
             let left = frame.columns[first].min(frame.columns[last]);
@@ -819,8 +846,7 @@ fn draw_blocks(
                         _ => String::new(),
                     };
                     let style = parts::text_style(options, 0.8, false, theme.dim);
-                    let width =
-                        text::width_of(&words, &options.style(0.8, false), options.metrics);
+                    let width = text::width_of(&words, &options.style(0.8, false), options.metrics);
                     parts::one_line(
                         scene,
                         &words,
@@ -891,7 +917,9 @@ mod tests {
 
     #[test]
     fn participants_come_in_the_order_they_are_declared() {
-        let diagram = diagram("sequenceDiagram\n participant B as Bob\n participant A as Alice\n A ->> B: Hi\n");
+        let diagram = diagram(
+            "sequenceDiagram\n participant B as Bob\n participant A as Alice\n A ->> B: Hi\n",
+        );
         assert_eq!(diagram.participants.len(), 2);
         assert_eq!(diagram.participants[0].label, "Bob");
         assert_eq!(diagram.participants[1].label, "Alice");
@@ -995,7 +1023,8 @@ mod tests {
 
     #[test]
     fn a_line_that_is_not_a_message_says_so_with_its_line_number() {
-        let problem = check::refused("sequenceDiagram\n A ->> B: fine\n what is this\n", &options());
+        let problem =
+            check::refused("sequenceDiagram\n A ->> B: fine\n what is this\n", &options());
         assert_eq!(problem.line, Some(3));
         assert!(problem.reason.contains("Alice ->> Bob"), "it says what one looks like");
     }
@@ -1012,7 +1041,15 @@ mod tests {
         let scene = check::drawn(
             text,
             &options(),
-            &["Alice", "The Server", "Can I have it?", "looking it up", "loop", "until found", "alt"],
+            &[
+                "Alice",
+                "The Server",
+                "Can I have it?",
+                "looking it up",
+                "loop",
+                "until found",
+                "alt",
+            ],
         );
         assert!(scene.size.height > scene.size.width / 2.0, "a sequence diagram runs downwards");
     }
@@ -1020,7 +1057,8 @@ mod tests {
     #[test]
     fn the_columns_are_far_enough_apart_for_the_words_between_them() {
         // A long message must not run out over the participant beside it.
-        let text = "sequenceDiagram\n A ->> B: a very long message indeed that needs plenty of room\n";
+        let text =
+            "sequenceDiagram\n A ->> B: a very long message indeed that needs plenty of room\n";
         let scene = check::drawn(text, &options(), &["a very long message"]);
         assert!(scene.size.width > 400.0, "the columns were pushed apart: {:?}", scene.size);
     }
@@ -1028,7 +1066,10 @@ mod tests {
     #[test]
     fn a_message_to_oneself_loops_rather_than_disappearing() {
         let scene = check::drawn("sequenceDiagram\n A ->> A: think\n", &options(), &["think"]);
-        assert!(scene.items.iter().any(|item| matches!(item, Item::Line { points, .. } if points.len() > 2)));
+        assert!(scene
+            .items
+            .iter()
+            .any(|item| matches!(item, Item::Line { points, .. } if points.len() > 2)));
     }
 
     #[test]
@@ -1052,7 +1093,8 @@ mod actors {
     fn an_actors_figure_is_drawn_outside_the_diagram_at_both_ends() {
         // Above its name at the top and below it at the bottom, so it is always on the outside. Drawn
         // above at both ends, the one at the bottom lands inside the last block frame.
-        let text = "sequenceDiagram\n actor A\n participant B\n loop forever\n A ->> B: hello\n end\n";
+        let text =
+            "sequenceDiagram\n actor A\n participant B\n loop forever\n A ->> B: hello\n end\n";
         let scene = check::drawn(text, &options(), &["A", "B", "hello", "loop"]);
         let names: Vec<f32> = scene
             .items
@@ -1066,7 +1108,9 @@ mod actors {
             .items
             .iter()
             .filter_map(|item| match item {
-                Item::Circle { centre, radius, .. } if *radius < HEAD_HEIGHT / 2.0 => Some(centre.y),
+                Item::Circle { centre, radius, .. } if *radius < HEAD_HEIGHT / 2.0 => {
+                    Some(centre.y)
+                }
                 _ => None,
             })
             .collect();

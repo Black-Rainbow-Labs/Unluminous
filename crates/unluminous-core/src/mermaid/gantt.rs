@@ -109,10 +109,20 @@ fn read(source: &Source) -> Result<Chart, Problem> {
             continue;
         }
         // Everything else about the axis is about wording rather than about position.
-        if ["dateFormat", "axisFormat", "excludes", "includes", "todayMarker", "tickInterval",
-            "weekday", "inclusiveEndDates", "topAxis", "displayMode"]
-            .iter()
-            .any(|word| line.starts_with_word(word))
+        if [
+            "dateFormat",
+            "axisFormat",
+            "excludes",
+            "includes",
+            "todayMarker",
+            "tickInterval",
+            "weekday",
+            "inclusiveEndDates",
+            "topAxis",
+            "displayMode",
+        ]
+        .iter()
+        .any(|word| line.starts_with_word(word))
         {
             continue;
         }
@@ -310,7 +320,12 @@ fn resolve(chart: &mut Chart) {
     }
     // Anything still unplaced follows whatever came before it and lasts a day, which is better than
     // leaving it off the chart entirely.
-    let mut at = chart.tasks.iter().filter_map(|task| task.placed).map(|(start, _)| start).fold(f64::INFINITY, f64::min);
+    let mut at = chart
+        .tasks
+        .iter()
+        .filter_map(|task| task.placed)
+        .map(|(start, _)| start)
+        .fold(f64::INFINITY, f64::min);
     if !at.is_finite() {
         at = 0.0;
     }
@@ -559,7 +574,11 @@ fn draw_rows(
                 _ => Paint::solid(colour),
             }),
             stroke: Some(Stroke::new(
-                if task.shade == Shade::Critical { options.theme.accent } else { options.theme.node_stroke },
+                if task.shade == Shade::Critical {
+                    options.theme.accent
+                } else {
+                    options.theme.node_stroke
+                },
                 if task.shade == Shade::Critical { parts::THICK } else { parts::LINE },
             )),
         });
@@ -610,7 +629,8 @@ mod tests {
 
     #[test]
     fn a_start_date_and_a_duration_give_a_finish() {
-        let chart = chart("gantt\n dateFormat YYYY-MM-DD\n section One\n Design : des1, 2024-01-01, 5d\n");
+        let chart =
+            chart("gantt\n dateFormat YYYY-MM-DD\n section One\n Design : des1, 2024-01-01, 5d\n");
         let (start, finish) = placed(&chart, "Design");
         assert_eq!(finish - start, 5.0);
         assert_eq!(format_date(start), "2024-01-01");
@@ -713,7 +733,8 @@ mod tests {
     #[test]
     fn a_chart_whose_dates_will_not_parse_is_still_drawn() {
         // Losing the calendar is much better than losing the chart.
-        let text = "gantt\n dateFormat DD-MM-YYYY\n A : a1, 01-01-2024, 5d\n B : b1, after a1, 3d\n";
+        let text =
+            "gantt\n dateFormat DD-MM-YYYY\n A : a1, 01-01-2024, 5d\n B : b1, after a1, 3d\n";
         let scene = check::drawn(text, &options(), &["A", "B"]);
         assert!(!scene.is_empty());
     }
@@ -733,7 +754,8 @@ mod rows {
     fn a_section_takes_a_row_of_its_own_above_the_tasks_in_it() {
         // Written beside its first task, a section's name and the task's name would both be at the
         // left of the same row, and one would be drawn over the other.
-        let text = "gantt\n section Design\n A : 2024-01-01, 1d\n B : 1d\n section Build\n C : 1d\n";
+        let text =
+            "gantt\n section Design\n A : 2024-01-01, 1d\n B : 1d\n section Build\n C : 1d\n";
         let scene = check::drawn(text, &options(), &["Design", "Build", "A", "B", "C"]);
         let texts = scene.texts();
         let at = |words: &str| texts.iter().position(|drawn| *drawn == words);

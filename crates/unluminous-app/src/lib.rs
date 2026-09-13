@@ -57,7 +57,10 @@ pub fn resolve_target(argument: Option<&Path>, fallback: &Path) -> (PathBuf, Opt
     match argument {
         Some(path) if path.is_file() => {
             let file = against(path);
-            let folder = file.parent().map(Path::to_path_buf).unwrap_or_else(|| tidy(fallback.to_path_buf()));
+            let folder = file
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| tidy(fallback.to_path_buf()));
             (folder, Some(file))
         }
         Some(path) => (against(path), None),
@@ -227,7 +230,8 @@ mod tests {
         let (folder, _) = resolve_target(Some(Path::new("inner")), &root);
         assert_eq!(folder, root.join("inner"));
 
-        let (folder, opened) = resolve_target(Some(&root.join("inner/note.md")), Path::new("/nowhere"));
+        let (folder, opened) =
+            resolve_target(Some(&root.join("inner/note.md")), Path::new("/nowhere"));
         assert_eq!(folder, root.join("inner"));
         assert_eq!(opened, Some(root.join("inner/note.md")));
 

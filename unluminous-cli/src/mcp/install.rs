@@ -157,7 +157,10 @@ impl Wanted {
         let mut out = format!("[mcp_servers.{}]\n", self.name);
         match self.transport {
             Transport::Stdio => {
-                out.push_str(&format!("command = {}\n", toml_string(&self.program.to_string_lossy())));
+                out.push_str(&format!(
+                    "command = {}\n",
+                    toml_string(&self.program.to_string_lossy())
+                ));
                 out.push_str("args = [\"mcp\", \"serve\"]\n");
             }
             Transport::Http => {
@@ -287,7 +290,11 @@ fn through_claude_cli(wanted: &Wanted, entry: &Value, file: &Path) -> Option<Don
     };
     // Removed first, so installing twice is a change rather than a refusal. A name that is not
     // there is not an error worth reporting, which is why the outcome is ignored.
-    run(&program_named("claude"), &["mcp", "remove", &wanted.name, "--scope", scope], &wanted.folder);
+    run(
+        &program_named("claude"),
+        &["mcp", "remove", &wanted.name, "--scope", scope],
+        &wanted.folder,
+    );
     let added = run(
         &program_named("claude"),
         &["mcp", "add-json", &wanted.name, &entry.to_string(), "--scope", scope],
@@ -309,8 +316,11 @@ fn claude_remove(wanted: &Wanted) -> Result<Done, String> {
         Scope::User => "user",
         Scope::Project => "project",
     };
-    if run(&program_named("claude"), &["mcp", "remove", &wanted.name, "--scope", scope], &wanted.folder)
-        == Some(true)
+    if run(
+        &program_named("claude"),
+        &["mcp", "remove", &wanted.name, "--scope", scope],
+        &wanted.folder,
+    ) == Some(true)
     {
         return Ok(Done {
             message: format!("`claude mcp remove {}` took it out.", wanted.name),
@@ -347,11 +357,8 @@ fn write_json_server(file: &Path, name: &str, entry: Option<&Value>) -> Result<(
         std::fs::write(&backup, &existing)
             .map_err(|problem| format!("could not write {}: {problem}", backup.display()))?;
     }
-    let servers = value
-        .as_object_mut()
-        .expect("an object")
-        .entry("mcpServers")
-        .or_insert_with(|| json!({}));
+    let servers =
+        value.as_object_mut().expect("an object").entry("mcpServers").or_insert_with(|| json!({}));
     if !servers.is_object() {
         *servers = json!({});
     }
@@ -422,7 +429,8 @@ fn through_codex_cli(wanted: &Wanted, file: &Path) -> Option<Done> {
 
 fn codex_remove(wanted: &Wanted) -> Result<Done, String> {
     let file = codex_file();
-    if run(&program_named("codex"), &["mcp", "remove", &wanted.name], &wanted.folder) == Some(true) {
+    if run(&program_named("codex"), &["mcp", "remove", &wanted.name], &wanted.folder) == Some(true)
+    {
         return Ok(Done {
             message: format!("`codex mcp remove {}` took it out.", wanted.name),
             file,
@@ -656,8 +664,11 @@ mod tests {
 
     #[test]
     fn the_stdio_entry_names_this_program_and_carries_no_port() {
-        let entry = Wanted { program: PathBuf::from("/opt/unluminous/unluminous-cli"), ..Wanted::default() }
-            .entry();
+        let entry = Wanted {
+            program: PathBuf::from("/opt/unluminous/unluminous-cli"),
+            ..Wanted::default()
+        }
+        .entry();
         assert_eq!(entry["type"], json!("stdio"));
         assert_eq!(entry["command"], json!("/opt/unluminous/unluminous-cli"));
         assert_eq!(entry["args"], json!(["mcp", "serve"]));
@@ -752,7 +763,10 @@ mod tests {
         write_toml_table(&file, "mcp_servers.unluminous", Some(&wanted(&home).toml_table()))
             .expect("it writes");
         let after = std::fs::read_to_string(&file).expect("read");
-        assert!(after.contains("# how this machine is set up"), "the comment must survive: {after}");
+        assert!(
+            after.contains("# how this machine is set up"),
+            "the comment must survive: {after}"
+        );
         assert!(after.contains("[projects.'c:\\jason']"), "{after}");
         assert!(after.contains("[mcp_servers.unluminous]"), "{after}");
         assert!(after.contains("args = [\"mcp\", \"serve\"]"), "{after}");
@@ -766,7 +780,8 @@ mod tests {
         std::fs::write(&file, "notify = [\"a\"]\n").expect("write");
         let wanted = wanted(&home);
         for _ in 0..2 {
-            write_toml_table(&file, "mcp_servers.unluminous", Some(&wanted.toml_table())).expect("write");
+            write_toml_table(&file, "mcp_servers.unluminous", Some(&wanted.toml_table()))
+                .expect("write");
         }
         let after = std::fs::read_to_string(&file).expect("read");
         assert_eq!(after.matches("[mcp_servers.unluminous]").count(), 1, "{after}");

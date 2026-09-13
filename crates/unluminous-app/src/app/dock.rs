@@ -571,7 +571,9 @@ pub fn regions_with(
         panels.iter().map(|panel| sizes.width_of(*panel)).sum::<f32>()
     };
     let (left_depth, right_depth) = match editor {
-        true => share_the_depth(middle.width(), width(&left_panels), width(&right_panels), keep_width),
+        true => {
+            share_the_depth(middle.width(), width(&left_panels), width(&right_panels), keep_width)
+        }
         false => fill_the_depth(middle.width(), width(&left_panels), width(&right_panels)),
     };
 
@@ -884,7 +886,10 @@ mod tests {
     fn three_panels_on_one_side_keep_their_order_when_the_middle_one_leaves() {
         let mut layout = Layout::new();
         layout.dock(Panel::Run, Side::Top, None);
-        assert_eq!(layout.panels_on(Side::Bottom), vec![Panel::Terminal, Panel::Debug, Panel::Space]);
+        assert_eq!(
+            layout.panels_on(Side::Bottom),
+            vec![Panel::Terminal, Panel::Debug, Panel::Space]
+        );
         assert_eq!(layout.order_of(Panel::Debug), 1);
     }
 
@@ -894,14 +899,19 @@ mod tests {
         // height, and the editing area filling the rest — which is what `UnluminousApp::ui` spelled out
         // before this module existed.
         let sizes = Panes::new();
-        let placed = regions(body(), &Layout::new(), only(&[Panel::Explorer, Panel::Terminal]), &sizes);
+        let placed =
+            regions(body(), &Layout::new(), only(&[Panel::Explorer, Panel::Terminal]), &sizes);
         let explorer = placed.of(Panel::Explorer);
         let terminal = placed.of(Panel::Terminal);
         assert_eq!(explorer.left(), 0.0);
         assert_eq!(explorer.width(), sizes.explorer_width);
         assert_eq!(terminal.width(), 1000.0, "the strip takes the whole width, under the explorer");
         assert_eq!(terminal.height(), sizes.terminal_height);
-        assert_eq!(explorer.bottom(), terminal.top(), "the explorer stops where the terminal starts");
+        assert_eq!(
+            explorer.bottom(),
+            terminal.top(),
+            "the explorer stops where the terminal starts"
+        );
         assert_eq!(placed.editor.left(), explorer.right());
         assert_eq!(placed.editor.right(), 1000.0);
         assert_eq!(placed.editor.bottom(), terminal.top());
@@ -929,7 +939,10 @@ mod tests {
         assert_eq!(explorer.left(), 0.0);
         assert_eq!(explorer.right(), terminal.left(), "no gap between the two columns");
         assert_eq!(terminal.right(), placed.editor.left());
-        assert_eq!(explorer.width() + terminal.width(), sizes.explorer_width + sizes.terminal_width);
+        assert_eq!(
+            explorer.width() + terminal.width(),
+            sizes.explorer_width + sizes.terminal_width
+        );
     }
 
     #[test]
@@ -996,7 +1009,15 @@ mod tests {
             assert!(zone.band.width() > 0.0 && zone.band.height() > 0.0);
         }
         assert_eq!(
-            target(body(), &layout, showing, &sizes, Panel::Terminal, Pos2::new(500.0, 350.0), true),
+            target(
+                body(),
+                &layout,
+                showing,
+                &sizes,
+                Panel::Terminal,
+                Pos2::new(500.0, 350.0),
+                true
+            ),
             None,
             "the document is not a dock host"
         );
@@ -1021,10 +1042,12 @@ mod tests {
         // Two points in the bottom left corner: one hard against the left edge, one hard against the
         // bottom.
         let (side, _) =
-            target(body(), &layout, showing, &sizes, Panel::Run, Pos2::new(2.0, 660.0), true).expect("a side");
+            target(body(), &layout, showing, &sizes, Panel::Run, Pos2::new(2.0, 660.0), true)
+                .expect("a side");
         assert_eq!(side, Side::Left);
         let (side, _) =
-            target(body(), &layout, showing, &sizes, Panel::Run, Pos2::new(60.0, 699.0), true).expect("a side");
+            target(body(), &layout, showing, &sizes, Panel::Run, Pos2::new(60.0, 699.0), true)
+                .expect("a side");
         assert_eq!(side, Side::Bottom);
     }
 
@@ -1034,9 +1057,25 @@ mod tests {
         let layout = Layout::new();
         let showing = only(&[Panel::Explorer, Panel::Terminal]);
         let middle = sizes.explorer_width / 2.0;
-        let before = target(body(), &layout, showing, &sizes, Panel::Terminal, Pos2::new(middle - 20.0, 300.0), true);
+        let before = target(
+            body(),
+            &layout,
+            showing,
+            &sizes,
+            Panel::Terminal,
+            Pos2::new(middle - 20.0, 300.0),
+            true,
+        );
         assert_eq!(before, Some((Side::Left, 0)));
-        let after = target(body(), &layout, showing, &sizes, Panel::Terminal, Pos2::new(middle + 20.0, 300.0), true);
+        let after = target(
+            body(),
+            &layout,
+            showing,
+            &sizes,
+            Panel::Terminal,
+            Pos2::new(middle + 20.0, 300.0),
+            true,
+        );
         assert_eq!(after, Some((Side::Left, 1)));
     }
 
@@ -1047,7 +1086,8 @@ mod tests {
         let sizes = Panes::new();
         let mut layout = Layout::new();
         let showing = only(&[Panel::Explorer, Panel::Terminal]);
-        let preview = regions(body(), &layout.with(Panel::Terminal, Side::Right, Some(0)), showing, &sizes);
+        let preview =
+            regions(body(), &layout.with(Panel::Terminal, Side::Right, Some(0)), showing, &sizes);
         layout.dock(Panel::Terminal, Side::Right, Some(0));
         let after = regions(body(), &layout, showing, &sizes);
         assert_eq!(preview, after);
@@ -1092,12 +1132,24 @@ mod tests {
         showing[Panel::Explorer.index()] = true;
 
         let with = regions_with(body, &layout, showing, &sizes, true);
-        assert_eq!(with.of(Panel::Explorer).width(), sizes.explorer_width, "it asks for its own width");
+        assert_eq!(
+            with.of(Panel::Explorer).width(),
+            sizes.explorer_width,
+            "it asks for its own width"
+        );
         assert!(with.editor.width() > 0.0, "and the editing area has what is left");
 
         let without = regions_with(body, &layout, showing, &sizes, false);
-        assert_eq!(without.editor, Rect::ZERO, "a hidden editing area takes no room, like a hidden panel");
-        assert_eq!(without.of(Panel::Explorer).width(), 1000.0, "so the explorer has the whole width");
+        assert_eq!(
+            without.editor,
+            Rect::ZERO,
+            "a hidden editing area takes no room, like a hidden panel"
+        );
+        assert_eq!(
+            without.of(Panel::Explorer).width(),
+            1000.0,
+            "so the explorer has the whole width"
+        );
         assert_eq!(without.of(Panel::Explorer).height(), 700.0, "and the whole height");
     }
 
@@ -1115,7 +1167,11 @@ mod tests {
         assert_eq!(with.of(Panel::Terminal).height(), sizes.terminal_height);
 
         let without = regions_with(body, &layout, showing, &sizes, false);
-        assert_eq!(without.of(Panel::Terminal).height(), 700.0, "the terminal takes the whole height");
+        assert_eq!(
+            without.of(Panel::Terminal).height(),
+            700.0,
+            "the terminal takes the whole height"
+        );
         assert_eq!(without.of(Panel::Terminal).width(), 1000.0, "and still spans the whole width");
         assert_eq!(without.editor, Rect::ZERO);
     }
@@ -1216,8 +1272,14 @@ mod tests {
                         drawn.push(("editor", placed.editor));
                     }
                     for (name, rect) in &drawn {
-                        assert!(rect.width() >= 0.0 && rect.height() >= 0.0, "{name} is {rect:?}: {where_}");
-                        assert!(body.expand(0.5).contains_rect(*rect), "{name} is outside at {rect:?}: {where_}");
+                        assert!(
+                            rect.width() >= 0.0 && rect.height() >= 0.0,
+                            "{name} is {rect:?}: {where_}"
+                        );
+                        assert!(
+                            body.expand(0.5).contains_rect(*rect),
+                            "{name} is outside at {rect:?}: {where_}"
+                        );
                     }
                     for first in 0..drawn.len() {
                         for second in (first + 1)..drawn.len() {
@@ -1236,7 +1298,10 @@ mod tests {
                         let covered: f32 =
                             drawn.iter().map(|(_, rect)| rect.width() * rect.height()).sum();
                         let whole = body.width() * body.height();
-                        assert!(covered >= whole * 0.98, "only {covered} of {whole} covered: {where_}");
+                        assert!(
+                            covered >= whole * 0.98,
+                            "only {covered} of {whole} covered: {where_}"
+                        );
                     }
                 }
             }

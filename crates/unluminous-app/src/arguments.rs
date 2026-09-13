@@ -93,12 +93,12 @@ pub enum Start {
 ///
 /// The environment is read first, so that a switch on the command line beats it, which is the order
 /// `clig.dev` sets out for configuration: a flag, then the environment, then a file.
-pub fn read(
-    arguments: impl IntoIterator<Item = String>,
-    control_setting: Option<&str>,
-) -> Start {
+pub fn read(arguments: impl IntoIterator<Item = String>, control_setting: Option<&str>) -> Start {
     let mut settings = Arguments {
-        control: !matches!(control_setting.unwrap_or_default().trim(), "off" | "no" | "0" | "false"),
+        control: !matches!(
+            control_setting.unwrap_or_default().trim(),
+            "off" | "no" | "0" | "false"
+        ),
         ..Arguments::default()
     };
     let mut rest = arguments.into_iter();
@@ -195,14 +195,24 @@ mod tests {
 
     #[test]
     fn a_path_is_the_project() {
-        assert_eq!(window(&["C:/jason/dev/unluminous"]).path.unwrap(), PathBuf::from("C:/jason/dev/unluminous"));
+        assert_eq!(
+            window(&["C:/jason/dev/unluminous"]).path.unwrap(),
+            PathBuf::from("C:/jason/dev/unluminous")
+        );
     }
 
     #[test]
     fn the_switches_are_read() {
         let settings = window(&[
-            "--opacity", "0.5", "--view", "preview", "--menu-bar", "in-window", "--terminal",
-            "--print-menus", "/a/project",
+            "--opacity",
+            "0.5",
+            "--view",
+            "preview",
+            "--menu-bar",
+            "in-window",
+            "--terminal",
+            "--print-menus",
+            "/a/project",
         ]);
         assert_eq!(settings.opacity, Some(0.5));
         assert_eq!(settings.view, Some(ViewMode::Preview));
@@ -220,7 +230,8 @@ mod tests {
             panic!("a window");
         };
         assert!(!from_environment.control);
-        let Start::Window(switch_wins) = read(["--control".to_string(), "on".to_string()], Some("off"))
+        let Start::Window(switch_wins) =
+            read(["--control".to_string(), "on".to_string()], Some("off"))
         else {
             panic!("a window");
         };
@@ -242,18 +253,16 @@ mod tests {
     #[test]
     fn help_is_answered_and_lists_every_switch_that_is_read() {
         let Start::Answer(said) = read_line(&["--help"]) else { panic!("--help is an answer") };
-        for switch in
-            [
-                "--opacity",
-                "--view",
-                "--menu-bar",
-                "--terminal",
-                "--control",
-                "--background",
-                "--print-menus",
-                "--version",
-            ]
-        {
+        for switch in [
+            "--opacity",
+            "--view",
+            "--menu-bar",
+            "--terminal",
+            "--control",
+            "--background",
+            "--print-menus",
+            "--version",
+        ] {
             assert!(said.contains(switch), "--help does not mention {switch}:\n{said}");
         }
     }

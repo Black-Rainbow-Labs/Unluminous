@@ -104,12 +104,48 @@ pub fn show(
     let strip = Rect::from_min_size(area.min, Vec2::new(area.width(), TOOLBAR_HEIGHT));
     let browser = Rect::from_min_max(Pos2::new(area.left(), strip.bottom()), area.max);
     ui.painter().rect_filled(strip, CornerRadius::ZERO, color::toolbar());
-    ui.painter().line_segment([Pos2::new(strip.left(), strip.bottom()), strip.right_bottom()], Stroke::new(1.0, color::divider()));
+    ui.painter().line_segment(
+        [Pos2::new(strip.left(), strip.bottom()), strip.right_bottom()],
+        Stroke::new(1.0, color::divider()),
+    );
     let mut outcome = Outcome::default();
     let mut left = strip.left() + 6.0;
-    draw_button(ui, &mut left, strip, Button { name: "Back", glyph: "‹", enabled: toolbar.can_go_back(), command: BrowserCommand::Back }, &mut outcome);
-    draw_button(ui, &mut left, strip, Button { name: "Forward", glyph: "›", enabled: toolbar.can_go_forward(), command: BrowserCommand::Forward }, &mut outcome);
-    draw_button(ui, &mut left, strip, Button { name: "Reload", glyph: "↻", enabled: toolbar.tab.is_some(), command: BrowserCommand::Reload }, &mut outcome);
+    draw_button(
+        ui,
+        &mut left,
+        strip,
+        Button {
+            name: "Back",
+            glyph: "‹",
+            enabled: toolbar.can_go_back(),
+            command: BrowserCommand::Back,
+        },
+        &mut outcome,
+    );
+    draw_button(
+        ui,
+        &mut left,
+        strip,
+        Button {
+            name: "Forward",
+            glyph: "›",
+            enabled: toolbar.can_go_forward(),
+            command: BrowserCommand::Forward,
+        },
+        &mut outcome,
+    );
+    draw_button(
+        ui,
+        &mut left,
+        strip,
+        Button {
+            name: "Reload",
+            glyph: "↻",
+            enabled: toolbar.tab.is_some(),
+            command: BrowserCommand::Reload,
+        },
+        &mut outcome,
+    );
     address_field(ui, &mut left, strip, &mut toolbar, &mut outcome);
 
     // **No page and nothing to place.** A native child view is placed where a tab is drawn, and a node
@@ -117,7 +153,13 @@ pub fn show(
     // the host to point its one view at nothing.
     let Some(tab) = toolbar.tab else {
         ui.painter().rect_filled(browser, CornerRadius::ZERO, color::editor());
-        ui.painter().text(browser.center(), Align2::CENTER_CENTER, "Type an address above to open a page.", FontId::proportional(12.0), color::text_faint());
+        ui.painter().text(
+            browser.center(),
+            Align2::CENTER_CENTER,
+            "Type an address above to open a page.",
+            FontId::proportional(12.0),
+            color::text_faint(),
+        );
         return (outcome, None);
     };
     let page = ui.interact(browser, ui.id().with(("browser-page", tab.id)), Sense::click());
@@ -126,7 +168,13 @@ pub fn show(
     // nothing to draw here. It says so rather than showing an empty rectangle.
     if !showing {
         ui.painter().rect_filled(browser, CornerRadius::ZERO, color::editor());
-        ui.painter().text(browser.center(), Align2::CENTER_CENTER, "This page is showing in the other pane.", FontId::proportional(13.0), color::text_faint());
+        ui.painter().text(
+            browser.center(),
+            Align2::CENTER_CENTER,
+            "This page is showing in the other pane.",
+            FontId::proportional(13.0),
+            color::text_faint(),
+        );
     }
     // **A page in a pane fills its pane, so nothing of it is cut.** A node's own placement is cropped by
     // `show_a_browser_node`, which is where the canvas is and where the pane's edge is known.
@@ -154,8 +202,17 @@ fn address_field(
     toolbar: &mut Toolbar<'_>,
     outcome: &mut Outcome,
 ) {
-    let field = Rect::from_min_max(Pos2::new(*left + 6.0, strip.top() + 6.0), Pos2::new(strip.right() - 8.0, strip.bottom() - 6.0));
-    ui.painter().rect(field, CornerRadius::same(size::CONTROL_CORNER), color::field(), Stroke::new(1.0, color::control_border()), egui::StrokeKind::Inside);
+    let field = Rect::from_min_max(
+        Pos2::new(*left + 6.0, strip.top() + 6.0),
+        Pos2::new(strip.right() - 8.0, strip.bottom() - 6.0),
+    );
+    ui.painter().rect(
+        field,
+        CornerRadius::same(size::CONTROL_CORNER),
+        color::field(),
+        Stroke::new(1.0, color::control_border()),
+        egui::StrokeKind::Inside,
+    );
     // The whole rectangle claims the press and hands the keyboard over on the next frame, which is
     // `controls::field_takes_the_whole_rectangle`'s own rule and the fault `task-1795` fixed in the
     // nineteen fields that came before this one.
@@ -165,12 +222,22 @@ fn address_field(
     // `appearance.ui.font.size` at 24 the strip was 28 points tall inside a 22 point field, egui laid the
     // 12 point text out at the top of it, and the address sat above centre with its top clipped by the
     // field's own border. See `controls::field_text_rect_at`.
-    let text_rect = crate::components::controls::field_takes_the_whole_rectangle_at(ui, field, 9.0, toolbar.id, &ADDRESS_FONT);
+    let text_rect = crate::components::controls::field_takes_the_whole_rectangle_at(
+        ui,
+        field,
+        9.0,
+        toolbar.id,
+        &ADDRESS_FONT,
+    );
     let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
     let response = inner.add(
         egui::TextEdit::singleline(toolbar.typed)
             .id(toolbar.id)
-            .hint_text(egui::RichText::new("Type an address").color(color::text_faint()).size(ADDRESS_TEXT))
+            .hint_text(
+                egui::RichText::new("Type an address")
+                    .color(color::text_faint())
+                    .size(ADDRESS_TEXT),
+            )
             .font(ADDRESS_FONT)
             .frame(egui::Frame::NONE)
             .desired_width(text_rect.width())
@@ -218,20 +285,44 @@ fn address_field(
         *toolbar.typed = toolbar.address().to_owned();
     }
     if toolbar.loading() {
-        ui.painter().with_clip_rect(field).text(Pos2::new(field.right() - 6.0, field.center().y), Align2::RIGHT_CENTER, "Loading", FontId::proportional(10.5), color::text_faint());
+        ui.painter().with_clip_rect(field).text(
+            Pos2::new(field.right() - 6.0, field.center().y),
+            Align2::RIGHT_CENTER,
+            "Loading",
+            FontId::proportional(10.5),
+            color::text_faint(),
+        );
     }
     *left = field.right();
 }
 
 /// Draw one compact navigation button and record a click when it is available.
-fn draw_button(ui: &mut egui::Ui, left: &mut f32, toolbar: Rect, button: Button<'_>, outcome: &mut Outcome) {
+fn draw_button(
+    ui: &mut egui::Ui,
+    left: &mut f32,
+    toolbar: Rect,
+    button: Button<'_>,
+    outcome: &mut Outcome,
+) {
     let area = Rect::from_min_size(Pos2::new(*left, toolbar.top() + 6.0), Vec2::splat(BUTTON_SIZE));
     let response = ui.interact(area, ui.id().with(("browser", button.name)), Sense::click());
-    let fill = if response.hovered() && button.enabled { color::control() } else { egui::Color32::TRANSPARENT };
+    let fill = if response.hovered() && button.enabled {
+        color::control()
+    } else {
+        egui::Color32::TRANSPARENT
+    };
     ui.painter().rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), fill);
     let text = if button.enabled { color::text_control() } else { color::text_faint() };
-    ui.painter().text(area.center(), Align2::CENTER_CENTER, button.glyph, FontId::proportional(19.0), text);
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, button.enabled, button.name));
+    ui.painter().text(
+        area.center(),
+        Align2::CENTER_CENTER,
+        button.glyph,
+        FontId::proportional(19.0),
+        text,
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, button.enabled, button.name)
+    });
     // **Pressing a toolbar button is using this node**, so it takes the focus as clicking the page does.
     // Without that, a button or the address field on a node that does not own the one native view left the
     // node unselected — and `BrowserHost` refuses to drive a tab it is not pointed at, so Enter answered
@@ -239,6 +330,8 @@ fn draw_button(ui: &mut egui::Ui, left: &mut f32, toolbar: Rect, button: Button<
     if response.clicked() {
         outcome.took_focus = true;
     }
-    if button.enabled && response.clicked() { outcome.command = Some(button.command); }
+    if button.enabled && response.clicked() {
+        outcome.command = Some(button.command);
+    }
     *left = area.right() + 2.0;
 }

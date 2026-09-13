@@ -124,10 +124,7 @@ impl Session {
     }
 
     pub fn parameter(&self, name: &str) -> Option<&str> {
-        self.parameters
-            .iter()
-            .find(|(known, _)| known == name)
-            .map(|(_, value)| value.as_str())
+        self.parameters.iter().find(|(known, _)| known == name).map(|(_, value)| value.as_str())
     }
 
     /// True when this connection is encrypted, which the settings page shows and a test asserts.
@@ -177,8 +174,10 @@ impl Session {
                 Value::Bytes(bytes) => {
                     // A `bytea` parameter sent as text is PostgreSQL's hex form, which is the one
                     // encoding every server since 9.0 reads.
-                    let hex: String =
-                        format!("\\x{}", bytes.iter().map(|byte| format!("{byte:02x}")).collect::<String>());
+                    let hex: String = format!(
+                        "\\x{}",
+                        bytes.iter().map(|byte| format!("{byte:02x}")).collect::<String>()
+                    );
                     bind.int32(hex.len() as i32).bytes(hex.as_bytes())
                 }
             };
@@ -201,12 +200,13 @@ impl Session {
     /// statement is by definition not the thread holding the connection: that one is asleep in a
     /// `read` inside the engine. See [`cancel`].
     pub fn stopper(&self) -> crate::engine::Stopper {
-        let host = self.address.rsplit_once(':').map(|(host, _)| host.to_owned()).unwrap_or_else(|| self.address.clone());
-        let port = self
+        let host = self
             .address
             .rsplit_once(':')
-            .and_then(|(_, port)| port.parse().ok())
-            .unwrap_or(5432);
+            .map(|(host, _)| host.to_owned())
+            .unwrap_or_else(|| self.address.clone());
+        let port =
+            self.address.rsplit_once(':').and_then(|(_, port)| port.parse().ok()).unwrap_or(5432);
         crate::engine::Stopper::Postgres { host, port, key: self.key, ssl: self.ssl }
     }
 
@@ -282,14 +282,18 @@ impl Session {
                         // password it does not know — and quoting that is far more use than saying
                         // an unexpected message arrived.
                         Message::ErrorResponse(failure) => return Err(failure),
-                        other => return Err(unexpected(&other, "the server's first SCRAM message")),
+                        other => {
+                            return Err(unexpected(&other, "the server's first SCRAM message"))
+                        }
                     };
                     let final_message = exchange.respond(&server_first)?;
                     self.send(Out::tagged(b'p').bytes(final_message.as_bytes()).finish())?;
                     match self.next_message()? {
                         Message::AuthenticationSaslFinal(text) => exchange.finish(&text)?,
                         Message::ErrorResponse(failure) => return Err(failure),
-                        other => return Err(unexpected(&other, "the server's final SCRAM message")),
+                        other => {
+                            return Err(unexpected(&other, "the server's final SCRAM message"))
+                        }
                     }
                 }
                 Message::ErrorResponse(failure) => return Err(failure),
@@ -437,11 +441,14 @@ impl Session {
 /// secret from `BackendKeyData`, and no answer at all, because the server closes it either way.
 pub fn cancel(host: &str, port: u16, key: Option<(u32, u32)>, ssl: SslMode) -> Answer<()> {
     let Some((process, secret)) = key else {
-        return Err(Failure::said("the server never sent a key, so there is nothing to cancel with."));
+        return Err(Failure::said(
+            "the server never sent a key, so there is nothing to cancel with.",
+        ));
     };
     let address = format!("{host}:{port}");
     let mut stream = connect_to(&address)?;
-    let bytes = Out::untagged().int32(CANCEL_REQUEST).int32(process as i32).int32(secret as i32).finish();
+    let bytes =
+        Out::untagged().int32(CANCEL_REQUEST).int32(process as i32).int32(secret as i32).finish();
     // A cancellation is sent in the clear even on an encrypted connection when the server allowed
     // one — but a `require` data source has said the network is not to be trusted, so its request is
     // wrapped too rather than putting the key on the wire.
@@ -504,9 +511,9 @@ fn affected_from(tag: &str) -> Option<u64> {
 fn connect_to(address: &str) -> Answer<TcpStream> {
     use std::net::ToSocketAddrs;
     let mut last: Option<String> = None;
-    let addresses = address
-        .to_socket_addrs()
-        .map_err(|why| Failure::said(format!("{address} is not a name this machine can look up: {why}")))?;
+    let addresses = address.to_socket_addrs().map_err(|why| {
+        Failure::said(format!("{address} is not a name this machine can look up: {why}"))
+    })?;
     for candidate in addresses {
         match TcpStream::connect_timeout(&candidate, CONNECT_TIMEOUT) {
             Ok(stream) => {
@@ -535,9 +542,9 @@ fn start_tls(stream: TcpStream, source: &Source, address: &str) -> Answer<Transp
     stream.write_all(&Out::untagged().int32(SSL_REQUEST).finish()).map_err(sending)?;
     stream.flush().map_err(sending)?;
     let mut answer = [0_u8; 1];
-    stream
-        .read_exact(&mut answer)
-        .map_err(|why| Failure::said(format!("the server did not answer the request to encrypt: {why}")))?;
+    stream.read_exact(&mut answer).map_err(|why| {
+        Failure::said(format!("the server did not answer the request to encrypt: {why}"))
+    })?;
     match (answer[0], source.ssl) {
         (b'S', _) => Ok(Transport::Tls(Box::new(handshake(stream, &source.host)?))),
         (_, SslMode::Require) => Err(Failure::said(format!(
@@ -557,13 +564,15 @@ fn start_tls_on(mut stream: TcpStream, address: &str, required: bool) -> Answer<
     stream.write_all(&Out::untagged().int32(SSL_REQUEST).finish()).map_err(sending)?;
     stream.flush().map_err(sending)?;
     let mut answer = [0_u8; 1];
-    stream
-        .read_exact(&mut answer)
-        .map_err(|why| Failure::said(format!("the server did not answer the request to encrypt: {why}")))?;
+    stream.read_exact(&mut answer).map_err(|why| {
+        Failure::said(format!("the server did not answer the request to encrypt: {why}"))
+    })?;
     let host = address.rsplit_once(':').map(|(host, _)| host).unwrap_or(address);
     match answer[0] {
         b'S' => Ok(Transport::Tls(Box::new(handshake(stream, host)?))),
-        _ if required => Err(Failure::said("the server will not encrypt the connection a cancellation needs.")),
+        _ if required => {
+            Err(Failure::said("the server will not encrypt the connection a cancellation needs."))
+        }
         _ => Ok(Transport::Plain(stream)),
     }
 }
@@ -577,9 +586,9 @@ fn handshake(stream: TcpStream, host: &str) -> Answer<native_tls::TlsStream<TcpS
     let connector = native_tls::TlsConnector::new()
         .map_err(|why| Failure::said(format!("this machine's TLS would not start: {why}")))?;
     connector.connect(host, stream).map_err(|why| match why {
-        native_tls::HandshakeError::Failure(why) => Failure::said(format!(
-            "the encrypted connection to {host} was refused: {why}"
-        )),
+        native_tls::HandshakeError::Failure(why) => {
+            Failure::said(format!("the encrypted connection to {host} was refused: {why}"))
+        }
         _ => Failure::said(format!("the encrypted connection to {host} did not finish.")),
     })
 }
@@ -617,7 +626,10 @@ mod tests {
         assert_eq!(value, Value::Bytes(vec![0x00, 0xff, 0x41]));
         // And a text column is text, however it looks.
         let text = Field { type_oid: 25, ..field.clone() };
-        assert_eq!(read_value(Some(b"\\x00ff41".to_vec()), Some(&text)), Value::Text("\\x00ff41".to_owned()));
+        assert_eq!(
+            read_value(Some(b"\\x00ff41".to_vec()), Some(&text)),
+            Value::Text("\\x00ff41".to_owned())
+        );
         assert_eq!(read_value(None, Some(&text)), Value::Null);
     }
 

@@ -103,8 +103,10 @@ pub fn show(
         controls::menu_heading(ui, "Highlight", 0.0);
         blocks(ui, menu, has_selection, last, &mut inner);
         if let Some(colour) = menu.wheel {
-            let (area, _) =
-                ui.allocate_exact_size(Vec2::new(ui.available_width(), color_wheel::HEIGHT), Sense::hover());
+            let (area, _) = ui.allocate_exact_size(
+                Vec2::new(ui.available_width(), color_wheel::HEIGHT),
+                Sense::hover(),
+            );
             let wheel = color_wheel::show(ui, area, colour);
             if let Some(chosen) = wheel.chosen {
                 inner.wheel = Some(Some(chosen));
@@ -152,10 +154,8 @@ fn blocks(
         ui.allocate_exact_size(Vec2::new(ui.available_width(), BLOCK_ROW), Sense::hover());
     let mut left = row.left() + 8.0;
     for colour in HighlightColor::ALL {
-        let area = Rect::from_min_size(
-            Pos2::new(left, row.center().y - BLOCK / 2.0),
-            Vec2::splat(BLOCK),
-        );
+        let area =
+            Rect::from_min_size(Pos2::new(left, row.center().y - BLOCK / 2.0), Vec2::splat(BLOCK));
         if block(ui, area, colour, has_selection) {
             outcome.highlight = Some(colour.rgba());
         }
@@ -198,8 +198,14 @@ fn block(ui: &mut egui::Ui, area: Rect, colour: HighlightColor, enabled: bool) -
     painter.rect_filled(area, CornerRadius::same(6), color::editor());
     let paint = if enabled { colour.color() } else { colour.color().gamma_multiply(0.35) };
     painter.rect_filled(area, CornerRadius::same(6), paint);
-    let edge = if response.hovered() && enabled { color::text_strong() } else { color::control_border() };
-    painter.rect_stroke(area, CornerRadius::same(6), Stroke::new(1.0, edge), egui::StrokeKind::Inside);
+    let edge =
+        if response.hovered() && enabled { color::text_strong() } else { color::control_border() };
+    painter.rect_stroke(
+        area,
+        CornerRadius::same(6),
+        Stroke::new(1.0, edge),
+        egui::StrokeKind::Inside,
+    );
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &name));
     response.clicked()
 }

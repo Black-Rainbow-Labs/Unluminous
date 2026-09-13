@@ -43,8 +43,7 @@ impl<'a> EguiMetrics<'a> {
 
     /// The font egui will lay this style out in, which is the whole point of this type.
     fn font(&self, style: &CharStyle) -> egui::FontId {
-        let family =
-            if style.bold { self.bold.clone() } else { egui::FontFamily::Proportional };
+        let family = if style.bold { self.bold.clone() } else { egui::FontFamily::Proportional };
         egui::FontId::new(style.size.max(1.0), family)
     }
 }
@@ -133,11 +132,8 @@ impl MermaidScenes {
     /// Drop the least recently wanted entries once there are too many.
     fn forget_the_oldest(&mut self) {
         while self.known.len() >= KEPT {
-            let Some(oldest) = self
-                .known
-                .iter()
-                .min_by_key(|(_, (_, last))| *last)
-                .map(|(key, _)| key.clone())
+            let Some(oldest) =
+                self.known.iter().min_by_key(|(_, (_, last))| *last).map(|(key, _)| key.clone())
             else {
                 return;
             };
@@ -166,7 +162,8 @@ impl MermaidScenes {
 /// everything else in the window and there is one palette rather than two.
 pub fn theme() -> Theme {
     use crate::theme::color;
-    let of = |colour: egui::Color32| unluminous_core::Color::rgb(colour.r(), colour.g(), colour.b());
+    let of =
+        |colour: egui::Color32| unluminous_core::Color::rgb(colour.r(), colour.g(), colour.b());
     Theme {
         text: of(color::text()),
         dim: of(color::text_dim()),
@@ -221,8 +218,9 @@ mod tests {
         // scene as sound as the default one the core's own tests use.
         let mut options = options();
         options.theme = theme();
-        let scene = unluminous_core::mermaid::render("flowchart LR\n A[One] --> B[Two]\n", &options)
-            .expect("it should draw");
+        let scene =
+            unluminous_core::mermaid::render("flowchart LR\n A[One] --> B[Two]\n", &options)
+                .expect("it should draw");
         assert!(scene.size.width > 0.0 && scene.size.height > 0.0);
         assert!(scene.texts().contains(&"One"));
     }

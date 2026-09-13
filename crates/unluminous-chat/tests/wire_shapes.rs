@@ -18,10 +18,9 @@ use unluminous_chat::Reply;
 /// Fed a byte at a time, because that is the property that matters and the one a whole-file read
 /// would not check: a socket chooses where a read ends and the framing has to survive it.
 fn replies_from(name: &str, wire: Wire) -> Vec<Reply> {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/streams")
-        .join(name);
-    let bytes = std::fs::read(&path).unwrap_or_else(|_| panic!("{} should be there", path.display()));
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/streams").join(name);
+    let bytes =
+        std::fs::read(&path).unwrap_or_else(|_| panic!("{} should be there", path.display()));
     let mut reader = sse::Reader::new();
     let mut decoder = Decoder::new(wire);
     let mut replies = Vec::new();
@@ -78,25 +77,17 @@ fn the_responses_request_is_a_list_of_items_rather_than_a_list_of_messages() {
     results.tools.push(answered);
     chat.push(results);
 
-    let body = wire::request(&provider(Wire::Responses), &chat, "You are in Unluminous.", &[], true);
+    let body =
+        wire::request(&provider(Wire::Responses), &chat, "You are in Unluminous.", &[], true);
     assert_eq!(body["model"], "gpt-5-codex");
     assert_eq!(body["instructions"], "You are in Unluminous.");
     assert_eq!(body["max_output_tokens"], 4096, "its own name for the budget");
-    assert!(
-        body["max_tokens"].is_null(),
-        "the other shape's name is silently ignored here"
-    );
-    assert_eq!(
-        body["store"], false,
-        "the transcript is Unluminous's rather than the server's"
-    );
+    assert!(body["max_tokens"].is_null(), "the other shape's name is silently ignored here");
+    assert_eq!(body["store"], false, "the transcript is Unluminous's rather than the server's");
     let input = body["input"].as_array().expect("the items");
     assert_eq!(input[0]["type"], "message");
     assert_eq!(input[0]["content"][0]["type"], "input_text");
-    assert_eq!(
-        input[1]["content"][0]["type"], "output_text",
-        "what came back is not input"
-    );
+    assert_eq!(input[1]["content"][0]["type"], "output_text", "what came back is not input");
     assert_eq!(input[2]["type"], "function_call");
     assert_eq!(input[2]["call_id"], "call_a");
     assert_eq!(input[3]["type"], "function_call_output");
@@ -116,12 +107,7 @@ fn the_responses_request_is_a_list_of_items_rather_than_a_list_of_messages() {
 #[test]
 fn a_responses_stream_reads_text_and_a_tool_call_out_of_its_own_named_events() {
     let replies = replies_from("responses.sse", Wire::Responses);
-    assert_eq!(
-        replies[0],
-        Reply::Started {
-            model: "gpt-5-codex".to_owned()
-        }
-    );
+    assert_eq!(replies[0], Reply::Started { model: "gpt-5-codex".to_owned() });
     assert_eq!(replies[1], Reply::Text("The ".to_owned()));
     assert_eq!(replies[2], Reply::Text("answer.".to_owned()));
     assert_eq!(
@@ -132,19 +118,8 @@ fn a_responses_stream_reads_text_and_a_tool_call_out_of_its_own_named_events() {
             arguments: serde_json::json!({ "command": "status" }).to_string(),
         }
     );
-    assert_eq!(
-        replies[4],
-        Reply::Usage {
-            input: 31,
-            output: 12
-        }
-    );
-    assert_eq!(
-        replies[5],
-        Reply::Finished {
-            reason: "stop".to_owned()
-        }
-    );
+    assert_eq!(replies[4], Reply::Usage { input: 31, output: 12 });
+    assert_eq!(replies[5], Reply::Finished { reason: "stop".to_owned() });
     assert_eq!(replies.len(), 6, "{replies:?}");
 }
 
@@ -187,10 +162,7 @@ fn an_anthropic_thinking_block_goes_back_up_exactly_as_it_arrived() {
     // server holds no copy to carry on from.
     let items = wire::request(&provider(Wire::Responses), &chat, "", &[], true);
     let input = items["input"].as_array().expect("the items");
-    assert_eq!(
-        input[1], *block,
-        "the reasoning comes before the message it belongs to"
-    );
+    assert_eq!(input[1], *block, "the reasoning comes before the message it belongs to");
 }
 
 #[test]
@@ -201,10 +173,5 @@ fn a_stream_whose_lines_end_in_a_lone_carriage_return_is_still_read() {
     let replies = replies_from("carriage-return.sse", Wire::OpenAi);
     assert_eq!(replies[0], Reply::Text("one".to_owned()));
     assert_eq!(replies[1], Reply::Text("two".to_owned()));
-    assert_eq!(
-        replies[2],
-        Reply::Finished {
-            reason: "stop".to_owned()
-        }
-    );
+    assert_eq!(replies[2], Reply::Finished { reason: "stop".to_owned() });
 }

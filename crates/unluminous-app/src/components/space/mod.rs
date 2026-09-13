@@ -89,7 +89,11 @@ pub fn view_bar(
 ) -> BarOutcome {
     let mut outcome = BarOutcome::default();
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, CornerRadius::ZERO, crate::theme::faded(color::toolbar(), look.opacity));
+    painter.rect_filled(
+        area,
+        CornerRadius::ZERO,
+        crate::theme::faded(color::toolbar(), look.opacity),
+    );
     painter.line_segment(
         [Pos2::new(area.left(), area.bottom() - 0.5), Pos2::new(area.right(), area.bottom() - 0.5)],
         egui::Stroke::new(1.0, color::divider()),
@@ -98,7 +102,10 @@ pub fn view_bar(
     let mut drawn = 0usize;
     for view in views {
         let width = chip_width(&painter, &view.name);
-        let chip = Rect::from_min_size(Pos2::new(pen, area.top() + 4.0), Vec2::new(width, area.height() - 9.0));
+        let chip = Rect::from_min_size(
+            Pos2::new(pen, area.top() + 4.0),
+            Vec2::new(width, area.height() - 9.0),
+        );
         // **Room kept for the overflow row as well**, because a bar that filled itself to the edge and then
         // said "3 more" off the end of itself would be the fault it is there to fix.
         if chip.right() > area.right() - 30.0 - ZOOM_CONTROLS - MORE_ROW {
@@ -114,9 +121,20 @@ pub fn view_bar(
             painter.rect_filled(chip, CornerRadius::same(6), color::control());
         }
         let tint = if on { color::text_strong() } else { color::text_dim() };
-        painter.text(chip.center(), Align2::CENTER_CENTER, &view.name, FontId::proportional(11.5), tint);
+        painter.text(
+            chip.center(),
+            Align2::CENTER_CENTER,
+            &view.name,
+            FontId::proportional(11.5),
+            tint,
+        );
         response.widget_info(|| {
-            egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, format!("View: {}", view.name))
+            egui::WidgetInfo::selected(
+                egui::WidgetType::Button,
+                true,
+                on,
+                format!("View: {}", view.name),
+            )
         });
         if response.clicked() {
             outcome.show = Some(view.id);
@@ -128,7 +146,8 @@ pub fn view_bar(
         }
         pen = chip.right() + 6.0;
     }
-    let plus = Rect::from_center_size(Pos2::new(area.right() - 18.0, area.center().y), Vec2::splat(22.0));
+    let plus =
+        Rect::from_center_size(Pos2::new(area.right() - 18.0, area.center().y), Vec2::splat(22.0));
     if crate::components::controls::icon_button(ui, plus, "New view", icon::plus) {
         outcome.add = true;
     }
@@ -188,7 +207,10 @@ fn show_the_zoom_controls(ui: &mut egui::Ui, area: Rect, zoom: f32, outcome: &mu
     // The reading, which is a button: pressing it puts the zoom back to one, which is the
     // `Reset Font Size` gesture every other zoom in Unluminous has.
     let said = format!("{}%", (zoom * 100.0).round());
-    let reading = Rect::from_min_max(Pos2::new(right - 46.0, area.top() + 4.0), Pos2::new(right, area.bottom() - 5.0));
+    let reading = Rect::from_min_max(
+        Pos2::new(right - 46.0, area.top() + 4.0),
+        Pos2::new(right, area.bottom() - 5.0),
+    );
     let response = ui.interact(reading, ui.id().with("space-zoom-reading"), Sense::click());
     if response.hovered() {
         ui.painter_at(area).rect_filled(reading, CornerRadius::same(6), color::control());
@@ -316,7 +338,13 @@ pub struct WireOutcome {
 /// In the pane's own layer rather than a node's, so a wire never crosses a terminal's text — which is
 /// what the sublayers do for nothing: a node's layer is moved directly above the pane's at the end of
 /// the frame, so everything drawn here is underneath all of them.
-pub fn wires(ui: &mut egui::Ui, area: Rect, view: &View, camera: &Camera, look: Look<'_>) -> WireOutcome {
+pub fn wires(
+    ui: &mut egui::Ui,
+    area: Rect,
+    view: &View,
+    camera: &Camera,
+    look: Look<'_>,
+) -> WireOutcome {
     let mut outcome = WireOutcome::default();
     let pointer = ui.ctx().pointer_latest_pos().filter(|at| area.contains(*at));
     let clicked = ui.input(|input| input.pointer.secondary_clicked());
@@ -395,7 +423,8 @@ pub struct Parts {
 /// A node's header and body, which the window needs before it draws the body.
 pub fn parts_of(node: &Node) -> Parts {
     let rect = node.rect();
-    let header = Rect::from_min_size(rect.min, Vec2::new(rect.width(), NODE_HEADER.min(rect.height())));
+    let header =
+        Rect::from_min_size(rect.min, Vec2::new(rect.width(), NODE_HEADER.min(rect.height())));
     let body = Rect::from_min_max(Pos2::new(rect.left(), header.bottom()), rect.max);
     Parts { header, body }
 }
@@ -466,9 +495,16 @@ pub fn frame(ui: &mut egui::Ui, node: &Node, framing: Framing<'_>, look: Look<'_
     look.chrome.raised(framing.on_screen, 8.0, Fill::Solid(look.card), Lift::Small);
     let header_on_screen = Rect::from_min_max(
         framing.on_screen.min,
-        Pos2::new(framing.on_screen.right(), framing.on_screen.top() + NODE_HEADER * scale_of(rect, framing.on_screen)),
+        Pos2::new(
+            framing.on_screen.right(),
+            framing.on_screen.top() + NODE_HEADER * scale_of(rect, framing.on_screen),
+        ),
     );
-    look.chrome.rect(header_on_screen, crate::services::vello_canvas::Corners { nw: 8.0, ne: 8.0, se: 0.0, sw: 0.0 }, Fill::Solid(look.header));
+    look.chrome.rect(
+        header_on_screen,
+        crate::services::vello_canvas::Corners { nw: 8.0, ne: 8.0, se: 0.0, sw: 0.0 },
+        Fill::Solid(look.header),
+    );
     show_the_header(ui, node, parts.header, framing, &mut outcome);
     // **The grips before the ports**, because a grip's band runs the whole length of an edge and a
     // port sits in the middle of one: egui gives a pointer to the last widget that asked for it, so
@@ -481,8 +517,14 @@ pub fn frame(ui: &mut egui::Ui, node: &Node, framing: Framing<'_>, look: Look<'_
     // The chosen node's ring, drawn with `egui` over everything: `Decor` has no rounded outline and a
     // one point rectangle is what every list in Unluminous draws round the row with the keyboard.
     if framing.chosen {
-        let tint = if framing.keyboard { color::accent() } else { color::accent().gamma_multiply(0.45) };
-        ui.painter().rect_stroke(rect, CornerRadius::same(8), egui::Stroke::new(1.0, tint), egui::StrokeKind::Inside);
+        let tint =
+            if framing.keyboard { color::accent() } else { color::accent().gamma_multiply(0.45) };
+        ui.painter().rect_stroke(
+            rect,
+            CornerRadius::same(8),
+            egui::Stroke::new(1.0, tint),
+            egui::StrokeKind::Inside,
+        );
     }
     outcome
 }
@@ -522,13 +564,12 @@ fn show_the_header(
         // `layer_transform_to_global` rather than the camera, so a menu cannot drift from the drawing even
         // if the two ever came apart — and it is the inverse of the call `show_the_ports` already makes,
         // which is what makes the pair legible.
-        outcome.menu = response
-            .interact_pointer_pos()
-            .or_else(|| response.hover_pos())
-            .map(|at| match ui.ctx().layer_transform_to_global(ui.layer_id()) {
+        outcome.menu = response.interact_pointer_pos().or_else(|| response.hover_pos()).map(|at| {
+            match ui.ctx().layer_transform_to_global(ui.layer_id()) {
                 Some(out) => out * at,
                 None => at,
-            });
+            }
+        });
     }
     if response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
@@ -541,26 +582,47 @@ fn show_the_header(
         false => node.title.clone(),
     };
     let mut right = header.right() - 6.0;
-    let close = Rect::from_center_size(Pos2::new(right - 9.0, header.center().y), Vec2::splat(18.0));
+    let close =
+        Rect::from_center_size(Pos2::new(right - 9.0, header.center().y), Vec2::splat(18.0));
     if crate::components::controls::icon_button(ui, close, &format!("Close {name}"), icon::cross) {
         outcome.closed = true;
     }
     right = close.left() - 2.0;
     if node.kind() == Kind::Terminal {
-        let smaller = Rect::from_center_size(Pos2::new(right - 9.0, header.center().y), Vec2::splat(18.0));
-        if crate::components::controls::icon_button(ui, smaller, &format!("Smaller text in {name}"), icon::collapse) {
+        let smaller =
+            Rect::from_center_size(Pos2::new(right - 9.0, header.center().y), Vec2::splat(18.0));
+        if crate::components::controls::icon_button(
+            ui,
+            smaller,
+            &format!("Smaller text in {name}"),
+            icon::collapse,
+        ) {
             outcome.font_step = -1;
         }
-        let bigger = Rect::from_center_size(Pos2::new(smaller.left() - 11.0, header.center().y), Vec2::splat(18.0));
-        if crate::components::controls::icon_button(ui, bigger, &format!("Bigger text in {name}"), icon::plus) {
+        let bigger = Rect::from_center_size(
+            Pos2::new(smaller.left() - 11.0, header.center().y),
+            Vec2::splat(18.0),
+        );
+        if crate::components::controls::icon_button(
+            ui,
+            bigger,
+            &format!("Bigger text in {name}"),
+            icon::plus,
+        ) {
             outcome.font_step = 1;
         }
         right = bigger.left() - 2.0;
     }
     let room = (right - (mark.x + 12.0)).max(10.0);
     let galley = painter.layout(name.clone(), FontId::proportional(12.0), color::text(), room);
-    painter.galley(Pos2::new(mark.x + 12.0, header.center().y - galley.size().y / 2.0), galley, color::text());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Node: {name}")));
+    painter.galley(
+        Pos2::new(mark.x + 12.0, header.center().y - galley.size().y / 2.0),
+        galley,
+        color::text(),
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Node: {name}"))
+    });
 }
 
 /// The drawn mark for each kind, which is the same picture the rail uses for the pane it stands for.
@@ -589,12 +651,12 @@ fn show_the_ports(
     let scale = scale_of(node.rect(), framing.on_screen);
     let output = node.output_port();
     let hit = Rect::from_center_size(output, Vec2::splat(PORT * 3.0));
-    let response = ui.interact(hit, ui.id().with(("space-port-out", node.id)), Sense::click_and_drag());
+    let response =
+        ui.interact(hit, ui.id().with(("space-port-out", node.id)), Sense::click_and_drag());
     if response.dragged() {
-        outcome.wiring = ui
-            .ctx()
-            .pointer_latest_pos()
-            .and_then(|at| ui.ctx().layer_transform_from_global(ui.layer_id()).map(|back| back * at));
+        outcome.wiring = ui.ctx().pointer_latest_pos().and_then(|at| {
+            ui.ctx().layer_transform_from_global(ui.layer_id()).map(|back| back * at)
+        });
     }
     if response.hovered() || response.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
@@ -622,7 +684,12 @@ fn show_the_ports(
     look.chrome.disc(on_screen(input), PORT, Fill::Solid(input_fill));
     look.chrome.ring(on_screen(input), PORT, 1.5, look.card);
     if over {
-        look.chrome.glow(Rect::from_center_size(on_screen(input), Vec2::splat(PORT * 2.0)), PORT, look_accent(), 6.0);
+        look.chrome.glow(
+            Rect::from_center_size(on_screen(input), Vec2::splat(PORT * 2.0)),
+            PORT,
+            look_accent(),
+            6.0,
+        );
     }
     // And flat as well, for a canvas with the decoration switched off.
     if !look.chrome.is_recording() {
@@ -655,7 +722,8 @@ fn show_the_grips(ui: &mut egui::Ui, node: &Node, framing: Framing<'_>, outcome:
         if !on_screen.intersects(inside) {
             continue;
         }
-        let response = ui.interact(area, ui.id().with(("space-grip", node.id, grip.name())), Sense::drag());
+        let response =
+            ui.interact(area, ui.id().with(("space-grip", node.id, grip.name())), Sense::drag());
         if response.hovered() || response.dragged() {
             ui.ctx().set_cursor_icon(grip.cursor());
         }
@@ -879,7 +947,8 @@ mod tests {
         assert_eq!(entries.len(), Kind::ALL.len());
         #[allow(clippy::fn_to_numeric_cast_any)]
         let address = |drawing: fn(&egui::Painter, Pos2, Color32)| drawing as usize;
-        let marks: Vec<usize> = Kind::ALL.into_iter().map(|kind| address(kind_mark(kind))).collect();
+        let marks: Vec<usize> =
+            Kind::ALL.into_iter().map(|kind| address(kind_mark(kind))).collect();
         for (at, mark) in marks.iter().enumerate() {
             assert!(!marks[..at].contains(mark), "two kinds share one mark");
         }
@@ -954,17 +1023,16 @@ mod tests {
         ];
         let mut reported = None;
         for events in passes {
-            let input =
-                egui::RawInput { events, screen_rect: Some(screen), ..Default::default() };
+            let input = egui::RawInput { events, screen_rect: Some(screen), ..Default::default() };
             let output = context.run_ui(input, |ui| {
-                let layer = egui::LayerId::new(egui::Order::Background, egui::Id::new("probe-node"));
+                let layer =
+                    egui::LayerId::new(egui::Order::Background, egui::Id::new("probe-node"));
                 ui.ctx().set_transform_layer(
                     layer,
                     egui::emath::TSTransform::new(pane.min.to_vec2(), camera.zoom),
                 );
-                let mut node_ui = ui.new_child(
-                    egui::UiBuilder::new().layer_id(layer).max_rect(node.rect()),
-                );
+                let mut node_ui =
+                    ui.new_child(egui::UiBuilder::new().layer_id(layer).max_rect(node.rect()));
                 let framing = Framing {
                     chosen: false,
                     keyboard: false,

@@ -33,7 +33,7 @@ pub use completion::{Candidate, Row as CompletionRow, Source as CompletionSource
 pub use cursor::Selection;
 pub use document::{Command, Document, IndentUnit};
 pub use encoding::{Decoded, Encoding, LineEnding};
-pub use folding::{Kind as FoldKind, Folds, Hidden, Reading as FoldReading, Region as FoldRegion};
+pub use folding::{Folds, Hidden, Kind as FoldKind, Reading as FoldReading, Region as FoldRegion};
 pub use highlights::{Highlight, Highlights, Rgba};
 pub use imports::Context as ImportContext;
 pub use incremental::{Dirt as SyntaxDirt, Tokens as IncrementalTokens};
@@ -41,13 +41,15 @@ pub use layout::{
     layout, relayout, Anchor, Caret, Layout, LayoutTextView, PlacedCluster, PlacedLine, PlacedRun,
     Rect,
 };
-pub use metrics::{FixedMetrics, FontMetrics, LineMetrics, ScaledMetrics};
 pub use markdown::{
     CodeHighlighter, Options as PreviewOptions, PanelKind, Preview, PreviewColors, PreviewDiagram,
     PreviewImage, PreviewLink, PreviewPanel,
 };
+pub use metrics::{FixedMetrics, FontMetrics, LineMetrics, ScaledMetrics};
 pub use rope::Rope;
 pub use scroll_sync::{preview_y_for_source_y, source_y_for_preview_y};
-pub use style::{Align, CharStyle, Color, ParagraphStyle, ParagraphStyles, StyleChange, StyleSpans};
+pub use style::{
+    Align, CharStyle, Color, ParagraphStyle, ParagraphStyles, StyleChange, StyleSpans,
+};
 pub use symbols::{Confidence, Definition, Occurrence, Role, SymbolKind};
 pub use syntax::{highlight, Grammar, ImportStyle, PathRoot, Token};

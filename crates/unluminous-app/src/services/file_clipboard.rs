@@ -60,7 +60,10 @@ impl FileClipboard {
     /// mean a dialog inside a dialog.
     pub fn paste_into(&mut self, folder: &Path) -> std::io::Result<PathBuf> {
         let Some((source, transfer)) = self.held.clone() else {
-            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "nothing has been cut or copied"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "nothing has been cut or copied",
+            ));
         };
         if !source.exists() {
             self.clear();
@@ -69,9 +72,9 @@ impl FileClipboard {
                 format!("{} is no longer there", source.display()),
             ));
         }
-        let name = source
-            .file_name()
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "a path with no name"))?;
+        let name = source.file_name().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "a path with no name")
+        })?;
         let target = free_name(folder, &name.to_string_lossy());
         if source.is_dir() {
             copy_folder(&source, &target)?;

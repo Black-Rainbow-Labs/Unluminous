@@ -67,7 +67,7 @@ use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::services::file_kind::Refusal;
 use crate::services::file_tree::FileTree;
-use crate::theme::{color, icon, size, file_marker};
+use crate::theme::{color, file_marker, icon, size};
 
 /// What a row shows besides its name: the colour git wants it in, and the icon its plugin gives it.
 ///
@@ -240,7 +240,11 @@ pub fn show(
 ) -> ExplorerOutcome {
     let mut outcome = ExplorerOutcome::default();
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, CornerRadius::ZERO, crate::theme::faded(color::explorer(), view.opacity));
+    painter.rect_filled(
+        area,
+        CornerRadius::ZERO,
+        crate::theme::faded(color::explorer(), view.opacity),
+    );
 
     // **A node has none of the panel's furniture**, because it has a header of its own to be moved
     // and closed by. Everything below this block is the same code for both - `task-1904`.
@@ -256,98 +260,101 @@ pub fn show(
         Host::Node => Rect::NOTHING,
     };
     if view.host == Host::Panel {
-    // The heading strip is the handle this panel is carried to another edge by — `task-1697`, and
-    // it is what the ask means by "the top bar". Added **first**, so the project's own row and the
-    // hide button, which are added after it, take the points they cover: egui gives a pointer to the
-    // last widget that asked for it. See `components::dock`.
-    outcome.grab = crate::components::dock::handle(
-        ui,
-        Rect::from_min_max(area.min, Pos2::new(area.right(), area.top() + view.at(36.0))),
-        crate::app::dock::Panel::Explorer,
-    );
+        // The heading strip is the handle this panel is carried to another edge by — `task-1697`, and
+        // it is what the ask means by "the top bar". Added **first**, so the project's own row and the
+        // hide button, which are added after it, take the points they cover: egui gives a pointer to the
+        // last widget that asked for it. See `components::dock`.
+        outcome.grab = crate::components::dock::handle(
+            ui,
+            Rect::from_min_max(area.min, Pos2::new(area.right(), area.top() + view.at(36.0))),
+            crate::app::dock::Panel::Explorer,
+        );
 
-    // The heading: the folder's name in small letter spaced capitals, then the button that hides the panel.
-    let heading_y = area.top() + view.at(22.0);
-    let name = tree
-        .root()
-        .file_name()
-        .map(|name| name.to_string_lossy().to_uppercase())
-        .unwrap_or_else(|| tree.root().display().to_string());
-    // Letters are spaced out by hand, because egui has no letter spacing setting.
-    let spaced: String = name.chars().flat_map(|c| [c, ' ']).collect();
-    let font = egui::FontId::proportional(view.at(10.5));
-    // The heading has to stop before the button on the right. A long folder name is cut short with an
-    // ellipsis rather than run underneath it.
-    let available = area.width() - view.at(16.0) - view.at(46.0);
-    let mut heading = spaced.trim_end().to_owned();
-    let mut galley = painter.layout_no_wrap(heading.clone(), font.clone(), color::text_dim());
-    while galley.size().x > available && heading.chars().count() > 1 {
-        // Two characters at a time, because each letter of the name was followed by a space.
-        heading.pop();
-        heading.pop();
-        galley = painter.layout_no_wrap(
-            format!("{}\u{2026}", heading.trim_end()),
-            font.clone(),
+        // The heading: the folder's name in small letter spaced capitals, then the button that hides the panel.
+        let heading_y = area.top() + view.at(22.0);
+        let name = tree
+            .root()
+            .file_name()
+            .map(|name| name.to_string_lossy().to_uppercase())
+            .unwrap_or_else(|| tree.root().display().to_string());
+        // Letters are spaced out by hand, because egui has no letter spacing setting.
+        let spaced: String = name.chars().flat_map(|c| [c, ' ']).collect();
+        let font = egui::FontId::proportional(view.at(10.5));
+        // The heading has to stop before the button on the right. A long folder name is cut short with an
+        // ellipsis rather than run underneath it.
+        let available = area.width() - view.at(16.0) - view.at(46.0);
+        let mut heading = spaced.trim_end().to_owned();
+        let mut galley = painter.layout_no_wrap(heading.clone(), font.clone(), color::text_dim());
+        while galley.size().x > available && heading.chars().count() > 1 {
+            // Two characters at a time, because each letter of the name was followed by a space.
+            heading.pop();
+            heading.pop();
+            galley = painter.layout_no_wrap(
+                format!("{}\u{2026}", heading.trim_end()),
+                font.clone(),
+                color::text_dim(),
+            );
+        }
+        painter.galley(
+            Pos2::new(area.left() + view.at(16.0), heading_y - galley.size().y / 2.0),
+            galley,
             color::text_dim(),
         );
-    }
-    painter.galley(
-        Pos2::new(area.left() + view.at(16.0), heading_y - galley.size().y / 2.0),
-        galley,
-        color::text_dim(),
-    );
 
-    // The project's name is a row like any other row in the tree, so it takes a right click and
-    // opens the same menu a folder does — `task-1673` asks for that, and the project folder is the
-    // one folder in the tree that has no row of its own to right click. It takes no left click:
-    // there is nothing to open or close about the root, which is always shown. It is a drop target,
-    // though, because moving something back to the top of the project has to be possible.
-    let heading_response =
-        ui.interact(heading_hit, ui.id().with("explorer-heading"), Sense::click());
-    if heading_response.secondary_clicked() {
-        if let Some(at) = heading_response.interact_pointer_pos().or_else(|| heading_response.hover_pos()) {
-            outcome.context_menu = Some((at, tree.root().to_path_buf(), true));
-            outcome.select = Some(tree.root().to_path_buf());
-            outcome.focus = true;
+        // The project's name is a row like any other row in the tree, so it takes a right click and
+        // opens the same menu a folder does — `task-1673` asks for that, and the project folder is the
+        // one folder in the tree that has no row of its own to right click. It takes no left click:
+        // there is nothing to open or close about the root, which is always shown. It is a drop target,
+        // though, because moving something back to the top of the project has to be possible.
+        let heading_response =
+            ui.interact(heading_hit, ui.id().with("explorer-heading"), Sense::click());
+        if heading_response.secondary_clicked() {
+            if let Some(at) =
+                heading_response.interact_pointer_pos().or_else(|| heading_response.hover_pos())
+            {
+                outcome.context_menu = Some((at, tree.root().to_path_buf(), true));
+                outcome.select = Some(tree.root().to_path_buf());
+                outcome.focus = true;
+            }
         }
-    }
-    let project = tree
-        .root()
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| tree.root().display().to_string());
-    // **The project's own row answers the double click too.** `task-1771` asks for two presses "anywhere
-    // in the top of a pane", and the heading is added *after* the drag handle - so egui gives it the
-    // pointer over the words, and the handle is left with a sliver at the very top and the space beside the
-    // button. Reported into the same `Grab` the handle fills, so the window still has one thing to read and
-    // there is no second path for it to disagree with.
-    if heading_response.double_clicked() {
-        outcome.grab.twice = true;
-    }
-    heading_response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Label, ui.is_enabled(), &project)
-    });
-
-    // The one button: hiding the panel. There used to be a plus beside it that meant `New file`,
-    // which never opened anything — it asked the window to save — and `task-1673` asks for it to go.
-    // Making a file is on the right click menu, which the project's name now opens too.
-    {
-        let name = "Hide the explorer";
-        let centre = Pos2::new(area.right() - view.at(18.0), heading_y);
-        let hit = Rect::from_center_size(centre, Vec2::splat(view.at(22.0)));
-        let response =
-            ui.interact(hit, ui.id().with(("explorer-button", name)), Sense::click()).on_hover_text(name);
-        if response.hovered() {
-            painter.rect_filled(hit, CornerRadius::same(4), color::control());
+        let project = tree
+            .root()
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| tree.root().display().to_string());
+        // **The project's own row answers the double click too.** `task-1771` asks for two presses "anywhere
+        // in the top of a pane", and the heading is added *after* the drag handle - so egui gives it the
+        // pointer over the words, and the handle is left with a sliver at the very top and the space beside the
+        // button. Reported into the same `Grab` the handle fills, so the window still has one thing to read and
+        // there is no second path for it to disagree with.
+        if heading_response.double_clicked() {
+            outcome.grab.twice = true;
         }
-        icon::collapse_at(&painter, centre, color::text_dim(), view.zoom);
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name)
+        heading_response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Label, ui.is_enabled(), &project)
         });
-        if response.clicked() {
-            outcome.hide = true;
+
+        // The one button: hiding the panel. There used to be a plus beside it that meant `New file`,
+        // which never opened anything — it asked the window to save — and `task-1673` asks for it to go.
+        // Making a file is on the right click menu, which the project's name now opens too.
+        {
+            let name = "Hide the explorer";
+            let centre = Pos2::new(area.right() - view.at(18.0), heading_y);
+            let hit = Rect::from_center_size(centre, Vec2::splat(view.at(22.0)));
+            let response = ui
+                .interact(hit, ui.id().with(("explorer-button", name)), Sense::click())
+                .on_hover_text(name);
+            if response.hovered() {
+                painter.rect_filled(hit, CornerRadius::same(4), color::control());
+            }
+            icon::collapse_at(&painter, centre, color::text_dim(), view.zoom);
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name)
+            });
+            if response.clicked() {
+                outcome.hide = true;
+            }
         }
-    }
     }
 
     // The filter box.
@@ -366,18 +373,18 @@ pub fn show(
         view.zoom,
     );
     let filter_id = ui.id().with("explorer-filter");
-    let text_rect =
-        crate::components::controls::field_takes_the_whole_rectangle(ui, filter_rect, view.at(26.0), filter_id);
+    let text_rect = crate::components::controls::field_takes_the_whole_rectangle(
+        ui,
+        filter_rect,
+        view.at(26.0),
+        filter_id,
+    );
     // The size the box would set text in, zoomed. Asked of the style rather than written down, so at a
     // zoom of one the filter box is exactly the box it was before `task-1771` — which is a promise a
     // screenshot test keeps and which a number chosen here would have quietly broken.
-    let typed = ui
-        .style()
-        .text_styles
-        .get(&egui::TextStyle::Body)
-        .map(|font| font.size)
-        .unwrap_or(12.0)
-        * view.zoom;
+    let typed =
+        ui.style().text_styles.get(&egui::TextStyle::Body).map(|font| font.size).unwrap_or(12.0)
+            * view.zoom;
     let mut field = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
     let response = field.add(
         egui::TextEdit::singleline(filter)
@@ -401,7 +408,8 @@ pub fn show(
         // node is as tall as somebody dragged it.
         Host::Node => area.bottom(),
     };
-    let list_rect = Rect::from_min_max(Pos2::new(area.left(), list_top), Pos2::new(area.right(), footer_top));
+    let list_rect =
+        Rect::from_min_max(Pos2::new(area.left(), list_top), Pos2::new(area.right(), footer_top));
     let filtering = !filter.trim().is_empty();
 
     // What was drawn, and what is in the air. Both filled in by the loop below and read once it has
@@ -526,16 +534,18 @@ pub fn show(
     if empty.height() > 1.0 {
         let response = ui.interact(empty, ui.id().with("explorer-empty"), Sense::click());
         if response.secondary_clicked() {
-            if let Some(at) =
-                response.interact_pointer_pos().or_else(|| response.hover_pos())
-            {
+            if let Some(at) = response.interact_pointer_pos().or_else(|| response.hover_pos()) {
                 outcome.context_menu = Some((at, tree.root().to_path_buf(), true));
                 outcome.menu_over_empty_space = true;
                 outcome.focus = true;
             }
         }
         response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Other, ui.is_enabled(), "Explorer background")
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Other,
+                ui.is_enabled(),
+                "Explorer background",
+            )
         });
     }
 
@@ -544,7 +554,8 @@ pub fn show(
     outcome.dragging = carried.is_some();
     if let Some((source, pointer)) = &carried {
         let pointer = *pointer;
-        let target = pointer.and_then(|at| drop_target(&drawn, tree.root(), &heading_hit, at, source));
+        let target =
+            pointer.and_then(|at| drop_target(&drawn, tree.root(), &heading_hit, at, source));
         if let Some(folder) = &target {
             let painter = ui.painter_at(area);
             if let Some(row) = drawn.iter().find(|row| row.directory && row.path == *folder) {
@@ -591,7 +602,11 @@ pub fn show(
         return outcome;
     }
     let footer = Rect::from_min_max(Pos2::new(area.left(), footer_top), area.right_bottom());
-    painter.rect_filled(footer, CornerRadius::ZERO, crate::theme::faded(color::explorer_footer(), view.opacity));
+    painter.rect_filled(
+        footer,
+        CornerRadius::ZERO,
+        crate::theme::faded(color::explorer_footer(), view.opacity),
+    );
     painter.line_segment(
         [Pos2::new(footer.left(), footer.top()), Pos2::new(footer.right(), footer.top())],
         Stroke::new(1.0, color::divider()),
@@ -606,8 +621,11 @@ pub fn show(
     if view.unsaved {
         text = format!("{text}  \u{00B7}  1 unsaved");
     }
-    let galley =
-        painter.layout_no_wrap(text.clone(), egui::FontId::proportional(view.at(10.5)), color::text_dim());
+    let galley = painter.layout_no_wrap(
+        text.clone(),
+        egui::FontId::proportional(view.at(10.5)),
+        color::text_dim(),
+    );
     painter.galley(
         Pos2::new(footer.left() + view.at(16.0), footer.center().y - galley.size().y / 2.0),
         galley,
@@ -657,14 +675,13 @@ fn drop_target(
 
 /// The name of what is being carried, drawn under the pointer.
 fn carried_name(ui: &egui::Ui, area: Rect, source: &Path, at: Pos2, welcome: bool) {
-    let name = source.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
+    let name =
+        source.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
     let painter = ui.painter_at(area.expand(4.0));
     let tint = if welcome { color::text_strong() } else { color::text_faint() };
     let galley = painter.layout_no_wrap(name, egui::FontId::proportional(12.0), tint);
-    let box_rect = Rect::from_min_size(
-        at + Vec2::new(12.0, 6.0),
-        galley.size() + Vec2::new(12.0, 6.0),
-    );
+    let box_rect =
+        Rect::from_min_size(at + Vec2::new(12.0, 6.0), galley.size() + Vec2::new(12.0, 6.0));
     painter.rect(
         box_rect,
         CornerRadius::same(4),
@@ -800,8 +817,7 @@ fn folder_row(
 ) -> RowClick {
     let name = &entry.name;
     let row = allocate_row(ui, view.at(size::ROW));
-    let response =
-        ui.interact(row, ui.id().with(("folder", name, depth)), Sense::click_and_drag());
+    let response = ui.interact(row, ui.id().with(("folder", name, depth)), Sense::click_and_drag());
     let pill = row.shrink2(Vec2::new(view.at(8.0), 1.0));
     let selected = view.selected == Some(entry.path.as_path());
     if selected && view.reveal_selected {
@@ -825,7 +841,13 @@ fn folder_row(
     // the reason `color::folder` and `color::folder_open` are two roles rather than one: the path down to
     // what you are reading is visible without reading any of the names.
     let tint = if entry.expanded { color::folder_open() } else { color::folder() };
-    icon::disclosure_at(ui.painter(), Pos2::new(x, row.center().y), entry.expanded, tint, view.zoom);
+    icon::disclosure_at(
+        ui.painter(),
+        Pos2::new(x, row.center().y),
+        entry.expanded,
+        tint,
+        view.zoom,
+    );
     // The mark in front of the name, when the icon set draws one. The `classic` set draws none and
     // answers zero, so the name sits exactly where it always has — nothing here knows which set is on.
     // A file's own mark goes in the same column and its name starts in the same place, which is
@@ -986,10 +1008,7 @@ fn visible_rows(ui: &egui::Ui, total: usize, row: f32) -> std::ops::Range<usize>
 /// `reveal` is about the file that is showing and `reveal_selected` about the explorer's own cursor, which
 /// is the same pair `file_row` and `folder_row` read. Both are one frame long, so this answers `None` on
 /// nearly every frame.
-fn revealed_row(
-    rows: &[crate::services::file_tree::Row<'_>],
-    view: View<'_>,
-) -> Option<usize> {
+fn revealed_row(rows: &[crate::services::file_tree::Row<'_>], view: View<'_>) -> Option<usize> {
     let wanted = match (view.reveal, view.reveal_selected) {
         (_, true) => view.selected?,
         (true, false) => view.current?,

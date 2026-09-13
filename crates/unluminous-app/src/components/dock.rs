@@ -59,8 +59,11 @@ pub fn handle(ui: &mut egui::Ui, header: Rect, panel: Panel) -> Grab {
     // handle cannot take egui's keyboard focus. It covers the whole of a panel's header, so a bare
     // `Tab` press would land on it very easily — and `app::hold_the_keyboard` records what a widget
     // holding the focus is worth, which is that `Space` then presses it.
-    let response =
-        ui.interact(header, ui.id().with(("dock-handle", panel.name())), Sense::CLICK | Sense::DRAG);
+    let response = ui.interact(
+        header,
+        ui.id().with(("dock-handle", panel.name())),
+        Sense::CLICK | Sense::DRAG,
+    );
     if response.dragged() || response.drag_stopped() {
         if let Some(pointer) = response.interact_pointer_pos() {
             grab.carrying = Some(pointer);
@@ -88,7 +91,13 @@ pub fn handle(ui: &mut egui::Ui, header: Rect, panel: Panel) -> Grab {
 /// `landing` is the rectangle the panel would occupy — worked out by the window from
 /// `app::dock::regions`, so it is the real one. `Rect::ZERO` while the pointer is over none of the
 /// bands, which is a drag that can still be thought better of.
-pub fn zones(ui: &egui::Ui, bands: &[Zone; 4], chosen: Option<Side>, landing: Rect, carrying: Panel) {
+pub fn zones(
+    ui: &egui::Ui,
+    bands: &[Zone; 4],
+    chosen: Option<Side>,
+    landing: Rect,
+    carrying: Panel,
+) {
     let painter = ui.painter();
     for zone in bands {
         if Some(zone.side) == chosen {
@@ -156,13 +165,18 @@ mod tests {
             let [red, green, blue, alpha] = fade(amount).to_srgba_unmultiplied();
             // Within a few units of the accent: going through egui's premultiplied storage and back
             // again rounds, and the question is which colour was chosen rather than the last bit of it.
-            for (painted, wanted) in
-                [(red, color::accent().r()), (green, color::accent().g()), (blue, color::accent().b())]
-            {
+            for (painted, wanted) in [
+                (red, color::accent().r()),
+                (green, color::accent().g()),
+                (blue, color::accent().b()),
+            ] {
                 assert!(painted.abs_diff(wanted) <= 4, "{painted} is not the accent's {wanted}");
             }
             assert!(alpha > 0 && alpha < 255);
         }
-        assert!(fade(BAND_FILL).a() < fade(LANDING_FILL).a(), "the one being aimed at is the stronger");
+        assert!(
+            fade(BAND_FILL).a() < fade(LANDING_FILL).a(),
+            "the one being aimed at is the stronger"
+        );
     }
 }

@@ -62,7 +62,10 @@ pub struct PluginUi {
 impl std::fmt::Debug for PluginUi {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         out.debug_struct("PluginUi")
-            .field("loaded", &self.loaded.iter().map(|one| one.plugin.as_str()).collect::<Vec<&str>>())
+            .field(
+                "loaded",
+                &self.loaded.iter().map(|one| one.plugin.as_str()).collect::<Vec<&str>>(),
+            )
             .field("panes", &self.surfaces.panes.len())
             .field("showing", &self.showing)
             .finish()
@@ -235,7 +238,11 @@ impl PluginUi {
             .ok_or_else(|| format!("this version of Unluminous has no `{provider}` provider"))?;
         let context = self.context_for(plugin);
         let problem = built.open(&context).err();
-        self.loaded.push(Loaded { plugin: plugin.to_owned(), provider: built, problem: problem.clone() });
+        self.loaded.push(Loaded {
+            plugin: plugin.to_owned(),
+            provider: built,
+            problem: problem.clone(),
+        });
         match problem {
             Some(problem) => Err(problem),
             None => Ok(self.loaded.last_mut().expect("just pushed").provider.as_mut()),
@@ -276,10 +283,7 @@ impl PluginUi {
 
     /// Why this plugin's pane is empty, if it is.
     pub fn problem_with(&self, plugin: &str) -> Option<&str> {
-        self.loaded
-            .iter()
-            .find(|one| one.plugin == plugin)
-            .and_then(|one| one.problem.as_deref())
+        self.loaded.iter().find(|one| one.plugin == plugin).and_then(|one| one.problem.as_deref())
     }
 
     /// True when this plugin's provider has been built and opened.
@@ -302,10 +306,9 @@ impl PluginUi {
         command: &str,
         arguments: &[String],
     ) -> Result<plugin_ui::Answer, String> {
-        let provider = self
-            .surfaces
-            .provider_of(plugin)
-            .ok_or_else(|| format!("`{plugin}` is not a plugin that draws, or it is switched off"))?;
+        let provider = self.surfaces.provider_of(plugin).ok_or_else(|| {
+            format!("`{plugin}` is not a plugin that draws, or it is switched off")
+        })?;
         let opened = self.opened(plugin, &provider)?;
         opened.command(command, arguments)
     }

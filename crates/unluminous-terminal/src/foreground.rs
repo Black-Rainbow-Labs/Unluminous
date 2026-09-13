@@ -333,7 +333,8 @@ fn process_table() -> Option<Vec<Process>> {
     // Safe: `entry` is sized as the call requires and lives for the length of the loop.
     let mut more = unsafe { Process32FirstW(snapshot, &mut entry) } != 0;
     while more {
-        let end = entry.szExeFile.iter().position(|unit| *unit == 0).unwrap_or(entry.szExeFile.len());
+        let end =
+            entry.szExeFile.iter().position(|unit| *unit == 0).unwrap_or(entry.szExeFile.len());
         out.push(Process {
             id: entry.th32ProcessID,
             parent: entry.th32ParentProcessID,
@@ -376,9 +377,8 @@ fn started_at(pid: u32) -> u64 {
     let mut kernel = created;
     let mut user = created;
     // Safe: four owned structures, and a handle opened immediately above.
-    let asked = unsafe {
-        GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user)
-    };
+    let asked =
+        unsafe { GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) };
     // Safe: the handle was opened above and is not used again.
     unsafe { CloseHandle(handle) };
     match asked {
@@ -463,7 +463,10 @@ mod tests {
     #[test]
     fn the_shim_is_not_what_a_node_is_running() {
         assert!(!is_the_shim("pwsh.exe"));
-        assert!(!is_the_shim("unluminous"), "the window is not the shim; the command line program is");
+        assert!(
+            !is_the_shim("unluminous"),
+            "the window is not the shim; the command line program is"
+        );
         assert!(is_the_shim("unluminous-cli"));
         assert!(is_the_shim("UNLUMINOUS-CLI.EXE"), "however the file system spells it");
     }

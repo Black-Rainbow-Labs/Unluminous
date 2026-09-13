@@ -236,10 +236,8 @@ fn draw_spots(scene: &mut Scene, chart: &Chart, plot: Rect, options: &Options) {
     let measure = options.style(0.85, false);
     for (index, spot) in chart.spots.iter().enumerate() {
         // One is at the **top**, so the vertical coordinate is flipped.
-        let at = Point::new(
-            plot.left() + plot.width * spot.x,
-            plot.bottom() - plot.height * spot.y,
-        );
+        let at =
+            Point::new(plot.left() + plot.width * spot.x, plot.bottom() - plot.height * spot.y);
         scene.add(Item::Circle {
             centre: at,
             radius: spot.radius,
@@ -343,7 +341,11 @@ mod tests {
 
     #[test]
     fn a_higher_number_is_plotted_higher_up() {
-        let scene = check::drawn("quadrantChart\n Low: [0.5, 0.1]\n High: [0.5, 0.9]\n", &options(), &["Low", "High"]);
+        let scene = check::drawn(
+            "quadrantChart\n Low: [0.5, 0.1]\n High: [0.5, 0.9]\n",
+            &options(),
+            &["Low", "High"],
+        );
         let dots: Vec<Point> = scene
             .items
             .iter()

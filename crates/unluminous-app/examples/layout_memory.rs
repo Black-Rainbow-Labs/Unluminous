@@ -16,7 +16,8 @@ fn main() {
     let renderer = TextRenderer::new();
     let mut document = Document::from_text(&source);
     colour_like_the_editor(&path, &source, &mut document);
-    let mut laid = layout(document.text(), document.chars(), document.paragraphs(), &renderer, width);
+    let mut laid =
+        layout(document.text(), document.chars(), document.paragraphs(), &renderer, width);
     report_layout("working", &laid, source.len());
     laid.compact_capacity();
     report_layout("cached", &laid, source.len());
@@ -45,7 +46,23 @@ fn report_layout(state: &str, laid: &unluminous_core::Layout, source_bytes: usiz
         + run_capacity * size_of::<PlacedRun>()
         + cluster_capacity * size_of::<PlacedCluster>();
     println!("state={state} source_bytes={source_bytes}");
-    println!("size_line={} size_run={} size_cluster={}", size_of::<PlacedLine>(), size_of::<PlacedRun>(), size_of::<PlacedCluster>());
-    println!("lines={} line_capacity={} runs={} run_capacity={} clusters={} cluster_capacity={}", laid.lines.len(), laid.lines.capacity(), run_count, run_capacity, cluster_count, cluster_capacity);
-    println!("public_layout_bytes={accounted} public_layout_mb={:.2}", accounted as f64 / 1024.0 / 1024.0);
+    println!(
+        "size_line={} size_run={} size_cluster={}",
+        size_of::<PlacedLine>(),
+        size_of::<PlacedRun>(),
+        size_of::<PlacedCluster>()
+    );
+    println!(
+        "lines={} line_capacity={} runs={} run_capacity={} clusters={} cluster_capacity={}",
+        laid.lines.len(),
+        laid.lines.capacity(),
+        run_count,
+        run_capacity,
+        cluster_count,
+        cluster_capacity
+    );
+    println!(
+        "public_layout_bytes={accounted} public_layout_mb={:.2}",
+        accounted as f64 / 1024.0 / 1024.0
+    );
 }

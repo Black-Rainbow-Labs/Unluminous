@@ -97,13 +97,8 @@ mod tests {
         let preview = markdown::render(source, &markdown::Options::new(base, colors, None));
         let metrics = FixedMetrics::default();
         let document = crate::Document::from_text(source);
-        let source_page = layout(
-            document.text(),
-            document.chars(),
-            document.paragraphs(),
-            &metrics,
-            600.0,
-        );
+        let source_page =
+            layout(document.text(), document.chars(), document.paragraphs(), &metrics, 600.0);
         let preview_page =
             layout(&preview.text, &preview.chars, &preview.paragraphs, &metrics, 600.0);
         (source_page, preview_page, preview.source_lines)
@@ -188,6 +183,10 @@ mod tests {
         let (source, preview, map) = pages("");
         assert_eq!(preview_y_for_source_y(&source, &preview, &map, 0.0), 0.0);
         let back = source_y_for_preview_y(&source, &preview, &map, 40.0);
-        assert!((0.0..=source.height).contains(&back), "{back} is outside a {} page", source.height);
+        assert!(
+            (0.0..=source.height).contains(&back),
+            "{back} is outside a {} page",
+            source.height
+        );
     }
 }

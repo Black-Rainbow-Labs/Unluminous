@@ -177,10 +177,7 @@ fn pill(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Ve
     // handing them Unluminous's would be offering a switch that does nothing, and they always stream, so
     // a switch that turned it off would be a switch that lies. What is left is the attachment, which
     // means the same thing either way.
-    let an_agent = parts
-        .configuration
-        .provider()
-        .is_some_and(|one| one.is_a_program());
+    let an_agent = parts.configuration.provider().is_some_and(|one| one.is_a_program());
     let mut tools: Vec<(&str, fn(&egui::Painter, Pos2, Color32), bool, Color32, Act)> = Vec::new();
     if !an_agent {
         tools.push((
@@ -225,8 +222,7 @@ fn pill(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Ve
         Vec2::new(width, PILL * scale),
     );
     if look.chrome.is_recording() {
-        look.chrome
-            .sunken(pill, PILL * scale / 2.0, look.palette.board_well, Lift::Small);
+        look.chrome.sunken(pill, PILL * scale / 2.0, look.palette.board_well, Lift::Small);
     } else {
         ui.painter().rect(
             pill,
@@ -239,8 +235,11 @@ fn pill(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Ve
     let mut centre = Pos2::new(pill.left() + (4.0 + TOOL / 2.0) * scale, pill.center().y);
     for (name, drawing, on, accent, act) in tools {
         let at = Rect::from_center_size(centre, Vec2::splat(TOOL * scale));
-        let response = ui.interact(at, ui.id().with(("agent-chat-tool-button", name)), Sense::click());
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.to_owned()));
+        let response =
+            ui.interact(at, ui.id().with(("agent-chat-tool-button", name)), Sense::click());
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.to_owned())
+        });
         if on {
             if look.chrome.is_recording() {
                 look.chrome.raised(
@@ -250,8 +249,7 @@ fn pill(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Ve
                     Lift::Small,
                 );
             } else {
-                ui.painter()
-                    .circle_filled(centre, TOOL * scale / 2.0, look.palette.board_card);
+                ui.painter().circle_filled(centre, TOOL * scale / 2.0, look.palette.board_card);
             }
         }
         let tint = match (on, response.hovered()) {
@@ -290,10 +288,7 @@ fn used(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) {
     );
     let font = egui::FontId::monospace(look.font_size * 0.68);
     let galley = painter.layout(said, font, tint, area.width());
-    let at = Pos2::new(
-        area.center().x - galley.size().x.min(area.width()) / 2.0,
-        area.top(),
-    );
+    let at = Pos2::new(area.center().x - galley.size().x.min(area.width()) / 2.0, area.top());
     painter.galley(at, galley, tint);
 }
 
@@ -331,8 +326,7 @@ fn thumbnails(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: R
             }
         }
         if look.chrome.is_recording() {
-            look.chrome
-                .raised(at, 8.0 * scale, Fill::Solid(look.palette.board_well), Lift::Small);
+            look.chrome.raised(at, 8.0 * scale, Fill::Solid(look.palette.board_well), Lift::Small);
         } else {
             ui.painter().rect_filled(
                 at,
@@ -378,8 +372,7 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
     // **Deeper than anything else in the pane**, which is `PromptInput.module.css`'s `--e-pressed`:
     // the field somebody types into is the one thing pressed furthest into the page.
     if look.chrome.is_recording() {
-        look.chrome
-            .sunken(area, radius, look.palette.board_well, Lift::Medium);
+        look.chrome.sunken(area, radius, look.palette.board_well, Lift::Medium);
     } else {
         ui.painter().rect(
             area,
@@ -422,7 +415,14 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
                 // to do it is gone: `task-1848` asked for it to go and for drag and drop and paste to be
                 // the routes. A control removed with nothing said in its place is a feature nobody finds.
                 // It says it only while nothing is attached, so it is a hint rather than a label.
-                .hint_text(egui::RichText::new(hint(measured, field.width(), parts.attachments.is_empty())).color(look.palette.text_faint))
+                .hint_text(
+                    egui::RichText::new(hint(
+                        measured,
+                        field.width(),
+                        parts.attachments.is_empty(),
+                    ))
+                    .color(look.palette.text_faint),
+                )
                 .desired_width(field.width())
                 .desired_rows(rows)
                 .font(egui::FontId::proportional(look.font_size * 0.9))
@@ -430,7 +430,8 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         );
         // Named, because every control in Unluminous has a plain name and a test finds one by it. Its hint
         // text is not a name: it is what the field says when it is empty.
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Message"));
+        response
+            .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Message"));
         // Recorded so the paste knows whose key press it is reading — see `PaneState::prompt_focused`.
         parts.state.prompt_focused = response.has_focus();
         // **Enter sends and Shift+Enter is a new line**, which is what the page this copies does and
@@ -447,7 +448,8 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         // reads the frame's events first. That costs nothing: `AgentChat::send` trims the end of what
         // it is given, so the line break the field added never reaches the message.
         if response.has_focus() && !busy {
-            let send = ui.input(|input| input.key_pressed(egui::Key::Enter) && input.modifiers.is_none());
+            let send =
+                ui.input(|input| input.key_pressed(egui::Key::Enter) && input.modifiers.is_none());
             if send {
                 acts.push(Act::Send);
             }
@@ -470,16 +472,16 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         true => "Stop answering",
         false => "Send",
     };
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ready, name.to_owned()));
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ready, name.to_owned())
+    });
     let (start, end) = match (busy, ready) {
-        (true, _) => (
-            crate::theme::color::close(),
-            crate::theme::color::close().gamma_multiply(0.75),
-        ),
-        (false, true) => (
-            look.palette.board_accent,
-            super::darken(look.palette.board_accent, 0.15),
-        ),
+        (true, _) => {
+            (crate::theme::color::close(), crate::theme::color::close().gamma_multiply(0.75))
+        }
+        (false, true) => {
+            (look.palette.board_accent, super::darken(look.palette.board_accent, 0.15))
+        }
         // Nothing to send: the disc is there but quiet, because a button that vanished as the field
         // emptied would make the field jump about while somebody was typing in it.
         (false, false) => (look.palette.board_card, look.palette.board_card),
@@ -488,17 +490,11 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         if ready {
             // The blue glow under the primary button, which is the reference's own
             // `4px 4px 12px rgba(29,79,219,0.35)`.
-            look.chrome
-                .glow(disc, disc.width() / 2.0, start.gamma_multiply(0.45), 7.0 * scale);
+            look.chrome.glow(disc, disc.width() / 2.0, start.gamma_multiply(0.45), 7.0 * scale);
         }
-        look.chrome.disc(
-            disc.center(),
-            disc.width() / 2.0,
-            Fill::diagonal(disc, start, end),
-        );
+        look.chrome.disc(disc.center(), disc.width() / 2.0, Fill::diagonal(disc, start, end));
     } else {
-        ui.painter()
-            .circle_filled(disc.center(), disc.width() / 2.0, start);
+        ui.painter().circle_filled(disc.center(), disc.width() / 2.0, start);
     }
     let tint = match ready {
         // The palette's own white rather than `Color32::WHITE`: the palette is closed, and a colour
@@ -524,10 +520,7 @@ fn send_arrow(painter: &egui::Painter, centre: Pos2, tint: Color32, scale: f32) 
     let half = 5.0 * scale;
     let stroke = Stroke::new(1.8 * scale, tint);
     painter.line_segment(
-        [
-            Pos2::new(centre.x, centre.y + half),
-            Pos2::new(centre.x, centre.y - half),
-        ],
+        [Pos2::new(centre.x, centre.y + half), Pos2::new(centre.x, centre.y - half)],
         stroke,
     );
     painter.line_segment(

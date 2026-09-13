@@ -27,8 +27,8 @@
 //! reference implementations advise against it because it breaks any presentation path that blits
 //! into that surface.
 
-use eframe::wgpu::{Backends, Dx12SwapchainKind};
 use eframe::wgpu::rwh::{HasWindowHandle, RawWindowHandle};
+use eframe::wgpu::{Backends, Dx12SwapchainKind};
 
 /// Ask wgpu for the one swapchain on Windows that can be translucent.
 ///
@@ -79,7 +79,8 @@ fn window_handle(window: &impl HasWindowHandle) -> Option<isize> {
 /// The window's client area, in pixels.
 fn client_size(hwnd: isize) -> Option<(i32, i32)> {
     let mut rect = windows_sys::Win32::Foundation::RECT { left: 0, top: 0, right: 0, bottom: 0 };
-    let read = unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetClientRect(hwnd as _, &mut rect) };
+    let read =
+        unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetClientRect(hwnd as _, &mut rect) };
     if read == 0 {
         return None;
     }
@@ -109,7 +110,8 @@ mod tests {
     #[test]
     fn the_swapchain_is_asked_for_on_the_one_backend_that_can_carry_alpha() {
         let options = with_direct_composition(eframe::NativeOptions::default());
-        let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &options.wgpu_options.wgpu_setup else {
+        let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &options.wgpu_options.wgpu_setup
+        else {
             panic!("eframe is expected to be creating its own wgpu instance");
         };
         assert_eq!(
@@ -131,11 +133,11 @@ mod tests {
         impl HasWindowHandle for Nothing {
             fn window_handle(
                 &self,
-            ) -> Result<eframe::wgpu::rwh::WindowHandle<'_>, eframe::wgpu::rwh::HandleError> {
+            ) -> Result<eframe::wgpu::rwh::WindowHandle<'_>, eframe::wgpu::rwh::HandleError>
+            {
                 Err(eframe::wgpu::rwh::HandleError::NotSupported)
             }
         }
         keep_transparent(&Nothing);
     }
 }
-

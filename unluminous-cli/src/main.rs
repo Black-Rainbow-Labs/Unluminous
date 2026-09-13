@@ -35,9 +35,9 @@ use serde_json::{json, Value};
 use unluminous_cli::catalogue::Command;
 use unluminous_cli::client::{self, Unreachable, DEFAULT_LAUNCH_TIMEOUT, DEFAULT_TIMEOUT};
 use unluminous_cli::instances::Instance;
+use unluminous_cli::mcp;
 use unluminous_cli::parse::{self, Global, Typed};
 use unluminous_cli::protocol::{code, Reply};
-use unluminous_cli::mcp;
 use unluminous_cli::{help, VERSION};
 
 const OK: i32 = 0;
@@ -358,7 +358,9 @@ fn install(typed: &Typed) -> i32 {
         }
     }
     if typed.global.json {
-        say(&json!({ "ok": worst == OK, "command": "mcp.install", "result": { "clients": results } }));
+        say(
+            &json!({ "ok": worst == OK, "command": "mcp.install", "result": { "clients": results } }),
+        );
     } else if !typed.global.quiet {
         for result in &results {
             println!("{}", result["message"].as_str().unwrap_or_default());
@@ -409,10 +411,15 @@ fn configuration(typed: &Typed) -> i32 {
         return OK;
     }
     for client in clients {
-        println!("# {} \u{2014} {}", client.title(), match client {
-            mcp::install::Client::Claude => mcp::install::claude_file(&wanted).display().to_string(),
-            mcp::install::Client::Codex => mcp::install::codex_file().display().to_string(),
-        });
+        println!(
+            "# {} \u{2014} {}",
+            client.title(),
+            match client {
+                mcp::install::Client::Claude =>
+                    mcp::install::claude_file(&wanted).display().to_string(),
+                mcp::install::Client::Codex => mcp::install::codex_file().display().to_string(),
+            }
+        );
         println!("{}", wanted.example(client));
         println!();
     }
@@ -564,9 +571,7 @@ fn port_from(typed: &Typed) -> Result<u16, String> {
         Value::String(text) => text.trim().to_owned(),
         other => other.to_string(),
     };
-    let port: u16 = named
-        .parse()
-        .map_err(|_| format!("`{named}` is not a port number."))?;
+    let port: u16 = named.parse().map_err(|_| format!("`{named}` is not a port number."))?;
     if port < mcp::MIN_PORT {
         return Err(format!(
             "{port} is below {}, which needs privileges and is never what was meant.",
@@ -618,7 +623,9 @@ fn client_timeout(typed: &Typed) -> Duration {
         .max()
         .unwrap_or(0);
     match (asked, waits) {
-        (asked, true) => asked.unwrap_or(DEFAULT_TIMEOUT).max(Duration::from_millis(waiting + 5_000)),
+        (asked, true) => {
+            asked.unwrap_or(DEFAULT_TIMEOUT).max(Duration::from_millis(waiting + 5_000))
+        }
         (Some(asked), false) => asked,
         (None, false) => DEFAULT_TIMEOUT,
     }
@@ -761,8 +768,8 @@ mod tests {
 
     #[test]
     fn the_client_waits_at_least_as_long_as_the_command_was_told_to() {
-        let typed = parse::parse(&words("terminal read --wait-for done --timeout 30000"))
-            .expect("parses");
+        let typed =
+            parse::parse(&words("terminal read --wait-for done --timeout 30000")).expect("parses");
         assert!(
             client_timeout(&typed) >= Duration::from_millis(35_000),
             "the client must outlast the window's own wait"

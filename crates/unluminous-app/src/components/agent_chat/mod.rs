@@ -120,8 +120,7 @@ fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
     // decoration off it is the flat bordered panel every list in Unluminous draws, so switching the
     // renderer off in the manifest or in `plugins.chrome` really withdraws the depth.
     if look.chrome.is_recording() {
-        look.chrome
-            .raised(panel, radius, Fill::Solid(look.palette.board_lane), Lift::Small);
+        look.chrome.raised(panel, radius, Fill::Solid(look.palette.board_lane), Lift::Small);
     } else {
         ui.painter().rect(
             panel,
@@ -196,14 +195,9 @@ fn header(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> 
     let name = parts.session.chat.display_name();
     let mut pen = dot.x + 10.0 * scale;
     // How much room the name may take: whatever the two buttons and the chip leave it.
-    let chip_width = (parts
-        .configuration
-        .provider()
-        .map(|one| one.name.len())
-        .unwrap_or(0) as f32
-        * 5.6
-        + 16.0)
-        * scale;
+    let chip_width =
+        (parts.configuration.provider().map(|one| one.name.len()).unwrap_or(0) as f32 * 5.6 + 16.0)
+            * scale;
     let buttons = 56.0 * scale;
     let room = (area.right() - pen - chip_width - buttons - 12.0 * scale).max(24.0);
     // **Laid out without wrapping and then clipped**, because a conversation named after a long first
@@ -220,11 +214,7 @@ fn header(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> 
             Pos2::new(pen, area.top()),
             Vec2::new(room, area.height()),
         ))
-        .galley(
-            Pos2::new(pen, middle - look.font_size * 0.55),
-            galley,
-            look.palette.text_strong,
-        );
+        .galley(Pos2::new(pen, middle - look.font_size * 0.55), galley, look.palette.text_strong);
     pen += cut + 10.0 * scale;
 
     // The endpoint's own chip, which is `ChatHeader.module.css`'s datasource chip: a pressed well in
@@ -235,7 +225,8 @@ fn header(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> 
             Vec2::new(chip_width, 18.0 * scale),
         );
         if chip.left() > pen {
-            let response = ui.interact(chip, ui.id().with("agent-chat-provider"), egui::Sense::click());
+            let response =
+                ui.interact(chip, ui.id().with("agent-chat-provider"), egui::Sense::click());
             response.widget_info(|| {
                 egui::WidgetInfo::labeled(
                     egui::WidgetType::Button,
@@ -244,8 +235,7 @@ fn header(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> 
                 )
             });
             if look.chrome.is_recording() {
-                look.chrome
-                    .sunken(chip, 9.0 * scale, look.palette.board_well, Lift::Small);
+                look.chrome.sunken(chip, 9.0 * scale, look.palette.board_well, Lift::Small);
             } else {
                 painter.rect_filled(
                     chip,
@@ -259,18 +249,11 @@ fn header(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> 
             };
             let words = provider.name.to_uppercase();
             let width = painter
-                .layout_no_wrap(
-                    words.clone(),
-                    egui::FontId::monospace(look.font_size * 0.62),
-                    tint,
-                )
+                .layout_no_wrap(words.clone(), egui::FontId::monospace(look.font_size * 0.62), tint)
                 .size()
                 .x;
             painter.text(
-                Pos2::new(
-                    chip.center().x - width / 2.0,
-                    chip.center().y - look.font_size * 0.4,
-                ),
+                Pos2::new(chip.center().x - width / 2.0, chip.center().y - look.font_size * 0.4),
                 egui::Align2::LEFT_TOP,
                 words,
                 egui::FontId::monospace(look.font_size * 0.62),
@@ -384,7 +367,8 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
             // before the rectangle can be allocated and running it twice built the message's text
             // twice. See `message::Shape`.
             let shape = message::shape(one, parts.state, look, width);
-            let (rect, _) = ui.allocate_exact_size(Vec2::new(width, shape.height), egui::Sense::hover());
+            let (rect, _) =
+                ui.allocate_exact_size(Vec2::new(width, shape.height), egui::Sense::hover());
             // **Only what can be seen is drawn**, which is `task-1666`'s rule and, here, also what
             // keeps the decoration's canvas the size of the pane: a bubble scrolled a thousand
             // points away would otherwise record shadows a thousand points outside it.
@@ -416,8 +400,7 @@ fn empty(ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
         Vec2::splat(56.0 * scale),
     );
     if look.chrome.is_recording() {
-        look.chrome
-            .sunken(badge, 16.0 * scale, look.palette.board_card, Lift::Small);
+        look.chrome.sunken(badge, 16.0 * scale, look.palette.board_card, Lift::Small);
     } else {
         painter.rect_filled(
             badge,
@@ -427,14 +410,7 @@ fn empty(ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
     }
     icon::chat(&painter, badge.center(), look.palette.board_accent);
     pen = badge.bottom() + 14.0 * scale;
-    centred(
-        &painter,
-        area,
-        pen,
-        "How can I help?",
-        look.font_size * 1.2,
-        look.palette.text_strong,
-    );
+    centred(&painter, area, pen, "How can I help?", look.font_size * 1.2, look.palette.text_strong);
     pen += look.font_size * 1.7;
     centred(
         &painter,
@@ -456,19 +432,17 @@ fn empty(ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
         if chip.bottom() > area.bottom() {
             break;
         }
-        let response = ui.interact(
-            chip,
-            ui.id().with(("agent-chat-starter", prompt)),
-            egui::Sense::click(),
-        );
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, prompt.to_owned()));
+        let response =
+            ui.interact(chip, ui.id().with(("agent-chat-starter", prompt)), egui::Sense::click());
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, prompt.to_owned())
+        });
         let ground = match response.hovered() {
             true => look.palette.selected_row,
             false => look.palette.board_card,
         };
         if look.chrome.is_recording() {
-            look.chrome
-                .raised(chip, 13.0 * scale, Fill::Solid(ground), Lift::Small);
+            look.chrome.raised(chip, 13.0 * scale, Fill::Solid(ground), Lift::Small);
         } else {
             painter.rect_filled(chip, CornerRadius::same((13.0 * scale) as u8), ground);
         }
@@ -490,12 +464,8 @@ fn empty(ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
 
 /// The four chips on an empty pane. What a person asks an editor, rather than what they ask a
 /// general chat: `ChatPage.tsx` has its own four and these are the same idea about this program.
-pub const STARTERS: [&str; 4] = [
-    "Explain this file",
-    "Find the bug",
-    "Write a test",
-    "Summarise the diff",
-];
+pub const STARTERS: [&str; 4] =
+    ["Explain this file", "Find the bug", "Write a test", "Summarise the diff"];
 
 /// A line of text centred in `area` at `y`.
 fn centred(painter: &egui::Painter, area: Rect, y: f32, said: &str, size: f32, tint: Color32) {
@@ -524,12 +494,12 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     let row = look.row_height * scale;
     let mut body = ui.new_child(egui::UiBuilder::new().max_rect(area));
     body.set_clip_rect(area.intersect(ui.clip_rect()));
-    egui::ScrollArea::vertical()
-        .id_salt("agent-chat-history")
-        .auto_shrink([false, false])
-        .show(&mut body, |ui| {
+    egui::ScrollArea::vertical().id_salt("agent-chat-history").auto_shrink([false, false]).show(
+        &mut body,
+        |ui| {
             for one in history {
-                let (rect, _) = ui.allocate_exact_size(Vec2::new(area.width(), row), egui::Sense::hover());
+                let (rect, _) =
+                    ui.allocate_exact_size(Vec2::new(area.width(), row), egui::Sense::hover());
                 if !rect.intersects(ui.clip_rect()) {
                     continue;
                 }
@@ -567,7 +537,10 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
                         Pos2::new(cross.left() - 4.0, rect.max.y),
                     ))
                     .text(
-                        Pos2::new(rect.left() + 8.0 * scale, rect.center().y - look.font_size * 0.42),
+                        Pos2::new(
+                            rect.left() + 8.0 * scale,
+                            rect.center().y - look.font_size * 0.42,
+                        ),
                         egui::Align2::LEFT_TOP,
                         &one.name,
                         egui::FontId::proportional(look.font_size * 0.85),
@@ -585,7 +558,8 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
                     acts.push(Act::Remove(one.id.clone()));
                 }
             }
-        });
+        },
+    );
     acts
 }
 
@@ -600,10 +574,7 @@ fn provider_list(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Re
         if rect.bottom() > area.bottom() {
             break;
         }
-        let chosen = parts
-            .configuration
-            .provider()
-            .is_some_and(|one| one.name == provider.name);
+        let chosen = parts.configuration.provider().is_some_and(|one| one.name == provider.name);
         let response = ui.interact(
             rect,
             ui.id().with(("agent-chat-endpoint", &provider.name)),
@@ -623,8 +594,12 @@ fn provider_list(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Re
         };
         if chosen || response.hovered() {
             if look.chrome.is_recording() {
-                look.chrome
-                    .raised(rect.shrink(2.0), 10.0 * scale, Fill::Solid(ground), Lift::Small);
+                look.chrome.raised(
+                    rect.shrink(2.0),
+                    10.0 * scale,
+                    Fill::Solid(ground),
+                    Lift::Small,
+                );
             } else {
                 painter.rect_filled(rect.shrink(2.0), CornerRadius::same(10), ground);
             }
@@ -643,16 +618,12 @@ fn provider_list(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Re
         // row once a frame. See `Parts::readiness`.
         let (said, tint) = match parts.readiness.get(index).cloned().flatten() {
             Some(why) => (why, crate::theme::color::close()),
-            None => (
-                format!("{} · {}", provider.model, provider.wire.name()),
-                look.palette.text_dim,
-            ),
+            None => {
+                (format!("{} · {}", provider.model, provider.wire.name()), look.palette.text_dim)
+            }
         };
         painter.with_clip_rect(rect).text(
-            Pos2::new(
-                rect.left() + 10.0 * scale,
-                rect.top() + 6.0 * scale + look.font_size,
-            ),
+            Pos2::new(rect.left() + 10.0 * scale, rect.top() + 6.0 * scale + look.font_size),
             egui::Align2::LEFT_TOP,
             said,
             egui::FontId::proportional(look.font_size * 0.72),
@@ -763,12 +734,14 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
                 }
                 None => chat.ui.opened_tools.push(id),
             },
-            Act::ToggleThinking(id) => match chat.ui.opened_thinking.iter().position(|one| *one == id) {
-                Some(at) => {
-                    chat.ui.opened_thinking.remove(at);
+            Act::ToggleThinking(id) => {
+                match chat.ui.opened_thinking.iter().position(|one| *one == id) {
+                    Some(at) => {
+                        chat.ui.opened_thinking.remove(at);
+                    }
+                    None => chat.ui.opened_thinking.push(id),
                 }
-                None => chat.ui.opened_thinking.push(id),
-            },
+            }
         }
     }
     requests

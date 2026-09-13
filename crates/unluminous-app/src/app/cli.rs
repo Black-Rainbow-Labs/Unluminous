@@ -48,18 +48,18 @@ use unluminous_cli::protocol::{code, Reply, Request};
 use crate::app::actions::{Action, DebugAction, GitAction, HighlightColor, RunAction};
 use crate::app::debug::DebugState;
 use crate::app::dock;
-use crate::services::debuggers;
 use crate::app::{UnluminousApp, ViewMode};
+use crate::services::debuggers;
 use unluminous_core::symbols::Role;
 
 use crate::components::find_in_files::FindInFiles;
 use crate::components::go_to_file::GoToFile;
-use crate::components::references::{self, References};
 use crate::components::modal;
-use crate::components::status_bar;
 use crate::components::prompt_dialog::{Prompt, Purpose};
-use crate::services::control::Pending;
+use crate::components::references::{self, References};
+use crate::components::status_bar;
 use crate::services::browser::BrowserCommand;
+use crate::services::control::Pending;
 use crate::services::file_kind;
 use crate::services::run_configurations::{self, Configuration, Origin};
 use crate::settings;
@@ -510,10 +510,8 @@ impl UnluminousApp {
                     if self.debug_build.is_some() {
                         return None;
                     }
-                    let said = self
-                        .message
-                        .clone()
-                        .unwrap_or_else(|| "Nothing was started.".to_owned());
+                    let said =
+                        self.message.clone().unwrap_or_else(|| "Nothing was started.".to_owned());
                     return Some(Reply::failed(command, code::NOT_APPLICABLE, said));
                 }
                 let debug = self.debug.as_ref()?;
@@ -546,13 +544,21 @@ impl UnluminousApp {
         let steps = match verb {
             "move" => {
                 let Some(at) = at("x", "y") else {
-                    return no(request, code::USAGE, "Say where, as an x and a y in window points.");
+                    return no(
+                        request,
+                        code::USAGE,
+                        "Say where, as an x and a y in window points.",
+                    );
                 };
                 input::moved(at)
             }
             "click" => {
                 let Some(at) = at("x", "y") else {
-                    return no(request, code::USAGE, "Say where, as an x and a y in window points.");
+                    return no(
+                        request,
+                        code::USAGE,
+                        "Say where, as an x and a y in window points.",
+                    );
                 };
                 let button = match (request.switch("right"), request.switch("middle")) {
                     (true, _) => input::Button::Secondary,
@@ -830,7 +836,6 @@ impl UnluminousApp {
         }
     }
 
-
     /// `panel` — which edge of the window each panel is docked to — `task-1697`.
     ///
     /// The command line half of the drag. It goes through `dock_the_panel`, which is the one place a
@@ -899,7 +904,10 @@ impl UnluminousApp {
                     format!(
                         "{} panels, {} showing",
                         dock::Panel::ALL.len(),
-                        dock::Panel::ALL.iter().filter(|panel| self.panel_is_showing(**panel)).count()
+                        dock::Panel::ALL
+                            .iter()
+                            .filter(|panel| self.panel_is_showing(**panel))
+                            .count()
                     ),
                     rows,
                     json!({
@@ -922,7 +930,9 @@ impl UnluminousApp {
                 let Some(panel) = self.cli_panel_named(request) else {
                     return self.cli_no_such_panel(request);
                 };
-                let Some(side) = request.text("side").and_then(|side| dock::Side::from_name(side.trim())) else {
+                let Some(side) =
+                    request.text("side").and_then(|side| dock::Side::from_name(side.trim()))
+                else {
                     return no(
                         request,
                         code::USAGE,
@@ -1018,7 +1028,11 @@ impl UnluminousApp {
                         self.settings.terminal_font_size
                     ),
                     false => {
-                        format!("{} is at {:.2}x", self.panel_label(panel), self.panes.zoom_of(panel))
+                        format!(
+                            "{} is at {:.2}x",
+                            self.panel_label(panel),
+                            self.panes.zoom_of(panel)
+                        )
                     }
                 };
                 ok(
@@ -1089,9 +1103,7 @@ impl UnluminousApp {
                 let nearest = settings::TERMINAL_FONT_SIZES
                     .iter()
                     .copied()
-                    .min_by(|a, b| {
-                        (a - wanted).abs().total_cmp(&(b - wanted).abs())
-                    })
+                    .min_by(|a, b| (a - wanted).abs().total_cmp(&(b - wanted).abs()))
                     .unwrap_or(wanted);
                 self.settings.terminal_font_size = nearest;
             }
@@ -1206,7 +1218,8 @@ impl UnluminousApp {
     fn pane_settings(&self) -> Vec<(String, &'static str, String)> {
         let mut out = Vec::new();
         for (slot, key) in self.plugin_ui.pane_keys().into_iter().enumerate() {
-            let label = self.plugin_ui.pane(slot).map(|pane| pane.label.clone()).unwrap_or_default();
+            let label =
+                self.plugin_ui.pane(slot).map(|pane| pane.label.clone()).unwrap_or_default();
             for measure in PaneMeasure::ALL {
                 out.push((
                     format!("panes.{key}.{}", measure.name()),
@@ -1227,14 +1240,11 @@ impl UnluminousApp {
     /// renumbers nothing.
     fn cli_fold(&mut self, request: &Request, verb: &str) -> Outcome {
         if !crate::services::file_kind::folding_applies(self.document().path()) {
-            return no(
-                request,
-                code::NOT_APPLICABLE,
-                "There is nothing to fold in this tab.",
-            );
+            return no(request, code::NOT_APPLICABLE, "There is nothing to fold in this tab.");
         }
         // A line the caller gave, turned into the paragraph number everything inside Unluminous counts in.
-        let asked = request.number("line").filter(|line| *line >= 1.0).map(|line| line as usize - 1);
+        let asked =
+            request.number("line").filter(|line| *line >= 1.0).map(|line| line as usize - 1);
         match verb {
             "list" => {
                 let regions = self.fold_report();
@@ -1254,7 +1264,11 @@ impl UnluminousApp {
                 let collapsed = regions.iter().filter(|it| it["collapsed"] == json!(true)).count();
                 lines(
                     request,
-                    format!("{} block{} that can be collapsed, {collapsed} collapsed", regions.len(), if regions.len() == 1 { "" } else { "s" }),
+                    format!(
+                        "{} block{} that can be collapsed, {collapsed} collapsed",
+                        regions.len(),
+                        if regions.len() == 1 { "" } else { "s" }
+                    ),
                     rows,
                     json!({ "regions": regions }),
                 )
@@ -1376,11 +1390,7 @@ impl UnluminousApp {
         } else {
             json!({ "collapsed": collapsed, "total": regions.len() })
         };
-        ok(
-            request,
-            format!("{collapsed} of {} blocks collapsed", regions.len()),
-            result,
-        )
+        ok(request, format!("{collapsed} of {} blocks collapsed", regions.len()), result)
     }
 
     /// The status bar message a fold command left behind, which is why it refused.
@@ -1477,7 +1487,11 @@ fn screenshot_from(ctx: &egui::Context) -> Option<egui::ColorImage> {
 /// One function rather than the arithmetic at the call site, because the two units are exactly the
 /// thing that is easy to get wrong: a display at two pixels a point makes a 400 point node an 800
 /// pixel picture, and a crop that forgot would cut out its top left quarter.
-pub(crate) fn cut_out(image: &egui::ColorImage, area: Rect, pixels_per_point: f32) -> egui::ColorImage {
+pub(crate) fn cut_out(
+    image: &egui::ColorImage,
+    area: Rect,
+    pixels_per_point: f32,
+) -> egui::ColorImage {
     let scale = pixels_per_point.max(0.01);
     let left = (area.left() * scale).round().max(0.0) as usize;
     let top = (area.top() * scale).round().max(0.0) as usize;
@@ -1493,7 +1507,11 @@ pub(crate) fn cut_out(image: &egui::ColorImage, area: Rect, pixels_per_point: f3
         let from = row * image.size[0] + left;
         pixels.extend_from_slice(&image.pixels[from..from + width]);
     }
-    egui::ColorImage { size: [width, height], pixels, source_size: egui::Vec2::new(width as f32, height as f32) }
+    egui::ColorImage {
+        size: [width, height],
+        pixels,
+        source_size: egui::Vec2::new(width as f32, height as f32),
+    }
 }
 
 fn write_png(image: &egui::ColorImage, path: &Path) -> std::io::Result<()> {
@@ -1513,9 +1531,7 @@ fn write_png(image: &egui::ColorImage, path: &Path) -> std::io::Result<()> {
     }
     let buffer = image::RgbaImage::from_raw(width, height, bytes)
         .ok_or_else(|| std::io::Error::other("the captured frame was the wrong size"))?;
-    buffer
-        .save(path)
-        .map_err(|problem| std::io::Error::other(format!("{problem}")))
+    buffer.save(path).map_err(|problem| std::io::Error::other(format!("{problem}")))
 }
 
 /// How long a command was told to wait, or the default.
@@ -1720,14 +1736,9 @@ fn status_sections(request: &Request) -> Result<Vec<String>, String> {
             continue;
         }
         if !STATUS_SECTIONS.iter().any(|(known, _)| *known == name) {
-            let all = STATUS_SECTIONS
-                .iter()
-                .map(|(known, _)| *known)
-                .collect::<Vec<_>>()
-                .join(", ");
-            return Err(format!(
-                "`{name}` is not a section of `status`. It is one of: {all}."
-            ));
+            let all =
+                STATUS_SECTIONS.iter().map(|(known, _)| *known).collect::<Vec<_>>().join(", ");
+            return Err(format!("`{name}` is not a section of `status`. It is one of: {all}."));
         }
         if !names.contains(&name) {
             names.push(name);
@@ -1758,7 +1769,6 @@ fn status_keys_for(sections: &[String]) -> Option<Vec<&'static str>> {
 }
 
 impl UnluminousApp {
-
     // --------------------------------------------------------------------------------- the window
 
     fn cli_window(&mut self, request: &Request, verb: &str, ctx: &egui::Context) -> Outcome {
@@ -1792,7 +1802,9 @@ impl UnluminousApp {
                 } else {
                     ok(
                         request,
-                        self.message.clone().unwrap_or_else(|| "The status bar has no message.".to_owned()),
+                        self.message
+                            .clone()
+                            .unwrap_or_else(|| "The status bar has no message.".to_owned()),
                         json!({ "message": self.message }),
                     )
                 }
@@ -1862,26 +1874,40 @@ impl UnluminousApp {
     /// `unluminous-cli browser ...` through the same host and commands as the menu and toolbar.
     fn cli_browser(&mut self, request: &Request, verb: &str) -> Outcome {
         if verb == "open" {
-            let Some(address) = request.text("address") else { return no(request, code::USAGE, "Give an HTTP address or HTML path.") };
+            let Some(address) = request.text("address") else {
+                return no(request, code::USAGE, "Give an HTTP address or HTML path.");
+            };
             return match self.open_browser(&address) {
-                Ok(id) => ok(request, format!("Opened browser tab {id}"), json!({ "id": id, "address": address })),
+                Ok(id) => ok(
+                    request,
+                    format!("Opened browser tab {id}"),
+                    json!({ "id": id, "address": address }),
+                ),
                 Err(problem) => no(request, code::FAILED, problem),
             };
         }
         let Some(tab) = self.files.active().browser.as_ref() else {
-            return no(request, code::NOT_APPLICABLE, "The tab that is showing is not a browser tab.");
+            return no(
+                request,
+                code::NOT_APPLICABLE,
+                "The tab that is showing is not a browser tab.",
+            );
         };
         if verb == "status" {
-            return ok(request, tab.name(), json!({
-                "id": tab.id,
-                "title": tab.title,
-                "url": tab.current_url(),
-                "loading": tab.loading,
-                "showing": self.browser.showing() == Some(tab.id),
-                "canGoBack": tab.can_go_back(),
-                "canGoForward": tab.can_go_forward(),
-                "problem": tab.problem,
-            }));
+            return ok(
+                request,
+                tab.name(),
+                json!({
+                    "id": tab.id,
+                    "title": tab.title,
+                    "url": tab.current_url(),
+                    "loading": tab.loading,
+                    "showing": self.browser.showing() == Some(tab.id),
+                    "canGoBack": tab.can_go_back(),
+                    "canGoForward": tab.can_go_forward(),
+                    "problem": tab.problem,
+                }),
+            );
         }
         let command = match verb {
             "back" => BrowserCommand::Back,
@@ -1986,7 +2012,11 @@ impl UnluminousApp {
             request,
             format!(
                 "{name} is tab {} of pane {}",
-                self.files.tabs_in(self.files.pane_of(landed)).iter().position(|at| *at == landed).unwrap_or(0),
+                self.files
+                    .tabs_in(self.files.pane_of(landed))
+                    .iter()
+                    .position(|at| *at == landed)
+                    .unwrap_or(0),
                 self.files.pane_of(landed)
             ),
             self.panes_value(),
@@ -2089,7 +2119,8 @@ impl UnluminousApp {
                 )
             }
             "width" => {
-                let (Some(pane), Some(fraction)) = (request.number("pane"), request.number("fraction"))
+                let (Some(pane), Some(fraction)) =
+                    (request.number("pane"), request.number("fraction"))
                 else {
                     return no(request, code::USAGE, "Say which pane and what share of the width.");
                 };
@@ -2104,7 +2135,11 @@ impl UnluminousApp {
                         ),
                     );
                 }
-                ok(request, format!("Pane {pane} is {fraction} of the editing area"), self.panes_value())
+                ok(
+                    request,
+                    format!("Pane {pane} is {fraction} of the editing area"),
+                    self.panes_value(),
+                )
             }
             "unsplit" | "unsplit-all" => {
                 let all = verb == "unsplit-all";
@@ -2114,7 +2149,11 @@ impl UnluminousApp {
                 }
                 ok(
                     request,
-                    format!("{} pane{} left", self.files.pane_count(), if self.files.pane_count() == 1 { "" } else { "s" }),
+                    format!(
+                        "{} pane{} left",
+                        self.files.pane_count(),
+                        if self.files.pane_count() == 1 { "" } else { "s" }
+                    ),
                     self.panes_value(),
                 )
             }
@@ -2205,19 +2244,23 @@ impl UnluminousApp {
         } else {
             self.close_tab(index);
         }
-        ok(
-            request,
-            format!("Closed {name}"),
-            json!({ "closed": name, "tabs": self.files.len() }),
-        )
+        ok(request, format!("Closed {name}"), json!({ "closed": name, "tabs": self.files.len() }))
     }
 
     fn cli_tab_save(&mut self, request: &Request) -> Outcome {
         if self.files.active().is_browser() {
-            return no(request, code::NOT_APPLICABLE, "A browser tab has no editable source. Use browser reload to reload it.");
+            return no(
+                request,
+                code::NOT_APPLICABLE,
+                "A browser tab has no editable source. Use browser reload to reload it.",
+            );
         }
         if self.files.active().is_picture() {
-            return no(request, code::NOT_APPLICABLE, "A picture cannot be edited, so there is nothing to save.");
+            return no(
+                request,
+                code::NOT_APPLICABLE,
+                "A picture cannot be edited, so there is nothing to save.",
+            );
         }
         if self.files.active().path().is_none() {
             return no(
@@ -2229,10 +2272,15 @@ impl UnluminousApp {
         self.save();
         match self.files.active().document.is_modified() {
             false => {
-                let path = self.files.active().path().map(|p| p.display().to_string()).unwrap_or_default();
+                let path =
+                    self.files.active().path().map(|p| p.display().to_string()).unwrap_or_default();
                 ok(request, format!("Saved {path}"), json!({ "path": path }))
             }
-            true => no(request, code::FAILED, "Unluminous could not write the file. The status bar says why."),
+            true => no(
+                request,
+                code::FAILED,
+                "Unluminous could not write the file. The status bar says why.",
+            ),
         }
     }
 
@@ -2241,21 +2289,31 @@ impl UnluminousApp {
             return no(request, code::USAGE, "Say where to write it.");
         };
         if self.files.active().is_picture() {
-            return no(request, code::NOT_APPLICABLE, "A picture cannot be edited, so there is nothing to save.");
+            return no(
+                request,
+                code::NOT_APPLICABLE,
+                "A picture cannot be edited, so there is nothing to save.",
+            );
         }
         if self.files.active().is_browser() {
-            return no(request, code::NOT_APPLICABLE, "A browser tab has no editable source to save.");
+            return no(
+                request,
+                code::NOT_APPLICABLE,
+                "A browser tab has no editable source to save.",
+            );
         }
         match self.files.active_mut().document.save_as(&path) {
             Ok(()) => {
                 self.tree.reload();
-                ok(request, format!("Saved {}", path.display()), json!({ "path": path.to_string_lossy() }))
+                ok(
+                    request,
+                    format!("Saved {}", path.display()),
+                    json!({ "path": path.to_string_lossy() }),
+                )
             }
-            Err(problem) => no(
-                request,
-                code::FAILED,
-                format!("Could not write {}: {problem}", path.display()),
-            ),
+            Err(problem) => {
+                no(request, code::FAILED, format!("Could not write {}: {problem}", path.display()))
+            }
         }
     }
 
@@ -2288,7 +2346,9 @@ impl UnluminousApp {
             no(
                 request,
                 code::FAILED,
-                self.message.clone().unwrap_or_else(|| format!("Could not reload {}", path.display())),
+                self.message
+                    .clone()
+                    .unwrap_or_else(|| format!("Could not reload {}", path.display())),
             )
         }
     }
@@ -2497,8 +2557,9 @@ impl UnluminousApp {
             // is in the store as well — the window pushes it there every frame — so adding the two
             // totals together would report twice as many as there were.
             let open: Vec<PathBuf> = self.files.paths();
-            let mut cleared: usize =
-                (0..self.files.len()).map(|index| self.files.at(index).document.highlights().len()).sum();
+            let mut cleared: usize = (0..self.files.len())
+                .map(|index| self.files.at(index).document.highlights().len())
+                .sum();
             cleared += self
                 .marks
                 .files()
@@ -2581,7 +2642,9 @@ impl UnluminousApp {
         };
         let wanted: Value = match serde_json::from_str(&text) {
             Ok(value) => value,
-            Err(problem) => return no(request, code::USAGE, format!("That is not JSON: {problem}")),
+            Err(problem) => {
+                return no(request, code::USAGE, format!("That is not JSON: {problem}"))
+            }
         };
         let Some(list) = wanted.as_array() else {
             return no(
@@ -3045,11 +3108,7 @@ impl UnluminousApp {
         let all = request.switch("all");
         let count = if all { find.count() } else { find.current().map_or(0, |_| 1) };
         if find.count() == 0 {
-            return no(
-                request,
-                code::NOT_FOUND,
-                format!("Nothing matches '{text}' in this file."),
-            );
+            return no(request, code::NOT_FOUND, format!("Nothing matches '{text}' in this file."));
         }
         if !request.switch("apply") {
             return ok(
@@ -3123,7 +3182,11 @@ impl UnluminousApp {
             return refusal;
         }
         if self.files.active().is_picture() {
-            return no(request, code::NOT_APPLICABLE, "This tab holds a picture, which is panned rather than scrolled.");
+            return no(
+                request,
+                code::NOT_APPLICABLE,
+                "This tab holds a picture, which is panned rather than scrolled.",
+            );
         }
         let preview = request.switch("preview");
         let room = (self.editor_area.height() - size::EDITOR_PADDING_Y * 2.0).max(0.0);
@@ -3257,11 +3320,7 @@ impl UnluminousApp {
                 all[from - 1..last].concat()
             }
         };
-        ok(
-            request,
-            String::new(),
-            json!({ "text": text, "fromLine": from, "toLine": to }),
-        )
+        ok(request, String::new(), json!({ "text": text, "fromLine": from, "toLine": to }))
     }
 
     fn cli_editor_set_text(&mut self, request: &Request) -> Outcome {
@@ -3332,11 +3391,8 @@ impl UnluminousApp {
             );
         }
         let here = self.caret_position();
-        let offset = offset_at(
-            self.document().text(),
-            line.unwrap_or(here.line),
-            column.unwrap_or(1),
-        );
+        let offset =
+            offset_at(self.document().text(), line.unwrap_or(here.line), column.unwrap_or(1));
         self.document_mut().apply(unluminous_core::Command::PlaceCaret { offset, extend: false });
         self.reveal_caret = true;
         let at = self.caret_position();
@@ -3352,7 +3408,8 @@ impl UnluminousApp {
             self.document_mut().apply(unluminous_core::Command::SelectAll);
         } else if request.switch("none") {
             let head = self.document().selection().head;
-            self.document_mut().apply(unluminous_core::Command::PlaceCaret { offset: head, extend: false });
+            self.document_mut()
+                .apply(unluminous_core::Command::PlaceCaret { offset: head, extend: false });
         } else {
             let Some(from_line) = request.whole("from-line") else {
                 return no(
@@ -3365,8 +3422,10 @@ impl UnluminousApp {
             let from = offset_at(text, from_line, request.whole("from-column").unwrap_or(1));
             let to_line = request.whole("to-line").unwrap_or(from_line);
             let to = offset_at(text, to_line, request.whole("to-column").unwrap_or(usize::MAX));
-            self.document_mut().apply(unluminous_core::Command::PlaceCaret { offset: from, extend: false });
-            self.document_mut().apply(unluminous_core::Command::PlaceCaret { offset: to, extend: true });
+            self.document_mut()
+                .apply(unluminous_core::Command::PlaceCaret { offset: from, extend: false });
+            self.document_mut()
+                .apply(unluminous_core::Command::PlaceCaret { offset: to, extend: true });
         }
         self.reveal_caret = true;
         let selection = self.document().selection();
@@ -3472,8 +3531,7 @@ impl UnluminousApp {
     }
 
     fn cli_editor_history(&mut self, request: &Request, undo: bool) -> Outcome {
-        let possible =
-            if undo { self.document().can_undo() } else { self.document().can_redo() };
+        let possible = if undo { self.document().can_undo() } else { self.document().can_redo() };
         if !possible {
             return no(
                 request,
@@ -3540,11 +3598,11 @@ impl UnluminousApp {
             );
         }
         let kind = unluminous_core::mermaid::kind(&source).map(|kind| kind.name().to_owned());
-        let metrics = crate::services::mermaid_scene::EguiMetrics::new(ctx, self.bold_family.clone());
+        let metrics =
+            crate::services::mermaid_scene::EguiMetrics::new(ctx, self.bold_family.clone());
         match self.mermaid_scenes.scene(&source, &base, &metrics, &theme) {
             Ok(scene) => {
-                let texts: Vec<String> =
-                    scene.texts().into_iter().map(str::to_owned).collect();
+                let texts: Vec<String> = scene.texts().into_iter().map(str::to_owned).collect();
                 ok(
                     request,
                     String::new(),
@@ -3597,10 +3655,7 @@ impl UnluminousApp {
                 true => self.go_to_named_definition(&name, candidates),
                 false => self.go_to_definition(offset),
             }
-            let sentence = self
-                .message
-                .clone()
-                .unwrap_or_else(|| format!("Went to '{name}'"));
+            let sentence = self.message.clone().unwrap_or_else(|| format!("Went to '{name}'"));
             return ok(request, sentence, json!({ "name": name, "candidates": rows }));
         }
         let sentence = match rows.len() {
@@ -3612,7 +3667,10 @@ impl UnluminousApp {
     }
 
     /// Resolve the exact name a definition request asks about, keeping the caret as the default.
-    fn cli_definition_target(&mut self, request: &Request) -> Result<(String, usize, bool), Outcome> {
+    fn cli_definition_target(
+        &mut self,
+        request: &Request,
+    ) -> Result<(String, usize, bool), Outcome> {
         if let Some(name) = request.text("name").filter(|name| !name.trim().is_empty()) {
             return Ok((name.trim().to_owned(), self.caret_offset(), true));
         }
@@ -3623,7 +3681,8 @@ impl UnluminousApp {
                 "This file's language has not said what a definition looks like, so there is none to go to.",
             ));
         }
-        let offset = self.cli_offset(request).map_err(|problem| no(request, code::USAGE, problem))?;
+        let offset =
+            self.cli_offset(request).map_err(|problem| no(request, code::USAGE, problem))?;
         let name = self.symbol_at(offset).ok_or_else(|| {
             no(request, code::NOT_APPLICABLE, "There is no symbol at that position.")
         })?;
@@ -3752,7 +3811,9 @@ impl UnluminousApp {
             return no(
                 request,
                 code::NOT_APPLICABLE,
-                self.message.clone().unwrap_or_else(|| "There is nothing to complete here.".to_owned()),
+                self.message
+                    .clone()
+                    .unwrap_or_else(|| "There is nothing to complete here.".to_owned()),
             );
         };
         let stem = self.document().text().byte_slice(state.stem.clone());
@@ -3766,7 +3827,10 @@ impl UnluminousApp {
             return no(
                 request,
                 code::NOT_FOUND,
-                format!("'{name}' is not one of the completions for '{stem}'. These are: {}.", offered.join(", ")),
+                format!(
+                    "'{name}' is not one of the completions for '{stem}'. These are: {}.",
+                    offered.join(", ")
+                ),
             );
         }
         if !self.accept_the_completion(false) {
@@ -3809,8 +3873,7 @@ impl UnluminousApp {
         };
         self.tree.reload();
         let waker = self.thread_waker();
-        self.references =
-            Some(References::open(references::Purpose::References, &name, waker));
+        self.references = Some(References::open(references::Purpose::References, &name, waker));
         Outcome::Hold(Waiting::References {
             until: Instant::now() + self.cli_timeout(request),
             code_only: request.switch("code-only"),
@@ -3877,7 +3940,9 @@ impl UnluminousApp {
                 return no(
                     request,
                     code::USAGE,
-                    format!("`{named}` is not something to include. It is `comments` or `strings`."),
+                    format!(
+                        "`{named}` is not something to include. It is `comments` or `strings`."
+                    ),
                 );
             }
         }
@@ -3896,7 +3961,12 @@ impl UnluminousApp {
         Outcome::Hold(Waiting::References {
             until: Instant::now() + self.cli_timeout(request),
             code_only: false,
-            rename: Some(CliRename { to: to.trim().to_owned(), scope, include, apply: request.switch("apply") }),
+            rename: Some(CliRename {
+                to: to.trim().to_owned(),
+                scope,
+                include,
+                apply: request.switch("apply"),
+            }),
         })
     }
 
@@ -3997,9 +4067,7 @@ impl UnluminousApp {
         let listed: Vec<Value> = change
             .by_file
             .iter()
-            .map(|(path, ranges)| {
-                json!({ "path": path.to_string_lossy(), "places": ranges.len() })
-            })
+            .map(|(path, ranges)| json!({ "path": path.to_string_lossy(), "places": ranges.len() }))
             .collect();
         if !rename.apply {
             self.references = None;
@@ -4064,14 +4132,15 @@ impl UnluminousApp {
                 match rename.scope {
                     Some(true) => same_file,
                     Some(false) => true,
-                    None => crate::app::symbols::ticked_by_default(hit.role, kind, same_file)
-                        || (hit.role != Role::Code && by_role),
+                    None => {
+                        crate::app::symbols::ticked_by_default(hit.role, kind, same_file)
+                            || (hit.role != Role::Code && by_role)
+                    }
                 }
             })
             .collect();
         modal.set_ticks(ticks);
     }
-
 
     fn cli_editor_preview(&mut self, request: &Request, ctx: &egui::Context) -> Outcome {
         if !file_kind::preview_applies(self.document().path()) {
@@ -4304,7 +4373,12 @@ impl UnluminousApp {
                         )
                     })
                     .collect();
-                lines(request, format!("{} terminal tabs", names.len()), rows, self.terminal_value())
+                lines(
+                    request,
+                    format!("{} terminal tabs", names.len()),
+                    rows,
+                    self.terminal_value(),
+                )
             }
             "select" => self.cli_terminal_select(request),
             "close" => self.cli_terminal_close(request),
@@ -4326,7 +4400,10 @@ impl UnluminousApp {
             return no(
                 request,
                 code::NOT_FOUND,
-                format!("There is no terminal tab {index}; there are {}.", self.terminal.tabs.count()),
+                format!(
+                    "There is no terminal tab {index}; there are {}.",
+                    self.terminal.tabs.count()
+                ),
             );
         }
         self.terminal.tabs.show(index);
@@ -4363,13 +4440,7 @@ impl UnluminousApp {
         // left out, and given as nothing — mean the same thing here.
         let name = request.text("name").unwrap_or_default();
         self.terminal.tabs.rename(index, &name);
-        let now = self
-            .terminal
-            .tabs
-            .names()
-            .get(index)
-            .cloned()
-            .unwrap_or_default();
+        let now = self.terminal.tabs.names().get(index).cloned().unwrap_or_default();
         ok(request, format!("Terminal tab {index} is called {now}"), self.terminal_value())
     }
 
@@ -4441,7 +4512,9 @@ impl UnluminousApp {
             };
             match unluminous_terminal::keys::encode(press, mode) {
                 Some(encoded) => bytes.extend(encoded),
-                None => return no(request, code::USAGE, format!("{name} sends nothing to a shell.")),
+                None => {
+                    return no(request, code::USAGE, format!("{name} sends nothing to a shell."))
+                }
             }
             said = format!("Sent {name}");
         }
@@ -4637,7 +4710,11 @@ impl UnluminousApp {
             return no(request, code::USAGE, "Say which configuration.");
         };
         if self.run_configurations.find(&name).is_none() {
-            return no(request, code::NOT_FOUND, format!("There is no run configuration called {name}."));
+            return no(
+                request,
+                code::NOT_FOUND,
+                format!("There is no run configuration called {name}."),
+            );
         }
         // Typing the command is the deliberate act the dialog's question exists to ask for, which is
         // the rule `explorer delete` already keeps — so the run is stopped and the configuration
@@ -4697,7 +4774,11 @@ impl UnluminousApp {
             return no(request, code::USAGE, "Say which configuration.");
         };
         if self.configuration_named(Some(&name)).is_none() {
-            return no(request, code::NOT_FOUND, format!("There is no run configuration called {name}."));
+            return no(
+                request,
+                code::NOT_FOUND,
+                format!("There is no run configuration called {name}."),
+            );
         }
         if let Err(problem) = self.run_a_configuration(RunAction::Select(name.clone())) {
             return no(request, code::FAILED, problem);
@@ -4934,10 +5015,8 @@ impl UnluminousApp {
         self.document_mut().apply(unluminous_core::Command::PlaceCaret { offset, extend: false });
         self.message = None;
         self.debug_a_configuration(DebugAction::RunToCursor);
-        let said = self
-            .message
-            .clone()
-            .unwrap_or_else(|| format!("Running to {}:{line}", path.display()));
+        let said =
+            self.message.clone().unwrap_or_else(|| format!("Running to {}:{line}", path.display()));
         self.wait_for_a_pause(request, said)
     }
 
@@ -5023,7 +5102,11 @@ impl UnluminousApp {
                 self.send_the_breakpoints_of(&path);
                 ok(
                     request,
-                    format!("{} line {line} of {}", Self::breakpoint_verbed(&action), path.display()),
+                    format!(
+                        "{} line {line} of {}",
+                        Self::breakpoint_verbed(&action),
+                        path.display()
+                    ),
                     self.breakpoints_value(),
                 )
             }
@@ -5044,7 +5127,10 @@ impl UnluminousApp {
                 let line = self.offset_line_number(&path, breakpoint.offset);
                 // What the debugger said, while one is running. `-` rather than a guess when there
                 // is nobody to have said anything, which is the honesty rule the gutter keeps too.
-                let verified = match self.debug.as_ref().and_then(|debug| debug.verified(&path, breakpoint.offset))
+                let verified = match self
+                    .debug
+                    .as_ref()
+                    .and_then(|debug| debug.verified(&path, breakpoint.offset))
                 {
                     Some(answered) => match answered.verified {
                         true => "verified",
@@ -5079,7 +5165,12 @@ impl UnluminousApp {
             })
             .collect();
         let count = rows.len();
-        lines(request, format!("{count} frames"), rows, self.debug_frames_value(request.switch("include-subtle")))
+        lines(
+            request,
+            format!("{count} frames"),
+            rows,
+            self.debug_frames_value(request.switch("include-subtle")),
+        )
     }
 
     fn cli_debug_variables(&mut self, request: &Request) -> Outcome {
@@ -5089,7 +5180,8 @@ impl UnluminousApp {
         // A frame was named, so the variables are read from that one. The whole of the read is
         // through `show_frame`, which is what the tile's own click goes through.
         if let Some(index) = request.whole("frame") {
-            let frame = self.debug.as_ref().and_then(|debug| debug.frames.get(index).map(|frame| frame.id));
+            let frame =
+                self.debug.as_ref().and_then(|debug| debug.frames.get(index).map(|frame| frame.id));
             let Some(frame) = frame else {
                 return no(request, code::NOT_FOUND, format!("There is no frame {index}."));
             };
@@ -5135,7 +5227,9 @@ impl UnluminousApp {
             return no(request, code::NOT_APPLICABLE, "Nothing is being debugged.");
         };
         match debug.set_value(&key, &value) {
-            Ok(()) => ok(request, format!("Setting {key} to {value}"), self.debug_variables_value()),
+            Ok(()) => {
+                ok(request, format!("Setting {key} to {value}"), self.debug_variables_value())
+            }
             Err(problem) => no(request, code::NOT_APPLICABLE, problem),
         }
     }
@@ -5215,7 +5309,11 @@ impl UnluminousApp {
     /// The value tooltip as it stands, in the shape `debug variables` prints a tree in.
     fn hover_reply(&self, request: &Request) -> Reply {
         let Some(hover) = self.debug.as_ref().and_then(|debug| debug.hover.as_ref()) else {
-            return Reply::failed(&request.command, code::NOT_APPLICABLE, "Nothing is being debugged.");
+            return Reply::failed(
+                &request.command,
+                code::NOT_APPLICABLE,
+                "Nothing is being debugged.",
+            );
         };
         if let Some(said) = hover.refusal() {
             return Reply::failed(&request.command, code::NOT_APPLICABLE, said);
@@ -5275,7 +5373,11 @@ impl UnluminousApp {
             return no(request, code::NOT_APPLICABLE, "Nothing is being debugged.");
         };
         match debug.set_expression(&expression, &value) {
-            Ok(()) => ok(request, format!("Setting {expression} to {value}"), self.debug_variables_value()),
+            Ok(()) => ok(
+                request,
+                format!("Setting {expression} to {value}"),
+                self.debug_variables_value(),
+            ),
             Err(problem) => no(request, code::NOT_APPLICABLE, problem),
         }
     }
@@ -5346,7 +5448,9 @@ impl UnluminousApp {
                     },
                 }
             }
-            other => no(request, code::USAGE, format!("`{other}` is not one of add, remove or list.")),
+            other => {
+                no(request, code::USAGE, format!("`{other}` is not one of add, remove or list."))
+            }
         }
     }
 
@@ -5505,7 +5609,8 @@ impl UnluminousApp {
                 json!({ "running": false, "state": "none" }),
             );
         }
-        if request.switch("wait-for-pause") && !self.debug.as_ref().is_some_and(DebugState::is_ready)
+        if request.switch("wait-for-pause")
+            && !self.debug.as_ref().is_some_and(DebugState::is_ready)
         {
             return Outcome::Hold(Waiting::DebugPause {
                 command: request.command.clone(),
@@ -5564,7 +5669,12 @@ impl UnluminousApp {
             .and_then(|id| debug.frames.iter().find(|frame| frame.id == id))
             .or_else(|| debug.frames.first())
             .map(Self::debug_frame_value);
-        let locals = debug.rows.iter().filter(|row| !row.is_scope).map(Self::debug_variable_value).collect::<Vec<Value>>();
+        let locals = debug
+            .rows
+            .iter()
+            .filter(|row| !row.is_scope)
+            .map(Self::debug_variable_value)
+            .collect::<Vec<Value>>();
         let lines = debug
             .rows
             .iter()
@@ -5585,7 +5695,11 @@ impl UnluminousApp {
     /// Adds only the variable tree to the shared debugger state for variable-oriented commands.
     fn debug_variables_value(&self) -> Value {
         let mut value = self.debug_state_value();
-        let variables = self.debug.as_ref().map(|debug| debug.rows.iter().map(Self::debug_variable_value).collect::<Vec<Value>>()).unwrap_or_default();
+        let variables = self
+            .debug
+            .as_ref()
+            .map(|debug| debug.rows.iter().map(Self::debug_variable_value).collect::<Vec<Value>>())
+            .unwrap_or_default();
         if let Value::Object(object) = &mut value {
             object.insert("variables".to_owned(), Value::Array(variables));
         }
@@ -5619,7 +5733,10 @@ impl UnluminousApp {
             .map(Self::debug_frame_value)
             .collect::<Vec<Value>>();
         if let Value::Object(object) = &mut value {
-            object.insert("hiddenFrames".to_owned(), json!(debug.frames.len().saturating_sub(frames.len())));
+            object.insert(
+                "hiddenFrames".to_owned(),
+                json!(debug.frames.len().saturating_sub(frames.len())),
+            );
             object.insert("frames".to_owned(), Value::Array(frames));
         }
         value
@@ -5659,8 +5776,10 @@ impl UnluminousApp {
                 breakpoints
                     .iter()
                     .map(|breakpoint| {
-                        let answered =
-                            self.debug.as_ref().and_then(|debug| debug.verified(&path, breakpoint.offset));
+                        let answered = self
+                            .debug
+                            .as_ref()
+                            .and_then(|debug| debug.verified(&path, breakpoint.offset));
                         json!({
                             "path": shown.to_string_lossy(),
                             "line": self.offset_line_number(&path, breakpoint.offset),
@@ -5950,11 +6069,7 @@ impl UnluminousApp {
             return no(request, code::NOT_FOUND, format!("{} is not a folder.", folder.display()));
         }
         if folder == path || folder.starts_with(&path) {
-            return no(
-                request,
-                code::NOT_APPLICABLE,
-                "A folder cannot be moved into itself.",
-            );
+            return no(request, code::NOT_APPLICABLE, "A folder cannot be moved into itself.");
         }
         let name = path.file_name().map(|name| name.to_owned()).unwrap_or_default();
         let target = folder.join(&name);
@@ -6332,9 +6447,7 @@ impl UnluminousApp {
             Some(path) => path,
             None if name == "rename" => match self.document().path() {
                 Some(path) => path.to_path_buf(),
-                None => {
-                    return no(request, code::USAGE, "Say --path: which file to rename.")
-                }
+                None => return no(request, code::USAGE, "Say --path: which file to rename."),
             },
             None => self.tree.root().to_path_buf(),
         };
@@ -6418,7 +6531,11 @@ impl UnluminousApp {
         }
         if self.settings_window.open {
             self.settings_window.search = text.clone();
-            return ok(request, format!("Searching the settings for {text}"), json!({ "query": text }));
+            return ok(
+                request,
+                format!("Searching the settings for {text}"),
+                json!({ "query": text }),
+            );
         }
         if let Some(prompt) = &mut self.prompt {
             prompt.value = text.clone();
@@ -6535,7 +6652,11 @@ impl UnluminousApp {
             }
             go.chosen = index;
             let path = go.chosen_path().map(|path| path.to_string_lossy().to_string());
-            return ok(request, format!("Chose row {index}"), json!({ "chosen": index, "path": path }));
+            return ok(
+                request,
+                format!("Chose row {index}"),
+                json!({ "chosen": index, "path": path }),
+            );
         }
         if let Some(find) = &mut self.find_in_files {
             if index >= find.hits().len() {
@@ -6562,7 +6683,11 @@ impl UnluminousApp {
         if let Some(go) = self.go_to_file.take() {
             let Some(path) = go.chosen_path() else {
                 self.go_to_file = Some(go);
-                return no(request, code::NOT_FOUND, "Nothing is chosen, so there is nothing to open.");
+                return no(
+                    request,
+                    code::NOT_FOUND,
+                    "Nothing is chosen, so there is nothing to open.",
+                );
             };
             if let Err(reason) = self.open_path_permanently(&path) {
                 return no(request, code::FAILED, reason);
@@ -6576,7 +6701,11 @@ impl UnluminousApp {
         if let Some(find) = self.find_in_files.take() {
             let Some(hit) = find.chosen_hit().cloned() else {
                 self.find_in_files = Some(find);
-                return no(request, code::NOT_FOUND, "Nothing is chosen, so there is nothing to open.");
+                return no(
+                    request,
+                    code::NOT_FOUND,
+                    "Nothing is chosen, so there is nothing to open.",
+                );
             };
             self.open_the_match(&hit.path, hit.offset.clone());
             let at = self.caret_position();
@@ -6652,7 +6781,12 @@ impl UnluminousApp {
         }
     }
 
-    fn cli_modal_geometry(&mut self, request: &Request, verb: &str, ctx: &egui::Context) -> Outcome {
+    fn cli_modal_geometry(
+        &mut self,
+        request: &Request,
+        verb: &str,
+        ctx: &egui::Context,
+    ) -> Outcome {
         let Some(name) = self.open_modal() else {
             return no(request, code::NOT_APPLICABLE, "No modal is open.");
         };
@@ -6678,7 +6812,8 @@ impl UnluminousApp {
             format!("Moved {name} to {x}, {y}")
         } else {
             let width = request.number("width").map(|value| value as f32).unwrap_or(rect.width());
-            let height = request.number("height").map(|value| value as f32).unwrap_or(rect.height());
+            let height =
+                request.number("height").map(|value| value as f32).unwrap_or(rect.height());
             placement.grown += egui::Vec2::new(width, height) - rect.size();
             format!("Made {name} {width} by {height}")
         };
@@ -6697,13 +6832,9 @@ impl UnluminousApp {
                 // where the two columns had no seam at all.
                 // The static ones, then the contributed panes' — which Unluminous writes into its own
                 // settings file and, before `task-1794`, would not name back.
-                let mut named: Vec<(String, String)> = SETTINGS
-                    .iter()
-                    .map(|key| (key.name.to_owned(), key.help.to_owned()))
-                    .collect();
-                named.extend(
-                    self.pane_settings().into_iter().map(|(name, _, help)| (name, help)),
-                );
+                let mut named: Vec<(String, String)> =
+                    SETTINGS.iter().map(|key| (key.name.to_owned(), key.help.to_owned())).collect();
+                named.extend(self.pane_settings().into_iter().map(|(name, _, help)| (name, help)));
                 // And every installed plugin's own configuration, which before `task-1804` §4.2
                 // was reachable from a Settings page and from nowhere else -- so an agent could open
                 // the Agent-Chat pane and not configure it, and add a data source only by hand.
@@ -6724,8 +6855,7 @@ impl UnluminousApp {
                 // `plugins.agent-chat.provider.0.program` is 37 -- so the name ran straight into its
                 // value with no space at all between them. A width taken from the widest name cannot
                 // go out of date the way a number chosen once did.
-                let longest =
-                    named.iter().map(|(name, _)| name.len()).max().unwrap_or(0).max(34);
+                let longest = named.iter().map(|(name, _)| name.len()).max().unwrap_or(0).max(34);
                 let rows: Vec<String> = named
                     .iter()
                     .zip(values)
@@ -6780,7 +6910,11 @@ impl UnluminousApp {
                     self.renderer.families().iter().take(limit).cloned().collect();
                 lines(
                     request,
-                    format!("{} families, {} shown", self.renderer.families().len(), families.len()),
+                    format!(
+                        "{} families, {} shown",
+                        self.renderer.families().len(),
+                        families.len()
+                    ),
                     families.clone(),
                     json!({ "families": families, "total": self.renderer.families().len() }),
                 )
@@ -6860,9 +6994,9 @@ impl UnluminousApp {
         let key = self
             .plugin_setting(name)
             .ok_or_else(|| format!("{name} is not a plugin's setting."))?;
-        let folder = self
-            .plugin_folder()
-            .ok_or_else(|| "This window has no settings folder, so a plugin has none.".to_owned())?;
+        let folder = self.plugin_folder().ok_or_else(|| {
+            "This window has no settings folder, so a plugin has none.".to_owned()
+        })?;
         crate::services::plugin_settings::write(&folder, &key.plugin, &key.key, value)
             .map_err(|problem| format!("{name} could not be written: {problem}"))?;
         let _ = self.reload_the_plugins();
@@ -6957,7 +7091,11 @@ impl UnluminousApp {
                 // the same fault `reset_the_panel_layout` had.
                 self.place_the_plugin_panes(false);
                 self.unsaved_settings = true;
-                ok(request, "Every setting is back to what a new Unluminous has.", self.settings_value())
+                ok(
+                    request,
+                    "Every setting is back to what a new Unluminous has.",
+                    self.settings_value(),
+                )
             }
         }
     }
@@ -7100,9 +7238,10 @@ impl UnluminousApp {
             "terminal.shell" => settings.terminal_shell = value.trim().to_owned(),
             "editor.line_numbers" => settings.line_numbers = flag()?,
             "editor.suggestions" => {
-                settings.suggestions = crate::settings::Suggestions::parse(value).ok_or_else(|| {
-                    format!("{name} wants automatic or manual, and {value} is neither.")
-                })?
+                settings.suggestions =
+                    crate::settings::Suggestions::parse(value).ok_or_else(|| {
+                        format!("{name} wants automatic or manual, and {value} is neither.")
+                    })?
             }
             "editor.line_ending" => {
                 settings.line_endings =
@@ -7111,10 +7250,8 @@ impl UnluminousApp {
                     })?
             }
             "update.check" => {
-                settings.update_check =
-                    crate::settings::UpdateCheck::parse(value).ok_or_else(|| {
-                        format!("{name} wants off or start, and {value} is neither.")
-                    })?
+                settings.update_check = crate::settings::UpdateCheck::parse(value)
+                    .ok_or_else(|| format!("{name} wants off or start, and {value} is neither."))?
             }
             // Not checked, for `terminal.shell`'s reason turned round: a pattern naming nothing in
             // this project today may name something tomorrow, and a line that matches nothing costs
@@ -7122,9 +7259,10 @@ impl UnluminousApp {
             // of the line kept, which is what a `.gitignore` comment does.
             "editor.exclude" => settings.exclude = value.trim().to_owned(),
             "debug.value_tooltip" => {
-                settings.value_tooltip = crate::settings::ValueTooltip::parse(value).ok_or_else(
-                    || format!("{name} wants automatic or manual, and {value} is neither."),
-                )?
+                settings.value_tooltip =
+                    crate::settings::ValueTooltip::parse(value).ok_or_else(|| {
+                        format!("{name} wants automatic or manual, and {value} is neither.")
+                    })?
             }
             // Not checked against the machine, for `terminal.shell`'s reason: a path may name
             // something installed a moment from now, and when it is wrong the status bar says so in
@@ -7289,7 +7427,10 @@ impl UnluminousApp {
                         if let Some(colour) = scheme.colour(token) {
                             named.insert(
                                 token.name().to_owned(),
-                                Value::String(format!("#{:02X}{:02X}{:02X}", colour.r, colour.g, colour.b)),
+                                Value::String(format!(
+                                    "#{:02X}{:02X}{:02X}",
+                                    colour.r, colour.g, colour.b
+                                )),
                             );
                         }
                     }
@@ -7297,14 +7438,24 @@ impl UnluminousApp {
                 });
                 let rows: Vec<String> = crate::theme::Palette::NAMES
                     .iter()
-                    .filter_map(|role| theme.palette.get(role).map(|colour| format!("{role:<18}{}", Self::hex_colour(colour))))
+                    .filter_map(|role| {
+                        theme
+                            .palette
+                            .get(role)
+                            .map(|colour| format!("{role:<18}{}", Self::hex_colour(colour)))
+                    })
                     .collect();
                 lines(
                     request,
-                    format!("{} \u{2014} {} icons, {}", theme.name, theme.icons.name(), match theme.syntax.is_some() {
-                        true => "and it colours the tokens",
-                        false => "and each language plugin colours its own files",
-                    }),
+                    format!(
+                        "{} \u{2014} {} icons, {}",
+                        theme.name,
+                        theme.icons.name(),
+                        match theme.syntax.is_some() {
+                            true => "and it colours the tokens",
+                            false => "and each language plugin colours its own files",
+                        }
+                    ),
                     rows,
                     json!({
                         "key": theme.key,
@@ -7383,7 +7534,11 @@ impl UnluminousApp {
                     }),
                 )
             }
-            _ => no(request, code::UNKNOWN_COMMAND, format!("There is no theme command called {verb}.")),
+            _ => no(
+                request,
+                code::UNKNOWN_COMMAND,
+                format!("There is no theme command called {verb}."),
+            ),
         }
     }
 
@@ -7444,7 +7599,11 @@ impl UnluminousApp {
                     .collect();
                 lines(
                     request,
-                    format!("{} plugins, {} switched on", self.plugins.all().len(), self.plugins.enabled_count()),
+                    format!(
+                        "{} plugins, {} switched on",
+                        self.plugins.all().len(),
+                        self.plugins.enabled_count()
+                    ),
                     rows,
                     json!({ "plugins": value }),
                 )
@@ -7458,7 +7617,9 @@ impl UnluminousApp {
                         json!({ "id": id }),
                     )
                 }
-                Some(id) => no(request, code::NOT_FOUND, format!("There is no plugin called {id}.")),
+                Some(id) => {
+                    no(request, code::NOT_FOUND, format!("There is no plugin called {id}."))
+                }
                 None => no(request, code::USAGE, "Say which plugin."),
             },
             "enable" | "disable" => {
@@ -7466,7 +7627,11 @@ impl UnluminousApp {
                     return no(request, code::USAGE, "Say which plugin.");
                 };
                 if self.plugins.get(&id).is_none() {
-                    return no(request, code::NOT_FOUND, format!("There is no plugin called {id}."));
+                    return no(
+                        request,
+                        code::NOT_FOUND,
+                        format!("There is no plugin called {id}."),
+                    );
                 }
                 let on = verb == "enable";
                 // Through the window's own way in, so switching a plugin off from the command line
@@ -7483,7 +7648,11 @@ impl UnluminousApp {
                     return no(request, code::USAGE, "Say which plugin.");
                 };
                 let Some(plugin) = self.plugins.get(&id).cloned() else {
-                    return no(request, code::NOT_FOUND, format!("There is no plugin called {id}."));
+                    return no(
+                        request,
+                        code::NOT_FOUND,
+                        format!("There is no plugin called {id}."),
+                    );
                 };
                 // Asked of the provider rather than of a list here, so what is printed is what the plugin
                 // will actually answer. **Built rather than opened**: `commands` is a question about the
@@ -7549,7 +7718,11 @@ impl UnluminousApp {
                 let problems = self.reload_the_plugins();
                 let said = match problems.is_empty() {
                     true => format!("{} plugins read again", self.plugins.all().len()),
-                    false => format!("{} plugins read again, {} refused", self.plugins.all().len(), problems.len()),
+                    false => format!(
+                        "{} plugins read again, {} refused",
+                        self.plugins.all().len(),
+                        problems.len()
+                    ),
                 };
                 lines(
                     request,
@@ -7586,9 +7759,9 @@ impl UnluminousApp {
                 } else if request.switch("hide") {
                     self.show_the_plugin_pane(&pane, false);
                 }
-                if let Some(problem) = self.plugin_ui.problem_with(
-                    &self.plugin_ui.plugin_of(slot).unwrap_or_default(),
-                ) {
+                if let Some(problem) =
+                    self.plugin_ui.problem_with(&self.plugin_ui.plugin_of(slot).unwrap_or_default())
+                {
                     return no(request, code::FAILED, problem.to_owned());
                 }
                 // **Switched on is not the same as on the screen**, and answering with the first
@@ -7634,16 +7807,24 @@ impl UnluminousApp {
                     if let Some(index) = self.files.index_of_plugin_tab(&tab) {
                         self.close_tab(index);
                     }
-                    return ok(request, format!("{tab} is closed"), json!({"tab": tab, "open": false}));
+                    return ok(
+                        request,
+                        format!("{tab} is closed"),
+                        json!({"tab": tab, "open": false}),
+                    );
                 }
                 self.open_the_plugin_tab(&tab);
                 let open = self.files.index_of_plugin_tab(&tab).is_some();
                 match open {
-                    true => ok(request, format!("{tab} is open"), json!({"tab": tab, "open": true})),
+                    true => {
+                        ok(request, format!("{tab} is open"), json!({"tab": tab, "open": true}))
+                    }
                     false => no(
                         request,
                         code::FAILED,
-                        self.message.clone().unwrap_or_else(|| format!("{tab} could not be opened")),
+                        self.message
+                            .clone()
+                            .unwrap_or_else(|| format!("{tab} could not be opened")),
                     ),
                 }
             }
@@ -7652,7 +7833,11 @@ impl UnluminousApp {
                     return no(request, code::USAGE, "Say which plugin.");
                 };
                 let Some(command) = request.text("command") else {
-                    return no(request, code::USAGE, "Say which command. `plugins show` lists them.");
+                    return no(
+                        request,
+                        code::USAGE,
+                        "Say which command. `plugins show` lists them.",
+                    );
                 };
                 // **Split on spaces only, and do not collapse runs of them.** `split_whitespace` threw
                 // away every newline and every repeated space before the plugin saw them, and the
@@ -7832,11 +8017,7 @@ impl UnluminousApp {
         };
         self.refresh_repository();
         if self.git.is_none() && what != GitAction::Clone {
-            return no(
-                request,
-                code::NOT_APPLICABLE,
-                "This folder is not in a git repository.",
-            );
+            return no(request, code::NOT_APPLICABLE, "This folder is not in a git repository.");
         }
         self.run_git(what);
         if request.has("wait") {
@@ -7880,7 +8061,9 @@ impl UnluminousApp {
         let printed: Vec<String> = status
             .entries
             .iter()
-            .map(|entry| format!("{}{} {}", entry.index.letter(), entry.worktree.letter(), entry.path))
+            .map(|entry| {
+                format!("{}{} {}", entry.index.letter(), entry.worktree.letter(), entry.path)
+            })
             .collect();
         let mut result = json!({
             "root": git.repository.root().to_string_lossy(),
@@ -7992,12 +8175,7 @@ impl UnluminousApp {
                     ),
                     None => format!("{} menu entries", listed.len()),
                 };
-                lines(
-                    request,
-                    sentence,
-                    rows,
-                    json!({ "actions": value }),
-                )
+                lines(request, sentence, rows, json!({ "actions": value }))
             }
             "run" => self.cli_action_run(request, ctx),
             _ => unknown(request),
@@ -8176,7 +8354,10 @@ fn action_menus(request: &Request, all: &[MenuEntry]) -> Result<Option<Vec<Strin
 const MODALS: &[(&str, &str)] = &[
     ("go-to-file", "Find a file in the project by part of its name and open it."),
     ("find-in-files", "Search every file's text, with the chosen file shown underneath."),
-    ("settings", "Edit -> Settings: the font, the background, the gutter, the plugins, the terminal."),
+    (
+        "settings",
+        "Edit -> Settings: the font, the background, the gutter, the plugins, the terminal.",
+    ),
     ("about", "Who wrote Unluminous, what version this is and when it was built."),
     ("new-file", "Make an empty file in a folder. Takes --path."),
     ("rename", "Rename a file or a folder. Takes --path."),
@@ -8260,9 +8441,15 @@ impl PaneMeasure {
 
     fn help(self, label: &str) -> String {
         match self {
-            PaneMeasure::Width => format!("How wide {label} is when it is a column at the left or the right."),
-            PaneMeasure::Height => format!("How tall {label} is when it is in a strip along the top or the bottom."),
-            PaneMeasure::Zoom => format!("How much bigger than usual {label} draws everything in it."),
+            PaneMeasure::Width => {
+                format!("How wide {label} is when it is a column at the left or the right.")
+            }
+            PaneMeasure::Height => {
+                format!("How tall {label} is when it is in a strip along the top or the bottom.")
+            }
+            PaneMeasure::Zoom => {
+                format!("How much bigger than usual {label} draws everything in it.")
+            }
         }
     }
 
@@ -8532,9 +8719,10 @@ mod tests {
     #[test]
     fn a_plugin_argument_line_keeps_the_newlines_and_the_indentation_a_body_needs() {
         // The words a command reads still come out as words.
-        assert_eq!(plugin_arguments("task-4 --as claude hello".to_owned()), vec![
-            "task-4", "--as", "claude", "hello"
-        ]);
+        assert_eq!(
+            plugin_arguments("task-4 --as claude hello".to_owned()),
+            vec!["task-4", "--as", "claude", "hello"]
+        );
         // And a body survives being taken apart and put back together by the provider's `rest`, which
         // joins with a single space. That round trip is the thing that has to hold.
         let body = "## Heading\n\n- one\n  - nested\n\n| a | b |\n| --- | --- |\n\n```rust\nfn main() {}\n```";

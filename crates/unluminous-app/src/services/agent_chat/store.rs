@@ -41,9 +41,7 @@ pub struct Store {
 
 impl Store {
     pub fn at(folder: Option<PathBuf>) -> Self {
-        Self {
-            folder: folder.map(|folder| folder.join(FOLDER)),
-        }
+        Self { folder: folder.map(|folder| folder.join(FOLDER)) }
     }
 
     pub fn folder(&self) -> Option<&Path> {
@@ -69,9 +67,7 @@ impl Store {
         if !is_a_safe_id(id) {
             return None;
         }
-        self.folder
-            .as_ref()
-            .map(|folder| folder.join(format!("{id}.json")))
+        self.folder.as_ref().map(|folder| folder.join(format!("{id}.json")))
     }
 
     /// Every conversation there is, newest first.
@@ -162,7 +158,9 @@ pub fn seconds_now() -> u64 {
 /// a store that joined it would read whatever it named. Letters, digits and a dash, which is what
 /// `new_id` produces — the same rule `keychain::is_a_safe_name` keeps for a keychain entry.
 fn is_a_safe_id(id: &str) -> bool {
-    !id.is_empty() && id.len() <= 64 && id.chars().all(|one| one.is_ascii_alphanumeric() || one == '-')
+    !id.is_empty()
+        && id.len() <= 64
+        && id.chars().all(|one| one.is_ascii_alphanumeric() || one == '-')
 }
 
 /// One file's summary, read without building the whole conversation.
@@ -231,11 +229,7 @@ fn from_json(id: &str, value: &serde_json::Value) -> Conversation {
         input: value["usage"]["input"].as_u64().unwrap_or(0),
         output: value["usage"]["output"].as_u64().unwrap_or(0),
     };
-    for one in value["messages"]
-        .as_array()
-        .map(Vec::as_slice)
-        .unwrap_or_default()
-    {
+    for one in value["messages"].as_array().map(Vec::as_slice).unwrap_or_default() {
         let role = match one["role"].as_str() {
             Some("user") => Role::User,
             Some("tool") => Role::Tool,
@@ -282,7 +276,8 @@ mod tests {
     use super::*;
 
     fn a_folder(name: &str) -> PathBuf {
-        let folder = std::env::temp_dir().join(format!("unluminous-agent-chat-{name}-{}", std::process::id()));
+        let folder = std::env::temp_dir()
+            .join(format!("unluminous-agent-chat-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).expect("a folder");
         folder
@@ -367,10 +362,7 @@ mod tests {
         assert!(store.read("with\\backslash").is_none());
         let mut escaping = Conversation::new("../escape", "claude");
         escaping.push(Message::said(1, Role::User, "x"));
-        assert!(
-            store.write(&escaping).is_ok(),
-            "refused quietly rather than failing"
-        );
+        assert!(store.write(&escaping).is_ok(), "refused quietly rather than failing");
         assert_eq!(store.list(usize::MAX).len(), 0);
     }
 
@@ -414,12 +406,9 @@ mod tests {
         assert_eq!(read.messages[0].text(), "hi");
         assert_eq!(read.usage, Usage::default());
         // And something that is not JSON at all is not a conversation.
-        std::fs::write(store.folder().expect("a folder").join("bad.json"), "not json").expect("written");
+        std::fs::write(store.folder().expect("a folder").join("bad.json"), "not json")
+            .expect("written");
         assert!(store.read("bad").is_none());
-        assert_eq!(
-            store.list(usize::MAX).len(),
-            1,
-            "the unreadable one is skipped, not fatal"
-        );
+        assert_eq!(store.list(usize::MAX).len(), 1, "the unreadable one is skipped, not fatal");
     }
 }

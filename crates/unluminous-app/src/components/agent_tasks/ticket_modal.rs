@@ -95,9 +95,10 @@ pub fn show(board: &mut AgentTasks, ctx: &egui::Context, look: &Look<'_>) -> Out
     // closing the modal, because `+ Add Task` created it before anybody typed.
     let new = board.detail().is_new;
     let (width, height) = size(ctx, look);
-    let (inner, should_close) = modal::show(ctx, "agent-tasks-ticket", width, height, |ui, area| {
-        contents(board, ui, area, look, &task, new)
-    });
+    let (inner, should_close) =
+        modal::show(ctx, "agent-tasks-ticket", width, height, |ui, area| {
+            contents(board, ui, area, look, &task, new)
+        });
     outcome.requests = inner.requests;
     outcome.closed = inner.closed || should_close;
     outcome
@@ -179,7 +180,9 @@ fn contents(
     // reached for the same reason: a multiline field is a field where `Enter` is a new line, and a new
     // line is what a person pressing it there means. `Escape` still closes it, which `modal::show` owns
     // and every dialog in Unluminous shares.
-    if let Some(pressed) = modal::footer_confirmed_by(ui, footer, buttons, modal::Confirm::CommandEnter) {
+    if let Some(pressed) =
+        modal::footer_confirmed_by(ui, footer, buttons, modal::Confirm::CommandEnter)
+    {
         match (new, pressed) {
             (true, 0) => match board.discard_the_ticket() {
                 Ok(()) => outcome.closed = true,
@@ -231,11 +234,14 @@ fn left_column(
     // The title, which is in the header on a ticket that exists — see `contents`. A **new** one has no title
     // yet and this is where it is typed, because a header is not a field.
     if new {
-        let title_at = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(area.width(), 30.0));
+        let title_at =
+            Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(area.width(), 30.0));
         let mut title = board.detail().title_draft.clone();
         let title_id = ui.id().with("agent-tasks-ticket-title");
         let response = ui.put(
-            crate::components::controls::field_takes_the_whole_rectangle(ui, title_at, 2.0, title_id),
+            crate::components::controls::field_takes_the_whole_rectangle(
+                ui, title_at, 2.0, title_id,
+            ),
             egui::TextEdit::singleline(&mut title)
                 .id(title_id)
                 .frame(egui::Frame::NONE)
@@ -269,7 +275,10 @@ fn left_column(
     };
     let (terminal_want, terminal_least) = match (new, terminal_open) {
         (true, _) | (_, false) => (0.0, 0.0),
-        _ => ((room * TERMINAL_SHARE).clamp(TERMINAL_SMALLEST * scale, TERMINAL_LARGEST * scale), 90.0 * scale),
+        _ => (
+            (room * TERMINAL_SHARE).clamp(TERMINAL_SMALLEST * scale, TERMINAL_LARGEST * scale),
+            90.0 * scale,
+        ),
     };
     let (comment_want, comment_least) = match new {
         true => (0.0, 0.0),
@@ -284,9 +293,13 @@ fn left_column(
     let description_least = 90.0 * scale;
 
     // Take the shortfall from the sections in order, each down to its own least.
-    let mut short =
-        (headings + description_want.max(description_least) + todo_want + terminal_want + comment_want - room)
-            .max(0.0);
+    let mut short = (headings
+        + description_want.max(description_least)
+        + todo_want
+        + terminal_want
+        + comment_want
+        - room)
+        .max(0.0);
     let give = |want: f32, least: f32, short: &mut f32| -> f32 {
         let spare = (want - least).max(0.0).min(*short);
         *short -= spare;
@@ -295,7 +308,8 @@ fn left_column(
     let terminal_height = give(terminal_want, terminal_least, &mut short);
     let comment_height = give(comment_want, comment_least, &mut short);
     let todo_height = give(todo_want, todo_least, &mut short);
-    let description_height = give(description_want.max(description_least), description_least, &mut short);
+    let description_height =
+        give(description_want.max(description_least), description_least, &mut short);
     // **And whatever is still short comes off the description**, which is the only section that can be
     // drawn small and still be a section: the todos are rows, the terminal is a character grid and the
     // comments are a list with a box under them, and each has a size below which it is a strip. A modal
@@ -317,8 +331,10 @@ fn left_column(
         board.show_the_description_rendered(rendered);
     }
     pen += heading;
-    let description_at =
-        Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(area.width(), description_height));
+    let description_at = Rect::from_min_size(
+        Pos2::new(area.min.x, pen),
+        Vec2::new(area.width(), description_height),
+    );
     // **The description sits in a well**, which is what the reference draws and what a board in dark
     // neumorphism means by a field. Behind the editor rather than round it, so the caret, the selection and
     // the syntax colouring are unchanged.
@@ -380,17 +396,19 @@ fn left_column(
             Vec2::new(area.width(), terminal_height.min((area.max.y - pen).max(0.0))),
         );
         if terminal_at.height() > 20.0 {
-            requests.extend(super::detail::terminal_section(board, ui, terminal_at, look, task, false));
+            requests.extend(super::detail::terminal_section(
+                board,
+                ui,
+                terminal_at,
+                look,
+                task,
+                false,
+            ));
         }
         pen = terminal_at.max.y + gap;
     }
 
-    label(
-        ui,
-        look,
-        Pos2::new(area.min.x, pen),
-        &format!("Comments \u{b7} {}", task.comment_count),
-    );
+    label(ui, look, Pos2::new(area.min.x, pen), &format!("Comments \u{b7} {}", task.comment_count));
     pen += heading;
     let comments_at = Rect::from_min_size(
         Pos2::new(area.min.x, pen),
@@ -542,8 +560,15 @@ fn fields(
                 .into_iter()
                 .map(|name| (name.clone(), name))
                 .collect();
-        let (chosen, tall) =
-            dropdown_row(ui, look, field(pen), "Model", &models, &model, Some("the agent's default"));
+        let (chosen, tall) = dropdown_row(
+            ui,
+            look,
+            field(pen),
+            "Model",
+            &models,
+            &model,
+            Some("the agent's default"),
+        );
         if let Some(chosen) = chosen {
             requests.extend(write(board, task, Field::Model(chosen)));
         }
@@ -554,7 +579,10 @@ fn fields(
             look,
             field(pen),
             "Effort",
-            &EFFORTS.iter().map(|level| ((*level).to_owned(), (*level).to_owned())).collect::<Vec<_>>(),
+            &EFFORTS
+                .iter()
+                .map(|level| ((*level).to_owned(), (*level).to_owned()))
+                .collect::<Vec<_>>(),
             task.effort.as_deref().unwrap_or(""),
             Some("Model default"),
         );
@@ -562,7 +590,12 @@ fn fields(
             requests.extend(write(board, task, Field::Effort(chosen)));
         }
         pen += tall;
-        pen += helper(ui.painter(), look, Pos2::new(area.min.x, pen), "Reasoning depth the agent CLI runs at");
+        pen += helper(
+            ui.painter(),
+            look,
+            Pos2::new(area.min.x, pen),
+            "Reasoning depth the agent CLI runs at",
+        );
         pen += 6.0;
     }
 
@@ -588,7 +621,8 @@ fn fields(
         requests.extend(write(board, task, Field::Project(chosen)));
     }
     pen += tall;
-    pen += helper(ui.painter(), look, Pos2::new(area.min.x, pen), "Repo the agent terminal opens in");
+    pen +=
+        helper(ui.painter(), look, Pos2::new(area.min.x, pen), "Repo the agent terminal opens in");
     pen += 6.0;
 
     let (chosen, tall) = dropdown_row(
@@ -642,7 +676,8 @@ fn fields(
         pen += tall;
         // Copy only when there is something to copy, which is Unluminous's rule about a control that cannot apply.
         if !key.trim().is_empty() {
-            let copy = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(width.min(130.0), 20.0));
+            let copy =
+                Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(width.min(130.0), 20.0));
             if crate::components::controls::choice_button(ui, copy, "Copy issue link", false) {
                 requests.push(Request::Copy(board.jira_link(&key)));
                 requests.push(Request::Message(format!("copied the link to {key}")));
@@ -743,9 +778,8 @@ fn danger_button(ui: &mut egui::Ui, look: &Look<'_>, area: Rect, said: &str) -> 
         galley,
         tint,
     );
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), said)
-    });
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), said));
     response.clicked()
 }
 
@@ -767,13 +801,7 @@ fn write(board: &mut AgentTasks, task: &Task, field: Field) -> Vec<Request> {
 /// The triangle is the disclosure every tree in Unluminous draws, and the whole heading is the target rather than
 /// only the triangle, because a heading is easier to hit than an eight point mark. Answers whether it was
 /// pressed; the caller flips its own flag, because the flag lives on the provider and this draws.
-fn disclosure(
-    ui: &mut egui::Ui,
-    look: &Look<'_>,
-    at: Pos2,
-    said: &str,
-    shut: bool,
-) -> bool {
+fn disclosure(ui: &mut egui::Ui, look: &Look<'_>, at: Pos2, said: &str, shut: bool) -> bool {
     let painter = ui.painter().clone();
     let middle = at.y + look.font_size / 2.0;
     let mark = 4.0;
@@ -805,11 +833,8 @@ fn disclosure(
     let words = Pos2::new(at.x + 12.0, at.y);
     let width = paint_label(&painter, look, words, said);
     let area = Rect::from_min_size(at, Vec2::new(width + 14.0, look.font_size + 2.0));
-    let response = ui.interact(
-        area,
-        ui.id().with(("agent-tasks-disclosure", said)),
-        egui::Sense::click(),
-    );
+    let response =
+        ui.interact(area, ui.id().with(("agent-tasks-disclosure", said)), egui::Sense::click());
     let name = match shut {
         true => format!("{said}, shut"),
         false => format!("{said}, open"),
@@ -823,7 +848,8 @@ fn disclosure(
 fn label(ui: &mut egui::Ui, look: &Look<'_>, at: Pos2, said: &str) {
     let width = paint_label(ui.painter(), look, at, said);
     let area = Rect::from_min_size(at, Vec2::new(width, look.font_size));
-    let response = ui.interact(area, ui.id().with(("agent-tasks-label", said)), egui::Sense::hover());
+    let response =
+        ui.interact(area, ui.id().with(("agent-tasks-label", said)), egui::Sense::hover());
     let name = said.to_owned();
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, name.clone()));
 }
@@ -834,7 +860,8 @@ fn label(ui: &mut egui::Ui, look: &Look<'_>, at: Pos2, said: &str) {
 /// this for exactly this reason. The tracking is what makes a run of capitals read as a label rather than as
 /// shouting, and it is the one thing that turns eight fields down a column into a form.
 fn paint_label(painter: &egui::Painter, look: &Look<'_>, at: Pos2, said: &str) -> f32 {
-    let spaced: String = said.to_uppercase().chars().flat_map(|letter| [letter, '\u{2009}']).collect();
+    let spaced: String =
+        said.to_uppercase().chars().flat_map(|letter| [letter, '\u{2009}']).collect();
     text(painter, at, spaced.trim_end(), look.font_size - 3.5, look.palette.text_faint)
 }
 
@@ -887,8 +914,15 @@ fn dropdown_row(
             crate::services::vello_canvas::Lift::Small,
         );
     }
-    let picked =
-        super::value_dropdown_over(ui, at, name, options, chosen, empty, !look.chrome.is_recording());
+    let picked = super::value_dropdown_over(
+        ui,
+        at,
+        name,
+        options,
+        chosen,
+        empty,
+        !look.chrome.is_recording(),
+    );
     (picked, look.font_size + 30.0)
 }
 

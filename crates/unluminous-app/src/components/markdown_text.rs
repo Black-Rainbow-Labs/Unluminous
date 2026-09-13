@@ -84,11 +84,7 @@ impl Rendered {
 
     /// How tall it is, which is what a caller scrolling it needs to know.
     pub fn height(&self) -> f32 {
-        self.layout
-            .lines
-            .last()
-            .map(|line| line.y + line.height)
-            .unwrap_or(0.0)
+        self.layout.lines.last().map(|line| line.y + line.height).unwrap_or(0.0)
     }
 }
 
@@ -157,28 +153,12 @@ pub fn render(
             highlighter,
         },
     );
-    let laid = layout(
-        &preview.text,
-        &preview.chars,
-        &preview.paragraphs,
-        renderer,
-        width,
-    );
+    let laid = layout(&preview.text, &preview.chars, &preview.paragraphs, renderer, width);
     let code = CodeBackgrounds {
-        panels: preview
-            .panels
-            .iter()
-            .map(|panel| panel.paragraphs.clone())
-            .collect(),
+        panels: preview.panels.iter().map(|panel| panel.paragraphs.clone()).collect(),
         spans: preview.code_spans.clone(),
     };
-    Rendered {
-        text: preview.text,
-        layout: laid,
-        code,
-        source: source.to_owned(),
-        width,
-    }
+    Rendered { text: preview.text, layout: laid, code, source: source.to_owned(), width }
 }
 
 /// Paint `rendered` into `area`, scrolled down by `scroll`, and answer how tall it is.
@@ -186,7 +166,13 @@ pub fn render(
 /// Only the lines inside `area` are painted, which `editor_view::paint_text` decides from the clip rectangle —
 /// so a description of a thousand lines costs a screenful, the property `tasks/task-1666-performance-tdd.md`
 /// records for the editing area itself.
-pub fn show(ui: &mut egui::Ui, area: Rect, rendered: &Rendered, renderer: &TextRenderer, scroll: f32) -> f32 {
+pub fn show(
+    ui: &mut egui::Ui,
+    area: Rect,
+    rendered: &Rendered,
+    renderer: &TextRenderer,
+    scroll: f32,
+) -> f32 {
     show_with(ui, area, rendered, renderer, scroll, None)
 }
 
@@ -249,12 +235,8 @@ fn paint_the_code_backgrounds(
         // A block is a run of paragraphs, and a paragraph's lines are contiguous — so the panel is
         // the band from the first line's top to the last line's bottom, drawn the whole width so a
         // fence reads as a block rather than as text that happens to be in another font.
-        let lines: Vec<&unluminous_core::PlacedLine> = rendered
-            .layout
-            .lines
-            .iter()
-            .filter(|line| block.contains(&line.paragraph))
-            .collect();
+        let lines: Vec<&unluminous_core::PlacedLine> =
+            rendered.layout.lines.iter().filter(|line| block.contains(&line.paragraph)).collect();
         let (Some(first), Some(last)) = (lines.first(), lines.last()) else {
             continue;
         };
@@ -270,9 +252,7 @@ fn paint_the_code_backgrounds(
     for span in &rendered.code.spans {
         // An inline span may wrap, so it is painted a line at a time — the part of each line the
         // span covers, which is what `selection_rects_in` already answers for a selection.
-        for chip in rendered
-            .layout
-            .selection_rects_in(0..rendered.layout.lines.len(), span.clone())
+        for chip in rendered.layout.selection_rects_in(0..rendered.layout.lines.len(), span.clone())
         {
             // `unluminous_core`'s rectangle is a position and a size, and it is in the layout's own
             // coordinates; the chip is that moved to where the text really is, and widened a little
@@ -307,9 +287,7 @@ pub struct Cache {
 
 impl std::fmt::Debug for Cache {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        out.debug_struct("Cache")
-            .field("entries", &self.made.len())
-            .finish()
+        out.debug_struct("Cache").field("entries", &self.made.len()).finish()
     }
 }
 
@@ -396,17 +374,8 @@ mod tests_task_28 {
         };
         let made = render("Some prose.", &renderer, "sans-serif", 14.0, colors, 400.0, None);
         assert!(!made.stale("Some prose.", 400.0), "nothing changed");
-        assert!(
-            !made.stale("Some prose.", 400.2),
-            "a fraction of a point is not a change"
-        );
-        assert!(
-            made.stale("Some prose.", 500.0),
-            "a different width has to be laid out again"
-        );
-        assert!(
-            made.stale("Other prose.", 400.0),
-            "a different source has to be rendered again"
-        );
+        assert!(!made.stale("Some prose.", 400.2), "a fraction of a point is not a change");
+        assert!(made.stale("Some prose.", 500.0), "a different width has to be laid out again");
+        assert!(made.stale("Other prose.", 400.0), "a different source has to be rendered again");
     }
 }

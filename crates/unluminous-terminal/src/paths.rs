@@ -91,16 +91,20 @@ mod tests {
 
     #[test]
     fn a_verbatim_path_loses_its_prefix() {
-        assert_eq!(plain(Path::new(r"\\?\C:\jason\dev\unluminous")), PathBuf::from(r"C:\jason\dev\unluminous"));
+        assert_eq!(
+            plain(Path::new(r"\\?\C:\jason\dev\unluminous")),
+            PathBuf::from(r"C:\jason\dev\unluminous")
+        );
         assert_eq!(plain(Path::new(r"\\?\c:\")), PathBuf::from(r"c:\"));
     }
 
     /// `task-1794`: the mixed-separator path a `join` makes is what a debug adapter was handed.
     #[test]
     fn a_path_written_with_both_separators_comes_back_with_one() {
-        let joined = Path::new(if cfg!(windows) { r"C:\project" } else { "/project" })
-            .join("src/report.rs");
-        let wanted = if cfg!(windows) { r"C:\project\src\report.rs" } else { "/project/src/report.rs" };
+        let joined =
+            Path::new(if cfg!(windows) { r"C:\project" } else { "/project" }).join("src/report.rs");
+        let wanted =
+            if cfg!(windows) { r"C:\project\src\report.rs" } else { "/project/src/report.rs" };
         assert_eq!(native(&joined), PathBuf::from(wanted));
     }
 
@@ -135,15 +139,22 @@ mod tests {
 
     #[test]
     fn an_ordinary_path_is_left_alone() {
-        for path in [r"C:\jason\dev\unluminous", "/home/jason/unluminous", r"\\server\share\folder", "relative/bit"]
-        {
+        for path in [
+            r"C:\jason\dev\unluminous",
+            "/home/jason/unluminous",
+            r"\\server\share\folder",
+            "relative/bit",
+        ] {
             assert_eq!(plain(Path::new(path)), PathBuf::from(path), "{path} should not change");
         }
     }
 
     #[test]
     fn a_verbatim_share_is_written_the_way_a_share_is_written() {
-        assert_eq!(plain(Path::new(r"\\?\UNC\server\share\folder")), PathBuf::from(r"\\server\share\folder"));
+        assert_eq!(
+            plain(Path::new(r"\\?\UNC\server\share\folder")),
+            PathBuf::from(r"\\server\share\folder")
+        );
     }
 
     #[test]

@@ -78,10 +78,7 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
     let refusals = chat.readiness();
     let mut configuration = chat.configuration().clone();
     let mut changed = false;
-    let chosen = configuration
-        .provider()
-        .map(|one| one.name.clone())
-        .unwrap_or_default();
+    let chosen = configuration.provider().map(|one| one.name.clone()).unwrap_or_default();
 
     pen = crate::components::modal::section(ui, inner, pen, "Endpoints");
     pen = crate::components::modal::note(
@@ -101,9 +98,7 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
         // rows each holding a `Use`, a `Remove` and an `openai` would be three widgets sharing one id,
         // which egui reports as a duplicate and which makes the second row's buttons unclickable.
         let mut row = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(area)
-                .id_salt(("agent-chat-endpoint", index)),
+            egui::UiBuilder::new().max_rect(area).id_salt(("agent-chat-endpoint", index)),
         );
         let why_not = refusals.get(index).cloned().flatten();
         let (height, act) =
@@ -128,7 +123,8 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
             changed = true;
         } else {
             requests.push(Request::Message(
-                "There has to be one endpoint. Change this one rather than taking it away.".to_owned(),
+                "There has to be one endpoint. Change this one rather than taking it away."
+                    .to_owned(),
             ));
         }
     }
@@ -164,7 +160,8 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
         pen = permission_row(ui, inner, pen, &mut configuration, &mut changed);
     } else {
         let row = Rect::from_min_size(Pos2::new(inner.left(), pen), Vec2::new(inner.width(), 22.0));
-        if crate::components::modal::check(ui, row, "Stream the answer", &mut configuration.stream) {
+        if crate::components::modal::check(ui, row, "Stream the answer", &mut configuration.stream)
+        {
             changed = true;
         }
         pen += 22.0;
@@ -390,14 +387,13 @@ fn endpoint(
         }
         left += WIRE_BUTTON + WIRE_GAP;
     }
-    let use_at = Rect::from_min_size(
-        Pos2::new(area.right() - 118.0, head.top()),
-        Vec2::new(56.0, FIELD),
-    );
+    let use_at =
+        Rect::from_min_size(Pos2::new(area.right() - 118.0, head.top()), Vec2::new(56.0, FIELD));
     if crate::components::modal::button(ui, use_at, "Use", !in_use, in_use) {
         act = Some(Act::Use);
     }
-    let remove_at = Rect::from_min_size(Pos2::new(area.right() - 58.0, head.top()), Vec2::new(50.0, FIELD));
+    let remove_at =
+        Rect::from_min_size(Pos2::new(area.right() - 58.0, head.top()), Vec2::new(50.0, FIELD));
     if crate::components::modal::button(ui, remove_at, "Remove", true, false) {
         act = Some(Act::Remove);
     }
@@ -443,7 +439,9 @@ fn endpoint(
     }
     if !a_program {
         let mut key = configuration.providers[index].key_env.clone();
-        if one_field(ui, look, inside, &mut pen, "Key from", &mut key, "ANTHROPIC_API_KEY").is_some() {
+        if one_field(ui, look, inside, &mut pen, "Key from", &mut key, "ANTHROPIC_API_KEY")
+            .is_some()
+        {
             configuration.providers[index].key_env = key.trim().to_owned();
             act = Some(Act::Changed);
         }
@@ -475,7 +473,9 @@ fn endpoint(
                 // and `plugins run agent-chat providers` reports it. A person's own home folder is
                 // in that path, and this page is drawn into a screenshot test that is committed —
                 // so the one place it would certainly end up is a repository.
-                (true, _) => "Ready · found on this machine, and it holds its own account".to_owned(),
+                (true, _) => {
+                    "Ready · found on this machine, and it holds its own account".to_owned()
+                }
                 (false, true) => format!("Ready · key set from ${}", provider.key_env),
                 (false, false) => "Ready · no key needed".to_owned(),
             },
@@ -497,10 +497,7 @@ fn endpoint(
     // not offer here. Instead the border alone is drawn, which reads as a card without covering the
     // fields.
     painter.rect_stroke(
-        Rect::from_min_max(
-            Pos2::new(area.left(), card_top),
-            Pos2::new(area.right(), pen - 4.0),
-        ),
+        Rect::from_min_max(Pos2::new(area.left(), card_top), Pos2::new(area.right(), pen - 4.0)),
         CornerRadius::same(8),
         Stroke::new(
             1.0,
@@ -527,7 +524,14 @@ fn one_field(
     hint: &str,
 ) -> Option<String> {
     let row = Rect::from_min_size(Pos2::new(area.left(), *pen), Vec2::new(area.width(), FIELD));
-    crate::components::modal::label(&ui.painter_at(area), row, row.left(), name, color::text_dim(), 11.5);
+    crate::components::modal::label(
+        &ui.painter_at(area),
+        row,
+        row.left(),
+        name,
+        color::text_dim(),
+        11.5,
+    );
     let box_at = Rect::from_min_max(Pos2::new(row.left() + LABEL, row.top()), row.max);
     let response = crate::components::modal::field(ui, box_at, name, value);
     if value.trim().is_empty() {

@@ -251,11 +251,7 @@ mod tests {
         let text = "pie title Pets adopted\n \"Dogs\" : 386\n \"Cats\" : 85\n \"Rats\" : 15\n";
         let scene = check::drawn(text, &options(), &["Pets adopted", "Dogs", "Cats", "Rats"]);
         // Three wedges, drawn as polygons.
-        let wedges = scene
-            .items
-            .iter()
-            .filter(|item| matches!(item, Item::Polygon { .. }))
-            .count();
+        let wedges = scene.items.iter().filter(|item| matches!(item, Item::Polygon { .. })).count();
         assert_eq!(wedges, 3);
     }
 

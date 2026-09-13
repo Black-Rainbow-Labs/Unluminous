@@ -131,11 +131,7 @@ impl Find {
             self.whole_word,
         );
         self.current = match was_at {
-            Some(at) => self
-                .matches
-                .iter()
-                .position(|range| range.start >= at)
-                .unwrap_or(0),
+            Some(at) => self.matches.iter().position(|range| range.start >= at).unwrap_or(0),
             None => 0,
         };
         self.answered = Some(asking);
@@ -222,8 +218,7 @@ impl Find {
     /// What opening the bar does, so the first `Enter` finds the next match **below where you were
     /// reading** rather than the first one in the file.
     pub fn start_from(&mut self, offset: usize) {
-        self.current =
-            self.matches.iter().position(|range| range.start >= offset).unwrap_or(0);
+        self.current = self.matches.iter().position(|range| range.start >= offset).unwrap_or(0);
     }
 
     /// The one edit that replaces the current match, or nothing when there is no match to replace.
@@ -241,11 +236,7 @@ impl Find {
     /// `Command::ReplaceMany` documents as its own requirement and the order `symbols::replacements`
     /// puts a rename in.
     pub fn replacements_for_all(&self) -> Vec<(Range<usize>, String)> {
-        self.matches
-            .iter()
-            .rev()
-            .map(|range| (range.clone(), self.replacement.clone()))
-            .collect()
+        self.matches.iter().rev().map(|range| (range.clone(), self.replacement.clone())).collect()
     }
 }
 
@@ -281,7 +272,11 @@ mod tests {
         assert_eq!(find.count(), 4);
         find.whole_word = true;
         find.refresh("one\nnone\nbone\none_more\n", 1);
-        assert_eq!(find.count(), 1, "an underscore is a word character, so one_more does not count");
+        assert_eq!(
+            find.count(),
+            1,
+            "an underscore is a word character, so one_more does not count"
+        );
     }
 
     #[test]

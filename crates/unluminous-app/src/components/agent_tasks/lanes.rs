@@ -84,11 +84,9 @@ fn cards_tall(held: usize, look: &Look<'_>) -> f32 {
 
 /// What the window knows about a ticket that its row does not: whether its agent is running here, and
 /// whether Start would do anything.
-fn live_for(
-    board: &AgentTasks,
-    task: &crate::services::agent_tasks::model::Task,
-) -> card::Live {
-    let attached = board.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
+fn live_for(board: &AgentTasks, task: &crate::services::agent_tasks::model::Task) -> card::Live {
+    let attached =
+        board.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
     card::Live {
         attached,
         // Start claims an unclaimed ticket. One that already has a session is resumed instead, and one
@@ -107,12 +105,18 @@ fn live_for(
 }
 
 /// The board: four lanes across, scrolling sideways when the pane is narrower than they are.
-pub fn show(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Request> {
+pub fn show(
+    board: &mut AgentTasks,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    area: Rect,
+) -> Vec<Request> {
     let mut requests = Vec::new();
     // **Clicking the board gives it the keyboard**, which is what makes the arrow keys reach it at all. Added
     // before anything else is drawn, because egui gives a press to the last widget that overlaps it: a background
     // added first is under every card and every button, so it answers only for a press nothing else wanted.
-    let background = ui.interact(area, ui.id().with("agent-tasks-board-background"), egui::Sense::click());
+    let background =
+        ui.interact(area, ui.id().with("agent-tasks-board-background"), egui::Sense::click());
     // Named, because every control in Unluminous has a plain name and a test finds one by it. This is the one that
     // gives the board the keyboard.
     background.widget_info(|| {
@@ -127,8 +131,7 @@ pub fn show(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Re
     // width need 1236 points; anything narrower squeezes them to `LANE_MIN` and then scrolls.
     let room = area.width() - PAD * 2.0;
     let lanes = Status::ALL.len() as f32;
-    let lane_width =
-        ((room - GAP * (lanes - 1.0)) / lanes).clamp(LANE_MIN, LANE);
+    let lane_width = ((room - GAP * (lanes - 1.0)) / lanes).clamp(LANE_MIN, LANE);
     let content = lane_width * lanes + GAP * (lanes - 1.0);
     let scroll = board.scroll_the_lanes(ui, area, content - room);
     let mut to_open = None;
@@ -150,8 +153,9 @@ pub fn show(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Re
     // satisfy the borrow checker, which on a board of any size is the largest thing the frame does.
     //
     // First: where each lane is, and how many cards it holds.
-    let room_for_cards =
-        |lane: Rect, status: Status| lane.height() - under_the_heading(status, look) - foot(status, look);
+    let room_for_cards = |lane: Rect, status: Status| {
+        lane.height() - under_the_heading(status, look) - foot(status, look)
+    };
     let mut geometry: Vec<(Status, Rect, usize)> = Vec::new();
     for (index, status) in Status::ALL.into_iter().enumerate() {
         let left = area.min.x + PAD + index as f32 * (lane_width + GAP) - scroll;
@@ -262,7 +266,9 @@ pub fn show(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Re
         }
         let cards: Vec<&crate::services::agent_tasks::model::Task> = snapshot
             .lane(status)
-            .map(|lane| lane.tasks.iter().filter(|task| arithmetic::matches(task, &query)).collect())
+            .map(|lane| {
+                lane.tasks.iter().filter(|task| arithmetic::matches(task, &query)).collect()
+            })
             .unwrap_or_default();
         header(ui, look, lane_area, status, cards.len());
         // **A lane scrolls rather than stopping.** It used to draw as many cards as fit and then a `3 more`
@@ -334,7 +340,10 @@ pub fn show(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Re
             ui.painter().rect_filled(track, 0, look.palette.divider);
             ui.painter().rect_filled(
                 Rect::from_min_size(
-                    Pos2::new(track.min.x, track.min.y + (track.height() - track.height() * share) * at),
+                    Pos2::new(
+                        track.min.x,
+                        track.min.y + (track.height() - track.height() * share) * at,
+                    ),
                     Vec2::new(track.width(), track.height() * share),
                 ),
                 0,
@@ -360,8 +369,7 @@ pub fn show(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Re
                 // line was drawn a card's height away from the pointer for every row scrolled past, and in a
                 // filtered lane it was drawn against a row nobody could see. Releasing still moved the card to
                 // the right place; the line was simply pointing somewhere else.
-                let y = cards_area.min.y
-                    + among_visible as f32 * (card::height(look) + card::GAP)
+                let y = cards_area.min.y + among_visible as f32 * (card::height(look) + card::GAP)
                     - down
                     - card::GAP / 2.0;
                 ui.painter().rect_filled(
@@ -386,7 +394,8 @@ pub fn show(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Re
                 Pos2::new(lane_area.min.x + LANE_INSET, lane_area.min.y + lane_header(look) + 4.0),
                 Vec2::new(lane_area.width() - LANE_INSET * 2.0, tall),
             );
-            let play = Rect::from_min_size(Pos2::new(strip.max.x - tall, strip.min.y), Vec2::splat(tall));
+            let play =
+                Rect::from_min_size(Pos2::new(strip.max.x - tall, strip.min.y), Vec2::splat(tall));
             let chooser = Rect::from_min_max(strip.min, Pos2::new(play.min.x - 8.0, strip.max.y));
             // The chooser is a field, so it is pressed into the lane rather than raised off it: the picture
             // draws it as a well with the agent's name in it, which is what `sunken` is.
@@ -465,7 +474,10 @@ pub fn show(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Re
         if cards.is_empty() {
             let empty = Rect::from_min_max(
                 Pos2::new(cards_area.min.x + LANE_INSET, cards_area.min.y),
-                Pos2::new(cards_area.max.x - LANE_INSET, (cards_area.min.y + EMPTY_WELL).min(cards_area.max.y)),
+                Pos2::new(
+                    cards_area.max.x - LANE_INSET,
+                    (cards_area.min.y + EMPTY_WELL).min(cards_area.max.y),
+                ),
             );
             if empty.height() > 24.0 {
                 match look.chrome.is_recording() {
@@ -606,7 +618,12 @@ fn header(ui: &mut egui::Ui, look: &Look<'_>, lane: Rect, status: Status, count:
     if look.chrome.is_recording() {
         // Five points of halo, which is what the reference measures, and at nearly the dot's own strength:
         // at 3.5 and 75% it read as a speck rather than as something lit.
-        look.chrome.glow(Rect::from_center_size(centre, Vec2::splat(9.0)), 4.5, dot.gamma_multiply(0.9), 5.0);
+        look.chrome.glow(
+            Rect::from_center_size(centre, Vec2::splat(9.0)),
+            4.5,
+            dot.gamma_multiply(0.9),
+            5.0,
+        );
         look.chrome.disc(centre, 4.5, crate::services::vello_canvas::Fill::Solid(dot));
     } else {
         painter.circle_filled(centre, 4.5, dot);

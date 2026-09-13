@@ -52,7 +52,8 @@ impl UnluminousApp {
             .as_ref()
             .is_some_and(|read| read.revision == revision);
         if !fresh {
-            let too_large = self.files.at(index).document.text().len_bytes() > UnluminousApp::COLOUR_LIMIT;
+            let too_large =
+                self.files.at(index).document.text().len_bytes() > UnluminousApp::COLOUR_LIMIT;
             // A file too large to colour is too large to read for its blocks, and for the same
             // reason: both are one linear pass over the text on every change. It keeps its line
             // numbers and loses its arrows, which is what `colour_the_file` already does about
@@ -201,10 +202,10 @@ impl UnluminousApp {
             line -= 1;
         }
         let offset = self.files.at(index).document.text().line_to_byte(line);
-        self.files.at_mut(index).document.apply(unluminous_core::Command::PlaceCaret {
-            offset,
-            extend: false,
-        });
+        self.files
+            .at_mut(index)
+            .document
+            .apply(unluminous_core::Command::PlaceCaret { offset, extend: false });
     }
 
     /// Collapse or expand the innermost region the caret is in, which is what the keyboard and the
@@ -266,7 +267,12 @@ impl UnluminousApp {
     /// collapsed when `collapse` is set and every head is left open when it is not, which is what
     /// makes a recursive expand a hard open of the whole subtree rather than the set's natural
     /// "remove the parent and keep the children".
-    fn collapse_or_expand_recursively(&mut self, index: usize, tree: Vec<&Region>, collapse: bool) -> bool {
+    fn collapse_or_expand_recursively(
+        &mut self,
+        index: usize,
+        tree: Vec<&Region>,
+        collapse: bool,
+    ) -> bool {
         let tree_heads: Vec<usize> = tree.iter().map(|region| region.head).collect();
         let mut heads = self.collapsed_heads(index);
         heads.retain(|head| !tree_heads.contains(head));
@@ -508,10 +514,10 @@ mod tests {
         let index = app.files.active_index();
         // Put the caret on a line inside the function that is about to be hidden.
         let offset = app.files.at(index).document.text().line_to_byte(4);
-        app.files.at_mut(index).document.apply(unluminous_core::Command::PlaceCaret {
-            offset,
-            extend: false,
-        });
+        app.files
+            .at_mut(index)
+            .document
+            .apply(unluminous_core::Command::PlaceCaret { offset, extend: false });
         assert!(app.collapse_recursively_at_line(0));
         let document = &app.files.at(index).document;
         let caret = document.text().byte_to_line(document.selection().head);

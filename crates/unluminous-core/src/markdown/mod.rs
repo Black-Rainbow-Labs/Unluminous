@@ -456,8 +456,10 @@ impl<'a> Writer<'a> {
             // byte under the pointer part of a link", and every byte of the label answers yes.
             if let (SpanKind::Link, Some(target)) = (span.kind, span.target.as_deref()) {
                 if self.out.len() > from {
-                    self.links
-                        .push(PreviewLink { bytes: from..self.out.len(), target: target.to_owned() });
+                    self.links.push(PreviewLink {
+                        bytes: from..self.out.len(),
+                        target: target.to_owned(),
+                    });
                 }
             }
         }
@@ -476,12 +478,7 @@ impl<'a> Writer<'a> {
                 // size, or the columns would stop lining up.
                 let size =
                     if base.family == self.mono() { base.size } else { base.size * CODE_SCALE };
-                CharStyle {
-                    bold,
-                    italic,
-                    strikethrough: struck,
-                    ..self.code_style(size)
-                }
+                CharStyle { bold, italic, strikethrough: struck, ..self.code_style(size) }
             }
             SpanKind::Link => CharStyle {
                 color: colors.link,
@@ -491,9 +488,13 @@ impl<'a> Writer<'a> {
                 strikethrough: struck,
                 ..base.clone()
             },
-            SpanKind::Quiet => {
-                CharStyle { color: colors.quiet, bold, italic, strikethrough: struck, ..base.clone() }
-            }
+            SpanKind::Quiet => CharStyle {
+                color: colors.quiet,
+                bold,
+                italic,
+                strikethrough: struck,
+                ..base.clone()
+            },
             _ => CharStyle { bold, italic, strikethrough: struck, ..base.clone() },
         }
     }

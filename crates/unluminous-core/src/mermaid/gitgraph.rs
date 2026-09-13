@@ -93,10 +93,19 @@ fn read(source: &Source) -> Result<Graph, Problem> {
         }
         // `mainBranchName`, `showBranches` and the rest are about wording and about what is hidden;
         // Unluminous draws every branch with its name, so they are read and ignored.
-        if ["accDescr", "mainBranchName", "mainBranchOrder", "showBranches", "showCommitLabel",
-            "parallelCommits", "rotateCommitLabel", "options", "end"]
-            .iter()
-            .any(|word| line.starts_with_word(word))
+        if [
+            "accDescr",
+            "mainBranchName",
+            "mainBranchOrder",
+            "showBranches",
+            "showCommitLabel",
+            "parallelCommits",
+            "rotateCommitLabel",
+            "options",
+            "end",
+        ]
+        .iter()
+        .any(|word| line.starts_with_word(word))
         {
             continue;
         }
@@ -283,12 +292,27 @@ fn draw(graph: &Graph, source: &Source, options: &Options) -> Scene {
 
     // The names go down the left when time runs across, and along the top when it runs down.
     let (gutter, size) = if graph.across {
-        (widest + 24.0, (parts::MARGIN * 2.0 + widest + 24.0 + step * steps as f32, parts::MARGIN * 2.0 + LANE * graph.branches.len() as f32 + 40.0))
+        (
+            widest + 24.0,
+            (
+                parts::MARGIN * 2.0 + widest + 24.0 + step * steps as f32,
+                parts::MARGIN * 2.0 + LANE * graph.branches.len() as f32 + 40.0,
+            ),
+        )
     } else {
-        (28.0, (parts::MARGIN * 2.0 + LANE * graph.branches.len() as f32 + widest, parts::MARGIN * 2.0 + 28.0 + step * steps as f32 + 24.0))
+        (
+            28.0,
+            (
+                parts::MARGIN * 2.0 + LANE * graph.branches.len() as f32 + widest,
+                parts::MARGIN * 2.0 + 28.0 + step * steps as f32 + 24.0,
+            ),
+        )
     };
     let top = parts::title(&mut scene, &titled, options, size.0);
-    let origin = Point::new(parts::MARGIN + if graph.across { gutter } else { 0.0 }, top + parts::MARGIN + if graph.across { 0.0 } else { gutter });
+    let origin = Point::new(
+        parts::MARGIN + if graph.across { gutter } else { 0.0 },
+        top + parts::MARGIN + if graph.across { 0.0 } else { gutter },
+    );
 
     let place = |commit: &Commit| -> Point {
         let along = step * commit.at as f32 + step / 2.0;
@@ -362,8 +386,9 @@ fn draw_links(
 ) {
     for commit in &graph.commits {
         let here = place(commit);
-        for (other, merged) in
-            [(commit.parent, false), (commit.merged, true)].into_iter().filter_map(|(index, m)| index.map(|i| (i, m)))
+        for (other, merged) in [(commit.parent, false), (commit.merged, true)]
+            .into_iter()
+            .filter_map(|(index, m)| index.map(|i| (i, m)))
         {
             let there = place(&graph.commits[other]);
             let colour = options.theme.series(graph.commits[other].branch);
@@ -381,7 +406,10 @@ fn draw_links(
             };
             scene.add(Item::Line {
                 points,
-                stroke: Stroke::new(if merged { options.theme.accent } else { colour }, parts::THICK * 0.7),
+                stroke: Stroke::new(
+                    if merged { options.theme.accent } else { colour },
+                    parts::THICK * 0.7,
+                ),
                 dash: Dash::Solid,
             });
         }

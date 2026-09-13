@@ -342,7 +342,12 @@ impl StyleSpans {
     /// **The spans outside `range` are not merged**, and they do not need to be: nothing about them
     /// changed, so any two that could have been folded together already were. Only the two joins at
     /// the ends of the splice are new, and those are folded here.
-    pub fn set_in(&mut self, range: Range<usize>, base: &StyleChange, changes: &[(Range<usize>, StyleChange)]) {
+    pub fn set_in(
+        &mut self,
+        range: Range<usize>,
+        base: &StyleChange,
+        changes: &[(Range<usize>, StyleChange)],
+    ) {
         let total = self.total_len();
         let from = range.start.min(total);
         let to = range.end.min(total);
@@ -712,7 +717,11 @@ mod tests {
         ]);
         assert_eq!(spans.style_at(5).color, Color::RED);
         assert_eq!(spans.style_at(9).color, CharStyle::default().color, "the overlap was skipped");
-        assert_eq!(spans.style_at(2).color, CharStyle::default().color, "going backwards was skipped");
+        assert_eq!(
+            spans.style_at(2).color,
+            CharStyle::default().color,
+            "going backwards was skipped"
+        );
         assert_eq!(spans.style_at(13).color, Color::YELLOW, "and the list carries on afterwards");
         assert_eq!(spans.total_len(), 20, "the spans still cover the document exactly");
     }
@@ -859,7 +868,11 @@ mod tests {
         paragraphs.set(1..4, |p| p.align = Align::Center);
         paragraphs.join(0, 2);
         assert_eq!(paragraphs.len(), 2);
-        assert_eq!(paragraphs.get(0).align, Align::Right, "the first paragraph's formatting survives");
+        assert_eq!(
+            paragraphs.get(0).align,
+            Align::Right,
+            "the first paragraph's formatting survives"
+        );
         assert_eq!(paragraphs.get(1).align, Align::Center);
     }
 

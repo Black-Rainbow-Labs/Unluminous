@@ -39,7 +39,11 @@ fn labelled(ui: &egui::Ui, body: Rect, pen: f32, name: &str) -> Rect {
 }
 
 /// Draw whichever modal is open. Answers what it asked for and whether it closed.
-pub fn show(explorer: &mut DatabaseExplorer, ctx: &egui::Context, look: &Look<'_>) -> (Vec<Request>, bool) {
+pub fn show(
+    explorer: &mut DatabaseExplorer,
+    ctx: &egui::Context,
+    look: &Look<'_>,
+) -> (Vec<Request>, bool) {
     let Some(open) = explorer.modal.clone() else { return (Vec::new(), false) };
     match open {
         Modal::Source(form) => source_modal(explorer, ctx, look, form),
@@ -97,7 +101,8 @@ fn vector_modal(
             Vec2::new(body.width(), 96.0 * scale),
         );
         draw_the_components(ui.painter(), strip, vector, look);
-        let rest = Rect::from_min_max(Pos2::new(body.left(), strip.bottom() + 8.0 * scale), body.max);
+        let rest =
+            Rect::from_min_max(Pos2::new(body.left(), strip.bottom() + 8.0 * scale), body.max);
         modal::monospaced(ui, rest, "database-vector-numbers", &numbers);
         match modal::footer(ui, area, &[("Copy", true), ("Done", true)]) {
             Some(0) => copy = true,
@@ -122,7 +127,12 @@ fn vector_modal(
 /// magnitude in each bucket rather than sampling one of them: a sampled strip of a 768-dimension
 /// vector hides exactly the outlier somebody is looking for, and drawing 768 bars into 400 pixels
 /// draws most of them on top of each other anyway.
-fn draw_the_components(painter: &egui::Painter, area: Rect, vector: &unluminous_db::Vector, look: &Look<'_>) {
+fn draw_the_components(
+    painter: &egui::Painter,
+    area: Rect,
+    vector: &unluminous_db::Vector,
+    look: &Look<'_>,
+) {
     painter.rect_filled(area, egui::CornerRadius::same(4), look.palette.field);
     if vector.values.is_empty() {
         return;
@@ -145,9 +155,12 @@ fn draw_the_components(painter: &egui::Painter, area: Rect, vector: &unluminous_
     for bucket in 0..buckets {
         let from = (bucket as f32 * per) as usize;
         let to = (((bucket + 1) as f32 * per) as usize).min(vector.values.len()).max(from + 1);
-        let value = vector.values[from..to]
-            .iter()
-            .fold(0.0f32, |so_far, value| match value.abs() > so_far.abs() { true => *value, false => so_far });
+        let value = vector.values[from..to].iter().fold(0.0f32, |so_far, value| {
+            match value.abs() > so_far.abs() {
+                true => *value,
+                false => so_far,
+            }
+        });
         let tall = (value / largest) * height;
         let x = area.left() + 4.0 + bucket as f32 * width + width * 0.5;
         painter.line_segment(
@@ -265,7 +278,9 @@ fn fields(ui: &mut egui::Ui, body: Rect, top: f32, form: &mut SourceForm) -> f32
     // Two buttons rather than a dropdown, because there are two engines and which one is chosen can
     // then be seen without opening anything — the rule the three line spacings already keep.
     let engines = labelled(ui, body, pen, "Engine");
-    for (index, engine) in [Engine::Postgres, Engine::Sqlite, Engine::Inillucent].into_iter().enumerate() {
+    for (index, engine) in
+        [Engine::Postgres, Engine::Sqlite, Engine::Inillucent].into_iter().enumerate()
+    {
         let button = Rect::from_min_size(
             Pos2::new(engines.left() + index as f32 * 96.0, engines.top()),
             Vec2::new(90.0, engines.height()),
@@ -275,7 +290,12 @@ fn fields(ui: &mut egui::Ui, body: Rect, top: f32, form: &mut SourceForm) -> f32
             Engine::Sqlite => "SQLite",
             Engine::Inillucent => "Inillucent",
         };
-        if crate::components::controls::choice_button(ui, button, name, form.source.engine == engine) {
+        if crate::components::controls::choice_button(
+            ui,
+            button,
+            name,
+            form.source.engine == engine,
+        ) {
             form.source.engine = engine;
             if engine.is_a_file() {
                 form.source.host = String::new();
@@ -329,7 +349,12 @@ fn fields(ui: &mut egui::Ui, body: Rect, top: f32, form: &mut SourceForm) -> f32
                 form.source.port = said.parse().unwrap_or(form.source.port);
             }
             pen += FIELD + GAP;
-            modal::field(ui, labelled(ui, body, pen, "Database"), "Database", &mut form.source.database);
+            modal::field(
+                ui,
+                labelled(ui, body, pen, "Database"),
+                "Database",
+                &mut form.source.database,
+            );
             pen += FIELD + GAP;
             modal::field(ui, labelled(ui, body, pen, "User"), "User", &mut form.source.user);
             pen += FIELD + GAP;
@@ -346,7 +371,9 @@ fn fields(ui: &mut egui::Ui, body: Rect, top: f32, form: &mut SourceForm) -> f32
             // are now the question a person can answer - with a line saying which of the two things
             // called encryption this one is.
             let modes = labelled(ui, body, pen, "Connection security");
-            for (index, mode) in [SslMode::Disable, SslMode::Prefer, SslMode::Require].into_iter().enumerate() {
+            for (index, mode) in
+                [SslMode::Disable, SslMode::Prefer, SslMode::Require].into_iter().enumerate()
+            {
                 let button = Rect::from_min_size(
                     Pos2::new(modes.left() + index as f32 * 92.0, modes.top()),
                     Vec2::new(86.0, modes.height()),
@@ -439,8 +466,7 @@ fn secret_field(ui: &mut egui::Ui, area: Rect, value: &mut String) {
         egui::StrokeKind::Inside,
     );
     let id = ui.id().with("database-source-password");
-    let text_rect =
-        crate::components::controls::field_takes_the_whole_rectangle(ui, area, 8.0, id);
+    let text_rect = crate::components::controls::field_takes_the_whole_rectangle(ui, area, 8.0, id);
     let mut edit = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
     let response = edit.add(
         egui::TextEdit::singleline(value)
@@ -511,7 +537,6 @@ fn test_it(form: &SourceForm) -> Result<String, String> {
     }
 }
 
-
 /// How wide the column list is, leaving the rest of the body for the statement beside it.
 const COLUMNS: f32 = 400.0;
 /// A row of the column list.
@@ -540,46 +565,65 @@ fn new_table(
     if form.columns.is_empty() {
         form.columns.push(a_first_column(engine));
     }
-    let statement = unluminous_db::sql::create_table(&form.schema, &form.name, &form.columns, engine);
+    let statement =
+        unluminous_db::sql::create_table(&form.schema, &form.name, &form.columns, engine);
 
-    let (_, escaped) = modal::show(ctx, "unluminous-database-new-table", 760.0, 520.0, |ui, area| {
-        if modal::header(ui, area, "New Table") {
-            close = true;
-        }
-        let body = modal::body(area);
-        let mut pen = body.top() + 2.0;
+    let (_, escaped) =
+        modal::show(ctx, "unluminous-database-new-table", 760.0, 520.0, |ui, area| {
+            if modal::header(ui, area, "New Table") {
+                close = true;
+            }
+            let body = modal::body(area);
+            let mut pen = body.top() + 2.0;
 
-        // Which data source and schema, said rather than chosen: the dialog is opened from a row of
-        // the tree, and a chooser here would be a second way to say a thing the click already said.
-        let where_it_goes = format!("{} · {}", form.source, match form.schema.is_empty() {
-            true => "no schema".to_owned(),
-            false => form.schema.clone(),
+            // Which data source and schema, said rather than chosen: the dialog is opened from a row of
+            // the tree, and a chooser here would be a second way to say a thing the click already said.
+            let where_it_goes = format!(
+                "{} · {}",
+                form.source,
+                match form.schema.is_empty() {
+                    true => "no schema".to_owned(),
+                    false => form.schema.clone(),
+                }
+            );
+            modal::label(
+                ui.painter(),
+                Rect::from_min_size(Pos2::new(body.left(), pen), Vec2::new(body.width(), FIELD)),
+                body.left(),
+                &where_it_goes,
+                color::text_faint(),
+                11.5,
+            );
+            pen += FIELD;
+
+            modal::field(ui, labelled(ui, body, pen, "Name"), "Table name", &mut form.name);
+            pen += FIELD + GAP * 2.0;
+
+            let left = Rect::from_min_max(
+                Pos2::new(body.left(), pen),
+                Pos2::new(body.left() + COLUMNS, body.bottom() - 8.0),
+            );
+            let right = Rect::from_min_max(
+                Pos2::new(left.right() + 16.0, pen),
+                Pos2::new(body.right(), body.bottom() - 8.0),
+            );
+            let after = modal::section(ui, left, pen, "Columns");
+            columns(ui, left, after, &mut form, engine);
+            let after_right = modal::section(ui, right, pen, "SQL");
+            let block = Rect::from_min_max(Pos2::new(right.left(), after_right), right.max);
+            let said = match (&statement, &form.problem) {
+                (_, Some(problem)) => problem.clone(),
+                (Ok(sql), None) => format!("{sql};"),
+                (Err(why), None) => why.clone(),
+            };
+            modal::monospaced(ui, block, "database-new-table-sql", &said);
+
+            match modal::footer(ui, area, &[("Cancel", true), ("Create", statement.is_ok())]) {
+                Some(0) => close = true,
+                Some(1) => create = true,
+                _ => {}
+            }
         });
-        modal::label(ui.painter(), Rect::from_min_size(Pos2::new(body.left(), pen), Vec2::new(body.width(), FIELD)), body.left(), &where_it_goes, color::text_faint(), 11.5);
-        pen += FIELD;
-
-        modal::field(ui, labelled(ui, body, pen, "Name"), "Table name", &mut form.name);
-        pen += FIELD + GAP * 2.0;
-
-        let left = Rect::from_min_max(Pos2::new(body.left(), pen), Pos2::new(body.left() + COLUMNS, body.bottom() - 8.0));
-        let right = Rect::from_min_max(Pos2::new(left.right() + 16.0, pen), Pos2::new(body.right(), body.bottom() - 8.0));
-        let after = modal::section(ui, left, pen, "Columns");
-        columns(ui, left, after, &mut form, engine);
-        let after_right = modal::section(ui, right, pen, "SQL");
-        let block = Rect::from_min_max(Pos2::new(right.left(), after_right), right.max);
-        let said = match (&statement, &form.problem) {
-            (_, Some(problem)) => problem.clone(),
-            (Ok(sql), None) => format!("{sql};"),
-            (Err(why), None) => why.clone(),
-        };
-        modal::monospaced(ui, block, "database-new-table-sql", &said);
-
-        match modal::footer(ui, area, &[("Cancel", true), ("Create", statement.is_ok())]) {
-            Some(0) => close = true,
-            Some(1) => create = true,
-            _ => {}
-        }
-    });
 
     if create {
         match statement {
@@ -623,16 +667,29 @@ fn columns(ui: &mut egui::Ui, area: Rect, top: f32, form: &mut TableForm, engine
     // at 34 the `PK` label was drawn under the `NN` box beside it. `task-1795`.
     let name_width = area.width() - 286.0;
     for index in 0..form.columns.len() {
-        let row = Rect::from_min_size(Pos2::new(area.left(), pen), Vec2::new(area.width(), COLUMN_ROW));
+        let row =
+            Rect::from_min_size(Pos2::new(area.left(), pen), Vec2::new(area.width(), COLUMN_ROW));
         let name = Rect::from_min_size(row.min, Vec2::new(name_width.max(90.0), FIELD));
-        modal::field(ui, name, &format!("Column {} name", index + 1), &mut form.columns[index].name);
+        modal::field(
+            ui,
+            name,
+            &format!("Column {} name", index + 1),
+            &mut form.columns[index].name,
+        );
 
-        let kind = Rect::from_min_size(Pos2::new(name.right() + 6.0, row.top()), Vec2::new(140.0, FIELD));
+        let kind =
+            Rect::from_min_size(Pos2::new(name.right() + 6.0, row.top()), Vec2::new(140.0, FIELD));
         // A dropdown that also takes typing: the field is the value and the chevron beside it offers
         // the engine’s own list. See `Engine::column_types` for why the list is not closed.
         let typed = Rect::from_min_max(kind.min, Pos2::new(kind.right() - 22.0, kind.bottom()));
-        modal::field(ui, typed, &format!("Column {} type", index + 1), &mut form.columns[index].type_name);
-        let chevron = Rect::from_min_size(Pos2::new(kind.right() - 22.0, kind.top()), Vec2::new(22.0, FIELD));
+        modal::field(
+            ui,
+            typed,
+            &format!("Column {} type", index + 1),
+            &mut form.columns[index].type_name,
+        );
+        let chevron =
+            Rect::from_min_size(Pos2::new(kind.right() - 22.0, kind.top()), Vec2::new(22.0, FIELD));
         let chosen = crate::components::controls::dropdown(
             ui,
             chevron,
@@ -656,15 +713,36 @@ fn columns(ui: &mut egui::Ui, area: Rect, top: f32, form: &mut TableForm, engine
         // Named per column and drawn as two letters: every row draws the same pair, so a name of its
         // own is what keeps two controls from sharing one — the rule the grid's cells already keep by
         // being `title row 1` — and it is what gives each its own id.
-        let key = Rect::from_min_size(Pos2::new(kind.right() + 8.0, row.top() + 2.0), Vec2::new(46.0, 20.0));
-        modal::check_named(ui, key, "PK", &format!("Column {} PK", index + 1), &mut form.columns[index].in_key);
-        let not_null = Rect::from_min_size(Pos2::new(key.right() + 8.0, row.top() + 2.0), Vec2::new(46.0, 20.0));
-        modal::check_named(ui, not_null, "NN", &format!("Column {} NN", index + 1), &mut form.columns[index].not_null);
+        let key = Rect::from_min_size(
+            Pos2::new(kind.right() + 8.0, row.top() + 2.0),
+            Vec2::new(46.0, 20.0),
+        );
+        modal::check_named(
+            ui,
+            key,
+            "PK",
+            &format!("Column {} PK", index + 1),
+            &mut form.columns[index].in_key,
+        );
+        let not_null = Rect::from_min_size(
+            Pos2::new(key.right() + 8.0, row.top() + 2.0),
+            Vec2::new(46.0, 20.0),
+        );
+        modal::check_named(
+            ui,
+            not_null,
+            "NN",
+            &format!("Column {} NN", index + 1),
+            &mut form.columns[index].not_null,
+        );
 
         // Absent on the only row there is: a control that cannot apply is not drawn, and a table with
         // no columns at all is not a table.
         if form.columns.len() > 1 {
-            let cross = Rect::from_center_size(Pos2::new(row.right() - 12.0, row.center().y), Vec2::splat(18.0));
+            let cross = Rect::from_center_size(
+                Pos2::new(row.right() - 12.0, row.center().y),
+                Vec2::splat(18.0),
+            );
             if crate::components::controls::icon_button(
                 ui,
                 cross,
@@ -682,14 +760,22 @@ fn columns(ui: &mut egui::Ui, area: Rect, top: f32, form: &mut TableForm, engine
     let add = Rect::from_min_size(Pos2::new(area.left(), pen + 4.0), Vec2::new(120.0, 26.0));
     if modal::button(ui, add, "Add column", true, false) {
         form.columns.push(ColumnForm {
-            type_name: engine.column_types().first().map(|first| (*first).to_owned()).unwrap_or_default(),
+            type_name: engine
+                .column_types()
+                .first()
+                .map(|first| (*first).to_owned())
+                .unwrap_or_default(),
             ..ColumnForm::default()
         });
     }
 }
 
 /// The statements Submit will send.
-fn preview(explorer: &mut DatabaseExplorer, ctx: &egui::Context, page: u64) -> (Vec<Request>, bool) {
+fn preview(
+    explorer: &mut DatabaseExplorer,
+    ctx: &egui::Context,
+    page: u64,
+) -> (Vec<Request>, bool) {
     let text = match explorer.preview(page) {
         Ok(statements) if statements.is_empty() => "There is nothing pending.".to_owned(),
         Ok(statements) => statements
@@ -746,4 +832,3 @@ fn reading(
     }
     (requests, closed)
 }
-

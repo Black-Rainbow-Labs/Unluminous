@@ -445,10 +445,7 @@ impl References {
             return warning.clone();
         }
         if self.capped {
-            return format!(
-                "The first {} \u{00B7} there are more",
-                text_search::LIMIT
-            );
+            return format!("The first {} \u{00B7} there are more", text_search::LIMIT);
         }
         let found = match self.hits.len() {
             0 if self.searching => return "Searching...".to_owned(),
@@ -458,7 +455,8 @@ impl References {
         };
         let mut text = format!("{found} in {} files", self.files);
         if self.purpose == Purpose::Rename {
-            text = format!("{} of {found} will change in {} files", self.ticked_count(), self.files);
+            text =
+                format!("{} of {found} will change in {} files", self.ticked_count(), self.files);
         }
         if self.searching {
             text.push_str(" \u{00B7} searching");
@@ -667,14 +665,7 @@ fn rows(ui: &mut egui::Ui, area: Rect, state: &mut References) -> Option<(PathBu
                             }
                             x += 24.0;
                         }
-                        let x = modal::label(
-                            painter,
-                            rect,
-                            x,
-                            &shown,
-                            color::text_strong(),
-                            11.5,
-                        );
+                        let x = modal::label(painter, rect, x, &shown, color::text_strong(), 11.5);
                         modal::label(
                             painter,
                             rect,
@@ -712,7 +703,8 @@ fn rows(ui: &mut egui::Ui, area: Rect, state: &mut References) -> Option<(PathBu
                             (true, false) => color::text_strong(),
                             (false, false) => color::text_dim(),
                         };
-                        let x = modal::label(painter, rect, x, &format!("{}", hit.line), tint, 11.0);
+                        let x =
+                            modal::label(painter, rect, x, &format!("{}", hit.line), tint, 11.0);
                         let galley = controls::marked_text(
                             painter,
                             &text,
@@ -784,18 +776,14 @@ fn rows(ui: &mut egui::Ui, area: Rect, state: &mut References) -> Option<(PathBu
 /// A row is chosen by clicking it and its box is ticked by clicking the box, which is what every
 /// list with tick boxes in it does. Without this a person choosing a row to look at would tick it.
 fn on_the_tick(response: &egui::Response) -> bool {
-    response
-        .interact_pointer_pos()
-        .is_some_and(|at| at.x < response.rect.left() + 52.0)
+    response.interact_pointer_pos().is_some_and(|at| at.x < response.rect.left() + 52.0)
 }
 
 /// One tick box, drawn the way `modal::check` draws one, at a position rather than in a layout.
 fn tick(painter: &egui::Painter, row: Rect, x: f32, on: bool) {
     let box_size = 14.0;
-    let rect = Rect::from_min_size(
-        Pos2::new(x, row.center().y - box_size / 2.0),
-        Vec2::splat(box_size),
-    );
+    let rect =
+        Rect::from_min_size(Pos2::new(x, row.center().y - box_size / 2.0), Vec2::splat(box_size));
     painter.rect(
         rect,
         egui::CornerRadius::same(3),
@@ -806,17 +794,11 @@ fn tick(painter: &egui::Painter, row: Rect, x: f32, on: bool) {
     if on {
         let middle = rect.center();
         painter.line_segment(
-            [
-                Pos2::new(middle.x - 3.5, middle.y),
-                Pos2::new(middle.x - 1.0, middle.y + 2.5),
-            ],
+            [Pos2::new(middle.x - 3.5, middle.y), Pos2::new(middle.x - 1.0, middle.y + 2.5)],
             egui::Stroke::new(1.6, color::editor()),
         );
         painter.line_segment(
-            [
-                Pos2::new(middle.x - 1.0, middle.y + 2.5),
-                Pos2::new(middle.x + 3.5, middle.y - 2.5),
-            ],
+            [Pos2::new(middle.x - 1.0, middle.y + 2.5), Pos2::new(middle.x + 3.5, middle.y - 2.5)],
             egui::Stroke::new(1.6, color::editor()),
         );
     }
@@ -826,10 +808,8 @@ fn tick(painter: &egui::Painter, row: Rect, x: f32, on: bool) {
 /// a tick, which is what every list with a mixed group in it draws.
 fn part_tick(painter: &egui::Painter, row: Rect, x: f32) {
     let box_size = 14.0;
-    let rect = Rect::from_min_size(
-        Pos2::new(x, row.center().y - box_size / 2.0),
-        Vec2::splat(box_size),
-    );
+    let rect =
+        Rect::from_min_size(Pos2::new(x, row.center().y - box_size / 2.0), Vec2::splat(box_size));
     painter.rect(
         rect,
         egui::CornerRadius::same(3),
@@ -953,10 +933,8 @@ fn frame(ui: &egui::Ui, area: Rect) {
 /// A path as a heading shows it: the last two parts of it, which is enough to tell two files of the
 /// same name apart without a row a person has to read sideways.
 fn short_path(path: &Path) -> String {
-    let parts: Vec<String> = path
-        .components()
-        .map(|part| part.as_os_str().to_string_lossy().to_string())
-        .collect();
+    let parts: Vec<String> =
+        path.components().map(|part| part.as_os_str().to_string_lossy().to_string()).collect();
     let kept = parts.len().min(2);
     parts[parts.len() - kept..].join(std::path::MAIN_SEPARATOR_STR)
 }

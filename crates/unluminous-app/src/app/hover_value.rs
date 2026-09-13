@@ -144,9 +144,7 @@ impl UnluminousApp {
         if !file_kind::definitions_apply(Some(path.as_path()), &self.plugins.grammars()) {
             return false;
         }
-        debug
-            .location()
-            .is_some_and(|(stopped_in, _)| crate::app::same_file(&path, &stopped_in))
+        debug.location().is_some_and(|(stopped_in, _)| crate::app::same_file(&path, &stopped_in))
     }
 
     /// The expression at a byte offset of the tab that is showing, as the tooltip reads it.
@@ -218,8 +216,11 @@ impl UnluminousApp {
                 resting.since
             }
             _ => {
-                self.hover_rest =
-                    Some(Resting { expression: expression.clone(), range: range.clone(), since: now });
+                self.hover_rest = Some(Resting {
+                    expression: expression.clone(),
+                    range: range.clone(),
+                    since: now,
+                });
                 now
             }
         };
@@ -287,10 +288,8 @@ impl UnluminousApp {
         // The pane the caret is in, as the last frame drew it, which is the same rectangle the
         // status bar reads on the frame after — `editor_area`'s own arrangement.
         let pane = self.editor_area;
-        let word = Rect::from_min_size(
-            Pos2::new(pane.left(), pane.top()),
-            egui::Vec2::new(1.0, 1.0),
-        );
+        let word =
+            Rect::from_min_size(Pos2::new(pane.left(), pane.top()), egui::Vec2::new(1.0, 1.0));
         self.open_the_value_tooltip(index, expression, range, word, pane, true);
         // Where it really hangs is worked out by the pane on the next frame, from the caret's own
         // box: this is only the fallback for a window that has not drawn since.

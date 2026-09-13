@@ -310,7 +310,8 @@ impl BreakpointStore {
 }
 
 fn heading() -> String {
-    "# The breakpoints in this project. Written by Unluminous, and safe to edit by hand.\n".to_owned()
+    "# The breakpoints in this project. Written by Unluminous, and safe to edit by hand.\n"
+        .to_owned()
 }
 
 /// A value that is there and has something in it. Blank is the same as absent, which is the rule
@@ -434,7 +435,13 @@ mod tests {
         let text = store.to_text(&root());
         assert!(!text.contains("condition"), "{text}");
         let read = BreakpointStore::parse(&root(), &text);
-        assert!(read.breakpoints(&root().join("a.rs")).expect("there").at(1).expect("there").condition.is_none());
+        assert!(read
+            .breakpoints(&root().join("a.rs"))
+            .expect("there")
+            .at(1)
+            .expect("there")
+            .condition
+            .is_none());
     }
 
     #[test]

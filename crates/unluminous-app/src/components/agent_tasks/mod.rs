@@ -100,10 +100,8 @@ pub fn pane_header(
     // the order `components::dock::handle`'s own documentation asks for, and it is why every other panel's
     // header adds its controls after the handle.
     outcome.grab = crate::components::dock::handle(ui, area, panel);
-    let cross = Rect::from_center_size(
-        Pos2::new(area.max.x - 14.0, area.center().y),
-        Vec2::splat(18.0),
-    );
+    let cross =
+        Rect::from_center_size(Pos2::new(area.max.x - 14.0, area.center().y), Vec2::splat(18.0));
     outcome.closed = crate::components::controls::icon_button(
         ui,
         cross,
@@ -160,11 +158,14 @@ fn beside_the_rail(
     // at positions nobody can see. The views are still reachable, from the menu and from the command line.
     let tall = rail_height(look);
     let inset = rail_inset();
-    if area.width() < width + inset + AFTER_RAIL * scale + 240.0 || area.height() < tall + PAD * 2.0 {
+    if area.width() < width + inset + AFTER_RAIL * scale + 240.0 || area.height() < tall + PAD * 2.0
+    {
         return (area.shrink2(Vec2::new(PAD, 0.0)), None);
     }
-    let rail_area =
-        Rect::from_min_size(Pos2::new(area.min.x + inset, area.min.y + PAD), Vec2::new(width, tall));
+    let rail_area = Rect::from_min_size(
+        Pos2::new(area.min.x + inset, area.min.y + PAD),
+        Vec2::new(width, tall),
+    );
     let chosen = rail(board, ui, look, rail_area);
     let page = Rect::from_min_max(
         Pos2::new(rail_area.max.x + AFTER_RAIL * scale, area.min.y),
@@ -217,7 +218,12 @@ pub fn settings(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>) -> V
 }
 
 /// Whichever of the four views is chosen.
-fn body_for(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Request> {
+fn body_for(
+    board: &mut AgentTasks,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    area: Rect,
+) -> Vec<Request> {
     match board.current_view() {
         View::Board => lanes::show(board, ui, look, area),
         // The three listings are `components::agent_tasks::listings` since `task-1771`, which asked for them
@@ -257,7 +263,9 @@ fn rail_height(look: &Look<'_>) -> f32 {
     // scaled the padding and the gaps as well, so above the default font size the last button hung out of
     // the bottom of the rail.
     let scale = look.scale();
-    (RAIL_PAD * 2.0 + RAIL_BUTTON * View::ALL.len() as f32 + RAIL_GAP * (View::ALL.len() - 1) as f32)
+    (RAIL_PAD * 2.0
+        + RAIL_BUTTON * View::ALL.len() as f32
+        + RAIL_GAP * (View::ALL.len() - 1) as f32)
         * scale
 }
 
@@ -290,7 +298,10 @@ fn rail(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) 
         let at = Rect::from_center_size(
             Pos2::new(
                 area.center().x,
-                area.min.y + RAIL_PAD * scale + button / 2.0 + index as f32 * (button + RAIL_GAP * scale),
+                area.min.y
+                    + RAIL_PAD * scale
+                    + button / 2.0
+                    + index as f32 * (button + RAIL_GAP * scale),
             ),
             Vec2::splat(button),
         );
@@ -319,9 +330,17 @@ fn rail(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) 
                 );
             }
         } else if here {
-            ui.painter().rect_filled(at, egui::CornerRadius::same(radius as u8), look.palette.board_accent);
+            ui.painter().rect_filled(
+                at,
+                egui::CornerRadius::same(radius as u8),
+                look.palette.board_accent,
+            );
         } else if response.hovered() {
-            ui.painter().rect_filled(at, egui::CornerRadius::same(radius as u8), look.palette.control);
+            ui.painter().rect_filled(
+                at,
+                egui::CornerRadius::same(radius as u8),
+                look.palette.control,
+            );
         }
         let tint = match here {
             true => look.palette.text_strong,
@@ -329,7 +348,12 @@ fn rail(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) 
         };
         view_icon(view)(ui.painter(), at.center(), tint);
         response.widget_info(|| {
-            egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), here, view.label())
+            egui::WidgetInfo::selected(
+                egui::WidgetType::Button,
+                ui.is_enabled(),
+                here,
+                view.label(),
+            )
         });
         if response.clicked() {
             chosen = Some(view);
@@ -532,12 +556,22 @@ pub(crate) fn lighten(colour: egui::Color32, amount: f32) -> egui::Color32 {
         let value = f32::from(channel);
         (value + (255.0 - value) * amount.clamp(0.0, 1.0)).round().clamp(0.0, 255.0) as u8
     };
-    egui::Color32::from_rgba_premultiplied(mix(colour.r()), mix(colour.g()), mix(colour.b()), colour.a())
+    egui::Color32::from_rgba_premultiplied(
+        mix(colour.r()),
+        mix(colour.g()),
+        mix(colour.b()),
+        colour.a(),
+    )
 }
 
 pub(crate) fn darken(colour: egui::Color32, amount: f32) -> egui::Color32 {
     let mix = |channel: u8| (f32::from(channel) * (1.0 - amount.clamp(0.0, 1.0))).round() as u8;
-    egui::Color32::from_rgba_premultiplied(mix(colour.r()), mix(colour.g()), mix(colour.b()), colour.a())
+    egui::Color32::from_rgba_premultiplied(
+        mix(colour.r()),
+        mix(colour.g()),
+        mix(colour.b()),
+        colour.a(),
+    )
 }
 
 /// The one primary button on the board: `+ Add Task`.
@@ -551,18 +585,27 @@ pub(crate) fn primary_button(
     area: egui::Rect,
     label: &str,
 ) -> bool {
-    let response = ui.interact(area, ui.id().with(("agent-tasks-primary", label)), egui::Sense::click());
+    let response =
+        ui.interact(area, ui.id().with(("agent-tasks-primary", label)), egui::Sense::click());
     let ground = look.palette.board_accent;
     if look.chrome.is_recording() {
         look.chrome.glow(area, 14.0, ground.gamma_multiply(0.42), 9.0);
         look.chrome.raised(
             area,
             14.0,
-            crate::services::vello_canvas::Fill::diagonal(area, lighten(ground, 0.05), darken(ground, 0.09)),
+            crate::services::vello_canvas::Fill::diagonal(
+                area,
+                lighten(ground, 0.05),
+                darken(ground, 0.09),
+            ),
             crate::services::vello_canvas::Lift::Small,
         );
         if response.hovered() {
-            ui.painter().rect_filled(area, egui::CornerRadius::same(14), egui::Color32::from_white_alpha(22));
+            ui.painter().rect_filled(
+                area,
+                egui::CornerRadius::same(14),
+                egui::Color32::from_white_alpha(22),
+            );
         }
     } else {
         let flat = match response.hovered() {
@@ -677,7 +720,11 @@ pub(crate) fn round_button(
         look.chrome.disc(
             area.center(),
             radius,
-            crate::services::vello_canvas::Fill::diagonal(area, lighten(ground, 0.05), darken(ground, 0.09)),
+            crate::services::vello_canvas::Fill::diagonal(
+                area,
+                lighten(ground, 0.05),
+                darken(ground, 0.09),
+            ),
         );
         if response.hovered() {
             ui.painter().circle_filled(area.center(), radius, egui::Color32::from_white_alpha(24));
@@ -690,9 +737,8 @@ pub(crate) fn round_button(
         ui.painter().circle_filled(area.center(), radius, flat);
     }
     draw(ui.painter(), area.center(), look.palette.text_strong);
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name)
-    });
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
     response.clicked()
 }
 /// A label drawn at a position, which is what nearly every line on the board is.
@@ -768,7 +814,9 @@ pub(crate) fn raw_or_rendered(
     use crate::app::ViewMode;
     let mut chosen = None;
     let size = 18.0;
-    for (index, (mode, wants)) in [(ViewMode::Raw, false), (ViewMode::Preview, true)].into_iter().enumerate() {
+    for (index, (mode, wants)) in
+        [(ViewMode::Raw, false), (ViewMode::Preview, true)].into_iter().enumerate()
+    {
         let button = Rect::from_min_size(
             Pos2::new(at.max.x - size * 2.0 - 4.0 + index as f32 * (size + 4.0), at.min.y),
             Vec2::splat(size),
@@ -781,12 +829,24 @@ pub(crate) fn raw_or_rendered(
             true => format!("Read {id} as markdown"),
             false => format!("Read {id} as its source"),
         };
-        let response = ui.interact(button, ui.id().with(("agent-tasks-view", id, index)), egui::Sense::click());
+        let response = ui.interact(
+            button,
+            ui.id().with(("agent-tasks-view", id, index)),
+            egui::Sense::click(),
+        );
         let painter = ui.painter();
         if on {
-            painter.rect_filled(button, egui::CornerRadius::same(look.corner_radius as u8), look.palette.selected_row);
+            painter.rect_filled(
+                button,
+                egui::CornerRadius::same(look.corner_radius as u8),
+                look.palette.selected_row,
+            );
         } else if response.hovered() {
-            painter.rect_filled(button, egui::CornerRadius::same(look.corner_radius as u8), look.palette.control);
+            painter.rect_filled(
+                button,
+                egui::CornerRadius::same(look.corner_radius as u8),
+                look.palette.control,
+            );
         }
         let tint = match on {
             true => look.palette.text_strong,
@@ -794,7 +854,8 @@ pub(crate) fn raw_or_rendered(
         };
         crate::theme::icon::view_mode(painter, button.shrink(4.0), mode, tint);
         let said = name.clone();
-        response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, &said));
+        response
+            .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, &said));
         let _ = response.clone().on_hover_text(name);
         if response.clicked() && !on {
             chosen = Some(wants);
@@ -845,21 +906,23 @@ pub(crate) fn value_dropdown_over(
         .map(|(_, said)| said.clone())
         .unwrap_or_else(|| empty.unwrap_or("").to_owned());
     let rows: Vec<(String, String)> = match empty {
-        Some(said) => std::iter::once((String::new(), said.to_owned())).chain(options.iter().cloned()).collect(),
+        Some(said) => std::iter::once((String::new(), said.to_owned()))
+            .chain(options.iter().cloned())
+            .collect(),
         None => options.to_vec(),
     };
     let picked =
         crate::components::controls::dropdown_over(ui, at, &showing, name, None, ground, |ui| {
-        let mut picked = None;
-        for (value, said) in &rows {
-            // `selectable_label` rather than a painted row, because the list is inside egui's own popup and this
-            // is what every other dropdown in Unluminous puts in one.
-            if ui.selectable_label(value == chosen, said).clicked() {
-                picked = Some(value.clone());
+            let mut picked = None;
+            for (value, said) in &rows {
+                // `selectable_label` rather than a painted row, because the list is inside egui's own popup and this
+                // is what every other dropdown in Unluminous puts in one.
+                if ui.selectable_label(value == chosen, said).clicked() {
+                    picked = Some(value.clone());
+                }
             }
-        }
-        picked
-    });
+            picked
+        });
     picked.filter(|value| value != chosen)
 }
 

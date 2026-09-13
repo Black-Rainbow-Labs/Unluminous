@@ -2837,9 +2837,8 @@ mod tests {
                 .is_empty(),
             "the dashes are not what makes a name unknown"
         );
-        assert!(
-            unknown_arguments(open, &given(json!({ "path": "a.rs", "permanent": true }))).is_empty()
-        );
+        assert!(unknown_arguments(open, &given(json!({ "path": "a.rs", "permanent": true })))
+            .is_empty());
     }
 
     /// Both a positional and a flag arrive under their own name, so both are known names.
@@ -2977,7 +2976,10 @@ mod tests {
     #[test]
     fn file_verbs_guessed_under_editor_resolve_to_the_tab_commands() {
         for verb in ["open", "reload", "save", "close"] {
-            assert_eq!(find(&format!("editor {verb}")).map(|command| command.wire()), Some(format!("tab.{verb}")));
+            assert_eq!(
+                find(&format!("editor {verb}")).map(|command| command.wire()),
+                Some(format!("tab.{verb}"))
+            );
         }
     }
 

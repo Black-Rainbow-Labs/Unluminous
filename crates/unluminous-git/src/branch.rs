@@ -63,7 +63,8 @@ fn read(folder: &Path, namespace: &str, remote: bool) -> Vec<Branch> {
             if remote && name.ends_with("/HEAD") {
                 return None;
             }
-            let upstream = fields.get(2).map(|value| value.trim()).filter(|value| !value.is_empty());
+            let upstream =
+                fields.get(2).map(|value| value.trim()).filter(|value| !value.is_empty());
             Some(Branch {
                 name: name.to_owned(),
                 remote,

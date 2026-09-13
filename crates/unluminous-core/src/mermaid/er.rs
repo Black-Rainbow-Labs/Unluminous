@@ -294,10 +294,7 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
         // The room asked for is the label **plus both sets of markers**. The crow's foot, the bar
         // and the circle all reach back from the entity's edge, so a gap sized for the words alone
         // leaves the two ends' markers touching each other in the middle.
-        let wanted = Size::new(
-            labels[index].width + MARK * 4.0,
-            labels[index].height + MARK * 2.0,
-        );
+        let wanted = Size::new(labels[index].width + MARK * 4.0, labels[index].height + MARK * 2.0);
         graph.edges.push(EdgeSpec {
             from: relationship.from,
             to: relationship.to,
@@ -356,12 +353,10 @@ fn measure(entity: &Entity, options: &Options) -> Measured {
     let across = columns.iter().sum::<f32>() + gap * 2.0;
     let title_height = title.height + parts::PADDING_Y * 2.0;
     let row_height = row_style.size * ROW_SPACING;
-    let body = if rows.is_empty() { 0.0 } else { row_height * rows.len() as f32 + parts::PADDING_Y * 2.0 };
+    let body =
+        if rows.is_empty() { 0.0 } else { row_height * rows.len() as f32 + parts::PADDING_Y * 2.0 };
     Measured {
-        size: Size::new(
-            across.max(title.width) + parts::PADDING_X * 2.0,
-            title_height + body,
-        ),
+        size: Size::new(across.max(title.width) + parts::PADDING_X * 2.0, title_height + body),
         title,
         rows,
         title_height,
@@ -409,9 +404,23 @@ fn draw_entity(
         let y = divider + parts::PADDING_Y + row_height * index as f32;
         let mut x = rect.left() + parts::PADDING_X;
         let (kind, name, last) = &measured.rows[index];
-        parts::one_line(scene, &attribute.kind, Point::new(x, y), &kind_style, Anchor::Start, kind.width);
+        parts::one_line(
+            scene,
+            &attribute.kind,
+            Point::new(x, y),
+            &kind_style,
+            Anchor::Start,
+            kind.width,
+        );
         x += measured.columns[0] + 14.0;
-        parts::one_line(scene, &attribute.name, Point::new(x, y), &name_style, Anchor::Start, name.width);
+        parts::one_line(
+            scene,
+            &attribute.name,
+            Point::new(x, y),
+            &name_style,
+            Anchor::Start,
+            name.width,
+        );
         x += measured.columns[1] + 14.0;
         let words = if attribute.comment.is_empty() {
             attribute.key.clone()
@@ -421,7 +430,14 @@ fn draw_entity(
             format!("{} {}", attribute.key, attribute.comment)
         };
         if !words.is_empty() {
-            parts::one_line(scene, &words, Point::new(x, y), &kind_style, Anchor::Start, last.width);
+            parts::one_line(
+                scene,
+                &words,
+                Point::new(x, y),
+                &kind_style,
+                Anchor::Start,
+                last.width,
+            );
         }
     }
 }
@@ -502,10 +518,7 @@ fn draw_count(scene: &mut Scene, count: Count, at: Point, towards: Point, stroke
         let back = step(MARK);
         for offset in [-7.0, 0.0, 7.0] {
             scene.add(Item::Line {
-                points: vec![
-                    back,
-                    Point::new(at.x + across.x * offset, at.y + across.y * offset),
-                ],
+                points: vec![back, Point::new(at.x + across.x * offset, at.y + across.y * offset)],
                 stroke,
                 dash: Dash::Solid,
             });
@@ -613,7 +626,16 @@ mod tests {
         let scene = check::drawn(
             text,
             &options(),
-            &["CUSTOMER", "ORDER", "LINE_ITEM", "DELIVERY_ADDRESS", "places", "contains", "name", "email"],
+            &[
+                "CUSTOMER",
+                "ORDER",
+                "LINE_ITEM",
+                "DELIVERY_ADDRESS",
+                "places",
+                "contains",
+                "name",
+                "email",
+            ],
         );
         check::no_two_rectangles_overlap(
             &scene.rects().into_iter().filter(|rect| rect.height > 20.0).collect::<Vec<_>>(),

@@ -149,7 +149,8 @@ impl FindInFiles {
             return;
         }
         let path = hit.path.clone();
-        let too_large = std::fs::metadata(&path).map(|meta| meta.len() > PREVIEW_LIMIT).unwrap_or(false);
+        let too_large =
+            std::fs::metadata(&path).map(|meta| meta.len() > PREVIEW_LIMIT).unwrap_or(false);
         let preview = if too_large {
             Preview {
                 path,
@@ -160,10 +161,15 @@ impl FindInFiles {
             match std::fs::read_to_string(&path) {
                 Ok(text) => Preview {
                     path,
-                    lines: text.split('\n').map(|line| line.trim_end_matches('\r').to_owned()).collect(),
+                    lines: text
+                        .split('\n')
+                        .map(|line| line.trim_end_matches('\r').to_owned())
+                        .collect(),
                     problem: None,
                 },
-                Err(problem) => Preview { path, lines: Vec::new(), problem: Some(problem.to_string()) },
+                Err(problem) => {
+                    Preview { path, lines: Vec::new(), problem: Some(problem.to_string()) }
+                }
             }
         };
         self.preview = Some(preview);
@@ -276,7 +282,8 @@ pub fn show(ctx: &egui::Context, state: &mut FindInFiles, split: f32) -> FindOut
 
         let body = modal::body(area);
         let tick_width = 120.0;
-        let field = Rect::from_min_size(body.min, Vec2::new(body.width() - tick_width - 12.0, 30.0));
+        let field =
+            Rect::from_min_size(body.min, Vec2::new(body.width() - tick_width - 12.0, 30.0));
         let entry =
             controls::search_field(ui, field, "Find in files", "Text to find", &mut state.query);
         if !entry.has_focus() {
@@ -290,10 +297,8 @@ pub fn show(ctx: &egui::Context, state: &mut FindInFiles, split: f32) -> FindOut
 
         // The Replace row, under the Find box, opened by its own tick box. `task-1804` §3.1.
         let mut top = field.bottom();
-        let replace_tick = Rect::from_min_size(
-            Pos2::new(body.left(), top + 6.0),
-            Vec2::new(tick_width, 26.0),
-        );
+        let replace_tick =
+            Rect::from_min_size(Pos2::new(body.left(), top + 6.0), Vec2::new(tick_width, 26.0));
         modal::check(ui, replace_tick, "Replace", &mut state.replacing);
         top = replace_tick.bottom();
         if state.replacing {
@@ -328,7 +333,8 @@ pub fn show(ctx: &egui::Context, state: &mut FindInFiles, split: f32) -> FindOut
         let split = split.clamp(SPLIT_MIN, SPLIT_MAX);
         let results_height = (panes.height() * split).floor();
         let results = Rect::from_min_size(panes.min, Vec2::new(panes.width(), results_height));
-        let preview = Rect::from_min_max(Pos2::new(panes.left(), results.bottom() + 9.0), panes.max);
+        let preview =
+            Rect::from_min_max(Pos2::new(panes.left(), results.bottom() + 9.0), panes.max);
 
         if let Some(opened) = rows(ui, results, state) {
             outcome.open = Some(opened);
@@ -493,23 +499,27 @@ fn show_preview(ui: &mut egui::Ui, area: Rect, state: &mut FindInFiles) {
         for index in shown {
             let number = index + 1;
             let line = &lines[index];
-            let (rect, _) =
-                ui.allocate_exact_size(Vec2::new(ui.available_width().max(1.0), row_height), egui::Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(
+                Vec2::new(ui.available_width().max(1.0), row_height),
+                egui::Sense::hover(),
+            );
             let painter = ui.painter();
             let on_the_match = number == matched_line;
             if on_the_match {
                 painter.rect_filled(rect, egui::CornerRadius::same(3), color::selected_row());
             }
             let tint = if on_the_match { color::text_strong() } else { color::text_dim() };
-            modal::label(painter, rect, rect.left() + 6.0, &format!("{number:>5}"), color::text_faint(), 10.5);
-            let marks = if on_the_match { char_marks(line, &range) } else { Vec::new() };
-            let galley = controls::marked_text(
+            modal::label(
                 painter,
-                line,
-                &marks,
-                tint,
-                egui::FontId::monospace(11.5),
+                rect,
+                rect.left() + 6.0,
+                &format!("{number:>5}"),
+                color::text_faint(),
+                10.5,
             );
+            let marks = if on_the_match { char_marks(line, &range) } else { Vec::new() };
+            let galley =
+                controls::marked_text(painter, line, &marks, tint, egui::FontId::monospace(11.5));
             painter.galley(
                 Pos2::new(rect.left() + 52.0, rect.center().y - galley.size().y / 2.0),
                 galley,

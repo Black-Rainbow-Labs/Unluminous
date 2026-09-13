@@ -72,7 +72,13 @@ pub fn disclosure(painter: &egui::Painter, centre: Pos2, open: bool, color: Colo
 /// points would read as a bug rather than as a zoom. Only the three the explorer draws take a scale, and
 /// the plain form of each is the scaled one at one — so nothing else in the window changes and there is one
 /// shape rather than two that can drift apart.
-pub fn disclosure_at(painter: &egui::Painter, centre: Pos2, open: bool, color: Color32, scale: f32) {
+pub fn disclosure_at(
+    painter: &egui::Painter,
+    centre: Pos2,
+    open: bool,
+    color: Color32,
+    scale: f32,
+) {
     match super::icons() {
         IconSet::Classic => classic_disclosure(painter, centre, open, color, scale),
         IconSet::Material => material_disclosure(painter, centre, open, color, scale),
@@ -80,7 +86,13 @@ pub fn disclosure_at(painter: &egui::Painter, centre: Pos2, open: bool, color: C
 }
 
 /// The triangle Unluminous shipped with.
-fn classic_disclosure(painter: &egui::Painter, centre: Pos2, open: bool, color: Color32, scale: f32) {
+fn classic_disclosure(
+    painter: &egui::Painter,
+    centre: Pos2,
+    open: bool,
+    color: Color32,
+    scale: f32,
+) {
     let at = |x: f32, y: f32| Pos2::new(centre.x + x * scale, centre.y + y * scale);
     let points = if open {
         vec![at(-4.0, -2.0), at(4.0, -2.0), at(0.0, 3.0)]
@@ -95,7 +107,13 @@ fn classic_disclosure(painter: &egui::Painter, centre: Pos2, open: bool, color: 
 /// **The mark `task-1776` names.** It is a little narrower than the triangle it replaces — 3.2 points
 /// either side of the point rather than 4 — because a chevron reads at its corner and the triangle read
 /// at its mass, and the explorer's rows are 18 points apart at one level of indent.
-fn material_disclosure(painter: &egui::Painter, centre: Pos2, open: bool, color: Color32, scale: f32) {
+fn material_disclosure(
+    painter: &egui::Painter,
+    centre: Pos2,
+    open: bool,
+    color: Color32,
+    scale: f32,
+) {
     let at = |x: f32, y: f32| Pos2::new(centre.x + x * scale, centre.y + y * scale);
     let points = if open {
         vec![at(-3.4, -1.6), at(0.0, 2.0), at(3.4, -1.6)]
@@ -158,7 +176,12 @@ fn material_folder(painter: &egui::Painter, centre: Pos2, open: bool, color: Col
 
 /// Four stacked lines showing how a paragraph is placed. The short lines sit where the ragged edge
 /// would be, which is what makes the four buttons tell each other apart.
-pub fn alignment(painter: &egui::Painter, area: Rect, align: unluminous_core::Align, color: Color32) {
+pub fn alignment(
+    painter: &egui::Painter,
+    area: Rect,
+    align: unluminous_core::Align,
+    color: Color32,
+) {
     let full = area.width();
     let short = full * 0.62;
     let spacing = area.height() / 3.0;
@@ -215,7 +238,8 @@ pub fn half_filled_circle(painter: &egui::Painter, centre: Pos2, radius: f32, co
     let mut points = vec![Pos2::new(centre.x, centre.y - radius)];
     let steps = 12;
     for step in 0..=steps {
-        let angle = -std::f32::consts::FRAC_PI_2 + std::f32::consts::PI * step as f32 / steps as f32;
+        let angle =
+            -std::f32::consts::FRAC_PI_2 + std::f32::consts::PI * step as f32 / steps as f32;
         points.push(Pos2::new(centre.x + angle.cos() * radius, centre.y + angle.sin() * radius));
     }
     painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
@@ -243,11 +267,17 @@ pub fn bin(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let (w, h) = (4.0, 5.0);
     // The lid, with the little handle over it.
     painter.line_segment(
-        [Pos2::new(centre.x - w - 1.0, centre.y - h + 1.0), Pos2::new(centre.x + w + 1.0, centre.y - h + 1.0)],
+        [
+            Pos2::new(centre.x - w - 1.0, centre.y - h + 1.0),
+            Pos2::new(centre.x + w + 1.0, centre.y - h + 1.0),
+        ],
         stroke,
     );
     painter.line_segment(
-        [Pos2::new(centre.x - 1.6, centre.y - h - 1.0), Pos2::new(centre.x + 1.6, centre.y - h - 1.0)],
+        [
+            Pos2::new(centre.x - 1.6, centre.y - h - 1.0),
+            Pos2::new(centre.x + 1.6, centre.y - h - 1.0),
+        ],
         stroke,
     );
     // The body, as three sides of a box that narrows towards the bottom.
@@ -445,10 +475,8 @@ pub fn view_mode(painter: &egui::Painter, area: Rect, mode: crate::app::ViewMode
         }
         ViewMode::Preview => {
             // A thick heading bar, then two thinner lines, which is what a rendered page looks like.
-            let bar = Rect::from_min_size(
-                inner.left_top(),
-                egui::Vec2::new(inner.width() * 0.62, 2.6),
-            );
+            let bar =
+                Rect::from_min_size(inner.left_top(), egui::Vec2::new(inner.width() * 0.62, 2.6));
             painter.rect_filled(bar, CornerRadius::same(1), color);
             for row in 1..3 {
                 let y = inner.top() + inner.height() * row as f32 / 2.0 + 1.0;
@@ -539,12 +567,18 @@ pub fn editing_area(painter: &egui::Painter, centre: Pos2, color: Color32) {
 fn material_editing_area(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let round = CornerRadius::same(2);
     painter.rect_filled(
-        Rect::from_min_max(Pos2::new(centre.x - 6.0, centre.y - 4.5), Pos2::new(centre.x - 0.9, centre.y + 4.5)),
+        Rect::from_min_max(
+            Pos2::new(centre.x - 6.0, centre.y - 4.5),
+            Pos2::new(centre.x - 0.9, centre.y + 4.5),
+        ),
         round,
         color,
     );
     painter.rect_filled(
-        Rect::from_min_max(Pos2::new(centre.x + 0.9, centre.y - 4.5), Pos2::new(centre.x + 6.0, centre.y + 4.5)),
+        Rect::from_min_max(
+            Pos2::new(centre.x + 0.9, centre.y - 4.5),
+            Pos2::new(centre.x + 6.0, centre.y + 4.5),
+        ),
         round,
         color,
     );
@@ -582,7 +616,12 @@ pub fn terminal(painter: &egui::Painter, centre: Pos2, color: Color32) {
 /// weight without any part of it being painted in the ground — see [`material_editing_area`].
 fn material_terminal(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let body = Rect::from_center_size(centre, egui::Vec2::new(12.0, 10.0));
-    painter.rect_stroke(body, CornerRadius::same(2), Stroke::new(1.6, color), egui::StrokeKind::Inside);
+    painter.rect_stroke(
+        body,
+        CornerRadius::same(2),
+        Stroke::new(1.6, color),
+        egui::StrokeKind::Inside,
+    );
     painter.rect_filled(
         Rect::from_min_max(body.min, Pos2::new(body.right(), body.top() + 2.6)),
         CornerRadius { nw: 2, ne: 2, sw: 0, se: 0 },
@@ -644,14 +683,8 @@ pub fn line_spacing(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let bottom = Pos2::new(centre.x, centre.y + 5.0);
     painter.line_segment([top, bottom], stroke);
     for (point, direction) in [(top, 1.0), (bottom, -1.0)] {
-        painter.line_segment(
-            [point, Pos2::new(point.x - 2.2, point.y + 2.6 * direction)],
-            stroke,
-        );
-        painter.line_segment(
-            [point, Pos2::new(point.x + 2.2, point.y + 2.6 * direction)],
-            stroke,
-        );
+        painter.line_segment([point, Pos2::new(point.x - 2.2, point.y + 2.6 * direction)], stroke);
+        painter.line_segment([point, Pos2::new(point.x + 2.2, point.y + 2.6 * direction)], stroke);
     }
 }
 
@@ -703,7 +736,12 @@ pub fn color_wheel(painter: &egui::Painter, centre: Pos2, color: Color32) {
 /// - a **constant** is a filled square, the same shape with nothing that can change in it;
 /// - a **variable** is a small filled circle, the plainest mark there is;
 /// - a **module** is three stacked lines, a folder's worth of things seen edge on.
-pub fn symbol_kind(painter: &egui::Painter, centre: Pos2, kind: unluminous_core::SymbolKind, color: Color32) {
+pub fn symbol_kind(
+    painter: &egui::Painter,
+    centre: Pos2,
+    kind: unluminous_core::SymbolKind,
+    color: Color32,
+) {
     use unluminous_core::SymbolKind;
     let stroke = Stroke::new(1.3, color);
     match kind {
@@ -788,7 +826,11 @@ pub fn run_scaled(painter: &egui::Painter, centre: Pos2, color: Color32, scale: 
 
 /// A filled square: stop.
 pub fn stop(painter: &egui::Painter, centre: Pos2, color: Color32) {
-    painter.rect_filled(Rect::from_center_size(centre, egui::Vec2::splat(9.0)), CornerRadius::same(1), color);
+    painter.rect_filled(
+        Rect::from_center_size(centre, egui::Vec2::splat(9.0)),
+        CornerRadius::same(1),
+        color,
+    );
 }
 
 /// An arrow going round in a circle: rerun.
@@ -803,7 +845,8 @@ pub fn rerun(painter: &egui::Painter, centre: Pos2, color: Color32) {
     // From just past the top, clockwise, stopping short of where it started so the gap the head
     // sits in is visible.
     for step in 0..=18 {
-        let angle = -std::f32::consts::FRAC_PI_2 + 0.35
+        let angle = -std::f32::consts::FRAC_PI_2
+            + 0.35
             + step as f32 / 18.0 * (std::f32::consts::TAU - 1.1);
         points.push(Pos2::new(centre.x + radius * angle.cos(), centre.y + radius * angle.sin()));
     }
@@ -903,8 +946,14 @@ fn material_bug(painter: &egui::Painter, centre: Pos2, color: Color32) {
     painter.rect_filled(body, CornerRadius::same(4), color);
     for step in 0..3 {
         let y = body.top() + 2.5 + step as f32 * 2.75;
-        painter.line_segment([Pos2::new(body.left(), y), Pos2::new(body.left() - 3.0, y - 1.0)], stroke);
-        painter.line_segment([Pos2::new(body.right(), y), Pos2::new(body.right() + 3.0, y - 1.0)], stroke);
+        painter.line_segment(
+            [Pos2::new(body.left(), y), Pos2::new(body.left() - 3.0, y - 1.0)],
+            stroke,
+        );
+        painter.line_segment(
+            [Pos2::new(body.right(), y), Pos2::new(body.right() + 3.0, y - 1.0)],
+            stroke,
+        );
     }
     painter.line_segment(
         [Pos2::new(centre.x - 1.5, body.top() + 0.6), Pos2::new(centre.x - 3.6, body.top() - 3.0)],
@@ -925,8 +974,10 @@ fn classic_bug(painter: &egui::Painter, centre: Pos2, color: Color32) {
     // rather than as a rounded rectangle.
     for step in 0..3 {
         let y = body.top() + 2.5 + step as f32 * 2.75;
-        painter
-            .line_segment([Pos2::new(body.left(), y), Pos2::new(body.left() - 3.0, y - 1.0)], stroke);
+        painter.line_segment(
+            [Pos2::new(body.left(), y), Pos2::new(body.left() - 3.0, y - 1.0)],
+            stroke,
+        );
         painter.line_segment(
             [Pos2::new(body.right(), y), Pos2::new(body.right() + 3.0, y - 1.0)],
             stroke,
@@ -976,7 +1027,8 @@ pub enum StepIcon {
 pub fn step(painter: &egui::Painter, centre: Pos2, kind: StepIcon, color: Color32) {
     let stroke = Stroke::new(1.5, color);
     let base = centre.y + 5.0;
-    painter.line_segment([Pos2::new(centre.x - 6.0, base), Pos2::new(centre.x + 6.0, base)], stroke);
+    painter
+        .line_segment([Pos2::new(centre.x - 6.0, base), Pos2::new(centre.x + 6.0, base)], stroke);
     match kind {
         StepIcon::Over => {
             // An arc that hops over the dot, as three segments: a real arc would be a dozen points
@@ -1029,7 +1081,10 @@ fn arrow_head(painter: &egui::Painter, tip: Pos2, direction: f32, color: Color32
 pub fn stack(painter: &egui::Painter, centre: Pos2, color: Color32) {
     for (row, width) in [(-4.0_f32, 6.0_f32), (0.0, 5.0), (4.0, 3.5)] {
         painter.line_segment(
-            [Pos2::new(centre.x - width, centre.y + row), Pos2::new(centre.x + width, centre.y + row)],
+            [
+                Pos2::new(centre.x - width, centre.y + row),
+                Pos2::new(centre.x + width, centre.y + row),
+            ],
             Stroke::new(1.6, color),
         );
     }
@@ -1054,7 +1109,8 @@ pub fn diamond(painter: &egui::Painter, centre: Pos2, color: Color32) {
 
 /// A speech mark: a small rounded box with a tail, which is what a comment count is drawn beside.
 pub fn comment(painter: &egui::Painter, centre: Pos2, color: Color32) {
-    let box_rect = Rect::from_center_size(Pos2::new(centre.x, centre.y - 1.0), egui::Vec2::new(11.0, 8.0));
+    let box_rect =
+        Rect::from_center_size(Pos2::new(centre.x, centre.y - 1.0), egui::Vec2::new(11.0, 8.0));
     painter.rect_stroke(
         box_rect,
         CornerRadius::same(2),
@@ -1062,7 +1118,10 @@ pub fn comment(painter: &egui::Painter, centre: Pos2, color: Color32) {
         egui::StrokeKind::Inside,
     );
     painter.line_segment(
-        [Pos2::new(centre.x - 2.0, box_rect.max.y), Pos2::new(centre.x - 3.5, box_rect.max.y + 3.0)],
+        [
+            Pos2::new(centre.x - 2.0, box_rect.max.y),
+            Pos2::new(centre.x - 3.5, box_rect.max.y + 3.0),
+        ],
         Stroke::new(1.3, color),
     );
 }
@@ -1082,7 +1141,12 @@ pub fn copy(painter: &egui::Painter, centre: Pos2, color: Color32) {
     );
     let front = Rect::from_center_size(Pos2::new(centre.x + 1.5, centre.y + 1.5), sheet);
     painter.rect_filled(front, CornerRadius::same(2), color.gamma_multiply(0.0));
-    painter.rect_stroke(front, CornerRadius::same(2), Stroke::new(1.4, color), egui::StrokeKind::Inside);
+    painter.rect_stroke(
+        front,
+        CornerRadius::same(2),
+        Stroke::new(1.4, color),
+        egui::StrokeKind::Inside,
+    );
 }
 
 /// A speech bubble with two lines in it, which is what `pane.icon = chat` draws.
@@ -1104,7 +1168,8 @@ pub fn chat(painter: &egui::Painter, centre: Pos2, color: Color32) {
 /// ground, which is the one thing this set does not do. What is left is the silhouette, which is what the
 /// design sheet drew and what reads at ten points.
 fn material_chat(painter: &egui::Painter, centre: Pos2, color: Color32) {
-    let bubble = Rect::from_center_size(Pos2::new(centre.x, centre.y - 1.0), egui::Vec2::new(13.0, 10.0));
+    let bubble =
+        Rect::from_center_size(Pos2::new(centre.x, centre.y - 1.0), egui::Vec2::new(13.0, 10.0));
     painter.rect_filled(bubble, CornerRadius::same(3), color);
     painter.add(egui::Shape::convex_polygon(
         vec![
@@ -1119,7 +1184,8 @@ fn material_chat(painter: &egui::Painter, centre: Pos2, color: Color32) {
 
 /// The outlined bubble Unluminous shipped with.
 fn classic_chat(painter: &egui::Painter, centre: Pos2, color: Color32) {
-    let box_rect = Rect::from_center_size(Pos2::new(centre.x, centre.y - 1.0), egui::Vec2::new(13.0, 10.0));
+    let box_rect =
+        Rect::from_center_size(Pos2::new(centre.x, centre.y - 1.0), egui::Vec2::new(13.0, 10.0));
     painter.rect_stroke(
         box_rect,
         CornerRadius::same(3),
@@ -1128,7 +1194,10 @@ fn classic_chat(painter: &egui::Painter, centre: Pos2, color: Color32) {
     );
     // The tail, down and to the left, which is what tells a bubble from a box at this size.
     painter.line_segment(
-        [Pos2::new(centre.x - 2.5, box_rect.max.y), Pos2::new(centre.x - 4.5, box_rect.max.y + 3.5)],
+        [
+            Pos2::new(centre.x - 2.5, box_rect.max.y),
+            Pos2::new(centre.x - 4.5, box_rect.max.y + 3.5),
+        ],
         Stroke::new(1.4, color),
     );
     // Two lines of words in it. Inset by three so neither touches the stroke.
@@ -1136,7 +1205,10 @@ fn classic_chat(painter: &egui::Painter, centre: Pos2, color: Color32) {
         let y = box_rect.top() + 3.5 + index as f32 * 3.0;
         let left = box_rect.left() + 3.0;
         let width = (box_rect.width() - 6.0) * share;
-        painter.line_segment([Pos2::new(left, y), Pos2::new(left + width, y)], Stroke::new(1.2, color));
+        painter.line_segment(
+            [Pos2::new(left, y), Pos2::new(left + width, y)],
+            Stroke::new(1.2, color),
+        );
     }
 }
 
@@ -1160,7 +1232,10 @@ pub fn board(painter: &egui::Painter, centre: Pos2, color: Color32) {
 fn material_board(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let half = 5.5;
     painter.rect_filled(
-        Rect::from_min_max(Pos2::new(centre.x - half, centre.y - half), Pos2::new(centre.x + half, centre.y - 3.2)),
+        Rect::from_min_max(
+            Pos2::new(centre.x - half, centre.y - half),
+            Pos2::new(centre.x + half, centre.y - 3.2),
+        ),
         CornerRadius { nw: 2, ne: 2, sw: 0, se: 0 },
         color,
     );
@@ -1187,10 +1262,7 @@ fn classic_board(painter: &egui::Painter, centre: Pos2, color: Color32) {
         let x = centre.x - half + index as f32 * (column + 1.0);
         let height = half * 2.0 * share;
         painter.rect_filled(
-            Rect::from_min_size(
-                Pos2::new(x, centre.y - half),
-                egui::Vec2::new(column, height),
-            ),
+            Rect::from_min_size(Pos2::new(x, centre.y - half), egui::Vec2::new(column, height)),
             CornerRadius::same(1),
             color,
         );
@@ -1230,7 +1302,10 @@ pub fn database(painter: &egui::Painter, centre: Pos2, color: Color32) {
     // The two sides.
     for side in [-1.0_f32, 1.0] {
         painter.line_segment(
-            [Pos2::new(centre.x + side * half_width, top), Pos2::new(centre.x + side * half_width, bottom - 2.0)],
+            [
+                Pos2::new(centre.x + side * half_width, top),
+                Pos2::new(centre.x + side * half_width, bottom - 2.0),
+            ],
             Stroke::new(1.3, color),
         );
     }
@@ -1239,7 +1314,12 @@ pub fn database(painter: &egui::Painter, centre: Pos2, color: Color32) {
 /// A table: a grid with a heavier first row, which is what a header is.
 pub fn table(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let rect = Rect::from_center_size(centre, egui::Vec2::new(13.0, 11.0));
-    painter.rect_stroke(rect, CornerRadius::same(2), Stroke::new(1.2, color), egui::StrokeKind::Inside);
+    painter.rect_stroke(
+        rect,
+        CornerRadius::same(2),
+        Stroke::new(1.2, color),
+        egui::StrokeKind::Inside,
+    );
     // The header rule, heavier than the rest, which is what tells a table from a window.
     let header = rect.top() + 3.5;
     painter.line_segment(
@@ -1264,8 +1344,10 @@ pub fn table(painter: &egui::Painter, centre: Pos2, color: Color32) {
 /// person recognises about a node graph is the wire, not the boxes.
 pub fn space(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let stroke = Stroke::new(1.2, color);
-    let left = Rect::from_min_size(Pos2::new(centre.x - 7.0, centre.y - 6.0), egui::Vec2::new(6.0, 5.0));
-    let right = Rect::from_min_size(Pos2::new(centre.x + 1.0, centre.y + 1.0), egui::Vec2::new(6.0, 5.0));
+    let left =
+        Rect::from_min_size(Pos2::new(centre.x - 7.0, centre.y - 6.0), egui::Vec2::new(6.0, 5.0));
+    let right =
+        Rect::from_min_size(Pos2::new(centre.x + 1.0, centre.y + 1.0), egui::Vec2::new(6.0, 5.0));
     painter.rect_stroke(left, CornerRadius::same(1), stroke, egui::StrokeKind::Inside);
     painter.rect_stroke(right, CornerRadius::same(1), stroke, egui::StrokeKind::Inside);
     // The wire: out of the right hand edge of one and into the left hand edge of the other, with the
@@ -1281,7 +1363,10 @@ pub fn space(painter: &egui::Painter, centre: Pos2, color: Color32) {
             + 3.0 * u * u * t * (from.x + 4.0)
             + 3.0 * u * t * t * (to.x - 4.0)
             + t * t * t * to.x;
-        let y = u * u * u * from.y + 3.0 * u * u * t * from.y + 3.0 * u * t * t * to.y + t * t * t * to.y;
+        let y = u * u * u * from.y
+            + 3.0 * u * u * t * from.y
+            + 3.0 * u * t * t * to.y
+            + t * t * t * to.y;
         let at = Pos2::new(x, y);
         painter.line_segment([last, at], stroke);
         last = at;

@@ -90,9 +90,10 @@ pub fn show(
     if !dialog.open {
         return outcome;
     }
-    let (inner, should_close) = modal::show(ctx, "unluminous-run-configurations", WIDTH, HEIGHT, |ui, area| {
-        contents(ui, area, dialog, configurations, running)
-    });
+    let (inner, should_close) =
+        modal::show(ctx, "unluminous-run-configurations", WIDTH, HEIGHT, |ui, area| {
+            contents(ui, area, dialog, configurations, running)
+        });
     outcome = inner;
     if outcome.closed || should_close {
         dialog.close();
@@ -187,7 +188,9 @@ fn show_list(
         if configurations.is_empty() {
             ui.add_space(6.0);
             ui.label(
-                egui::RichText::new("  Nothing yet. Press Add.").size(11.5).color(color::text_faint()),
+                egui::RichText::new("  Nothing yet. Press Add.")
+                    .size(11.5)
+                    .color(color::text_faint()),
             );
         }
     });
@@ -239,7 +242,12 @@ fn show_fields(
     outcome: &mut DialogOutcome,
 ) {
     let Some(name) = dialog.chosen.clone() else {
-        modal::note(ui, area, area.top() + 4.0, "Choose a configuration, or press Add to make one.");
+        modal::note(
+            ui,
+            area,
+            area.top() + 4.0,
+            "Choose a configuration, or press Add to make one.",
+        );
         return;
     };
     let origin = configurations.find(&name).map(|(origin, _)| origin);
@@ -327,7 +335,9 @@ mod tests {
         dialog.open(Some("two".to_owned()));
         configurations.remove("one");
         assert_eq!(
-            configurations.find(dialog.chosen.as_deref().expect("a choice")).map(|(_, c)| c.name.clone()),
+            configurations
+                .find(dialog.chosen.as_deref().expect("a choice"))
+                .map(|(_, c)| c.name.clone()),
             Some("two".to_owned())
         );
     }

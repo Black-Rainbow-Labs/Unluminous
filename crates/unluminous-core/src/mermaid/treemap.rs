@@ -63,7 +63,10 @@ fn read(source: &Source) -> Result<Tree, Problem> {
                 let Ok(value) = value.trim().parse::<f32>() else {
                     return Err(Problem::at(
                         line,
-                        format!("`{}` is not a number, and a leaf's value has to be one.", value.trim()),
+                        format!(
+                            "`{}` is not a number, and a leaf's value has to be one.",
+                            value.trim()
+                        ),
                     ));
                 };
                 if value < 0.0 {
@@ -149,7 +152,8 @@ fn lay_out(
 ) {
     // A node worth nothing has no area to be drawn in, so it is left out rather than drawn as a
     // sliver nobody can read.
-    let mut worth: Vec<usize> = nodes.iter().copied().filter(|&index| totals[index] > 0.0).collect();
+    let mut worth: Vec<usize> =
+        nodes.iter().copied().filter(|&index| totals[index] > 0.0).collect();
     worth.sort_by(|a, b| totals[*b].total_cmp(&totals[*a]));
     if worth.is_empty() || area.width <= 1.0 || area.height <= 1.0 {
         return;
@@ -160,7 +164,9 @@ fn lay_out(
         scene.add(Item::Rect {
             rect,
             radius: 3.0,
-            fill: Some(options.theme.wash(node.depth, if node.children.is_empty() { 110 } else { 44 })),
+            fill: Some(
+                options.theme.wash(node.depth, if node.children.is_empty() { 110 } else { 44 }),
+            ),
             stroke: Some(Stroke::new(colour, parts::LINE)),
         });
         if node.children.is_empty() {
@@ -319,12 +325,7 @@ fn place_row(
         // The gap is taken off the inside, so two neighbours never touch and the tree reads.
         out.push((
             index,
-            Rect::new(
-                rect.x,
-                rect.y,
-                (rect.width - GAP).max(1.0),
-                (rect.height - GAP).max(1.0),
-            ),
+            Rect::new(rect.x, rect.y, (rect.width - GAP).max(1.0), (rect.height - GAP).max(1.0)),
         ));
     }
     if along_the_top {
@@ -385,11 +386,7 @@ mod tests {
             \"Editing\"\n  \"Undo\": 30\n  \"Formatting\": 18\n  \"Search\": 12\n\
             \"Panes\"\n  \"Explorer\": 22\n  \"Terminal\": 26\n  \"Git\": 16\n\
             \"Plugins\": 14\n";
-        check::drawn(
-            text,
-            &options(),
-            &["Editing", "Undo", "Panes", "Terminal", "Plugins"],
-        );
+        check::drawn(text, &options(), &["Editing", "Undo", "Panes", "Terminal", "Plugins"]);
     }
 
     #[test]

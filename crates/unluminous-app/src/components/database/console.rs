@@ -77,7 +77,10 @@ fn toolbar(
 
     // The one button on the page that does the thing the page is for, so it is the board's own
     // primary button rather than an icon in a row of icons.
-    let execute = Rect::from_min_size(Pos2::new(at, bar.top() + 3.0 * scale), Vec2::new(74.0 * scale, bar.height() - 6.0 * scale));
+    let execute = Rect::from_min_size(
+        Pos2::new(at, bar.top() + 3.0 * scale),
+        Vec2::new(74.0 * scale, bar.height() - 6.0 * scale),
+    );
     at += execute.width() + 6.0 * scale;
     if crate::components::modal::button(ui, execute, "Execute", !running, true) {
         acts.push(Act::Execute(id));
@@ -85,7 +88,15 @@ fn toolbar(
     // Stop is absent unless something is running **and this engine can stop one**: a control that
     // cannot apply is not drawn, which is the same rule that leaves the `F` button off a `.rs` file.
     let can_stop = explorer.can_stop(&console.source);
-    if running && can_stop && crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Stop", icon::stop) {
+    if running
+        && can_stop
+        && crate::components::controls::icon_button(
+            ui,
+            along(bar, &mut at, step),
+            "Stop",
+            icon::stop,
+        )
+    {
         acts.push(Act::Stop(id));
     }
     let source = console.source.clone();
@@ -98,7 +109,11 @@ fn toolbar(
     let painter = ui.painter();
     let mark = Pos2::new(bar.right() - 8.0 * scale, bar.center().y);
     let drawn = painter
-        .layout_no_wrap(where_it_is.clone(), egui::FontId::proportional(look.font_size * 0.85), color::text_dim())
+        .layout_no_wrap(
+            where_it_is.clone(),
+            egui::FontId::proportional(look.font_size * 0.85),
+            color::text_dim(),
+        )
         .size()
         .x;
     text(
@@ -139,7 +154,8 @@ fn sql_editor(
     // nothing and why a paste went into the file behind the tab — `task-1795`.
     let sql_id = egui::Id::new(("database-console-sql", id));
     crate::components::controls::claim_the_field(ui, area, sql_id);
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).id_salt(("database-console", id)));
+    let mut child =
+        ui.new_child(egui::UiBuilder::new().max_rect(inner).id_salt(("database-console", id)));
     // **The colouring comes from the window's own plugins**, through the same `CodeHighlighter` the
     // Markdown preview colours a fenced block with — so the console and a `.sql` file agree by
     // construction rather than by two lists being kept in step. With no highlighter, which is every
@@ -203,10 +219,15 @@ fn colour_the_sql(
 ) -> egui::text::LayoutJob {
     let font = egui::FontId::monospace(size);
     let mut job = egui::text::LayoutJob::default();
-    let coloured = highlighter.map(|highlighter| highlighter.colour("sql", text)).unwrap_or_default();
+    let coloured =
+        highlighter.map(|highlighter| highlighter.colour("sql", text)).unwrap_or_default();
     let mut at = 0;
     for (range, colour) in coloured {
-        if range.start < at || range.end > text.len() || !text.is_char_boundary(range.start) || !text.is_char_boundary(range.end) {
+        if range.start < at
+            || range.end > text.len()
+            || !text.is_char_boundary(range.start)
+            || !text.is_char_boundary(range.end)
+        {
             continue;
         }
         if range.start > at {
@@ -281,7 +302,14 @@ fn the_results(
             // Newest last, which is what a console log is: an `UPDATE`'s count, a `NOTICE`, a
             // `CREATE TABLE` that said nothing else.
             for line in output.iter().rev().take(12).collect::<Vec<&String>>().into_iter().rev() {
-                code(&painter, Pos2::new(inner.left(), pen), line, color::text(), look.monospace_size * 0.95, inner.width());
+                code(
+                    &painter,
+                    Pos2::new(inner.left(), pen),
+                    line,
+                    color::text(),
+                    look.monospace_size * 0.95,
+                    inner.width(),
+                );
                 pen += look.monospace_size * 1.5;
             }
         }

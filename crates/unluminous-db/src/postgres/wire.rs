@@ -45,9 +45,15 @@ pub enum Message {
     /// `R` with a 12: the server's signature.
     AuthenticationSaslFinal(String),
     /// `S`: a run-time parameter, which is where the server version comes from.
-    ParameterStatus { name: String, value: String },
+    ParameterStatus {
+        name: String,
+        value: String,
+    },
     /// `K`: what a cancellation has to quote back on a second connection.
-    BackendKeyData { process: u32, secret: u32 },
+    BackendKeyData {
+        process: u32,
+        secret: u32,
+    },
     /// `Z`: the server is ready, and what transaction it is in — `I`, `T` or `E`.
     ReadyForQuery(u8),
     /// `T`: the columns of the result about to arrive.
@@ -119,7 +125,8 @@ impl Frames {
             return Ok(None);
         }
         let tag = self.held[0];
-        let length = u32::from_be_bytes([self.held[1], self.held[2], self.held[3], self.held[4]]) as usize;
+        let length =
+            u32::from_be_bytes([self.held[1], self.held[2], self.held[3], self.held[4]]) as usize;
         if length < 4 {
             return Err(Failure::said(format!(
                 "the server sent a frame whose length is {length}, and a frame is at least four bytes."
@@ -211,12 +218,10 @@ fn read(tag: u8, body: &[u8]) -> Result<Message, Failure> {
                     // **Anything else negative is a broken stream, not an empty value.** Clamping it
                     // to zero would turn a fault into a value the grid cannot be told apart from a
                     // real empty string — which is the one distinction this client promises to keep.
-                    length if length < 0 => {
-                        return Err(Failure::said(format!(
-                            "the server sent a value of length {length}, and the only negative length \
+                    length if length < 0 => return Err(Failure::said(format!(
+                        "the server sent a value of length {length}, and the only negative length \
                              a value has is -1, which means NULL."
-                        )))
-                    }
+                    ))),
                     length => Some(at.take(length as usize)?.to_vec()),
                 });
             }
@@ -459,7 +464,11 @@ mod tests {
         let messages = all_of(&bytes, 3);
         let Message::DataRow(values) = &messages[0] else { panic!() };
         assert_eq!(values[0], None, "NULL");
-        assert_eq!(values[1].as_deref(), Some(&b""[..]), "and the empty string, which is different");
+        assert_eq!(
+            values[1].as_deref(),
+            Some(&b""[..]),
+            "and the empty string, which is different"
+        );
     }
 
     #[test]
@@ -542,9 +551,16 @@ mod tests {
         // The part of this protocol everybody gets wrong once.
         let bytes = Out::tagged(b'Q').string("select 1").finish();
         assert_eq!(bytes[0], b'Q');
-        assert_eq!(u32::from_be_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]) as usize, bytes.len() - 1);
+        assert_eq!(
+            u32::from_be_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]) as usize,
+            bytes.len() - 1
+        );
         // And an untagged one counts the whole thing, because there is no tag in front of it.
-        let startup = Out::untagged().int32(196_608).string("user").string("me").bytes(&[0]).finish();
-        assert_eq!(u32::from_be_bytes([startup[0], startup[1], startup[2], startup[3]]) as usize, startup.len());
+        let startup =
+            Out::untagged().int32(196_608).string("user").string("me").bytes(&[0]).finish();
+        assert_eq!(
+            u32::from_be_bytes([startup[0], startup[1], startup[2], startup[3]]) as usize,
+            startup.len()
+        );
     }
 }

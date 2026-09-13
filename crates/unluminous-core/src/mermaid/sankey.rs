@@ -153,13 +153,16 @@ fn draw(diagram: &Diagram, options: &Options) -> Scene {
             let gaps = NODE_GAP * members.len().saturating_sub(1) as f32;
             (total, gaps)
         })
-        .fold((0.0_f32, 0.0_f32), |best, (total, gaps)| {
-            if total > best.0 {
-                (total, gaps)
-            } else {
-                best
-            }
-        });
+        .fold(
+            (0.0_f32, 0.0_f32),
+            |best, (total, gaps)| {
+                if total > best.0 {
+                    (total, gaps)
+                } else {
+                    best
+                }
+            },
+        );
     let scale = if tallest.0 > 0.0 { (HEIGHT - tallest.1).max(20.0) / tallest.0 } else { 1.0 };
 
     let name_style = options.style(0.85, false);
@@ -176,12 +179,8 @@ fn draw(diagram: &Diagram, options: &Options) -> Scene {
         let mut y = parts::MARGIN;
         for index in members {
             let height = (placed[index].through * scale).max(4.0);
-            placed[index].rect = Rect::new(
-                parts::MARGIN + COLUMN_GAP * column as f32,
-                y,
-                BAR,
-                height,
-            );
+            placed[index].rect =
+                Rect::new(parts::MARGIN + COLUMN_GAP * column as f32, y, BAR, height);
             y += height + NODE_GAP;
         }
     }
@@ -384,7 +383,11 @@ mod tests {
 
     #[test]
     fn a_bigger_flow_makes_a_taller_bar() {
-        let scene = check::drawn("sankey-beta\n Small,Out,1\n Large,Out,9\n", &options(), &["Small", "Large"]);
+        let scene = check::drawn(
+            "sankey-beta\n Small,Out,1\n Large,Out,9\n",
+            &options(),
+            &["Small", "Large"],
+        );
         let bars: Vec<Rect> = scene
             .items
             .iter()

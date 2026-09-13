@@ -636,7 +636,9 @@ fn number(rest: &str) -> Option<usize> {
         }
         // One decimal point, and only when a digit follows it, so `1.max(2)` is not `1.` and then a
         // word.
-        if character == '.' && !seen_point && rest[index + 1..].starts_with(|next: char| next.is_ascii_digit())
+        if character == '.'
+            && !seen_point
+            && rest[index + 1..].starts_with(|next: char| next.is_ascii_digit())
         {
             seen_point = true;
             end = index + 1;
@@ -682,7 +684,8 @@ fn hex_colour(rest: &str) -> Option<usize> {
         return None;
     }
     // The digits are ASCII, so counting them and indexing by them are the same number.
-    if after[digits..].starts_with(|next: char| next.is_alphanumeric() || next == '_' || next == '-')
+    if after[digits..]
+        .starts_with(|next: char| next.is_alphanumeric() || next == '_' || next == '-')
     {
         return None;
     }
@@ -1017,7 +1020,8 @@ mod markup {
     fn unquoted_value(rest: &str) -> usize {
         let mut length = 0;
         for character in rest.chars() {
-            if character.is_whitespace() || matches!(character, '"' | '\'' | '=' | '<' | '>' | '`') {
+            if character.is_whitespace() || matches!(character, '"' | '\'' | '=' | '<' | '>' | '`')
+            {
                 break;
             }
             length += character.len_utf8();
@@ -1143,11 +1147,16 @@ mod tests {
     fn javascript() -> Grammar {
         Grammar {
             language: "JavaScript".to_owned(),
-            keywords: ["const", "let", "function", "return", "class", "async", "await", "import", "from"]
+            keywords: [
+                "const", "let", "function", "return", "class", "async", "await", "import", "from",
+            ]
+            .iter()
+            .map(|word| (*word).to_owned())
+            .collect(),
+            builtins: ["console", "Promise", "JSON"]
                 .iter()
                 .map(|word| (*word).to_owned())
                 .collect(),
-            builtins: ["console", "Promise", "JSON"].iter().map(|word| (*word).to_owned()).collect(),
             line_comment: Some("//".to_owned()),
             block_comment: Some(("/*".to_owned(), "*/".to_owned())),
             strings: vec!['"', '\'', '`'],
@@ -1302,12 +1311,16 @@ mod tests {
     fn a_word_may_start_with_a_dollar_or_an_underscore() {
         let found = tokens("const $state = _private;");
         let names: Vec<&String> = found.iter().map(|(text, _)| text).collect();
-        assert!(!names.iter().any(|text| *text == "$"), "the dollar is part of the word: {found:?}");
+        assert!(
+            !names.iter().any(|text| *text == "$"),
+            "the dollar is part of the word: {found:?}"
+        );
     }
 
     #[test]
     fn every_span_is_inside_the_text_and_they_do_not_overlap() {
-        let text = "/** doc */\nasync function listByChat(chatId) {\n  return `${chatId}`; // done\n}\n";
+        let text =
+            "/** doc */\nasync function listByChat(chatId) {\n  return `${chatId}`; // done\n}\n";
         let spans = highlight(text, &javascript());
         let mut previous = 0;
         for (range, _) in &spans {

@@ -80,13 +80,17 @@ impl Bar {
         // How tall the thumb is says how much of the page is on the screen, which is the other thing
         // a scrollbar tells you. Never shorter than `SHORTEST`, or a large file gives a thumb too
         // small to take hold of.
-        let height = (view / content * track.height()).clamp(SHORTEST.min(track.height()), track.height());
+        let height =
+            (view / content * track.height()).clamp(SHORTEST.min(track.height()), track.height());
         let travel = (track.height() - height).max(0.0);
         let along = (scroll / overflow).clamp(0.0, 1.0);
         let top = track.top() + travel * along;
         Some(Self {
             track,
-            thumb: Rect::from_min_size(Pos2::new(track.left(), top), Vec2::new(track.width(), height)),
+            thumb: Rect::from_min_size(
+                Pos2::new(track.left(), top),
+                Vec2::new(track.width(), height),
+            ),
             overflow,
         })
     }
@@ -182,7 +186,11 @@ pub fn paint(ui: &egui::Ui, bar: &Bar, id: &str, active: bool) {
         bar.thumb.center(),
         Vec2::new(THIN + (THICK - THIN) * strength, bar.thumb.height()),
     );
-    painter.rect_filled(thumb, CornerRadius::same(4), mix(color::control(), color::text_dim(), strength));
+    painter.rect_filled(
+        thumb,
+        CornerRadius::same(4),
+        mix(color::control(), color::text_dim(), strength),
+    );
 }
 
 /// A colour part of the way between two, which is how the thumb fades.

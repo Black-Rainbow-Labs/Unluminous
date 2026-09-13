@@ -26,7 +26,8 @@ pub enum Status {
 
 impl Status {
     /// Left to right, which is the order the lanes are drawn in and the order the design image shows.
-    pub const ALL: [Status; 4] = [Status::New, Status::QaFailed, Status::InProgress, Status::AgentDone];
+    pub const ALL: [Status; 4] =
+        [Status::New, Status::QaFailed, Status::InProgress, Status::AgentDone];
 
     /// The word the database, the command line and the manifest use.
     pub fn name(self) -> &'static str {

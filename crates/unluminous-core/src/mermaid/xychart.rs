@@ -185,7 +185,8 @@ fn range(chart: &Chart) -> (f32, f32) {
             range
         };
     }
-    let values: Vec<f32> = chart.series.iter().flat_map(|series| series.values.iter().copied()).collect();
+    let values: Vec<f32> =
+        chart.series.iter().flat_map(|series| series.values.iter().copied()).collect();
     if values.is_empty() {
         return (0.0, 1.0);
     }
@@ -239,13 +240,7 @@ fn draw_rules(
 }
 
 /// The names along the axis the categories are on.
-fn draw_categories(
-    scene: &mut Scene,
-    chart: &Chart,
-    plot: Rect,
-    steps: usize,
-    options: &Options,
-) {
+fn draw_categories(scene: &mut Scene, chart: &Chart, plot: Rect, steps: usize, options: &Options) {
     let style = parts::text_style(options, 0.8, false, options.theme.dim);
     let measure = options.style(0.8, false);
     for (index, name) in chart.categories.iter().enumerate().take(steps) {
@@ -253,7 +248,10 @@ fn draw_categories(
         let width = text::width_of(name, &measure, options.metrics);
         let (at, anchor) = if chart.horizontal {
             (
-                Point::new(plot.left() - 8.0, plot.top() + plot.height * share - measure.size * 0.6),
+                Point::new(
+                    plot.left() - 8.0,
+                    plot.top() + plot.height * share - measure.size * 0.6,
+                ),
                 Anchor::End,
             )
         } else {

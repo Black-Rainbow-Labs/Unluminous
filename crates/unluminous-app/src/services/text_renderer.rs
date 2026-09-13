@@ -462,14 +462,19 @@ impl TextRenderer {
         if let Some(found) = self.fallbacks.borrow().get(&key) {
             return match found {
                 Some(family) => self
-                    .face(&FaceKey { family: family.clone(), bold: style.bold, italic: style.italic })
+                    .face(&FaceKey {
+                        family: family.clone(),
+                        bold: style.bold,
+                        italic: style.italic,
+                    })
                     .or(Some(chosen)),
                 None => Some(chosen),
             };
         }
         let mut answer = None;
         for family in FALLBACK_FAMILIES.iter().map(|family| (*family).to_owned()) {
-            let candidate = FaceKey { family: family.clone(), bold: style.bold, italic: style.italic };
+            let candidate =
+                FaceKey { family: family.clone(), bold: style.bold, italic: style.italic };
             if let Some(face) = self.face(&candidate) {
                 if face.glyph_id(character).0 != 0 {
                     answer = Some((family, face));
@@ -477,9 +482,7 @@ impl TextRenderer {
                 }
             }
         }
-        self.fallbacks
-            .borrow_mut()
-            .insert(key, answer.as_ref().map(|(family, _)| family.clone()));
+        self.fallbacks.borrow_mut().insert(key, answer.as_ref().map(|(family, _)| family.clone()));
         Some(answer.map(|(_, face)| face).unwrap_or(chosen))
     }
 
@@ -545,10 +548,9 @@ impl TextRenderer {
             return Rasterised::NoFont;
         };
         let scaled = face.as_scaled(PxScale::from(style.size));
-        let glyph: Glyph = face.glyph_id(character).with_scale_and_position(
-            PxScale::from(style.size),
-            ab_glyph::point(0.0, 0.0),
-        );
+        let glyph: Glyph = face
+            .glyph_id(character)
+            .with_scale_and_position(PxScale::from(style.size), ab_glyph::point(0.0, 0.0));
         let Some(outlined) = face.outline_glyph(glyph) else {
             // A space has no outline. It still advances the pen, which the metrics report separately.
             let _ = scaled;
@@ -653,7 +655,8 @@ impl TextRenderer {
         let mut atlas = self.atlas.borrow_mut();
         if atlas.texture.is_none() {
             let image = atlas.image.clone();
-            atlas.texture = Some(ctx.load_texture("unluminous-glyphs", image, TextureOptions::NEAREST));
+            atlas.texture =
+                Some(ctx.load_texture("unluminous-glyphs", image, TextureOptions::NEAREST));
             atlas.changed = false;
         } else if atlas.changed {
             let image = atlas.image.clone();
@@ -754,7 +757,8 @@ mod tests {
     #[test]
     fn a_bigger_font_size_advances_further_and_stands_taller() {
         let renderer = TextRenderer::new();
-        let small = CharStyle { family: renderer.default_family(), size: 12.0, ..CharStyle::default() };
+        let small =
+            CharStyle { family: renderer.default_family(), size: 12.0, ..CharStyle::default() };
         let large = CharStyle { size: 36.0, ..small.clone() };
         assert!(renderer.advance("m", &large) > renderer.advance("m", &small));
         assert!(renderer.line_metrics(&large).height() > renderer.line_metrics(&small).height());
@@ -833,7 +837,8 @@ mod tests {
     #[test]
     fn the_same_letter_at_two_sizes_is_two_entries() {
         let renderer = TextRenderer::new();
-        let small = CharStyle { family: renderer.default_family(), size: 12.0, ..CharStyle::default() };
+        let small =
+            CharStyle { family: renderer.default_family(), size: 12.0, ..CharStyle::default() };
         let large = CharStyle { size: 40.0, ..small.clone() };
         let small_glyph = renderer.glyph('B', &small).expect("rasterise at 12");
         let large_glyph = renderer.glyph('B', &large).expect("rasterise at 40");
@@ -953,7 +958,11 @@ mod crispness_tests {
         };
         let drawn = doubled.drawn(glyph);
         assert_eq!(drawn.size, egui::vec2(10.0, 15.0), "and drawn into the layout's own rectangle");
-        assert_eq!(drawn.offset, egui::vec2(1.0, -12.0), "with its offset divided by the same number");
+        assert_eq!(
+            drawn.offset,
+            egui::vec2(1.0, -12.0),
+            "with its offset divided by the same number"
+        );
         assert_eq!(drawn.uv, glyph.uv, "the pixels it points at do not move");
     }
 

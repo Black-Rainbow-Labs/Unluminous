@@ -366,10 +366,7 @@ pub fn arc(centre: Point, radius: f32, from: f32, to: f32, steps: usize) -> Vec<
     (0..=steps)
         .map(|step| {
             let angle = from + (to - from) * step as f32 / steps as f32;
-            Point::new(
-                centre.x + radius * angle.sin(),
-                centre.y - radius * angle.cos(),
-            )
+            Point::new(centre.x + radius * angle.sin(), centre.y - radius * angle.cos())
         })
         .collect()
 }
@@ -437,12 +434,7 @@ pub fn title(scene: &mut Scene, source: &super::Source, options: &Options, width
 /// Draw a legend of coloured swatches with names beside them, down the right of a chart.
 ///
 /// Returns how wide it is, so the caller can leave room for it.
-pub fn legend(
-    scene: &mut Scene,
-    entries: &[(String, Color)],
-    at: Point,
-    options: &Options,
-) -> f32 {
+pub fn legend(scene: &mut Scene, entries: &[(String, Color)], at: Point, options: &Options) -> f32 {
     let style = options.style(0.9, false);
     let text = text_style(options, 0.9, false, options.theme.text);
     let swatch = style.size * 0.9;
@@ -553,9 +545,15 @@ mod tests {
     #[test]
     fn an_arc_starts_at_twelve_o_clock_and_goes_clockwise() {
         let points = arc(Point::new(0.0, 0.0), 10.0, 0.0, std::f32::consts::FRAC_PI_2, 8);
-        assert!((points[0].x).abs() < 0.001 && (points[0].y + 10.0).abs() < 0.001, "starts at the top");
+        assert!(
+            (points[0].x).abs() < 0.001 && (points[0].y + 10.0).abs() < 0.001,
+            "starts at the top"
+        );
         let last = points[points.len() - 1];
-        assert!((last.x - 10.0).abs() < 0.001 && last.y.abs() < 0.001, "a quarter turn is to the right");
+        assert!(
+            (last.x - 10.0).abs() < 0.001 && last.y.abs() < 0.001,
+            "a quarter turn is to the right"
+        );
     }
 
     #[test]

@@ -477,8 +477,10 @@ pub fn show(
     let painter = ui.painter_at(area);
     painter.rect_filled(area, CornerRadius::ZERO, crate::theme::faded(color::toolbar(), opacity));
 
-    let header =
-        Rect::from_min_size(Pos2::new(area.left(), area.top() + 1.0), Vec2::new(area.width(), HEADER));
+    let header = Rect::from_min_size(
+        Pos2::new(area.left(), area.top() + 1.0),
+        Vec2::new(area.width(), HEADER),
+    );
     show_header(ui, header, panel, &mut outcome);
     splitter::line(
         &ui.painter_at(area),
@@ -517,8 +519,11 @@ fn show_header(ui: &mut egui::Ui, area: Rect, panel: &mut RunPanel, outcome: &mu
     // `components::dock` for why it has to be this way round.
     outcome.grab = crate::components::dock::handle(ui, area, crate::app::dock::Panel::Run);
     let painter = ui.painter_at(area);
-    let heading =
-        painter.layout_no_wrap("Run".to_owned(), egui::FontId::proportional(12.0), color::text_dim());
+    let heading = painter.layout_no_wrap(
+        "Run".to_owned(),
+        egui::FontId::proportional(12.0),
+        color::text_dim(),
+    );
     painter.galley(
         Pos2::new(area.left() + 16.0, area.center().y - heading.size().y / 2.0),
         heading.clone(),
@@ -618,7 +623,8 @@ fn tab_strip(
     for index in 0..panel.runs.len() {
         let name = panel.runs[index].name().to_owned();
         let state = panel.runs[index].state();
-        let rect = draw_tab(ui, area, pen, &name, state, index == active, index, &mut show, &mut close);
+        let rect =
+            draw_tab(ui, area, pen, &name, state, index == active, index, &mut show, &mut close);
         pen = rect.right() + 6.0;
         if pen > limit {
             // A strip longer than the room there is stops rather than running under the buttons.
@@ -699,10 +705,7 @@ fn draw_tab(
     );
     if let Some(note) = note {
         painter.galley(
-            Pos2::new(
-                text_left + label.size().x + 8.0,
-                tab.center().y - note.size().y / 2.0,
-            ),
+            Pos2::new(text_left + label.size().x + 8.0, tab.center().y - note.size().y / 2.0),
             note.clone(),
             state.tint(),
         );
@@ -846,9 +849,15 @@ mod tests {
     fn stopping_is_polite_first_and_hard_second() {
         let mut panel = RunPanel::new();
         detached(&mut panel, "Dev server");
-        assert!(panel.stop(0), "the first press is the interrupt, and the program is given a moment");
+        assert!(
+            panel.stop(0),
+            "the first press is the interrupt, and the program is given a moment"
+        );
         assert!(panel.at(0).expect("a run").is_running());
-        assert!(panel.is_stopping(), "which is what keeps the window drawing until the grace is up");
+        assert!(
+            panel.is_stopping(),
+            "which is what keeps the window drawing until the grace is up"
+        );
         assert!(panel.stop(0), "the second press does not wait");
         assert!(!panel.at(0).expect("a run").is_running());
         assert_eq!(panel.at(0).expect("a run").state(), State::Stopped);
@@ -897,8 +906,12 @@ mod tests {
         // grids that did not line up when the bottom of the window was switched between them.
         assert_eq!(HEADER, terminal_panel::HEADER);
         assert_eq!(FURNITURE, terminal_panel::FURNITURE);
-        let cell = crate::services::text_renderer::CellMetrics { width: 8.0, height: 17.0, ascent: 13.0 };
+        let cell =
+            crate::services::text_renderer::CellMetrics { width: 8.0, height: 17.0, ascent: 13.0 };
         assert_eq!(height_for(12, cell.height), terminal_panel::height_for(12, cell.height));
-        assert_eq!(grid_size(Vec2::new(400.0, 300.0), cell), terminal_panel::grid_size(Vec2::new(400.0, 300.0), cell));
+        assert_eq!(
+            grid_size(Vec2::new(400.0, 300.0), cell),
+            terminal_panel::grid_size(Vec2::new(400.0, 300.0), cell)
+        );
     }
 }

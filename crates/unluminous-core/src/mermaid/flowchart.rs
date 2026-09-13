@@ -251,13 +251,7 @@ fn next_link(text: &str, from: usize) -> Option<Found> {
         return Some(Found {
             start: tail_start,
             end,
-            link: Link {
-                style: style_of(core),
-                head,
-                tail,
-                label,
-                span: span_of(core),
-            },
+            link: Link { style: style_of(core), head, tail, label, span: span_of(core) },
         });
     }
     None
@@ -581,7 +575,9 @@ fn draw(chart: &Chart, source: &Source, options: &Options) -> Scene {
     let link_labels: Vec<Label> = chart
         .links
         .iter()
-        .map(|(_, _, link)| text::measure(&link.label, &link_style, options.metrics, text::EDGE_WRAP))
+        .map(|(_, _, link)| {
+            text::measure(&link.label, &link_style, options.metrics, text::EDGE_WRAP)
+        })
         .collect();
 
     let graph = build_graph(chart, &labels, &link_labels, options);
@@ -652,8 +648,7 @@ fn draw_groups(
             continue;
         }
         let style = parts::text_style(options, 0.95, true, theme.text);
-        let width =
-            text::width_of(&group.title, &options.style(0.95, true), options.metrics);
+        let width = text::width_of(&group.title, &options.style(0.95, true), options.metrics);
         parts::one_line(
             scene,
             &group.title,
@@ -678,12 +673,7 @@ fn draw_nodes(
     let style = parts::text_style(options, 1.0, false, theme.text);
     for (index, node) in chart.nodes.iter().enumerate() {
         let rect = placed.nodes[index].moved(origin.x, origin.y);
-        node.shape.draw(
-            scene,
-            rect,
-            theme.node_fill,
-            Stroke::new(theme.node_stroke, parts::LINE),
-        );
+        node.shape.draw(scene, rect, theme.node_fill, Stroke::new(theme.node_stroke, parts::LINE));
         parts::centred_label(scene, &labels[index], rect, &style);
     }
 }
@@ -717,11 +707,8 @@ fn draw_links(
         let width = if link.style == LinkStyle::Thick { parts::THICK } else { parts::LINE };
         let stroke = Stroke::new(theme.line, width);
         let dash = if link.style == LinkStyle::Dotted { parts::DASH } else { Dash::Solid };
-        let drawn = parts::trimmed(
-            &path,
-            parts::ending_inset(link.tail),
-            parts::ending_inset(link.head),
-        );
+        let drawn =
+            parts::trimmed(&path, parts::ending_inset(link.tail), parts::ending_inset(link.head));
         scene.add(Item::Line { points: drawn, stroke, dash });
         parts::ending(
             scene,
@@ -731,7 +718,14 @@ fn draw_links(
             theme.line,
             theme.node_fill,
         );
-        parts::ending(scene, link.tail, path[0], parts::tail_heading(&path), theme.line, theme.node_fill);
+        parts::ending(
+            scene,
+            link.tail,
+            path[0],
+            parts::tail_heading(&path),
+            theme.line,
+            theme.node_fill,
+        );
         draw_link_label(scene, &labels[index], &path, options);
     }
 }
@@ -753,12 +747,7 @@ fn clip_to_shapes(
     path
 }
 
-fn outline_of(
-    chart: &Chart,
-    placed: &layered::Placed,
-    origin: Point,
-    index: usize,
-) -> Outline {
+fn outline_of(chart: &Chart, placed: &layered::Placed, origin: Point, index: usize) -> Outline {
     chart.nodes[index].shape.outline(placed.nodes[index].moved(origin.x, origin.y))
 }
 
@@ -766,12 +755,7 @@ fn outline_of(
 ///
 /// The layered layout cannot rank one of these, so it hands back nothing and this draws it, which is
 /// what Mermaid does with them too.
-fn self_loop(
-    chart: &Chart,
-    placed: &layered::Placed,
-    origin: Point,
-    node: usize,
-) -> Vec<Point> {
+fn self_loop(chart: &Chart, placed: &layered::Placed, origin: Point, node: usize) -> Vec<Point> {
     let rect = placed.nodes[node].moved(origin.x, origin.y);
     if rect.width <= 0.0 {
         return Vec::new();
@@ -863,9 +847,19 @@ mod tests {
         assert_eq!(
             shapes,
             vec![
-                Shape::Rect, Shape::Round, Shape::Stadium, Shape::Subroutine, Shape::Cylinder,
-                Shape::Circle, Shape::DoubleCircle, Shape::Asymmetric, Shape::Diamond,
-                Shape::Hexagon, Shape::Parallelogram, Shape::ParallelogramAlt, Shape::Trapezoid,
+                Shape::Rect,
+                Shape::Round,
+                Shape::Stadium,
+                Shape::Subroutine,
+                Shape::Cylinder,
+                Shape::Circle,
+                Shape::DoubleCircle,
+                Shape::Asymmetric,
+                Shape::Diamond,
+                Shape::Hexagon,
+                Shape::Parallelogram,
+                Shape::ParallelogramAlt,
+                Shape::Trapezoid,
                 Shape::TrapezoidAlt,
             ]
         );
@@ -1017,7 +1011,11 @@ mod drawing {
             Check -->|no| Fix[Fix it]\n\
             Fix --> Check\n\
             Ship --> Done(((Done)))\n";
-        let scene = check::drawn(text, &options(), &["Begin", "Is it ready?", "Ship it", "Fix it", "yes", "no"]);
+        let scene = check::drawn(
+            text,
+            &options(),
+            &["Begin", "Is it ready?", "Ship it", "Fix it", "yes", "no"],
+        );
         assert!(scene.items.len() > 10, "a chart of five nodes draws more than ten things");
     }
 
@@ -1035,7 +1033,8 @@ mod drawing {
             Outside --> First\n\
             subgraph inner[Inside]\n  First --> Second\nend\n\
             Second --> After\n";
-        let scene = check::drawn(text, &options(), &["Outside", "Inside", "First", "Second", "After"]);
+        let scene =
+            check::drawn(text, &options(), &["Outside", "Inside", "First", "Second", "After"]);
         check::boxes_nest_or_miss(&scene.rects());
     }
 

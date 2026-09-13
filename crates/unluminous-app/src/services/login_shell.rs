@@ -212,7 +212,8 @@ fn spellings(program: &str) -> Vec<String> {
     let mut spellings = vec![program.to_owned()];
     if cfg!(windows) {
         let listed = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_owned());
-        for extension in listed.split(';').map(str::trim).filter(|extension| !extension.is_empty()) {
+        for extension in listed.split(';').map(str::trim).filter(|extension| !extension.is_empty())
+        {
             spellings.push(format!("{program}{extension}"));
         }
     }
@@ -377,25 +378,31 @@ mod tests {
 
     #[test]
     fn the_variables_are_read_after_the_marker_and_a_banner_in_front_of_it_is_ignored() {
-        let said = written("Welcome to this machine, no newline after this", &[
-            "PATH=/home/me/.local/bin:/usr/bin",
-            "ANTHROPIC_API_KEY=a-key",
-        ]);
+        let said = written(
+            "Welcome to this machine, no newline after this",
+            &["PATH=/home/me/.local/bin:/usr/bin", "ANTHROPIC_API_KEY=a-key"],
+        );
         let read = parse(&said).expect("the marker is there");
-        assert_eq!(read, vec![
-            ("PATH".to_owned(), "/home/me/.local/bin:/usr/bin".to_owned()),
-            ("ANTHROPIC_API_KEY".to_owned(), "a-key".to_owned()),
-        ]);
+        assert_eq!(
+            read,
+            vec![
+                ("PATH".to_owned(), "/home/me/.local/bin:/usr/bin".to_owned()),
+                ("ANTHROPIC_API_KEY".to_owned(), "a-key".to_owned()),
+            ]
+        );
     }
 
     #[test]
     fn a_value_with_a_newline_in_it_survives_because_the_records_are_separated_by_nul() {
         let said = written("", &["NODE_OPTIONS=--one\n--two", "AFTER=yes"]);
         let read = parse(&said).expect("the marker is there");
-        assert_eq!(read, vec![
-            ("NODE_OPTIONS".to_owned(), "--one\n--two".to_owned()),
-            ("AFTER".to_owned(), "yes".to_owned()),
-        ]);
+        assert_eq!(
+            read,
+            vec![
+                ("NODE_OPTIONS".to_owned(), "--one\n--two".to_owned()),
+                ("AFTER".to_owned(), "yes".to_owned()),
+            ]
+        );
     }
 
     #[test]
@@ -451,7 +458,8 @@ mod tests {
 
     #[test]
     fn a_program_that_is_not_there_is_refused_by_name_with_the_folders_that_were_searched() {
-        let problem = required("unluminous-no-such-agent").expect_err("nothing of that name exists");
+        let problem =
+            required("unluminous-no-such-agent").expect_err("nothing of that name exists");
         assert!(problem.starts_with("unluminous-no-such-agent is not installed"), "{problem}");
         assert!(
             problem.contains(&search_path().to_string_lossy().into_owned()),

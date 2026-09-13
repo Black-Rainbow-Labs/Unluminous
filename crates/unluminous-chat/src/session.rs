@@ -155,18 +155,9 @@ impl Session {
                 // match twice would leave the second running for ever, which is a turn that never
                 // ends. Backwards through the messages and backwards within one, so "newest" means
                 // the same thing at both levels.
-                let answered = self
-                    .chat
-                    .messages
-                    .iter_mut()
-                    .rev()
-                    .find_map(|message| {
-                        message
-                            .tools
-                            .iter_mut()
-                            .rev()
-                            .find(|call| call.id == id && call.is_running())
-                    });
+                let answered = self.chat.messages.iter_mut().rev().find_map(|message| {
+                    message.tools.iter_mut().rev().find(|call| call.id == id && call.is_running())
+                });
                 if let Some(call) = answered {
                     call.answer = Some(answer);
                     call.failed = failed;
@@ -247,9 +238,7 @@ impl Session {
         }
         self.drop_an_empty_answer();
         self.bank_the_turn();
-        self.state = State::Finished {
-            reason: "stopped".to_owned(),
-        };
+        self.state = State::Finished { reason: "stopped".to_owned() };
     }
 
     /// Every tool the model is waiting on, with **where it sits** in the message that asked.
@@ -295,11 +284,7 @@ impl Session {
         }
         // All of them have answered, so the results become a message of their own — which is what
         // both APIs want sent back and what the pane draws under the call it answers.
-        let answered = self
-            .chat
-            .last()
-            .map(|message| message.tools.clone())
-            .unwrap_or_default();
+        let answered = self.chat.last().map(|message| message.tools.clone()).unwrap_or_default();
         let id = self.chat.next_id();
         let mut results = Message::new(id, Role::Tool);
         results.tools = answered;
@@ -369,22 +354,13 @@ mod tests {
     fn an_ordinary_answer_goes_into_one_message_and_ends_the_turn() {
         let mut session = a_session();
         assert_eq!(*session.state(), State::Sending);
-        session.reply(Reply::Started {
-            model: "claude-opus-5".to_owned(),
-        });
+        session.reply(Reply::Started { model: "claude-opus-5".to_owned() });
         assert_eq!(*session.state(), State::Streaming);
         session.reply(Reply::Text("Be".to_owned()));
         session.reply(Reply::Text("cause".to_owned()));
         session.reply(Reply::Usage { input: 10, output: 2 });
-        session.reply(Reply::Finished {
-            reason: "stop".to_owned(),
-        });
-        assert_eq!(
-            *session.state(),
-            State::Finished {
-                reason: "stop".to_owned()
-            }
-        );
+        session.reply(Reply::Finished { reason: "stop".to_owned() });
+        assert_eq!(*session.state(), State::Finished { reason: "stop".to_owned() });
         assert_eq!(session.chat.messages.len(), 2);
         assert_eq!(session.chat.last().expect("an answer").text(), "Because");
         assert_eq!(session.model, "claude-opus-5");
@@ -400,9 +376,7 @@ mod tests {
         let mut session = a_session();
         session.reply(Reply::Usage { input: 11, output: 1 });
         session.reply(Reply::Usage { input: 0, output: 24 });
-        session.reply(Reply::Finished {
-            reason: "stop".to_owned(),
-        });
+        session.reply(Reply::Finished { reason: "stop".to_owned() });
         assert_eq!(session.chat.usage.input, 11);
         assert_eq!(session.chat.usage.output, 24, "24 in total, not 25");
 
@@ -410,9 +384,7 @@ mod tests {
         session.ask(Message::said(0, Role::User, "Again"));
         session.reply(Reply::Text("Yes.".to_owned()));
         session.reply(Reply::Usage { input: 30, output: 5 });
-        session.reply(Reply::Finished {
-            reason: "stop".to_owned(),
-        });
+        session.reply(Reply::Finished { reason: "stop".to_owned() });
         assert_eq!(session.chat.usage.input, 41);
         assert_eq!(session.chat.usage.output, 29);
     }
@@ -426,20 +398,11 @@ mod tests {
             name: "git_status".to_owned(),
             arguments: "{}".to_owned(),
         });
-        session.reply(Reply::Finished {
-            reason: "tool_use".to_owned(),
-        });
+        session.reply(Reply::Finished { reason: "tool_use".to_owned() });
         assert_eq!(*session.state(), State::WaitingForTools);
-        assert!(
-            session.is_busy(),
-            "the turn is not over while a tool is outstanding"
-        );
+        assert!(session.is_busy(), "the turn is not over while a tool is outstanding");
         assert_eq!(session.tools_to_run().len(), 1);
-        assert_eq!(
-            session.tools_to_run()[0].0,
-            0,
-            "the first call is at position nought"
-        );
+        assert_eq!(session.tools_to_run()[0].0, 0, "the first call is at position nought");
 
         // The answer is recorded, a result message appears, and the caller is told it may send.
         assert!(session.tool_answered(0, Ok("clean".to_owned()), 12));
@@ -454,14 +417,8 @@ mod tests {
         session.begin();
         assert_eq!(session.round(), 2);
         session.reply(Reply::Text("It is clean.".to_owned()));
-        session.reply(Reply::Finished {
-            reason: "stop".to_owned(),
-        });
-        assert_eq!(
-            session.chat.messages.len(),
-            4,
-            "ask, answer with the call, results, answer"
-        );
+        session.reply(Reply::Finished { reason: "stop".to_owned() });
+        assert_eq!(session.chat.messages.len(), 4, "ask, answer with the call, results, answer");
         assert_eq!(session.chat.last().expect("an answer").text(), "It is clean.");
     }
 
@@ -478,21 +435,13 @@ mod tests {
             name: "two".to_owned(),
             arguments: "{}".to_owned(),
         });
-        session.reply(Reply::Finished {
-            reason: "tool_use".to_owned(),
-        });
+        session.reply(Reply::Finished { reason: "tool_use".to_owned() });
         assert_eq!(session.tools_to_run().len(), 2);
-        assert!(
-            !session.tool_answered(0, Ok("one".to_owned()), 1),
-            "still one outstanding"
-        );
+        assert!(!session.tool_answered(0, Ok("one".to_owned()), 1), "still one outstanding");
         assert!(session.tool_answered(1, Err("no".to_owned()), 2));
         let results = session.chat.last().expect("results");
         assert_eq!(results.tools.len(), 2);
-        assert!(
-            results.tools[1].failed,
-            "a refusal is still an answer and still goes back up"
-        );
+        assert!(results.tools[1].failed, "a refusal is still an answer and still goes back up");
     }
 
     #[test]
@@ -503,10 +452,7 @@ mod tests {
         let answer = session.chat.last().expect("the answer");
         assert_eq!(answer.text(), "Half an ans");
         assert_eq!(answer.failure.as_deref(), Some("overloaded_error: Overloaded"));
-        assert_eq!(
-            *session.state(),
-            State::Failed("overloaded_error: Overloaded".to_owned())
-        );
+        assert_eq!(*session.state(), State::Failed("overloaded_error: Overloaded".to_owned()));
         assert!(!session.is_busy());
     }
 
@@ -517,13 +463,8 @@ mod tests {
         let mut session = a_session();
         session.reply(Reply::Text("Half an ans".to_owned()));
         session.reply(Reply::Failed("HTTP 429: rate_limit_error".to_owned()));
-        session.reply(Reply::Finished {
-            reason: "stop".to_owned(),
-        });
-        assert_eq!(
-            *session.state(),
-            State::Failed("HTTP 429: rate_limit_error".to_owned())
-        );
+        session.reply(Reply::Finished { reason: "stop".to_owned() });
+        assert_eq!(*session.state(), State::Failed("HTTP 429: rate_limit_error".to_owned()));
         let answer = session.chat.last().expect("the answer");
         assert_eq!(answer.text(), "Half an ans");
         assert_eq!(answer.failure.as_deref(), Some("HTTP 429: rate_limit_error"));
@@ -545,18 +486,13 @@ mod tests {
                 arguments: "{}".to_owned(),
             });
         }
-        session.reply(Reply::Finished {
-            reason: "tool_use".to_owned(),
-        });
+        session.reply(Reply::Finished { reason: "tool_use".to_owned() });
         let waiting = session.tools_to_run();
         assert_eq!(waiting.len(), 2);
         assert_eq!(waiting[0].0, 0);
         assert_eq!(waiting[1].0, 1);
         assert!(!session.tool_answered(0, Ok("first".to_owned()), 1));
-        assert!(
-            session.tool_answered(1, Ok("second".to_owned()), 2),
-            "the turn can go on"
-        );
+        assert!(session.tool_answered(1, Ok("second".to_owned()), 2), "the turn can go on");
         let results = session.chat.last().expect("results");
         assert_eq!(results.tools[0].answer.as_deref(), Some("first"));
         assert_eq!(results.tools[1].answer.as_deref(), Some("second"));
@@ -576,12 +512,8 @@ mod tests {
     #[test]
     fn a_model_that_says_nothing_at_all_leaves_no_empty_bubble() {
         let mut session = a_session();
-        session.reply(Reply::Started {
-            model: "m".to_owned(),
-        });
-        session.reply(Reply::Finished {
-            reason: "stop".to_owned(),
-        });
+        session.reply(Reply::Started { model: "m".to_owned() });
+        session.reply(Reply::Finished { reason: "stop".to_owned() });
         assert_eq!(session.chat.messages.len(), 1, "the question and nothing else");
     }
 

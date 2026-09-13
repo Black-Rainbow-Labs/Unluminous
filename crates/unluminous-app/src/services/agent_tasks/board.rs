@@ -130,7 +130,11 @@ mod tests {
         ];
         assert_eq!(lane_at(&lanes, 300.0, 10.0), Some(Status::New));
         assert_eq!(lane_at(&lanes, 300.0, 299.0), Some(Status::New));
-        assert_eq!(lane_at(&lanes, 300.0, 300.0), Some(Status::QaFailed), "the edge belongs to the next lane");
+        assert_eq!(
+            lane_at(&lanes, 300.0, 300.0),
+            Some(Status::QaFailed),
+            "the edge belongs to the next lane"
+        );
         assert_eq!(lane_at(&lanes, 300.0, 1100.0), Some(Status::AgentDone));
         assert_eq!(
             lane_at(&lanes, 300.0, 1300.0),
@@ -157,9 +161,14 @@ mod tests {
         // A search hides cards and the hidden ones are still there and still ordered. Dropping between the first
         // and second card that can be seen, in a lane where the second card is hidden, is a drop at index two of
         // the lane rather than at index one.
-        let mut lane = vec![card("task-1", "Alpha"), card("task-2", "Hidden"), card("task-3", "Alpha again")];
+        let mut lane =
+            vec![card("task-1", "Alpha"), card("task-2", "Hidden"), card("task-3", "Alpha again")];
         lane[1].title = "Nothing like it".to_owned();
-        assert_eq!(among_all(&lane, "alpha", 0), 0, "before the first visible card is the top of the lane");
+        assert_eq!(
+            among_all(&lane, "alpha", 0),
+            0,
+            "before the first visible card is the top of the lane"
+        );
         assert_eq!(
             among_all(&lane, "alpha", 1),
             1,

@@ -125,15 +125,18 @@ impl Values {
 
     /// Where the comment starts on this line, if it has one.
     fn comment_at(line: &str) -> Option<usize> {
-        line.char_indices().find(|(at, character)| {
-            *character == '#'
-                && line[at + 1..].chars().next().map(char::is_whitespace).unwrap_or(true)
-        })
-        .map(|(at, _)| at)
+        line.char_indices()
+            .find(|(at, character)| {
+                *character == '#'
+                    && line[at + 1..].chars().next().map(char::is_whitespace).unwrap_or(true)
+            })
+            .map(|(at, _)| at)
     }
 
     pub fn to_text(&self) -> String {
-        self.to_text_headed("# Unluminous settings. Written by Unluminous, and safe to edit by hand.")
+        self.to_text_headed(
+            "# Unluminous settings. Written by Unluminous, and safe to edit by hand.",
+        )
     }
 
     /// The same, under a heading of the caller's own. The project state is written in this format too
@@ -359,8 +362,7 @@ impl Store {
         projects.retain(|existing| existing != &folder);
         projects.insert(0, folder);
         projects.truncate(RECENT_LIMIT);
-        let text: String =
-            projects.iter().map(|path| format!("{}\n", path.display())).collect();
+        let text: String = projects.iter().map(|path| format!("{}\n", path.display())).collect();
         if let Err(problem) = self.write(&self.recent_path(), &text) {
             eprintln!("Unluminous could not write its recent projects: {problem}");
         }
@@ -482,7 +484,11 @@ mod tests {
         }
         let fresh = folder.join("fresh");
         std::fs::create_dir_all(&fresh).expect("make the fresh project");
-        store.write_session(&[(301, projects[0].1.clone()), (302, projects[1].1.clone()), (303, projects[2].1.clone())]);
+        store.write_session(&[
+            (301, projects[0].1.clone()),
+            (302, projects[1].1.clone()),
+            (303, projects[2].1.clone()),
+        ]);
 
         store.remember_open_window(&fresh, 400, &nothing_is_alive);
         let windows = store.open_windows();
@@ -502,7 +508,11 @@ mod tests {
         store.write_session(&[(501, first.clone())]);
 
         store.remember_open_window(&second, 502, &|pid| pid == 501);
-        assert_eq!(store.open_windows().len(), 2, "the live window's session is joined, not replaced");
+        assert_eq!(
+            store.open_windows().len(),
+            2,
+            "the live window's session is joined, not replaced"
+        );
     }
 
     /// The reported case in the other direction, which must keep working: quitting three windows and starting
@@ -615,9 +625,11 @@ mod tests {
     #[test]
     fn a_hash_that_is_part_of_a_value_is_not_a_comment() {
         // A colour is written the way anybody would write one, and the value is not eaten.
-        let values = Values::parse("theme.keyword = #FF79C6  # pink
+        let values = Values::parse(
+            "theme.keyword = #FF79C6  # pink
 theme.comment = #6272A4
-");
+",
+        );
         assert_eq!(values.text("theme.keyword"), Some("#FF79C6"));
         assert_eq!(values.text("theme.comment"), Some("#6272A4"));
     }
@@ -718,7 +730,9 @@ theme.comment = #6272A4
     fn the_settings_folder_is_under_the_home_directory() {
         let folder = settings_folder();
         assert!(
-            folder.ends_with("Unluminous") || folder.ends_with("unluminous") || folder.ends_with(".unluminous"),
+            folder.ends_with("Unluminous")
+                || folder.ends_with("unluminous")
+                || folder.ends_with(".unluminous"),
             "the settings folder should be named after Unluminous, it was {}",
             folder.display()
         );

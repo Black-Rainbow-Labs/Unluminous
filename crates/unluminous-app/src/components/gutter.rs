@@ -485,10 +485,8 @@ pub fn show(
         }
         let first_row = previous != Some(line.paragraph);
         previous = Some(line.paragraph);
-        let row = Rect::from_min_size(
-            Pos2::new(area.left(), y),
-            Vec2::new(area.width(), line.height),
-        );
+        let row =
+            Rect::from_min_size(Pos2::new(area.left(), y), Vec2::new(area.width(), line.height));
         // Where the letters really are on this row, which is what every mark is centred on. See the
         // note at the top of this file: the line box is taller than the glyphs and all of the extra
         // is below them, so centring in `row` puts a mark low by more the larger the type.
@@ -576,7 +574,8 @@ fn draw_arrow(ui: &mut egui::Ui, centre: Pos2, paragraph: usize, collapsed: bool
         format!("Collapse block at line {}", paragraph + 1)
     };
     let response = ui.interact(area, ui.id().with(("fold", paragraph)), Sense::click());
-    let tint = if collapsed || response.hovered() { color::text_control() } else { color::text_faint() };
+    let tint =
+        if collapsed || response.hovered() { color::text_control() } else { color::text_faint() };
     icon::disclosure(ui.painter(), centre, !collapsed, tint);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, true, collapsed, &name)
@@ -798,9 +797,8 @@ mod tests {
     fn the_drift_grows_with_the_type_size() {
         let small = line(0.0, 15.0, 4.0, 7.2);
         let large = line(0.0, 30.0, 8.0, 14.4);
-        let error = |line: &unluminous_core::PlacedLine| {
-            line.height / 2.0 - text_band(line, 0.0).center()
-        };
+        let error =
+            |line: &unluminous_core::PlacedLine| line.height / 2.0 - text_band(line, 0.0).center();
         assert!(error(&large) > error(&small) * 1.9, "the error roughly doubles with the size");
     }
 
@@ -898,21 +896,37 @@ mod tests {
 
     #[test]
     fn a_gutter_showing_nothing_takes_no_width() {
-        let gutter = Gutter { numbers: false, blame: None, changes: &[], folds: &[], ..Gutter::default() };
+        let gutter =
+            Gutter { numbers: false, blame: None, changes: &[], folds: &[], ..Gutter::default() };
         assert!(!gutter.showing());
     }
 
     #[test]
     fn a_change_bar_alone_is_enough_to_show_the_gutter() {
         let changes = [(3, Change::Modified)];
-        let gutter = Gutter { numbers: false, blame: None, changes: &changes, folds: &[], ..Gutter::default() };
-        assert!(gutter.showing(), "a file with changes shows its change bars even with numbers off");
+        let gutter = Gutter {
+            numbers: false,
+            blame: None,
+            changes: &changes,
+            folds: &[],
+            ..Gutter::default()
+        };
+        assert!(
+            gutter.showing(),
+            "a file with changes shows its change bars even with numbers off"
+        );
     }
 
     #[test]
     fn a_folding_arrow_alone_is_enough_to_show_the_gutter() {
         let folds = [(4usize, false)];
-        let gutter = Gutter { numbers: false, blame: None, changes: &[], folds: &folds, ..Gutter::default() };
+        let gutter = Gutter {
+            numbers: false,
+            blame: None,
+            changes: &[],
+            folds: &folds,
+            ..Gutter::default()
+        };
         assert!(gutter.showing(), "a file with something to fold shows the arrows");
         assert_eq!(gutter.fold_at(4), Some(false));
         assert_eq!(gutter.fold_at(3), None, "no region is headed by that line");
@@ -945,7 +959,12 @@ mod tests {
     #[test]
     fn the_dot_takes_no_width_of_its_own_while_the_numbers_are_showing() {
         let breakpoints = [(0usize, BreakpointMark::plain())];
-        let with = Gutter { numbers: true, breakpoints: &breakpoints, can_debug: true, ..Gutter::default() };
+        let with = Gutter {
+            numbers: true,
+            breakpoints: &breakpoints,
+            can_debug: true,
+            ..Gutter::default()
+        };
         let without = Gutter { numbers: true, can_debug: true, ..Gutter::default() };
         assert!(!with.needs_a_breakpoint_column());
         assert!(!without.needs_a_breakpoint_column());
@@ -958,7 +977,12 @@ mod tests {
         let empty = Gutter { numbers: false, can_debug: true, ..Gutter::default() };
         assert!(empty.needs_a_breakpoint_column(), "reserved before the first breakpoint");
         let breakpoints = [(0usize, BreakpointMark::plain())];
-        let one = Gutter { numbers: false, breakpoints: &breakpoints, can_debug: true, ..Gutter::default() };
+        let one = Gutter {
+            numbers: false,
+            breakpoints: &breakpoints,
+            can_debug: true,
+            ..Gutter::default()
+        };
         assert!(one.needs_a_breakpoint_column(), "and still reserved with one");
     }
 

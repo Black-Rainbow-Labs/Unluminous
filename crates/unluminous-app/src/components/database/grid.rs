@@ -96,24 +96,44 @@ fn toolbar(
     let step = 26.0 * scale;
     let mut at = bar.left();
 
-    if crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Reload", icon::rerun) {
+    if crate::components::controls::icon_button(
+        ui,
+        along(bar, &mut at, step),
+        "Reload",
+        icon::rerun,
+    ) {
         acts.push(Act::Reload(id));
     }
     // Absent rather than dimmed when the engine cannot stop a statement at all - see
     // `DatabaseExplorer::can_stop`.
     if running
         && explorer.can_stop(&grid.source)
-        && crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Stop", icon::stop)
+        && crate::components::controls::icon_button(
+            ui,
+            along(bar, &mut at, step),
+            "Stop",
+            icon::stop,
+        )
     {
         acts.push(Act::Stop(id));
     }
     if editable {
         at += 6.0 * scale;
-        if crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Add row", icon::plus) {
+        if crate::components::controls::icon_button(
+            ui,
+            along(bar, &mut at, step),
+            "Add row",
+            icon::plus,
+        ) {
             acts.push(Act::AddRow(id));
         }
         if let Some(row) = chosen_row {
-            if crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Delete row", icon::bin) {
+            if crate::components::controls::icon_button(
+                ui,
+                along(bar, &mut at, step),
+                "Delete row",
+                icon::bin,
+            ) {
                 acts.push(Act::DeleteRow(id, row));
             }
         }
@@ -121,15 +141,30 @@ fn toolbar(
         // box that opened with the word `NULL` in it would write those four letters back. See
         // `Grid::text_of`.
         if grid.chosen.is_some()
-            && crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Set NULL", icon::cross)
+            && crate::components::controls::icon_button(
+                ui,
+                along(bar, &mut at, step),
+                "Set NULL",
+                icon::cross,
+            )
         {
             acts.push(Act::NullTheCell(id));
         }
         if pending > 0 {
-            if crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Revert", icon::undo) {
+            if crate::components::controls::icon_button(
+                ui,
+                along(bar, &mut at, step),
+                "Revert",
+                icon::undo,
+            ) {
                 acts.push(Act::RevertPending(id));
             }
-            if crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Preview pending changes", icon::copy) {
+            if crate::components::controls::icon_button(
+                ui,
+                along(bar, &mut at, step),
+                "Preview pending changes",
+                icon::copy,
+            ) {
                 acts.push(Act::Preview(id));
             }
             // **`Save`**, which is the word `task-1795` asks for: *"see a save button that writes to
@@ -139,7 +174,13 @@ fn toolbar(
                 Vec2::new(78.0 * scale, bar.height() - 6.0 * scale),
             );
             at = save.right();
-            if crate::components::modal::button(ui, save, &format!("Save {pending}"), !running, true) {
+            if crate::components::modal::button(
+                ui,
+                save,
+                &format!("Save {pending}"),
+                !running,
+                true,
+            ) {
                 acts.push(Act::Submit(id));
             }
         }
@@ -171,7 +212,10 @@ fn where_and_order(
     let mut acts = Vec::new();
     let half = area.width() / 2.0 - 4.0 * scale;
     let left = Rect::from_min_size(area.min, Vec2::new(half, area.height()));
-    let right = Rect::from_min_size(Pos2::new(area.left() + half + 8.0 * scale, area.top()), Vec2::new(half, area.height()));
+    let right = Rect::from_min_size(
+        Pos2::new(area.left() + half + 8.0 * scale, area.top()),
+        Vec2::new(half, area.height()),
+    );
     well(ui, look, left, 6.0 * scale);
     well(ui, look, right, 6.0 * scale);
     let Some(page) = explorer.pages.iter_mut().find(|page| page.id == id) else { return acts };
@@ -205,7 +249,11 @@ fn fragment_field(
     let scale = look.scale();
     let painter = ui.painter().clone();
     let label_width = painter
-        .layout_no_wrap(name.to_owned(), egui::FontId::proportional(look.font_size * 0.75), color::text_faint())
+        .layout_no_wrap(
+            name.to_owned(),
+            egui::FontId::proportional(look.font_size * 0.75),
+            color::text_faint(),
+        )
         .size()
         .x;
     text(
@@ -223,7 +271,8 @@ fn fragment_field(
     // The whole well, including the word in front of it, hands the keyboard to the box.
     let fragment_id = egui::Id::new(("database-fragment-field", name));
     crate::components::controls::claim_the_field(ui, area, fragment_id);
-    let mut edit = ui.new_child(egui::UiBuilder::new().max_rect(text_rect).id_salt(("database-fragment", name)));
+    let mut edit = ui
+        .new_child(egui::UiBuilder::new().max_rect(text_rect).id_salt(("database-fragment", name)));
     let response = edit.add(
         egui::TextEdit::singleline(value)
             .id(fragment_id)
@@ -271,7 +320,8 @@ fn the_grid(
         _ => rows.rows.len(),
     };
 
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body).id_salt(("database-grid", id)));
+    let mut child =
+        ui.new_child(egui::UiBuilder::new().max_rect(body).id_salt(("database-grid", id)));
     let out = egui::ScrollArea::both()
         .id_salt(("database-grid-rows", id))
         .max_height(body.height())
@@ -280,7 +330,10 @@ fn the_grid(
             let mut acts = Vec::new();
             for at in range {
                 let (rect, _) = ui.allocate_exact_size(
-                    Vec2::new(GUTTER * scale + column_width * rows.columns.len() as f32, row_height),
+                    Vec2::new(
+                        GUTTER * scale + column_width * rows.columns.len() as f32,
+                        row_height,
+                    ),
                     Sense::hover(),
                 );
                 acts.extend(one_row(explorer, ui, look, rect, id, at, rows, column_width, scale));
@@ -321,8 +374,12 @@ fn header(
         if left > head.right() || left + column_width < head.left() {
             continue;
         }
-        let rect = Rect::from_min_size(Pos2::new(left, head.top()), Vec2::new(column_width, head.height()));
-        let response = ui.interact(rect, ui.id().with(("database-column", id, index)), Sense::click());
+        let rect = Rect::from_min_size(
+            Pos2::new(left, head.top()),
+            Vec2::new(column_width, head.height()),
+        );
+        let response =
+            ui.interact(rect, ui.id().with(("database-column", id, index)), Sense::click());
         if response.hovered() {
             painter.rect_filled(rect, egui::CornerRadius::same(4), look.palette.control);
         }
@@ -352,11 +409,25 @@ fn header(
         // is how a grid says "the order you are looking at is the server's own".
         let sorting = order.trim();
         if sorting == format!("{} asc", column.name) {
-            icon::disclosure_at(&painter, Pos2::new(rect.right() - 10.0 * scale, rect.center().y), true, color::accent(), scale);
+            icon::disclosure_at(
+                &painter,
+                Pos2::new(rect.right() - 10.0 * scale, rect.center().y),
+                true,
+                color::accent(),
+                scale,
+            );
         } else if sorting == format!("{} desc", column.name) {
-            icon::disclosure_at(&painter, Pos2::new(rect.right() - 10.0 * scale, rect.center().y), false, color::accent(), scale);
+            icon::disclosure_at(
+                &painter,
+                Pos2::new(rect.right() - 10.0 * scale, rect.center().y),
+                false,
+                color::accent(),
+                scale,
+            );
         }
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &column.name));
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &column.name)
+        });
         if response.clicked() {
             acts.push(Act::SortBy(id, column.name.clone()));
         }
@@ -401,7 +472,10 @@ fn one_row(
     );
     for (index, column) in rows.columns.iter().enumerate() {
         let left = rect.left() + GUTTER * scale + index as f32 * column_width;
-        let cell = Rect::from_min_size(Pos2::new(left, rect.top()), Vec2::new(column_width, rect.height()));
+        let cell = Rect::from_min_size(
+            Pos2::new(left, rect.top()),
+            Vec2::new(column_width, rect.height()),
+        );
         if !ui.clip_rect().intersects(cell) {
             continue;
         }
@@ -412,13 +486,26 @@ fn one_row(
             acts.extend(cell_editor(ui, look, cell, id, at, index, &column.name, editing.as_ref()));
             continue;
         }
-        let response = ui.interact(cell, ui.id().with(("database-cell", id, at, index)), Sense::click());
+        let response =
+            ui.interact(cell, ui.id().with(("database-cell", id, at, index)), Sense::click());
         if chosen {
-            painter.rect_filled(cell.shrink(1.0), egui::CornerRadius::same(3), look.palette.selected_row);
+            painter.rect_filled(
+                cell.shrink(1.0),
+                egui::CornerRadius::same(3),
+                look.palette.selected_row,
+            );
         } else if is_pending {
-            painter.rect_filled(cell.shrink(1.0), egui::CornerRadius::same(3), look.palette.modified.gamma_multiply(0.25));
+            painter.rect_filled(
+                cell.shrink(1.0),
+                egui::CornerRadius::same(3),
+                look.palette.modified.gamma_multiply(0.25),
+            );
         } else if response.hovered() {
-            painter.rect_filled(cell.shrink(1.0), egui::CornerRadius::same(3), look.palette.control);
+            painter.rect_filled(
+                cell.shrink(1.0),
+                egui::CornerRadius::same(3),
+                look.palette.control,
+            );
         }
         // **The schema decides**, never the bytes: a column is drawn as a vector because the table it
         // is in declared one there. See `unluminous_db::vector`.
@@ -499,7 +586,11 @@ fn cell_editor(
             .text_color(color::text_control()),
     );
     response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, &format!("{name} row {}", at + 1))
+        egui::WidgetInfo::labeled(
+            egui::WidgetType::TextEdit,
+            true,
+            &format!("{name} row {}", at + 1),
+        )
     });
     if typed != editing.text {
         acts.push(Act::TypeIntoCell(id, typed));
@@ -605,10 +696,20 @@ fn paging(
     let mut at = foot.left();
     let step = 22.0 * scale;
     if grid.at > 0 {
-        if crate::components::controls::icon_button(ui, along(foot, &mut at, step), "First page", icon::collapse) {
+        if crate::components::controls::icon_button(
+            ui,
+            along(foot, &mut at, step),
+            "First page",
+            icon::collapse,
+        ) {
             acts.push(Act::Page(id, 0));
         }
-        if crate::components::controls::icon_button(ui, along(foot, &mut at, step), "Previous page", icon::chevron_down) {
+        if crate::components::controls::icon_button(
+            ui,
+            along(foot, &mut at, step),
+            "Previous page",
+            icon::chevron_down,
+        ) {
             acts.push(Act::Page(id, grid.at - 1));
         }
     }
@@ -622,7 +723,12 @@ fn paging(
     );
     at += 8.0 * scale + 160.0 * scale;
     if grid.rows.more
-        && crate::components::controls::icon_button(ui, along(foot, &mut at, step), "Next page", icon::chevron_down)
+        && crate::components::controls::icon_button(
+            ui,
+            along(foot, &mut at, step),
+            "Next page",
+            icon::chevron_down,
+        )
     {
         acts.push(Act::Page(id, grid.at + 1));
     }
@@ -655,7 +761,8 @@ pub fn rows_only(ui: &mut egui::Ui, look: &Look<'_>, area: Rect, rows: &Rows, id
         );
     }
     let body = Rect::from_min_max(Pos2::new(area.left(), head.bottom()), area.max);
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body).id_salt(("database-result", id)));
+    let mut child =
+        ui.new_child(egui::UiBuilder::new().max_rect(body).id_salt(("database-result", id)));
     egui::ScrollArea::both()
         .id_salt(("database-result-rows", id))
         .max_height(body.height())
@@ -675,7 +782,12 @@ pub fn rows_only(ui: &mut egui::Ui, look: &Look<'_>, area: Rect, rows: &Rows, id
                     if !ui.clip_rect().intersects(cell) {
                         continue;
                     }
-                    let value = rows.rows.get(at).and_then(|row| row.get(index)).cloned().unwrap_or_default();
+                    let value = rows
+                        .rows
+                        .get(at)
+                        .and_then(|row| row.get(index))
+                        .cloned()
+                        .unwrap_or_default();
                     draw_a_value(&painter, look, cell, &value, column.numeric, false, scale, None);
                 }
             }

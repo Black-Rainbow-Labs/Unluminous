@@ -258,7 +258,9 @@ pub fn command_line(provider: &Provider, ask: &Ask) -> Vec<String> {
                     }
                 }
                 // Its own name, and it is a long one on purpose. Both forms take this one.
-                Permission::Full => out.push("--dangerously-bypass-approvals-and-sandbox".to_owned()),
+                Permission::Full => {
+                    out.push("--dangerously-bypass-approvals-and-sandbox".to_owned())
+                }
             }
             if !provider.model.trim().is_empty() {
                 out.push("--model".to_owned());
@@ -286,11 +288,7 @@ pub fn prompt_for(provider: &Provider, ask: &Ask) -> String {
     if ask.pictures.is_empty() || provider.wire == Wire::CodexCli {
         return ask.prompt.clone();
     }
-    let named: Vec<String> = ask
-        .pictures
-        .iter()
-        .map(|path| path.display().to_string())
-        .collect();
+    let named: Vec<String> = ask.pictures.iter().map(|path| path.display().to_string()).collect();
     match ask.prompt.trim().is_empty() {
         true => format!("Look at these images: {}", named.join(", ")),
         false => format!("{}\n\nAttached images: {}", ask.prompt, named.join(", ")),
@@ -473,12 +471,13 @@ pub fn run(
     }
     if !decoder.ended && !already_failed {
         let ended = match status {
-            Ok(status) if status.success() => "the agent stopped without finishing its answer.".to_owned(),
-            Ok(status) => format!(
-                "{} stopped with {status}.",
-                provider.command.trim()
-            ),
-            Err(problem) => format!("{} could not be waited for: {problem}", provider.command.trim()),
+            Ok(status) if status.success() => {
+                "the agent stopped without finishing its answer.".to_owned()
+            }
+            Ok(status) => format!("{} stopped with {status}.", provider.command.trim()),
+            Err(problem) => {
+                format!("{} could not be waited for: {problem}", provider.command.trim())
+            }
         };
         let detail = errors.trim();
         on_reply(Reply::Failed(match detail.is_empty() {
@@ -656,9 +655,7 @@ impl Decoder {
                 }
                 if !self.started {
                     self.started = true;
-                    out.push(Reply::Started {
-                        model: String::new(),
-                    });
+                    out.push(Reply::Started { model: String::new() });
                 }
             }
             "item.started" | "item.updated" | "item.completed" => {
@@ -672,9 +669,7 @@ impl Decoder {
                         + usage["cached_input_tokens"].as_u64().unwrap_or(0),
                     output: usage["output_tokens"].as_u64().unwrap_or(0),
                 });
-                out.push(Reply::Finished {
-                    reason: "stop".to_owned(),
-                });
+                out.push(Reply::Finished { reason: "stop".to_owned() });
             }
             "turn.failed" | "error" => {
                 self.ended = true;
@@ -752,10 +747,7 @@ impl Decoder {
                 out
             }
             "error" => vec![Reply::Failed(
-                item["message"]
-                    .as_str()
-                    .unwrap_or("the agent reported an error.")
-                    .to_owned(),
+                item["message"].as_str().unwrap_or("the agent reported an error.").to_owned(),
             )],
             _ => Vec::new(),
         }
@@ -807,11 +799,9 @@ impl Decoder {
 fn text_of(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::String(said) => said.clone(),
-        serde_json::Value::Array(blocks) => blocks
-            .iter()
-            .filter_map(|block| block["text"].as_str())
-            .collect::<Vec<&str>>()
-            .join(""),
+        serde_json::Value::Array(blocks) => {
+            blocks.iter().filter_map(|block| block["text"].as_str()).collect::<Vec<&str>>().join("")
+        }
         serde_json::Value::Null => String::new(),
         other => other.to_string(),
     }
@@ -853,10 +843,7 @@ pub fn write_a_picture(folder: &Path, name: &str, bytes: &[u8]) -> Option<std::p
     for _ in 0..64 {
         let at = NEXT.fetch_add(1, Ordering::Relaxed);
         let path = folder.join(format!("unluminous-chat-{}-{at}-{safe}", std::process::id()));
-        let made = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path);
+        let made = std::fs::OpenOptions::new().write(true).create_new(true).open(&path);
         if let Ok(mut file) = made {
             file.write_all(bytes).ok()?;
             file.flush().ok()?;
@@ -871,10 +858,7 @@ mod tests {
     use super::*;
 
     fn provider(wire: Wire) -> Provider {
-        Provider::defaults()
-            .into_iter()
-            .find(|one| one.wire == wire)
-            .expect("a row of that shape")
+        Provider::defaults().into_iter().find(|one| one.wire == wire).expect("a row of that shape")
     }
 
     #[test]
@@ -953,10 +937,7 @@ mod tests {
         }
         // And every value the settings page offers is one the code has.
         for name in PERMISSIONS {
-            assert_eq!(
-                Permission::from_name(name).expect("registered with no code").name(),
-                *name
-            );
+            assert_eq!(Permission::from_name(name).expect("registered with no code").name(), *name);
         }
         assert!(Permission::from_name("whatever").is_none());
     }
@@ -973,10 +954,7 @@ mod tests {
         let at = codex.iter().position(|one| one == "--image").expect("an image flag");
         assert!(codex[at + 1].contains("shot.png"));
         // …so its question does not name the file twice.
-        assert_eq!(
-            prompt_for(&provider(Wire::CodexCli), &ask),
-            "What is wrong with this?"
-        );
+        assert_eq!(prompt_for(&provider(Wire::CodexCli), &ask), "What is wrong with this?");
         // Claude Code has no such flag, and reads a picture it is given the path of — so the path
         // goes in the words rather than the attachment being dropped in silence.
         let prompt = prompt_for(&provider(Wire::ClaudeCli), &ask);
@@ -1117,7 +1095,8 @@ mod tests {
         let mut decoder = Decoder::new(Wire::CodexCli);
         assert!(decoder.line("Reading additional input from stdin...").is_empty());
         assert!(decoder.line("").is_empty());
-        let said = decoder.line(r#"{"type":"turn.failed","error":{"message":"the model is overloaded"}}"#);
+        let said =
+            decoder.line(r#"{"type":"turn.failed","error":{"message":"the model is overloaded"}}"#);
         assert_eq!(said, vec![Reply::Failed("the model is overloaded".to_owned())]);
         assert!(decoder.ended);
 
@@ -1125,7 +1104,9 @@ mod tests {
         let said = decoder.line(
             r#"{"type":"result","subtype":"error_during_execution","is_error":true,"result":"Credit balance is too low"}"#,
         );
-        assert!(said.iter().any(|reply| matches!(reply, Reply::Failed(said) if said.contains("Credit balance"))));
+        assert!(said
+            .iter()
+            .any(|reply| matches!(reply, Reply::Failed(said) if said.contains("Credit balance"))));
     }
 
     #[test]
@@ -1176,7 +1157,8 @@ mod tests {
         assert!(crate::provider::program("", &here).is_none());
         assert!(crate::provider::program("unluminous-no-such-agent-anywhere", &here).is_none());
         assert!(crate::provider::program("/definitely/not/here/claude", &here).is_none());
-        let folder = std::env::temp_dir().join(format!("unluminous-chat-program-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-chat-program-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("a folder");
         let name = match cfg!(windows) {
             true => "unluminous-chat-test-agent.exe",

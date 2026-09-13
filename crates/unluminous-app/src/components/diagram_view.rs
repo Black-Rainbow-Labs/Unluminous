@@ -153,7 +153,12 @@ pub fn paint(ui: &egui::Ui, scene: &Scene, origin: Pos2, scale: f32) {
                 );
             }
             Item::Circle { centre, radius, fill, stroke } => {
-                painter.circle(at(centre), radius * scale, paint_of(fill), stroke_of(stroke, scale));
+                painter.circle(
+                    at(centre),
+                    radius * scale,
+                    paint_of(fill),
+                    stroke_of(stroke, scale),
+                );
             }
             Item::Polygon { points, fill, stroke } => {
                 let drawn: Vec<Pos2> = points.iter().map(at).collect();

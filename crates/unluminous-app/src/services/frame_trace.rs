@@ -97,14 +97,13 @@ pub fn begin() {
     let now = Instant::now();
     let outside = ENDED.with(|ended| ended.borrow().map(|at| elapsed(at, now)));
     FRAME.with(|frame| {
-        *frame.borrow_mut() =
-            Some(Recording {
-                began: now,
-                since: now,
-                phases: Vec::with_capacity(24),
-                allocations: crate::services::allocation_trace::snapshot(),
-                outside,
-            });
+        *frame.borrow_mut() = Some(Recording {
+            began: now,
+            since: now,
+            phases: Vec::with_capacity(24),
+            allocations: crate::services::allocation_trace::snapshot(),
+            outside,
+        });
     });
 }
 
@@ -120,7 +119,11 @@ pub fn phase(name: &'static str) {
     FRAME.with(|frame| {
         if let Some(recording) = frame.borrow_mut().as_mut() {
             let allocations = crate::services::allocation_trace::snapshot();
-            recording.phases.push((name, elapsed(recording.since, now), allocations.since(recording.allocations)));
+            recording.phases.push((
+                name,
+                elapsed(recording.since, now),
+                allocations.since(recording.allocations),
+            ));
             recording.allocations = allocations;
             recording.since = now;
         }
@@ -145,7 +148,10 @@ pub fn end() {
     for (name, took, allocations) in &recording.phases {
         line.push_str(&format!(" {name} {took:.3}"));
         if allocations.allocations > 0 {
-            line.push_str(&format!(" allocs={} bytes={}", allocations.allocations, allocations.bytes));
+            line.push_str(&format!(
+                " allocs={} bytes={}",
+                allocations.allocations, allocations.bytes
+            ));
         }
     }
     if let Ok(mut writer) = sink.lock() {

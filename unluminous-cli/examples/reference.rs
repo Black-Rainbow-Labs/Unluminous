@@ -32,12 +32,8 @@ fn main() {
         );
         std::process::exit(1);
     };
-    let wanted = format!(
-        "{}{BEGIN}\n\n{}\n{}",
-        &existing[..begins],
-        reference(),
-        &existing[ends..]
-    );
+    let wanted =
+        format!("{}{BEGIN}\n\n{}\n{}", &existing[..begins], reference(), &existing[ends..]);
     if wanted == existing {
         println!("{} is already up to date.", path.display());
         return;
@@ -68,7 +64,12 @@ fn reference() -> String {
 }
 
 fn section(command: &Command) -> String {
-    let mut out = format!("### {}\n\n```\n{}\n```\n\n{}\n\n", command.typed(), command.usage(), command.summary);
+    let mut out = format!(
+        "### {}\n\n```\n{}\n```\n\n{}\n\n",
+        command.typed(),
+        command.usage(),
+        command.summary
+    );
     if !command.arguments.is_empty() {
         for argument in command.arguments {
             out.push_str(&format!(

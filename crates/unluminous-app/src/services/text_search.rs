@@ -325,7 +325,12 @@ pub fn hits_in(path: &Path, text: &str, query: &Query, limit: usize) -> Vec<Hit>
 /// letters, digits or underscores. That is what every editor's `ab|` button means, and it is a
 /// different and much cheaper question from `Find References`, which asks the grammar what the hit
 /// was found inside.
-pub fn ranges_in(text: &str, needle: &str, match_case: bool, whole_word: bool) -> Vec<Range<usize>> {
+pub fn ranges_in(
+    text: &str,
+    needle: &str,
+    match_case: bool,
+    whole_word: bool,
+) -> Vec<Range<usize>> {
     let mut found = Vec::new();
     if needle.is_empty() {
         return found;
@@ -391,11 +396,8 @@ pub fn references_in(
             Err(after) => after - 1,
         };
         let start_of_line = starts[index];
-        let line = text[start_of_line..]
-            .split('\n')
-            .next()
-            .unwrap_or_default()
-            .trim_end_matches('\r');
+        let line =
+            text[start_of_line..].split('\n').next().unwrap_or_default().trim_end_matches('\r');
         let begin = occurrence.range.start - start_of_line;
         let end = begin + name.len();
         // A match beyond the end of its own line means the name held a line break, which no

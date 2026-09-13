@@ -154,10 +154,8 @@ fn show_header(
         outcome.new_tab = true;
     }
 
-    let hide = Rect::from_center_size(
-        Pos2::new(area.right() - 22.0, area.center().y),
-        Vec2::splat(22.0),
-    );
+    let hide =
+        Rect::from_center_size(Pos2::new(area.right() - 22.0, area.center().y), Vec2::splat(22.0));
     if controls::icon_button(ui, hide, "Hide the terminal", icon::collapse) {
         outcome.hide = true;
     }
@@ -289,10 +287,8 @@ fn draw_tab(
         label,
         color::text_control(),
     );
-    let shut = Rect::from_center_size(
-        Pos2::new(tab.right() - 12.0, tab.center().y),
-        Vec2::splat(16.0),
-    );
+    let shut =
+        Rect::from_center_size(Pos2::new(tab.right() - 12.0, tab.center().y), Vec2::splat(16.0));
     let shut_response = ui
         .interact(shut, ui.id().with(("terminal-close", index)), Sense::click())
         .on_hover_text(format!("Close {name}"));
@@ -410,8 +406,11 @@ pub(crate) fn grid(
 
     let Some(session) = session else {
         let painter = ui.painter_at(area);
-        let galley =
-            painter.layout_no_wrap(empty.to_owned(), egui::FontId::proportional(12.0), color::text_faint());
+        let galley = painter.layout_no_wrap(
+            empty.to_owned(),
+            egui::FontId::proportional(12.0),
+            color::text_faint(),
+        );
         painter.galley(
             Pos2::new(area.left() + PADDING_X + 4.0, area.top() + PADDING_Y + 6.0),
             galley,
@@ -657,11 +656,10 @@ fn paint(
     // otherwise gives no sign that there is more above.
     if screen.scrollback > 0 {
         let text = format!("{} lines back", screen.scrollback);
-        let galley = painter.layout_no_wrap(text, egui::FontId::proportional(11.0), color::text_dim());
-        let at = Pos2::new(
-            ui.max_rect().right() - 12.0 - galley.size().x,
-            ui.max_rect().top() + 6.0,
-        );
+        let galley =
+            painter.layout_no_wrap(text, egui::FontId::proportional(11.0), color::text_dim());
+        let at =
+            Pos2::new(ui.max_rect().right() - 12.0 - galley.size().x, ui.max_rect().top() + 6.0);
         painter.rect_filled(
             Rect::from_min_size(at, galley.size()).expand(4.0),
             CornerRadius::same(4),
@@ -714,9 +712,14 @@ fn handle_input(
             } else {
                 mouse::Kind::Release
             };
-            if let Some(bytes) =
-                mouse::report(mouse_mode, kind, mouse::Button::Left, row, column, terminal_modifiers)
-            {
+            if let Some(bytes) = mouse::report(
+                mouse_mode,
+                kind,
+                mouse::Button::Left,
+                row,
+                column,
+                terminal_modifiers,
+            ) {
                 session.send(bytes);
             }
             if response.drag_stopped() || response.clicked() {
@@ -1060,7 +1063,11 @@ mod tests {
     fn a_tile_too_small_for_one_cell_still_has_a_grid_of_one() {
         let cell = CellMetrics { width: 10.0, height: 20.0, ascent: 15.0 };
         let size = grid_size(Vec2::new(1.0, 1.0), cell);
-        assert_eq!((size.rows, size.columns), (1, 1), "a grid of nothing would divide by zero later");
+        assert_eq!(
+            (size.rows, size.columns),
+            (1, 1),
+            "a grid of nothing would divide by zero later"
+        );
     }
 
     #[test]
@@ -1118,8 +1125,8 @@ mod tests {
             (egui::Key::Space, 0x00),
             (egui::Key::Minus, 0x1f),
         ] {
-            let press =
-                key_press(key, &control).unwrap_or_else(|| panic!("Control and {key:?} is a key press"));
+            let press = key_press(key, &control)
+                .unwrap_or_else(|| panic!("Control and {key:?} is a key press"));
             let bytes = keys::encode(press, keys::Mode::default())
                 .unwrap_or_else(|| panic!("Control and {key:?} should send something"));
             assert_eq!(bytes, vec![expected], "Control and {key:?}");
@@ -1204,7 +1211,8 @@ mod tests {
         assert!(key_press(egui::Key::C, &command).is_none());
         assert!(key_press(egui::Key::V, &command).is_none());
         // An arrow key held with the Apple key is recognised, and marked so that it sends nothing.
-        let press = key_press(egui::Key::ArrowLeft, &command).expect("an arrow is a key a terminal knows");
+        let press =
+            key_press(egui::Key::ArrowLeft, &command).expect("an arrow is a key a terminal knows");
         assert!(press.modifiers.command);
         assert_eq!(keys::encode(press, keys::Mode::default()), None);
     }

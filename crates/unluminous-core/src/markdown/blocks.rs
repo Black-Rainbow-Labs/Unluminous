@@ -42,22 +42,38 @@ pub(crate) struct Block {
 
 #[derive(Debug, Clone)]
 pub(crate) enum Kind {
-    Heading { level: usize, content: String },
-    Paragraph { content: String },
+    Heading {
+        level: usize,
+        content: String,
+    },
+    Paragraph {
+        content: String,
+    },
     Quote(Vec<Block>),
     List(List),
     /// A fenced or indented code block, one entry a line so each keeps its own source line.
-    Code { language: String, lines: Vec<Line> },
+    Code {
+        language: String,
+        lines: Vec<Line>,
+    },
     /// A `mermaid` fence, kept whole for the window to draw.
-    Diagram { source: String },
+    Diagram {
+        source: String,
+    },
     Table(Table),
     Rule,
     /// The YAML block at the top of a file written for a static site.
     FrontMatter(Vec<Line>),
     /// A picture on a line of its own.
-    Image { source: String, alt: String },
+    Image {
+        source: String,
+        alt: String,
+    },
     /// A footnote's own text, which is drawn where it was written.
-    Footnote { number: usize, blocks: Vec<Block> },
+    Footnote {
+        number: usize,
+        blocks: Vec<Block>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -182,7 +198,8 @@ fn parse_blocks(lines: &[Line], references: &mut References) -> Vec<Block> {
         if indent_of(&line.text) >= 4 {
             let start = at;
             let mut last = at;
-            while at < lines.len() && (is_blank(&lines[at].text) || indent_of(&lines[at].text) >= 4) {
+            while at < lines.len() && (is_blank(&lines[at].text) || indent_of(&lines[at].text) >= 4)
+            {
                 if !is_blank(&lines[at].text) {
                     last = at;
                 }
@@ -231,7 +248,10 @@ fn fenced_block(line: usize, language: &str, body: Vec<Line>) -> Block {
         // Trailing blank lines are dropped, because a fence nobody has closed yet collects the empty
         // line at the end of the file, and a diagram should not differ depending on whether its
         // author has finished typing the closing backticks.
-        return Block { line, kind: Kind::Diagram { source: source.join("\n").trim_end().to_owned() } };
+        return Block {
+            line,
+            kind: Kind::Diagram { source: source.join("\n").trim_end().to_owned() },
+        };
     }
     Block { line, kind: Kind::Code { language: language.to_owned(), lines: body } }
 }
@@ -347,8 +367,11 @@ fn marker(text: &str) -> Option<Marker> {
         if let Some(rest) = after.strip_prefix(delimiter) {
             if rest.is_empty() || rest.starts_with(' ') {
                 let spaces = rest.len() - rest.trim_start().len();
-                let width =
-                    if rest.trim().is_empty() { digits.len() + 2 } else { digits.len() + 1 + spaces.min(4) };
+                let width = if rest.trim().is_empty() {
+                    digits.len() + 2
+                } else {
+                    digits.len() + 1 + spaces.min(4)
+                };
                 return Some(Marker {
                     ordered: true,
                     number: digits.parse().unwrap_or(1),
@@ -388,8 +411,10 @@ fn gather_list(lines: &[Line], mut at: usize, references: &mut References) -> (L
         }
         let this = marker(&lines[at].text).expect("continues said there is one");
         let content = this.content;
-        let mut inner =
-            vec![Line { number: lines[at].number, text: lines[at].text[this.at.min(lines[at].text.len())..].to_owned() }];
+        let mut inner = vec![Line {
+            number: lines[at].number,
+            text: lines[at].text[this.at.min(lines[at].text.len())..].to_owned(),
+        }];
         at += 1;
         let mut blanks = 0;
         let mut prose = !is_blank(&inner[0].text);
@@ -769,7 +794,11 @@ mod tests {
                 Kind::Paragraph { .. } => "paragraph".to_owned(),
                 Kind::Quote(_) => "quote".to_owned(),
                 Kind::List(list) => {
-                    format!("list {} {}", list.items.len(), if list.tight { "tight" } else { "loose" })
+                    format!(
+                        "list {} {}",
+                        list.items.len(),
+                        if list.tight { "tight" } else { "loose" }
+                    )
                 }
                 Kind::Code { .. } => "code".to_owned(),
                 Kind::Diagram { .. } => "diagram".to_owned(),
@@ -937,10 +966,10 @@ mod tests {
         assert_eq!(kinds("text\n\n    code\n\nmore"), ["paragraph", "code", "paragraph"]);
         match &blocks[1].kind {
             Kind::Code { lines, .. } => {
-                assert_eq!(lines.iter().map(|line| line.text.as_str()).collect::<Vec<_>>(), [
-                    "indented code",
-                    "more code"
-                ]);
+                assert_eq!(
+                    lines.iter().map(|line| line.text.as_str()).collect::<Vec<_>>(),
+                    ["indented code", "more code"]
+                );
             }
             other => panic!("{other:?}"),
         }

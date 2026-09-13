@@ -105,7 +105,9 @@ pub enum Action {
     /// Set the editor's text one size larger, or one smaller, walking the sizes the Settings window
     /// offers. It is the same setting the dialog holds, so it reaches every open file and is still
     /// there next time Unluminous starts.
-    ChangeFontSize { larger: bool },
+    ChangeFontSize {
+        larger: bool,
+    },
     /// Put the editor's text back to the size a new Unluminous has.
     ResetFontSize,
     /// Show or hide the terminal along the bottom.
@@ -127,7 +129,10 @@ pub enum Action {
     /// `UnluminousApp::dock_the_panel`. Where in that side is not part of the action, because a menu row
     /// can only say "the left"; the drag is what says whether that means before or after whatever is
     /// there already, and `unluminous-cli panel dock --position` is what says it in a script.
-    Dock { panel: crate::app::dock::Panel, side: crate::app::dock::Side },
+    Dock {
+        panel: crate::app::dock::Panel,
+        side: crate::app::dock::Side,
+    },
     /// Put every panel back where a new Unluminous has it.
     ResetPanelLayout,
     /// Something about the Base of Infinite Space — `task-1904`.
@@ -223,15 +228,21 @@ pub enum Action {
     /// A `String` where every other variant is a unit or a small value, because the set of panes is
     /// decided when the manifests are read rather than at compile time. That is the one property the
     /// four docked panels could not have, and it is why the pane is named rather than numbered.
-    PluginPane { pane: String },
+    PluginPane {
+        pane: String,
+    },
     /// Run a command a plugin declared, from its own menu.
     ///
     /// The plugin's id and the command's name, which are exactly what `unluminous-cli plugin run` carries and
     /// what a button inside the pane calls, so all three reach `UiProvider::command` by one path.
-    PluginCommand { plugin: String, command: String },
+    PluginCommand {
+        plugin: String,
+        command: String,
+    },
     /// Open a plugin's own tab in the editing area, named `<plugin id>/<tab id>`.
-    PluginTab { tab: String },
-
+    PluginTab {
+        tab: String,
+    },
 }
 
 /// The six things that can be done to the blocks of the file that is showing.
@@ -578,7 +589,9 @@ impl DebugAction {
             DebugAction::Start(named) => named.as_deref(),
             // Not a configuration but an adapter's name, which travels in the same field because it
             // is the same thing to the command line: the one word this entry is about.
-            DebugAction::InstallAdapter(adapter) => Some(adapter.as_str()).filter(|name| !name.is_empty()),
+            DebugAction::InstallAdapter(adapter) => {
+                Some(adapter.as_str()).filter(|name| !name.is_empty())
+            }
             _ => None,
         }
     }
@@ -866,12 +879,10 @@ impl SpaceAction {
             SpaceAction::ResumeSession => "resume-session".to_owned(),
             SpaceAction::StartWhatWasRunning => "start-what-was-running".to_owned(),
             SpaceAction::Disconnect => "disconnect".to_owned(),
-            SpaceAction::CarryLines(on) => {
-                match on {
-                    true => "carry-lines".to_owned(),
-                    false => "stop-carrying-lines".to_owned(),
-                }
-            }
+            SpaceAction::CarryLines(on) => match on {
+                true => "carry-lines".to_owned(),
+                false => "stop-carrying-lines".to_owned(),
+            },
         }
     }
 }
@@ -917,14 +928,9 @@ impl Entry {
 
     fn with_shortcut(name: &str, action: Action, shortcut: Shortcut) -> Self {
         match Entry::item(name, action) {
-            Entry::Item { name, action, enabled, checked, keyboard, .. } => Entry::Item {
-                name,
-                action,
-                shortcut: Some(shortcut),
-                enabled,
-                checked,
-                keyboard,
-            },
+            Entry::Item { name, action, enabled, checked, keyboard, .. } => {
+                Entry::Item { name, action, shortcut: Some(shortcut), enabled, checked, keyboard }
+            }
             other => other,
         }
     }
@@ -1167,10 +1173,7 @@ pub const PLUGINS_MENU: &str = "Plugins";
 /// because two items claiming one chord is a real fault on macOS, and a manifest that could claim
 /// `Cmd+S` would be able to break that test from outside the repository. A plugin's command is reachable
 /// from its menu, from its own pane and from the command line, which is three ways.
-fn plugin_entries(
-    plugin: &str,
-    items: &[crate::services::plugins::MenuItem],
-) -> Vec<Entry> {
+fn plugin_entries(plugin: &str, items: &[crate::services::plugins::MenuItem]) -> Vec<Entry> {
     use crate::services::plugins::MenuItem;
     items
         .iter()
@@ -1264,10 +1267,12 @@ pub fn run_menu(state: &MenuState) -> Menu {
         Some(name) => format!("{verb} {name}"),
         None => verb.to_owned(),
     };
-    let mut entries = vec![
-        Entry::with_shortcut(&named("Run"), Action::Run(RunAction::Start(None)), run_shortcut())
-            .enabled(has_chosen),
-    ];
+    let mut entries = vec![Entry::with_shortcut(
+        &named("Run"),
+        Action::Run(RunAction::Start(None)),
+        run_shortcut(),
+    )
+    .enabled(has_chosen)];
     // Absent rather than dimmed for a file whose language names no command: a control that can
     // never apply to this kind of file is not a control that is unavailable just now.
     if state.run_file_applies {
@@ -1329,16 +1334,28 @@ fn debug_entries(state: &MenuState, chosen: &Option<String>) -> Vec<Entry> {
     );
     entries.push(Entry::Separator);
     entries.push(
-        Entry::with_shortcut("Resume", Action::Debug(DebugAction::Resume), function_key(egui::Key::F9))
-            .enabled(state.debug_paused),
+        Entry::with_shortcut(
+            "Resume",
+            Action::Debug(DebugAction::Resume),
+            function_key(egui::Key::F9),
+        )
+        .enabled(state.debug_paused),
     );
     entries.push(
-        Entry::with_shortcut("Step Over", Action::Debug(DebugAction::StepOver), function_key(egui::Key::F8))
-            .enabled(state.debug_paused),
+        Entry::with_shortcut(
+            "Step Over",
+            Action::Debug(DebugAction::StepOver),
+            function_key(egui::Key::F8),
+        )
+        .enabled(state.debug_paused),
     );
     entries.push(
-        Entry::with_shortcut("Step Into", Action::Debug(DebugAction::StepInto), function_key(egui::Key::F7))
-            .enabled(state.debug_paused),
+        Entry::with_shortcut(
+            "Step Into",
+            Action::Debug(DebugAction::StepInto),
+            function_key(egui::Key::F7),
+        )
+        .enabled(state.debug_paused),
     );
     entries.push(
         Entry::with_shortcut(
@@ -1357,13 +1374,11 @@ fn debug_entries(state: &MenuState, chosen: &Option<String>) -> Vec<Entry> {
         .enabled(state.debug_paused),
     );
     entries.push(Entry::Separator);
-    entries.push(
-        Entry::with_shortcut(
-            "Toggle Breakpoint",
-            Action::Debug(DebugAction::ToggleBreakpoint),
-            Shortcut::control(egui::Key::F8),
-        ),
-    );
+    entries.push(Entry::with_shortcut(
+        "Toggle Breakpoint",
+        Action::Debug(DebugAction::ToggleBreakpoint),
+        Shortcut::control(egui::Key::F8),
+    ));
     entries.push(
         Entry::with_shortcut(
             "Show Value",
@@ -1394,8 +1409,12 @@ pub fn git_menu(state: &MenuState) -> Menu {
     let here = state.in_repository;
     let file = here && state.has_file;
     let mut entries = vec![
-        Entry::with_shortcut("Commit...", Action::Git(GitAction::Commit), Shortcut::command(egui::Key::K))
-            .enabled(here),
+        Entry::with_shortcut(
+            "Commit...",
+            Action::Git(GitAction::Commit),
+            Shortcut::command(egui::Key::K),
+        )
+        .enabled(here),
         Entry::with_shortcut(
             "Add",
             Action::Git(GitAction::Add(None)),
@@ -1404,12 +1423,17 @@ pub fn git_menu(state: &MenuState) -> Menu {
         .enabled(file),
         Entry::item("Exclude from Version Control", Action::Git(GitAction::Exclude)).enabled(here),
         Entry::Separator,
-        Entry::with_shortcut("Show Diff", Action::Git(GitAction::ShowDiff(None)), Shortcut::command(egui::Key::D))
-            .enabled(file),
+        Entry::with_shortcut(
+            "Show Diff",
+            Action::Git(GitAction::ShowDiff(None)),
+            Shortcut::command(egui::Key::D),
+        )
+        .enabled(file),
         Entry::item("Compare with Revision...", Action::Git(GitAction::CompareWithRevision(None)))
             .enabled(file),
         Entry::item("Show History", Action::Git(GitAction::ShowHistory(None))).enabled(here),
-        Entry::item("Show Current Revision", Action::Git(GitAction::ShowCurrentRevision)).enabled(here),
+        Entry::item("Show Current Revision", Action::Git(GitAction::ShowCurrentRevision))
+            .enabled(here),
         Entry::item(
             if state.annotated { "Close Annotations" } else { "Annotate with Git Blame" },
             Action::Git(GitAction::Annotate),
@@ -1431,8 +1455,12 @@ pub fn git_menu(state: &MenuState) -> Menu {
         entries.push(Entry::Separator);
     }
     entries.extend([
-        Entry::with_shortcut("Push...", Action::Git(GitAction::Push), Shortcut::command_shift(egui::Key::K))
-            .enabled(here),
+        Entry::with_shortcut(
+            "Push...",
+            Action::Git(GitAction::Push),
+            Shortcut::command_shift(egui::Key::K),
+        )
+        .enabled(here),
         Entry::item("Pull...", Action::Git(GitAction::Pull)).enabled(here),
         Entry::item("Fetch", Action::Git(GitAction::Fetch)).enabled(here),
         Entry::Separator,
@@ -1468,7 +1496,8 @@ pub fn git_submenu(state: &MenuState, path: &std::path::Path) -> Vec<Entry> {
     let here = state.in_repository;
     vec![
         Entry::item("Add", Action::Git(GitAction::Add(Some(path.to_path_buf())))).enabled(here),
-        Entry::item("Show Diff", Action::Git(GitAction::ShowDiff(Some(path.to_path_buf())))).enabled(here),
+        Entry::item("Show Diff", Action::Git(GitAction::ShowDiff(Some(path.to_path_buf()))))
+            .enabled(here),
         Entry::item(
             "Compare with Revision...",
             Action::Git(GitAction::CompareWithRevision(Some(path.to_path_buf()))),
@@ -1535,11 +1564,7 @@ fn file_menu(state: &MenuState) -> Menu {
         Entry::with_shortcut("Save", Action::Save, Shortcut::command(egui::Key::S)),
         Entry::with_shortcut("Save As", Action::SaveAs, Shortcut::command_shift(egui::Key::S)),
         Entry::Separator,
-        Entry::with_shortcut(
-            "Close Window",
-            Action::CloseWindow,
-            Shortcut::command(egui::Key::W),
-        ),
+        Entry::with_shortcut("Close Window", Action::CloseWindow, Shortcut::command(egui::Key::W)),
     ];
     entries.retain(|entry| !matches!(entry, Entry::Submenu { entries, .. } if entries.is_empty()));
     Menu { name: "File".to_owned(), entries }
@@ -1862,7 +1887,10 @@ fn view_menu(state: &MenuState) -> Menu {
                 Action::Space(SpaceAction::Toggle),
             )
             .checked(state.space_visible),
-            Entry::Submenu { name: "Base of Infinite Space".to_owned(), entries: space_menu(state) },
+            Entry::Submenu {
+                name: "Base of Infinite Space".to_owned(),
+                entries: space_menu(state),
+            },
             // The one row of `task-1697` that is worth a place in the bar. Moving a panel is a drag,
             // or its own right click menu, or `unluminous-cli panel dock`; putting them all back is the
             // thing somebody looks for in a menu, because by then they have lost one.
@@ -2025,7 +2053,8 @@ pub fn space_view_menu(state: &MenuState) -> Vec<Entry> {
         Entry::item("Rename...", Action::Space(SpaceAction::RenameView)),
         Entry::item("Duplicate", Action::Space(SpaceAction::DuplicateView)),
         Entry::Separator,
-        Entry::item("Delete", Action::Space(SpaceAction::DeleteView)).enabled(state.space_views > 1),
+        Entry::item("Delete", Action::Space(SpaceAction::DeleteView))
+            .enabled(state.space_views > 1),
         Entry::Separator,
         Entry::item("New View", Action::Space(SpaceAction::NewView)),
     ]
@@ -2106,12 +2135,20 @@ pub fn explorer_menu(
             ],
         },
         Entry::Separator,
-        Entry::with_shortcut("Cut", Action::CutPath(path.to_path_buf()), Shortcut::command(egui::Key::X))
-            .enabled(on_a_row)
-            .not_from_the_keyboard(),
-        Entry::with_shortcut("Copy", Action::CopyPath(path.to_path_buf()), Shortcut::command(egui::Key::C))
-            .enabled(on_a_row)
-            .not_from_the_keyboard(),
+        Entry::with_shortcut(
+            "Cut",
+            Action::CutPath(path.to_path_buf()),
+            Shortcut::command(egui::Key::X),
+        )
+        .enabled(on_a_row)
+        .not_from_the_keyboard(),
+        Entry::with_shortcut(
+            "Copy",
+            Action::CopyPath(path.to_path_buf()),
+            Shortcut::command(egui::Key::C),
+        )
+        .enabled(on_a_row)
+        .not_from_the_keyboard(),
         Entry::item("Copy Path", Action::CopyPathReference(path.to_path_buf())).enabled(on_a_row),
         Entry::with_shortcut("Paste", Action::PasteInto(folder), Shortcut::command(egui::Key::V))
             .enabled(can_paste)
@@ -2126,14 +2163,20 @@ pub fn explorer_menu(
         .enabled(on_a_row)
         .not_from_the_keyboard(),
         Entry::Separator,
-        Entry::item(crate::services::launcher::file_manager_name(), Action::RevealPath(path.to_path_buf())),
+        Entry::item(
+            crate::services::launcher::file_manager_name(),
+            Action::RevealPath(path.to_path_buf()),
+        ),
         Entry::item("Reload from Disk", Action::ReloadPath(path.to_path_buf())),
     ];
     if on_a_row && !directory && crate::services::file_kind::is_html(path) {
-        entries.insert(1, Entry::Submenu {
-            name: "Open in Browser".to_owned(),
-            entries: vec![Entry::item("Tab", Action::OpenInBrowser(path.to_path_buf()))],
-        });
+        entries.insert(
+            1,
+            Entry::Submenu {
+                name: "Open in Browser".to_owned(),
+                entries: vec![Entry::item("Tab", Action::OpenInBrowser(path.to_path_buf()))],
+            },
+        );
     }
     entries
 }
@@ -2198,7 +2241,8 @@ pub fn folding_menu(state: &MenuState) -> Vec<Entry> {
                 | FoldAction::CollapseRecursively => state.foldable > 0,
                 FoldAction::None_ | FoldAction::ExpandRecursively => state.folded > 0,
             };
-            Entry::with_shortcut(what.label(), Action::Fold(*what), what.shortcut()).enabled(enabled)
+            Entry::with_shortcut(what.label(), Action::Fold(*what), what.shortcut())
+                .enabled(enabled)
         })
         .collect()
 }
@@ -2344,9 +2388,9 @@ pub fn action_for_key(
     fn search(entries: &[Entry], key: egui::Key, modifiers: &egui::Modifiers) -> Option<Action> {
         for entry in entries {
             match entry {
-                Entry::Item { action, shortcut: Some(shortcut), enabled, keyboard: true, .. }
-                    if *enabled && shortcut.matches(key, modifiers) =>
-                {
+                Entry::Item {
+                    action, shortcut: Some(shortcut), enabled, keyboard: true, ..
+                } if *enabled && shortcut.matches(key, modifiers) => {
                     return Some(action.clone());
                 }
                 Entry::Submenu { entries, .. } => {
@@ -2392,7 +2436,10 @@ mod tests {
             MenuState { open_files: 3, panes: 2, tab_is_on_a_node: true, ..MenuState::default() };
         let rows = names(&tab_menu(&on_a_node));
         for absent in ["Split Right", "Move Right", "Move Left", "Unsplit", "Unsplit All"] {
-            assert!(!rows.iter().any(|row| row == absent), "{absent} is offered on a node: {rows:?}");
+            assert!(
+                !rows.iter().any(|row| row == absent),
+                "{absent} is offered on a node: {rows:?}"
+            );
         }
         // And what a tab's menu is actually for is still there.
         assert!(rows.iter().any(|row| row == "Close"), "{rows:?}");
@@ -2451,12 +2498,7 @@ mod tests {
             let state = MenuState { space_node: Some((kind, false)), ..MenuState::default() };
             let rows = names(&space_node_menu(&state));
             let offered = rows.iter().any(|row| row == "Choose Folder...");
-            assert_eq!(
-                offered,
-                kind == Kind::Folder,
-                "a {} node offered {rows:?}",
-                kind.name()
-            );
+            assert_eq!(offered, kind == Kind::Folder, "a {} node offered {rows:?}", kind.name());
         }
         // And with no node chosen at all there is nothing to choose a folder for.
         let rows = names(&space_node_menu(&MenuState::default()));
@@ -2589,15 +2631,21 @@ mod tests {
     fn html_rows_offer_open_in_browser_as_a_tab() {
         let html = PathBuf::from("/project/site/index.html");
         let entries = explorer_menu(&html, false, false, Aim::AtARow);
-        let browser = entries.iter().find_map(|entry| match entry {
-            Entry::Submenu { name, entries } if name == "Open in Browser" => Some(entries),
-            _ => None,
-        }).expect("an Open in Browser submenu");
+        let browser = entries
+            .iter()
+            .find_map(|entry| match entry {
+                Entry::Submenu { name, entries } if name == "Open in Browser" => Some(entries),
+                _ => None,
+            })
+            .expect("an Open in Browser submenu");
         assert!(browser.iter().any(|entry| {
             matches!(entry, Entry::Item { name, action: Action::OpenInBrowser(path), .. } if name == "Tab" && path == &html)
         }));
-        let markdown = explorer_menu(std::path::Path::new("/project/readme.md"), false, false, Aim::AtARow);
-        assert!(!markdown.iter().any(|entry| matches!(entry, Entry::Submenu { name, .. } if name == "Open in Browser")));
+        let markdown =
+            explorer_menu(std::path::Path::new("/project/readme.md"), false, false, Aim::AtARow);
+        assert!(!markdown.iter().any(
+            |entry| matches!(entry, Entry::Submenu { name, .. } if name == "Open in Browser")
+        ));
     }
 
     #[test]
@@ -2614,7 +2662,10 @@ mod tests {
         assert_eq!(run[0], "Run Dev server");
         assert_eq!(run[1], "Stop Dev server");
         assert_eq!(run[2], "Rerun");
-        assert!(run.contains(&"cargo run".to_owned()), "and each configuration is an entry: {run:?}");
+        assert!(
+            run.contains(&"cargo run".to_owned()),
+            "and each configuration is an entry: {run:?}"
+        );
         assert_eq!(run.last(), Some(&"Edit Configurations...".to_owned()));
     }
 
@@ -2713,8 +2764,7 @@ mod tests {
         assert!(rows.contains(&"Set Breakpoint".to_owned()), "{rows:?}");
         assert!(rows.contains(&"Add Conditional Breakpoint...".to_owned()));
 
-        let on_one =
-            MenuState { on_a_breakpoint: true, breakpoint_enabled: true, ..empty.clone() };
+        let on_one = MenuState { on_a_breakpoint: true, breakpoint_enabled: true, ..empty.clone() };
         let rows = names(&gutter_menu(&on_one));
         assert!(rows.contains(&"Remove Breakpoint".to_owned()), "{rows:?}");
         assert!(rows.contains(&"Disable Breakpoint".to_owned()));
@@ -2781,13 +2831,19 @@ mod tests {
         let tile = view.iter().position(|name| name == "Run Tile").expect("Run Tile");
         assert!(tile > terminal, "beside it, and after it: {view:?}");
         let showing = MenuState { run_tile_visible: true, ..MenuState::default() };
-        assert!(names(&find(&menus(&showing), "View").entries).contains(&"Hide Run Tile".to_owned()));
+        assert!(
+            names(&find(&menus(&showing), "View").entries).contains(&"Hide Run Tile".to_owned())
+        );
     }
 
     #[test]
     fn the_run_and_stop_shortcuts_are_the_ones_the_platform_uses() {
         // The reference editor's own, which is what somebody who has used one will try.
-        let state = MenuState { run_selected: Some("Dev server".to_owned()), run_active: true, ..MenuState::default() };
+        let state = MenuState {
+            run_selected: Some("Dev server".to_owned()),
+            run_active: true,
+            ..MenuState::default()
+        };
         let run = if cfg!(target_os = "macos") {
             action_for_key(&state, egui::Key::R, &pressing_control())
         } else {
@@ -2849,7 +2905,10 @@ mod tests {
         let bar = menus(&MenuState::default());
         let file = names(&find(&bar, "File").entries);
         for expected in ["New Window", "Open File", "Open Folder", "Save", "Save As"] {
-            assert!(file.contains(&expected.to_owned()), "File should hold {expected}, it has {file:?}");
+            assert!(
+                file.contains(&expected.to_owned()),
+                "File should hold {expected}, it has {file:?}"
+            );
         }
     }
 
@@ -2878,7 +2937,9 @@ mod tests {
             .entries
             .iter()
             .find_map(|entry| match entry {
-                Entry::Submenu { name, entries } if name == "Recent Projects" => Some(entries.clone()),
+                Entry::Submenu { name, entries } if name == "Recent Projects" => {
+                    Some(entries.clone())
+                }
                 _ => None,
             })
             .expect("Recent Projects should be there once a project has been opened");
@@ -3031,7 +3092,10 @@ mod tests {
 
     #[test]
     fn a_shortcut_is_spelled_out_in_words() {
-        assert_eq!(Shortcut::command(egui::Key::S).label(), if cfg!(target_os = "macos") { "Cmd+S" } else { "Ctrl+S" });
+        assert_eq!(
+            Shortcut::command(egui::Key::S).label(),
+            if cfg!(target_os = "macos") { "Cmd+S" } else { "Ctrl+S" }
+        );
         assert_eq!(
             Shortcut::command_shift(egui::Key::O).label(),
             if cfg!(target_os = "macos") { "Cmd+Shift+O" } else { "Ctrl+Shift+O" }
@@ -3115,24 +3179,37 @@ mod tests {
         for menu in menus(&state) {
             walk(&menu.entries, &mut seen);
         }
-        assert!(seen.len() > 10, "there should be a shortcut on most entries, found {}", seen.len());
+        assert!(
+            seen.len() > 10,
+            "there should be a shortcut on most entries, found {}",
+            seen.len()
+        );
     }
     #[test]
     fn every_folding_entry_is_reachable_from_the_keyboard() {
         // A shortcut that passes its test and does nothing in the real window is the fault
         // `a_shortcut_the_platform_really_sends_is_matched` records, so these are asked with the
         // modifiers a platform really sends.
-        let state = MenuState { folding_applies: true, foldable: 3, folded: 1, ..MenuState::default() };
+        let state =
+            MenuState { folding_applies: true, foldable: 3, folded: 1, ..MenuState::default() };
         assert_eq!(
             action_for_key(&state, egui::Key::Period, &pressing_command()),
             Some(Action::Fold(FoldAction::Toggle))
         );
         assert_eq!(
-            action_for_key(&state, egui::Key::Period, &egui::Modifiers { shift: true, ..pressing_command() }),
+            action_for_key(
+                &state,
+                egui::Key::Period,
+                &egui::Modifiers { shift: true, ..pressing_command() }
+            ),
             Some(Action::Fold(FoldAction::All))
         );
         assert_eq!(
-            action_for_key(&state, egui::Key::Comma, &egui::Modifiers { shift: true, ..pressing_command() }),
+            action_for_key(
+                &state,
+                egui::Key::Comma,
+                &egui::Modifiers { shift: true, ..pressing_command() }
+            ),
             Some(Action::Fold(FoldAction::None_))
         );
         assert_eq!(
@@ -3141,7 +3218,11 @@ mod tests {
             "the comma on its own still opens Settings"
         );
         assert_eq!(
-            action_for_key(&state, egui::Key::Period, &egui::Modifiers { alt: true, ..pressing_command() }),
+            action_for_key(
+                &state,
+                egui::Key::Period,
+                &egui::Modifiers { alt: true, ..pressing_command() }
+            ),
             Some(Action::Fold(FoldAction::Others))
         );
         assert_eq!(
@@ -3176,7 +3257,8 @@ mod tests {
     #[test]
     fn a_file_with_nothing_to_fold_dims_the_folding_entries_rather_than_hiding_them() {
         // The other half of the rule: a control that could be used in a moment is dimmed.
-        let state = MenuState { folding_applies: true, foldable: 0, folded: 0, ..MenuState::default() };
+        let state =
+            MenuState { folding_applies: true, foldable: 0, folded: 0, ..MenuState::default() };
         let entries = folding_menu(&state);
         assert_eq!(entries.len(), 6);
         assert!(entries.iter().all(|entry| matches!(entry, Entry::Item { enabled: false, .. })));
@@ -3184,7 +3266,8 @@ mod tests {
 
     #[test]
     fn the_two_expand_entries_are_the_only_ones_that_need_something_collapsed() {
-        let state = MenuState { folding_applies: true, foldable: 3, folded: 0, ..MenuState::default() };
+        let state =
+            MenuState { folding_applies: true, foldable: 3, folded: 0, ..MenuState::default() };
         let usable: Vec<String> = folding_menu(&state)
             .iter()
             .filter_map(|entry| match entry {
@@ -3202,7 +3285,6 @@ mod tests {
             ]
         );
     }
-
 }
 
 #[cfg(test)]
@@ -3251,7 +3333,11 @@ mod plugins_menu_tests {
                 other => panic!("every row under Plugins is a submenu, not {other:?}"),
             })
             .collect();
-        assert_eq!(rows, ["Agent-Chat", "Agent-Tasks", "Database"], "in the order the plugins load");
+        assert_eq!(
+            rows,
+            ["Agent-Chat", "Agent-Tasks", "Database"],
+            "in the order the plugins load"
+        );
     }
 
     /// The reason for the change rather than a restatement of it: the bar's width was being decided by
@@ -3279,7 +3365,8 @@ mod plugins_menu_tests {
     /// would be a level at which a chosen row asks the wrong plugin.
     #[test]
     fn every_plugin_command_is_still_reachable_and_names_its_own_plugin() {
-        let bar = with(vec![a_plugin("database", "Database"), a_plugin("agent-chat", "Agent-Chat")]);
+        let bar =
+            with(vec![a_plugin("database", "Database"), a_plugin("agent-chat", "Agent-Chat")]);
         let plugins = named(&bar, PLUGINS_MENU).expect("there should be a Plugins menu");
 
         let mut found = Vec::new();

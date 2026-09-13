@@ -132,8 +132,7 @@ fn authenticate(stream: &mut TcpStream, held: &mut Vec<u8>, password: &str) -> b
     let salt = b"a-fixed-salt-for-a-test!";
     let iterations = 4096_u32;
     let server_nonce = format!("{client_nonce}serverpart");
-    let server_first =
-        format!("r={server_nonce},s={},i={iterations}", base64.encode(salt));
+    let server_first = format!("r={server_nonce},s={},i={iterations}", base64.encode(salt));
     stream
         .write_all(&Out::tagged(b'R').int32(11).bytes(server_first.as_bytes()).finish())
         .expect("written");
@@ -153,8 +152,11 @@ fn authenticate(stream: &mut TcpStream, held: &mut Vec<u8>, password: &str) -> b
     // **The inverse of the way the client made it.** `ClientProof = ClientKey XOR ClientSignature`,
     // so recovering `ClientKey` and hashing it has to give back the `StoredKey` — which is exactly
     // what a real server checks and is what makes this a test of the client rather than a replay.
-    let recovered: Vec<u8> =
-        proof.iter().zip(client_signature.iter()).map(|(proof, signature)| proof ^ signature).collect();
+    let recovered: Vec<u8> = proof
+        .iter()
+        .zip(client_signature.iter())
+        .map(|(proof, signature)| proof ^ signature)
+        .collect();
     let hashed: [u8; 32] = <sha2::Sha256 as sha2::Digest>::digest(&recovered).into();
     if hashed != stored_key {
         let refusal = Out::tagged(b'E')
@@ -219,7 +221,8 @@ fn read_untagged(stream: &mut TcpStream, held: &mut Vec<u8>) -> Vec<u8> {
 }
 
 fn is_ssl_request(message: &[u8]) -> bool {
-    message.len() == 8 && i32::from_be_bytes([message[4], message[5], message[6], message[7]]) == 80_877_103
+    message.len() == 8
+        && i32::from_be_bytes([message[4], message[5], message[6], message[7]]) == 80_877_103
 }
 
 /// One tagged client message: its tag and its body.

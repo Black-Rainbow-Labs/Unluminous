@@ -57,9 +57,7 @@ mod tests {
             let bytes: Vec<u8> = (0..length).map(|at| (at * 7 % 251) as u8).collect();
             let encoded = encode(&bytes);
             assert_eq!(encoded.len() % 4, 0, "{length} bytes gave {}", encoded.len());
-            assert!(encoded
-                .bytes()
-                .all(|byte| byte == b'=' || ALPHABET.contains(&byte)));
+            assert!(encoded.bytes().all(|byte| byte == b'=' || ALPHABET.contains(&byte)));
         }
     }
 }

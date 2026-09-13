@@ -648,7 +648,10 @@ mod tests {
     #[test]
     fn a_prefix_wins_and_the_shorter_of_two_prefixes_wins_before_a_middle_match() {
         // Scenario 1.
-        assert_eq!(offered("dra", &["draw_frame", "redraw", "draw"]), ["draw", "draw_frame", "redraw"]);
+        assert_eq!(
+            offered("dra", &["draw_frame", "redraw", "draw"]),
+            ["draw", "draw_frame", "redraw"]
+        );
     }
 
     #[test]
@@ -747,8 +750,7 @@ mod tests {
             Candidate::new("--brand-hue", Source::Word),
             Candidate::new("border-radius", Source::Word),
         ];
-        let names: Vec<String> =
-            rank(&text[stem], pool).into_iter().map(|row| row.name).collect();
+        let names: Vec<String> = rank(&text[stem], pool).into_iter().map(|row| row.name).collect();
         assert_eq!(names, ["--brand-hue"], "`border-radius` has no `--` in it at all");
     }
 
@@ -807,7 +809,14 @@ mod tests {
         // out of, so a name it lets through that the scorer then drops is waste, and one it drops
         // that the scorer would have offered is a missing row.
         let names = [
-            "draw", "draw_frame", "redraw", "layout", "paint_text", "--brand-hue", "d\u{00E9}j\u{00E0}", "x",
+            "draw",
+            "draw_frame",
+            "redraw",
+            "layout",
+            "paint_text",
+            "--brand-hue",
+            "d\u{00E9}j\u{00E0}",
+            "x",
         ];
         for stem in ["d", "dr", "dra", "lyt", "pt", "--br", "zz", "drawn", "\u{00E9}"] {
             for name in names {
@@ -843,8 +852,7 @@ mod tests {
                     assert!(last.is_none_or(|before| before < *at), "in order");
                     last = Some(*at);
                 }
-                let picked: String =
-                    row.matched.iter().map(|at| lower(letters[*at])).collect();
+                let picked: String = row.matched.iter().map(|at| lower(letters[*at])).collect();
                 let wanted: String = stem.chars().map(lower).collect();
                 assert_eq!(picked, wanted, "{stem} against {}", row.name);
                 assert_ne!(row.name, stem, "the row equal to the stem is never offered");

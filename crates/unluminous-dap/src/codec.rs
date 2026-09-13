@@ -122,8 +122,8 @@ impl Decoder {
         }
         self.buffer.drain(..start);
         let body: Vec<u8> = self.buffer.drain(..length).collect();
-        let text = String::from_utf8(body)
-            .map_err(|problem| FrameError::BadBody(problem.to_string()))?;
+        let text =
+            String::from_utf8(body).map_err(|problem| FrameError::BadBody(problem.to_string()))?;
         let value = serde_json::from_str(&text)
             .map_err(|problem| FrameError::BadBody(problem.to_string()))?;
         Ok(Some(value))
@@ -144,8 +144,7 @@ fn content_length(headers: &str) -> Result<usize, FrameError> {
             continue;
         }
         let value = value.trim();
-        let length: usize =
-            value.parse().map_err(|_| FrameError::BadLength(value.to_owned()))?;
+        let length: usize = value.parse().map_err(|_| FrameError::BadLength(value.to_owned()))?;
         if length > LIMIT {
             return Err(FrameError::BadLength(value.to_owned()));
         }

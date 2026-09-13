@@ -11,7 +11,8 @@ fn saturation(p: [u8; 4]) -> i32 {
 }
 
 fn main() {
-    let path = std::env::args().nth(1).unwrap_or_else(|| "design/intial-design-screenshot.png".to_owned());
+    let path =
+        std::env::args().nth(1).unwrap_or_else(|| "design/intial-design-screenshot.png".to_owned());
     let image = image::open(&path).expect("open the design image").to_rgba8();
     println!("{} is {}x{}", path, image.width(), image.height());
     // name, x, y, width, height

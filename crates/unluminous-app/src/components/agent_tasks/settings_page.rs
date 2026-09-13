@@ -88,13 +88,20 @@ fn rows(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Reque
         }
     }
 
-    let project = configuration.project.clone().map(|path| path.display().to_string()).unwrap_or_default();
-    let typed = field(ui, look, area, &mut pen, Field {
-        name: "Default project",
-        value: &project,
-        hint: "the folder this window has open",
-        explanation: "Where an agent is launched when a ticket names no project of its own.",
-    });
+    let project =
+        configuration.project.clone().map(|path| path.display().to_string()).unwrap_or_default();
+    let typed = field(
+        ui,
+        look,
+        area,
+        &mut pen,
+        Field {
+            name: "Default project",
+            value: &project,
+            hint: "the folder this window has open",
+            explanation: "Where an agent is launched when a ticket names no project of its own.",
+        },
+    );
     if let Some(typed) = typed {
         changed.project = Some(typed)
             .filter(|value: &String| !value.trim().is_empty())
@@ -122,7 +129,10 @@ fn rows(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Reque
     // The agent, as a row of choices rather than a dropdown: there are two, and two buttons are quicker to
     // read than a list that has to be opened. `components::controls` has no dropdown that takes a borrowed
     // list of two.
-    let agent_row = Rect::from_min_size(Pos2::new(area.min.x + PAD, pen), Vec2::new(area.width() - PAD * 2.0, ROW));
+    let agent_row = Rect::from_min_size(
+        Pos2::new(area.min.x + PAD, pen),
+        Vec2::new(area.width() - PAD * 2.0, ROW),
+    );
     let painter = ui.painter().clone();
     named(ui, &painter, agent_row.min, "Default agent", look);
     let mut left = agent_row.min.x;
@@ -131,7 +141,12 @@ fn rows(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Reque
             Pos2::new(left, agent_row.min.y + look.font_size + 4.0),
             Vec2::new(84.0, 24.0),
         );
-        if crate::components::controls::choice_button(ui, at, agent.name(), configuration.agent == agent) {
+        if crate::components::controls::choice_button(
+            ui,
+            at,
+            agent.name(),
+            configuration.agent == agent,
+        ) {
             changed.agent = agent;
         }
         left += 90.0;
@@ -147,11 +162,13 @@ fn rows(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Reque
     // A dropdown rather than a field, and the **same** control a ticket's own `Model` is, so the value a new
     // ticket gets and the value a ticket holds are chosen from one list. `task-28`.
     let model = configuration.model.clone().unwrap_or_default();
-    let models: Vec<(String, String)> =
-        crate::services::agent_tasks::agent::models_for(configuration.agent, configuration.model.as_deref())
-            .into_iter()
-            .map(|name| (name.clone(), name))
-            .collect();
+    let models: Vec<(String, String)> = crate::services::agent_tasks::agent::models_for(
+        configuration.agent,
+        configuration.model.as_deref(),
+    )
+    .into_iter()
+    .map(|name| (name.clone(), name))
+    .collect();
     let picked = choice(ui, look, area, &mut pen, Choice {
         name: "Default model",
         options: &models,
@@ -250,7 +267,10 @@ fn rows(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Reque
             std::env::consts::OS
         ),
     };
-    let secret_row = Rect::from_min_size(Pos2::new(area.min.x + PAD, pen), Vec2::new(area.width() - PAD * 2.0, ROW));
+    let secret_row = Rect::from_min_size(
+        Pos2::new(area.min.x + PAD, pen),
+        Vec2::new(area.width() - PAD * 2.0, ROW),
+    );
     let painter = ui.painter().clone();
     named(ui, &painter, secret_row.min, "Iliad key", look);
     let at = Rect::from_min_size(
@@ -293,7 +313,8 @@ fn rows(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Reque
             board.key_draft = secret;
         }
         let save = Rect::from_min_size(Pos2::new(at.max.x + 8.0, at.min.y), Vec2::new(70.0, 24.0));
-        let clear = Rect::from_min_size(Pos2::new(save.max.x + 6.0, at.min.y), Vec2::new(60.0, 24.0));
+        let clear =
+            Rect::from_min_size(Pos2::new(save.max.x + 6.0, at.min.y), Vec2::new(60.0, 24.0));
         if crate::components::controls::choice_button(ui, save, "Save key", false) {
             match board.save_the_key() {
                 Ok(said) => requests.push(Request::Message(said)),
@@ -398,7 +419,10 @@ fn row(
     settings_row: Row<'_>,
 ) -> RowOutcome {
     let painter = ui.painter().clone();
-    let at = Rect::from_min_size(Pos2::new(area.min.x + PAD, *pen), Vec2::new(area.width() - PAD * 2.0, ROW));
+    let at = Rect::from_min_size(
+        Pos2::new(area.min.x + PAD, *pen),
+        Vec2::new(area.width() - PAD * 2.0, ROW),
+    );
     named(ui, &painter, at.min, settings_row.name, look);
     let font = match settings_row.monospace {
         true => egui::FontId::monospace(look.font_size - 1.5),
@@ -406,7 +430,8 @@ fn row(
     };
     // **Measured, not assumed.** A value that wrapped to two lines and an explanation that wrapped to three used
     // to be drawn over the next setting's name, because every row advanced by the same 58 points whatever it drew.
-    let value = painter.layout(settings_row.value.to_owned(), font, look.palette.text_control, VALUE);
+    let value =
+        painter.layout(settings_row.value.to_owned(), font, look.palette.text_control, VALUE);
     let value_height = value.size().y;
     let value_top = at.min.y + look.font_size + 6.0;
     painter.galley(Pos2::new(at.min.x, value_top), value, look.palette.text_control);
@@ -433,7 +458,13 @@ fn row(
             })
             .inner;
     }
-    *pen = explain(&painter, look, at, value_top + value_height.max(22.0) + 4.0, settings_row.explanation);
+    *pen = explain(
+        &painter,
+        look,
+        at,
+        value_top + value_height.max(22.0) + 4.0,
+        settings_row.explanation,
+    );
     RowOutcome { copied, revealed }
 }
 
@@ -441,13 +472,7 @@ fn row(
 ///
 /// Wrapped, because an explanation drawn with `layout_no_wrap` ran off the right edge of the page and out of the
 /// window, and measured, because a row that advanced by a fixed height drew over the setting under it.
-fn explain(
-    painter: &egui::Painter,
-    look: &Look<'_>,
-    at: Rect,
-    top: f32,
-    said: &str,
-) -> f32 {
+fn explain(painter: &egui::Painter, look: &Look<'_>, at: Rect, top: f32, said: &str) -> f32 {
     let galley = painter.layout(
         said.to_owned(),
         egui::FontId::proportional(look.font_size - 2.0),
@@ -485,7 +510,10 @@ fn choice(
     settings_choice: Choice<'_>,
 ) -> Option<String> {
     let painter = ui.painter().clone();
-    let at = Rect::from_min_size(Pos2::new(area.min.x + PAD, *pen), Vec2::new(area.width() - PAD * 2.0, ROW));
+    let at = Rect::from_min_size(
+        Pos2::new(area.min.x + PAD, *pen),
+        Vec2::new(area.width() - PAD * 2.0, ROW),
+    );
     // Painted rather than named, for the reason `ticket_modal::dropdown_row` paints its own: the dropdown below
     // answers to this name, and two nodes sharing one name is a name a test cannot ask for.
     text(&painter, at.min, settings_choice.name, look.font_size, look.palette.text_strong);
@@ -522,7 +550,10 @@ fn field(
     settings_field: Field<'_>,
 ) -> Option<String> {
     let painter = ui.painter().clone();
-    let at = Rect::from_min_size(Pos2::new(area.min.x + PAD, *pen), Vec2::new(area.width() - PAD * 2.0, ROW));
+    let at = Rect::from_min_size(
+        Pos2::new(area.min.x + PAD, *pen),
+        Vec2::new(area.width() - PAD * 2.0, ROW),
+    );
     named(ui, &painter, at.min, settings_field.name, look);
     let box_at = Rect::from_min_size(
         Pos2::new(at.min.x, at.min.y + look.font_size + 6.0),
@@ -546,7 +577,8 @@ fn field(
             .font(egui::FontId::proportional(look.font_size - 0.5))
             .text_color(look.palette.text),
     );
-    let copy = Rect::from_min_size(Pos2::new(box_at.max.x + 8.0, box_at.min.y), Vec2::new(54.0, 22.0));
+    let copy =
+        Rect::from_min_size(Pos2::new(box_at.max.x + 8.0, box_at.min.y), Vec2::new(54.0, 22.0));
     let copied = ui
         .push_id((settings_field.name, "copy"), |ui| {
             crate::components::controls::choice_button(ui, copy, "Copy", false)

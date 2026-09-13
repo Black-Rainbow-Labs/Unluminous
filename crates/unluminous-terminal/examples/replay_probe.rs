@@ -105,7 +105,10 @@ fn watch(session: &mut unluminous_terminal::Session, print_each: bool) {
         if !on_screen && lost_at.is_none() {
             let in_history = session.written_text(Some(60)).contains("RESTORED-LINE-ONE");
             lost_at = Some(step * 250);
-            println!("  gone from the screen after {} ms (still in history: {in_history})", step * 250);
+            println!(
+                "  gone from the screen after {} ms (still in history: {in_history})",
+                step * 250
+            );
         }
         if print_each && step % 8 == 0 {
             println!("  {} ms screen:", step * 250);

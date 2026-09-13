@@ -91,11 +91,7 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
         let text = line.text.trim();
         if let Some((about, left, words)) = note.as_mut() {
             if text.eq_ignore_ascii_case("end note") {
-                diagram.notes.push(Note {
-                    about: *about,
-                    text: words.join("\n"),
-                    left: *left,
-                });
+                diagram.notes.push(Note { about: *about, text: words.join("\n"), left: *left });
                 note = None;
             } else {
                 words.push(text.to_owned());
@@ -180,11 +176,7 @@ fn read_note(
 }
 
 /// Read every form the `state` word introduces.
-fn read_state(
-    diagram: &mut Diagram,
-    rest: &str,
-    open: &mut Vec<usize>,
-) -> Result<(), Problem> {
+fn read_state(diagram: &mut Diagram, rest: &str, open: &mut Vec<usize>) -> Result<(), Problem> {
     let rest = rest.trim();
     // `state Name { ... }` — a composite state, which becomes a group.
     if let Some(name) = rest.strip_suffix('{') {
@@ -261,12 +253,7 @@ fn read_transition(
 ///
 /// Fresh, not shared: see this module's own comment. Three ways to finish should be three end
 /// markers, not one node every finishing state is dragged towards.
-fn marker_or_state(
-    diagram: &mut Diagram,
-    name: &str,
-    group: Option<usize>,
-    which: Kind,
-) -> usize {
+fn marker_or_state(diagram: &mut Diagram, name: &str, group: Option<usize>, which: Kind) -> usize {
     if name.trim() == "[*]" {
         diagram.states.push(State { label: String::new(), kind: which, group });
         return diagram.states.len() - 1;
@@ -325,7 +312,13 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
     draw_composites(&mut scene, diagram, &placed, origin, options);
     draw_transitions(&mut scene, diagram, &placed, origin, &transitions, options);
     for (index, state) in diagram.states.iter().enumerate() {
-        draw_state(&mut scene, state, &labels[index], placed.nodes[index].moved(origin.x, origin.y), options);
+        draw_state(
+            &mut scene,
+            state,
+            &labels[index],
+            placed.nodes[index].moved(origin.x, origin.y),
+            options,
+        );
     }
     draw_notes(&mut scene, diagram, &placed, origin, placed_width(&placed, origin), options);
     parts::finish(&mut scene);
@@ -338,21 +331,14 @@ fn size_of(kind: Kind, label: Size) -> Size {
         Kind::Start | Kind::End => Size::new(MARKER, MARKER),
         Kind::Choice => Shape::Diamond.size_for(Size::new(24.0, 24.0)),
         Kind::Bar => Size::new(BAR_LENGTH, BAR_THICKNESS),
-        Kind::State => Size::new(
-            label.width + parts::PADDING_X * 2.0,
-            label.height + parts::PADDING_Y * 2.0,
-        ),
+        Kind::State => {
+            Size::new(label.width + parts::PADDING_X * 2.0, label.height + parts::PADDING_Y * 2.0)
+        }
     }
 }
 
 /// Draw one state, by what kind it is.
-fn draw_state(
-    scene: &mut Scene,
-    state: &State,
-    label: &Label,
-    rect: Rect,
-    options: &Options,
-) {
+fn draw_state(scene: &mut Scene, state: &State, label: &Label, rect: Rect, options: &Options) {
     let theme = &options.theme;
     let stroke = Stroke::new(theme.node_stroke, parts::LINE);
     match state.kind {
@@ -460,7 +446,14 @@ fn draw_transitions(
             stroke,
             dash: Dash::Solid,
         });
-        parts::ending(scene, Ending::Arrow, path[last], parts::heading(&path), theme.line, theme.node_fill);
+        parts::ending(
+            scene,
+            Ending::Arrow,
+            path[last],
+            parts::heading(&path),
+            theme.line,
+            theme.node_fill,
+        );
         if labels[index].is_empty() {
             continue;
         }
@@ -500,11 +493,7 @@ fn outline(
 
 /// The right hand edge of everything that has been placed, which is where the notes go.
 fn placed_width(placed: &layered::Placed, origin: Point) -> f32 {
-    placed
-        .nodes
-        .iter()
-        .map(|rect| rect.right() + origin.x)
-        .fold(origin.x, f32::max)
+    placed.nodes.iter().map(|rect| rect.right() + origin.x).fold(origin.x, f32::max)
 }
 
 /// Draw the notes, in a column down the right of the whole diagram.
@@ -604,7 +593,10 @@ mod tests {
         assert_eq!(diagram.states[diagram.by_id["pick"]].kind, Kind::Choice);
         assert_eq!(diagram.states[diagram.by_id["split"]].kind, Kind::Bar);
         assert_eq!(diagram.states[diagram.by_id["rejoin"]].kind, Kind::Bar);
-        assert!(diagram.states[diagram.by_id["pick"]].label.is_empty(), "its shape says what it is");
+        assert!(
+            diagram.states[diagram.by_id["pick"]].label.is_empty(),
+            "its shape says what it is"
+        );
     }
 
     #[test]

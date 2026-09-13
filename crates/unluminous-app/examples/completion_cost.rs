@@ -92,7 +92,9 @@ fn main() {
     let distinct = once.distinct_words(&text);
 
     println!("Project: {}", folder.display());
-    println!("  index built in {index_build:.0} ms on its own thread, {names} distinct names in it");
+    println!(
+        "  index built in {index_build:.0} ms on its own thread, {names} distinct names in it"
+    );
     println!("The largest file a language claims: {}", path.display());
     println!("  {} KB, {} bytes in the tab", size / 1024, text_length);
     println!(
@@ -133,9 +135,7 @@ fn main() {
         let offered = app.completion_rows(stem, caret).len();
         let score = (whole - gather).max(0.0);
         worst = worst.max(whole);
-        println!(
-            "{stem:<8}{gathered:>10}{offered:>10}{gather:>12.3}{score:>12.3}{whole:>10.3}"
-        );
+        println!("{stem:<8}{gathered:>10}{offered:>10}{gather:>12.3}{score:>12.3}{whole:>10.3}");
     }
 
     // The import arm (`task-1680` §7). The one unbounded moment in it is a specifier with nothing
@@ -160,7 +160,8 @@ fn main() {
         println!("{:<40}{:>10}{:>12}", "inside an import", "offered", "total ms");
         for sample in samples {
             let at = app.document().text().len_bytes();
-            app.document_mut().apply(unluminous_core::Command::PlaceCaret { offset: at, extend: false });
+            app.document_mut()
+                .apply(unluminous_core::Command::PlaceCaret { offset: at, extend: false });
             app.document_mut().apply(unluminous_core::Command::Insert((*sample).to_owned()));
             let caret = app.document().text().len_bytes();
             let whole = timed(20, || {

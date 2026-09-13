@@ -7,10 +7,10 @@
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use super::{darken, lighten, text};
-use crate::services::vello_canvas::{Fill, Lift};
 use crate::services::agent_tasks::board;
 use crate::services::agent_tasks::model::{Board, Priority, Task};
 use crate::services::plugin_ui::Look;
+use crate::services::vello_canvas::{Fill, Lift};
 use crate::theme::icon;
 
 /// How tall a card is at the default font size, and the gap between two.
@@ -76,7 +76,8 @@ pub fn show(
     live: Live,
 ) -> Pressed {
     let mut pressed = Pressed::default();
-    let response = ui.interact(area, ui.id().with(("agent-tasks-card", task.id)), Sense::click_and_drag());
+    let response =
+        ui.interact(area, ui.id().with(("agent-tasks-card", task.id)), Sense::click_and_drag());
     // Named, because every control in Unluminous has a plain name and a test finds one by it. A card is the control
     // that opens a ticket, and it was findable only by its position.
     let name = format!("{} {}", task.key, task.display_title());
@@ -108,10 +109,20 @@ pub fn show(
             painter.rect_filled(area, radius, ground.gamma_multiply(0.5));
         }
     } else {
-        painter.rect(area, radius, ground, Stroke::new(1.0, look.palette.control_border), egui::StrokeKind::Inside);
+        painter.rect(
+            area,
+            radius,
+            ground,
+            Stroke::new(1.0, look.palette.control_border),
+            egui::StrokeKind::Inside,
+        );
     }
     // The epic's colour down the left edge. The one colour on the board that comes from the data.
-    if let Some(colour) = task.epic_id.and_then(|id| board.epic(id)).and_then(|epic| crate::services::plugins::colour(&epic.color)) {
+    if let Some(colour) = task
+        .epic_id
+        .and_then(|id| board.epic(id))
+        .and_then(|epic| crate::services::plugins::colour(&epic.color))
+    {
         painter.rect_filled(
             Rect::from_min_size(area.min, Vec2::new(EDGE, area.height())),
             CornerRadius { nw: radius.nw, sw: radius.sw, ne: 0, se: 0 },
@@ -141,7 +152,12 @@ pub fn show(
     );
     // The priority mark on a line of its own under the title, which is where the design puts it, rather
     // than beside the title where a title that wrapped to two lines would run into it.
-    priority(&painter, Pos2::new(left + 5.0 * scale, area.max.y - 34.0 * scale), task.priority, look);
+    priority(
+        &painter,
+        Pos2::new(left + 5.0 * scale, area.max.y - 34.0 * scale),
+        task.priority,
+        look,
+    );
     // The epic's name on the epic's colour, and the JIRA key beside it, which is what the reference capture puts
     // under the title. The coloured left edge alone said an epic existed without saying which.
     let mut chip = left + 16.0 * scale;
@@ -177,7 +193,13 @@ pub fn show(
             // the file manager and a new Unluminous window, and that is all. The link lives on `Copy issue link` in the
             // ticket's JIRA panel, which hands the address to the clipboard. So this is a label saying which
             // issue the ticket is about, and it now looks like one.
-            text(&painter, Pos2::new(chip, area.max.y - 40.0), key, look.font_size - 3.0, look.palette.text_dim);
+            text(
+                &painter,
+                Pos2::new(chip, area.max.y - 40.0),
+                key,
+                look.font_size - 3.0,
+                look.palette.text_dim,
+            );
         }
     }
     // The footer: the key, the counts, and the controls on the right.
@@ -192,8 +214,7 @@ pub fn show(
     let buttons = scale.min(1.6);
     let badge = Vec2::splat(BADGE * buttons);
     let play = Vec2::splat(PLAY * buttons);
-    let badge_at =
-        Rect::from_min_size(Pos2::new(right - badge.x, footer - 4.0 * scale), badge);
+    let badge_at = Rect::from_min_size(Pos2::new(right - badge.x, footer - 4.0 * scale), badge);
     agent_badge(&painter, badge_at, task, look, live);
     // The start button only when starting would do something. **Absent rather than dimmed**, which is the rule
     // the `F` button and the three code navigation entries already follow: a card whose agent is already running
@@ -219,8 +240,11 @@ pub fn show(
     // Each piece is drawn only if the whole of it fits before the controls. The key first, because a card that
     // can show only one thing should show which ticket it is.
     let room_for = |painter: &egui::Painter, pen: &mut f32, said: &str, tint: Color32| {
-        let galley =
-            painter.layout_no_wrap(said.to_owned(), egui::FontId::proportional(look.font_size - 2.0), tint);
+        let galley = painter.layout_no_wrap(
+            said.to_owned(),
+            egui::FontId::proportional(look.font_size - 2.0),
+            tint,
+        );
         if *pen + galley.size().x > stop {
             return false;
         }
@@ -237,13 +261,16 @@ pub fn show(
     // width and then `room_for` on the number — and a card narrow enough for the first and not the second
     // wore a tick on its own, which says nothing at all. One measurement cannot disagree with itself.
     let counted = |painter: &egui::Painter,
-                       pen: &mut f32,
-                       mark: fn(&egui::Painter, Pos2, Color32),
-                       gap: f32,
-                       said: &str,
-                       tint: Color32| {
-        let galley =
-            painter.layout_no_wrap(said.to_owned(), egui::FontId::proportional(look.font_size - 2.0), tint);
+                   pen: &mut f32,
+                   mark: fn(&egui::Painter, Pos2, Color32),
+                   gap: f32,
+                   said: &str,
+                   tint: Color32| {
+        let galley = painter.layout_no_wrap(
+            said.to_owned(),
+            egui::FontId::proportional(look.font_size - 2.0),
+            tint,
+        );
         if *pen + gap + galley.size().x > stop {
             return;
         }

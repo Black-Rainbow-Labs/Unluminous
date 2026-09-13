@@ -57,12 +57,7 @@ pub struct Request {
 
 impl Request {
     pub fn new(token: &str, command: &str, arguments: Map<String, Value>) -> Self {
-        Self {
-            token: token.to_owned(),
-            command: command.to_owned(),
-            arguments,
-            deadline_ms: None,
-        }
+        Self { token: token.to_owned(), command: command.to_owned(), arguments, deadline_ms: None }
     }
 
     /// The same request, saying how long the caller will wait for it.
@@ -97,9 +92,7 @@ impl Request {
                 // where a request that somebody else wrote arrives. The usage lines say
                 // `[--permanent]`, so an agent reading the catalogue sends `--permanent`, and it
                 // means the same thing as `permanent`.
-                Some(Value::Object(map)) => {
-                    crate::catalogue::normalise_arguments(map.clone())
-                }
+                Some(Value::Object(map)) => crate::catalogue::normalise_arguments(map.clone()),
                 // An absent `arguments` is an empty one, so a command that takes nothing can be
                 // sent as `{"token":"...","command":"tab.next"}`.
                 None | Some(Value::Null) => Map::new(),
@@ -176,13 +169,7 @@ pub struct Reply {
 
 impl Reply {
     pub fn done(command: &str, message: impl Into<String>, result: Value) -> Self {
-        Self {
-            ok: true,
-            command: command.to_owned(),
-            message: message.into(),
-            result,
-            error: None,
-        }
+        Self { ok: true, command: command.to_owned(), message: message.into(), result, error: None }
     }
 
     pub fn failed(command: &str, code: &str, message: impl Into<String>) -> Self {
@@ -219,7 +206,11 @@ impl Reply {
             Some(Self {
                 ok,
                 command,
-                message: value.get("message").and_then(Value::as_str).unwrap_or_default().to_owned(),
+                message: value
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
                 result: value.get("result").cloned().unwrap_or(Value::Null),
                 error: None,
             })
@@ -227,7 +218,11 @@ impl Reply {
             let error = value.get("error")?;
             let failure = Failure {
                 code: error.get("code").and_then(Value::as_str).unwrap_or("failed").to_owned(),
-                message: error.get("message").and_then(Value::as_str).unwrap_or_default().to_owned(),
+                message: error
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
             };
             Some(Self {
                 ok,
@@ -339,8 +334,8 @@ mod tests {
 
     #[test]
     fn a_deadline_that_arrives_with_the_request_is_read_back() {
-        let request = Request::new("abc", "tab.list", Map::new())
-            .waiting_for(Duration::from_millis(15_000));
+        let request =
+            Request::new("abc", "tab.list", Map::new()).waiting_for(Duration::from_millis(15_000));
         let line = request.to_json();
         assert_eq!(line["deadline_ms"], json!(15_000));
         assert_eq!(Request::from_json(&line), Some(request));

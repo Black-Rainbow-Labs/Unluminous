@@ -34,10 +34,8 @@ pub fn show(ui: &mut egui::Ui, area: Rect, menus: &[Menu]) -> Option<Action> {
     let mut pen = area.left() + LEFT;
     for menu in menus {
         let width = button_width(&menu.name);
-        let button = Rect::from_min_size(
-            Pos2::new(pen, area.center().y - 11.0),
-            Vec2::new(width, 22.0),
-        );
+        let button =
+            Rect::from_min_size(Pos2::new(pen, area.center().y - 11.0), Vec2::new(width, 22.0));
         // The application's own menu is drawn a little brighter, as macOS draws it.
         let response = controls::bar_button(ui, button, &menu.name, menu.name == "Unluminous");
         if let Some(action) = popup(ui, &response, &menu.entries) {

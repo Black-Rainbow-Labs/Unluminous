@@ -129,11 +129,8 @@ impl Toasts {
         }
         // The newest of the same kind and words: its count goes up and its clock starts again, so a repeat
         // of a confirmation stays as long as a fresh one would.
-        if let Some(same) = self
-            .notices
-            .iter_mut()
-            .rev()
-            .find(|notice| notice.kind == kind && notice.text == text)
+        if let Some(same) =
+            self.notices.iter_mut().rev().find(|notice| notice.kind == kind && notice.text == text)
         {
             same.count += 1;
             same.at = Some(std::time::Instant::now());
@@ -328,10 +325,7 @@ mod tests {
         assert_eq!(toasts.len(), 2, "the same words of a different kind are a second notice");
         toasts.say("something else went wrong", Kind::Problem);
         assert_eq!(toasts.len(), LIMIT, "never more than the limit");
-        assert_eq!(
-            toasts.notices().last().expect("the newest").text,
-            "something else went wrong"
-        );
+        assert_eq!(toasts.notices().last().expect("the newest").text, "something else went wrong");
     }
 
     #[test]
@@ -358,7 +352,8 @@ mod tests {
         }
         assert_eq!(toasts.len(), LIMIT);
         assert_eq!(
-            toasts.notices()[0].text, "notice 2",
+            toasts.notices()[0].text,
+            "notice 2",
             "the two oldest went, and the newest is still there"
         );
         assert_eq!(toasts.notices().last().expect("one").text, format!("notice {}", LIMIT + 1));
@@ -369,7 +364,10 @@ mod tests {
         let mut toasts = Toasts::default();
         toasts.say("   ", Kind::Problem);
         toasts.say("", Kind::Done);
-        assert!(toasts.is_empty(), "a provider with an empty failure puts no blank card on the screen");
+        assert!(
+            toasts.is_empty(),
+            "a provider with an empty failure puts no blank card on the screen"
+        );
     }
 
     #[test]

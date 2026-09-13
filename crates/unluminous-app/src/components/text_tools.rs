@@ -184,10 +184,8 @@ fn text_options(
     // The panel is painted at absolute positions inside one reserved rectangle, which is how
     // everything else in Unluminous is drawn. The rule between the two halves adds its own gap.
     let rule_gap = 11.0;
-    let (area, _) = ui.allocate_exact_size(
-        Vec2::new(PANEL - 12.0, PANEL_ROW * 4.0 + rule_gap),
-        Sense::hover(),
-    );
+    let (area, _) =
+        ui.allocate_exact_size(Vec2::new(PANEL - 12.0, PANEL_ROW * 4.0 + rule_gap), Sense::hover());
     let left = area.left() + PANEL_LABEL;
     let mut middle = area.top() + PANEL_ROW / 2.0;
 
@@ -238,10 +236,7 @@ fn text_options(
     middle += PANEL_ROW / 2.0 + rule_gap / 2.0;
 
     ui.painter().line_segment(
-        [
-            Pos2::new(area.left(), middle.round()),
-            Pos2::new(area.right(), middle.round()),
-        ],
+        [Pos2::new(area.left(), middle.round()), Pos2::new(area.right(), middle.round())],
         Stroke::new(1.0, color::divider()),
     );
     middle += PANEL_ROW / 2.0 + rule_gap / 2.0;
@@ -295,9 +290,8 @@ fn format_button(
     active: bool,
     bold_family: &egui::FontFamily,
 ) -> bool {
-    let response = ui
-        .interact(area, ui.id().with(("format", name)), Sense::click())
-        .on_hover_text(name);
+    let response =
+        ui.interact(area, ui.id().with(("format", name)), Sense::click()).on_hover_text(name);
     if active {
         ui.painter().rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::accent());
     } else if response.hovered() {
@@ -320,7 +314,11 @@ fn format_button(
             color: tint,
             italics: name == "Italic",
             underline: if name == "Underline" { Stroke::new(1.0, tint) } else { Stroke::NONE },
-            strikethrough: if name == "Strikethrough" { Stroke::new(1.0, tint) } else { Stroke::NONE },
+            strikethrough: if name == "Strikethrough" {
+                Stroke::new(1.0, tint)
+            } else {
+                Stroke::NONE
+            },
             ..Default::default()
         },
     );

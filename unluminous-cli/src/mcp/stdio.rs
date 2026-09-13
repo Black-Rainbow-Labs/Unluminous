@@ -38,19 +38,18 @@ pub fn serve<D: Driver>(server: &Server<D>) -> std::io::Result<()> {
 
 /// One line in, at most one line out. Split out from the loop so it can be tested without pipes.
 pub fn answer_line<D: Driver>(server: &Server<D>, line: &str) -> Option<String> {
-    let message: serde_json::Value = match serde_json::from_str(line.trim()) {
-        Ok(message) => message,
-        Err(problem) => {
-            return Some(
+    let message: serde_json::Value =
+        match serde_json::from_str(line.trim()) {
+            Ok(message) => message,
+            Err(problem) => return Some(
                 serde_json::json!({
                     "jsonrpc": "2.0",
                     "id": serde_json::Value::Null,
                     "error": { "code": -32700, "message": format!("That was not JSON: {problem}") },
                 })
                 .to_string(),
-            )
-        }
-    };
+            ),
+        };
     // A batch is an array of messages. It was removed in 2025-06-18 and no client sends one, but
     // answering it is four lines and refusing it would be a client that hangs.
     if let serde_json::Value::Array(messages) = &message {
@@ -99,8 +98,11 @@ mod tests {
 
     #[test]
     fn a_notification_produces_no_line_at_all() {
-        assert!(answer_line(&a_server(), r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#)
-            .is_none());
+        assert!(answer_line(
+            &a_server(),
+            r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#
+        )
+        .is_none());
     }
 
     #[test]

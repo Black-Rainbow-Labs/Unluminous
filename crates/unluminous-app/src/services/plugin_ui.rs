@@ -377,10 +377,7 @@ pub enum Request {
     /// asymmetry is the whole point. Use this for the failure of something a person asked for, and
     /// `Message` for everything else — a provider that made every message a notice would be a provider
     /// whose notices nobody reads.
-    Notice {
-        text: String,
-        kind: crate::components::toast::Kind,
-    },
+    Notice { text: String, kind: crate::components::toast::Kind },
     /// Show this plugin's own tab in the editing area.
     ShowTab,
     /// Show or hide this plugin's pane.
@@ -415,7 +412,11 @@ pub enum Request {
     /// `command` is the wire name — `tab.open` — and `arguments` is exactly what goes in the request.
     /// `id` is the provider's own, echoed back with the answer, because more than one may be
     /// outstanding and they do not necessarily finish in order.
-    RunCommand { id: String, command: String, arguments: serde_json::Map<String, serde_json::Value> },
+    RunCommand {
+        id: String,
+        command: String,
+        arguments: serde_json::Map<String, serde_json::Value>,
+    },
     /// The picture on the clipboard, if there is one, answered through [`UiProvider::answered`].
     ///
     /// **The window owns the one handle to the clipboard**, which is why [`Request::Copy`] exists and
@@ -700,7 +701,8 @@ mod tests {
         // load a manifest whose pane is permanently empty, which is the exact outcome checking the
         // name against a registry exists to prevent.
         for name in UI_PROVIDERS {
-            let built = provider(name).unwrap_or_else(|| panic!("{name} is registered with no code"));
+            let built =
+                provider(name).unwrap_or_else(|| panic!("{name} is registered with no code"));
             assert_eq!(built.id(), *name, "a provider should know its own name");
             assert!(!built.is_open(), "a provider is not open until it has been opened");
             assert!(!built.commands().is_empty(), "{name} answers no commands");
@@ -753,7 +755,8 @@ mod tests {
         assert_eq!(palette.attached, color::git_added());
         // And the ladder really is a ladder: each step is lighter than the one behind it, or a card drawn
         // on a lane drawn on the page would be three rectangles nobody could tell apart.
-        let brightness = |colour: Color32| u32::from(colour.r()) + u32::from(colour.g()) + u32::from(colour.b());
+        let brightness =
+            |colour: Color32| u32::from(colour.r()) + u32::from(colour.g()) + u32::from(colour.b());
         assert!(brightness(palette.board_page) < brightness(palette.board_lane));
         assert!(brightness(palette.board_lane) < brightness(palette.board_card));
         assert!(brightness(palette.board_well) < brightness(palette.board_lane));

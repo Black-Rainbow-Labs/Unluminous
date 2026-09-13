@@ -536,10 +536,7 @@ mod tests {
             Some(started)
         );
         // And with nothing named it is the configuration the widget has chosen.
-        assert_eq!(
-            Action::from_name("run-start", None),
-            Some(Action::Run(RunAction::Start(None)))
-        );
+        assert_eq!(Action::from_name("run-start", None), Some(Action::Run(RunAction::Start(None))));
         assert_eq!(Action::from_name("run-edit", None), Some(Action::Run(RunAction::Edit)));
         assert_eq!(Action::from_name("run-nonsense", None), None);
         assert_eq!(Action::from_name("toggle-run-tile", None), Some(Action::ToggleRunTile));

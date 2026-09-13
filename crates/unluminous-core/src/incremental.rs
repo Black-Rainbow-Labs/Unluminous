@@ -86,11 +86,7 @@ impl Dirt {
                     true => (to as isize + delta).max(at as isize) as usize,
                     false => to,
                 };
-                Dirt::Part {
-                    from: from.min(at),
-                    to: moved.max(at + added),
-                    delta: had + delta,
-                }
+                Dirt::Part { from: from.min(at), to: moved.max(at + added), delta: had + delta }
             }
         }
     }
@@ -167,9 +163,8 @@ impl Tokens {
 
         // The old tokens that could still be ahead of us, shifted into the new text's coordinates.
         // Only those beginning at or after the watermark can be synchronised on.
-        let tail_from = self
-            .tokens
-            .partition_point(|(range, _)| shift(range.start, delta) < edited_to);
+        let tail_from =
+            self.tokens.partition_point(|(range, _)| shift(range.start, delta) < edited_to);
 
         let mut scanned = 0usize;
         let mut spliced_at: Option<usize> = None;
@@ -240,11 +235,10 @@ impl Tokens {
     fn safe_start(&self, text: &str, edited_from: usize, delta: isize) -> usize {
         let mut at = line_start(text, edited_from.min(text.len()));
         loop {
-            let straddled = self
-                .tokens
-                .iter()
-                .take_while(|(range, _)| range.start < at)
-                .any(|(range, _)| range.start < at && shift(range.end, delta).max(range.end) > at);
+            let straddled =
+                self.tokens.iter().take_while(|(range, _)| range.start < at).any(|(range, _)| {
+                    range.start < at && shift(range.end, delta).max(range.end) > at
+                });
             if !straddled || at == 0 {
                 return at;
             }
@@ -369,7 +363,11 @@ mod tests {
         let (read, update) =
             incrementally(&mut cache, after, &grammar, Dirt::Clean.note(at, 10, 2));
         assert_eq!(read, whole(after, &grammar));
-        assert_eq!(update.changed.end, after.len(), "the rest of the file is inside the comment now");
+        assert_eq!(
+            update.changed.end,
+            after.len(),
+            "the rest of the file is inside the comment now"
+        );
     }
 
     /// An edit **inside** a block comment starts from before the comment, because the line the edit
@@ -444,8 +442,7 @@ mod tests {
         let text = "<p>one</p>\n<p>two</p>\n";
         let mut cache = Tokens::default();
         incrementally(&mut cache, text, &grammar, Dirt::Clean);
-        let (read, update) =
-            incrementally(&mut cache, text, &grammar, Dirt::Clean.note(4, 0, 1));
+        let (read, update) = incrementally(&mut cache, text, &grammar, Dirt::Clean.note(4, 0, 1));
         assert_eq!(read, whole(text, &grammar));
         assert_eq!(update.changed, 0..text.len(), "the whole file, every time");
     }
@@ -464,8 +461,23 @@ mod tests {
     fn five_hundred_random_edits_all_agree_with_reading_the_whole_file() {
         let grammar = rust_like();
         let pieces = [
-            "pub fn f() {", "}", "let x = 1;", "// note", "/*", "*/", "\"a string\"",
-            "\n", " ", "\"", "*", "/", "name", "42", "(", ")", ";",
+            "pub fn f() {",
+            "}",
+            "let x = 1;",
+            "// note",
+            "/*",
+            "*/",
+            "\"a string\"",
+            "\n",
+            " ",
+            "\"",
+            "*",
+            "/",
+            "name",
+            "42",
+            "(",
+            ")",
+            ";",
         ];
         let mut text = String::new();
         for index in 0..80 {
@@ -532,7 +544,8 @@ mod tests {
         assert_eq!(after, whole(&text, &grammar));
 
         // Every token that ends before the changed range is exactly where it was.
-        let kept: Vec<_> = after.iter().filter(|(range, _)| range.end <= update.changed.start).collect();
+        let kept: Vec<_> =
+            after.iter().filter(|(range, _)| range.end <= update.changed.start).collect();
         assert!(!kept.is_empty(), "there is something before the edit");
         for (range, token) in kept {
             assert!(

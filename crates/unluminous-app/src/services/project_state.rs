@@ -240,11 +240,8 @@ pub fn load(root: &Path) -> ProjectState {
     // four of them now.
     let (mut files, mut kept) = (Vec::new(), Vec::new());
     let (mut where_it_was, mut where_the_caret_was) = (Vec::new(), Vec::new());
-    let rows = std::mem::take(&mut state.open_files)
-        .into_iter()
-        .zip(panes)
-        .zip(scrolls)
-        .zip(carets);
+    let rows =
+        std::mem::take(&mut state.open_files).into_iter().zip(panes).zip(scrolls).zip(carets);
     for (((path, pane), scroll), caret) in rows {
         if path.is_file() {
             files.push(path);
@@ -304,25 +301,16 @@ pub fn save(root: &Path, state: &ProjectState) {
     values.set("files.panes", numbers_text(&state.file_panes));
     values.set(
         "files.scrolls",
-        state
-            .file_scrolls
-            .iter()
-            .map(|at| format!("{at:.1}"))
-            .collect::<Vec<_>>()
-            .join(","),
+        state.file_scrolls.iter().map(|at| format!("{at:.1}")).collect::<Vec<_>>().join(","),
     );
     values.set("files.carets", numbers_text(&state.file_carets));
     values.set("files.pane", state.active_pane.to_string());
     values.set(
         "files.pane-widths",
-        state
-            .pane_widths
-            .iter()
-            .map(|share| format!("{share:.4}"))
-            .collect::<Vec<_>>()
-            .join(","),
+        state.pane_widths.iter().map(|share| format!("{share:.4}")).collect::<Vec<_>>().join(","),
     );
-    let heading = "# What Unluminous left open in this project. Written by Unluminous, and safe to delete.";
+    let heading =
+        "# What Unluminous left open in this project. Written by Unluminous, and safe to delete.";
     write(&folder.join(WORKSPACE_FILE), &values.to_text_headed(heading));
     write(&folder.join(OPEN_FILES_FILE), &paths_text(root, &state.open_files));
     write(&folder.join(EXPANDED_FILE), &paths_text(root, &state.expanded_folders));
@@ -374,7 +362,6 @@ fn names_text(names: &[String]) -> String {
 fn read_names(text: &str) -> Vec<String> {
     text.lines().map(|line| line.trim().to_owned()).collect()
 }
-
 
 /// The same as [`read_fractions`], without the rule that throws away anything that is not positive.
 ///
@@ -490,8 +477,6 @@ impl DiskStamp {
         Some(Self { modified: data.modified().ok(), len: data.len() })
     }
 }
-
-
 
 /// The other way round: what a written path means now.
 pub fn absolute(root: &Path, path: &Path) -> PathBuf {
@@ -648,7 +633,11 @@ mod tests {
             WindowPlace { x: -20.0, y: 40.0, width: 1400.0, height: 900.0, maximised: true };
         let state = ProjectState { window: Some(place), ..ProjectState::new() };
         save(&root, &state);
-        assert_eq!(load(&root).window, Some(place), "a negative x is a second screen, not nonsense");
+        assert_eq!(
+            load(&root).window,
+            Some(place),
+            "a negative x is a second screen, not nonsense"
+        );
 
         // A window smaller than the platform's own minimum is a state file to ignore rather than a
         // window nobody can use.
@@ -725,7 +714,8 @@ mod tests {
                 ..ProjectState::new()
             },
         );
-        let written = std::fs::read_to_string(folder(&root).join(OPEN_FILES_FILE)).expect("read it");
+        let written =
+            std::fs::read_to_string(folder(&root).join(OPEN_FILES_FILE)).expect("read it");
         assert!(
             !written.contains(&root.display().to_string()),
             "the project's own path should not be in the file, which holds {written:?}"

@@ -41,7 +41,11 @@ impl Icons {
         let decoded = decode(bytes).map(|(size, pixels)| {
             ctx.load_texture(
                 format!("unluminous-plugin-icon-{id}"),
-                egui::ColorImage { size, pixels, source_size: egui::vec2(size[0] as f32, size[1] as f32) },
+                egui::ColorImage {
+                    size,
+                    pixels,
+                    source_size: egui::vec2(size[0] as f32, size[1] as f32),
+                },
                 // Linear, because the picture is drawn a little smaller than it was made and nearest
                 // neighbour would make its edges ragged.
                 egui::TextureOptions::LINEAR,

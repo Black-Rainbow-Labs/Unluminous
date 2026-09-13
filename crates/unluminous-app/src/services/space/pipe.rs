@@ -230,7 +230,11 @@ mod tests {
     fn a_program_that_outran_the_reading_has_its_whole_tail_sent_once_rather_than_guessed_at() {
         let mut tap = Tap::following(&lines(&["old"]));
         let raced = lines(&["far", "past", "the", "anchor"]);
-        assert_eq!(tap.take(&raced), raced, "the lines in between are gone; guessing would send some twice");
+        assert_eq!(
+            tap.take(&raced),
+            raced,
+            "the lines in between are gone; guessing would send some twice"
+        );
         assert!(tap.take(&raced).is_empty(), "and the anchor has caught up");
     }
 

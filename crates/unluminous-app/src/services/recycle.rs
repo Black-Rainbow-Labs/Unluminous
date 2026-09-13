@@ -115,9 +115,7 @@ fn to_the_recycle_bin(path: &Path) -> std::io::Result<()> {
     // reads the structure and does not keep it.
     let result = unsafe { SHFileOperationW(&mut operation) };
     if result != 0 {
-        return Err(std::io::Error::other(format!(
-            "the Recycle Bin refused it (0x{result:X})"
-        )));
+        return Err(std::io::Error::other(format!("the Recycle Bin refused it (0x{result:X})")));
     }
     if operation.fAnyOperationsAborted != 0 {
         return Err(std::io::Error::other("it was not deleted"));

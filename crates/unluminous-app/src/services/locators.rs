@@ -161,8 +161,21 @@ fn cargo(program: &str, rest: &[String]) -> Option<Build> {
 /// The cargo flags that take their value as the next word, which is what stops `--bin unluminous` being
 /// read as a flag and a filter.
 const TAKES_A_VALUE: &[&str] = &[
-    "--bin", "--example", "--test", "--bench", "-p", "--package", "--features", "-F", "--profile",
-    "--target", "--target-dir", "--manifest-path", "-j", "--jobs", "--config",
+    "--bin",
+    "--example",
+    "--test",
+    "--bench",
+    "-p",
+    "--package",
+    "--features",
+    "-F",
+    "--profile",
+    "--target",
+    "--target-dir",
+    "--manifest-path",
+    "-j",
+    "--jobs",
+    "--config",
 ];
 
 /// The program cargo said it built, out of everything it printed.
@@ -215,7 +228,8 @@ mod tests {
 
     #[test]
     fn the_flags_that_choose_what_is_built_are_kept_and_the_programs_arguments_are_not() {
-        let built = build("cargo run --release -p unluminous-app --bin unluminous -- --control off");
+        let built =
+            build("cargo run --release -p unluminous-app --bin unluminous -- --control off");
         assert_eq!(
             built.args,
             vec![

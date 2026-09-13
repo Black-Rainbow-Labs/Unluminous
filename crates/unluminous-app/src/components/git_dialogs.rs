@@ -18,13 +18,18 @@ pub enum Dialog {
     Push,
     Pull,
     /// Merge or rebase: the two differ only in what the button says.
-    Merge { rebase: bool },
+    Merge {
+        rebase: bool,
+    },
     Reset,
     Branches,
     History,
     Remotes,
     /// A diff, a commit, or anything else git printed.
-    Text { title: String, body: String },
+    Text {
+        title: String,
+        body: String,
+    },
 }
 
 /// What the dialogs are showing and what has been typed into them.
@@ -51,8 +56,10 @@ impl GitDialogs {
     /// Open a dialog, filling in what it needs from the repository as it stands.
     pub fn open(&mut self, dialog: Dialog, status: &Status, remotes: &[Remote]) {
         if self.remote.is_empty() {
-            self.remote =
-                remotes.first().map(|remote| remote.name.clone()).unwrap_or_else(|| "origin".to_owned());
+            self.remote = remotes
+                .first()
+                .map(|remote| remote.name.clone())
+                .unwrap_or_else(|| "origin".to_owned());
         }
         self.branch = status.branch.clone().unwrap_or_default();
         self.target.clear();
@@ -157,7 +164,8 @@ fn push(
     );
     pen = named_field(ui, body, pen, "Remote", &mut dialogs.remote);
     pen = named_field(ui, body, pen, "Branch", &mut dialogs.branch);
-    let list: Vec<String> = remotes.iter().map(|remote| format!("{}  {}", remote.name, remote.url)).collect();
+    let list: Vec<String> =
+        remotes.iter().map(|remote| format!("{}  {}", remote.name, remote.url)).collect();
     pen = modal::note(ui, body, pen + 4.0, &list.join("\n"));
     modal::check(ui, row_at(body, pen), "Force with lease", &mut dialogs.force);
     modal::check(ui, row_at(body, pen + 26.0), "Push tags", &mut dialogs.tags);
@@ -238,8 +246,18 @@ fn merge(
     chooser(ui, list, "merge-branches", branches, &mut dialogs.target);
     if !rebase {
         pen = list.bottom() + 6.0;
-        modal::check(ui, row_at(body, pen), "Always make a merge commit (--no-ff)", &mut dialogs.no_fast_forward);
-        modal::check(ui, row_at(body, pen + 26.0), "Bring the changes in without committing (--squash)", &mut dialogs.squash);
+        modal::check(
+            ui,
+            row_at(body, pen),
+            "Always make a merge commit (--no-ff)",
+            &mut dialogs.no_fast_forward,
+        );
+        modal::check(
+            ui,
+            row_at(body, pen + 26.0),
+            "Bring the changes in without committing (--squash)",
+            &mut dialogs.squash,
+        );
     }
 
     let ready = !dialogs.target.trim().is_empty();
@@ -297,8 +315,11 @@ fn reset(
         pen += 30.0;
     }
     // The most recent commits, so a revision can be read rather than remembered.
-    let recent: Vec<String> =
-        history.iter().take(4).map(|commit| format!("{}  {}", commit.short, commit.subject)).collect();
+    let recent: Vec<String> = history
+        .iter()
+        .take(4)
+        .map(|commit| format!("{}  {}", commit.short, commit.subject))
+        .collect();
     modal::note(ui, body, pen + 4.0, &recent.join("\n"));
 
     let ready = !dialogs.target.trim().is_empty();
@@ -335,22 +356,24 @@ fn branch_list(
             let remote = branch.remote;
             let is_current = branch.current;
             let upstream = branch.upstream.clone().unwrap_or_default();
-            let response = modal::row(ui, &branch.name, &branch.name, is_current, |painter, row| {
-                let tint = if is_current { color::text_strong() } else { color::text_control() };
-                let x = modal::label(painter, row, row.left() + 16.0, &name, tint, 12.5);
-                let note = if is_current {
-                    "checked out".to_owned()
-                } else if remote {
-                    "on a remote".to_owned()
-                } else if !upstream.is_empty() {
-                    format!("tracks {upstream}")
-                } else {
-                    String::new()
-                };
-                if !note.is_empty() {
-                    modal::label(painter, row, x + 14.0, &note, color::text_faint(), 11.0);
-                }
-            });
+            let response =
+                modal::row(ui, &branch.name, &branch.name, is_current, |painter, row| {
+                    let tint =
+                        if is_current { color::text_strong() } else { color::text_control() };
+                    let x = modal::label(painter, row, row.left() + 16.0, &name, tint, 12.5);
+                    let note = if is_current {
+                        "checked out".to_owned()
+                    } else if remote {
+                        "on a remote".to_owned()
+                    } else if !upstream.is_empty() {
+                        format!("tracks {upstream}")
+                    } else {
+                        String::new()
+                    };
+                    if !note.is_empty() {
+                        modal::label(painter, row, x + 14.0, &note, color::text_faint(), 11.0);
+                    }
+                });
             if response.clicked() {
                 chosen = Some(branch.name.clone());
             }
@@ -384,7 +407,8 @@ fn history_list(
             let date = commit.date.clone();
             let refs = commit.refs.clone();
             let response = modal::row(ui, &commit.hash, &commit.subject, false, |painter, row| {
-                let mut x = modal::label(painter, row, row.left() + 12.0, &short, color::accent(), 11.5);
+                let mut x =
+                    modal::label(painter, row, row.left() + 12.0, &short, color::accent(), 11.5);
                 if !refs.is_empty() {
                     x = modal::label(painter, row, x + 10.0, &refs, color::git_added(), 10.5);
                 }
@@ -398,7 +422,9 @@ fn history_list(
         }
         if history.is_empty() {
             ui.add_space(8.0);
-            ui.label(egui::RichText::new("  No commits yet.").size(11.5).color(color::text_faint()));
+            ui.label(
+                egui::RichText::new("  No commits yet.").size(11.5).color(color::text_faint()),
+            );
         }
     });
     if modal::footer(ui, area, &[("CLOSE", true)]).is_some() {
@@ -424,7 +450,14 @@ fn remote_list(
             let name = remote.name.clone();
             let url = remote.url.clone();
             let response = modal::row(ui, &remote.name, &remote.name, false, |painter, row| {
-                let x = modal::label(painter, row, row.left() + 16.0, &name, color::text_strong(), 12.5);
+                let x = modal::label(
+                    painter,
+                    row,
+                    row.left() + 16.0,
+                    &name,
+                    color::text_strong(),
+                    12.5,
+                );
                 modal::label(painter, row, x + 16.0, &url, color::text_faint(), 11.0);
             });
             if response.clicked() {
@@ -440,8 +473,7 @@ fn remote_list(
     pen = named_field(ui, body, pen, "Name", &mut dialogs.remote_name);
     named_field(ui, body, pen, "Address", &mut dialogs.remote_url);
 
-    let can_add =
-        !dialogs.remote_name.trim().is_empty() && !dialogs.remote_url.trim().is_empty();
+    let can_add = !dialogs.remote_name.trim().is_empty() && !dialogs.remote_url.trim().is_empty();
     match modal::footer(ui, area, &[("REMOVE", chosen.is_some()), ("ADD", can_add)]) {
         Some(0) => outcome.remove_remote = chosen,
         Some(1) => {

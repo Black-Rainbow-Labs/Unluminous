@@ -203,7 +203,10 @@ mod tests {
         let text = "a👨‍👩‍👧‍👦b";
         let after_a = 1;
         let after_emoji = next_grapheme(text, 0, after_a);
-        assert!(after_emoji > after_a + 4, "the whole emoji moves as one, not code point by code point");
+        assert!(
+            after_emoji > after_a + 4,
+            "the whole emoji moves as one, not code point by code point"
+        );
         assert_eq!(&text[after_emoji..], "b");
         assert_eq!(prev_grapheme(text, 0, after_emoji), after_a);
     }

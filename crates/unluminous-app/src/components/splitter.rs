@@ -61,10 +61,7 @@ pub fn show(ui: &mut egui::Ui, line: Rect, id: &str, axis: Axis) -> Drag {
     let colour = if active { color::accent() } else { color::divider() };
     let drawn = if active {
         match axis {
-            Axis::Upright => Rect::from_center_size(
-                line.center(),
-                Vec2::new(2.0, line.height()),
-            ),
+            Axis::Upright => Rect::from_center_size(line.center(), Vec2::new(2.0, line.height())),
             Axis::Flat => Rect::from_center_size(line.center(), Vec2::new(line.width(), 2.0)),
         }
     } else {

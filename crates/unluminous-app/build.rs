@@ -62,7 +62,12 @@ fn build_date() -> String {
 fn local_time() -> Option<String> {
     let output = if cfg!(windows) {
         std::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", "Get-Date -Format 'yyyy-MM-dd h:mmtt'"])
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Get-Date -Format 'yyyy-MM-dd h:mmtt'",
+            ])
             .output()
             .ok()?
     } else {

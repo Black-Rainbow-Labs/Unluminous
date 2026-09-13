@@ -27,19 +27,41 @@ use crate::value::Value;
 #[derive(Debug, Clone)]
 pub enum Job {
     /// A statement somebody typed.
-    Query { sql: String, limit: usize },
+    Query {
+        sql: String,
+        limit: usize,
+    },
     /// A statement Unluminous composed, with values bound.
-    Run { sql: String, values: Vec<Value>, limit: usize },
+    Run {
+        sql: String,
+        values: Vec<Value>,
+        limit: usize,
+    },
     Databases,
     Schemas,
-    Items { schema: String },
-    Describe { schema: String, table: String },
-    Ddl { schema: String, table: String, kind: Kind },
+    Items {
+        schema: String,
+    },
+    Describe {
+        schema: String,
+        table: String,
+    },
+    Ddl {
+        schema: String,
+        table: String,
+        kind: Kind,
+    },
     /// What a search table declared about itself. Only Inillucent has any; the others answer `None`.
-    SearchIndex { name: String },
-    UseSchema { name: String },
+    SearchIndex {
+        name: String,
+    },
+    UseSchema {
+        name: String,
+    },
     /// Everything pending on a grid, written as one transaction or not at all.
-    Write { statements: Vec<Statement> },
+    Write {
+        statements: Vec<Statement>,
+    },
     /// Stop reading and close the connection.
     Close,
 }
@@ -186,7 +208,9 @@ impl Worker {
                 }
                 database.close();
             })
-            .map_err(|why| Failure::said(format!("a thread for this connection could not be started: {why}")))?;
+            .map_err(|why| {
+                Failure::said(format!("a thread for this connection could not be started: {why}"))
+            })?;
         let report = match was_opened.recv() {
             Ok(report) => report?,
             // The thread ended without saying anything, which it only does by panicking - and a panic
@@ -341,7 +365,8 @@ mod tests {
     use std::time::{Duration, Instant};
 
     fn a_database(name: &str) -> std::path::PathBuf {
-        let folder = std::env::temp_dir().join(format!("unluminous-db-worker-{}-{name}", std::process::id()));
+        let folder = std::env::temp_dir()
+            .join(format!("unluminous-db-worker-{}-{name}", std::process::id()));
         let _ = std::fs::create_dir_all(&folder);
         let file = folder.join("test.db");
         let _ = std::fs::remove_file(&file);
@@ -380,10 +405,13 @@ mod tests {
         let source = Source::sqlite("test", a_database("query").to_string_lossy());
         let worker = Worker::open(&source, None, None).expect("opened");
         assert!(worker.version.starts_with("SQLite"));
-        let ticket = worker.ask(Job::Query { sql: "select name from member order by id".to_owned(), limit: 100 })
+        let ticket = worker
+            .ask(Job::Query { sql: "select name from member order by id".to_owned(), limit: 100 })
             .expect("asked");
         let mut kept = Vec::new();
-        let Reply::Rows(rows) = wait_for(&worker, ticket, &mut kept).expect("rows") else { panic!() };
+        let Reply::Rows(rows) = wait_for(&worker, ticket, &mut kept).expect("rows") else {
+            panic!()
+        };
         assert_eq!(rows.rows.len(), 2);
         assert_eq!(rows.rows[0][0], Value::typed("Jason"));
         assert!(!worker.is_busy(), "nothing outstanding once it has been taken");
@@ -409,7 +437,8 @@ mod tests {
     fn a_failing_statement_comes_back_as_a_refusal_rather_than_stopping_the_thread() {
         let source = Source::sqlite("test", a_database("failing").to_string_lossy());
         let worker = Worker::open(&source, None, None).expect("opened");
-        let bad = worker.ask(Job::Query { sql: "select * from nothing_like_this".to_owned(), limit: 10 })
+        let bad = worker
+            .ask(Job::Query { sql: "select * from nothing_like_this".to_owned(), limit: 10 })
             .expect("asked");
         let mut kept = Vec::new();
         assert!(wait_for(&worker, bad, &mut kept).is_err());
@@ -424,11 +453,14 @@ mod tests {
         let source = Source::sqlite("test", a_database("tickets").to_string_lossy());
         let worker = Worker::open(&source, None, None).expect("opened");
         let first = worker.ask(Job::Query { sql: "select 1".to_owned(), limit: 1 }).expect("asked");
-        let second = worker.ask(Job::Query { sql: "select 2".to_owned(), limit: 1 }).expect("asked");
+        let second =
+            worker.ask(Job::Query { sql: "select 2".to_owned(), limit: 1 }).expect("asked");
         assert_ne!(first, second);
         let mut kept = Vec::new();
         let Reply::Rows(one) = wait_for(&worker, first, &mut kept).expect("rows") else { panic!() };
-        let Reply::Rows(two) = wait_for(&worker, second, &mut kept).expect("rows") else { panic!() };
+        let Reply::Rows(two) = wait_for(&worker, second, &mut kept).expect("rows") else {
+            panic!()
+        };
         assert_eq!(one.rows[0][0], Value::typed("1"));
         assert_eq!(two.rows[0][0], Value::typed("2"));
     }
@@ -444,7 +476,10 @@ mod tests {
             what: String::new(),
         }];
         let ticket = worker.ask(Job::Write { statements }).expect("asked");
-        let Reply::Written(affected) = wait_for(&worker, ticket, &mut Vec::new()).expect("written") else { panic!() };
+        let Reply::Written(affected) = wait_for(&worker, ticket, &mut Vec::new()).expect("written")
+        else {
+            panic!()
+        };
         assert_eq!(affected, [1]);
         // Read it back through a connection of its own, so this is the file rather than a cache.
         let connection = rusqlite::Connection::open(&file).expect("opened");

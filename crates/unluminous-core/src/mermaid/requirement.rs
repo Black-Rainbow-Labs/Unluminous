@@ -78,9 +78,7 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
         }
         if let Some(node) = open {
             if let Some((key, value)) = text.split_once(':') {
-                diagram.nodes[node]
-                    .fields
-                    .push((key.trim().to_owned(), source::label(value)));
+                diagram.nodes[node].fields.push((key.trim().to_owned(), source::label(value)));
             }
             continue;
         }
@@ -181,7 +179,9 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
     let labels: Vec<Label> = diagram
         .relations
         .iter()
-        .map(|relation| text::measure(&relation.kind, &label_style, options.metrics, text::EDGE_WRAP))
+        .map(|relation| {
+            text::measure(&relation.kind, &label_style, options.metrics, text::EDGE_WRAP)
+        })
         .collect();
 
     let mut graph = layered::Graph { direction: diagram.direction, ..layered::Graph::default() };
@@ -246,13 +246,7 @@ fn measure(node: &Node, options: &Options) -> Measured {
     }
 }
 
-fn draw_node(
-    scene: &mut Scene,
-    node: &Node,
-    measured: &Measured,
-    rect: Rect,
-    options: &Options,
-) {
+fn draw_node(scene: &mut Scene, node: &Node, measured: &Measured, rect: Rect, options: &Options) {
     let theme = &options.theme;
     let stroke = Stroke::new(theme.node_stroke, parts::LINE);
     scene.add(Item::Rect {
@@ -387,7 +381,10 @@ mod tests {
         assert_eq!(diagram.nodes.len(), 2);
         assert_eq!(diagram.nodes[0].kind, "Functional Requirement");
         assert_eq!(diagram.nodes[0].fields.len(), 4);
-        assert_eq!(diagram.nodes[0].fields[1], ("text".to_owned(), "the system shall work".to_owned()));
+        assert_eq!(
+            diagram.nodes[0].fields[1],
+            ("text".to_owned(), "the system shall work".to_owned())
+        );
         assert_eq!(diagram.nodes[1].kind, "Element");
     }
 

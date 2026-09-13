@@ -37,7 +37,9 @@
 /// the caller is about to print and exit either way, and there is nowhere to report the failure to.
 #[cfg(windows)]
 pub fn attach_to_the_calling_terminal() {
-    use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE};
+    use windows_sys::Win32::System::Console::{
+        AttachConsole, ATTACH_PARENT_PROCESS, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE,
+    };
 
     // SAFETY: a plain call into kernel32 with the value it documents.
     if unsafe { AttachConsole(ATTACH_PARENT_PROCESS) } == 0 {

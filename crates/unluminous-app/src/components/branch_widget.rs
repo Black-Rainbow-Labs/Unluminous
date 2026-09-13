@@ -105,8 +105,11 @@ const NAME_SIZE: f32 = 12.5;
 
 /// How wide the name is drawn, which is its own width up to [`LONGEST_NAME`].
 fn name_width(name: &str, painter: &egui::Painter) -> f32 {
-    let galley =
-        painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(NAME_SIZE), color::text());
+    let galley = painter.layout_no_wrap(
+        name.to_owned(),
+        egui::FontId::proportional(NAME_SIZE),
+        color::text(),
+    );
     galley.size().x.min(LONGEST_NAME)
 }
 
@@ -169,9 +172,7 @@ fn rows(ui: &mut egui::Ui, state: &BranchState) -> Option<Action> {
     let matching: Vec<&String> = state
         .locals
         .iter()
-        .filter(|name| {
-            wanted.is_empty() || name.to_lowercase().contains(&wanted.to_lowercase())
-        })
+        .filter(|name| wanted.is_empty() || name.to_lowercase().contains(&wanted.to_lowercase()))
         .take(MOST_ROWS)
         .collect();
 
@@ -230,7 +231,8 @@ mod tests {
     fn the_flyout_filters_only_when_there_are_more_branches_than_it_can_show() {
         let few: Vec<String> = (0..BRANCHES_BEFORE_A_FILTER).map(|n| format!("b{n}")).collect();
         assert!(few.len() <= BRANCHES_BEFORE_A_FILTER, "no field for this many");
-        let many: Vec<String> = (0..BRANCHES_BEFORE_A_FILTER + 1).map(|n| format!("b{n}")).collect();
+        let many: Vec<String> =
+            (0..BRANCHES_BEFORE_A_FILTER + 1).map(|n| format!("b{n}")).collect();
         assert!(many.len() > BRANCHES_BEFORE_A_FILTER, "a field for this many");
     }
 }

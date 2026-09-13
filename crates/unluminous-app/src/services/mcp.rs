@@ -131,8 +131,11 @@ impl Hosted {
         // Dropped **before** the new one is started, or a change of tool shape on the same port
         // would be a listener trying to bind a port the old one still holds.
         self.endpoint = None;
-        let server =
-            Server::equipped(shape, areas.clone(), UnluminousWindows::for_window(folder.to_path_buf()));
+        let server = Server::equipped(
+            shape,
+            areas.clone(),
+            UnluminousWindows::for_window(folder.to_path_buf()),
+        );
         match Endpoint::start(port, server) {
             Ok(endpoint) => {
                 self.state = State::Listening(endpoint.port());

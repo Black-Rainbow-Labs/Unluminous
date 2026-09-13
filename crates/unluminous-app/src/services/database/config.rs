@@ -47,11 +47,7 @@ pub struct Configuration {
 
 impl Default for Configuration {
     fn default() -> Self {
-        Self {
-            sources: Vec::new(),
-            chosen: String::new(),
-            page_size: DEFAULT_PAGE_SIZE,
-        }
+        Self { sources: Vec::new(), chosen: String::new(), page_size: DEFAULT_PAGE_SIZE }
     }
 }
 
@@ -119,7 +115,8 @@ impl Configuration {
                 Secret::None | Secret::Typed(_) => {}
             }
         }
-        std::fs::create_dir_all(folder).map_err(|why| format!("{} could not be made: {why}", folder.display()))?;
+        std::fs::create_dir_all(folder)
+            .map_err(|why| format!("{} could not be made: {why}", folder.display()))?;
         std::fs::write(
             folder.join(Self::FILE),
             values.to_text_headed(
@@ -130,7 +127,7 @@ impl Configuration {
                  and the value is read at the moment a connection is opened and never held.",
             ),
         )
-        .map_err(|why| format!("{} could not be written: {why}", Self::FILE, ))
+        .map_err(|why| format!("{} could not be written: {why}", Self::FILE,))
         .map_err(|why| format!("{why}"))
     }
 
@@ -185,7 +182,10 @@ fn one(values: &Values, index: usize) -> Result<Source, String> {
             source.host = String::new();
             source.port = 0;
             if source.database.is_empty() {
-                return Err(format!("`{}` names no file, so there is nothing to open.", source.name));
+                return Err(format!(
+                    "`{}` names no file, so there is nothing to open.",
+                    source.name
+                ));
             }
         }
         Engine::Postgres => {
@@ -212,7 +212,8 @@ fn one(values: &Values, index: usize) -> Result<Source, String> {
             source.name
         ));
     }
-    source.secret = match (values.text(&at("password.env")), values.text(&at("password.keychain"))) {
+    source.secret = match (values.text(&at("password.env")), values.text(&at("password.keychain")))
+    {
         (Some(name), _) if !name.is_empty() => Secret::Environment(name.to_owned()),
         (_, Some(name)) if !name.is_empty() => Secret::Keychain(name.to_owned()),
         _ => Secret::None,
@@ -239,7 +240,8 @@ mod tests {
     use super::*;
 
     fn a_folder(name: &str) -> std::path::PathBuf {
-        let folder = std::env::temp_dir().join(format!("unluminous-database-{name}-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-database-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).expect("a folder");
         folder
@@ -249,7 +251,8 @@ mod tests {
     fn a_configuration_round_trips_and_carries_no_secret() {
         let folder = a_folder("round-trip");
         let mut configuration = Configuration::default();
-        let mut postgres = Source::parse("ai", "postgres://postgres@localhost:5432/ai").expect("read");
+        let mut postgres =
+            Source::parse("ai", "postgres://postgres@localhost:5432/ai").expect("read");
         postgres.secret = Secret::Environment("UNLUMINOUS_DB_AI".to_owned());
         postgres.read_only = true;
         configuration.sources.push(postgres);
@@ -269,7 +272,11 @@ mod tests {
         assert!(refused.is_empty(), "{refused:?}");
         assert_eq!(read.sources.len(), 3);
         assert_eq!(read.sources[0].secret, Secret::Environment("UNLUMINOUS_DB_AI".to_owned()));
-        assert_eq!(read.sources[1].secret, Secret::None, "a typed password does not survive the window");
+        assert_eq!(
+            read.sources[1].secret,
+            Secret::None,
+            "a typed password does not survive the window"
+        );
         assert_eq!(read.sources[2].engine, Engine::Sqlite);
         assert_eq!(read.chosen, "ai");
     }

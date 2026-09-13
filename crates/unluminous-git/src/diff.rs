@@ -65,7 +65,8 @@ pub fn changed_lines(folder: &Path, path: &Path) -> Vec<(usize, LineChange)> {
     // Nothing against HEAD can also mean the file is not tracked at all, in which case every line of
     // it is new. `git diff` says nothing about a file git has never seen.
     let known = run(folder, {
-        let mut arguments: Vec<OsString> = vec!["ls-files".into(), "--error-unmatch".into(), "--".into()];
+        let mut arguments: Vec<OsString> =
+            vec!["ls-files".into(), "--error-unmatch".into(), "--".into()];
         arguments.push(path.into());
         &arguments.clone()
     });

@@ -741,7 +741,8 @@ impl OpenFiles {
             return false;
         }
         let wanted = fraction.clamp(0.05, 0.95);
-        let rest: f32 = self.widths.iter().enumerate().filter(|(at, _)| *at != pane).map(|(_, w)| w).sum();
+        let rest: f32 =
+            self.widths.iter().enumerate().filter(|(at, _)| *at != pane).map(|(_, w)| w).sum();
         for (at, width) in self.widths.iter_mut().enumerate() {
             if at == pane {
                 *width = wanted;
@@ -782,7 +783,8 @@ impl OpenFiles {
         if alone {
             let mut fresh = OpenFile::new(Document::new());
             fresh.home = Home::Pane(new);
-            let at = showing.map(|index| index + 1).unwrap_or(self.files.len()).min(self.files.len());
+            let at =
+                showing.map(|index| index + 1).unwrap_or(self.files.len()).min(self.files.len());
             self.files.insert(at, fresh);
             self.focus_pane(new);
             self.stamp(at);
@@ -883,8 +885,7 @@ impl OpenFiles {
         let already = self.files[index].home == home;
         let mut position = position;
         if already {
-            let within =
-                self.tabs_in_node(node).iter().position(|at| *at == index).unwrap_or(0);
+            let within = self.tabs_in_node(node).iter().position(|at| *at == index).unwrap_or(0);
             if within < position {
                 position -= 1;
             }
@@ -1129,11 +1130,8 @@ impl OpenFiles {
         }
         let showing = self.active_index();
         let at = tabs.iter().position(|index| *index == showing).unwrap_or(0);
-        let next = if forwards {
-            (at + 1) % tabs.len()
-        } else {
-            (at + tabs.len() - 1) % tabs.len()
-        };
+        let next =
+            if forwards { (at + 1) % tabs.len() } else { (at + tabs.len() - 1) % tabs.len() };
         self.show(tabs[next]);
     }
 
@@ -1378,7 +1376,8 @@ mod tests {
 
         // And asking for a file that is already open does not turn it into a preview.
         files.open(document("kept.md"), false);
-        let kept = files.index_of(&std::env::temp_dir().join("unluminous-open-files").join("kept.md"));
+        let kept =
+            files.index_of(&std::env::temp_dir().join("unluminous-open-files").join("kept.md"));
         let kept = kept.expect("kept.md is still open");
         assert!(!files.at(kept).transient, "a kept tab stays kept");
         files.open(document("third.md"), false);
@@ -1460,7 +1459,11 @@ mod tests {
         assert_eq!(names(&files), vec!["one.md", "two.md"]);
         assert_eq!(files.active().name(), "two.md");
         files.close(0);
-        assert_eq!(files.active().name(), "two.md", "closing a tab before the open one keeps it open");
+        assert_eq!(
+            files.active().name(),
+            "two.md",
+            "closing a tab before the open one keeps it open"
+        );
     }
 
     #[test]
@@ -1812,7 +1815,9 @@ mod tests {
         let mut files = two_open();
         files.split_right();
         assert_eq!(files.focused_pane(), 1);
-        let one = files.index_of(&document("one.md").path().expect("a path").to_path_buf()).expect("open");
+        let one = files
+            .index_of(&document("one.md").path().expect("a path").to_path_buf())
+            .expect("open");
         files.show(one);
         assert_eq!(files.focused_pane(), 0, "clicking a tab moves the keyboard to its pane");
         assert_eq!(files.active().name(), "one.md");
@@ -1920,7 +1925,9 @@ mod tests {
         files.split_right();
         let mut seed: u64 = 0x1234_5678;
         let mut next = || {
-            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            seed = seed
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
             (seed >> 33) as usize
         };
         for step in 0..4000 {
@@ -1960,5 +1967,4 @@ mod tests {
             assert!(files.active_index() < files.len(), "nothing is showing at step {step}");
         }
     }
-
 }

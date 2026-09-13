@@ -280,7 +280,8 @@ mod tests {
     use super::*;
 
     fn bytes(key: Key, modifiers: Modifiers, mode: Mode) -> Vec<u8> {
-        encode(KeyPress::new(key, modifiers), mode).unwrap_or_else(|| panic!("{key:?} should send something"))
+        encode(KeyPress::new(key, modifiers), mode)
+            .unwrap_or_else(|| panic!("{key:?} should send something"))
     }
 
     fn text(key: Key, modifiers: Modifiers, mode: Mode) -> String {

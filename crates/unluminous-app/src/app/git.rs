@@ -12,8 +12,8 @@ use unluminous_git::worker::{Reply, Request, Snapshot};
 use unluminous_git::{Commit, Repository, Worker};
 
 use crate::app::files::OpenFiles;
-use crate::components::git_panel::CommitPanel;
 use crate::components::git_dialogs::GitDialogs;
+use crate::components::git_panel::CommitPanel;
 use crate::components::gutter::{BlameRow, Change};
 
 /// How many commits the history window reads. A repository can hold a hundred thousand; a window
@@ -95,7 +95,9 @@ impl GitState {
                     self.read = true;
                     // A commit that has just been made is not in the panel's message any more.
                     if let Some(label) = self.snapshot.in_progress {
-                        self.message = Some(format!("{label} \u{2014} finish it or abandon it from the Git menu"));
+                        self.message = Some(format!(
+                            "{label} \u{2014} finish it or abandon it from the Git menu"
+                        ));
                     }
                 }
                 Reply::Blame(path, blame) => {
@@ -164,7 +166,11 @@ impl GitState {
                     // themselves better than anything Unluminous could say about them.
                     let said = outcome.summary();
                     self.message = Some(if outcome.ok {
-                        if said.is_empty() { format!("{label}: done") } else { said }
+                        if said.is_empty() {
+                            format!("{label}: done")
+                        } else {
+                            said
+                        }
                     } else {
                         format!("{label} failed: {said}")
                     });
@@ -232,7 +238,11 @@ impl GitState {
     pub fn state_of(&self, path: &Path) -> Option<unluminous_git::State> {
         let relative = self.relative(path)?;
         let entry = self.snapshot.status.entry(&relative)?;
-        Some(if entry.index == unluminous_git::State::Unchanged { entry.worktree } else { entry.index })
+        Some(if entry.index == unluminous_git::State::Unchanged {
+            entry.worktree
+        } else {
+            entry.index
+        })
     }
 }
 
@@ -261,7 +271,11 @@ fn same_folder(left: &Path, right: &Path) -> bool {
 
 /// Say whether a repository is the project itself or one of its ancestors.
 pub fn root_relation(repository: &Path, project: &Path) -> RootRelation {
-    if same_folder(repository, project) { RootRelation::Project } else { RootRelation::Ancestor }
+    if same_folder(repository, project) {
+        RootRelation::Project
+    } else {
+        RootRelation::Ancestor
+    }
 }
 
 /// Whether the project itself has acquired a normal or worktree git marker.

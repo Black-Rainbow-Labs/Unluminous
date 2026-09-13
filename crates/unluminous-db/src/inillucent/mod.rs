@@ -188,9 +188,7 @@ impl Session {
     ) -> Answer<Vec<u64>> {
         let bound: Vec<(String, Vec<inillucent_driver::Value>)> = work
             .iter()
-            .map(|(statement, values)| {
-                (statement.clone(), values.iter().map(to_driver).collect())
-            })
+            .map(|(statement, values)| (statement.clone(), values.iter().map(to_driver).collect()))
             .collect();
         let connection = self.connect();
         connection
@@ -360,11 +358,7 @@ fn from_driver(answered: inillucent_driver::Rows) -> Rows {
             .iter()
             .map(|column| Column::new(&column.name, &column.declared_type))
             .collect(),
-        rows: answered
-            .rows
-            .iter()
-            .map(|row| row.iter().map(from_driver_value).collect())
-            .collect(),
+        rows: answered.rows.iter().map(|row| row.iter().map(from_driver_value).collect()).collect(),
         affected: answered.affected,
         tag: answered.tag,
         elapsed: answered.elapsed,

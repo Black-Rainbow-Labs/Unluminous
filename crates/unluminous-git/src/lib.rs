@@ -170,11 +170,16 @@ mod tests {
     fn a_path_is_made_relative_the_way_git_spells_one() {
         let repository = Repository { root: PathBuf::from("/home/jason/unluminous") };
         assert_eq!(
-            repository.relative(Path::new("/home/jason/unluminous/crates/unluminous-git/src/lib.rs")),
+            repository
+                .relative(Path::new("/home/jason/unluminous/crates/unluminous-git/src/lib.rs")),
             Some("crates/unluminous-git/src/lib.rs".to_owned())
         );
         assert_eq!(repository.relative(Path::new("/home/jason/other/thing.md")), None);
-        assert_eq!(repository.relative(Path::new("/home/jason/unluminous")), None, "the root itself is not a path in it");
+        assert_eq!(
+            repository.relative(Path::new("/home/jason/unluminous")),
+            None,
+            "the root itself is not a path in it"
+        );
     }
 
     /// The fault this found on a Mac: a repository reached through a symlink had no paths in it.
@@ -200,7 +205,8 @@ mod tests {
 
         // The root as git spells it, and the same file named through the link. That is the shape the
         // window is in whenever the folder it was given is not the folder git resolves to.
-        let repository = Repository { root: std::fs::canonicalize(base.join("real")).expect("resolve") };
+        let repository =
+            Repository { root: std::fs::canonicalize(base.join("real")).expect("resolve") };
         assert_eq!(
             repository.relative(&link.join("version.ts")),
             Some("version.ts".to_owned()),
@@ -229,7 +235,8 @@ mod tests {
         std::fs::create_dir_all(base.join("inside")).expect("make the folder");
         std::fs::create_dir_all(base.join("outside")).expect("make the other folder");
         std::fs::write(base.join("outside/thing.md"), "elsewhere\n").expect("write it");
-        let repository = Repository { root: std::fs::canonicalize(base.join("inside")).expect("resolve") };
+        let repository =
+            Repository { root: std::fs::canonicalize(base.join("inside")).expect("resolve") };
         assert_eq!(repository.relative(&base.join("outside/thing.md")), None);
         std::fs::remove_dir_all(&base).ok();
     }

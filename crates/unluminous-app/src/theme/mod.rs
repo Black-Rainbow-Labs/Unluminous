@@ -609,15 +609,26 @@ pub const BOLD_FAMILY: &str = "unluminous-bold";
 /// shows a genuinely bold B, so the family Unluminous is using is handed to egui as well, with its bold face
 /// under a name the toolbar can ask for. egui's own fonts stay in the list behind ours, because they carry
 /// symbols such as the triangles in front of a folder that a text face does not have.
-pub fn install_fonts(ctx: &egui::Context, family: &str, regular: Option<Vec<u8>>, bold: Option<Vec<u8>>) {
+pub fn install_fonts(
+    ctx: &egui::Context,
+    family: &str,
+    regular: Option<Vec<u8>>,
+    bold: Option<Vec<u8>>,
+) {
     let mut fonts = egui::FontDefinitions::default();
     let mut bold_stack = Vec::new();
     if let Some(bytes) = bold {
-        fonts.font_data.insert("unluminous-ui-bold".to_owned(), std::sync::Arc::new(egui::FontData::from_owned(bytes)));
+        fonts.font_data.insert(
+            "unluminous-ui-bold".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
         bold_stack.push("unluminous-ui-bold".to_owned());
     }
     if let Some(bytes) = regular {
-        fonts.font_data.insert("unluminous-ui".to_owned(), std::sync::Arc::new(egui::FontData::from_owned(bytes)));
+        fonts.font_data.insert(
+            "unluminous-ui".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
         if let Some(list) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
             list.insert(0, "unluminous-ui".to_owned());
         }
@@ -643,7 +654,12 @@ pub fn install_fonts(ctx: &egui::Context, family: &str, regular: Option<Vec<u8>>
 /// Only backgrounds go through this. Text, icons and the caret are always drawn at full alpha, which is
 /// what lets the desktop show through the window without making the writing hard to read.
 pub fn faded(base: Color32, opacity: f32) -> Color32 {
-    Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), (opacity.clamp(0.0, 1.0) * 255.0).round() as u8)
+    Color32::from_rgba_unmultiplied(
+        base.r(),
+        base.g(),
+        base.b(),
+        (opacity.clamp(0.0, 1.0) * 255.0).round() as u8,
+    )
 }
 
 /// The colour of the square in front of a file, by what kind of file it is.
@@ -757,7 +773,11 @@ mod tests {
         .join()
         .expect("the other thread finished");
         assert_eq!(elsewhere, Color32::from_rgb(0x0F, 0x11, 0x1A), "it got its own");
-        assert_eq!(color::editor(), Color32::from_rgb(0x1A, 0x1F, 0x26), "and this one is untouched");
+        assert_eq!(
+            color::editor(),
+            Color32::from_rgb(0x1A, 0x1F, 0x26),
+            "and this one is untouched"
+        );
     }
 
     /// The interface size is set from egui's defaults rather than multiplied into what is there.
@@ -768,7 +788,11 @@ mod tests {
     fn the_interface_size_is_absolute_rather_than_compounding() {
         let context = egui::Context::default();
         let size_of = |context: &egui::Context| {
-            context.style_of(egui::Theme::Dark).text_styles.get(&egui::TextStyle::Body).map(|font| font.size)
+            context
+                .style_of(egui::Theme::Dark)
+                .text_styles
+                .get(&egui::TextStyle::Body)
+                .map(|font| font.size)
         };
         apply(&context);
         let plain = size_of(&context).expect("egui has a body style");
@@ -789,7 +813,11 @@ mod tests {
             assert_eq!(IconSet::parse(set.name()), Some(set));
         }
         assert_eq!(IconSet::parse("MATERIAL"), Some(IconSet::Material));
-        assert_eq!(IconSet::default(), IconSet::Material, "the improved marks are what a window comes up in");
+        assert_eq!(
+            IconSet::default(),
+            IconSet::Material,
+            "the improved marks are what a window comes up in"
+        );
         assert_eq!(IconSet::parse("atom"), None);
     }
 }
@@ -887,7 +915,10 @@ mod closed_palette {
         assert!(writes_a_literal("from_rgb(0x1A, 0x1F, 0x26)"), "a hex triple is a literal");
         assert!(writes_a_literal("from_rgb(26, 31, 38)"), "and so is a decimal one");
         assert!(writes_a_literal("from_rgb( 0xFF, 0, 0)"), "however it is spaced");
-        assert!(!writes_a_literal("from_rgb(colour.r, colour.g, colour.b)"), "this is a conversion");
+        assert!(
+            !writes_a_literal("from_rgb(colour.r, colour.g, colour.b)"),
+            "this is a conversion"
+        );
         assert!(!writes_a_literal("from_rgb(found.r, found.g, found.b)"));
         assert!(!writes_a_literal("from_rgb(mix(a), mix(b), mix(c))"));
     }

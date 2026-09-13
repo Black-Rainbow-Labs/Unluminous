@@ -98,13 +98,31 @@ fn main() {
     let bodies: Vec<String> = (0..messages).map(an_answer).collect();
     let mut cache = Cache::default();
     for (index, body) in bodies.iter().enumerate() {
-        cache.rendered(&format!("message-{index}"), body, &renderer, &family, size, colours, bubble, None);
+        cache.rendered(
+            &format!("message-{index}"),
+            body,
+            &renderer,
+            &family,
+            size,
+            colours,
+            bubble,
+            None,
+        );
     }
     let arriving = format!("{}…", &bodies[messages - 1][..bodies[messages - 1].len() / 2]);
     let began = Instant::now();
     for round in 0..50 {
         for (index, body) in bodies.iter().enumerate().take(messages - 1) {
-            cache.rendered(&format!("message-{index}"), body, &renderer, &family, size, colours, bubble, None);
+            cache.rendered(
+                &format!("message-{index}"),
+                body,
+                &renderer,
+                &family,
+                size,
+                colours,
+                bubble,
+                None,
+            );
         }
         // The one that is arriving, a little longer every round, which is what a chunk does.
         let growing = format!("{arriving}{}", "x".repeat(round));
@@ -120,7 +138,9 @@ fn main() {
         );
     }
     let frame = began.elapsed().as_secs_f64() * 1000.0 / 50.0;
-    println!("  {frame:>9.3} ms for a whole frame of {messages} messages with the last one arriving");
+    println!(
+        "  {frame:>9.3} ms for a whole frame of {messages} messages with the last one arriving"
+    );
 
     // The decoration: recording it, which every frame pays, and rasterising it, which only a frame where
     // the drawing changed pays.
@@ -142,7 +162,11 @@ fn main() {
     let lists: Vec<Vec<_>> = (1..=10)
         .map(|round| {
             let chrome = Chrome::recording();
-            draw_a_conversation(&chrome, area.translate(Vec2::new(0.0, round as f32 * 0.01)), messages);
+            draw_a_conversation(
+                &chrome,
+                area.translate(Vec2::new(0.0, round as f32 * 0.01)),
+                messages,
+            );
             chrome.take()
         })
         .collect();
@@ -185,7 +209,8 @@ fn draw_a_conversation(chrome: &Chrome, area: Rect, messages: usize) {
             0 => 44.0,
             _ => 96.0,
         };
-        let rect = Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width() * 0.9, tall));
+        let rect =
+            Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width() * 0.9, tall));
         match index % 2 {
             0 => chrome.raised(rect, 14.0, Fill::Solid(color::code_panel()), Lift::Small),
             _ => chrome.sunken(rect, 14.0, color::code_panel(), Lift::Small),
@@ -195,11 +220,15 @@ fn draw_a_conversation(chrome: &Chrome, area: Rect, messages: usize) {
     }
     chrome.unclip();
     // The composer: the pill, the prompt well, and the gradient disc with its glow.
-    let pill = Rect::from_center_size(Pos2::new(inner.center().x, inner.bottom() - 76.0), Vec2::new(86.0, 28.0));
+    let pill = Rect::from_center_size(
+        Pos2::new(inner.center().x, inner.bottom() - 76.0),
+        Vec2::new(86.0, 28.0),
+    );
     chrome.sunken(pill, 14.0, color::field(), Lift::Small);
     let well = Rect::from_min_max(Pos2::new(inner.left(), inner.bottom() - 48.0), inner.max);
     chrome.sunken(well, 18.0, color::field(), Lift::Medium);
-    let disc = Rect::from_center_size(Pos2::new(well.right() - 21.0, well.center().y), Vec2::splat(32.0));
+    let disc =
+        Rect::from_center_size(Pos2::new(well.right() - 21.0, well.center().y), Vec2::splat(32.0));
     chrome.glow(disc, 16.0, color::board_accent().gamma_multiply(0.45), 7.0);
     chrome.disc(disc.center(), 16.0, Fill::diagonal(disc, color::board_accent(), color::accent()));
 }

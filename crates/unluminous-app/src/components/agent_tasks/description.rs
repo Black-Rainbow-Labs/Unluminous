@@ -22,7 +22,12 @@ use crate::services::plugin_ui::{Look, Request};
 /// Two views since `task-28`: the source, which is what somebody types into, and the same text rendered as
 /// markdown, which is what somebody reads. Which one is showing is `Detail::description_rendered`, and the two
 /// buttons that set it are drawn by the caller over the label, because that is where a label's own controls go.
-pub fn show(board: &mut AgentTasks, ui: &mut egui::Ui, area: Rect, look: &Look<'_>) -> Vec<Request> {
+pub fn show(
+    board: &mut AgentTasks,
+    ui: &mut egui::Ui,
+    area: Rect,
+    look: &Look<'_>,
+) -> Vec<Request> {
     match board.detail().description_rendered {
         true => rendered(board, ui, area, look),
         false => raw(board, ui, area, look),
@@ -34,7 +39,12 @@ pub fn show(board: &mut AgentTasks, ui: &mut egui::Ui, area: Rect, look: &Look<'
 /// `components::markdown_text` is what renders and paints it, which is `unluminous_core::markdown` and the editor's
 /// own painter — so a fenced code block sits on a panel and a table has rules, exactly as in a `.md` file's
 /// preview. What it does not have is pictures and Mermaid diagrams, for the reason that module records.
-fn rendered(board: &mut AgentTasks, ui: &mut egui::Ui, area: Rect, look: &Look<'_>) -> Vec<Request> {
+fn rendered(
+    board: &mut AgentTasks,
+    ui: &mut egui::Ui,
+    area: Rect,
+    look: &Look<'_>,
+) -> Vec<Request> {
     use crate::components::markdown_text;
     ui.painter().rect(
         area,
@@ -88,7 +98,8 @@ fn rendered(board: &mut AgentTasks, ui: &mut egui::Ui, area: Rect, look: &Look<'
     if over {
         let wheel = ui.ctx().input(|input| input.smooth_scroll_delta.y);
         if wheel != 0.0 {
-            board.description_scroll = (scroll - wheel).clamp(0.0, (height - inside.height()).max(0.0));
+            board.description_scroll =
+                (scroll - wheel).clamp(0.0, (height - inside.height()).max(0.0));
         }
     }
     Vec::new()
@@ -122,13 +133,18 @@ fn raw(board: &mut AgentTasks, ui: &mut egui::Ui, area: Rect, look: &Look<'_>) -
         egui::TextEdit::multiline(&mut text)
             .id(description_id)
             .frame(egui::Frame::NONE)
-            .hint_text(egui::RichText::new("What needs doing, in markdown.").color(look.palette.text_faint))
+            .hint_text(
+                egui::RichText::new("What needs doing, in markdown.")
+                    .color(look.palette.text_faint),
+            )
             .desired_width(inside.width())
             .desired_rows(((inside.height() / (look.font_size * 1.4)) as usize).max(3))
             .font(egui::FontId::proportional(look.font_size - 0.5))
             .text_color(look.palette.text),
     );
-    if response.changed() && board.detail().task.as_ref().is_some_and(|task| task.description != text) {
+    if response.changed()
+        && board.detail().task.as_ref().is_some_and(|task| task.description != text)
+    {
         if let Err(problem) = board.save_the_description(&text) {
             requests.push(Request::Message(problem));
         }

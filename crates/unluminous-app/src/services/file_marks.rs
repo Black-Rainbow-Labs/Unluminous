@@ -233,11 +233,8 @@ impl FileMarks {
 
     /// The files that have anything marked in them, in path order so a listing is stable.
     pub fn files(&self) -> Vec<(&PathBuf, &Highlights)> {
-        let mut out: Vec<(&PathBuf, &Highlights)> = self
-            .files
-            .iter()
-            .filter(|(_, marks)| !marks.is_empty())
-            .collect();
+        let mut out: Vec<(&PathBuf, &Highlights)> =
+            self.files.iter().filter(|(_, marks)| !marks.is_empty()).collect();
         out.sort_by(|left, right| left.0.cmp(right.0));
         out
     }
@@ -254,7 +251,8 @@ impl FileMarks {
 }
 
 fn heading() -> String {
-    "# The highlighted passages in this project. Written by Unluminous, and safe to delete.\n".to_owned()
+    "# The highlighted passages in this project. Written by Unluminous, and safe to delete.\n"
+        .to_owned()
 }
 
 /// `<start> <end> <#rrggbbaa> <path>`, the path being the rest of the line.

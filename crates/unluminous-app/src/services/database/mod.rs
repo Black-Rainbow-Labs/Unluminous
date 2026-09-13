@@ -60,16 +60,31 @@ impl std::fmt::Debug for Connection {
 #[derive(Debug, Clone)]
 enum Wanted {
     Schemas,
-    Items { schema: String },
+    Items {
+        schema: String,
+    },
     /// A table's columns, and what to do once they have arrived.
-    Describe { schema: String, name: String, then: Then },
+    Describe {
+        schema: String,
+        name: String,
+        then: Then,
+    },
     /// A `CREATE` statement. `show` is true when a person pressed the button, and false when an
     /// agent asked for the text — a command must not put a modal in front of somebody.
-    Ddl { name: String, show: bool },
-    Rows { page: u64 },
-    Written { page: u64 },
+    Ddl {
+        name: String,
+        show: bool,
+    },
+    Rows {
+        page: u64,
+    },
+    Written {
+        page: u64,
+    },
     /// What a search table declared about itself, asked for as soon as one is seen in a schema.
-    Search { name: String },
+    Search {
+        name: String,
+    },
     Nothing,
 }
 
@@ -172,7 +187,11 @@ impl Grid {
     /// added rather than by a key it does not have yet.
     pub fn row_of(&self, at: usize) -> Option<Row> {
         if at >= self.rows.rows.len() {
-            return self.pending.added().get(at - self.rows.rows.len()).map(|added| Row::Added(*added));
+            return self
+                .pending
+                .added()
+                .get(at - self.rows.rows.len())
+                .map(|added| Row::Added(*added));
         }
         let row = self.rows.rows.get(at)?;
         let key = self
@@ -196,7 +215,9 @@ impl Grid {
         let added = at >= self.rows.rows.len();
         let read = match added {
             true => Value::Text(String::new()),
-            false => self.rows.rows.get(at).and_then(|row| row.get(column)).cloned().unwrap_or_default(),
+            false => {
+                self.rows.rows.get(at).and_then(|row| row.get(column)).cloned().unwrap_or_default()
+            }
         };
         let Some(name) = self.rows.columns.get(column).map(|column| column.name.clone()) else {
             return (read, false);
@@ -355,9 +376,11 @@ pub struct TableForm {
 pub fn keychain_entry_for(source: &str) -> String {
     let kept: String = source
         .chars()
-        .map(|character| match character.is_ascii_alphanumeric() || matches!(character, '-' | '.' | '_') {
-            true => character,
-            false => '-',
+        .map(|character| {
+            match character.is_ascii_alphanumeric() || matches!(character, '-' | '.' | '_') {
+                true => character,
+                false => '-',
+            }
         })
         .collect();
     format!("unluminous-database-{}", kept.trim_matches('-'))
@@ -565,8 +588,12 @@ impl DatabaseExplorer {
         self.current = self.current.min(self.pages.len().saturating_sub(1));
         self.configuration.sources.retain(|source| source.name != name);
         if self.configuration.chosen == name {
-            self.configuration.chosen =
-                self.configuration.sources.first().map(|source| source.name.clone()).unwrap_or_default();
+            self.configuration.chosen = self
+                .configuration
+                .sources
+                .first()
+                .map(|source| source.name.clone())
+                .unwrap_or_default();
         }
         self.write_the_configuration()
     }
@@ -607,7 +634,11 @@ impl DatabaseExplorer {
         }
         loaded.open_schemas.insert(schema.to_owned());
         if !loaded.items.contains_key(schema) {
-            self.ask(source, Job::Items { schema: schema.to_owned() }, Wanted::Items { schema: schema.to_owned() });
+            self.ask(
+                source,
+                Job::Items { schema: schema.to_owned() },
+                Wanted::Items { schema: schema.to_owned() },
+            );
         }
     }
 
@@ -641,7 +672,14 @@ impl DatabaseExplorer {
     }
 
     /// Ask for a table's `CREATE` statement. `show` puts it in a modal; a command asks with `false`.
-    pub fn ask_for_ddl(&mut self, source: &str, schema: &str, name: &str, kind: Kind, show: bool) -> Result<(), String> {
+    pub fn ask_for_ddl(
+        &mut self,
+        source: &str,
+        schema: &str,
+        name: &str,
+        kind: Kind,
+        show: bool,
+    ) -> Result<(), String> {
         self.last_ddl = None;
         let job = Job::Ddl { schema: schema.to_owned(), table: name.to_owned(), kind };
         match self.ask(source, job, Wanted::Ddl { name: name.to_owned(), show }) {
@@ -715,7 +753,11 @@ impl DatabaseExplorer {
             return Err(format!("there is no data source called `{source}`."));
         }
         self.connect(source)?;
-        match self.loaded.get(source).and_then(|loaded| loaded.columns.get(&(schema.to_owned(), name.to_owned()))) {
+        match self
+            .loaded
+            .get(source)
+            .and_then(|loaded| loaded.columns.get(&(schema.to_owned(), name.to_owned())))
+        {
             Some(table) => {
                 let table = table.clone();
                 self.grid_for(source, schema, table);
@@ -760,10 +802,15 @@ impl DatabaseExplorer {
         let Some(page) = self.page(id) else { return };
         let Sheet::Grid(grid) = &page.sheet else { return };
         let source = grid.source.clone();
-        let engine = self.configuration.source(&source).map(|source| source.engine).unwrap_or(Engine::Postgres);
+        let engine = self
+            .configuration
+            .source(&source)
+            .map(|source| source.engine)
+            .unwrap_or(Engine::Postgres);
         let limit = self.configuration.page_size;
         let statement = select_for(grid, engine, limit, grid.at);
-        let ticket = self.ask(&source, Job::Query { sql: statement, limit }, Wanted::Rows { page: id });
+        let ticket =
+            self.ask(&source, Job::Query { sql: statement, limit }, Wanted::Rows { page: id });
         if let Some(Page { sheet: Sheet::Grid(grid), .. }) = self.page_mut(id) {
             grid.running = ticket;
             grid.failure = None;
@@ -816,7 +863,8 @@ impl DatabaseExplorer {
         let Some(Page { sheet: Sheet::Console(console), .. }) = self.page(id) else { return };
         let source = console.source.clone();
         let limit = self.configuration.page_size;
-        let ticket = self.ask(&source, Job::Query { sql: sql.to_owned(), limit }, Wanted::Rows { page: id });
+        let ticket =
+            self.ask(&source, Job::Query { sql: sql.to_owned(), limit }, Wanted::Rows { page: id });
         if let Some(Page { sheet: Sheet::Console(console), .. }) = self.page_mut(id) {
             console.running = ticket;
             console.failure = None;
@@ -843,7 +891,8 @@ impl DatabaseExplorer {
         let until = std::time::Instant::now() + commands::PATIENCE;
         loop {
             self.take_the_replies();
-            if let Some(problem) = self.loaded.get(source).and_then(|loaded| loaded.problem.clone()) {
+            if let Some(problem) = self.loaded.get(source).and_then(|loaded| loaded.problem.clone())
+            {
                 self.loaded.entry(source.to_owned()).or_default().problem = None;
                 return Err(problem);
             }
@@ -922,8 +971,13 @@ impl DatabaseExplorer {
             return Err("there is nothing to submit.".to_owned());
         }
         let source = grid.source.clone();
-        let engine = self.configuration.source(&source).map(|source| source.engine).unwrap_or(Engine::Postgres);
-        let statements = grid.pending.statements(&grid.table, engine).map_err(|why| why.to_string())?;
+        let engine = self
+            .configuration
+            .source(&source)
+            .map(|source| source.engine)
+            .unwrap_or(Engine::Postgres);
+        let statements =
+            grid.pending.statements(&grid.table, engine).map_err(|why| why.to_string())?;
         let count = statements.len();
         let ticket = self.ask(&source, Job::Write { statements }, Wanted::Written { page: id });
         if let Some(Page { sheet: Sheet::Grid(grid), .. }) = self.page_mut(id) {
@@ -1103,7 +1157,9 @@ impl DatabaseExplorer {
         let said = why.to_string();
         match wanted {
             Wanted::Rows { page } | Wanted::Written { page } => {
-                if let Some(page) = self.page_mut(page).filter(|page| page.running() == Some(ticket)) {
+                if let Some(page) =
+                    self.page_mut(page).filter(|page| page.running() == Some(ticket))
+                {
                     match &mut page.sheet {
                         Sheet::Console(console) => {
                             console.running = None;
@@ -1293,8 +1349,11 @@ pub fn why_not(grid: &Grid) -> Option<String> {
 /// A result as data, bounded, for `plugins view` and for a test.
 fn rows_value(rows: &Rows, vectors: &[String]) -> serde_json::Value {
     // Which result columns the schema says hold a vector, worked out once rather than per cell.
-    let is_a_vector: Vec<bool> =
-        rows.columns.iter().map(|column| vectors.iter().any(|named| *named == column.name)).collect();
+    let is_a_vector: Vec<bool> = rows
+        .columns
+        .iter()
+        .map(|column| vectors.iter().any(|named| *named == column.name))
+        .collect();
     serde_json::json!({
         "columns": rows.columns.iter().map(|column| serde_json::json!({
             "name": column.name,

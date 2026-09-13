@@ -382,7 +382,9 @@ fn extension_of(path: &Path, grammar: &Grammar) -> Option<String> {
     grammar
         .import_extensions
         .iter()
-        .filter(|extension| name.ends_with(&extension.to_lowercase()) && name.len() > extension.len())
+        .filter(|extension| {
+            name.ends_with(&extension.to_lowercase()) && name.len() > extension.len()
+        })
         .max_by_key(|extension| extension.len())
         .cloned()
 }
@@ -801,10 +803,11 @@ mod tests {
     fn a_folders_children_are_its_subfolders_and_its_files_but_not_its_own_module() {
         let (root, files) = workspace();
         let project = project(&root, &files);
-        let names: Vec<String> = children(&project, &root.join("crates/unluminous-core/src"), &rust())
-            .into_iter()
-            .map(|(name, _)| name)
-            .collect();
+        let names: Vec<String> =
+            children(&project, &root.join("crates/unluminous-core/src"), &rust())
+                .into_iter()
+                .map(|(name, _)| name)
+                .collect();
         assert_eq!(names, vec!["completion".to_owned(), "mermaid".to_owned()]);
     }
 
@@ -812,7 +815,8 @@ mod tests {
     fn nothing_written_offers_the_reserved_roots_and_the_packages() {
         let (root, files) = workspace();
         let project = project(&root, &files);
-        let names: Vec<String> = roots(&project, &rust()).into_iter().map(|(name, _)| name).collect();
+        let names: Vec<String> =
+            roots(&project, &rust()).into_iter().map(|(name, _)| name).collect();
         assert_eq!(
             names,
             vec![
@@ -828,7 +832,10 @@ mod tests {
     #[test]
     fn a_relative_path_is_written_with_forward_slashes_and_never_reaches_outside_the_project() {
         let base = PathBuf::from("/project/src/app");
-        assert_eq!(relative(&base, Path::new("/project/src/app/layout")).as_deref(), Some("./layout"));
+        assert_eq!(
+            relative(&base, Path::new("/project/src/app/layout")).as_deref(),
+            Some("./layout")
+        );
         assert_eq!(relative(&base, Path::new("/project/src/core/x")).as_deref(), Some("../core/x"));
         assert_eq!(relative(&base, Path::new("/project/src")).as_deref(), Some(".."));
         assert_eq!(relative(&base, &base), None, "an import of oneself is not a thing");

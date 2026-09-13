@@ -23,9 +23,8 @@ const TICKETS: usize = 5_000;
 fn main() {
     let now = clock::now();
     let store = Store::in_memory().expect("a board in memory");
-    let sprint = store
-        .create_sprint("Current Sprint", model::SprintStatus::Active, &now)
-        .expect("a sprint");
+    let sprint =
+        store.create_sprint("Current Sprint", model::SprintStatus::Active, &now).expect("a sprint");
 
     let filling = Instant::now();
     for index in 0..TICKETS {
@@ -63,7 +62,9 @@ fn main() {
             for todo in 0..4 {
                 store.add_todo(task.id, &format!("Step {todo}"), &now).expect("a todo");
             }
-            store.add_comment(task.id, model::Author::Claude, "Working on it.", &now).expect("a comment");
+            store
+                .add_comment(task.id, model::Author::Claude, "Working on it.", &now)
+                .expect("a comment");
         }
     }
     println!("{TICKETS} tickets written in {:.0} ms", filling.elapsed().as_secs_f64() * 1000.0);
@@ -118,7 +119,11 @@ fn main() {
     );
 
     println!();
-    println!("What a frame costs is zero queries: the board above is held in memory and read again only");
-    println!("when a command changed something or the two minute tick fired. A frame in which nothing");
+    println!(
+        "What a frame costs is zero queries: the board above is held in memory and read again only"
+    );
+    println!(
+        "when a command changed something or the two minute tick fired. A frame in which nothing"
+    );
     println!("changed does no work at all, which is `task-1666`'s rule.");
 }

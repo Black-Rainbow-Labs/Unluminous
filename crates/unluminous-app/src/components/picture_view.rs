@@ -27,12 +27,7 @@ pub struct PictureOutcome {
 /// Draw `picture` into `area`.
 ///
 /// `name` names the texture, so two tabs showing two files do not share one upload.
-pub fn show(
-    ui: &mut egui::Ui,
-    area: Rect,
-    picture: &mut Picture,
-    name: &str,
-) -> PictureOutcome {
+pub fn show(ui: &mut egui::Ui, area: Rect, picture: &mut Picture, name: &str) -> PictureOutcome {
     let mut outcome = PictureOutcome::default();
     let response = ui.interact(area, ui.id().with(("picture", name)), Sense::click_and_drag());
     if response.clicked() || response.drag_started() {
@@ -100,8 +95,12 @@ pub fn show(
 /// A line in the middle of the area, for a picture that will not decode or has not been uploaded yet.
 fn say(ui: &egui::Ui, area: Rect, text: &str) {
     let painter = ui.painter_at(area);
-    let galley =
-        painter.layout(text.to_owned(), egui::FontId::proportional(12.5), color::text_dim(), area.width() - 64.0);
+    let galley = painter.layout(
+        text.to_owned(),
+        egui::FontId::proportional(12.5),
+        color::text_dim(),
+        area.width() - 64.0,
+    );
     painter.galley(
         Pos2::new(area.center().x - galley.size().x / 2.0, area.center().y - galley.size().y / 2.0),
         galley,

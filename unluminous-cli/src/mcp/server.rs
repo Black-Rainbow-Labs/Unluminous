@@ -188,19 +188,12 @@ impl<D: Driver> Server<D> {
         let ignored = call.ignored.clone();
         match self.driver.run(call.command, call.arguments, call.instance.as_deref()) {
             Ok(reply) => result(id, self.tool_result(call.command, &reply, &ignored)),
-            Err(problem) => {
-                result(id, refused(format!("{}: {}", problem.code, problem.message)))
-            }
+            Err(problem) => result(id, refused(format!("{}: {}", problem.code, problem.message))),
         }
     }
 
     /// Turn what the window said into what an agent reads.
-    fn tool_result(
-        &self,
-        command: &'static Command,
-        reply: &Reply,
-        ignored: &[String],
-    ) -> Value {
+    fn tool_result(&self, command: &'static Command, reply: &Reply, ignored: &[String]) -> Value {
         if let Some(failure) = &reply.error {
             return refused(format!("{}: {}", failure.code, failure.message));
         }
@@ -351,10 +344,7 @@ pub fn looks_like_a_version(text: &str) -> bool {
     bytes.len() == 10
         && bytes[4] == b'-'
         && bytes[7] == b'-'
-        && bytes
-            .iter()
-            .enumerate()
-            .all(|(at, byte)| at == 4 || at == 7 || byte.is_ascii_digit())
+        && bytes.iter().enumerate().all(|(at, byte)| at == 4 || at == 7 || byte.is_ascii_digit())
 }
 
 #[cfg(test)]
@@ -382,11 +372,7 @@ mod tests {
             arguments: Map<String, Value>,
             instance: Option<&str>,
         ) -> Result<Reply, Failure> {
-            self.asked.borrow_mut().push((
-                command.wire(),
-                arguments,
-                instance.map(str::to_owned),
-            ));
+            self.asked.borrow_mut().push((command.wire(), arguments, instance.map(str::to_owned)));
             Ok(self.answer.clone())
         }
 
@@ -404,7 +390,11 @@ mod tests {
     fn a_server() -> Server<Stub> {
         Server::new(
             Shape::Grouped,
-            Stub::answering(Reply::done("tab.open", "Opened README.md in tab 1", json!({ "tab": 1 }))),
+            Stub::answering(Reply::done(
+                "tab.open",
+                "Opened README.md in tab 1",
+                json!({ "tab": 1 }),
+            )),
         )
     }
 
@@ -541,7 +531,10 @@ mod tests {
         assert_eq!(content.len(), 2, "the sentence and the picture");
         assert_eq!(content[1]["type"], json!("image"));
         assert_eq!(content[1]["mimeType"], json!("image/png"));
-        assert_eq!(content[1]["data"], json!(crate::mcp::base64::encode(&[0x89, b'P', b'N', b'G'])));
+        assert_eq!(
+            content[1]["data"],
+            json!(crate::mcp::base64::encode(&[0x89, b'P', b'N', b'G']))
+        );
     }
 
     #[test]

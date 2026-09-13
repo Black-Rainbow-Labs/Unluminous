@@ -29,14 +29,19 @@ fn main() {
     let mut session = unluminous_terminal::Session::spawn(&settings, size, waker).expect("a shell");
     std::thread::sleep(std::time::Duration::from_millis(1200));
     session.pump();
-    let before = std::process::Command::new("pgrep").args(["-f", "sleep 300"]).output().expect("pgrep");
+    let before =
+        std::process::Command::new("pgrep").args(["-f", "sleep 300"]).output().expect("pgrep");
     println!("before kill, matching processes: {}", String::from_utf8_lossy(&before.stdout).trim());
     session.kill();
     // **The session is deliberately kept alive**, which is the case the run tile is: it goes on showing the
     // output of a program it stopped, so `kill` has to end the program without the session being dropped.
     std::thread::sleep(std::time::Duration::from_millis(2000));
-    let after = std::process::Command::new("pgrep").args(["-f", "sleep 300"]).output().expect("pgrep");
+    let after =
+        std::process::Command::new("pgrep").args(["-f", "sleep 300"]).output().expect("pgrep");
     let left = String::from_utf8_lossy(&after.stdout).trim().to_owned();
-    println!("after kill, session still held: {}", if left.is_empty() { "(none)".into() } else { left });
+    println!(
+        "after kill, session still held: {}",
+        if left.is_empty() { "(none)".into() } else { left }
+    );
     drop(session);
 }

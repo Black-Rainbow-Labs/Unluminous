@@ -28,7 +28,9 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use unluminous_dap::messages::{Frame, OutputKind, Scope, SourceBreakpoint, Thread, Variable, VerifiedBreakpoint};
+use unluminous_dap::messages::{
+    Frame, OutputKind, Scope, SourceBreakpoint, Thread, Variable, VerifiedBreakpoint,
+};
 use unluminous_dap::session::{Event, Outcome, Session, State, Step};
 use unluminous_dap::{AdapterCommand, Client, Reply};
 
@@ -552,7 +554,8 @@ impl DebugState {
     /// Add an expression to the watch list, and ask it now if the program is stopped.
     pub fn add_watch(&mut self, expression: &str) {
         let expression = expression.trim();
-        if expression.is_empty() || self.watches.iter().any(|watch| watch.expression == expression) {
+        if expression.is_empty() || self.watches.iter().any(|watch| watch.expression == expression)
+        {
             return;
         }
         let id = self.take_question();
@@ -639,10 +642,7 @@ impl DebugState {
         if hover.answer.is_none() {
             return false;
         }
-        hover
-            .rows
-            .iter()
-            .all(|row| !row.expanded || self.fetched.contains_key(&row.reference))
+        hover.rows.iter().all(|row| !row.expanded || self.fetched.contains_key(&row.reference))
     }
 
     /// Put the value tooltip away.
@@ -701,9 +701,7 @@ impl DebugState {
         if !self.capabilities().set_variable {
             return false;
         }
-        self.hover
-            .as_ref()
-            .is_some_and(|hover| self.scope_holding(&hover.expression).is_some())
+        self.hover.as_ref().is_some_and(|hover| self.scope_holding(&hover.expression).is_some())
     }
 
     /// The reference of the first scope that has been read and holds a variable of this name.
@@ -815,7 +813,10 @@ impl DebugState {
                     let outcome = self.session.on_message(*message);
                     self.client.write_all(&outcome.frames);
                     for event in outcome.events {
-                        if matches!(event, Event::RunInTerminal { .. } | Event::StartDebugging { .. }) {
+                        if matches!(
+                            event,
+                            Event::RunInTerminal { .. } | Event::StartDebugging { .. }
+                        ) {
                             for_the_window.push(event);
                             continue;
                         }
@@ -932,7 +933,9 @@ impl DebugState {
                 // spelling its debug information holds, which is why `same_file` exists at all; this
                 // closes the half of that Unluminous controls, and a case difference is still the
                 // adapter's own and still answered there.
-                let path = unluminous_terminal::paths::native(&unluminous_terminal::paths::plain(Path::new(&path)));
+                let path = unluminous_terminal::paths::native(&unluminous_terminal::paths::plain(
+                    Path::new(&path),
+                ));
                 // **An answer with a different number of entries than were sent is not an answer
                 // about them**, and taking it would throw away the ids the real answer carried —
                 // which is what a later `breakpoint` event uses to say one has bound.
@@ -1054,7 +1057,9 @@ impl DebugState {
                 }
                 self.message = Some(match code {
                     Some(0) | None => format!("{} finished", self.configuration.name),
-                    Some(code) => format!("{} ended with exit code {code}", self.configuration.name),
+                    Some(code) => {
+                        format!("{} ended with exit code {code}", self.configuration.name)
+                    }
                 });
             }
             // Answered by the window, which owns the run tile. `take_replies` hands it up rather
@@ -1242,10 +1247,7 @@ impl DebugState {
         for child in children {
             let key = format!("{parent}/{}", child.name);
             let expanded = opened.contains(&key);
-            let changed = self
-                .previous
-                .get(&key)
-                .is_some_and(|was| *was != child.value);
+            let changed = self.previous.get(&key).is_some_and(|was| *was != child.value);
             rows.push(Row {
                 key: key.clone(),
                 depth,
@@ -1269,8 +1271,7 @@ impl DebugState {
     /// Called when the program resumes rather than when it stops, because "changed" means "different
     /// from the last time you looked" and the last time you looked was before this step.
     pub fn remember_the_values(&mut self) {
-        self.previous =
-            self.rows.iter().map(|row| (row.key.clone(), row.value.clone())).collect();
+        self.previous = self.rows.iter().map(|row| (row.key.clone(), row.value.clone())).collect();
     }
 
     /// The variables of the top frame by name, which is what the inline values are matched against.
@@ -1397,7 +1398,11 @@ mod tests {
         state.requested();
         state.feed(unluminous_dap::Message::Initialized);
         let asked = state.requested();
-        state.feed(answer(seq_of(&asked, "configurationDone"), "configurationDone", serde_json::Value::Null));
+        state.feed(answer(
+            seq_of(&asked, "configurationDone"),
+            "configurationDone",
+            serde_json::Value::Null,
+        ));
         state.feed(unluminous_dap::Message::Stopped(unluminous_dap::Stopped {
             reason: "breakpoint".to_owned(),
             thread: Some(1),
@@ -1445,7 +1450,8 @@ mod tests {
         let asked = state.requested();
         assert_eq!(asked[0]["arguments"]["context"], "hover");
 
-        let mut plain = paused_state(serde_json::json!({ "supportsConfigurationDoneRequest": true }));
+        let mut plain =
+            paused_state(serde_json::json!({ "supportsConfigurationDoneRequest": true }));
         plain.ask_the_hover("self.items");
         let asked = plain.requested();
         assert_eq!(asked[0]["arguments"]["context"], "watch");

@@ -16,7 +16,12 @@ use crate::theme::color;
 const STRIP: f32 = 30.0;
 
 /// Draw the tab.
-pub fn show(explorer: &mut DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
+pub fn show(
+    explorer: &mut DatabaseExplorer,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    area: Rect,
+) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
     if explorer.pages.is_empty() {
@@ -52,14 +57,19 @@ fn pages(explorer: &DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>, strip:
         let title = page.title();
         let painter = ui.painter();
         let measured = painter
-            .layout_no_wrap(title.clone(), egui::FontId::proportional(look.font_size * 0.85), color::text())
+            .layout_no_wrap(
+                title.clone(),
+                egui::FontId::proportional(look.font_size * 0.85),
+                color::text(),
+            )
             .size()
             .x;
         let width = (measured + 34.0 * scale).min(strip.width() * 0.4);
         if at + width > strip.right() {
             break;
         }
-        let rect = Rect::from_min_size(Pos2::new(at, strip.top()), Vec2::new(width, strip.height()));
+        let rect =
+            Rect::from_min_size(Pos2::new(at, strip.top()), Vec2::new(width, strip.height()));
         at += width + 2.0 * scale;
         let showing = index == explorer.current;
         let response = ui.interact(rect, ui.id().with(("database-page", page.id)), Sense::click());
@@ -96,7 +106,9 @@ fn pages(explorer: &DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>, strip:
             look.font_size * 0.85,
             width - 30.0 * scale,
         );
-        response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, showing, &title));
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(egui::WidgetType::Button, true, showing, &title)
+        });
         if response.clicked() {
             acts.push(Act::ShowPage(page.id));
         }
@@ -104,7 +116,12 @@ fn pages(explorer: &DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>, strip:
             Pos2::new(rect.right() - 12.0 * scale, rect.center().y),
             Vec2::splat(16.0 * scale),
         );
-        if crate::components::controls::icon_button(ui, cross, &format!("Close {title}"), crate::theme::icon::cross) {
+        if crate::components::controls::icon_button(
+            ui,
+            cross,
+            &format!("Close {title}"),
+            crate::theme::icon::cross,
+        ) {
             acts.push(Act::ClosePage(page.id));
         }
     }
@@ -115,7 +132,12 @@ fn pages(explorer: &DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>, strip:
 ///
 /// Not an empty rectangle: the two things somebody can do from here are drawn as buttons, which is
 /// what makes an empty state a place to start rather than a place to leave.
-fn nothing_open(explorer: &DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
+fn nothing_open(
+    explorer: &DatabaseExplorer,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    area: Rect,
+) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
     let middle = area.center();

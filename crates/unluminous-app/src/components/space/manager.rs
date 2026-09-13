@@ -148,10 +148,8 @@ pub fn show(ctx: &egui::Context, state: &mut State, rows: &[Row]) -> Outcome {
         }
         state.highlighted = state.highlighted.min(found.len().saturating_sub(1));
 
-        let list = Rect::from_min_max(
-            Pos2::new(body.left(), field.bottom() + AFTER_THE_FIELD),
-            body.max,
-        );
+        let list =
+            Rect::from_min_max(Pos2::new(body.left(), field.bottom() + AFTER_THE_FIELD), body.max);
         show_the_rows(ui, list, &found, state, &mut outcome);
         if enter {
             if let Some(row) = found.get(state.highlighted) {
@@ -218,7 +216,9 @@ fn show_the_rows(
         if found.is_empty() {
             ui.add_space(8.0);
             ui.label(
-                egui::RichText::new("  Nothing is called that").size(11.5).color(color::text_faint()),
+                egui::RichText::new("  Nothing is called that")
+                    .size(11.5)
+                    .color(color::text_faint()),
             );
             return;
         }
@@ -343,7 +343,10 @@ mod tests {
         // This is what `show` does before it reads the row, and what makes `Enter` open the one on the screen.
         state.highlighted = state.highlighted.min(found.len().saturating_sub(1));
         assert_eq!(state.highlighted, 0);
-        assert_eq!(found[state.highlighted].name, "Notes", "the row the pill is on is the row Enter opens");
+        assert_eq!(
+            found[state.highlighted].name, "Notes",
+            "the row the pill is on is the row Enter opens"
+        );
 
         // And a filter matching nothing leaves an index nothing is read at.
         state.filter = "nothing like this".to_owned();

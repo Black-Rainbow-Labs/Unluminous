@@ -166,7 +166,11 @@ mod tests {
         assert_eq!(read("appearance.font.size", &plugins()), None);
         assert_eq!(read("plugins.chrome", &plugins()), None, "a real setting of the window's own");
         assert_eq!(read("plugins.nothing.at-all", &plugins()), None);
-        assert_eq!(read("plugins.agent-chat", &plugins()), None, "a plugin with no key is not a key");
+        assert_eq!(
+            read("plugins.agent-chat", &plugins()),
+            None,
+            "a plugin with no key is not a key"
+        );
         assert_eq!(read("plugins.agent-chat.", &plugins()), None, "and neither is an empty one");
     }
 
@@ -202,7 +206,11 @@ mod tests {
         write(&folder, "database", "source.0.name", "books").expect("write the key");
         let after = values(&folder, "database");
         assert_eq!(after.text("source.0.name"), Some("books"));
-        assert_eq!(after.text("source.0.engine"), Some("sqlite"), "the rest of the file is still there");
+        assert_eq!(
+            after.text("source.0.engine"),
+            Some("sqlite"),
+            "the rest of the file is still there"
+        );
     }
 
     #[test]

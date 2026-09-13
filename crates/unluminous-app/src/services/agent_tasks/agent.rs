@@ -146,9 +146,10 @@ pub fn launch(plan: &Plan) -> Result<Launch, String> {
     match plan.agent {
         Assignee::Claude => claude(plan),
         Assignee::Codex => codex(plan),
-        Assignee::Human => Err(
-            "this ticket is assigned to a person, and a person is not launched in a terminal".to_owned(),
-        ),
+        Assignee::Human => {
+            Err("this ticket is assigned to a person, and a person is not launched in a terminal"
+                .to_owned())
+        }
     }
 }
 
@@ -164,7 +165,8 @@ pub fn launch(plan: &Plan) -> Result<Launch, String> {
 /// A command naming nothing at all is a refusal rather than a fall back to Unluminous's own, because a
 /// setting that is quietly ignored is the fault this whole field exists to fix.
 fn command(plan: &Plan, fallback: &[&str]) -> Result<(String, Vec<String>), String> {
-    let Some(written) = plan.command.as_deref().map(str::trim).filter(|line| !line.is_empty()) else {
+    let Some(written) = plan.command.as_deref().map(str::trim).filter(|line| !line.is_empty())
+    else {
         let mut words = fallback.iter().map(|word| (*word).to_owned());
         let program = words.next().unwrap_or_default();
         return Ok((program, words.collect()));
@@ -172,10 +174,9 @@ fn command(plan: &Plan, fallback: &[&str]) -> Result<(String, Vec<String>), Stri
     let mut words = crate::services::run_configurations::split_command(written).into_iter();
     // An **empty** first word as well as none at all: `""` splits to one word holding nothing, and a
     // program named nothing would be spawned as nothing.
-    let program = words
-        .next()
-        .filter(|program| !program.is_empty())
-        .ok_or_else(|| format!("`{written}` names no program to run, so there is nothing to launch"))?;
+    let program = words.next().filter(|program| !program.is_empty()).ok_or_else(|| {
+        format!("`{written}` names no program to run, so there is nothing to launch")
+    })?;
     Ok((program, words.collect()))
 }
 
@@ -376,7 +377,10 @@ mod tests_task_28 {
     fn a_model_the_list_does_not_know_is_kept_rather_than_dropped() {
         let offered = models_for(Assignee::Claude, Some("something-new-9"));
         assert_eq!(offered.first().map(String::as_str), Some("something-new-9"), "{offered:?}");
-        assert!(offered.iter().any(|model| model == "claude-opus-5"), "and the known ones are still there");
+        assert!(
+            offered.iter().any(|model| model == "claude-opus-5"),
+            "and the known ones are still there"
+        );
 
         // A value that is already known is not listed twice.
         let again = models_for(Assignee::Claude, Some("claude-opus-5"));
@@ -452,18 +456,17 @@ mod tests {
     #[test]
     fn a_configured_command_may_name_the_program_by_a_path_with_spaces_in_it() {
         let mut asked = plan(Assignee::Claude);
-        asked.command = Some("\"/Users/me/my tools/claude\" --settings /etc/claude.json".to_owned());
+        asked.command =
+            Some("\"/Users/me/my tools/claude\" --settings /etc/claude.json".to_owned());
         let launched = launch(&asked).expect("claude");
         assert_eq!(
             launched.program, "/Users/me/my tools/claude",
             "a quoted word keeps its spaces, which is `split_command`'s rule"
         );
-        assert_eq!(launched.arguments, [
-            "--settings",
-            "/etc/claude.json",
-            "--session-id",
-            "0f9a-session"
-        ]);
+        assert_eq!(
+            launched.arguments,
+            ["--settings", "/etc/claude.json", "--session-id", "0f9a-session"]
+        );
     }
 
     #[test]
@@ -634,7 +637,8 @@ mod tests {
     fn the_two_agents_in_the_registry_are_the_two_that_can_be_launched() {
         assert_eq!(AGENTS, ["claude", "codex"]);
         for name in AGENTS {
-            let assignee = Assignee::parse(name).unwrap_or_else(|| panic!("{name} is not an assignee"));
+            let assignee =
+                Assignee::parse(name).unwrap_or_else(|| panic!("{name} is not an assignee"));
             assert!(assignee.is_an_agent());
             assert!(launch(&plan(assignee)).is_ok(), "{name} should be launchable");
         }

@@ -545,8 +545,9 @@ fn read_and_queue(
     }
     wake();
     let watching = watched.then_some(stream);
-    let reply =
-        wait_for_the_window(&command, &wait, &taken, &abandoned, deadline, said, wake, health, watching);
+    let reply = wait_for_the_window(
+        &command, &wait, &taken, &abandoned, deadline, said, wake, health, watching,
+    );
     // Back to blocking before the answer is written, because the mode belongs to the socket and the
     // write below is the one thing that must not come back `WouldBlock`.
     let _ = stream.set_nonblocking(false);
@@ -809,8 +810,7 @@ mod tests {
     #[test]
     fn a_request_with_the_wrong_token_is_refused_without_reaching_the_window() {
         let running = a_server("wrong-token");
-        let back =
-            send(running.server.port(), "{\"token\":\"nonsense\",\"command\":\"status\"}");
+        let back = send(running.server.port(), "{\"token\":\"nonsense\",\"command\":\"status\"}");
         assert!(back.contains("\"ok\":false"), "{back}");
         assert!(back.contains(code::REFUSED), "{back}");
         assert!(running.server.take().is_empty(), "nothing should have been queued");
@@ -972,9 +972,11 @@ mod tests {
             after_taking,
             "a request the window is holding should not go on waking it"
         );
-        held.pop()
-            .expect("the request")
-            .answer(Reply::done("status", "All well", serde_json::Value::Null));
+        held.pop().expect("the request").answer(Reply::done(
+            "status",
+            "All well",
+            serde_json::Value::Null,
+        ));
         caller.join().expect("the caller");
     }
 
@@ -989,9 +991,7 @@ mod tests {
         let caller = std::thread::spawn(move || {
             send(
                 port,
-                &format!(
-                    "{{\"token\":\"{token}\",\"command\":\"run.add\",\"deadline_ms\":600}}"
-                ),
+                &format!("{{\"token\":\"{token}\",\"command\":\"run.add\",\"deadline_ms\":600}}"),
             )
         });
         let back = caller.join().expect("the caller");
@@ -1019,7 +1019,7 @@ mod tests {
             writeln!(stream, "{{\"token\":\"{token}\",\"command\":\"run.add\"}}").expect("write");
             stream.flush().expect("flush");
         } // and closed, with nobody reading the answer
-        // Long enough for the connection thread to have looked at the socket at least twice.
+          // Long enough for the connection thread to have looked at the socket at least twice.
         std::thread::sleep(NUDGE * 6);
         // Either it was never queued, or what was queued says it must not be run. Both are the
         // property; which one happens depends on whether the close arrived before the request had

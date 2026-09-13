@@ -232,11 +232,22 @@ enum Awaiting {
     ConfigurationDone,
     Threads,
     StackTrace,
-    Scopes { frame: i64 },
-    Variables { reference: i64 },
-    SetVariable { reference: i64, name: String },
-    SetExpression { expression: String },
-    Evaluate { id: u64 },
+    Scopes {
+        frame: i64,
+    },
+    Variables {
+        reference: i64,
+    },
+    SetVariable {
+        reference: i64,
+        name: String,
+    },
+    SetExpression {
+        expression: String,
+    },
+    Evaluate {
+        id: u64,
+    },
     Stepping(Step),
     Ending,
     /// Something whose answer nothing is waiting for, such as the exception filters.
@@ -411,10 +422,7 @@ impl Session {
     /// Start: send `initialize`, and nothing else until it is answered.
     pub fn begin(&mut self) -> Outcome {
         self.ask(
-            Request::Initialize {
-                client_id: "unluminous".to_owned(),
-                lines_start_at_one: true,
-            },
+            Request::Initialize { client_id: "unluminous".to_owned(), lines_start_at_one: true },
             Awaiting::Initialize,
         )
     }
@@ -512,18 +520,15 @@ impl Session {
         value: &str,
     ) -> Result<Outcome, String> {
         if !self.capabilities.set_variable {
-            return Err("This debugger cannot change a value while the program is running."
-                .to_owned());
+            return Err(
+                "This debugger cannot change a value while the program is running.".to_owned()
+            );
         }
         if !self.state.is_paused() {
             return Err("The program is not stopped.".to_owned());
         }
         Ok(self.ask(
-            Request::SetVariable {
-                reference,
-                name: name.to_owned(),
-                value: value.to_owned(),
-            },
+            Request::SetVariable { reference, name: name.to_owned(), value: value.to_owned() },
             Awaiting::SetVariable { reference, name: name.to_owned() },
         ))
     }
@@ -634,10 +639,9 @@ impl Session {
             Message::Output { kind, text } => {
                 Outcome { frames: Vec::new(), events: vec![Event::Output { kind, text }] }
             }
-            Message::BreakpointChanged(changed) => Outcome {
-                frames: Vec::new(),
-                events: vec![Event::BreakpointChanged(changed)],
-            },
+            Message::BreakpointChanged(changed) => {
+                Outcome { frames: Vec::new(), events: vec![Event::BreakpointChanged(changed)] }
+            }
             Message::Exited { code } => {
                 self.exit_code = Some(code);
                 Outcome::default()
@@ -680,9 +684,8 @@ impl Session {
         }
         if !self.capabilities.exception_filters.is_empty() {
             let filters = self.exception_filters.clone();
-            outcome.absorb(
-                self.ask(Request::SetExceptionBreakpoints { filters }, Awaiting::Nothing),
-            );
+            outcome
+                .absorb(self.ask(Request::SetExceptionBreakpoints { filters }, Awaiting::Nothing));
         }
         // Asked for only when the adapter said it takes one. An adapter that did not offer it
         // starts the moment the breakpoints are in, which is what the specification says.
@@ -704,8 +707,7 @@ impl Session {
         // A stop that arrives while the last one is still being read starts the count again: what is
         // outstanding belongs to a frame that has gone.
         self.reading.clear();
-        let mut outcome =
-            Outcome { frames: Vec::new(), events: vec![Event::Stopped(stopped)] };
+        let mut outcome = Outcome { frames: Vec::new(), events: vec![Event::Stopped(stopped)] };
         outcome.absorb(self.ask_reading(Request::Threads, Awaiting::Threads));
         if let Some(thread) = self.thread {
             outcome.absorb(self.ask_reading(
@@ -732,8 +734,7 @@ impl Session {
         match awaiting {
             Some(Awaiting::Initialize) => {
                 self.capabilities = messages::read_capabilities(&body);
-                let mut outcome =
-                    Outcome { frames: Vec::new(), events: vec![Event::Ready] };
+                let mut outcome = Outcome { frames: Vec::new(), events: vec![Event::Ready] };
                 let launch = self.launch.clone();
                 outcome.absorb(self.ask(Request::Launch(launch), Awaiting::Launch));
                 outcome
@@ -765,10 +766,7 @@ impl Session {
                 if self.thread.is_none() {
                     self.thread = self.threads.first().map(|one| one.id);
                 }
-                Outcome {
-                    frames: Vec::new(),
-                    events: vec![Event::Threads(self.threads.clone())],
-                }
+                Outcome { frames: Vec::new(), events: vec![Event::Threads(self.threads.clone())] }
             }
             Some(Awaiting::StackTrace) => {
                 let frames = messages::read_frames(&body);
@@ -781,9 +779,10 @@ impl Session {
                 // for it here saves a round trip nobody would have chosen to wait for.
                 if let Some(top) = top {
                     self.frame = Some(top);
-                    outcome.absorb(
-                        self.ask_reading(Request::Scopes { frame: top }, Awaiting::Scopes { frame: top }),
-                    );
+                    outcome.absorb(self.ask_reading(
+                        Request::Scopes { frame: top },
+                        Awaiting::Scopes { frame: top },
+                    ));
                 }
                 outcome
             }
@@ -829,12 +828,11 @@ impl Session {
             },
             Some(Awaiting::Evaluate { id }) => Outcome {
                 frames: Vec::new(),
-                events: vec![Event::Evaluated {
-                    id,
-                    result: Ok(messages::read_evaluate(&body)),
-                }],
+                events: vec![Event::Evaluated { id, result: Ok(messages::read_evaluate(&body)) }],
             },
-            Some(Awaiting::Stepping(_)) | Some(Awaiting::Ending) | Some(Awaiting::Nothing)
+            Some(Awaiting::Stepping(_))
+            | Some(Awaiting::Ending)
+            | Some(Awaiting::Nothing)
             | None => Outcome::default(),
         }
     }
@@ -853,11 +851,9 @@ impl Session {
         let said = message.unwrap_or_else(|| format!("The debugger refused {command}."));
         let event = match awaiting {
             Some(Awaiting::Evaluate { id }) => Event::Evaluated { id, result: Err(said) },
-            Some(Awaiting::SetVariable { reference, name }) => Event::VariableSet {
-                reference,
-                name,
-                result: Err(said),
-            },
+            Some(Awaiting::SetVariable { reference, name }) => {
+                Event::VariableSet { reference, name, result: Err(said) }
+            }
             Some(Awaiting::SetExpression { expression }) => {
                 Event::ExpressionSet { expression, result: Err(said) }
             }
@@ -1079,15 +1075,22 @@ mod tests {
         session.set_breakpoints("a.rs", vec![SourceBreakpoint::at(4)]);
         let opening = session.begin();
         assert_eq!(commands(&opening), vec!["initialize"], "nothing else until it is answered");
-        let answered =
-            session.on_message(response(seq_of(&opening, "initialize"), "initialize", full_capabilities()));
+        let answered = session.on_message(response(
+            seq_of(&opening, "initialize"),
+            "initialize",
+            full_capabilities(),
+        ));
         assert_eq!(commands(&answered), vec!["launch"]);
         assert_eq!(answered.events, vec![Event::Ready]);
         assert_eq!(answered.frames[0]["arguments"]["program"], "app.exe", "the caller's own body");
         let configuring = session.on_message(Message::Initialized);
         assert_eq!(session.state(), State::Configuring);
         assert_eq!(commands(&configuring), vec!["setBreakpoints", "configurationDone"]);
-        session.on_message(response(seq_of(&configuring, "configurationDone"), "configurationDone", Value::Null));
+        session.on_message(response(
+            seq_of(&configuring, "configurationDone"),
+            "configurationDone",
+            Value::Null,
+        ));
         assert_eq!(session.state(), State::Running);
     }
 
@@ -1117,7 +1120,11 @@ mod tests {
     fn a_stop_that_arrives_before_configuration_done_is_not_undone_by_it() {
         let mut session = Session::new(Value::Null);
         let opening = session.begin();
-        session.on_message(response(seq_of(&opening, "initialize"), "initialize", full_capabilities()));
+        session.on_message(response(
+            seq_of(&opening, "initialize"),
+            "initialize",
+            full_capabilities(),
+        ));
         let configuring = session.on_message(Message::Initialized);
         let done = seq_of(&configuring, "configurationDone");
         session.on_message(Message::Stopped(Stopped {
@@ -1148,9 +1155,17 @@ mod tests {
     fn the_first_scopes_first_level_is_read_and_an_expensive_one_is_left_alone() {
         let mut session = Session::new(Value::Null);
         let opening = session.begin();
-        session.on_message(response(seq_of(&opening, "initialize"), "initialize", full_capabilities()));
+        session.on_message(response(
+            seq_of(&opening, "initialize"),
+            "initialize",
+            full_capabilities(),
+        ));
         let configuring = session.on_message(Message::Initialized);
-        session.on_message(response(seq_of(&configuring, "configurationDone"), "configurationDone", Value::Null));
+        session.on_message(response(
+            seq_of(&configuring, "configurationDone"),
+            "configurationDone",
+            Value::Null,
+        ));
         let stopped = session.on_message(Message::Stopped(Stopped {
             reason: "step".to_owned(),
             thread: Some(1),
@@ -1293,7 +1308,11 @@ mod tests {
             "nothing is sent to an adapter that has not said it is ready"
         );
         let opening = session.begin();
-        session.on_message(response(seq_of(&opening, "initialize"), "initialize", full_capabilities()));
+        session.on_message(response(
+            seq_of(&opening, "initialize"),
+            "initialize",
+            full_capabilities(),
+        ));
         let configuring = session.on_message(Message::Initialized);
         assert!(commands(&configuring).contains(&"setBreakpoints".to_owned()));
     }
@@ -1373,16 +1392,19 @@ mod tests {
             "evaluate",
             json!({ "result": "2", "type": "usize" }),
         ));
-        assert_eq!(later.events, vec![Event::Evaluated {
-            id: 2,
-            result: Ok(Variable {
-                name: String::new(),
-                value: "2".to_owned(),
-                kind: Some("usize".to_owned()),
-                reference: 0,
-                evaluate_name: None,
-            }),
-        }]);
+        assert_eq!(
+            later.events,
+            vec![Event::Evaluated {
+                id: 2,
+                result: Ok(Variable {
+                    name: String::new(),
+                    value: "2".to_owned(),
+                    kind: Some("usize".to_owned()),
+                    reference: 0,
+                    evaluate_name: None,
+                }),
+            }]
+        );
         let earlier = session.on_message(refusal(
             seq_of(&first, "evaluate"),
             "evaluate",
@@ -1529,7 +1551,11 @@ mod tests {
 
         let mut bare = Session::new(Value::Null);
         let opening = bare.begin();
-        bare.on_message(response(seq_of(&opening, "initialize"), "initialize", full_capabilities()));
+        bare.on_message(response(
+            seq_of(&opening, "initialize"),
+            "initialize",
+            full_capabilities(),
+        ));
         let configuring = bare.on_message(Message::Initialized);
         assert!(
             !commands(&configuring).contains(&"setExceptionBreakpoints".to_owned()),
@@ -1540,10 +1566,8 @@ mod tests {
     #[test]
     fn output_reaches_the_caller_with_the_stream_it_came_from() {
         let mut session = paused_session();
-        let said = session.on_message(Message::Output {
-            kind: OutputKind::Stderr,
-            text: "boom\n".to_owned(),
-        });
+        let said = session
+            .on_message(Message::Output { kind: OutputKind::Stderr, text: "boom\n".to_owned() });
         assert_eq!(
             said.events,
             vec![Event::Output { kind: OutputKind::Stderr, text: "boom\n".to_owned() }]
@@ -1589,9 +1613,17 @@ mod tests {
     fn a_stop_is_not_read_until_the_four_requests_it_makes_have_come_back() {
         let mut session = Session::new(Value::Null);
         let opening = session.begin();
-        session.on_message(response(seq_of(&opening, "initialize"), "initialize", full_capabilities()));
+        session.on_message(response(
+            seq_of(&opening, "initialize"),
+            "initialize",
+            full_capabilities(),
+        ));
         let configuring = session.on_message(Message::Initialized);
-        session.on_message(response(seq_of(&configuring, "configurationDone"), "configurationDone", Value::Null));
+        session.on_message(response(
+            seq_of(&configuring, "configurationDone"),
+            "configurationDone",
+            Value::Null,
+        ));
         let stopped = session.on_message(Message::Stopped(Stopped {
             reason: "breakpoint".to_owned(),
             thread: Some(1),
@@ -1613,7 +1645,10 @@ mod tests {
             "stackTrace",
             json!({ "stackFrames": [{ "id": 5, "name": "f", "line": 2, "source": { "path": "a.rs" } }] }),
         ));
-        assert!(!session.has_read_the_stop(), "the scopes were asked for by the stack's own answer");
+        assert!(
+            !session.has_read_the_stop(),
+            "the scopes were asked for by the stack's own answer"
+        );
         let after_scopes = session.on_message(response(
             seq_of(&after_stack, "scopes"),
             "scopes",
@@ -1679,9 +1714,17 @@ mod tests {
     fn a_refusal_of_one_of_the_stops_requests_is_still_an_answer() {
         let mut session = Session::new(Value::Null);
         let opening = session.begin();
-        session.on_message(response(seq_of(&opening, "initialize"), "initialize", full_capabilities()));
+        session.on_message(response(
+            seq_of(&opening, "initialize"),
+            "initialize",
+            full_capabilities(),
+        ));
         let configuring = session.on_message(Message::Initialized);
-        session.on_message(response(seq_of(&configuring, "configurationDone"), "configurationDone", Value::Null));
+        session.on_message(response(
+            seq_of(&configuring, "configurationDone"),
+            "configurationDone",
+            Value::Null,
+        ));
         let stopped = session.on_message(Message::Stopped(Stopped {
             reason: "pause".to_owned(),
             thread: Some(1),
@@ -1706,10 +1749,12 @@ mod tests {
         let said = session.on_message(refusal(9999, "stackTrace", "no stack"));
         assert_eq!(
             said.events,
-            vec![Event::Failed { command: "stackTrace".to_owned(), message: "no stack".to_owned() }]
+            vec![Event::Failed {
+                command: "stackTrace".to_owned(),
+                message: "no stack".to_owned()
+            }]
         );
     }
-
 
     /// The `hover` context reaches the wire as it was given. `task-1696` §5.4: the context the
     /// specification put there for exactly this, which adapters use to answer cheaply and without

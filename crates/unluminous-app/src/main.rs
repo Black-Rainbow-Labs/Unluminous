@@ -131,7 +131,9 @@ fn main() -> eframe::Result {
         // SAFETY: nothing else is running yet; this is the first statement of the program.
         unsafe { std::env::set_var("RUST_BACKTRACE", "1") };
     }
-    unluminous_app::services::crash_log::install(unluminous_app::services::store::folder_for_this_person());
+    unluminous_app::services::crash_log::install(
+        unluminous_app::services::store::folder_for_this_person(),
+    );
     unluminous_app::services::frame_trace::mark("crash-log");
 
     // Started here, and by nothing else, because it runs the person's shell profile: an Unluminous started
@@ -318,7 +320,8 @@ fn main() -> eframe::Result {
             if let Some(view) = arguments.view {
                 app.set_view_mode(view);
             }
-            app.menu_placement = arguments.menu_bar.unwrap_or_else(MenuPlacement::for_this_platform);
+            app.menu_placement =
+                arguments.menu_bar.unwrap_or_else(MenuPlacement::for_this_platform);
             if app.menu_placement == MenuPlacement::Native {
                 // The bar along the top of the screen. Built here rather than in `prepare`, because it needs
                 // a real application to attach itself to and the screenshot tests have none.

@@ -123,8 +123,7 @@ fn without_the_first_rows(screen: &Screen, count: usize) -> Screen {
     // **The background for both**, so a blank cell is one `is_plain_blank` recognises and `bytes_of` trims. The
     // foreground of a blank is never drawn — there is nothing in it — and taking the first cell's colour would
     // make the default depend on which row happened to be first, which is arbitrary even where it does not show.
-    let mut out =
-        Screen::empty(screen.rows, screen.columns, screen.background, screen.background);
+    let mut out = Screen::empty(screen.rows, screen.columns, screen.background, screen.background);
     out.title = screen.title.clone();
     for row in count..screen.rows {
         for column in 0..screen.columns {
@@ -137,10 +136,8 @@ fn without_the_first_rows(screen: &Screen, count: usize) -> Screen {
         }
     }
     out.cursor = screen.cursor.as_ref().and_then(|cursor| {
-        (cursor.row >= count).then(|| crate::screen::Cursor {
-            row: cursor.row - count,
-            ..cursor.clone()
-        })
+        (cursor.row >= count)
+            .then(|| crate::screen::Cursor { row: cursor.row - count, ..cursor.clone() })
     });
     out
 }
@@ -179,9 +176,7 @@ fn write_a_row(screen: &Screen, row: usize, out: &mut Vec<u8>) {
     // way — a coloured space is not a blank.
     let last = (0..screen.columns)
         .rev()
-        .find(|column| {
-            screen.cell(row, *column).is_some_and(|cell| !is_plain_blank(cell, screen))
-        })
+        .find(|column| screen.cell(row, *column).is_some_and(|cell| !is_plain_blank(cell, screen)))
         .map(|column| column as i64)
         .unwrap_or(-1);
     let mut style: Option<Style> = None;
@@ -354,7 +349,10 @@ mod tests {
         let cell = screen.cell(coloured, 0).expect("its first cell");
         let plain = Session::detached(Size::new(4, 20)).snapshot();
         let ordinary = plain.cell(0, 0).expect("an ordinary cell").foreground;
-        assert_ne!(cell.foreground, ordinary, "a scrolled-off row kept the colour it was written in");
+        assert_ne!(
+            cell.foreground, ordinary,
+            "a scrolled-off row kept the colour it was written in"
+        );
     }
 
     /// A screen written down and replayed is the same screen.
@@ -445,7 +443,7 @@ mod tests {
     /// so `is_empty` asked under that lock is the honest question. The real shell below is what tests the flag;
     /// the detached session above tests the grid.
     #[test]
- 
+
     /// A row filled to its last column does not push the screen down by one.
     ///
     /// **The case a terminal's auto-wrap makes dangerous.** Writing the last column of a row leaves most
@@ -457,14 +455,14 @@ mod tests {
         // Twenty columns, so twenty characters exactly fills row zero.
         let filled = "x".repeat(20);
         let was = fed(format!("{filled}\r\nsecond row").as_bytes()).snapshot();
-        assert_eq!(was.cell(1, 0).expect("a cell").character, 's', "the fixture really has two rows");
+        assert_eq!(
+            was.cell(1, 0).expect("a cell").character,
+            's',
+            "the fixture really has two rows"
+        );
 
         let now = fed(&bytes_of(&was)).snapshot();
-        assert_eq!(
-            now.cell(0, 19).expect("a cell").character,
-            'x',
-            "the full row came back whole"
-        );
+        assert_eq!(now.cell(0, 19).expect("a cell").character, 'x', "the full row came back whole");
         assert_eq!(
             now.cell(1, 0).expect("a cell").character,
             's',
@@ -482,7 +480,11 @@ mod tests {
         assert_eq!(now.cell(0, 0).expect("a cell").character, 'a');
         assert_eq!(now.cell(0, 1).expect("a cell").character, '\u{4f60}', "the wide one");
         assert!(now.cell(0, 2).expect("a cell").spacer, "still with its spacer");
-        assert_eq!(now.cell(0, 3).expect("a cell").character, 'b', "and what followed it did not shift");
+        assert_eq!(
+            now.cell(0, 3).expect("a cell").character,
+            'b',
+            "and what followed it did not shift"
+        );
     }
 
     /// A bounded stream is still a valid stream, which a byte cut would not be.
@@ -501,7 +503,11 @@ mod tests {
         }
         let screen = session.snapshot();
         let whole = bytes_of(&screen);
-        assert!(whole.len() > 200, "the fixture is big enough to be worth bounding: {}", whole.len());
+        assert!(
+            whole.len() > 200,
+            "the fixture is big enough to be worth bounding: {}",
+            whole.len()
+        );
 
         // A limit that no more than about half of it fits in, so rows really are dropped.
         let limit = whole.len() / 2;
@@ -529,7 +535,8 @@ mod tests {
         let mut session = Session::detached(Size::new(6, 20));
         // A first row in an unusual colour, then rows in another, so a default taken from the first cell would
         // be visible if it leaked.
-        session.feed(b"\x1b[35mmagenta first row\r\n\x1b[32mgreen second\r\n\x1b[32mgreen third\r\n");
+        session
+            .feed(b"\x1b[35mmagenta first row\r\n\x1b[32mgreen second\r\n\x1b[32mgreen third\r\n");
         let screen = session.snapshot();
         let magenta = screen.cell(0, 0).expect("a cell").foreground;
         let green = screen.cell(1, 0).expect("a cell").foreground;

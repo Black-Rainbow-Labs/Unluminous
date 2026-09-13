@@ -136,7 +136,18 @@ const HTML_ITALIC: char = '\u{2}';
 pub(crate) fn parse(text: &str, references: &References) -> Vec<Span> {
     let nodes = scan(text, references);
     let mut spans = Vec::new();
-    flatten(&nodes, Span { text: String::new(), bold: false, italic: false, strike: false, kind: Kind::Text, target: None }, &mut spans);
+    flatten(
+        &nodes,
+        Span {
+            text: String::new(),
+            bold: false,
+            italic: false,
+            strike: false,
+            kind: Kind::Text,
+            target: None,
+        },
+        &mut spans,
+    );
     fold(spans)
 }
 
@@ -167,7 +178,9 @@ fn flatten(nodes: &[Node], state: Span, out: &mut Vec<Span>) {
             Node::Quiet(text) => {
                 out.push(Span { text: text.clone(), kind: Kind::Quiet, ..state.clone() })
             }
-            Node::Break => out.push(Span { text: String::new(), kind: Kind::Break, ..state.clone() }),
+            Node::Break => {
+                out.push(Span { text: String::new(), kind: Kind::Break, ..state.clone() })
+            }
             Node::Link { target, children } => {
                 let inside =
                     Span { kind: Kind::Link, target: Some(target.clone()), ..state.clone() };
@@ -308,9 +321,10 @@ fn scan(text: &str, references: &References) -> Vec<Node> {
             if let Some(length) = read_bare_link(rest) {
                 push_text(&mut stack, &mut plain);
                 let address = &rest[..length];
-                top(&mut stack)
-                    .nodes
-                    .push(Node::Link { target: address.to_owned(), children: vec![Node::Text(address.to_owned())] });
+                top(&mut stack).nodes.push(Node::Link {
+                    target: address.to_owned(),
+                    children: vec![Node::Text(address.to_owned())],
+                });
                 at += length;
                 continue;
             }
@@ -519,9 +533,10 @@ fn read_bare_link(rest: &str) -> Option<usize> {
     }
     while end > 0 {
         let last = rest[..end].chars().last().unwrap_or(' ');
-        let unbalanced = last == ')'
-            && rest[..end].matches('(').count() < rest[..end].matches(')').count();
-        if matches!(last, '.' | ',' | ';' | ':' | '!' | '?' | '\'' | '"' | '*' | '_') || unbalanced {
+        let unbalanced =
+            last == ')' && rest[..end].matches('(').count() < rest[..end].matches(')').count();
+        if matches!(last, '.' | ',' | ';' | ':' | '!' | '?' | '\'' | '"' | '*' | '_') || unbalanced
+        {
             end -= last.len_utf8();
             continue;
         }
@@ -548,7 +563,13 @@ fn read_angle(rest: &str, stack: &mut Vec<Frame>) -> Option<(Option<Node>, usize
     }
     // An autolink: a scheme and a colon, or an email address.
     if inner.contains(':') && !inner.starts_with(':') {
-        return Some((Some(Node::Link { target: inner.to_owned(), children: vec![Node::Text(inner.to_owned())] }), length));
+        return Some((
+            Some(Node::Link {
+                target: inner.to_owned(),
+                children: vec![Node::Text(inner.to_owned())],
+            }),
+            length,
+        ));
     }
     if inner.contains('@') && inner.contains('.') {
         return Some((

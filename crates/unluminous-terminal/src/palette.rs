@@ -264,8 +264,10 @@ mod tests {
     #[test]
     fn dim_text_is_darker_than_ordinary_text() {
         let palette = Palette::new();
-        let ordinary = palette.resolve(Color::Named(NamedColor::Foreground), false, &Colors::default());
-        let dim = palette.resolve(Color::Named(NamedColor::DimForeground), false, &Colors::default());
+        let ordinary =
+            palette.resolve(Color::Named(NamedColor::Foreground), false, &Colors::default());
+        let dim =
+            palette.resolve(Color::Named(NamedColor::DimForeground), false, &Colors::default());
         assert!(dim.r < ordinary.r && dim.g < ordinary.g && dim.b < ordinary.b);
     }
 

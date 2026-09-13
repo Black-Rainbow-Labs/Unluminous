@@ -37,8 +37,11 @@ fn main() {
     for path in &files {
         let Ok(source) = std::fs::read_to_string(path) else { continue };
         bytes += source.len();
-        let options =
-            Options::new(CharStyle::default(), PreviewColors::default(), Some("Courier".to_owned()));
+        let options = Options::new(
+            CharStyle::default(),
+            PreviewColors::default(),
+            Some("Courier".to_owned()),
+        );
         let preview = markdown::render(&source, &options);
         let text = preview.text.to_string();
         let lines = preview.text.len_lines();
@@ -121,7 +124,8 @@ fn collect(folder: &std::path::Path, into: &mut Vec<std::path::PathBuf>) {
     for entry in entries.flatten() {
         let path = entry.path();
         let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-        if name.starts_with('.') || matches!(name.as_str(), "target" | "node_modules" | "releases") {
+        if name.starts_with('.') || matches!(name.as_str(), "target" | "node_modules" | "releases")
+        {
             continue;
         }
         if path.is_dir() {

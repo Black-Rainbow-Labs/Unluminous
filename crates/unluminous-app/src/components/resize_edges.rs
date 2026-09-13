@@ -42,8 +42,8 @@
 //! left alone, because Windows *does* handle dragging a maximised window: it restores it and moves
 //! it, which is a real modal loop and therefore an honest `WM_EXITSIZEMOVE`.
 
-use egui::{Rect, Sense, Vec2};
 use egui::viewport::ResizeDirection;
+use egui::{Rect, Sense, Vec2};
 
 /// How far in from an edge the window can be grabbed.
 ///

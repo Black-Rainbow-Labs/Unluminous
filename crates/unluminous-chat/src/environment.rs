@@ -65,10 +65,7 @@ impl Environment {
 
     /// One variable, or nothing.
     pub fn variable(&self, name: &str) -> Option<&str> {
-        self.variables
-            .iter()
-            .find(|(named, _)| named == name)
-            .map(|(_, value)| value.as_str())
+        self.variables.iter().find(|(named, _)| named == name).map(|(_, value)| value.as_str())
     }
 
     /// The `PATH` a program is looked for on, which is a variable and is also asked for on its own.
@@ -177,7 +174,10 @@ mod tests {
     fn a_variable_comes_from_the_environment_it_was_given_and_from_nowhere_else() {
         // `task-1905`: the whole point of the value. This name is one no process has.
         let given = Environment::from([("UNLUMINOUS_TEST_ONLY_KEY", "sk-from-the-profile")]);
-        assert_eq!(variable_of(&given, "UNLUMINOUS_TEST_ONLY_KEY").as_deref(), Some("sk-from-the-profile"));
+        assert_eq!(
+            variable_of(&given, "UNLUMINOUS_TEST_ONLY_KEY").as_deref(),
+            Some("sk-from-the-profile")
+        );
         assert_eq!(variable_of(&Environment::empty(), "UNLUMINOUS_TEST_ONLY_KEY"), None);
     }
 

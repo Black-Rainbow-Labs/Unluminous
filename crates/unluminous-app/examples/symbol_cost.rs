@@ -37,10 +37,9 @@ fn timed(runs: usize, mut body: impl FnMut()) -> f64 {
 
 fn main() {
     let mut arguments = std::env::args().skip(1);
-    let folder = arguments.next().map_or_else(
-        || std::env::current_dir().expect("a current folder"),
-        PathBuf::from,
-    );
+    let folder = arguments
+        .next()
+        .map_or_else(|| std::env::current_dir().expect("a current folder"), PathBuf::from);
     let wanted = arguments.next();
 
     let tree = FileTree::new(&folder);

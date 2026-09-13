@@ -191,7 +191,9 @@ pub fn ask_at(url: &str) -> Answer {
             true => Answer::Newer(release),
             false => Answer::Current(release.version),
         },
-        None => Answer::Failed("the releases page answered something this version cannot read".to_owned()),
+        None => Answer::Failed(
+            "the releases page answered something this version cannot read".to_owned(),
+        ),
     }
 }
 
@@ -205,11 +207,8 @@ pub fn read(body: &str) -> Option<Release> {
     if version.is_empty() {
         return None;
     }
-    let url = value
-        .get("html_url")
-        .and_then(|url| url.as_str())
-        .unwrap_or(RELEASES_PAGE)
-        .to_owned();
+    let url =
+        value.get("html_url").and_then(|url| url.as_str()).unwrap_or(RELEASES_PAGE).to_owned();
     // The first line of the notes, which is what `release.ps1` writes as the summary. The rest is the
     // download instructions, which somebody reading a status bar does not need.
     let notes = value
@@ -238,7 +237,8 @@ pub fn is_newer(current: &str, found: &str) -> bool {
         return false;
     };
     for index in 0..current.len().max(found.len()) {
-        let (here, there) = (current.get(index).copied().unwrap_or(0), found.get(index).copied().unwrap_or(0));
+        let (here, there) =
+            (current.get(index).copied().unwrap_or(0), found.get(index).copied().unwrap_or(0));
         if there != here {
             return there > here;
         }

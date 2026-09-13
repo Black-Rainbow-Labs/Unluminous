@@ -30,25 +30,46 @@ use serde_json::{json, Map, Value};
 pub enum Request {
     /// The handshake. The adapter answers with its capabilities, which is the whole reason a client
     /// never has to guess what an adapter can do.
-    Initialize { client_id: String, lines_start_at_one: bool },
+    Initialize {
+        client_id: String,
+        lines_start_at_one: bool,
+    },
     /// Every breakpoint in one file, by **full replacement** — the protocol has no "add one".
-    SetBreakpoints { path: String, breakpoints: Vec<SourceBreakpoint> },
+    SetBreakpoints {
+        path: String,
+        breakpoints: Vec<SourceBreakpoint>,
+    },
     /// Which of the adapter's own exception filters are switched on.
-    SetExceptionBreakpoints { filters: Vec<String> },
+    SetExceptionBreakpoints {
+        filters: Vec<String>,
+    },
     /// The breakpoints are sent; start the program.
     ConfigurationDone,
     /// Start the debuggee. The body is the adapter's own shape, built by the registry entry, because
     /// each adapter names the program, the arguments and the folder slightly differently.
     Launch(Value),
     /// Let go of the debuggee, killing it or leaving it running as `terminate_debuggee` says.
-    Disconnect { terminate_debuggee: bool },
+    Disconnect {
+        terminate_debuggee: bool,
+    },
     /// Ask the debuggee to stop politely, which an adapter that can honours.
     Terminate,
     Threads,
-    StackTrace { thread: i64, levels: usize },
-    Scopes { frame: i64 },
-    Variables { reference: i64 },
-    SetVariable { reference: i64, name: String, value: String },
+    StackTrace {
+        thread: i64,
+        levels: usize,
+    },
+    Scopes {
+        frame: i64,
+    },
+    Variables {
+        reference: i64,
+    },
+    SetVariable {
+        reference: i64,
+        name: String,
+        value: String,
+    },
     /// Assign to whatever an **expression** names, which is what changes a value that was reached by
     /// `evaluate` rather than by `variables`.
     ///
@@ -56,15 +77,33 @@ pub enum Request {
     /// `evaluate` — so `setVariable`, which names its target by a reference and a name, cannot reach
     /// it at all. This is the request the protocol added for exactly that case, and it is used
     /// exactly there. See `Capabilities::set_expression`.
-    SetExpression { expression: String, value: String, frame: Option<i64> },
+    SetExpression {
+        expression: String,
+        value: String,
+        frame: Option<i64>,
+    },
     /// Evaluate an expression in a frame. `context` is `watch` for the watch list and `repl` for the
     /// expression box, which is the distinction the specification draws and adapters act on.
-    Evaluate { expression: String, frame: Option<i64>, context: String },
-    Continue { thread: i64 },
-    Next { thread: i64 },
-    StepIn { thread: i64 },
-    StepOut { thread: i64 },
-    Pause { thread: i64 },
+    Evaluate {
+        expression: String,
+        frame: Option<i64>,
+        context: String,
+    },
+    Continue {
+        thread: i64,
+    },
+    Next {
+        thread: i64,
+    },
+    StepIn {
+        thread: i64,
+    },
+    StepOut {
+        thread: i64,
+    },
+    Pause {
+        thread: i64,
+    },
 }
 
 impl Request {
@@ -422,21 +461,43 @@ pub enum Message {
     Stopped(Stopped),
     /// The program is going again. Sent by some adapters and not by others, so nothing depends on
     /// it: the state machine also moves on the response to a stepping request.
-    Continued { thread: Option<i64>, all_threads: bool },
-    Output { kind: OutputKind, text: String },
+    Continued {
+        thread: Option<i64>,
+        all_threads: bool,
+    },
+    Output {
+        kind: OutputKind,
+        text: String,
+    },
     /// A breakpoint changed after it was set — bound once the library holding it loaded, most often.
     BreakpointChanged(VerifiedBreakpoint),
     /// The debuggee has gone.
     Terminated,
-    Exited { code: i32 },
+    Exited {
+        code: i32,
+    },
     /// The reverse request: run this command in the client's own terminal and say what its process
     /// id was. Unluminous answers it with the run tile.
-    RunInTerminal { seq: i64, kind: String, title: String, cwd: String, args: Vec<String>, env: Vec<(String, String)> },
+    RunInTerminal {
+        seq: i64,
+        kind: String,
+        title: String,
+        cwd: String,
+        args: Vec<String>,
+        env: Vec<(String, String)>,
+    },
     /// The adapter has started the program under a session of its own and is asking the client to
     /// open it. js-debug's model, and the only way its breakpoints ever bind.
-    StartDebugging { seq: i64, request: String, configuration: Value },
+    StartDebugging {
+        seq: i64,
+        request: String,
+        configuration: Value,
+    },
     /// Anything else the adapter sent.
-    Other { kind: String, name: String },
+    Other {
+        kind: String,
+        name: String,
+    },
 }
 
 impl Message {
@@ -472,17 +533,11 @@ fn read_event(value: &Value) -> Message {
             thread: body.get("threadId").and_then(Value::as_i64),
             description: text(&body, "description"),
             text: text(&body, "text"),
-            all_threads: body
-                .get("allThreadsStopped")
-                .and_then(Value::as_bool)
-                .unwrap_or(true),
+            all_threads: body.get("allThreadsStopped").and_then(Value::as_bool).unwrap_or(true),
         }),
         "continued" => Message::Continued {
             thread: body.get("threadId").and_then(Value::as_i64),
-            all_threads: body
-                .get("allThreadsContinued")
-                .and_then(Value::as_bool)
-                .unwrap_or(true),
+            all_threads: body.get("allThreadsContinued").and_then(Value::as_bool).unwrap_or(true),
         },
         "output" => Message::Output {
             kind: match text(&body, "category").as_deref() {
@@ -827,11 +882,16 @@ mod tests {
     #[test]
     fn the_events_unluminous_reads_are_read() {
         let event = |name: &str, body: serde_json::Value| {
-            Message::read(&serde_json::json!({ "seq": 1, "type": "event", "event": name, "body": body }))
+            Message::read(
+                &serde_json::json!({ "seq": 1, "type": "event", "event": name, "body": body }),
+            )
         };
         assert_eq!(event("initialized", Value::Null), Message::Initialized);
         assert_eq!(event("terminated", Value::Null), Message::Terminated);
-        assert_eq!(event("exited", serde_json::json!({ "exitCode": 101 })), Message::Exited { code: 101 });
+        assert_eq!(
+            event("exited", serde_json::json!({ "exitCode": 101 })),
+            Message::Exited { code: 101 }
+        );
         let Message::Stopped(stopped) =
             event("stopped", serde_json::json!({ "reason": "breakpoint", "threadId": 1 }))
         else {

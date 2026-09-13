@@ -88,7 +88,11 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
-    pub fn new(id: impl Into<String>, name: impl Into<String>, arguments: impl Into<String>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        arguments: impl Into<String>,
+    ) -> Self {
         Self {
             id: id.into(),
             name: name.into(),
@@ -204,7 +208,9 @@ impl Message {
 
     pub fn pictures(&self) -> impl Iterator<Item = (&str, &str, &[u8])> {
         self.parts.iter().filter_map(|part| match part {
-            Part::Picture { media, bytes, name } => Some((name.as_str(), media.as_str(), bytes.as_slice())),
+            Part::Picture { media, bytes, name } => {
+                Some((name.as_str(), media.as_str(), bytes.as_slice()))
+            }
             Part::Text(_) => None,
         })
     }
@@ -428,11 +434,7 @@ mod tests {
     fn a_very_long_first_line_is_cut_rather_than_drawn_off_the_edge() {
         let mut chat = Conversation::new("c1", "claude");
         chat.push(Message::said(1, Role::User, "x".repeat(200)));
-        assert_eq!(
-            chat.name.chars().count(),
-            NAME_LIMIT + 1,
-            "cut, with an ellipsis on the end"
-        );
+        assert_eq!(chat.name.chars().count(), NAME_LIMIT + 1, "cut, with an ellipsis on the end");
         assert!(chat.name.ends_with('…'));
     }
 
@@ -451,11 +453,7 @@ mod tests {
             name: "shot.png".to_owned(),
         });
         message.push_text(" and");
-        assert_eq!(
-            message.parts.len(),
-            3,
-            "the words after a picture are their own part"
-        );
+        assert_eq!(message.parts.len(), 3, "the words after a picture are their own part");
         assert_eq!(message.text(), "Because and");
         assert_eq!(message.pictures().count(), 1);
     }
@@ -484,10 +482,7 @@ mod tests {
         assert!(!failed.has_content());
         assert!(!failed.is_empty(), "it is still worth drawing");
         failed.push_text("Half an ans");
-        assert!(
-            failed.has_content(),
-            "what did arrive is still what the model said"
-        );
+        assert!(failed.has_content(), "what did arrive is still what the model said");
         // Whitespace alone is not content either: a model that emitted one newline before failing
         // would otherwise put an empty turn back on the wire.
         let mut blank = Message::said(
@@ -511,10 +506,7 @@ mod tests {
             bytes: vec![0],
             name: "a.png".to_owned(),
         });
-        assert!(
-            !with_a_picture.is_empty(),
-            "a picture with no words is still a message"
-        );
+        assert!(!with_a_picture.is_empty(), "a picture with no words is still a message");
     }
 
     #[test]

@@ -125,14 +125,7 @@ pub fn report(
         return None;
     }
     let button_byte = if kind == Kind::Release { 3 + modifiers.bits() } else { code };
-    Some(vec![
-        0x1b,
-        b'[',
-        b'M',
-        32 + button_byte,
-        (32 + column) as u8,
-        (32 + row) as u8,
-    ])
+    Some(vec![0x1b, b'[', b'M', 32 + button_byte, (32 + column) as u8, (32 + row) as u8])
 }
 
 #[cfg(test)]
@@ -159,10 +152,11 @@ mod tests {
 
     #[test]
     fn a_press_and_a_release_are_told_apart_by_the_last_letter() {
-        let press = report(sgr(), Kind::Press, Button::Left, 4, 9, Modifiers::default()).expect("a press");
+        let press =
+            report(sgr(), Kind::Press, Button::Left, 4, 9, Modifiers::default()).expect("a press");
         assert_eq!(text(press), "ESC [<0;10;5M");
-        let release =
-            report(sgr(), Kind::Release, Button::Left, 4, 9, Modifiers::default()).expect("a release");
+        let release = report(sgr(), Kind::Release, Button::Left, 4, 9, Modifiers::default())
+            .expect("a release");
         assert_eq!(text(release), "ESC [<0;10;5m", "a small m is a release");
     }
 
@@ -178,10 +172,11 @@ mod tests {
 
     #[test]
     fn the_wheel_is_reported_as_the_high_numbered_buttons_and_has_no_release() {
-        let up = report(sgr(), Kind::Press, Button::WheelUp, 0, 0, Modifiers::default()).expect("a turn");
+        let up = report(sgr(), Kind::Press, Button::WheelUp, 0, 0, Modifiers::default())
+            .expect("a turn");
         assert_eq!(text(up), "ESC [<64;1;1M");
-        let down =
-            report(sgr(), Kind::Press, Button::WheelDown, 0, 0, Modifiers::default()).expect("a turn");
+        let down = report(sgr(), Kind::Press, Button::WheelDown, 0, 0, Modifiers::default())
+            .expect("a turn");
         assert_eq!(text(down), "ESC [<65;1;1M");
         assert_eq!(
             report(sgr(), Kind::Release, Button::WheelUp, 0, 0, Modifiers::default()),
@@ -192,7 +187,8 @@ mod tests {
 
     #[test]
     fn a_drag_adds_thirty_two_and_is_only_sent_when_the_program_asked_for_movement() {
-        let dragging = report(sgr(), Kind::Drag, Button::Left, 1, 1, Modifiers::default()).expect("a drag");
+        let dragging =
+            report(sgr(), Kind::Drag, Button::Left, 1, 1, Modifiers::default()).expect("a drag");
         assert_eq!(text(dragging), "ESC [<32;2;2M");
         let clicks_only = MouseMode { report_click: true, drag: false, motion: false, sgr: true };
         assert_eq!(report(clicks_only, Kind::Drag, Button::Left, 1, 1, Modifiers::default()), None);
@@ -211,7 +207,8 @@ mod tests {
     #[test]
     fn the_older_encoding_puts_the_position_in_one_byte_each() {
         let old = MouseMode { report_click: true, drag: false, motion: false, sgr: false };
-        let bytes = report(old, Kind::Press, Button::Left, 4, 9, Modifiers::default()).expect("a press");
+        let bytes =
+            report(old, Kind::Press, Button::Left, 4, 9, Modifiers::default()).expect("a press");
         assert_eq!(bytes, vec![0x1b, b'[', b'M', 32, 32 + 10, 32 + 5]);
     }
 
@@ -220,7 +217,8 @@ mod tests {
         let old = MouseMode { report_click: true, drag: false, motion: false, sgr: false };
         assert_eq!(report(old, Kind::Press, Button::Left, 0, 300, Modifiers::default()), None);
         // The same click in SGR is fine, because it counts in numbers rather than in bytes.
-        let bytes = report(sgr(), Kind::Press, Button::Left, 0, 300, Modifiers::default()).expect("a press");
+        let bytes = report(sgr(), Kind::Press, Button::Left, 0, 300, Modifiers::default())
+            .expect("a press");
         assert_eq!(text(bytes), "ESC [<0;301;1M");
     }
 }

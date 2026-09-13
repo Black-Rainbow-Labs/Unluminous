@@ -36,8 +36,12 @@ impl Value {
             Value::Null => String::new(),
             Value::Text(text) => text.clone(),
             Value::Bytes(bytes) => {
-                let head: String =
-                    bytes.iter().take(8).map(|byte| format!("{byte:02x}")).collect::<Vec<String>>().join(" ");
+                let head: String = bytes
+                    .iter()
+                    .take(8)
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<Vec<String>>()
+                    .join(" ");
                 match bytes.len() > 8 {
                     true => format!("{} bytes: {head}…", bytes.len()),
                     false => format!("{} bytes: {head}", bytes.len()),
@@ -111,9 +115,8 @@ impl Column {
 /// prefix — which is also what SQLite's own type-affinity rules do.
 pub fn type_is_numeric(type_name: &str) -> bool {
     let lower = type_name.to_ascii_lowercase();
-    const NUMBERS: &[&str] = &[
-        "int", "serial", "float", "double", "real", "numeric", "decimal", "money", "oid", "num",
-    ];
+    const NUMBERS: &[&str] =
+        &["int", "serial", "float", "double", "real", "numeric", "decimal", "money", "oid", "num"];
     NUMBERS.iter().any(|kind| lower.contains(kind))
 }
 

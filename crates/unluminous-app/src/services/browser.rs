@@ -42,7 +42,9 @@ impl BrowserLocation {
         if let Ok(url) = Url::parse(value) {
             return match url.scheme() {
                 "http" | "https" => Ok(Self::Remote { url: url.to_string() }),
-                scheme => Err(format!("Unluminous opens HTTP and HTTPS addresses, not {scheme} addresses.")),
+                scheme => Err(format!(
+                    "Unluminous opens HTTP and HTTPS addresses, not {scheme} addresses."
+                )),
             };
         }
         // `example.com` and `example.com/page` are addresses a person and a model both write with no
@@ -58,9 +60,9 @@ impl BrowserLocation {
     fn local(value: &str, project: &Path) -> Result<Self, String> {
         let given = PathBuf::from(value);
         let candidate = if given.is_absolute() { given } else { project.join(given) };
-        let path = candidate
-            .canonicalize()
-            .map_err(|problem| format!("Unluminous could not open {}: {problem}", candidate.display()))?;
+        let path = candidate.canonicalize().map_err(|problem| {
+            format!("Unluminous could not open {}: {problem}", candidate.display())
+        })?;
         if !path.is_file() || !file_kind::is_html(&path) {
             return Err(format!("{} is not an HTML file.", path.display()));
         }
@@ -270,7 +272,10 @@ impl BrowserTab {
             return self.title.clone();
         }
         if let Some(path) = self.location.source_path() {
-            return path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_else(|| "Web page".to_owned());
+            return path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| "Web page".to_owned());
         }
         Url::parse(self.current_url())
             .ok()
@@ -414,7 +419,13 @@ impl BrowserHost {
     }
 
     /// Create, point, place and hide the native view. Called before the egui pass, never inside it.
-    pub fn reconcile(&mut self, tabs: &[BrowserTab], placements: &[BrowserPlacement], occluded: bool, repaint: egui::Context) -> Settled {
+    pub fn reconcile(
+        &mut self,
+        tabs: &[BrowserTab],
+        placements: &[BrowserPlacement],
+        occluded: bool,
+        repaint: egui::Context,
+    ) -> Settled {
         let live: HashSet<u64> = tabs.iter().map(|tab| tab.id).collect();
         self.resources.retain(&live);
         if tabs.is_empty() {
@@ -427,7 +438,9 @@ impl BrowserHost {
             self.native.hide();
             return Settled::default();
         };
-        let Some(tab) = tabs.iter().find(|tab| tab.id == placement.id) else { return Settled::default() };
+        let Some(tab) = tabs.iter().find(|tab| tab.id == placement.id) else {
+            return Settled::default();
+        };
         let was = self.showing();
         let problems = self.native.settle(native::Settle {
             tab,
@@ -552,7 +565,10 @@ impl LocalResourceStore {
     /// Register the one canonical root a local tab may read under.
     fn register(&self, id: u64, root: PathBuf) {
         let root = root.canonicalize().unwrap_or(root);
-        self.0.lock().expect("browser resource registry").insert(id, LocalRoot { root, resources: HashMap::new() });
+        self.0
+            .lock()
+            .expect("browser resource registry")
+            .insert(id, LocalRoot { root, resources: HashMap::new() });
     }
 
     /// Forget a tab's root and the bounded list of resources it loaded.
@@ -578,7 +594,11 @@ impl LocalResourceStore {
         };
         self.record(id, &path);
         let mime = mime_guess::from_path(&path).first_or_octet_stream().essence_str().to_owned();
-        ResourceReply { status: 200, mime, bytes: if method == "HEAD" { Vec::new() } else { bytes } }
+        ResourceReply {
+            status: 200,
+            mime,
+            bytes: if method == "HEAD" { Vec::new() } else { bytes },
+        }
     }
 
     /// Resolve and canonicalize the URL path, returning nothing for every escape and miss.
@@ -617,10 +637,14 @@ impl LocalResourceStore {
             let moved = root.resources.iter_mut().any(|(path, before)| {
                 let now = ResourceStamp::of(path);
                 let differs = now != Some(*before);
-                if let Some(now) = now { *before = now; }
+                if let Some(now) = now {
+                    *before = now;
+                }
                 differs
             });
-            if moved { changed.push(*id); }
+            if moved {
+                changed.push(*id);
+            }
         }
         changed
     }
@@ -651,7 +675,10 @@ fn implied_address(value: &str) -> Option<String> {
         && !host.contains('\\')
         && !file_kind::is_html(Path::new(host));
     let url = looks_like_a_host.then(|| format!("https://{value}"))?;
-    Url::parse(&url).ok().filter(|url| url.host_str().is_some_and(|host| host.contains('.'))).map(|url| url.to_string())
+    Url::parse(&url)
+        .ok()
+        .filter(|url| url.host_str().is_some_and(|host| host.contains('.')))
+        .map(|url| url.to_string())
 }
 
 /// The bytes a path segment cannot carry literally. A dot, a dash and a space-free name are left
@@ -710,7 +737,10 @@ fn engine_url(url: &str) -> String {
 fn local_url(id: u64, relative: &Path) -> String {
     let path = relative
         .components()
-        .filter_map(|component| match component { Component::Normal(name) => Some(name), _ => None })
+        .filter_map(|component| match component {
+            Component::Normal(name) => Some(name),
+            _ => None,
+        })
         .map(|name| utf8_percent_encode(&name.to_string_lossy(), SEGMENT).to_string())
         .collect::<Vec<_>>()
         .join("/");
@@ -725,7 +755,9 @@ mod native {
     use std::sync::Arc;
 
     use wry::raw_window_handle::{HandleError, HasWindowHandle, RawWindowHandle, WindowHandle};
-    use wry::{NewWindowResponse, PageLoadEvent, PermissionResponse, WebContext, WebView, WebViewBuilder};
+    use wry::{
+        NewWindowResponse, PageLoadEvent, PermissionResponse, WebContext, WebView, WebViewBuilder,
+    };
 
     use super::{BrowserEvent, BrowserPlacement, BrowserTab, LocalResourceStore};
 
@@ -830,7 +862,8 @@ mod native {
             let Some(parent) = &self.parent else {
                 return Err("Unluminous has not finished opening its window yet.".to_owned());
             };
-            let context = self.context.get_or_insert_with(|| WebContext::new(request.profile.clone()));
+            let context =
+                self.context.get_or_insert_with(|| WebContext::new(request.profile.clone()));
             let repaint = request.repaint.clone();
             let title_sender = request.sender.clone();
             let title_showing = request.showing.clone();
@@ -880,7 +913,8 @@ mod native {
 
         /// Send the view to an address, which is what this tab's own history asked for.
         pub fn navigate(&self, url: &str) -> Result<(), String> {
-            let view = self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
+            let view =
+                self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
             view.webview
                 .load_url(&super::engine_url(url))
                 .map_err(|problem| format!("The browser could not navigate: {problem}"))
@@ -888,8 +922,11 @@ mod native {
 
         /// Reload the page the view is on.
         pub fn reload(&self) -> Result<(), String> {
-            let view = self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
-            view.webview.reload().map_err(|problem| format!("The browser could not reload: {problem}"))
+            let view =
+                self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
+            view.webview
+                .reload()
+                .map_err(|problem| format!("The browser could not reload: {problem}"))
         }
 
         /// How big the page is drawn.
@@ -898,7 +935,8 @@ mod native {
         /// wheel over a node zoom that node, and for a browser node the thing that decides how big a page
         /// is is the page's own zoom — nothing Unluminous paints is involved.
         pub fn zoom(&self, factor: f64) -> Result<(), String> {
-            let view = self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
+            let view =
+                self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
             view.webview
                 .zoom(factor)
                 .map_err(|problem| format!("The browser could not be zoomed: {problem}"))
@@ -907,12 +945,19 @@ mod native {
 
     /// Allow ordinary web navigation and Unluminous's one local resource origin.
     fn allowed_navigation(url: String) -> bool {
-        Url::parse(&url).ok().is_some_and(|url| matches!(url.scheme(), "http" | "https" | "unluminous"))
+        Url::parse(&url)
+            .ok()
+            .is_some_and(|url| matches!(url.scheme(), "http" | "https" | "unluminous"))
     }
 
     /// Convert a constrained resource reply into the response Wry expects.
-    fn protocol_response(resources: &LocalResourceStore, showing: u64, request: wry::http::Request<Vec<u8>>) -> wry::http::Response<Cow<'static, [u8]>> {
-        let reply = resources.resolve(showing, request.method().as_str(), &request.uri().to_string());
+    fn protocol_response(
+        resources: &LocalResourceStore,
+        showing: u64,
+        request: wry::http::Request<Vec<u8>>,
+    ) -> wry::http::Response<Cow<'static, [u8]>> {
+        let reply =
+            resources.resolve(showing, request.method().as_str(), &request.uri().to_string());
         wry::http::Response::builder()
             .status(reply.status)
             .header("Content-Type", reply.mime)
@@ -1019,7 +1064,11 @@ mod native {
     fn browser_rect(area: egui::Rect) -> wry::Rect {
         wry::Rect {
             position: wry::dpi::LogicalPosition::new(area.left() as f64, area.top() as f64).into(),
-            size: wry::dpi::LogicalSize::new(area.width().max(1.0) as f64, area.height().max(1.0) as f64).into(),
+            size: wry::dpi::LogicalSize::new(
+                area.width().max(1.0) as f64,
+                area.height().max(1.0) as f64,
+            )
+            .into(),
         }
     }
 
@@ -1051,9 +1100,13 @@ mod native {
 
     impl NativeHost {
         /// Construct the no-engine placeholder used on unsupported platforms.
-        pub fn new() -> Self { Self }
+        pub fn new() -> Self {
+            Self
+        }
         /// A placeholder never owns a native view.
-        pub fn has_view(&self) -> bool { false }
+        pub fn has_view(&self) -> bool {
+            false
+        }
         /// There is no child window to create, so the window's handle is not wanted.
         pub fn remember_window(&mut self, _frame: &eframe::Frame) {}
         /// There is nothing to drop.
@@ -1062,15 +1115,28 @@ mod native {
         pub fn hide(&mut self) {}
         /// Report one clear platform refusal for the tab that would have been shown.
         pub fn settle(&mut self, request: Settle<'_>) -> Vec<(u64, String)> {
-            let _ = (request.placement, request.showing, request.profile, request.resources, request.sender, request.repaint);
+            let _ = (
+                request.placement,
+                request.showing,
+                request.profile,
+                request.resources,
+                request.sender,
+                request.repaint,
+            );
             vec![(request.tab.id, UNSUPPORTED.to_owned())]
         }
         /// Refuse navigation where there is no embedded engine.
-        pub fn navigate(&self, _url: &str) -> Result<(), String> { Err(UNSUPPORTED.to_owned()) }
+        pub fn navigate(&self, _url: &str) -> Result<(), String> {
+            Err(UNSUPPORTED.to_owned())
+        }
         /// Refuse reloading for the same reason.
-        pub fn reload(&self) -> Result<(), String> { Err(UNSUPPORTED.to_owned()) }
+        pub fn reload(&self) -> Result<(), String> {
+            Err(UNSUPPORTED.to_owned())
+        }
         /// And zooming, which is the engine's own number.
-        pub fn zoom(&self, _factor: f64) -> Result<(), String> { Err(UNSUPPORTED.to_owned()) }
+        pub fn zoom(&self, _factor: f64) -> Result<(), String> {
+            Err(UNSUPPORTED.to_owned())
+        }
     }
 }
 
@@ -1107,7 +1173,8 @@ mod tests {
 
     /// A unique folder under the process temp directory for one resource test.
     fn fixture(name: &str) -> PathBuf {
-        let folder = std::env::temp_dir().join(format!("unluminous-browser-{name}-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-browser-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("make browser fixture");
         folder
     }
@@ -1115,7 +1182,11 @@ mod tests {
     #[test]
     fn local_pages_load_linked_resource_types_and_head() {
         let root = fixture("assets");
-        std::fs::write(root.join("index.html"), "<link href='site.css'><script src='app.js'></script>").unwrap();
+        std::fs::write(
+            root.join("index.html"),
+            "<link href='site.css'><script src='app.js'></script>",
+        )
+        .unwrap();
         std::fs::write(root.join("site.css"), "body { color: red; }").unwrap();
         std::fs::write(root.join("app.js"), "document.title = 'ready';").unwrap();
         let store = LocalResourceStore::new();
@@ -1125,7 +1196,10 @@ mod tests {
         let script = store.resolve(7, "HEAD", "unluminous://tab-7/app.js");
         assert_eq!((html.status, html.mime.as_str()), (200, "text/html"));
         assert_eq!((css.status, css.mime.as_str()), (200, "text/css"));
-        assert_eq!((script.status, script.mime.as_str(), script.bytes.len()), (200, "text/javascript", 0));
+        assert_eq!(
+            (script.status, script.mime.as_str(), script.bytes.len()),
+            (200, "text/javascript", 0)
+        );
     }
 
     #[test]
@@ -1161,8 +1235,14 @@ mod tests {
         std::fs::write(project.join("index.html"), "<p>ok</p>").unwrap();
         std::fs::write(project.join("notes.md"), "not a page").unwrap();
         let parse = |value: &str| BrowserLocation::parse(value, &project);
-        assert_eq!(parse("https://example.com/a").unwrap(), BrowserLocation::Remote { url: "https://example.com/a".to_owned() });
-        assert_eq!(parse("example.com/a").unwrap(), BrowserLocation::Remote { url: "https://example.com/a".to_owned() });
+        assert_eq!(
+            parse("https://example.com/a").unwrap(),
+            BrowserLocation::Remote { url: "https://example.com/a".to_owned() }
+        );
+        assert_eq!(
+            parse("example.com/a").unwrap(),
+            BrowserLocation::Remote { url: "https://example.com/a".to_owned() }
+        );
         assert!(matches!(parse("index.html").unwrap(), BrowserLocation::Local { .. }));
         assert!(parse("ftp://example.com").unwrap_err().contains("not ftp addresses"));
         assert!(parse("notes.md").unwrap_err().contains("is not an HTML file"));
@@ -1177,7 +1257,8 @@ mod tests {
         let folder = root.join("my site");
         std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(folder.join("index.html"), "<p>ok</p>").unwrap();
-        let location = BrowserLocation::parse(&folder.join("index.html").to_string_lossy(), &root).unwrap();
+        let location =
+            BrowserLocation::parse(&folder.join("index.html").to_string_lossy(), &root).unwrap();
         let url = location.initial_url(4);
         assert_eq!(url, "unluminous://tab-4/my%20site/index.html");
         let store = LocalResourceStore::new();
@@ -1193,9 +1274,19 @@ mod tests {
         let mut host = BrowserHost::new();
         let tab = host.open_tab(BrowserLocation::parse("index.html", &root).unwrap());
         let resources = host.resources.clone();
-        assert_eq!(resources.resolve(tab.id, "GET", &format!("unluminous://tab-{}/index.html", tab.id)).status, 200);
+        assert_eq!(
+            resources
+                .resolve(tab.id, "GET", &format!("unluminous://tab-{}/index.html", tab.id))
+                .status,
+            200
+        );
         host.close_tab(tab.id);
-        assert_eq!(resources.resolve(tab.id, "GET", &format!("unluminous://tab-{}/index.html", tab.id)).status, 404);
+        assert_eq!(
+            resources
+                .resolve(tab.id, "GET", &format!("unluminous://tab-{}/index.html", tab.id))
+                .status,
+            404
+        );
         assert!(resources.changed_tabs().is_empty());
     }
 
@@ -1206,32 +1297,58 @@ mod tests {
         std::fs::write(root.join("index.html"), "<p>ok</p>").unwrap();
         let mut host = BrowserHost::new();
         let first = host.open_tab(BrowserLocation::parse("index.html", &root).unwrap());
-        let second = host.open_tab(BrowserLocation::Remote { url: "https://example.com/".to_owned() });
+        let second =
+            host.open_tab(BrowserLocation::Remote { url: "https://example.com/".to_owned() });
         assert_ne!(first.id, second.id);
         host.resources.retain(&HashSet::from([second.id]));
-        assert_eq!(host.resources.resolve(first.id, "GET", &format!("unluminous://tab-{}/index.html", first.id)).status, 404);
+        assert_eq!(
+            host.resources
+                .resolve(first.id, "GET", &format!("unluminous://tab-{}/index.html", first.id))
+                .status,
+            404
+        );
     }
 
     /// `task-1756`: the one view goes to the pane with the keyboard, and nowhere while occluded.
     #[test]
     fn one_placement_is_chosen_and_an_occluded_frame_chooses_none() {
         let area = Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::splat(100.0));
-        let panes = [BrowserPlacement::whole(1, area, false), BrowserPlacement::whole(2, area, true)];
-        assert_eq!(choose(&panes, false).map(|placement| placement.id), Some(2), "the focused pane holds the view");
-        assert_eq!(choose(&panes[..1], false).map(|placement| placement.id), Some(1), "with no focus, the first drawn");
-        assert_eq!(choose(&panes, true), None, "an egui surface over the pane takes the view off the screen");
+        let panes =
+            [BrowserPlacement::whole(1, area, false), BrowserPlacement::whole(2, area, true)];
+        assert_eq!(
+            choose(&panes, false).map(|placement| placement.id),
+            Some(2),
+            "the focused pane holds the view"
+        );
+        assert_eq!(
+            choose(&panes[..1], false).map(|placement| placement.id),
+            Some(1),
+            "with no focus, the first drawn"
+        );
+        assert_eq!(
+            choose(&panes, true),
+            None,
+            "an egui surface over the pane takes the view off the screen"
+        );
         assert_eq!(choose(&[], false), None);
     }
 
     /// `task-1756`: a tab switched to ignores the page the shared view is leaving.
     #[test]
     fn a_tab_the_view_is_pointed_back_at_ignores_the_page_it_is_leaving() {
-        let mut tab = BrowserTab::new(1, BrowserLocation::Remote { url: "https://example.com/one".to_owned() });
+        let mut tab = BrowserTab::new(
+            1,
+            BrowserLocation::Remote { url: "https://example.com/one".to_owned() },
+        );
         tab.arrived_at("https://example.com/one".to_owned());
         // The view is sent back to this tab; the engine reports the other tab's page on the way.
         tab.pointed_at();
         tab.arrived_at("https://example.org/somewhere-else".to_owned());
-        assert_eq!(tab.current_url(), "https://example.com/one", "the page it is leaving is not this tab's");
+        assert_eq!(
+            tab.current_url(),
+            "https://example.com/one",
+            "the page it is leaving is not this tab's"
+        );
         assert!(!tab.can_go_back(), "so it is offered no way back to it");
         assert!(tab.loading, "and the tab is still waiting for its own page");
         tab.arrived_at("https://example.com/one".to_owned());
@@ -1242,7 +1359,10 @@ mod tests {
     /// `task-1756`: a tab's history is its own, so `Back` never lands on another tab's page.
     #[test]
     fn each_tab_remembers_where_it_has_been_by_itself() {
-        let mut tab = BrowserTab::new(1, BrowserLocation::Remote { url: "https://example.com/one".to_owned() });
+        let mut tab = BrowserTab::new(
+            1,
+            BrowserLocation::Remote { url: "https://example.com/one".to_owned() },
+        );
         assert!(!tab.can_go_back() && !tab.can_go_forward());
         tab.arrived_at("https://example.com/one".to_owned());
         tab.arrived_at("https://example.com/two".to_owned());
@@ -1267,7 +1387,8 @@ mod tests {
     #[test]
     fn a_local_page_is_one_address_under_either_engines_name() {
         let root = fixture("canonical");
-        let tab = BrowserTab::new(1, BrowserLocation::Local { path: root.join("index.html"), root });
+        let tab =
+            BrowserTab::new(1, BrowserLocation::Local { path: root.join("index.html"), root });
         let asked_for = tab.current_url().to_owned();
         assert_eq!(asked_for, "unluminous://tab-1/index.html");
         let mut tab = tab;
@@ -1286,7 +1407,10 @@ mod tests {
     /// `task-1756`: the engine's own back gesture inside the page is read as a step, not a new page.
     #[test]
     fn a_back_taken_inside_the_page_moves_rather_than_appends() {
-        let mut tab = BrowserTab::new(1, BrowserLocation::Remote { url: "https://example.com/one".to_owned() });
+        let mut tab = BrowserTab::new(
+            1,
+            BrowserLocation::Remote { url: "https://example.com/one".to_owned() },
+        );
         tab.arrived_at("https://example.com/one".to_owned());
         tab.arrived_at("https://example.com/two".to_owned());
         tab.arrived_at("https://example.com/one".to_owned());
@@ -1312,8 +1436,12 @@ mod tests {
     #[test]
     fn browser_tab_names_use_title_file_then_host() {
         let root = fixture("names");
-        let local = BrowserTab::new(1, BrowserLocation::Local { path: root.join("index.html"), root });
-        let remote = BrowserTab::new(2, BrowserLocation::Remote { url: "https://example.com/page".to_owned() });
+        let local =
+            BrowserTab::new(1, BrowserLocation::Local { path: root.join("index.html"), root });
+        let remote = BrowserTab::new(
+            2,
+            BrowserLocation::Remote { url: "https://example.com/page".to_owned() },
+        );
         assert_eq!(local.name(), "index.html");
         assert_eq!(remote.name(), "example.com");
     }

@@ -151,7 +151,8 @@ fn openai_request(
                 }
             }
             Role::User | Role::Assistant => {
-                let mut one = json!({ "role": message.role.wire_name(), "content": openai_content(message) });
+                let mut one =
+                    json!({ "role": message.role.wire_name(), "content": openai_content(message) });
                 if !message.tools.is_empty() && message.role == Role::Assistant {
                     one["tool_calls"] = Value::Array(
                         message
@@ -556,9 +557,7 @@ impl Decoder {
         }
         let mut replies = self.flush_tools();
         self.finished = true;
-        replies.push(Reply::Finished {
-            reason: reason.to_owned(),
-        });
+        replies.push(Reply::Finished { reason: reason.to_owned() });
         replies
     }
 
@@ -606,13 +605,8 @@ impl Decoder {
     /// The reasoning block being built at `index`, made if it is not there.
     fn reasoning_slot(&mut self, index: usize, kind: &str) -> &mut Reasoning {
         if !self.thinking.iter().any(|(at, _)| *at == index) {
-            self.thinking.push((
-                index,
-                Reasoning {
-                    kind: kind.to_owned(),
-                    ..Reasoning::default()
-                },
-            ));
+            self.thinking
+                .push((index, Reasoning { kind: kind.to_owned(), ..Reasoning::default() }));
         }
         self.thinking
             .iter_mut()
@@ -651,9 +645,7 @@ impl Decoder {
         if let Some(model) = value["model"].as_str() {
             if !self.started {
                 self.started = true;
-                replies.push(Reply::Started {
-                    model: model.to_owned(),
-                });
+                replies.push(Reply::Started { model: model.to_owned() });
             }
         }
         let choice = &value["choices"][0];
@@ -695,9 +687,7 @@ impl Decoder {
             // event in this shape, which is the other reason a decoder has to hold state at all.
             replies.extend(self.flush_tools());
             self.finished = true;
-            replies.push(Reply::Finished {
-                reason: reason.to_owned(),
-            });
+            replies.push(Reply::Finished { reason: reason.to_owned() });
         }
         replies
     }
@@ -778,16 +768,14 @@ impl Decoder {
                 };
                 match one.name.is_empty() {
                     true => Vec::new(),
-                    false => vec![Reply::ToolCall {
-                        id: one.id,
-                        name: one.name,
-                        arguments,
-                    }],
+                    false => vec![Reply::ToolCall { id: one.id, name: one.name, arguments }],
                 }
             }
             "response.completed" | "response.incomplete" => {
                 let mut replies = Vec::new();
-                if let Some(usage) = usage_of(&value["response"]["usage"], "input_tokens", "output_tokens") {
+                if let Some(usage) =
+                    usage_of(&value["response"]["usage"], "input_tokens", "output_tokens")
+                {
                     replies.push(usage);
                 }
                 // `incomplete` carries why it stopped, which is nearly always the token budget.
@@ -826,7 +814,9 @@ impl Decoder {
                 let mut replies = vec![Reply::Started {
                     model: value["message"]["model"].as_str().unwrap_or_default().to_owned(),
                 }];
-                if let Some(usage) = usage_of(&value["message"]["usage"], "input_tokens", "output_tokens") {
+                if let Some(usage) =
+                    usage_of(&value["message"]["usage"], "input_tokens", "output_tokens")
+                {
                     replies.push(usage);
                 }
                 replies
@@ -880,13 +870,12 @@ impl Decoder {
                     // were rebuilt out of the displayed words is refused.
                     Some("signature_delta") => {
                         let signature = delta["signature"].as_str().unwrap_or_default().to_owned();
-                        self.reasoning_slot(index, "thinking")
-                            .signature
-                            .push_str(&signature);
+                        self.reasoning_slot(index, "thinking").signature.push_str(&signature);
                         Vec::new()
                     }
                     Some("input_json_delta") => {
-                        let fragment = delta["partial_json"].as_str().unwrap_or_default().to_owned();
+                        let fragment =
+                            delta["partial_json"].as_str().unwrap_or_default().to_owned();
                         self.slot(index).arguments.push_str(&fragment);
                         Vec::new()
                     }
@@ -921,9 +910,7 @@ impl Decoder {
                 }
                 if let Some(reason) = value["delta"]["stop_reason"].as_str() {
                     self.finished = true;
-                    replies.push(Reply::Finished {
-                        reason: reason.to_owned(),
-                    });
+                    replies.push(Reply::Finished { reason: reason.to_owned() });
                 }
                 replies
             }
@@ -968,7 +955,10 @@ pub fn error_message(value: &Value) -> Option<String> {
     if let Some(message) = value["message"].as_str() {
         // Only when there is nothing else in it that says this is an ordinary reply, or every
         // Anthropic `message_start` would be read as a failure.
-        if value.get("choices").is_none() && value.get("type").is_none() && value.get("content").is_none() {
+        if value.get("choices").is_none()
+            && value.get("type").is_none()
+            && value.get("content").is_none()
+        {
             return Some(message.to_owned());
         }
     }
@@ -993,9 +983,7 @@ pub fn whole(wire: Wire, body: &str) -> Vec<Reply> {
         Wire::ClaudeCli | Wire::CodexCli => {}
         Wire::OpenAi => {
             if let Some(model) = value["model"].as_str() {
-                replies.push(Reply::Started {
-                    model: model.to_owned(),
-                });
+                replies.push(Reply::Started { model: model.to_owned() });
             }
             let choice = &value["choices"][0];
             for field in ["reasoning_content", "reasoning"] {
@@ -1015,7 +1003,10 @@ pub fn whole(wire: Wire, body: &str) -> Vec<Reply> {
                     replies.push(Reply::ToolCall {
                         id: call["id"].as_str().unwrap_or(&format!("call_{index}")).to_owned(),
                         name: call["function"]["name"].as_str().unwrap_or_default().to_owned(),
-                        arguments: call["function"]["arguments"].as_str().unwrap_or("{}").to_owned(),
+                        arguments: call["function"]["arguments"]
+                            .as_str()
+                            .unwrap_or("{}")
+                            .to_owned(),
                     });
                 }
             }
@@ -1028,16 +1019,16 @@ pub fn whole(wire: Wire, body: &str) -> Vec<Reply> {
         }
         Wire::Responses => {
             if let Some(model) = value["model"].as_str() {
-                replies.push(Reply::Started {
-                    model: model.to_owned(),
-                });
+                replies.push(Reply::Started { model: model.to_owned() });
             }
             // A flat list of items rather than a message with fields on it, which is the same
             // difference the streamed form has.
             for item in value["output"].as_array().map(Vec::as_slice).unwrap_or_default() {
                 match item["type"].as_str() {
                     Some("message") => {
-                        for part in item["content"].as_array().map(Vec::as_slice).unwrap_or_default() {
+                        for part in
+                            item["content"].as_array().map(Vec::as_slice).unwrap_or_default()
+                        {
                             if let Some(text) = part["text"].as_str() {
                                 if !text.is_empty() {
                                     replies.push(Reply::Text(text.to_owned()));
@@ -1051,7 +1042,9 @@ pub fn whole(wire: Wire, body: &str) -> Vec<Reply> {
                         arguments: item["arguments"].as_str().unwrap_or("{}").to_owned(),
                     }),
                     Some("reasoning") => {
-                        for part in item["summary"].as_array().map(Vec::as_slice).unwrap_or_default() {
+                        for part in
+                            item["summary"].as_array().map(Vec::as_slice).unwrap_or_default()
+                        {
                             if let Some(text) = part["text"].as_str() {
                                 replies.push(Reply::Thinking(text.to_owned()));
                             }
@@ -1064,17 +1057,12 @@ pub fn whole(wire: Wire, body: &str) -> Vec<Reply> {
                 replies.push(usage);
             }
             replies.push(Reply::Finished {
-                reason: value["incomplete_details"]["reason"]
-                    .as_str()
-                    .unwrap_or("stop")
-                    .to_owned(),
+                reason: value["incomplete_details"]["reason"].as_str().unwrap_or("stop").to_owned(),
             });
         }
         Wire::Anthropic => {
             if let Some(model) = value["model"].as_str() {
-                replies.push(Reply::Started {
-                    model: model.to_owned(),
-                });
+                replies.push(Reply::Started { model: model.to_owned() });
             }
             for block in value["content"].as_array().map(Vec::as_slice).unwrap_or_default() {
                 match block["type"].as_str() {
@@ -1153,11 +1141,7 @@ mod tests {
             .expect("an openai row")
     }
     fn anthropic() -> Provider {
-        endpoint(
-            Wire::Anthropic,
-            "https://api.anthropic.com/v1/messages",
-            "claude-opus-5",
-        )
+        endpoint(Wire::Anthropic, "https://api.anthropic.com/v1/messages", "claude-opus-5")
     }
     /// The Responses shape's own endpoint, for a test that wants one.
     ///
@@ -1167,11 +1151,7 @@ mod tests {
     /// purpose, which is why it says so.
     #[allow(dead_code)]
     fn responses() -> Provider {
-        endpoint(
-            Wire::Responses,
-            "https://api.openai.com/v1/responses",
-            "gpt-5-codex",
-        )
+        endpoint(Wire::Responses, "https://api.openai.com/v1/responses", "gpt-5-codex")
     }
 
     fn a_chat() -> Conversation {
@@ -1227,9 +1207,8 @@ mod tests {
         chat.push(message);
 
         let openai = request(&openai(), &chat, "", &[], true);
-        let parts = openai["messages"][0]["content"]
-            .as_array()
-            .expect("an array once there is a picture");
+        let parts =
+            openai["messages"][0]["content"].as_array().expect("an array once there is a picture");
         assert_eq!(parts[0]["type"], "text");
         assert_eq!(parts[1]["type"], "image_url");
         assert_eq!(parts[1]["image_url"]["url"], "data:image/png;base64,AQID");
@@ -1252,9 +1231,7 @@ mod tests {
         let mut answer = Message::new(2, Role::Assistant);
         answer.push_text("Right.");
         answer.tools.push(ToolCall::new("t1", "git.status", "{}"));
-        answer
-            .tools
-            .push(ToolCall::new("t2", "editor.text", "{\"path\":\"a.rs\"}"));
+        answer.tools.push(ToolCall::new("t2", "editor.text", "{\"path\":\"a.rs\"}"));
         chat.push(answer);
         let mut results = Message::new(3, Role::Tool);
         let mut first = ToolCall::new("t1", "git.status", "{}");
@@ -1270,10 +1247,7 @@ mod tests {
         let messages = openai["messages"].as_array().expect("messages");
         assert_eq!(messages.len(), 4, "user, assistant, and one tool message each");
         assert_eq!(messages[1]["tool_calls"][0]["function"]["name"], "git.status");
-        assert_eq!(
-            messages[1]["tool_calls"][1]["function"]["arguments"],
-            "{\"path\":\"a.rs\"}"
-        );
+        assert_eq!(messages[1]["tool_calls"][1]["function"]["arguments"], "{\"path\":\"a.rs\"}");
         assert_eq!(messages[2]["role"], "tool");
         assert_eq!(messages[2]["tool_call_id"], "t1");
         assert_eq!(messages[3]["content"], "no such file");
@@ -1331,26 +1305,17 @@ mod tests {
 
     #[test]
     fn an_openai_stream_reads_into_words_a_usage_and_a_finish() {
-        let stream = b"data: {\"model\":\"gpt-5\",\"choices\":[{\"delta\":{\"content\":\"He\"}}]}\n\n\
+        let stream =
+            b"data: {\"model\":\"gpt-5\",\"choices\":[{\"delta\":{\"content\":\"He\"}}]}\n\n\
 data: {\"choices\":[{\"delta\":{\"content\":\"llo\"}}]}\n\n\
 data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
 data: {\"choices\":[],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":2}}\n\n\
 data: [DONE]\n\n";
         let replies = decode(Wire::OpenAi, stream);
-        assert_eq!(
-            replies[0],
-            Reply::Started {
-                model: "gpt-5".to_owned()
-            }
-        );
+        assert_eq!(replies[0], Reply::Started { model: "gpt-5".to_owned() });
         assert_eq!(replies[1], Reply::Text("He".to_owned()));
         assert_eq!(replies[2], Reply::Text("llo".to_owned()));
-        assert_eq!(
-            replies[3],
-            Reply::Finished {
-                reason: "stop".to_owned()
-            }
-        );
+        assert_eq!(replies[3], Reply::Finished { reason: "stop".to_owned() });
         assert_eq!(replies[4], Reply::Usage { input: 9, output: 2 });
         // `[DONE]` after a `finish_reason` must not produce a second finish, or the session would
         // end a turn twice.
@@ -1360,21 +1325,14 @@ data: [DONE]\n\n";
     #[test]
     fn a_stream_that_names_its_model_in_every_chunk_begins_once() {
         // Real OpenAI puts `model` in every chunk, so without the flag the answer began once a token.
-        let stream = b"data: {\"model\":\"gpt-5\",\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n\
+        let stream =
+            b"data: {\"model\":\"gpt-5\",\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n\
 data: {\"model\":\"gpt-5\",\"choices\":[{\"delta\":{\"content\":\"b\"}}]}\n\n\
 data: {\"model\":\"gpt-5\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n";
         let replies = decode(Wire::OpenAi, stream);
-        let began = replies
-            .iter()
-            .filter(|reply| matches!(reply, Reply::Started { .. }))
-            .count();
+        let began = replies.iter().filter(|reply| matches!(reply, Reply::Started { .. })).count();
         assert_eq!(began, 1, "{replies:?}");
-        assert_eq!(
-            replies[0],
-            Reply::Started {
-                model: "gpt-5".to_owned()
-            }
-        );
+        assert_eq!(replies[0], Reply::Started { model: "gpt-5".to_owned() });
     }
 
     #[test]
@@ -1395,12 +1353,7 @@ data: [DONE]\n\n";
                 arguments: "{\"path\":\"a.rs\"}".to_owned(),
             }
         );
-        assert_eq!(
-            replies[1],
-            Reply::Finished {
-                reason: "tool_calls".to_owned()
-            }
-        );
+        assert_eq!(replies[1], Reply::Finished { reason: "tool_calls".to_owned() });
     }
 
     #[test]
@@ -1417,12 +1370,7 @@ event: content_block_stop\ndata: {\"index\":1}\n\n\
 event: message_delta\ndata: {\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":24}}\n\n\
 event: message_stop\ndata: {}\n\n";
         let replies = decode(Wire::Anthropic, stream);
-        assert_eq!(
-            replies[0],
-            Reply::Started {
-                model: "claude-opus-5".to_owned()
-            }
-        );
+        assert_eq!(replies[0], Reply::Started { model: "claude-opus-5".to_owned() });
         assert_eq!(replies[1], Reply::Usage { input: 11, output: 1 });
         assert_eq!(replies[2], Reply::Text("Looking".to_owned()));
         assert_eq!(replies[3], Reply::Text(" now".to_owned()));
@@ -1435,12 +1383,7 @@ event: message_stop\ndata: {}\n\n";
             }
         );
         assert_eq!(replies[5], Reply::Usage { input: 0, output: 24 });
-        assert_eq!(
-            replies[6],
-            Reply::Finished {
-                reason: "tool_use".to_owned()
-            }
-        );
+        assert_eq!(replies[6], Reply::Finished { reason: "tool_use".to_owned() });
         assert_eq!(replies.len(), 7, "{replies:?}");
     }
 
@@ -1460,18 +1403,12 @@ event: content_block_delta\ndata: {\"index\":1,\"delta\":{\"type\":\"text_delta\
             Wire::Anthropic,
             b"event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n",
         );
-        assert_eq!(
-            anthropic[0],
-            Reply::Failed("overloaded_error: Overloaded".to_owned())
-        );
+        assert_eq!(anthropic[0], Reply::Failed("overloaded_error: Overloaded".to_owned()));
         let openai = decode(
             Wire::OpenAi,
             b"data: {\"error\":{\"message\":\"model not found\",\"type\":\"invalid_request_error\"}}\n\n",
         );
-        assert_eq!(
-            openai[0],
-            Reply::Failed("invalid_request_error: model not found".to_owned())
-        );
+        assert_eq!(openai[0], Reply::Failed("invalid_request_error: model not found".to_owned()));
         // A gateway that sends a bare string is read too, and nothing is put in front of it.
         let gateway = decode(Wire::OpenAi, b"data: {\"error\":\"upstream timed out\"}\n\n");
         assert_eq!(gateway[0], Reply::Failed("upstream timed out".to_owned()));
@@ -1491,10 +1428,7 @@ event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\"
         }
         replies.extend(decoder.finish());
         assert_eq!(replies[0], Reply::Text("Half".to_owned()));
-        assert_eq!(
-            replies[1],
-            Reply::Failed("overloaded_error: Overloaded".to_owned())
-        );
+        assert_eq!(replies[1], Reply::Failed("overloaded_error: Overloaded".to_owned()));
         assert_eq!(replies.len(), 2, "nothing after the failure: {replies:?}");
     }
 
@@ -1519,11 +1453,7 @@ event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\"
             matches!(&replies[1], Reply::Failed(said) if said.contains("connection ended")),
             "{replies:?}"
         );
-        assert_eq!(
-            replies.len(),
-            2,
-            "the half-built call is not offered: {replies:?}"
-        );
+        assert_eq!(replies.len(), 2, "the half-built call is not offered: {replies:?}");
     }
 
     #[test]
@@ -1534,12 +1464,7 @@ event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\"
             Wire::OpenAi,
             "{\"model\":\"m\",\"choices\":[{\"message\":{\"content\":\"Hello\",\"tool_calls\":[{\"id\":\"c1\",\"function\":{\"name\":\"n\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":4}}",
         );
-        assert_eq!(
-            openai[0],
-            Reply::Started {
-                model: "m".to_owned()
-            }
-        );
+        assert_eq!(openai[0], Reply::Started { model: "m".to_owned() });
         assert_eq!(openai[1], Reply::Text("Hello".to_owned()));
         assert_eq!(
             openai[2],
@@ -1550,12 +1475,7 @@ event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\"
             }
         );
         assert_eq!(openai[3], Reply::Usage { input: 3, output: 4 });
-        assert_eq!(
-            openai[4],
-            Reply::Finished {
-                reason: "tool_calls".to_owned()
-            }
-        );
+        assert_eq!(openai[4], Reply::Finished { reason: "tool_calls".to_owned() });
 
         let anthropic = whole(
             Wire::Anthropic,
@@ -1570,20 +1490,12 @@ event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\"
                 arguments: "{\"a\":1}".to_owned()
             }
         );
-        assert_eq!(
-            anthropic[4],
-            Reply::Finished {
-                reason: "tool_use".to_owned()
-            }
-        );
+        assert_eq!(anthropic[4], Reply::Finished { reason: "tool_use".to_owned() });
 
         // And a body that is not JSON at all is handed back whole rather than swallowed, because a
         // proxy's HTML error page is still the most useful thing anybody could be shown.
         let rubbish = whole(Wire::OpenAi, "<html>502 Bad Gateway</html>");
-        assert_eq!(
-            rubbish[0],
-            Reply::Failed("<html>502 Bad Gateway</html>".to_owned())
-        );
+        assert_eq!(rubbish[0], Reply::Failed("<html>502 Bad Gateway</html>".to_owned()));
     }
 
     #[test]

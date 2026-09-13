@@ -306,9 +306,7 @@ pub fn decode(path: &Path) -> Result<egui::ColorImage, String> {
 /// format `image` reads carries its size in a header, so this is a few dozen bytes rather than a
 /// decode, and it is cached beside the texture for the same reason the texture is.
 pub fn dimensions_of(bytes: &[u8]) -> Option<(f32, f32)> {
-    let read = image::ImageReader::new(std::io::Cursor::new(bytes))
-        .with_guessed_format()
-        .ok()?;
+    let read = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?;
     let (width, height) = read.into_dimensions().ok()?;
     Some((width as f32, height as f32))
 }
@@ -328,11 +326,7 @@ pub fn decode_bytes(bytes: &[u8]) -> Result<egui::ColorImage, String> {
         // drawn unmultiplied has a pale halo round every edge.
         .map(|pixel| egui::Color32::from_rgba_unmultiplied(pixel[0], pixel[1], pixel[2], pixel[3]))
         .collect();
-    Ok(egui::ColorImage {
-        size,
-        pixels,
-        source_size: egui::vec2(size[0] as f32, size[1] as f32),
-    })
+    Ok(egui::ColorImage { size, pixels, source_size: egui::vec2(size[0] as f32, size[1] as f32) })
 }
 
 #[cfg(test)]
@@ -388,7 +382,11 @@ mod tests {
         let smaller = shrink_to_fit(wide, 2048);
         assert_eq!(smaller.size, [2048, 512], "no side past the limit, and the shape is kept");
         assert_eq!(smaller.pixels.len(), 2048 * 512);
-        assert_eq!(smaller.pixels[0], egui::Color32::from_rgb(10, 20, 30), "and the colour with it");
+        assert_eq!(
+            smaller.pixels[0],
+            egui::Color32::from_rgb(10, 20, 30),
+            "and the colour with it"
+        );
     }
 
     #[test]

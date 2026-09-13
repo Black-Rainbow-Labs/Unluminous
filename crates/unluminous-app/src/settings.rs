@@ -665,9 +665,7 @@ impl Settings {
         if let Some(port) = values.number("mcp.port") {
             settings.mcp_port = clamp_port(port);
         }
-        if let Some(shape) =
-            values.text("mcp.tools").and_then(unluminous_cli::mcp::Shape::parse)
-        {
+        if let Some(shape) = values.text("mcp.tools").and_then(unluminous_cli::mcp::Shape::parse) {
             settings.mcp_tools = shape;
         }
         if let Some(areas) = values.text("mcp.areas") {
@@ -733,7 +731,10 @@ impl Settings {
         // is cleared, for the reason at the top of this function. The list is walked rather than the
         // vec, because an adapter that was cleared is not in the vec at all.
         for name in crate::services::plugins::DEBUGGERS {
-            values.set_or_clear(&format!("debug.{name}"), self.debug_adapter(name).unwrap_or_default());
+            values.set_or_clear(
+                &format!("debug.{name}"),
+                self.debug_adapter(name).unwrap_or_default(),
+            );
         }
     }
 
@@ -750,7 +751,11 @@ impl Settings {
                 .mcp_areas
                 .split(',')
                 .map(str::trim)
-                .filter(|name| unluminous_cli::catalogue::areas().iter().any(|area| area.eq_ignore_ascii_case(name)))
+                .filter(|name| {
+                    unluminous_cli::catalogue::areas()
+                        .iter()
+                        .any(|area| area.eq_ignore_ascii_case(name))
+                })
                 .collect();
             unluminous_cli::mcp::tools::Areas::parse(&kept.join(",")).unwrap_or_default()
         })
@@ -762,10 +767,7 @@ impl Settings {
     /// [`Settings::shell`]'s sentence, made once more and in one function rather than the same
     /// `is_empty` test wherever an adapter is started.
     pub fn debug_adapter(&self, name: &str) -> Option<&str> {
-        self.debug_adapters
-            .iter()
-            .find(|(known, _)| known == name)
-            .map(|(_, path)| path.as_str())
+        self.debug_adapters.iter().find(|(known, _)| known == name).map(|(_, path)| path.as_str())
     }
 
     /// How much larger or smaller than egui's own the window's text is set.
@@ -1034,7 +1036,9 @@ impl Panes {
             Panel::Run => self.run_width,
             Panel::Debug => self.debug_width,
             Panel::Space => self.space_width,
-            Panel::Plugin(slot) => self.plugin_widths[(slot as usize).min(self.plugin_widths.len() - 1)],
+            Panel::Plugin(slot) => {
+                self.plugin_widths[(slot as usize).min(self.plugin_widths.len() - 1)]
+            }
         }
     }
 
@@ -1047,7 +1051,9 @@ impl Panes {
             Panel::Run => self.run_height,
             Panel::Debug => self.debug_height,
             Panel::Space => self.space_height,
-            Panel::Plugin(slot) => self.plugin_heights[(slot as usize).min(self.plugin_heights.len() - 1)],
+            Panel::Plugin(slot) => {
+                self.plugin_heights[(slot as usize).min(self.plugin_heights.len() - 1)]
+            }
         }
     }
 
@@ -1094,7 +1100,9 @@ impl Panes {
         use crate::app::dock::Panel;
         match panel {
             Panel::Explorer => self.explorer_zoom,
-            Panel::Plugin(slot) => self.plugin_zooms[(slot as usize).min(self.plugin_zooms.len() - 1)],
+            Panel::Plugin(slot) => {
+                self.plugin_zooms[(slot as usize).min(self.plugin_zooms.len() - 1)]
+            }
             _ => DEFAULT_ZOOM,
         }
     }
@@ -1206,12 +1214,7 @@ pub fn save(store: &Store, settings: &Settings, panes: &Panes) {
 
 /// The same, told the names of the panes plugins contributed, in slot order, so a contributed pane's
 /// side and size are written against its own name rather than being lost.
-pub fn save_with(
-    store: &Store,
-    settings: &Settings,
-    panes: &Panes,
-    plugin_panes: &[String],
-) {
+pub fn save_with(store: &Store, settings: &Settings, panes: &Panes, plugin_panes: &[String]) {
     let mut values = store.read_values();
     settings.write_into(&mut values);
     panes.write_into_with(&mut values, plugin_panes);
@@ -1299,7 +1302,10 @@ mod tests {
         Settings::new().write_into(&mut values);
         assert_eq!(values.text("debug.lldb"), None);
         assert_eq!(values.text("debug.node"), None);
-        assert!(Settings::new().debug_adapter("lldb").is_none(), "empty means what this machine has");
+        assert!(
+            Settings::new().debug_adapter("lldb").is_none(),
+            "empty means what this machine has"
+        );
 
         let chosen = Settings::read_from(&Values::parse(r"debug.lldb = C:\tools\codelldb.exe"));
         assert_eq!(chosen.debug_adapter("lldb"), Some(r"C:\tools\codelldb.exe"));
@@ -1324,21 +1330,39 @@ mod tests {
     fn a_hand_edited_port_is_brought_inside_its_limits_rather_than_refused() {
         // The rule every other setting keeps: an extreme is clamped and only a value that is not a
         // number at all is a mistake.
-        let low = Settings::read_from(&Values::parse("mcp.port = 22
-"));
+        let low = Settings::read_from(&Values::parse(
+            "mcp.port = 22
+",
+        ));
         assert_eq!(low.mcp_port, unluminous_cli::mcp::MIN_PORT);
-        let high = Settings::read_from(&Values::parse("mcp.port = 999999
-"));
+        let high = Settings::read_from(&Values::parse(
+            "mcp.port = 999999
+",
+        ));
         assert_eq!(high.mcp_port, u16::MAX);
-        let nonsense = Settings::read_from(&Values::parse("mcp.port = banana
-"));
-        assert_eq!(nonsense.mcp_port, unluminous_cli::mcp::DEFAULT_PORT, "an unreadable line is no line");
-        let shape = Settings::read_from(&Values::parse("mcp.tools = every
-"));
+        let nonsense = Settings::read_from(&Values::parse(
+            "mcp.port = banana
+",
+        ));
+        assert_eq!(
+            nonsense.mcp_port,
+            unluminous_cli::mcp::DEFAULT_PORT,
+            "an unreadable line is no line"
+        );
+        let shape = Settings::read_from(&Values::parse(
+            "mcp.tools = every
+",
+        ));
         assert_eq!(shape.mcp_tools, unluminous_cli::mcp::Shape::Every);
-        let unknown = Settings::read_from(&Values::parse("mcp.tools = clever
-"));
-        assert_eq!(unknown.mcp_tools, unluminous_cli::mcp::Shape::Grouped, "a word this version does not have is ignored");
+        let unknown = Settings::read_from(&Values::parse(
+            "mcp.tools = clever
+",
+        ));
+        assert_eq!(
+            unknown.mcp_tools,
+            unluminous_cli::mcp::Shape::Grouped,
+            "a word this version does not have is ignored"
+        );
     }
 
     #[test]
@@ -1352,11 +1376,15 @@ mod tests {
         settings.write_into(&mut values);
         assert_eq!(values.text("terminal.shell"), None, "nothing is written until it is chosen");
 
-        let chosen = Settings::read_from(&Values::parse("terminal.shell = cmd.exe
-"));
+        let chosen = Settings::read_from(&Values::parse(
+            "terminal.shell = cmd.exe
+",
+        ));
         assert_eq!(chosen.shell().as_deref(), Some("cmd.exe"));
-        let blank = Settings::read_from(&Values::parse("terminal.shell =   
-"));
+        let blank = Settings::read_from(&Values::parse(
+            "terminal.shell =   
+",
+        ));
         assert_eq!(blank.shell(), None, "a line with nothing after it is not a shell");
     }
 
@@ -1364,13 +1392,17 @@ mod tests {
     fn suggestions_default_to_automatic_and_a_value_this_version_does_not_have_is_ignored() {
         assert_eq!(Settings::new().suggestions, Suggestions::Automatic);
         assert!(Settings::new().suggestions.is_automatic());
-        let manual = Settings::read_from(&Values::parse("editor.suggestions = manual
-"));
+        let manual = Settings::read_from(&Values::parse(
+            "editor.suggestions = manual
+",
+        ));
         assert_eq!(manual.suggestions, Suggestions::Manual);
         // A word this version has never heard of leaves the default alone rather than switching the
         // feature off by accident, which is the answer `plugin.kind` gives to the same question.
-        let odd = Settings::read_from(&Values::parse("editor.suggestions = telepathy
-"));
+        let odd = Settings::read_from(&Values::parse(
+            "editor.suggestions = telepathy
+",
+        ));
         assert_eq!(odd.suggestions, Suggestions::Automatic);
         for value in [Suggestions::Automatic, Suggestions::Manual] {
             assert_eq!(Suggestions::parse(value.name()), Some(value));

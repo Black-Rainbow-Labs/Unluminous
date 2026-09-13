@@ -20,9 +20,7 @@ use unluminous_chat::Reply;
 
 /// The recorded run called `name`, read into replies the way `agent::run` reads a child's output.
 fn replies_from(name: &str, wire: Wire) -> (Vec<Reply>, Decoder) {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/streams")
-        .join(name);
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/streams").join(name);
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|_| panic!("{} should be there", path.display()));
     let mut decoder = Decoder::new(wire);
@@ -58,26 +56,16 @@ fn texts(replies: &[Reply]) -> String {
 #[test]
 fn a_recorded_claude_turn_is_read_as_one_answer_with_one_usage() {
     let (replies, decoder) = replies_from("claude-cli.jsonl", Wire::ClaudeCli);
-    assert_eq!(
-        replies[0],
-        Reply::Session("29611139-4d2a-495a-b9a9-94a6189e509c".to_owned())
-    );
-    assert_eq!(
-        replies[1],
-        Reply::Started {
-            model: "claude-sonnet-5".to_owned()
-        }
-    );
+    assert_eq!(replies[0], Reply::Session("29611139-4d2a-495a-b9a9-94a6189e509c".to_owned()));
+    assert_eq!(replies[1], Reply::Started { model: "claude-sonnet-5".to_owned() });
     assert_eq!(texts(&replies), "hello from the cli.");
     assert!(decoder.ended, "the `result` line ends the turn");
 
     // **Exactly one usage.** The nested `message_delta` reports what that message cost and the
     // envelope's `result` reports the whole turn; both were taken, so an ordinary one-message answer
     // was banked twice.
-    let usages: Vec<&Reply> = replies
-        .iter()
-        .filter(|reply| matches!(reply, Reply::Usage { .. }))
-        .collect();
+    let usages: Vec<&Reply> =
+        replies.iter().filter(|reply| matches!(reply, Reply::Usage { .. })).collect();
     assert_eq!(usages.len(), 1, "{replies:?}");
 
     // And the same read through a `Session`, which is where a double count would land.
@@ -105,12 +93,8 @@ fn a_recorded_claude_tool_turn_shows_the_call_the_agent_ran_and_the_answer_it_go
     // from its own tool. Unluminous ran none of it.
     let session = session_from("claude-cli-tool.jsonl", Wire::ClaudeCli);
     assert!(matches!(session.state(), State::Finished { .. }), "{:?}", session.state());
-    let calls: Vec<&unluminous_chat::ToolCall> = session
-        .chat
-        .messages
-        .iter()
-        .flat_map(|message| message.tools.iter())
-        .collect();
+    let calls: Vec<&unluminous_chat::ToolCall> =
+        session.chat.messages.iter().flat_map(|message| message.tools.iter()).collect();
     assert_eq!(calls.len(), 1, "{:?}", session.chat.messages);
     assert_eq!(calls[0].name, "Bash");
     assert!(calls[0].arguments.contains("git rev-parse"), "{}", calls[0].arguments);
@@ -137,10 +121,7 @@ fn a_recorded_claude_tool_turn_shows_the_call_the_agent_ran_and_the_answer_it_go
 #[test]
 fn a_recorded_codex_turn_is_read_once_though_its_items_arrive_twice() {
     let (replies, decoder) = replies_from("codex-cli.jsonl", Wire::CodexCli);
-    assert_eq!(
-        replies[0],
-        Reply::Session("01a05d36-e5d2-7ce3-97c5-f6af9f332bcd".to_owned())
-    );
+    assert_eq!(replies[0], Reply::Session("01a05d36-e5d2-7ce3-97c5-f6af9f332bcd".to_owned()));
     assert_eq!(texts(&replies), "hello from the cli.");
     assert!(decoder.ended);
 
@@ -157,12 +138,8 @@ fn a_recorded_codex_tool_turn_draws_each_command_once_with_what_it_printed() {
     // call must be announced once and answered once, or the pane draws it twice.
     let session = session_from("codex-cli-tool.jsonl", Wire::CodexCli);
     assert!(matches!(session.state(), State::Finished { .. }), "{:?}", session.state());
-    let calls: Vec<&unluminous_chat::ToolCall> = session
-        .chat
-        .messages
-        .iter()
-        .flat_map(|message| message.tools.iter())
-        .collect();
+    let calls: Vec<&unluminous_chat::ToolCall> =
+        session.chat.messages.iter().flat_map(|message| message.tools.iter()).collect();
     assert_eq!(calls.len(), 2, "{calls:?}");
     for call in &calls {
         assert_eq!(call.name, "shell");
@@ -198,7 +175,9 @@ fn an_agent_that_stops_without_its_last_event_says_so_once() {
     // an interrupted stream under an exit code. Codex has no inner decoder to finish at all.
     let mut codex = Decoder::new(Wire::CodexCli);
     codex.line(r#"{"type":"thread.started","thread_id":"t-1"}"#);
-    codex.line(r#"{"type":"item.completed","item":{"id":"i0","type":"agent_message","text":"half"}}"#);
+    codex.line(
+        r#"{"type":"item.completed","item":{"id":"i0","type":"agent_message","text":"half"}}"#,
+    );
     assert!(codex.finish().is_empty(), "codex has no nested stream to interrupt");
     assert!(!codex.ended, "and the caller still knows it never finished");
 
@@ -223,7 +202,9 @@ fn a_codex_item_that_rewrites_itself_is_not_spliced_into_nonsense() {
     // beginning has nothing to do with what was already shown, so the whole of it is sent rather
     // than a slice out of its middle — which is what a length alone would have taken.
     let mut decoder = Decoder::new(Wire::CodexCli);
-    let first = decoder.line(r#"{"type":"item.updated","item":{"id":"i0","type":"agent_message","text":"the quick"}}"#);
+    let first = decoder.line(
+        r#"{"type":"item.updated","item":{"id":"i0","type":"agent_message","text":"the quick"}}"#,
+    );
     assert_eq!(first, vec![Reply::Text("the quick".to_owned())]);
     let grown = decoder.line(r#"{"type":"item.updated","item":{"id":"i0","type":"agent_message","text":"the quick brown"}}"#);
     assert_eq!(grown, vec![Reply::Text(" brown".to_owned())]);
@@ -269,13 +250,7 @@ fn a_tool_answer_lands_on_the_call_that_is_still_running() {
     });
     let calls = &session.chat.messages[1].tools;
     assert_eq!(calls.len(), 2);
-    assert!(
-        calls.iter().all(|call| !call.is_running()),
-        "both were answered: {calls:?}"
-    );
-    let answers: Vec<&str> = calls
-        .iter()
-        .filter_map(|call| call.answer.as_deref())
-        .collect();
+    assert!(calls.iter().all(|call| !call.is_running()), "both were answered: {calls:?}");
+    let answers: Vec<&str> = calls.iter().filter_map(|call| call.answer.as_deref()).collect();
     assert_eq!(answers, ["second", "first"], "newest first, which is the order they were filled");
 }

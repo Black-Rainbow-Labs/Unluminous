@@ -195,11 +195,7 @@ fn split_blocks(piece: &str) -> Vec<String> {
 }
 
 /// Read one block: `id`, `id["words"]`, `id["words"]:2`, `space`, `space:3`.
-fn read_block(
-    diagram: &mut Diagram,
-    word: &str,
-    parent: Option<usize>,
-) -> Result<usize, Problem> {
+fn read_block(diagram: &mut Diagram, word: &str, parent: Option<usize>) -> Result<usize, Problem> {
     // A `:N` suffix outside any brackets says how many columns it takes.
     let (body, span) = split_span(word);
     if body.eq_ignore_ascii_case("space") {
@@ -363,9 +359,15 @@ fn read_bar_label(text: &str, from: usize) -> (String, usize) {
 
 fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
     let mut placed = diagram.blocks.clone();
-    let height =
-        lay_grid(&mut placed, &diagram.roots, diagram.columns, Point::new(parts::MARGIN, 0.0), CELL);
-    let width = parts::MARGIN * 2.0 + CELL * diagram.columns as f32 + GAP * (diagram.columns - 1) as f32;
+    let height = lay_grid(
+        &mut placed,
+        &diagram.roots,
+        diagram.columns,
+        Point::new(parts::MARGIN, 0.0),
+        CELL,
+    );
+    let width =
+        parts::MARGIN * 2.0 + CELL * diagram.columns as f32 + GAP * (diagram.columns - 1) as f32;
 
     let mut scene = Scene::new();
     let top = parts::title(&mut scene, source, options, width);
@@ -441,13 +443,7 @@ fn rows_of(blocks: &[Block], nodes: &[usize], columns: usize) -> Vec<Row> {
 /// `cell` is how wide one column is. A nested grid gets a smaller one, worked out from the room its
 /// parent actually has: a child cell the same width as a top level cell cannot fit inside a one-cell
 /// parent, and sticks out of the right of it by exactly the padding.
-fn lay_grid(
-    blocks: &mut [Block],
-    nodes: &[usize],
-    columns: usize,
-    at: Point,
-    cell: f32,
-) -> f32 {
+fn lay_grid(blocks: &mut [Block], nodes: &[usize], columns: usize, at: Point, cell: f32) -> f32 {
     let rows = rows_of(blocks, nodes, columns);
     let mut y = at.y;
     for row in &rows {
@@ -497,13 +493,21 @@ fn draw_blocks(scene: &mut Scene, blocks: &[Block], nodes: &[usize], options: &O
             scene,
             block.rect,
             if has_children { theme.group_fill } else { theme.node_fill },
-            Stroke::new(if has_children { theme.group_stroke } else { theme.node_stroke }, parts::LINE),
+            Stroke::new(
+                if has_children { theme.group_stroke } else { theme.node_stroke },
+                parts::LINE,
+            ),
         );
         let style = options.style(0.95, has_children);
         let label = text::measure(&block.label, &style, options.metrics, block.rect.width - 12.0);
         let at = if has_children {
             // A block with a grid inside it has its name across the top, out of the way.
-            Rect::new(block.rect.x, block.rect.y, block.rect.width, parts::PADDING_Y * 2.0 + label.height)
+            Rect::new(
+                block.rect.x,
+                block.rect.y,
+                block.rect.width,
+                parts::PADDING_Y * 2.0 + label.height,
+            )
         } else {
             block.rect
         };
@@ -535,9 +539,23 @@ fn draw_arrows(scene: &mut Scene, diagram: &Diagram, blocks: &[Block], options: 
             stroke: Stroke::new(theme.line, parts::LINE),
             dash: if arrow.dashed { parts::DASH } else { Dash::Solid },
         });
-        parts::ending(scene, Ending::Arrow, path[1], parts::heading(&path), theme.line, theme.node_fill);
+        parts::ending(
+            scene,
+            Ending::Arrow,
+            path[1],
+            parts::heading(&path),
+            theme.line,
+            theme.node_fill,
+        );
         if arrow.both {
-            parts::ending(scene, Ending::Arrow, path[0], parts::tail_heading(&path), theme.line, theme.node_fill);
+            parts::ending(
+                scene,
+                Ending::Arrow,
+                path[0],
+                parts::tail_heading(&path),
+                theme.line,
+                theme.node_fill,
+            );
         }
         if arrow.label.trim().is_empty() {
             continue;
@@ -627,11 +645,7 @@ mod tests {
             block:services\n  api[\"API\"]\n  auth[\"Auth\"]\n end\n\
             space\n db[(\"Database\")]\n\
             frontend --> db\n";
-        check::drawn(
-            text,
-            &options(),
-            &["The front end", "API", "Auth", "Database"],
-        );
+        check::drawn(text, &options(), &["The front end", "API", "Auth", "Database"]);
     }
 
     #[test]

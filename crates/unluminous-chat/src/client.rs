@@ -160,7 +160,9 @@ impl Client {
                     // A reply from a request that has been overtaken is dropped at the point it is
                     // made rather than at the point it is read, so an abandoned thread stops costing
                     // the channel anything.
-                    if newest.load(Ordering::SeqCst) != generation || stopping.load(Ordering::SeqCst) {
+                    if newest.load(Ordering::SeqCst) != generation
+                        || stopping.load(Ordering::SeqCst)
+                    {
                         return false;
                     }
                     if to.send(Arrived { generation, reply }).is_err() {
@@ -206,7 +208,8 @@ impl Client {
                     // agent session to a conversation that had nothing to do with it and the next
                     // question would resume the wrong thread. The id arrives in the first few bytes
                     // of a turn, before anything can have overtaken it, so nothing real is lost.
-                    if newest.load(Ordering::SeqCst) != generation || stopping.load(Ordering::SeqCst)
+                    if newest.load(Ordering::SeqCst) != generation
+                        || stopping.load(Ordering::SeqCst)
                     {
                         return false;
                     }
@@ -506,9 +509,7 @@ mod tests {
             let length = String::from_utf8_lossy(&seen)
                 .lines()
                 .find_map(|line| {
-                    line.strip_prefix("content-length: ")
-                        .map(str::trim)
-                        .map(str::to_owned)
+                    line.strip_prefix("content-length: ").map(str::trim).map(str::to_owned)
                 })
                 .and_then(|value| value.parse::<usize>().ok())
                 .unwrap_or(0);
@@ -556,7 +557,8 @@ mod tests {
         replies.into_inner().expect("the replies")
     }
 
-    const STREAM: &[u8] = b"data: {\"model\":\"m\",\"choices\":[{\"delta\":{\"content\":\"Hello \"}}]}\n\n\
+    const STREAM: &[u8] =
+        b"data: {\"model\":\"m\",\"choices\":[{\"delta\":{\"content\":\"Hello \"}}]}\n\n\
 data: {\"choices\":[{\"delta\":{\"content\":\"there\"}}]}\n\n\
 data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
 data: [DONE]\n\n";
@@ -567,20 +569,10 @@ data: [DONE]\n\n";
         // framing and the decoder both driven by whatever the socket happened to deliver.
         let url = scripted(200, "content-type: text/event-stream\r\n", STREAM, 17);
         let replies = against(&url, Wire::OpenAi, true);
-        assert_eq!(
-            replies[0],
-            Reply::Started {
-                model: "m".to_owned()
-            }
-        );
+        assert_eq!(replies[0], Reply::Started { model: "m".to_owned() });
         assert_eq!(replies[1], Reply::Text("Hello ".to_owned()));
         assert_eq!(replies[2], Reply::Text("there".to_owned()));
-        assert_eq!(
-            replies[3],
-            Reply::Finished {
-                reason: "stop".to_owned()
-            }
-        );
+        assert_eq!(replies[3], Reply::Finished { reason: "stop".to_owned() });
         assert_eq!(replies.len(), 4, "{replies:?}");
     }
 
@@ -615,12 +607,7 @@ data: [DONE]\n\n";
         let url = scripted(200, "content-type: application/json\r\n", WHOLE, 3);
         let replies = against(&url, Wire::OpenAi, false);
         assert_eq!(replies[1], Reply::Text("Hi".to_owned()));
-        assert_eq!(
-            replies[2],
-            Reply::Finished {
-                reason: "stop".to_owned()
-            }
-        );
+        assert_eq!(replies[2], Reply::Finished { reason: "stop".to_owned() });
     }
 
     #[test]
@@ -629,11 +616,7 @@ data: [DONE]\n\n";
         let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
         let address = listener.local_addr().expect("an address");
         drop(listener);
-        let replies = against(
-            &format!("http://{address}/v1/chat/completions"),
-            Wire::OpenAi,
-            true,
-        );
+        let replies = against(&format!("http://{address}/v1/chat/completions"), Wire::OpenAi, true);
         assert_eq!(replies.len(), 1);
         let Reply::Failed(said) = &replies[0] else {
             panic!("{replies:?}");
@@ -654,10 +637,7 @@ data: [DONE]\n\n";
         let Reply::Failed(said) = &replies[0] else {
             panic!("{replies:?}");
         };
-        assert!(
-            said.contains("302"),
-            "the refusal says what the server answered: {said}"
-        );
+        assert!(said.contains("302"), "the refusal says what the server answered: {said}");
     }
 
     #[test]
@@ -665,7 +645,8 @@ data: [DONE]\n\n";
         // A refusal is quoted verbatim, which is the right rule; but a gateway that echoes the request
         // back would put the key in the conversation and then in the transcript on disk, which is the
         // one thing Unluminous promises never to write down.
-        const ECHOED: &[u8] = b"{\"error\":{\"message\":\"bad key sk-secret-value-1234 rejected\"}}";
+        const ECHOED: &[u8] =
+            b"{\"error\":{\"message\":\"bad key sk-secret-value-1234 rejected\"}}";
         let url = scripted(401, "content-type: application/json\r\n", ECHOED, 1);
         let replies = std::sync::Mutex::new(Vec::new());
         let stopping = AtomicBool::new(false);
@@ -688,14 +669,8 @@ data: [DONE]\n\n";
         let Reply::Failed(message) = &said[0] else {
             panic!("{said:?}");
         };
-        assert!(
-            !message.contains("sk-secret-value-1234"),
-            "the key came back: {message}"
-        );
-        assert!(
-            message.contains("bad key"),
-            "the rest of what the server said is kept: {message}"
-        );
+        assert!(!message.contains("sk-secret-value-1234"), "the key came back: {message}");
+        assert!(message.contains("bad key"), "the rest of what the server said is kept: {message}");
         // And `content-type` is not treated as a secret, or every message would lose the words
         // `application/json` out of the middle of it.
         assert!(!message.contains("\u{2026}/json"));
@@ -742,17 +717,11 @@ data: [DONE]\n\n";
             std::thread::sleep(Duration::from_millis(10));
         }
         assert_eq!(client.generation(), newer);
-        assert!(
-            said.iter().any(|reply| matches!(reply, Reply::Finished { .. })),
-            "{said:?}"
-        );
+        assert!(said.iter().any(|reply| matches!(reply, Reply::Finished { .. })), "{said:?}");
         // Whatever the first thread manages to say is filtered out on arrival.
         std::thread::sleep(Duration::from_millis(150));
         let late = client.take();
-        assert!(
-            !late.iter().any(|reply| matches!(reply, Reply::Started { .. })),
-            "{late:?}"
-        );
+        assert!(!late.iter().any(|reply| matches!(reply, Reply::Started { .. })), "{late:?}");
     }
 
     #[test]
@@ -803,9 +772,6 @@ data: [DONE]\n\n";
             true
         });
         let said = replies.into_inner().expect("replies");
-        assert!(
-            !said.iter().any(|reply| matches!(reply, Reply::Finished { .. })),
-            "{said:?}"
-        );
+        assert!(!said.iter().any(|reply| matches!(reply, Reply::Finished { .. })), "{said:?}");
     }
 }

@@ -254,7 +254,9 @@ pub fn respond<D: Driver>(request: &Incoming, server: &Server<D>) -> String {
         "DELETE" => response(405, "text/plain", "This endpoint has no sessions to end."),
         "OPTIONS" => response(204, "text/plain", ""),
         "POST" => post(request, server),
-        other => response(405, "text/plain", &format!("{other} is not a method this endpoint has.")),
+        other => {
+            response(405, "text/plain", &format!("{other} is not a method this endpoint has."))
+        }
     }
 }
 
@@ -264,11 +266,7 @@ fn post<D: Driver>(request: &Incoming, server: &Server<D>) -> String {
         // shape rather than against a list, because refusing a revision that has not been published
         // yet would be this endpoint breaking on the day the specification moves.
         if !crate::mcp::server::looks_like_a_version(named) {
-            return response(
-                400,
-                "text/plain",
-                &format!("`{named}` is not a protocol version."),
-            );
+            return response(400, "text/plain", &format!("`{named}` is not a protocol version."));
         }
     }
     let message: Value = match serde_json::from_str(request.body.trim()) {
@@ -328,9 +326,7 @@ pub fn refuse_a_browser(request: &Incoming) -> Option<String> {
 /// True of `http://127.0.0.1:1234`, `http://localhost`, and nothing else.
 fn is_loopback_origin(origin: &str) -> bool {
     let origin = origin.trim();
-    let Some(host) = origin
-        .strip_prefix("http://")
-        .or_else(|| origin.strip_prefix("https://"))
+    let Some(host) = origin.strip_prefix("http://").or_else(|| origin.strip_prefix("https://"))
     else {
         // `null`, `file://`, and anything else that is not an http origin at all.
         return false;
@@ -406,11 +402,7 @@ mod tests {
     }
 
     fn status_of(response: &str) -> u16 {
-        response
-            .split_whitespace()
-            .nth(1)
-            .and_then(|code| code.parse().ok())
-            .expect("a status")
+        response.split_whitespace().nth(1).and_then(|code| code.parse().ok()).expect("a status")
     }
 
     fn body_of(response: &str) -> &str {
@@ -519,8 +511,9 @@ mod tests {
         let port = endpoint.port();
         for round in 0..5 {
             drop(endpoint);
-            endpoint = Endpoint::start(port, a_server())
-                .unwrap_or_else(|problem| panic!("round {round} could not take {port} back: {problem}"));
+            endpoint = Endpoint::start(port, a_server()).unwrap_or_else(|problem| {
+                panic!("round {round} could not take {port} back: {problem}")
+            });
             assert_eq!(endpoint.port(), port);
         }
     }
@@ -530,8 +523,8 @@ mod tests {
         let endpoint = Endpoint::start(0, a_server()).expect("it starts");
         let port = endpoint.port();
         assert!(endpoint.is_running());
-        let mut stream = TcpStream::connect(SocketAddr::from((Ipv4Addr::LOCALHOST, port)))
-            .expect("connect");
+        let mut stream =
+            TcpStream::connect(SocketAddr::from((Ipv4Addr::LOCALHOST, port))).expect("connect");
         let body = r#"{"jsonrpc":"2.0","id":7,"method":"tools/list"}"#;
         write!(
             stream,

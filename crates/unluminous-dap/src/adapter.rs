@@ -167,7 +167,9 @@ fn start_server(command: &AdapterCommand, port: u16) -> Result<Connection, Strin
     // which port it took — so it is swallowed rather than mixed into the frames. An adapter that
     // fails to start says so by never answering the connection, which is the message below.
     let mut child = match &command.program {
-        Some(program) => Some(spawn(program, command, Stdio::null(), Stdio::null(), Stdio::piped())?),
+        Some(program) => {
+            Some(spawn(program, command, Stdio::null(), Stdio::null(), Stdio::piped())?)
+        }
         None => None,
     };
     let errors = child
@@ -216,9 +218,9 @@ fn start_server(command: &AdapterCommand, port: u16) -> Result<Connection, Strin
     // small write that the other end is waiting on. A stepping request delayed by forty milliseconds
     // is a debugger that feels broken.
     let _ = stream.set_nodelay(true);
-    let reader = stream
-        .try_clone()
-        .map_err(|problem| format!("Unluminous could not read from the debug adapter: {problem}"))?;
+    let reader = stream.try_clone().map_err(|problem| {
+        format!("Unluminous could not read from the debug adapter: {problem}")
+    })?;
     Ok(Connection {
         writer: Box::new(stream),
         reader: Box::new(BufReader::new(reader)),
@@ -257,9 +259,9 @@ fn spawn(
         use std::os::windows::process::CommandExt;
         process.creation_flags(0x0800_0000);
     }
-    process.spawn().map_err(|problem| {
-        format!("Unluminous could not start {}: {problem}", program.display())
-    })
+    process
+        .spawn()
+        .map_err(|problem| format!("Unluminous could not start {}: {problem}", program.display()))
 }
 
 fn standard_stream_missing(program: &std::path::Path) -> String {
@@ -282,7 +284,11 @@ mod tests {
     fn what_was_started_is_described_as_it_was_handed_over() {
         let command = AdapterCommand::stdio("C:\\llvm\\bin\\lldb-dap.exe", Vec::new());
         assert_eq!(command.described(), "C:\\llvm\\bin\\lldb-dap.exe");
-        let server = AdapterCommand::server("node", vec!["js-debug/src/dapDebugServer.js".to_owned(), "8123".to_owned()], 8123);
+        let server = AdapterCommand::server(
+            "node",
+            vec!["js-debug/src/dapDebugServer.js".to_owned(), "8123".to_owned()],
+            8123,
+        );
         assert_eq!(server.described(), "node js-debug/src/dapDebugServer.js 8123");
     }
 

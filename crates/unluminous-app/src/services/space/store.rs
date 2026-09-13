@@ -42,7 +42,9 @@ use egui::{Pos2, Vec2};
 use crate::services::project_state;
 use crate::services::store::Values;
 
-use super::node::{Browser, Camera, Chat, Edge, Editor, Folder, Kind, Node, Pipe, State, Tasks, Terminal};
+use super::node::{
+    Browser, Camera, Chat, Edge, Editor, Folder, Kind, Node, Pipe, State, Tasks, Terminal,
+};
 use super::{Space, View};
 
 /// The file inside `.unluminous`.
@@ -297,10 +299,8 @@ fn read_a_view(values: &Values, key: &str, id: u64, root: &Path) -> View {
         ) else {
             continue;
         };
-        let pipe = values
-            .text(&format!("{key}.pipe"))
-            .and_then(Pipe::from_name)
-            .unwrap_or_default();
+        let pipe =
+            values.text(&format!("{key}.pipe")).and_then(Pipe::from_name).unwrap_or_default();
         // The id is not written down: an edge is named by the two nodes it joins, and a fresh number
         // is handed out below by `Space::adopt`, which is also what stops a hand written file giving
         // two edges one id.
@@ -385,7 +385,10 @@ fn read_a_node(values: &Values, key: &str, root: &Path) -> Option<Node> {
             font_size: values.number(&format!("{key}.font")).unwrap_or(0.0).max(0.0),
         }),
         Kind::Chat => State::Chat(Chat {
-            conversation: values.text(&format!("{key}.conversation")).unwrap_or_default().to_owned(),
+            conversation: values
+                .text(&format!("{key}.conversation"))
+                .unwrap_or_default()
+                .to_owned(),
             zoom: read_a_zoom(values, key),
         }),
         Kind::Tasks => State::Tasks(Tasks { zoom: read_a_zoom(values, key) }),
@@ -516,7 +519,10 @@ mod tests {
         let node = &back.views()[0].nodes[0];
         let State::Terminal(terminal) = &node.state else { panic!("a terminal node") };
         assert_eq!(terminal.command, "zsh", "what it was given still comes back");
-        assert_eq!(terminal.running, "", "and what was running reads as a prompt rather than refusing");
+        assert_eq!(
+            terminal.running, "",
+            "and what was running reads as a prompt rather than refusing"
+        );
     }
 
     /// What was running is written down beside the command, and they are different things.
@@ -556,11 +562,13 @@ mod tests {
         let one = std::path::PathBuf::from("/a/one.rs");
         let two = std::path::PathBuf::from("/a/two.rs");
 
-        let held = Editor { paths: vec![one.clone(), two.clone()], showing: 1, ..Editor::default() };
+        let held =
+            Editor { paths: vec![one.clone(), two.clone()], showing: 1, ..Editor::default() };
         assert_eq!(held.showing(), Some(two.as_path()));
 
         // Past the end, which a hand edited file can ask for.
-        let held = Editor { paths: vec![one.clone(), two.clone()], showing: 99, ..Editor::default() };
+        let held =
+            Editor { paths: vec![one.clone(), two.clone()], showing: 99, ..Editor::default() };
         assert_eq!(held.showing(), Some(two.as_path()), "the last one rather than nothing");
 
         // And a node with no tabs at all answers with nothing rather than reaching into an empty list.
@@ -585,10 +593,8 @@ mod tests {
         let editor = space.add_node(Kind::Editor, egui::Pos2::ZERO, None);
         space.change(editor, |state| {
             if let State::Editor(held) = state {
-                *held = Editor {
-                    paths: vec![awkward.clone(), ordinary.clone()],
-                    ..Editor::default()
-                };
+                *held =
+                    Editor { paths: vec![awkward.clone(), ordinary.clone()], ..Editor::default() };
             }
         });
         let folder = space.add_node(Kind::Folder, egui::Pos2::ZERO, None);

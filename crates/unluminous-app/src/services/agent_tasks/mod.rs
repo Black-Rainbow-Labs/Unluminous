@@ -183,11 +183,7 @@ impl Configuration {
         };
         let values = crate::services::store::Values::parse(&text);
         let path = |name: &str| {
-            values
-                .text(name)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(PathBuf::from)
+            values.text(name).map(str::trim).filter(|value| !value.is_empty()).map(PathBuf::from)
         };
         // The same reading as `path`, as text. One closure rather than the same three lines six times: a value
         // that is present and empty is a value nobody chose, which is the rule `Settings::shell` keeps.
@@ -298,7 +294,8 @@ impl Configuration {
             }
             // What the Iliad gateway itself wants, which is what `~/.zshrc` sets alongside the key. It carries
             // the key, so it is built here at the moment of launch with the rest and is never written down.
-            environment.push(("ANTHROPIC_CUSTOM_HEADERS".to_owned(), format!("x-api-key: {secret}")));
+            environment
+                .push(("ANTHROPIC_CUSTOM_HEADERS".to_owned(), format!("x-api-key: {secret}")));
         }
         if let Some(url) = &self.base_url {
             // Both agents read a base URL from the environment, and they read different names, so both are
@@ -443,7 +440,9 @@ pub fn where_the_key_came_from() -> Option<&'static str> {
         return Some("this machine's keychain");
     }
     match crate::services::login_shell::variable("ANTHROPIC_API_KEY") {
-        Some(value) if !value.trim().is_empty() => Some("ANTHROPIC_API_KEY set by your shell profile"),
+        Some(value) if !value.trim().is_empty() => {
+            Some("ANTHROPIC_API_KEY set by your shell profile")
+        }
         _ => None,
     }
 }
@@ -809,7 +808,8 @@ impl TicketTerminal {
         // that printed changed its last screenful, and one that printed exactly the same screenful twice is
         // an agent that printed.
         let tail = self.session.written_text(Some(TAIL_LINES));
-        let written = tail.len() ^ (tail.as_bytes().iter().map(|byte| *byte as usize).sum::<usize>() << 8);
+        let written =
+            tail.len() ^ (tail.as_bytes().iter().map(|byte| *byte as usize).sum::<usize>() << 8);
         let printed = written != self.written;
         if printed {
             self.written = written;
@@ -862,7 +862,9 @@ impl TicketTerminal {
             return true;
         }
         self.has_printed
-            && self.quiet_since.is_some_and(|since| now.duration_since(since) >= PROMPT_SETTLES_AFTER)
+            && self
+                .quiet_since
+                .is_some_and(|since| now.duration_since(since) >= PROMPT_SETTLES_AFTER)
     }
 
     /// Write a line into the agent, and press return a beat later.
@@ -1171,7 +1173,8 @@ impl AgentTasks {
     pub fn board_where(&self) -> String {
         match self.store.as_ref() {
             Some(store) if store.path() == std::path::Path::new(":memory:") => {
-                "in memory \u{2014} this window has no settings folder, so nothing is written".to_owned()
+                "in memory \u{2014} this window has no settings folder, so nothing is written"
+                    .to_owned()
             }
             Some(store) => store.path().display().to_string(),
             None => "not open".to_owned(),
@@ -1218,10 +1221,8 @@ impl AgentTasks {
     /// The same, for an epic.
     fn epic_named(&self, said: &str) -> Result<Epic, String> {
         let epics = self.store()?.epics()?;
-        let found = epics
-            .iter()
-            .find(|epic| epic.name.eq_ignore_ascii_case(said.trim()))
-            .or_else(|| {
+        let found =
+            epics.iter().find(|epic| epic.name.eq_ignore_ascii_case(said.trim())).or_else(|| {
                 said.trim().parse::<i64>().ok().and_then(|id| epics.iter().find(|e| e.id == id))
             });
         found.cloned().ok_or_else(|| {
@@ -1265,7 +1266,8 @@ impl AgentTasks {
         let todo_draft = std::mem::take(&mut self.detail.todo_draft);
         // The title field keeps what is in it while the same ticket is open, and takes the row's title when a
         // different one is opened. Otherwise a refresh would overwrite what somebody was typing.
-        let same = self.detail.task.as_ref().map(|open| open.id) == task.as_ref().map(|read| read.id);
+        let same =
+            self.detail.task.as_ref().map(|open| open.id) == task.as_ref().map(|read| read.id);
         let title_draft = match same {
             true => std::mem::take(&mut self.detail.title_draft),
             false => task.as_ref().map(|read| read.title.clone()).unwrap_or_default(),
@@ -1281,9 +1283,12 @@ impl AgentTasks {
         // How somebody is looking at this ticket, carried across a refresh the way the drafts above are: a refresh
         // happens whenever anything on the board changes, and a description that flipped back to its source
         // every time a todo was ticked would be unusable. Cleared when the ticket itself changes.
-        let same_ticket = self.detail.task.as_ref().map(|open| open.id) == task.as_ref().map(|next| next.id);
+        let same_ticket =
+            self.detail.task.as_ref().map(|open| open.id) == task.as_ref().map(|next| next.id);
         let (description_rendered, comments_raw) = match same_ticket {
-            true => (self.detail.description_rendered, std::mem::take(&mut self.detail.comments_raw)),
+            true => {
+                (self.detail.description_rendered, std::mem::take(&mut self.detail.comments_raw))
+            }
             false => {
                 self.markdown.forget();
                 (false, std::collections::HashSet::new())
@@ -1327,9 +1332,7 @@ impl AgentTasks {
 
     /// The ticket a key names, or a sentence saying it is not on the board.
     fn by_key(&self, key: &str) -> Result<Task, String> {
-        self.store()?
-            .task_by_key(key)?
-            .ok_or_else(|| format!("{key} is not on this board"))
+        self.store()?.task_by_key(key)?.ok_or_else(|| format!("{key} is not on this board"))
     }
 
     /// Where an agent for this ticket is launched.
@@ -1385,12 +1388,9 @@ impl AgentTasks {
         // For Claude, Start on a ticket that has a session hands the same conversation back rather than
         // beginning a second one, because the id is one Claude answers to and losing it would lose the work.
         let resuming = task.session_id.is_some() && agent::can_resume(agent);
-        let session = task
-            .session_id
-            .clone()
-            .filter(|_| resuming)
-            .unwrap_or_else(new_session_id);
-        self.terminals.retain(|terminal| terminal.task_id != task.id || terminal.session.is_running());
+        let session = task.session_id.clone().filter(|_| resuming).unwrap_or_else(new_session_id);
+        self.terminals
+            .retain(|terminal| terminal.task_id != task.id || terminal.session.is_running());
         let plan = agent::Plan {
             agent,
             session: session.clone(),
@@ -1407,7 +1407,9 @@ impl AgentTasks {
         if task.session_id.is_none() {
             let claimed = self.store()?.claim(task.id, &session, agent, &owner(), &now)?;
             if !claimed {
-                return Err(format!("{key} was claimed by another window while this one was starting it"));
+                return Err(format!(
+                    "{key} was claimed by another window while this one was starting it"
+                ));
             }
         } else {
             self.store()?.set_session(task.id, &session, &now)?;
@@ -1457,10 +1459,9 @@ impl AgentTasks {
         if !agent::can_resume(agent) {
             return Err(agent::why_it_cannot_resume(key));
         }
-        let session = task
-            .session_id
-            .clone()
-            .ok_or_else(|| format!("{key} has never had a session, so there is nothing to resume"))?;
+        let session = task.session_id.clone().ok_or_else(|| {
+            format!("{key} has never had a session, so there is nothing to resume")
+        })?;
         // A terminal object that is **running**, not merely one that is there. A retired session leaves its object
         // behind so its last screen can still be read, and refusing on that meant a Claude ticket whose agent had
         // exited could not be resumed at all — which is the one thing Resume session exists for.
@@ -1468,7 +1469,8 @@ impl AgentTasks {
             return Ok(Answer::said(format!("{key} already has an agent running")));
         }
         // The dead one is dropped first, or two objects would claim one ticket.
-        self.terminals.retain(|terminal| terminal.task_id != task.id || terminal.session.is_running());
+        self.terminals
+            .retain(|terminal| terminal.task_id != task.id || terminal.session.is_running());
         let folder = self.working_folder(&task)?;
         let launch = agent::launch(&agent::Plan {
             agent,
@@ -1499,7 +1501,8 @@ impl AgentTasks {
         let task = self.by_key(key)?;
         // **Running**, not merely present. Typing at a session that has exited wrote into a closed pipe and
         // reported `sent`, which is the one thing a send must never do.
-        let alive = self.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
+        let alive =
+            self.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
         if !alive {
             // Resuming first is the rule, and for a Codex ticket resuming is refused, so the refusal says
             // what to press instead rather than typing at a process that is not there.
@@ -1582,7 +1585,8 @@ impl AgentTasks {
                 ));
                 // The two the handoff line names. Without them the line would have to hold an absolute
                 // path and a process id, which is a line nobody could read and nobody could retype.
-                environment.push((agent::ENV_CLI.to_owned(), beside_this_program("unluminous-cli")));
+                environment
+                    .push((agent::ENV_CLI.to_owned(), beside_this_program("unluminous-cli")));
                 environment.push((agent::ENV_INSTANCE.to_owned(), std::process::id().to_string()));
                 // Last, so the board's gateway and key beat the profile's. They are what the Settings
                 // page shows and what somebody edits there, and a page whose value was quietly
@@ -1705,7 +1709,11 @@ impl AgentTasks {
                 edit.assignee = Some(Assignee::parse(value).ok_or_else(|| {
                     format!(
                         "there is no `{value}` assignee: {}",
-                        Assignee::ALL.iter().map(|one| one.name()).collect::<Vec<&str>>().join(", ")
+                        Assignee::ALL
+                            .iter()
+                            .map(|one| one.name())
+                            .collect::<Vec<&str>>()
+                            .join(", ")
                     )
                 })?);
             }
@@ -1719,10 +1727,7 @@ impl AgentTasks {
             }
             Field::Effort(value) => {
                 if !empty(value) && !EFFORTS.contains(&value.as_str()) {
-                    return Err(format!(
-                        "there is no `{value}` effort: {}",
-                        EFFORTS.join(", ")
-                    ));
+                    return Err(format!("there is no `{value}` effort: {}", EFFORTS.join(", ")));
                 }
                 edit.effort = Some((!empty(value)).then(|| value.trim().to_owned()));
             }
@@ -1838,7 +1843,9 @@ impl AgentTasks {
         };
         let body = self.detail.comment_edit.trim().to_owned();
         if body.is_empty() {
-            return Err("a comment cannot be emptied; press Cancel to leave it as it was".to_owned());
+            return Err(
+                "a comment cannot be emptied; press Cancel to leave it as it was".to_owned()
+            );
         }
         self.store()?.edit_comment(id, &body, &clock::now())?;
         self.stop_editing_the_comment();
@@ -1953,7 +1960,8 @@ impl AgentTasks {
     /// that can be launched. It writes the same `agent` the Settings page writes, so the chooser on the board
     /// and the setting in the window can never disagree.
     pub fn use_the_next_agent(&mut self) -> Result<(), String> {
-        let agents: Vec<Assignee> = Assignee::ALL.into_iter().filter(|agent| agent.is_an_agent()).collect();
+        let agents: Vec<Assignee> =
+            Assignee::ALL.into_iter().filter(|agent| agent.is_an_agent()).collect();
         let at = agents.iter().position(|agent| *agent == self.configuration.agent).unwrap_or(0);
         let next = agents[(at + 1) % agents.len()];
         let mut changed = self.configuration.clone();
@@ -2023,7 +2031,8 @@ impl AgentTasks {
             row = row.min(held(at) as i64 - 1).max(0);
         }
         let lane = Status::ALL[at.clamp(0, Status::ALL.len() as i64 - 1) as usize];
-        let held = counts.iter().find(|(one, _)| *one == lane).map(|(_, held)| *held).unwrap_or(0) as i64;
+        let held =
+            counts.iter().find(|(one, _)| *one == lane).map(|(_, held)| *held).unwrap_or(0) as i64;
         if held == 0 {
             self.chosen = None;
             return;
@@ -2066,11 +2075,7 @@ impl AgentTasks {
         self.board
             .lane(lane)
             .and_then(|found| {
-                found
-                    .tasks
-                    .iter()
-                    .filter(|task| board::matches(task, &self.query))
-                    .nth(row)
+                found.tasks.iter().filter(|task| board::matches(task, &self.query)).nth(row)
             })
             .map(|task| task.id)
     }
@@ -2194,7 +2199,9 @@ impl AgentTasks {
                 let held = self
                     .board
                     .lane(status)
-                    .map(|lane| lane.tasks.iter().filter(|task| board::matches(task, &self.query)).count())
+                    .map(|lane| {
+                        lane.tasks.iter().filter(|task| board::matches(task, &self.query)).count()
+                    })
                     .unwrap_or(0);
                 (status, held)
             })
@@ -2312,7 +2319,10 @@ impl AgentTasks {
     ///
     /// The decisions come from `watchdog::decide`, which has no clock and no database, so this function
     /// is only the two things that need one: reading the candidates, and acting on what was decided.
-    pub fn watchdog_tick(&mut self, now: &str) -> Result<Vec<(String, watchdog::Decision)>, String> {
+    pub fn watchdog_tick(
+        &mut self,
+        now: &str,
+    ) -> Result<Vec<(String, watchdog::Decision)>, String> {
         let thresholds = watchdog::Thresholds {
             lease_minutes: self.configuration.lease_minutes,
             ..watchdog::Thresholds::default()
@@ -3513,16 +3523,19 @@ mod tests_task_28 {
     #[test]
     fn a_configuration_nobody_has_written_points_at_iliad() {
         assert_eq!(Configuration::default().base_url.as_deref(), Some(ILIAD_URL));
-        let folder = std::env::temp_dir().join(format!("unluminous-board-iliad-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-board-iliad-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).expect("a folder");
         // A file from before this change: it has the other settings and no `base-url`.
-        std::fs::write(folder.join("settings.conf"), "agent = claude\nlease = 45\n").expect("an old file");
+        std::fs::write(folder.join("settings.conf"), "agent = claude\nlease = 45\n")
+            .expect("an old file");
         assert_eq!(Configuration::read(&folder).base_url.as_deref(), Some(ILIAD_URL));
 
         // And a file whose line is **present and empty** is one somebody cleared on purpose, which means the
         // agent's own endpoint rather than Iliad's URL handed back again.
-        std::fs::write(folder.join("settings.conf"), "agent = claude\nbase-url =\n").expect("a cleared file");
+        std::fs::write(folder.join("settings.conf"), "agent = claude\nbase-url =\n")
+            .expect("a cleared file");
         assert_eq!(Configuration::read(&folder).base_url, None, "cleared means the agent's own");
         let _ = std::fs::remove_dir_all(&folder);
     }
@@ -3531,7 +3544,8 @@ mod tests_task_28 {
     /// again, which is what `Configuration::read` already does with any name it does not know.
     #[test]
     fn a_settings_file_naming_a_key_and_a_variable_is_read_and_written_back_without_them() {
-        let folder = std::env::temp_dir().join(format!("unluminous-board-oldkeys-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-board-oldkeys-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).expect("a folder");
         std::fs::write(
@@ -3544,7 +3558,10 @@ mod tests_task_28 {
         assert_eq!(read.base_url.as_deref(), Some("https://gateway"));
         read.write(&folder).expect("written back");
         let text = std::fs::read_to_string(folder.join("settings.conf")).expect("the file");
-        assert!(!text.contains("key-name"), "the name of a keychain entry is not a setting any more: {text}");
+        assert!(
+            !text.contains("key-name"),
+            "the name of a keychain entry is not a setting any more: {text}"
+        );
         assert!(!text.contains("key-variable"), "and neither is a variable name: {text}");
         assert!(text.contains("base-url = https://gateway"), "{text}");
         // No secret is in the file, which is the rule that matters most about it.
@@ -3562,16 +3579,25 @@ mod tests_task_28 {
             assert!(names.contains(wanted), "{wanted} is set: {names:?}");
         }
         assert_eq!(
-            handed.iter().find(|(name, _)| name == "ANTHROPIC_CUSTOM_HEADERS").map(|(_, value)| value.as_str()),
+            handed
+                .iter()
+                .find(|(name, _)| name == "ANTHROPIC_CUSTOM_HEADERS")
+                .map(|(_, value)| value.as_str()),
             Some("x-api-key: a-key"),
             "the header the gateway wants, which `~/.zshrc` also sets"
         );
         assert_eq!(
-            handed.iter().find(|(name, _)| name == "ANTHROPIC_BASE_URL").map(|(_, value)| value.as_str()),
+            handed
+                .iter()
+                .find(|(name, _)| name == "ANTHROPIC_BASE_URL")
+                .map(|(_, value)| value.as_str()),
             Some(ILIAD_URL)
         );
         assert_eq!(
-            handed.iter().find(|(name, _)| name == "OPENAI_BASE_URL").map(|(_, value)| value.as_str()),
+            handed
+                .iter()
+                .find(|(name, _)| name == "OPENAI_BASE_URL")
+                .map(|(_, value)| value.as_str()),
             Some(ILIAD_URL)
         );
 
@@ -3585,7 +3611,10 @@ mod tests_task_28 {
 
         // And with no gateway either, nothing at all is handed over and the agent uses its own endpoint.
         let bare = Configuration { base_url: None, ..Configuration::default() };
-        assert!(bare.environment_given(None).is_empty(), "the agent's own configuration is left alone");
+        assert!(
+            bare.environment_given(None).is_empty(),
+            "the agent's own configuration is left alone"
+        );
     }
 
     /// `task-28`: the `Project` field was free text. The dropdown offers this window's folder and the recent
@@ -3614,7 +3643,10 @@ mod tests_task_28 {
             vec!["/somewhere/else".to_owned(), "/here/now".to_owned(), "/older".to_owned()]
         );
         // And one it has opened is not listed twice.
-        assert_eq!(board.known_projects(Some("/older")), vec!["/older".to_owned(), "/here/now".to_owned()]);
+        assert_eq!(
+            board.known_projects(Some("/older")),
+            vec!["/older".to_owned(), "/here/now".to_owned()]
+        );
     }
 
     /// And the table it read is still there, because dropping a table is deleting data.

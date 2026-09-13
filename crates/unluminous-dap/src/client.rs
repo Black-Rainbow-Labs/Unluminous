@@ -139,7 +139,9 @@ impl Client {
         std::thread::Builder::new()
             .name("unluminous-dap".to_owned())
             .spawn(move || read_frames(reader, sender, waker))
-            .map_err(|problem| format!("Unluminous could not start a thread to read the debugger: {problem}"))?;
+            .map_err(|problem| {
+                format!("Unluminous could not start a thread to read the debugger: {problem}")
+            })?;
         Ok(Self {
             replies: receiver,
             writer: connection.writer,

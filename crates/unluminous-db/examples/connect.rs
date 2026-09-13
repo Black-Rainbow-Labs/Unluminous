@@ -38,10 +38,13 @@ fn main() {
         std::env::var(name).ok()
     });
     if let Some(name) = &variable {
-        println!("password: from the environment variable {name}, {}", match password.is_some() {
-            true => "which is set",
-            false => "which is NOT set",
-        });
+        println!(
+            "password: from the environment variable {name}, {}",
+            match password.is_some() {
+                true => "which is set",
+                false => "which is NOT set",
+            }
+        );
     }
 
     let started = std::time::Instant::now();

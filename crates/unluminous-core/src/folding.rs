@@ -234,9 +234,7 @@ pub fn breakdown(text: &str, reading: Reading<'_>) -> Vec<(&'static str, f64)> {
 /// in can walk the list and take the last one that covers it.
 fn tidy(mut found: Vec<Region>) -> Vec<Region> {
     found.retain(|region| region.body.start < region.body.end);
-    found.sort_by(|a, b| {
-        a.head.cmp(&b.head).then(b.hidden_lines().cmp(&a.hidden_lines()))
-    });
+    found.sort_by(|a, b| a.head.cmp(&b.head).then(b.hidden_lines().cmp(&a.hidden_lines())));
     found.dedup_by_key(|region| region.head);
     found
 }
@@ -268,7 +266,10 @@ impl LineIndex {
 
     /// Which line a byte offset falls on.
     fn line_of(&self, offset: usize) -> usize {
-        self.starts.partition_point(|start| *start <= offset).saturating_sub(1).min(self.count() - 1)
+        self.starts
+            .partition_point(|start| *start <= offset)
+            .saturating_sub(1)
+            .min(self.count() - 1)
     }
 
     /// One line's text, without its line break.
@@ -399,12 +400,7 @@ fn tag_region(text: &str, lines: &LineIndex, from: usize, to: usize) -> Option<R
 }
 
 /// Block comments that span lines, and runs of two or more line comments.
-fn comment_regions(
-    text: &str,
-    lines: &LineIndex,
-    read: &Tokens,
-    grammar: &Grammar,
-) -> Vec<Region> {
+fn comment_regions(text: &str, lines: &LineIndex, read: &Tokens, grammar: &Grammar) -> Vec<Region> {
     let mut found = Vec::new();
     for (range, comment) in &read.quiet {
         if !comment {
@@ -805,7 +801,10 @@ mod tests {
         let (source, grammar) = nested();
         let found = regions(source, Reading::Code(&grammar));
         assert!(region_tree(&found, 1).is_none(), "line 1 is inside the function, not a head");
-        assert!(region_tree(&found, 10).is_none(), "line 10 is inside the other function, not a head");
+        assert!(
+            region_tree(&found, 10).is_none(),
+            "line 10 is inside the other function, not a head"
+        );
     }
 
     #[test]
@@ -958,7 +957,8 @@ mod tests {
 
     #[test]
     fn collapse_all_but_keeps_the_regions_holding_what_was_marked_and_their_parents() {
-        let source = "fn one() {\n    if a {\n        marked();\n    }\n}\nfn two() {\n    b();\n}\n";
+        let source =
+            "fn one() {\n    if a {\n        marked();\n    }\n}\nfn two() {\n    b();\n}\n";
         let found = regions(source, Reading::Code(&rust()));
         let collapsed = collapse_all_but(&found, &[2]);
         assert_eq!(collapsed, vec![5], "only the function with nothing marked in it");
@@ -1019,4 +1019,3 @@ mod tests {
         assert_eq!(heads(&found), vec![(0, 1, "block")]);
     }
 }
-

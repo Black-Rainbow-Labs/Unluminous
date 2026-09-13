@@ -187,7 +187,12 @@ pub fn show<R>(
 ///
 /// Split from [`show`] so that the placement it settles on can be read back by a caller, and so the
 /// clamping is one function rather than four numbers repeated inside the closure.
-pub fn place(ctx: &egui::Context, width: f32, height: f32, placement: &mut Placement) -> (Pos2, Vec2) {
+pub fn place(
+    ctx: &egui::Context,
+    width: f32,
+    height: f32,
+    placement: &mut Placement,
+) -> (Pos2, Vec2) {
     let available = ctx.content_rect();
     let asked = Vec2::new(width, height);
     let (size, offset) = fit(available.size(), asked, placement.grown, placement.offset);
@@ -295,7 +300,10 @@ fn edges_and_corners(area: Rect) -> [(&'static str, (i32, i32), Rect, egui::Curs
         (
             "bottom",
             (0, 1),
-            Rect::from_min_size(Pos2::new(area.left(), area.bottom() - EDGE), Vec2::new(width, EDGE)),
+            Rect::from_min_size(
+                Pos2::new(area.left(), area.bottom() - EDGE),
+                Vec2::new(width, EDGE),
+            ),
             egui::CursorIcon::ResizeSouth,
         ),
         (
@@ -307,7 +315,10 @@ fn edges_and_corners(area: Rect) -> [(&'static str, (i32, i32), Rect, egui::Curs
         (
             "right",
             (1, 0),
-            Rect::from_min_size(Pos2::new(area.right() - EDGE, area.top()), Vec2::new(EDGE, height)),
+            Rect::from_min_size(
+                Pos2::new(area.right() - EDGE, area.top()),
+                Vec2::new(EDGE, height),
+            ),
             egui::CursorIcon::ResizeEast,
         ),
         (
@@ -359,9 +370,16 @@ pub fn header_of(ui: &mut egui::Ui, area: Rect, key: Option<&str>, title: &str) 
     painter.rect_filled(bar, CornerRadius { nw: 10, ne: 10, sw: 0, se: 0 }, color::title_bar());
     let mut pen = area.left() + 20.0;
     if let Some(key) = key {
-        let said =
-            painter.layout_no_wrap(key.to_owned(), egui::FontId::monospace(12.0), color::text_dim());
-        painter.galley(Pos2::new(pen, bar.center().y - said.size().y / 2.0), said.clone(), color::text_dim());
+        let said = painter.layout_no_wrap(
+            key.to_owned(),
+            egui::FontId::monospace(12.0),
+            color::text_dim(),
+        );
+        painter.galley(
+            Pos2::new(pen, bar.center().y - said.size().y / 2.0),
+            said.clone(),
+            color::text_dim(),
+        );
         pen += said.size().x + 14.0;
     }
     // **Bold only when there is a key in front of it.** A dialog's title is one short phrase and has always
@@ -385,10 +403,7 @@ pub fn header_of(ui: &mut egui::Ui, area: Rect, key: Option<&str>, title: &str) 
     // the ten it is, and painted text alone is invisible to both. The drag handle is added after this and takes
     // the presses, so naming it costs the header nothing.
     let named = ui.interact(
-        Rect::from_min_size(
-            Pos2::new(title_at, bar.center().y - 8.0),
-            Vec2::new(width, 16.0),
-        ),
+        Rect::from_min_size(Pos2::new(title_at, bar.center().y - 8.0), Vec2::new(width, 16.0)),
         ui.id().with(("modal-title", title)),
         Sense::hover(),
     );
@@ -398,7 +413,8 @@ pub fn header_of(ui: &mut egui::Ui, area: Rect, key: Option<&str>, title: &str) 
         [Pos2::new(bar.left(), bar.bottom()), Pos2::new(bar.right(), bar.bottom())],
         Stroke::new(1.0, color::divider()),
     );
-    let close = Rect::from_center_size(Pos2::new(area.right() - 24.0, bar.center().y), Vec2::splat(22.0));
+    let close =
+        Rect::from_center_size(Pos2::new(area.right() - 24.0, bar.center().y), Vec2::splat(22.0));
     controls::icon_button(ui, close, "Close", icon::cross)
 }
 
@@ -450,10 +466,7 @@ impl Confirm {
             let mut pressed = false;
             input.events.retain(|event| match event {
                 egui::Event::Key {
-                    key: egui::Key::Enter,
-                    pressed: true,
-                    modifiers: held,
-                    ..
+                    key: egui::Key::Enter, pressed: true, modifiers: held, ..
                 } if wanted(held) => {
                     pressed = true;
                     false
@@ -527,7 +540,10 @@ pub fn button(ui: &mut egui::Ui, area: Rect, name: &str, enabled: bool, primary:
         area,
         CornerRadius::same(size::CONTROL_CORNER),
         fill,
-        Stroke::new(1.0, if primary && enabled { color::accent() } else { color::control_border() }),
+        Stroke::new(
+            1.0,
+            if primary && enabled { color::accent() } else { color::control_border() },
+        ),
         egui::StrokeKind::Inside,
     );
     let tint = if enabled { color::text_strong() } else { color::text_faint() };
@@ -540,10 +556,17 @@ pub fn button(ui: &mut egui::Ui, area: Rect, name: &str, enabled: bool, primary:
 /// A heading inside a page, with a rule running to the right edge, as the reference editor draws one.
 pub fn section(ui: &mut egui::Ui, area: Rect, top: f32, name: &str) -> f32 {
     let painter = ui.painter_at(area.expand(20.0));
-    let galley =
-        painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), color::text_strong());
+    let galley = painter.layout_no_wrap(
+        name.to_owned(),
+        egui::FontId::proportional(12.5),
+        color::text_strong(),
+    );
     let y = top + 8.0;
-    painter.galley(Pos2::new(area.left(), y - galley.size().y / 2.0), galley.clone(), color::text_strong());
+    painter.galley(
+        Pos2::new(area.left(), y - galley.size().y / 2.0),
+        galley.clone(),
+        color::text_strong(),
+    );
     painter.line_segment(
         [Pos2::new(area.left() + galley.size().x + 12.0, y), Pos2::new(area.right(), y)],
         Stroke::new(1.0, color::divider()),
@@ -554,8 +577,12 @@ pub fn section(ui: &mut egui::Ui, area: Rect, top: f32, name: &str) -> f32 {
 /// A line of explanation, in the faintest colour. Returns the y below it.
 pub fn note(ui: &mut egui::Ui, area: Rect, top: f32, text: &str) -> f32 {
     let painter = ui.painter_at(area.expand(20.0));
-    let galley =
-        painter.layout(text.to_owned(), egui::FontId::proportional(11.5), color::text_faint(), area.width());
+    let galley = painter.layout(
+        text.to_owned(),
+        egui::FontId::proportional(11.5),
+        color::text_faint(),
+        area.width(),
+    );
     let height = galley.size().y;
     painter.galley(Pos2::new(area.left(), top), galley, color::text_faint());
     top + height + 8.0
@@ -571,8 +598,15 @@ pub fn check(ui: &mut egui::Ui, row: Rect, name: &str, value: &mut bool) -> bool
 /// A row that repeats — a column of the New Table dialog — draws `PK` on every one of them, and two
 /// controls in Unluminous must not share a name. So the word is what a person reads and the name is what a
 /// test and an agent ask for, and it is also what gives each row's box an id of its own.
-pub fn check_named(ui: &mut egui::Ui, row: Rect, drawn: &str, name: &str, value: &mut bool) -> bool {
-    let box_rect = Rect::from_min_size(Pos2::new(row.left(), row.center().y - 8.0), Vec2::splat(16.0));
+pub fn check_named(
+    ui: &mut egui::Ui,
+    row: Rect,
+    drawn: &str,
+    name: &str,
+    value: &mut bool,
+) -> bool {
+    let box_rect =
+        Rect::from_min_size(Pos2::new(row.left(), row.center().y - 8.0), Vec2::splat(16.0));
     let response = ui.interact(row, ui.id().with(("modal-check", name)), Sense::click());
     let painter = ui.painter();
     painter.rect(
@@ -585,8 +619,11 @@ pub fn check_named(ui: &mut egui::Ui, row: Rect, drawn: &str, name: &str, value:
     if *value {
         icon::tick(painter, box_rect.center(), color::text_strong());
     }
-    let galley =
-        painter.layout_no_wrap(drawn.to_owned(), egui::FontId::proportional(12.5), color::text_control());
+    let galley = painter.layout_no_wrap(
+        drawn.to_owned(),
+        egui::FontId::proportional(12.5),
+        color::text_control(),
+    );
     painter.galley(
         Pos2::new(box_rect.right() + 10.0, row.center().y - galley.size().y / 2.0),
         galley,
@@ -653,7 +690,14 @@ pub fn row(
 }
 
 /// Text at a position, at the ordinary size, vertically centred in `row`.
-pub fn label(painter: &egui::Painter, row: Rect, x: f32, text: &str, tint: Color32, size: f32) -> f32 {
+pub fn label(
+    painter: &egui::Painter,
+    row: Rect,
+    x: f32,
+    text: &str,
+    tint: Color32,
+    size: f32,
+) -> f32 {
     let galley = painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(size), tint);
     painter.galley(Pos2::new(x, row.center().y - galley.size().y / 2.0), galley.clone(), tint);
     x + galley.size().x
@@ -709,7 +753,8 @@ mod tests {
 
     #[test]
     fn a_modal_is_never_larger_than_the_window_it_is_in() {
-        let (size, _) = fit(Vec2::new(600.0, 400.0), Vec2::new(900.0, 560.0), Vec2::ZERO, Vec2::ZERO);
+        let (size, _) =
+            fit(Vec2::new(600.0, 400.0), Vec2::new(900.0, 560.0), Vec2::ZERO, Vec2::ZERO);
         assert_eq!(size, Vec2::new(560.0, 360.0), "twenty points of margin either side");
     }
 

@@ -229,7 +229,9 @@ impl Node {
         // Merge with, or borrow from, the neighbour on the right when there is one.
         let (left, right) = if i + 1 < children.len() { (i, i + 1) } else { (i - 1, i) };
         let fits = match (&children[left], &children[right]) {
-            (Self::Leaf { text: a, .. }, Self::Leaf { text: b, .. }) => a.len() + b.len() <= MAX_LEAF,
+            (Self::Leaf { text: a, .. }, Self::Leaf { text: b, .. }) => {
+                a.len() + b.len() <= MAX_LEAF
+            }
             (Self::Internal { children: a, .. }, Self::Internal { children: b, .. }) => {
                 a.len() + b.len() <= MAX_CHILDREN
             }
@@ -278,7 +280,9 @@ impl Node {
                         boundary_at_or_after(text, target - left_len)
                     };
                     let moved = {
-                        let Self::Leaf { text, info } = &mut children[right] else { unreachable!() };
+                        let Self::Leaf { text, info } = &mut children[right] else {
+                            unreachable!()
+                        };
                         let rest = text.split_off(take);
                         let moved = std::mem::replace(text, rest);
                         *info = TextInfo::of(text);
@@ -467,9 +471,7 @@ impl Node {
     /// Which line the byte at `byte_idx` sits on.
     fn byte_to_line(&self, byte_idx: usize) -> usize {
         match self {
-            Self::Leaf { text, .. } => {
-                text[..byte_idx].bytes().filter(|b| *b == b'\n').count()
-            }
+            Self::Leaf { text, .. } => text[..byte_idx].bytes().filter(|b| *b == b'\n').count(),
             Self::Internal { children, infos } => {
                 let mut acc = 0;
                 let mut lines = 0;
@@ -695,7 +697,10 @@ mod tests {
     impl Rng {
         fn next(&mut self) -> u64 {
             // A linear congruential generator with the constants from Numerical Recipes.
-            self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            self.0 = self
+                .0
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
             self.0 >> 16
         }
 
@@ -772,7 +777,11 @@ mod tests {
         let flat: Vec<&str> = text.split('\n').collect();
         assert_eq!(rope.len_lines(), flat.len());
         for (line, expected) in flat.iter().enumerate() {
-            assert_eq!(rope.byte_slice(rope.line_range(line)), *expected, "line {line} read back wrong");
+            assert_eq!(
+                rope.byte_slice(rope.line_range(line)),
+                *expected,
+                "line {line} read back wrong"
+            );
             let start = rope.line_to_byte(line);
             assert_eq!(rope.byte_to_line(start), line, "line {line} start maps to the wrong line");
         }
@@ -841,7 +850,11 @@ mod tests {
             }
             assert_eq!(rope.to_string(), oracle, "text differs at step {step}");
             assert_eq!(rope.len_bytes(), oracle.len(), "byte count differs at step {step}");
-            assert_eq!(rope.len_chars(), oracle.chars().count(), "char count differs at step {step}");
+            assert_eq!(
+                rope.len_chars(),
+                oracle.chars().count(),
+                "char count differs at step {step}"
+            );
             assert_eq!(
                 rope.len_lines(),
                 oracle.split('\n').count(),

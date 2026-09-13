@@ -93,7 +93,7 @@ impl Reaper {
                     if let Some(child) = &self.child {
                         child.terminate();
                     }
-                },
+                }
             }
             self.child = None;
         }
@@ -144,12 +144,12 @@ mod windows {
     use windows_sys::Win32::Foundation::{
         CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, FALSE, HANDLE,
     };
-    use windows_sys::Win32::System::Threading::{GetCurrentProcess, TerminateProcess};
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
         SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, TerminateProcess};
 
     /// One job object holding one program and its descendants.
     pub struct Job(HANDLE);
@@ -230,7 +230,15 @@ mod windows {
             unsafe {
                 let mut copy: HANDLE = std::ptr::null_mut();
                 let me = GetCurrentProcess();
-                let ok = DuplicateHandle(me, child as HANDLE, me, &mut copy, 0, FALSE, DUPLICATE_SAME_ACCESS);
+                let ok = DuplicateHandle(
+                    me,
+                    child as HANDLE,
+                    me,
+                    &mut copy,
+                    0,
+                    FALSE,
+                    DUPLICATE_SAME_ACCESS,
+                );
                 if ok == 0 || copy.is_null() {
                     return None;
                 }

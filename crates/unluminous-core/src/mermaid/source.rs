@@ -132,11 +132,7 @@ impl Source {
             if body.starts_with("accDescr") {
                 continue;
             }
-            source.lines.push(Line {
-                number,
-                text: body.to_owned(),
-                indent: columns(line),
-            });
+            source.lines.push(Line { number, text: body.to_owned(), indent: columns(line) });
         }
         named.then_some(source)
     }
@@ -333,7 +329,8 @@ mod tests {
 
     #[test]
     fn comments_and_directives_are_skipped() {
-        let text = "%%{init: {'theme':'dark'}}%%\nflowchart TD\n%% a note to the reader\n  A --> B\n";
+        let text =
+            "%%{init: {'theme':'dark'}}%%\nflowchart TD\n%% a note to the reader\n  A --> B\n";
         let source = Source::read(text).expect("a diagram");
         assert_eq!(source.keyword, "flowchart");
         assert_eq!(source.statements().len(), 1);
@@ -348,7 +345,8 @@ mod tests {
 
     #[test]
     fn indentation_is_counted_in_columns_with_a_tab_worth_four() {
-        let source = Source::read("mindmap\nroot\n  one\n\ttwo\n        three\n").expect("a diagram");
+        let source =
+            Source::read("mindmap\nroot\n  one\n\ttwo\n        three\n").expect("a diagram");
         let indents: Vec<usize> = source.statements().iter().map(|line| line.indent).collect();
         assert_eq!(indents, vec![0, 2, 4, 8]);
     }
@@ -402,9 +400,6 @@ mod tests {
     #[test]
     fn a_separator_inside_quotes_does_not_split() {
         assert_eq!(split_outside_quotes("a, b, c", ','), vec!["a", "b", "c"]);
-        assert_eq!(
-            split_outside_quotes("\"one, two\", three", ','),
-            vec!["\"one, two\"", "three"]
-        );
+        assert_eq!(split_outside_quotes("\"one, two\", three", ','), vec!["\"one, two\"", "three"]);
     }
 }

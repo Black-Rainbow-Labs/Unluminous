@@ -136,7 +136,11 @@ pub fn show_with(
     plugins: &[PluginButton],
 ) -> RailOutcome {
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, CornerRadius::ZERO, crate::theme::faded(color::explorer_footer(), opacity));
+    painter.rect_filled(
+        area,
+        CornerRadius::ZERO,
+        crate::theme::faded(color::explorer_footer(), opacity),
+    );
     painter.line_segment(
         [Pos2::new(area.right(), area.top()), Pos2::new(area.right(), area.bottom())],
         egui::Stroke::new(1.0, color::divider()),
@@ -283,7 +287,10 @@ pub fn show_with(
                 at
             }
             false => {
-                let at = Pos2::new(centre_x, area.top() + MARGIN + BUTTON / 2.0 + top_next as f32 * STEP);
+                let at = Pos2::new(
+                    centre_x,
+                    area.top() + MARGIN + BUTTON / 2.0 + top_next as f32 * STEP,
+                );
                 top_next += 1;
                 at
             }
@@ -291,7 +298,8 @@ pub fn show_with(
         if centre.y - BUTTON / 2.0 < area.top() || centre.y + BUTTON / 2.0 > area.bottom() {
             continue;
         }
-        let pressed = rail_button(ui, centre, &button.label, pane_icon(&button.icon), button.on, true);
+        let pressed =
+            rail_button(ui, centre, &button.label, pane_icon(&button.icon), button.on, true);
         if pressed.clicked {
             outcome.chosen = Some(match button.opens {
                 Opens::Pane => Action::PluginPane { pane: button.key.clone() },
@@ -349,9 +357,7 @@ fn rail_button(
 ) -> Pressed {
     let hit = Rect::from_center_size(centre, Vec2::splat(BUTTON));
     let sense = if enabled { Sense::click() } else { Sense::hover() };
-    let response = ui
-        .interact(hit, ui.id().with(("activity", name)), sense)
-        .on_hover_text(name);
+    let response = ui.interact(hit, ui.id().with(("activity", name)), sense).on_hover_text(name);
     let painter = ui.painter();
     if on {
         painter.rect_filled(hit, CornerRadius::same(size::CONTROL_CORNER), color::selected_row());
@@ -370,9 +376,8 @@ fn rail_button(
         color::icon()
     };
     draw(painter, centre, tint);
-    response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Button, enabled, on, name)
-    });
+    response
+        .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, enabled, on, name));
     Pressed {
         clicked: response.clicked(),
         menu: match response.secondary_clicked() {
@@ -391,11 +396,17 @@ mod tests {
     /// `main.rs` sets to 400 points.
     #[test]
     fn the_rail_is_narrow_enough_to_be_a_rail_and_wide_enough_to_hold_a_button() {
-        assert!(size::ACTIVITY_BAR < 40.0, "narrower than the reference editor's, which is what was asked for");
+        assert!(
+            size::ACTIVITY_BAR < 40.0,
+            "narrower than the reference editor's, which is what was asked for"
+        );
         assert!(size::ACTIVITY_BAR >= BUTTON + 4.0, "a button has to fit inside it");
         // The button starts where the window's own left resize grip stops, so the two never overlap.
         let left = crate::components::resize_edges::EDGE;
-        assert!(left + BUTTON <= size::ACTIVITY_BAR, "the button has to fit clear of the resize grip");
+        assert!(
+            left + BUTTON <= size::ACTIVITY_BAR,
+            "the button has to fit clear of the resize grip"
+        );
     }
 }
 

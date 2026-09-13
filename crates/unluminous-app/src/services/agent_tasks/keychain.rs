@@ -188,9 +188,9 @@ fn is_a_safe_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 128
         && !name.starts_with('-')
-        && name
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '.' | '_'))
+        && name.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '.' | '_')
+        })
 }
 
 #[cfg(target_os = "macos")]
@@ -394,7 +394,10 @@ mod tests {
         let handed = what_the_tool_reads("hunter2");
         match cfg!(target_os = "macos") {
             true => {
-                assert_eq!(handed, "hunter2\nhunter2\n", "macOS prompts twice, so it is answered twice");
+                assert_eq!(
+                    handed, "hunter2\nhunter2\n",
+                    "macOS prompts twice, so it is answered twice"
+                );
                 assert_eq!(handed.matches("hunter2").count(), 2);
             }
             false => assert_eq!(handed, "hunter2", "secret-tool reads the value once and stops"),

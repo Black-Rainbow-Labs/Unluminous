@@ -376,7 +376,8 @@ mod tests {
             accelerator(&Shortcut::command_shift(egui::Key::O)).expect("Cmd+Shift+O has a code");
         assert!(with_shift.matches(Modifiers::SUPER | Modifiers::SHIFT, Code::KeyO));
 
-        let terminal = accelerator(&Shortcut::control(egui::Key::Backtick)).expect("Ctrl+` has a code");
+        let terminal =
+            accelerator(&Shortcut::control(egui::Key::Backtick)).expect("Ctrl+` has a code");
         assert!(
             terminal.matches(Modifiers::CONTROL, Code::Backquote),
             "the terminal's shortcut is the control key, not the Apple key"

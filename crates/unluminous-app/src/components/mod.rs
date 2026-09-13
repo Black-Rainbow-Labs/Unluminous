@@ -7,19 +7,20 @@
 // The Agent-Tasks board, which is the first plugin that draws. Nothing in it decides anything: the
 // lanes, the drag and the search are `services::agent_tasks`.
 // The Agent-Chat pane: the panel, the conversation, the composer and its Settings page.
-pub mod agent_chat;
-pub mod agent_tasks;
 pub mod about_dialog;
 pub mod activity_bar;
+pub mod agent_chat;
+pub mod agent_tasks;
+pub mod branch_widget;
 pub mod browser_view;
 pub mod color_wheel;
 pub mod completion;
 pub mod context_menu;
-pub mod diagram_view;
 pub mod controls;
+pub mod database;
 pub mod debug_dialogs;
 pub mod debug_panel;
-pub mod database;
+pub mod diagram_view;
 pub mod dock;
 pub mod editor_view;
 pub mod explorer;
@@ -31,17 +32,16 @@ pub mod git_panel;
 pub mod go_to_file;
 pub mod gutter;
 pub mod markdown_text;
+pub mod mcp_page;
 pub mod menu_bar;
 pub mod modal;
 pub mod picture_view;
-pub mod mcp_page;
 pub mod plugins_page;
 pub mod prompt_dialog;
 pub mod references;
 pub mod resize_edges;
 pub mod run_dialog;
 pub mod run_panel;
-pub mod branch_widget;
 pub mod run_widget;
 pub mod scrollbar;
 pub mod settings_dialog;
@@ -53,7 +53,7 @@ pub mod terminal_panel;
 pub mod text_menu;
 // Dismissible notices over the bottom right of the window: what a plugin sends when somebody has to
 // see it, rather than the status bar's running commentary.
-pub mod toast;
 pub mod text_tools;
 pub mod title_bar;
+pub mod toast;
 pub mod value_tooltip;

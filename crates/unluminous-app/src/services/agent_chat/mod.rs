@@ -139,10 +139,7 @@ impl Configuration {
     /// is simply not there and nothing says why — the fault every other registry in Unluminous is refused
     /// with a list to avoid.
     pub fn of(values: &Values) -> (Self, Vec<String>) {
-        let mut configuration = Self {
-            providers: Vec::new(),
-            ..Self::default()
-        };
+        let mut configuration = Self { providers: Vec::new(), ..Self::default() };
         let mut refused = Vec::new();
         let count = values.number("providers").unwrap_or(0.0).max(0.0) as usize;
         for index in 0..count.min(32) {
@@ -207,10 +204,7 @@ impl Configuration {
             values.set(&format!("provider.{index}.model"), provider.model.clone());
             values.set(&format!("provider.{index}.key-env"), provider.key_env.clone());
             values.set(&format!("provider.{index}.key-entry"), provider.key_entry.clone());
-            values.set(
-                &format!("provider.{index}.max-tokens"),
-                provider.max_tokens.to_string(),
-            );
+            values.set(&format!("provider.{index}.max-tokens"), provider.max_tokens.to_string());
         }
         values.set("chosen", self.chosen.clone());
         values.set("stream", self.stream.to_string());
@@ -237,10 +231,7 @@ impl Configuration {
 
     /// The endpoint that is used, which is the chosen one or the first there is.
     pub fn provider(&self) -> Option<&Provider> {
-        self.providers
-            .iter()
-            .find(|one| one.name == self.chosen)
-            .or_else(|| self.providers.first())
+        self.providers.iter().find(|one| one.name == self.chosen).or_else(|| self.providers.first())
     }
 
     /// Choose one by name, or say it is not there.
@@ -276,10 +267,7 @@ fn provider_at(values: &Values, index: usize) -> Result<Option<Provider>, String
     if name.is_empty() {
         return Ok(None);
     }
-    let named = values
-        .text(&format!("provider.{index}.wire"))
-        .unwrap_or("openai")
-        .trim();
+    let named = values.text(&format!("provider.{index}.wire")).unwrap_or("openai").trim();
     let Some(wire) = Wire::from_name(named) else {
         return Err(format!(
             "`{name}` speaks `{named}`, and this version of Unluminous speaks {}.",
@@ -294,11 +282,7 @@ fn provider_at(values: &Values, index: usize) -> Result<Option<Provider>, String
             .unwrap_or_default()
             .trim()
             .to_owned(),
-        url: values
-            .text(&format!("provider.{index}.url"))
-            .unwrap_or_default()
-            .trim()
-            .to_owned(),
+        url: values.text(&format!("provider.{index}.url")).unwrap_or_default().trim().to_owned(),
         model: values
             .text(&format!("provider.{index}.model"))
             .unwrap_or_default()
@@ -487,10 +471,7 @@ impl std::fmt::Debug for AgentChat {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         out.debug_struct("AgentChat")
             .field("open", &self.open)
-            .field(
-                "provider",
-                &self.configuration.provider().map(|one| one.name.clone()),
-            )
+            .field("provider", &self.configuration.provider().map(|one| one.name.clone()))
             .field("state", &self.session.state().name())
             .field("messages", &self.session.chat.messages.len())
             .finish()
@@ -522,10 +503,7 @@ impl AgentChat {
             asking: Vec::new(),
             history: Vec::new(),
             problem: None,
-            ui: PaneState {
-                jump_to_bottom: true,
-                ..PaneState::default()
-            },
+            ui: PaneState { jump_to_bottom: true, ..PaneState::default() },
             dirty: false,
             readiness: Vec::new(),
             readiness_taken: None,
@@ -618,9 +596,7 @@ impl AgentChat {
     /// in each folder; the settings page asked it once a row once a frame, which is `task-1666`'s
     /// rule about a frame costing what is on the screen broken by a directory listing.
     pub fn readiness(&mut self) -> Vec<Option<String>> {
-        let stale = self
-            .readiness_taken
-            .is_none_or(|at| at.elapsed() >= READINESS);
+        let stale = self.readiness_taken.is_none_or(|at| at.elapsed() >= READINESS);
         if stale || self.readiness.len() != self.configuration.providers.len() {
             // Built once for the whole list rather than once a row: it allocates the profile.
             let environment = Self::the_environment();
@@ -728,12 +704,7 @@ impl AgentChat {
     pub fn attach_bytes(&mut self, name: String, media: String, bytes: Vec<u8>) {
         let id = self.next_attachment;
         self.next_attachment += 1;
-        self.attachments.push(Attachment {
-            id,
-            name,
-            media,
-            bytes,
-        });
+        self.attachments.push(Attachment { id, name, media, bytes });
     }
 
     /// The attachments as the picture parts of a message, taken off the draft.
@@ -765,7 +736,9 @@ impl AgentChat {
             return Err("there is nothing to send.".to_owned());
         }
         let Some(provider) = self.provider().cloned() else {
-            return Err("no endpoint is configured. Settings -> Agent-Chat is where they go.".to_owned());
+            return Err(
+                "no endpoint is configured. Settings -> Agent-Chat is where they go.".to_owned()
+            );
         };
         if let Some(why) = provider.why_not(&Self::the_environment()) {
             self.problem = Some(why.clone());
@@ -817,8 +790,12 @@ impl AgentChat {
             &tools,
             self.configuration.stream,
         );
-        self.client
-            .send(provider, body.to_string(), self.configuration.stream, &Self::the_environment());
+        self.client.send(
+            provider,
+            body.to_string(),
+            self.configuration.stream,
+            &Self::the_environment(),
+        );
     }
 
     /// What one turn asks a command-line agent.
@@ -832,13 +809,8 @@ impl AgentChat {
     /// reason: after that the agent knows, and repeating it every turn would be a paragraph of
     /// preamble on every message.
     fn what_to_ask_the_agent(&mut self) -> unluminous_chat::Ask {
-        let newest = self
-            .session
-            .chat
-            .messages
-            .iter()
-            .rev()
-            .find(|message| message.role == Role::User);
+        let newest =
+            self.session.chat.messages.iter().rev().find(|message| message.role == Role::User);
         let said = newest.map(Message::text).unwrap_or_default();
         let session = self.session.chat.session.clone();
         let prompt = match session.is_empty() {
@@ -979,10 +951,7 @@ impl AgentChat {
         // another round. The agent recovered, but it had been argued with by its own client.
         // `WaitingForTools` still means what it says there; what it means is *the agent* is running
         // one, which is exactly what the block in the pane is drawing.
-        let mine_to_run = !self
-            .configuration
-            .provider()
-            .is_some_and(|one| one.is_a_program());
+        let mine_to_run = !self.configuration.provider().is_some_and(|one| one.is_a_program());
         if mine_to_run && matches!(self.session.state(), State::WaitingForTools) {
             self.ask_for_the_tools();
         }
@@ -1002,10 +971,7 @@ impl AgentChat {
             if self.outstanding.iter().any(|one| one.at == at) {
                 continue;
             }
-            self.outstanding.push(Outstanding {
-                at,
-                began: std::time::Instant::now(),
-            });
+            self.outstanding.push(Outstanding { at, began: std::time::Instant::now() });
             // **The calls of a turn are bounded as well as its rounds.** `tool_limit` bounds how many
             // times the model may be asked again; nothing bounded how many calls one answer could
             // ask for, and one answer can hold any number.
@@ -1215,12 +1181,7 @@ fn media_type_of(path: &Path, bytes: &[u8]) -> Option<String> {
     if let Some(media) = sniffed {
         return Some(media.to_owned());
     }
-    match path
-        .extension()
-        .and_then(|kind| kind.to_str())
-        .map(str::to_lowercase)
-        .as_deref()
-    {
+    match path.extension().and_then(|kind| kind.to_str()).map(str::to_lowercase).as_deref() {
         Some("png") => Some("image/png".to_owned()),
         Some("jpg") | Some("jpeg") => Some("image/jpeg".to_owned()),
         Some("gif") => Some("image/gif".to_owned()),
@@ -1525,12 +1486,16 @@ mod tests_task_1848 {
     fn tools_are_offered_unless_somebody_turned_them_off() {
         assert!(Configuration::default().tools, "on by default");
 
-        let folder = std::env::temp_dir().join(format!("unluminous-chat-tools-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-chat-tools-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("a folder");
 
         // A file from before the default moved: it says nothing about tools.
         std::fs::write(folder.join("settings.conf"), "stream = true\n").expect("a file");
-        assert!(Configuration::read(&folder).0.tools, "a file that never chose takes the new default");
+        assert!(
+            Configuration::read(&folder).0.tools,
+            "a file that never chose takes the new default"
+        );
 
         // And a file that did choose is obeyed, both ways.
         std::fs::write(folder.join("settings.conf"), "tools = false\n").expect("a file");
@@ -1550,7 +1515,8 @@ mod tests_task_1848 {
     fn the_shell_switch_is_still_off_by_default() {
         assert!(!Configuration::default().shell);
 
-        let folder = std::env::temp_dir().join(format!("unluminous-chat-shell-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-chat-shell-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("a folder");
         std::fs::write(folder.join("settings.conf"), "tools = true\n").expect("a file");
         assert!(
@@ -1566,7 +1532,8 @@ mod tests {
     use super::*;
 
     fn a_folder(name: &str) -> PathBuf {
-        let folder = std::env::temp_dir().join(format!("unluminous-chat-plugin-{name}-{}", std::process::id()));
+        let folder = std::env::temp_dir()
+            .join(format!("unluminous-chat-plugin-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).expect("a folder");
         folder
@@ -1574,11 +1541,7 @@ mod tests {
 
     fn opened(name: &str) -> AgentChat {
         let mut chat = AgentChat::new();
-        chat.open(&Context {
-            folder: Some(a_folder(name)),
-            ..Context::default()
-        })
-        .expect("opened");
+        chat.open(&Context { folder: Some(a_folder(name)), ..Context::default() }).expect("opened");
         chat
     }
 
@@ -1631,10 +1594,7 @@ mod tests {
         // endpoint that is not there with nothing at all to explain it.
         assert_eq!(refused.len(), 1, "{refused:?}");
         assert!(refused[0].contains("gemini"), "{refused:?}");
-        assert!(
-            refused[0].contains("anthropic"),
-            "the refusal lists what there is: {refused:?}"
-        );
+        assert!(refused[0].contains("anthropic"), "the refusal lists what there is: {refused:?}");
     }
 
     #[test]
@@ -1658,12 +1618,10 @@ mod tests {
     }
 
     #[test]
-    fn sending_with_nothing_typed_and_with_a_broken_endpoint_both_refuse_before_a_request_goes_out() {
+    fn sending_with_nothing_typed_and_with_a_broken_endpoint_both_refuse_before_a_request_goes_out()
+    {
         let mut chat = opened("refusals");
-        assert!(chat
-            .send()
-            .expect_err("nothing to send")
-            .contains("nothing to send"));
+        assert!(chat.send().expect_err("nothing to send").contains("nothing to send"));
         chat.draft = "hello".to_owned();
         // **A program that is not installed is refused before it is spawned**, which is
         // `task-1692`'s rule for a missing debug adapter kept for a missing agent — and it is the
@@ -1696,7 +1654,10 @@ mod tests {
         assert!(prompt.contains("Be terse."), "{prompt}");
         // **Tools are on by default now** — `task-1848` — so the prompt mentions them, and it is turning
         // them *off* that has to take the sentence away.
-        assert!(prompt.contains("tools you have been given"), "tools are offered by default: {prompt}");
+        assert!(
+            prompt.contains("tools you have been given"),
+            "tools are offered by default: {prompt}"
+        );
         chat.configuration.tools = false;
         assert!(
             !chat.system_prompt().contains("tools you have been given"),
@@ -1708,16 +1669,13 @@ mod tests {
     fn a_tool_call_becomes_a_request_the_window_runs_and_its_answer_goes_back_up() {
         let mut chat = opened("tools");
         chat.configuration.tools = true;
-        chat.session
-            .ask(Message::said(0, Role::User, "what does git say?"));
+        chat.session.ask(Message::said(0, Role::User, "what does git say?"));
         chat.session.reply(unluminous_chat::Reply::ToolCall {
             id: "t1".to_owned(),
             name: "unluminous_git".to_owned(),
             arguments: "{\"command\":\"status\"}".to_owned(),
         });
-        chat.session.reply(unluminous_chat::Reply::Finished {
-            reason: "tool_use".to_owned(),
-        });
+        chat.session.reply(unluminous_chat::Reply::Finished { reason: "tool_use".to_owned() });
         chat.ask_for_the_tools();
         let asked = chat.asking();
         assert_eq!(asked.len(), 1);
@@ -1740,11 +1698,7 @@ mod tests {
             .iter()
             .find(|message| message.role == Role::Tool)
             .expect("a result message");
-        assert!(results.tools[0]
-            .answer
-            .as_deref()
-            .expect("an answer")
-            .contains("main"));
+        assert!(results.tools[0].answer.as_deref().expect("an answer").contains("main"));
     }
 
     #[test]
@@ -1757,9 +1711,7 @@ mod tests {
             name: "unluminous_levitate".to_owned(),
             arguments: "{}".to_owned(),
         });
-        chat.session.reply(unluminous_chat::Reply::Finished {
-            reason: "tool_use".to_owned(),
-        });
+        chat.session.reply(unluminous_chat::Reply::Finished { reason: "tool_use".to_owned() });
         chat.ask_for_the_tools();
         assert!(chat.asking().is_empty(), "nothing is asked of the window");
         let results = chat
@@ -1782,10 +1734,7 @@ mod tests {
         let long = serde_json::Value::String("x".repeat(20_000));
         let cut = shorten_for_a_model(&long);
         assert!(cut.len() < 9_000, "{}", cut.len());
-        assert!(
-            cut.ends_with("characters."),
-            "the cut says so rather than being silent"
-        );
+        assert!(cut.ends_with("characters."), "the cut says so rather than being silent");
         // A short one is untouched, and null is `ok` rather than the word `null`.
         assert_eq!(shorten_for_a_model(&serde_json::json!("fine")), "fine");
         assert_eq!(shorten_for_a_model(&serde_json::Value::Null), "ok");
@@ -1798,26 +1747,15 @@ mod tests {
     fn a_conversation_is_written_when_the_turn_ends_and_read_back_when_the_pane_is_opened_again() {
         let folder = a_folder("persist");
         let mut chat = AgentChat::new();
-        chat.open(&Context {
-            folder: Some(folder.clone()),
-            ..Context::default()
-        })
-        .expect("opened");
+        chat.open(&Context { folder: Some(folder.clone()), ..Context::default() }).expect("opened");
         chat.session.ask(Message::said(0, Role::User, "Remember me"));
         chat.session.reply(unluminous_chat::Reply::Text("I will.".to_owned()));
-        chat.session.reply(unluminous_chat::Reply::Finished {
-            reason: "stop".to_owned(),
-        });
+        chat.session.reply(unluminous_chat::Reply::Finished { reason: "stop".to_owned() });
         chat.dirty = true;
         chat.write_the_conversation();
 
         let mut again = AgentChat::new();
-        again
-            .open(&Context {
-                folder: Some(folder),
-                ..Context::default()
-            })
-            .expect("opened");
+        again.open(&Context { folder: Some(folder), ..Context::default() }).expect("opened");
         assert_eq!(again.session.chat.messages.len(), 2);
         assert_eq!(again.session.chat.messages[0].text(), "Remember me");
         assert_eq!(again.history().len(), 1);
@@ -1831,10 +1769,7 @@ mod tests {
             media_type_of(Path::new("shot.png"), &[0xFF, 0xD8, 0xFF, 0xE0]).as_deref(),
             Some("image/jpeg")
         );
-        assert_eq!(
-            media_type_of(Path::new("shot.png"), &[]).as_deref(),
-            Some("image/png")
-        );
+        assert_eq!(media_type_of(Path::new("shot.png"), &[]).as_deref(), Some("image/png"));
         assert_eq!(media_type_of(Path::new("notes.txt"), &[1, 2, 3]), None);
     }
 
@@ -1955,10 +1890,7 @@ mod tests {
         let view = chat.view();
         assert_eq!(view["state"], "sending");
         assert_eq!(view["messages"], 1);
-        assert!(
-            view["total"].is_null(),
-            "a chat's count is not drawn beside its pane's name"
-        );
+        assert!(view["total"].is_null(), "a chat's count is not drawn beside its pane's name");
         assert_eq!(view["conversation"]["messages"][0]["text"], "hello");
         // On by default since `task-1848`, and what the view reports is the setting rather than a constant.
         assert_eq!(view["tools"], true);

@@ -126,7 +126,12 @@ pub fn already_names_a_session(command: &str) -> bool {
 ///
 /// `held` is what the node has recorded and `fresh` is the id this run would use if it needs one. The answer
 /// is the words to append and the id to write down, and they cannot disagree because they are one value.
-pub fn session_for(command: &str, held: &str, resume: bool, fresh: &str) -> (String, Option<String>) {
+pub fn session_for(
+    command: &str,
+    held: &str,
+    resume: bool,
+    fresh: &str,
+) -> (String, Option<String>) {
     if command.trim().is_empty() || !takes_a_session(command) {
         return (String::new(), None);
     }
@@ -308,7 +313,10 @@ mod tests {
     #[test]
     fn a_command_is_split_the_way_a_run_configuration_is() {
         assert_eq!(words("claude --resume 6f1c"), vec!["claude", "--resume", "6f1c"]);
-        assert_eq!(words("\"C:/Program Files/x/y.exe\" go"), vec!["C:/Program Files/x/y.exe", "go"]);
+        assert_eq!(
+            words("\"C:/Program Files/x/y.exe\" go"),
+            vec!["C:/Program Files/x/y.exe", "go"]
+        );
         assert!(words("   ").is_empty());
     }
 
@@ -386,9 +394,8 @@ mod continuing_tests {
 /// on each platform — and a name that is not on it is treated as a program, which is the safe direction: a
 /// program wrongly kept is an offer nobody has to take, and a program wrongly discarded is the report.
 pub fn is_a_shell(program: &str) -> bool {
-    const SHELLS: [&str; 10] = [
-        "zsh", "bash", "sh", "fish", "dash", "ksh", "tcsh", "csh", "powershell", "pwsh",
-    ];
+    const SHELLS: [&str; 10] =
+        ["zsh", "bash", "sh", "fish", "dash", "ksh", "tcsh", "csh", "powershell", "pwsh"];
     // **Both separators, rather than `Path::file_stem`**, which splits only the running platform's — so a
     // `C:\Windows\System32\cmd.exe` read out of a `space.conf` written on Windows came back whole on macOS and
     // was not recognised. `is_the_node_runtime` splits both for the same reason: a canvas written on one

@@ -58,7 +58,11 @@ pub const LIST: &[(&'static str, &'static str)] = &[
 ];
 
 /// Run one.
-pub fn run(explorer: &mut DatabaseExplorer, command: &str, arguments: &[String]) -> Result<Answer, String> {
+pub fn run(
+    explorer: &mut DatabaseExplorer,
+    command: &str,
+    arguments: &[String],
+) -> Result<Answer, String> {
     let rest = arguments.join(" ");
     let rest = rest.trim().to_owned();
     match command {
@@ -104,7 +108,8 @@ pub fn run(explorer: &mut DatabaseExplorer, command: &str, arguments: &[String])
         "console" => {
             let name = a_source(explorer, &rest)?;
             let id = explorer.open_console(&name)?;
-            Ok(Answer::said(format!("a console on `{name}`")).with(serde_json::json!({ "page": id })))
+            Ok(Answer::said(format!("a console on `{name}`"))
+                .with(serde_json::json!({ "page": id })))
         }
         "query" => query(explorer, &rest),
         "state" => state(explorer),
@@ -126,7 +131,8 @@ pub fn run(explorer: &mut DatabaseExplorer, command: &str, arguments: &[String])
         "add-row" => {
             let grid = grid_mut(explorer)?;
             grid.pending.add();
-            Ok(Answer::said("a row added, pending").with(serde_json::json!({ "pending": grid.pending.len() })))
+            Ok(Answer::said("a row added, pending")
+                .with(serde_json::json!({ "pending": grid.pending.len() })))
         }
         "delete-row" => delete_row(explorer, &rest),
         "pending" => pending(explorer),
@@ -173,9 +179,9 @@ fn add_source(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, Str
         explorer.modal = Some(crate::services::database::Modal::Source(a_new_source(explorer)));
         return Ok(Answer::said("fill in the new data source"));
     }
-    let (name, rest) = rest
-        .split_once(char::is_whitespace)
-        .ok_or_else(|| "add-source takes a name and a URL, or a name and the path of a SQLite file.".to_owned())?;
+    let (name, rest) = rest.split_once(char::is_whitespace).ok_or_else(|| {
+        "add-source takes a name and a URL, or a name and the path of a SQLite file.".to_owned()
+    })?;
     // An optional third word: the name of an environment variable holding the password, so that
     // adding a source and saying where its password is are one command rather than two. Never the
     // password — see `password`.
@@ -233,7 +239,8 @@ fn briefly(
     let until = std::time::Instant::now() + PATIENCE;
     loop {
         explorer.take_the_replies();
-        if let Some(problem) = explorer.loaded.get(source).and_then(|loaded| loaded.problem.clone()) {
+        if let Some(problem) = explorer.loaded.get(source).and_then(|loaded| loaded.problem.clone())
+        {
             return Err(problem);
         }
         if let Some(answer) = ready(explorer) {
@@ -275,7 +282,9 @@ fn tables(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, String>
             let loaded = explorer.loaded.get(&source)?;
             match loaded.schemas.is_empty() {
                 true => None,
-                false => Some(Ok(Answer::nothing().with(serde_json::json!(loaded.schemas.clone())))),
+                false => {
+                    Some(Ok(Answer::nothing().with(serde_json::json!(loaded.schemas.clone()))))
+                }
             }
         })?
     };
@@ -354,7 +363,10 @@ fn vector(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, String>
             "row {row}'s `{column}` does not hold a vector: it is {}.",
             match value.is_null() {
                 true => "NULL".to_owned(),
-                false => format!("{} bytes that are not a whole number of finite 32-bit floats", value.bytes().map_or(0, <[u8]>::len)),
+                false => format!(
+                    "{} bytes that are not a whole number of finite 32-bit floats",
+                    value.bytes().map_or(0, <[u8]>::len)
+                ),
             }
         )),
     }
@@ -410,11 +422,8 @@ fn capabilities(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, S
         ))
         .with(serde_json::json!({ "source": name, "capabilities": [] })));
     }
-    let absent: Vec<&str> = rows
-        .iter()
-        .filter(|entry| entry.support.name() != "yes")
-        .map(|entry| entry.name)
-        .collect();
+    let absent: Vec<&str> =
+        rows.iter().filter(|entry| entry.support.name() != "yes").map(|entry| entry.name).collect();
     Ok(Answer::said(format!(
         "{} capabilities; not fully supported: {}",
         rows.len(),
@@ -515,14 +524,20 @@ fn query(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, String> 
         return Err("query takes a statement.".to_owned());
     }
     // A console is opened if there is not one, so `query` works on a window nobody has touched.
-    let id = match explorer.pages.get(explorer.current).map(|page| (page.id, matches!(page.sheet, Sheet::Console(_)))) {
+    let id = match explorer
+        .pages
+        .get(explorer.current)
+        .map(|page| (page.id, matches!(page.sheet, Sheet::Console(_))))
+    {
         Some((id, true)) => id,
         _ => {
             let source = explorer.configuration.chosen.clone();
             explorer.open_console(&source)?
         }
     };
-    if let Some(Page { sheet: Sheet::Console(console), .. }) = explorer.pages.iter_mut().find(|page| page.id == id) {
+    if let Some(Page { sheet: Sheet::Console(console), .. }) =
+        explorer.pages.iter_mut().find(|page| page.id == id)
+    {
         console.text = rest.to_owned();
         console.caret = rest.len();
         console.result = None;
@@ -545,10 +560,9 @@ fn state(explorer: &mut DatabaseExplorer) -> Result<Answer, String> {
     let id = current(explorer)?;
     let Some(page) = explorer.page(id) else { return Err("no such page.".to_owned()) };
     let (running, said) = match &page.sheet {
-        Sheet::Console(console) => (
-            console.running.is_some(),
-            console.output.last().cloned().unwrap_or_default(),
-        ),
+        Sheet::Console(console) => {
+            (console.running.is_some(), console.output.last().cloned().unwrap_or_default())
+        }
         Sheet::Grid(grid) => (grid.running.is_some(), grid.rows.summary()),
     };
     Ok(Answer::said(match running {
@@ -565,7 +579,9 @@ fn result(explorer: &mut DatabaseExplorer) -> Result<Answer, String> {
         .view()
         .get("pages")
         .and_then(|pages| pages.as_array().cloned())
-        .and_then(|pages| pages.into_iter().find(|page| page.get("id") == Some(&serde_json::json!(id))))
+        .and_then(|pages| {
+            pages.into_iter().find(|page| page.get("id") == Some(&serde_json::json!(id)))
+        })
         .unwrap_or(serde_json::Value::Null);
     let said = match &value {
         serde_json::Value::Object(page) => page
@@ -589,7 +605,9 @@ fn page(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, String> {
             "first" => 0,
             number => number
                 .parse::<usize>()
-                .map_err(|_| format!("`{number}` is not `next`, `previous`, `first` or a page number."))?
+                .map_err(|_| {
+                    format!("`{number}` is not `next`, `previous`, `first` or a page number.")
+                })?
                 .saturating_sub(1),
         }
     };
@@ -598,7 +616,11 @@ fn page(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, String> {
     Ok(Answer::said(format!("page {}", at + 1)).with(serde_json::json!({ "page": at + 1 })))
 }
 
-fn set_fragment(explorer: &mut DatabaseExplorer, rest: &str, is_where: bool) -> Result<Answer, String> {
+fn set_fragment(
+    explorer: &mut DatabaseExplorer,
+    rest: &str,
+    is_where: bool,
+) -> Result<Answer, String> {
     let id = current(explorer)?;
     {
         let grid = grid_mut(explorer)?;
@@ -630,15 +652,15 @@ fn set(explorer: &mut DatabaseExplorer, arguments: &[String]) -> Result<Answer, 
         .ok_or_else(|| "row numbers start at 1.".to_owned())?;
     let value = match null {
         true => Value::Null,
-        false => Value::typed(words.iter().skip(2).map(|word| word.as_str()).collect::<Vec<&str>>().join(" ")),
+        false => Value::typed(
+            words.iter().skip(2).map(|word| word.as_str()).collect::<Vec<&str>>().join(" "),
+        ),
     };
     let grid = grid_mut(explorer)?;
     if let Some(why) = crate::services::database::why_not(grid) {
         return Err(why);
     }
-    let key = grid
-        .row_of(at)
-        .ok_or_else(|| format!("there is no row {} on this page.", at + 1))?;
+    let key = grid.row_of(at).ok_or_else(|| format!("there is no row {} on this page.", at + 1))?;
     if grid.rows.column(column).is_none() {
         return Err(format!("`{column}` is not a column of `{}`.", grid.table.name));
     }
@@ -657,9 +679,7 @@ fn delete_row(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, Str
     if let Some(why) = crate::services::database::why_not(grid) {
         return Err(why);
     }
-    let key = grid
-        .row_of(at)
-        .ok_or_else(|| format!("there is no row {} on this page.", at + 1))?;
+    let key = grid.row_of(at).ok_or_else(|| format!("there is no row {} on this page.", at + 1))?;
     grid.pending.delete(key);
     Ok(Answer::said("pending").with(serde_json::json!({ "pending": grid.pending.len() })))
 }
@@ -667,17 +687,19 @@ fn delete_row(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, Str
 fn pending(explorer: &mut DatabaseExplorer) -> Result<Answer, String> {
     let id = current(explorer)?;
     let statements = explorer.preview(id)?;
-    Ok(Answer::said(format!("{} statement(s)", statements.len())).with(serde_json::json!(statements
-        .iter()
-        .map(|statement| serde_json::json!({
-            "sql": statement.sql,
-            "values": statement.values.iter().map(|value| match value {
-                Value::Null => serde_json::Value::Null,
-                other => serde_json::Value::String(other.display()),
-            }).collect::<Vec<serde_json::Value>>(),
-            "what": statement.what,
-        }))
-        .collect::<Vec<serde_json::Value>>())))
+    Ok(Answer::said(format!("{} statement(s)", statements.len())).with(serde_json::json!(
+        statements
+            .iter()
+            .map(|statement| serde_json::json!({
+                "sql": statement.sql,
+                "values": statement.values.iter().map(|value| match value {
+                    Value::Null => serde_json::Value::Null,
+                    other => serde_json::Value::String(other.display()),
+                }).collect::<Vec<serde_json::Value>>(),
+                "what": statement.what,
+            }))
+            .collect::<Vec<serde_json::Value>>()
+    )))
 }
 
 /// `password <source> env <VARIABLE>`, `keychain <entry>`, or `none`.
@@ -690,7 +712,10 @@ fn password(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, Strin
     let mut words = rest.split_whitespace();
     let name = words
         .next()
-        .ok_or_else(|| "password takes a data source and `set <secret>`, `keychain <entry>` or `none`.".to_owned())?
+        .ok_or_else(|| {
+            "password takes a data source and `set <secret>`, `keychain <entry>` or `none`."
+                .to_owned()
+        })?
         .to_owned();
     let secret = match words.next() {
         // **The one form that carries the secret itself**, and it carries it into the machine's own
@@ -706,13 +731,16 @@ fn password(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, Strin
             Secret::Keychain(entry)
         }
         Some("keychain") => {
-            let entry = words.next().ok_or_else(|| "`keychain` takes the name of an entry.".to_owned())?;
+            let entry =
+                words.next().ok_or_else(|| "`keychain` takes the name of an entry.".to_owned())?;
             Secret::Keychain(entry.to_owned())
         }
         // Still read, because a data source somebody set up this way goes on working; there is no
         // longer a way to make a new one, and the dialog does not offer it.
         Some("env") | Some("environment") => {
-            let variable = words.next().ok_or_else(|| "`env` takes the name of an environment variable.".to_owned())?;
+            let variable = words
+                .next()
+                .ok_or_else(|| "`env` takes the name of an environment variable.".to_owned())?;
             Secret::Environment(variable.to_owned())
         }
         Some("none") => {
@@ -727,7 +755,9 @@ fn password(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, Strin
                  `keychain <entry>` and `none`."
             ))
         }
-        None => return Err("password takes `set <secret>`, `keychain <entry>` or `none`.".to_owned()),
+        None => {
+            return Err("password takes `set <secret>`, `keychain <entry>` or `none`.".to_owned())
+        }
     };
     let described = secret.describe();
     let source = explorer
@@ -745,7 +775,8 @@ fn password(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, Strin
 
 fn read_only(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, String> {
     let mut words = rest.split_whitespace();
-    let name = words.next().map(str::to_owned).unwrap_or_else(|| explorer.configuration.chosen.clone());
+    let name =
+        words.next().map(str::to_owned).unwrap_or_else(|| explorer.configuration.chosen.clone());
     let value = match words.next() {
         Some("on") | Some("true") => true,
         Some("off") | Some("false") => false,
@@ -773,14 +804,14 @@ fn read_only(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, Stri
 
 /// The page the commands act on, which is whichever one the workspace is showing.
 fn current(explorer: &DatabaseExplorer) -> Result<u64, String> {
-    explorer
-        .pages
-        .get(explorer.current)
-        .map(|page| page.id)
-        .ok_or_else(|| "there is no page open. `console <source>` or `open <table>` first.".to_owned())
+    explorer.pages.get(explorer.current).map(|page| page.id).ok_or_else(|| {
+        "there is no page open. `console <source>` or `open <table>` first.".to_owned()
+    })
 }
 
-fn grid_mut(explorer: &mut DatabaseExplorer) -> Result<&mut crate::services::database::Grid, String> {
+fn grid_mut(
+    explorer: &mut DatabaseExplorer,
+) -> Result<&mut crate::services::database::Grid, String> {
     let id = current(explorer)?;
     match explorer.pages.iter_mut().find(|page| page.id == id) {
         Some(Page { sheet: Sheet::Grid(grid), .. }) => Ok(grid),
@@ -839,7 +870,9 @@ fn split_a_name(explorer: &DatabaseExplorer, rest: &str) -> Result<(String, Stri
 /// is not read as naming a variable called `x.db`.
 fn is_a_variable_name(word: &str) -> bool {
     !word.is_empty()
-        && word.chars().all(|character| character.is_ascii_uppercase() || character.is_ascii_digit() || character == '_')
+        && word.chars().all(|character| {
+            character.is_ascii_uppercase() || character.is_ascii_digit() || character == '_'
+        })
         && word.chars().any(|character| character.is_ascii_uppercase())
 }
 
@@ -875,7 +908,8 @@ pub fn a_new_table(explorer: &DatabaseExplorer, source: &str, schema: &str) -> T
         columns: vec![ColumnForm {
             name: "id".to_owned(),
             type_name: match engine {
-                unluminous_db::source::Engine::Sqlite | unluminous_db::source::Engine::Inillucent => "INTEGER".to_owned(),
+                unluminous_db::source::Engine::Sqlite
+                | unluminous_db::source::Engine::Inillucent => "INTEGER".to_owned(),
                 unluminous_db::source::Engine::Postgres => "integer".to_owned(),
             },
             in_key: true,
@@ -929,7 +963,8 @@ fn new_table(explorer: &mut DatabaseExplorer, arguments: &[String]) -> Result<An
         .unwrap_or(unluminous_db::source::Engine::Postgres);
     let sql = unluminous_db::sql::create_table(&schema, &name, &columns, engine)?;
     explorer.run_the_ddl(&source, &schema, &sql)?;
-    Ok(Answer::said(format!("`{name}` made")).with(serde_json::json!({ "sql": sql, "schema": schema, "table": name })))
+    Ok(Answer::said(format!("`{name}` made"))
+        .with(serde_json::json!({ "sql": sql, "schema": schema, "table": name })))
 }
 
 /// `<name>:<type>[:pk][:notnull]`, which is the shortest thing that says what a column is.

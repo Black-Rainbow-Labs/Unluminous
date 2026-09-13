@@ -249,7 +249,6 @@ fn strings_on_line(text: &str, start: usize, end: usize, grammar: &Grammar) -> V
     found
 }
 
-
 /// Whether a line comment opens on this line before `at`.
 ///
 /// A specifier is the one context that lives inside a string, so the popup's usual refusal to open
@@ -532,7 +531,8 @@ pub fn specifiers_in(text: &str, grammar: &Grammar) -> Vec<WrittenSpecifier> {
     let mut found = Vec::new();
     let mut line_start = 0usize;
     while line_start <= text.len() {
-        let line_end = text[line_start..].find('\n').map(|at| line_start + at).unwrap_or(text.len());
+        let line_end =
+            text[line_start..].find('\n').map(|at| line_start + at).unwrap_or(text.len());
         for content in strings_on_line(text, line_start, line_end, grammar) {
             if content.is_empty() {
                 continue;
@@ -541,10 +541,7 @@ pub fn specifiers_in(text: &str, grammar: &Grammar) -> Vec<WrittenSpecifier> {
             if commented_out(text, quote, grammar) || !keyword_in_statement(text, quote, grammar) {
                 continue;
             }
-            found.push(WrittenSpecifier {
-                text: text[content.clone()].to_owned(),
-                range: content,
-            });
+            found.push(WrittenSpecifier { text: text[content.clone()].to_owned(), range: content });
         }
         if line_end >= text.len() {
             break;
@@ -682,7 +679,8 @@ pub fn paths_in(text: &str, grammar: &Grammar, read: &Tokens) -> Vec<WrittenPath
     let mut at = 0usize;
     while at < words.len() {
         let mut chain = vec![words[at].clone()];
-        while at + 1 < words.len() && joined_by(text, words[at].end, words[at + 1].start, separator) {
+        while at + 1 < words.len() && joined_by(text, words[at].end, words[at + 1].start, separator)
+        {
             chain.push(words[at + 1].clone());
             at += 1;
         }
@@ -744,7 +742,10 @@ fn visibility_before(text: &str, keyword: usize, grammar: &Grammar) -> (usize, S
     if word.is_empty() || text[word.clone()] != *"pub" {
         return (keyword, String::new());
     }
-    (word.start, text[word.start..].split(|c: char| c.is_whitespace()).next().unwrap_or("pub").to_owned())
+    (
+        word.start,
+        text[word.start..].split(|c: char| c.is_whitespace()).next().unwrap_or("pub").to_owned(),
+    )
 }
 
 /// A reader that walks the text of one statement, stepping over comments as it goes.
@@ -917,7 +918,6 @@ pub fn nesting(text: &str, read: &Tokens) -> Nesting {
     Nesting { braces }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -964,7 +964,10 @@ mod tests {
     /// A grammar shaped like the Rust plugin's.
     fn rust() -> Grammar {
         Grammar {
-            keywords: ["use", "pub", "let", "as", "mod"].iter().map(|it| (*it).to_owned()).collect(),
+            keywords: ["use", "pub", "let", "as", "mod"]
+                .iter()
+                .map(|it| (*it).to_owned())
+                .collect(),
             line_comment: Some("//".to_owned()),
             strings: vec!['"'],
             escapes: true,

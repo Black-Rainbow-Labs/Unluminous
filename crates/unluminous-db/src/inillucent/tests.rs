@@ -16,8 +16,8 @@ use crate::catalog::Kind;
 /// Each test names its own file, which is `git_folder(name)`'s rule in the screenshot tests: a fixture
 /// only one test uses may be written each time, and the name is what keeps them apart.
 fn a_database(name: &str) -> PathBuf {
-    let folder =
-        std::env::temp_dir().join(format!("unluminous-db-inillucent-{}-{name}", std::process::id()));
+    let folder = std::env::temp_dir()
+        .join(format!("unluminous-db-inillucent-{}-{name}", std::process::id()));
     let _ = std::fs::create_dir_all(&folder);
     let file = folder.join("test.rdb");
     let _ = std::fs::remove_file(&file);
@@ -60,8 +60,8 @@ fn a_database(name: &str) -> PathBuf {
 
 /// A SQLite database, for the two tests about telling the formats apart.
 fn a_sqlite_database(name: &str) -> PathBuf {
-    let folder =
-        std::env::temp_dir().join(format!("unluminous-db-inillucent-{}-{name}", std::process::id()));
+    let folder = std::env::temp_dir()
+        .join(format!("unluminous-db-inillucent-{}-{name}", std::process::id()));
     let _ = std::fs::create_dir_all(&folder);
     let file = folder.join("sqlite.db");
     let _ = std::fs::remove_file(&file);
@@ -140,7 +140,8 @@ fn a_source_reads_the_engine_off_the_file_rather_than_asking_anybody() {
 fn a_url_keeps_an_absolute_path_absolute_and_a_relative_one_relative() {
     use crate::source::{Engine, Source};
     for scheme in ["sqlite", "inillucent"] {
-        let absolute = Source::parse("db", &format!("{scheme}:///Users/me/data.db")).expect("a source");
+        let absolute =
+            Source::parse("db", &format!("{scheme}:///Users/me/data.db")).expect("a source");
         assert_eq!(
             absolute.database, "/Users/me/data.db",
             "{scheme}:///… is an absolute path and keeps its root"
@@ -153,7 +154,8 @@ fn a_url_keeps_an_absolute_path_absolute_and_a_relative_one_relative() {
         );
 
         // A Windows path in a URL has no leading slash to lose, and must not gain one either.
-        let windows = Source::parse("db", &format!("{scheme}://C:/data/local.db")).expect("a source");
+        let windows =
+            Source::parse("db", &format!("{scheme}://C:/data/local.db")).expect("a source");
         assert_eq!(windows.database, "C:/data/local.db");
 
         // The engine is what the scheme said whichever spelling was used.
@@ -183,7 +185,8 @@ fn a_bare_path_is_not_rewritten() {
 fn the_tree_reads_every_kind_including_the_two_the_search_engine_adds() {
     let mut session = Session::open(&a_database("items"), false).expect("opened");
     let items = session.items().expect("items");
-    let named: Vec<(&str, Kind)> = items.iter().map(|item| (item.name.as_str(), item.kind)).collect();
+    let named: Vec<(&str, Kind)> =
+        items.iter().map(|item| (item.name.as_str(), item.kind)).collect();
     assert!(named.contains(&("member", Kind::Table)), "{named:?}");
     assert!(named.contains(&("members", Kind::View)), "{named:?}");
     assert!(named.contains(&("member_name", Kind::Index)), "{named:?}");
@@ -260,7 +263,11 @@ fn a_search_finds_the_row_and_ranks_it() {
     // words and get the rows back in an order somebody can argue with.
     let mut session = Session::open(&a_database("match"), false).expect("opened");
     let rows = session
-        .run("select title, rank from docs where docs match 'release' order by rank limit 3", &[], 10)
+        .run(
+            "select title, rank from docs where docs match 'release' order by rank limit 3",
+            &[],
+            10,
+        )
         .expect("rows");
     assert_eq!(rows.rows.len(), 1, "{:?}", rows.rows);
     assert_eq!(rows.rows[0][0], Value::Text("release process".to_owned()));
@@ -353,9 +360,8 @@ fn a_read_only_source_is_refused_by_the_driver_rather_than_by_unluminous() {
     let file = a_database("readonly");
     let mut session = Session::open(&file, true).expect("opened");
     assert!(session.run("select count(*) from member", &[], usize::MAX).is_ok());
-    let refused = session
-        .run("insert into member (id, name) values (99, 'x')", &[], 0)
-        .expect_err("refused");
+    let refused =
+        session.run("insert into member (id, name) values (99, 'x')", &[], 0).expect_err("refused");
     assert_eq!(refused.code, "readonly", "{refused}");
 }
 
@@ -449,7 +455,8 @@ fn a_file_that_is_not_a_database_at_all_refuses_rather_than_panicking() {
     // A hostile or corrupt file must produce a refusal. The pages are parsed beneath the driver by a
     // crate that forbids unsafe and bounds-checks every read against the page's own header, and what
     // this asserts is that the refusal reaches the caller as words rather than as a panic.
-    let folder = std::env::temp_dir().join(format!("unluminous-db-inillucent-{}-junk", std::process::id()));
+    let folder =
+        std::env::temp_dir().join(format!("unluminous-db-inillucent-{}-junk", std::process::id()));
     let _ = std::fs::create_dir_all(&folder);
     let file = folder.join("junk.rdb");
     // The right magic and nothing else that is right, which is the case a length check alone misses.

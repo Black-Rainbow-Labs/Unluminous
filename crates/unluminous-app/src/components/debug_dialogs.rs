@@ -73,63 +73,67 @@ pub struct DialogOutcome {
 /// Draw `Edit Breakpoint`.
 pub fn breakpoint(ctx: &egui::Context, dialog: &mut BreakpointDialog) -> DialogOutcome {
     let mut outcome = DialogOutcome::default();
-    let (_, closed) = modal::show(ctx, "unluminous-breakpoint", BREAKPOINT_WIDTH, BREAKPOINT_HEIGHT, |ui, area| {
-        if modal::header(ui, area, &format!("Breakpoint \u{2014} line {}", dialog.line)) {
-            outcome.cancelled = true;
-        }
-        let body = modal::body(area);
-        let mut top = body.top();
-        top = modal::note(
-            ui,
-            body,
-            top,
-            &format!("In {}.", file_name(&dialog.path)),
-        );
-        top += 6.0;
+    let (_, closed) = modal::show(
+        ctx,
+        "unluminous-breakpoint",
+        BREAKPOINT_WIDTH,
+        BREAKPOINT_HEIGHT,
+        |ui, area| {
+            if modal::header(ui, area, &format!("Breakpoint \u{2014} line {}", dialog.line)) {
+                outcome.cancelled = true;
+            }
+            let body = modal::body(area);
+            let mut top = body.top();
+            top = modal::note(ui, body, top, &format!("In {}.", file_name(&dialog.path)));
+            top += 6.0;
 
-        let tick = Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width(), ROW));
-        modal::check(ui, tick, "Enabled", &mut dialog.enabled);
-        top += ROW + 10.0;
+            let tick =
+                Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width(), ROW));
+            modal::check(ui, tick, "Enabled", &mut dialog.enabled);
+            top += ROW + 10.0;
 
-        // Offered only when the adapter said it can, which is the rule every optional control here
-        // follows. The condition and the log message are **data in the request**: the adapter does
-        // the evaluating and the logging, so Unluminous's whole cost for two of the reference editor's features is
-        // these two fields.
-        if dialog.conditions {
-            top = modal::section(ui, body, top, "Condition");
-            let field = Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width(), ROW));
-            modal::field(ui, field, "Condition", &mut dialog.condition);
-            top += ROW + 4.0;
-            top = modal::note(
+            // Offered only when the adapter said it can, which is the rule every optional control here
+            // follows. The condition and the log message are **data in the request**: the adapter does
+            // the evaluating and the logging, so Unluminous's whole cost for two of the reference editor's features is
+            // these two fields.
+            if dialog.conditions {
+                top = modal::section(ui, body, top, "Condition");
+                let field =
+                    Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width(), ROW));
+                modal::field(ui, field, "Condition", &mut dialog.condition);
+                top += ROW + 4.0;
+                top = modal::note(
                 ui,
                 body,
                 top,
                 "An expression in the program's own language. It stops only while this is true.",
             );
-            top += 6.0;
-        }
-        if dialog.log_points {
-            top = modal::section(ui, body, top, "Log message");
-            let field = Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width(), ROW));
-            modal::field(ui, field, "Log message", &mut dialog.log_message);
-            top += ROW + 4.0;
-            modal::note(
+                top += 6.0;
+            }
+            if dialog.log_points {
+                top = modal::section(ui, body, top, "Log message");
+                let field =
+                    Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width(), ROW));
+                modal::field(ui, field, "Log message", &mut dialog.log_message);
+                top += ROW + 4.0;
+                modal::note(
                 ui,
                 body,
                 top,
                 "Printed instead of stopping. The debugger formats it, so {name} reads a variable.",
             );
-        }
+            }
 
-        // Enter answers it, which `modal::footer` makes true of every dialog built from the
-        // furniture. The fields own no key of their own, so the plain `Enter` is right here.
-        match modal::footer(ui, area, &[("Remove", true), ("Cancel", true), ("Save", true)]) {
-            Some(0) => outcome.removed = true,
-            Some(1) => outcome.cancelled = true,
-            Some(2) => outcome.confirmed = true,
-            _ => {}
-        }
-    });
+            // Enter answers it, which `modal::footer` makes true of every dialog built from the
+            // furniture. The fields own no key of their own, so the plain `Enter` is right here.
+            match modal::footer(ui, area, &[("Remove", true), ("Cancel", true), ("Save", true)]) {
+                Some(0) => outcome.removed = true,
+                Some(1) => outcome.cancelled = true,
+                Some(2) => outcome.confirmed = true,
+                _ => {}
+            }
+        },
+    );
     if closed {
         outcome.cancelled = true;
     }
@@ -151,29 +155,35 @@ pub struct EvaluateDialog {
 /// Draw `Evaluate Expression`.
 pub fn evaluate(ctx: &egui::Context, dialog: &mut EvaluateDialog, paused: bool) -> DialogOutcome {
     let mut outcome = DialogOutcome::default();
-    let (_, closed) = modal::show(ctx, "unluminous-evaluate", EVALUATE_WIDTH, EVALUATE_HEIGHT, |ui, area| {
-        if modal::header(ui, area, "Evaluate Expression") {
-            outcome.cancelled = true;
-        }
-        let body = modal::body(area);
-        let mut top = body.top();
-        let field = Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width(), ROW));
-        let entry = modal::field(ui, field, "Expression", &mut dialog.expression);
-        // The field has the keyboard as soon as the modal opens, because one that has to be clicked
-        // before it can be typed into is one that gets typed past — `prompt_dialog`'s rule.
-        if !entry.has_focus() {
-            entry.request_focus();
-        }
-        top += ROW + 12.0;
-        top = modal::section(ui, body, top, "Result");
-        let answer = Rect::from_min_max(Pos2::new(body.left(), top), body.max);
-        show_result(ui, answer, dialog, paused);
-        match modal::footer(ui, area, &[("Close", true), ("Evaluate", paused && !dialog.expression.trim().is_empty())]) {
-            Some(0) => outcome.cancelled = true,
-            Some(1) => outcome.confirmed = true,
-            _ => {}
-        }
-    });
+    let (_, closed) =
+        modal::show(ctx, "unluminous-evaluate", EVALUATE_WIDTH, EVALUATE_HEIGHT, |ui, area| {
+            if modal::header(ui, area, "Evaluate Expression") {
+                outcome.cancelled = true;
+            }
+            let body = modal::body(area);
+            let mut top = body.top();
+            let field =
+                Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width(), ROW));
+            let entry = modal::field(ui, field, "Expression", &mut dialog.expression);
+            // The field has the keyboard as soon as the modal opens, because one that has to be clicked
+            // before it can be typed into is one that gets typed past — `prompt_dialog`'s rule.
+            if !entry.has_focus() {
+                entry.request_focus();
+            }
+            top += ROW + 12.0;
+            top = modal::section(ui, body, top, "Result");
+            let answer = Rect::from_min_max(Pos2::new(body.left(), top), body.max);
+            show_result(ui, answer, dialog, paused);
+            match modal::footer(
+                ui,
+                area,
+                &[("Close", true), ("Evaluate", paused && !dialog.expression.trim().is_empty())],
+            ) {
+                Some(0) => outcome.cancelled = true,
+                Some(1) => outcome.confirmed = true,
+                _ => {}
+            }
+        });
     if closed {
         outcome.cancelled = true;
     }

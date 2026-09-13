@@ -33,12 +33,23 @@ fn collect_every_glyph(renderer: &TextRenderer, text: &Rope, laid: &Layout) -> u
 }
 
 /// The same, for the lines that fall inside a window `height` points tall at `scroll`.
-fn collect_visible_glyphs(renderer: &TextRenderer, text: &Rope, laid: &Layout, scroll: f32, height: f32) -> usize {
+fn collect_visible_glyphs(
+    renderer: &TextRenderer,
+    text: &Rope,
+    laid: &Layout,
+    scroll: f32,
+    height: f32,
+) -> usize {
     let visible = laid.visible_lines(scroll, scroll + height);
     collect_glyphs(renderer, text, laid, &laid.lines[visible])
 }
 
-fn collect_glyphs(renderer: &TextRenderer, text: &Rope, laid: &Layout, lines: &[unluminous_core::PlacedLine]) -> usize {
+fn collect_glyphs(
+    renderer: &TextRenderer,
+    text: &Rope,
+    laid: &Layout,
+    lines: &[unluminous_core::PlacedLine],
+) -> usize {
     let view = LayoutTextView::new(laid, text);
     let mut placed = 0usize;
     for line in lines {
@@ -57,7 +68,8 @@ fn collect_glyphs(renderer: &TextRenderer, text: &Rope, laid: &Layout, lines: &[
 
 fn main() {
     let mut arguments = std::env::args().skip(1);
-    let path = arguments.next().unwrap_or_else(|| "crates/unluminous-app/src/app/mod.rs".to_owned());
+    let path =
+        arguments.next().unwrap_or_else(|| "crates/unluminous-app/src/app/mod.rs".to_owned());
     let width: f32 = arguments.next().and_then(|w| w.parse().ok()).unwrap_or(900.0);
     let view_height = 720.0_f32;
 
@@ -113,7 +125,13 @@ fn main() {
 
     let visible = collect_visible_glyphs(&renderer, document.text(), &laid, 0.0, view_height);
     let ms = timed(200, || {
-        std::hint::black_box(collect_visible_glyphs(&renderer, document.text(), &laid, 0.0, view_height));
+        std::hint::black_box(collect_visible_glyphs(
+            &renderer,
+            document.text(),
+            &laid,
+            0.0,
+            view_height,
+        ));
     });
     println!("  glyphs, one screenful:   {ms:8.2} ms  ({visible} glyphs)");
 
@@ -161,14 +179,26 @@ fn main() {
     // and nothing is coloured: the frame is the selection rectangles and a screenful of glyphs.
     let ms = timed(500, || {
         std::hint::black_box(laid.selection_rects_in(onscreen.clone(), 0..end / 2));
-        std::hint::black_box(collect_visible_glyphs(&renderer, document.text(), &laid, 0.0, view_height));
+        std::hint::black_box(collect_visible_glyphs(
+            &renderer,
+            document.text(),
+            &laid,
+            0.0,
+            view_height,
+        ));
     });
     println!("  dragging a selection:    {ms:8.2} ms  ({:.0} frames a second)", 1000.0 / ms);
 
     // Scrolling, and dragging the window: nothing about the document changes at all, so the frame is
     // a screenful of glyphs and nothing else.
     let ms = timed(500, || {
-        std::hint::black_box(collect_visible_glyphs(&renderer, document.text(), &laid, 4000.0, view_height));
+        std::hint::black_box(collect_visible_glyphs(
+            &renderer,
+            document.text(),
+            &laid,
+            4000.0,
+            view_height,
+        ));
     });
     println!("  scrolling or dragging:   {ms:8.2} ms  ({:.0} frames a second)", 1000.0 / ms);
 
@@ -188,7 +218,13 @@ fn main() {
             width,
             &unluminous_core::folding::Hidden::none(),
         );
-        std::hint::black_box(collect_visible_glyphs(&renderer, document.text(), &carried, 0.0, view_height));
+        std::hint::black_box(collect_visible_glyphs(
+            &renderer,
+            document.text(),
+            &carried,
+            0.0,
+            view_height,
+        ));
     });
     println!("  typing a letter:         {ms:8.2} ms  ({:.0} frames a second)", 1000.0 / ms);
 
@@ -218,7 +254,13 @@ fn main() {
                 width,
                 &unluminous_core::folding::Hidden::none(),
             );
-            std::hint::black_box(collect_visible_glyphs(&renderer, document.text(), &carried, 0.0, view_height));
+            std::hint::black_box(collect_visible_glyphs(
+                &renderer,
+                document.text(),
+                &carried,
+                0.0,
+                view_height,
+            ));
         });
         println!("  typing, whole file read: {ms:8.2} ms  ({:.0} frames a second)", 1000.0 / ms);
 
@@ -257,7 +299,13 @@ fn main() {
                 width,
                 &unluminous_core::folding::Hidden::none(),
             );
-            std::hint::black_box(collect_visible_glyphs(&renderer, document.text(), &carried, 0.0, view_height));
+            std::hint::black_box(collect_visible_glyphs(
+                &renderer,
+                document.text(),
+                &carried,
+                0.0,
+                view_height,
+            ));
         });
         println!(
             "  typing, coloured again:  {ms:8.2} ms  ({:.0} frames a second, {scanned} tokens read)",

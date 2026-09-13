@@ -32,7 +32,6 @@
 //! test all go down that one path.
 
 // The window's side of the UI plugins: which providers are open, and which of their panes are showing.
-pub mod plugin_panes;
 pub mod action_names;
 pub mod actions;
 pub mod cli;
@@ -43,6 +42,7 @@ pub mod files;
 pub mod folding;
 pub mod git;
 pub mod hover_value;
+pub mod plugin_panes;
 pub mod space;
 pub mod symbols;
 
@@ -56,6 +56,7 @@ use std::sync::Arc;
 use egui::{Color32, CornerRadius, Pos2, Rect, Vec2};
 use unluminous_core::{layout, relayout, Command, Document, Highlights, Layout, Rgba};
 
+use crate::app::debug::{Built, DebugState, PendingBuild};
 use crate::components::about_dialog::{self, About};
 use crate::components::activity_bar;
 use crate::components::branch_widget;
@@ -68,13 +69,13 @@ use crate::components::editor_view;
 use crate::components::explorer;
 use crate::components::file_tabs::{self, TabView};
 use crate::components::find_in_files::{self, FindInFiles};
-use crate::components::references::References;
 use crate::components::git_dialogs::{self, Dialog};
 use crate::components::git_panel;
 use crate::components::go_to_file::{self, GoToFile};
 use crate::components::gutter::{self, Gutter};
 use crate::components::picture_view;
 use crate::components::prompt_dialog::{self, Prompt, Purpose};
+use crate::components::references::References;
 use crate::components::resize_edges;
 use crate::components::run_dialog::{self, RunDialog};
 use crate::components::run_panel::{self, RunPanel};
@@ -87,36 +88,37 @@ use crate::components::terminal_panel::{self, TerminalPanel};
 use crate::components::text_menu;
 use crate::components::text_tools;
 use crate::components::title_bar::{self, MenuPlacement};
-use crate::app::debug::{Built, DebugState, PendingBuild};
+use crate::services;
 use crate::services::breakpoint_store::BreakpointStore;
-use crate::services::browser::{BrowserCommand, BrowserEvent, BrowserHost, BrowserLocation, BrowserPlacement, BrowserTab};
+use crate::services::browser::{
+    BrowserCommand, BrowserEvent, BrowserHost, BrowserLocation, BrowserPlacement, BrowserTab,
+};
+use crate::services::control;
 use crate::services::debuggers;
+use crate::services::file_clipboard::FileClipboard;
 use crate::services::file_kind;
 use crate::services::file_marks::FileMarks;
 use crate::services::file_move;
-use crate::services::imports;
-use crate::services::recycle;
-use crate::services::run_configurations::{self, Configuration, Origin, RunConfigurations};
 use crate::services::file_tree::FileTree;
-use crate::services::file_clipboard::FileClipboard;
+use crate::services::icons::Icons;
+use crate::services::imports;
 use crate::services::launcher;
 use crate::services::locators;
-use crate::services;
-use crate::services::icons::Icons;
-use crate::services::plugins::Plugins;
 use crate::services::mermaid_scene::MermaidScenes;
+use crate::services::native_menu::NativeMenu;
+use crate::services::plugins::Plugins;
 use crate::services::preview_images::PreviewImages;
 use crate::services::project_state::{self, ProjectState};
-use crate::services::native_menu::NativeMenu;
-use crate::services::control;
+use crate::services::recycle;
+use crate::services::run_configurations::{self, Configuration, Origin, RunConfigurations};
 use crate::services::store::Store;
 use crate::services::text_renderer::TextRenderer;
 use crate::settings::{self, Panes, Settings};
 use crate::theme::{self, color, size};
 
 use actions::{Action, DebugAction, GitAction, MenuState, RunAction};
-use git::GitState;
 use files::OpenFiles;
+use git::GitState;
 
 /// How opaque the background is when Unluminous starts.
 pub const DEFAULT_OPACITY: f32 = settings::DEFAULT_OPACITY;
@@ -1223,8 +1225,7 @@ impl UnluminousApp {
         // The context rather than `thread_waker`, because this is called before the first frame and
         // the window has not yet been given one to wake.
         let context = ctx.clone();
-        self.control =
-            control::Server::start(folder, Arc::new(move || context.request_repaint()));
+        self.control = control::Server::start(folder, Arc::new(move || context.request_repaint()));
         if let Some(server) = &self.control {
             self.message = Some(format!(
                 "Unluminous {} \u{00B7} the command line is listening on port {}",
@@ -1492,9 +1493,11 @@ impl UnluminousApp {
             file_scrolls.push(file.scroll);
             file_carets.push(file.document.selection().head);
         }
-        let active = self.files.active().path().and_then(|path| {
-            open_files.iter().position(|known| known == path)
-        });
+        let active = self
+            .files
+            .active()
+            .path()
+            .and_then(|path| open_files.iter().position(|known| known == path));
         ProjectState {
             open_files,
             plugin_tabs,
@@ -1671,7 +1674,9 @@ impl UnluminousApp {
                 format!("{} is available", release.version)
             }
             crate::services::update::Answer::Current(_) => "This is the newest release".to_owned(),
-            crate::services::update::Answer::Failed(problem) => format!("Could not check: {problem}"),
+            crate::services::update::Answer::Failed(problem) => {
+                format!("Could not check: {problem}")
+            }
         })
     }
 
@@ -1740,15 +1745,15 @@ impl UnluminousApp {
         if range.end > length {
             return;
         }
-        self.document_mut()
-            .apply(Command::PlaceCaret { offset: range.start, extend: false });
+        self.document_mut().apply(Command::PlaceCaret { offset: range.start, extend: false });
         self.document_mut().apply(Command::PlaceCaret { offset: range.end, extend: true });
         self.reveal_caret = true;
     }
 
     /// Replace the match the bar is on, as one undo step.
     fn replace_the_current_match(&mut self) {
-        let Some((range, with)) = self.find.as_ref().and_then(|find| find.replacement_for_current())
+        let Some((range, with)) =
+            self.find.as_ref().and_then(|find| find.replacement_for_current())
         else {
             return;
         };
@@ -1919,11 +1924,7 @@ impl UnluminousApp {
     /// owned by its document, and every other file is owned by `services::file_marks`. Anything
     /// changed in a document is pushed into the store by [`Self::remember_the_marks`] on the same
     /// frame, so the two cannot come to disagree.
-    pub fn change_highlights(
-        &mut self,
-        path: &Path,
-        change: impl FnOnce(&mut Highlights),
-    ) -> bool {
+    pub fn change_highlights(&mut self, path: &Path, change: impl FnOnce(&mut Highlights)) -> bool {
         if let Some(index) = self.files.index_of(path) {
             let mut marks = self.files.at(index).document.highlights().clone();
             let before = marks.clone();
@@ -2007,12 +2008,9 @@ impl UnluminousApp {
                 })
                 .unwrap_or_default(),
             space_pipe: self.space.in_hand.wire.is_some_and(|edge| {
-                self.space
-                    .space
-                    .current()
-                    .edges
-                    .iter()
-                    .any(|other| other.id == edge && other.pipe == crate::services::space::Pipe::Lines)
+                self.space.space.current().edges.iter().any(|other| {
+                    other.id == edge && other.pipe == crate::services::space::Pipe::Lines
+                })
             }),
             space_views: self.space.space.views().len(),
 
@@ -2155,7 +2153,9 @@ impl UnluminousApp {
                 ));
             }
             Action::OpenInBrowser(path) => {
-                if let Err(problem) = self.open_browser(&path.to_string_lossy()) { self.message = Some(problem); }
+                if let Err(problem) = self.open_browser(&path.to_string_lossy()) {
+                    self.message = Some(problem);
+                }
             }
             Action::GoToFile => {
                 // The folder is read again first, so a file made since the window opened is in the
@@ -2269,7 +2269,8 @@ impl UnluminousApp {
             }
             Action::Cut => {
                 if self.focus == Focus::Terminal {
-                    if let Some(text) = self.terminal.tabs.active().and_then(|s| s.selected_text()) {
+                    if let Some(text) = self.terminal.tabs.active().and_then(|s| s.selected_text())
+                    {
                         ctx.copy_text(text);
                     }
                 } else if !self.document().selection().is_empty() {
@@ -2279,7 +2280,8 @@ impl UnluminousApp {
             }
             Action::Copy => {
                 if self.focus == Focus::Terminal {
-                    if let Some(text) = self.terminal.tabs.active().and_then(|s| s.selected_text()) {
+                    if let Some(text) = self.terminal.tabs.active().and_then(|s| s.selected_text())
+                    {
                         ctx.copy_text(text);
                     }
                 } else if self.preview_holds_the_selection() {
@@ -2487,7 +2489,10 @@ impl UnluminousApp {
             Action::NewFile(folder) => {
                 self.prompt = Some(Prompt::new(
                     "New File",
-                    &format!("A new, empty file in {}. Any extension: example.txt, test.json, main.rs.", folder.display()),
+                    &format!(
+                        "A new, empty file in {}. Any extension: example.txt, test.json, main.rs.",
+                        folder.display()
+                    ),
                     "example.txt",
                     "Create",
                     Purpose::NewFile(folder),
@@ -2510,7 +2515,9 @@ impl UnluminousApp {
                     self.tree.reload();
                     self.message = Some(format!("Pasted {}", target.display()));
                 }
-                Err(problem) => self.message = Some(format!("Unluminous could not paste: {problem}")),
+                Err(problem) => {
+                    self.message = Some(format!("Unluminous could not paste: {problem}"))
+                }
             },
             Action::RenamePath(path) => {
                 let name = path
@@ -2601,7 +2608,8 @@ impl UnluminousApp {
                 let name = named.or_else(|| self.run_selected.clone());
                 match name.as_deref().and_then(|name| self.run.index_of(name)) {
                     Some(at) => {
-                        let name = self.run.at(at).map(|run| run.name().to_owned()).unwrap_or_default();
+                        let name =
+                            self.run.at(at).map(|run| run.name().to_owned()).unwrap_or_default();
                         self.run.stop(at);
                         self.message = Some(format!("Stopping {name}"));
                         Ok(())
@@ -2831,7 +2839,9 @@ impl UnluminousApp {
             false => adapter.trim().to_owned(),
         };
         let Some(entry) = debuggers::find(&adapter) else {
-            self.message = Some(format!("This version of Unluminous does not know a debugger called {adapter}."));
+            self.message = Some(format!(
+                "This version of Unluminous does not know a debugger called {adapter}."
+            ));
             return;
         };
         let command = entry.install_command();
@@ -2977,7 +2987,9 @@ impl UnluminousApp {
                 return Some(named.to_owned());
             }
         }
-        let path = for_file.map(Path::to_path_buf).or_else(|| self.document().path().map(Path::to_path_buf));
+        let path = for_file
+            .map(Path::to_path_buf)
+            .or_else(|| self.document().path().map(Path::to_path_buf));
         path.as_deref().and_then(|path| self.plugins.debugger_for(path)).map(str::to_owned)
     }
 
@@ -3241,7 +3253,8 @@ impl UnluminousApp {
             return;
         }
         let Some(path) = self.document().path().map(Path::to_path_buf) else {
-            self.message = Some("Save the file first, so a breakpoint has somewhere to live.".to_owned());
+            self.message =
+                Some("Save the file first, so a breakpoint has somewhere to live.".to_owned());
             return;
         };
         let now = self.document_mut().toggle_breakpoint(offset);
@@ -3302,7 +3315,8 @@ impl UnluminousApp {
             return;
         }
         let Some(path) = self.document().path().map(Path::to_path_buf) else {
-            self.message = Some("Save the file first, so a breakpoint has somewhere to live.".to_owned());
+            self.message =
+                Some("Save the file first, so a breakpoint has somewhere to live.".to_owned());
             return;
         };
         let offset = self.breakpoint_line_in_question();
@@ -3315,10 +3329,9 @@ impl UnluminousApp {
         // because a breakpoint edited now is one a debugger will be asked about later and refusing to
         // let somebody type a condition before they have pressed Debug would be absurd.
         let (conditions, log_points) = match self.debug.as_ref() {
-            Some(debug) => (
-                debug.capabilities().conditional_breakpoints,
-                debug.capabilities().log_points,
-            ),
+            Some(debug) => {
+                (debug.capabilities().conditional_breakpoints, debug.capabilities().log_points)
+            }
             None => (true, true),
         };
         self.close_every_modal();
@@ -3447,10 +3460,9 @@ impl UnluminousApp {
     fn send_the_breakpoints_of(&mut self, path: &Path) {
         let breakpoints = self.breakpoints_of(path);
         let (conditions, logs) = match self.debug.as_ref() {
-            Some(debug) => (
-                debug.capabilities().conditional_breakpoints,
-                debug.capabilities().log_points,
-            ),
+            Some(debug) => {
+                (debug.capabilities().conditional_breakpoints, debug.capabilities().log_points)
+            }
             None => return,
         };
         let document_index = self.files.index_of(path);
@@ -3459,9 +3471,7 @@ impl UnluminousApp {
             .filter(|breakpoint| breakpoint.enabled)
             .map(|breakpoint| {
                 let line = match document_index {
-                    Some(index) => {
-                        self.files.at(index).document.line_number_of(breakpoint.offset)
-                    }
+                    Some(index) => self.files.at(index).document.line_number_of(breakpoint.offset),
                     // A file that is not open has no laid-out text to count lines in, so its own
                     // bytes are read at the moment of use — the ownership rule's disk half, and the
                     // same "re-read rather than watch" `open_the_match` already does.
@@ -3958,8 +3968,14 @@ impl UnluminousApp {
         // layout of a window that is not on the screen is how a pseudoconsole was opened at the wrong
         // size while the editing area was hidden — which is the fault `task-1684` measured losing a
         // program's first line. `task-1905`.
-        dock::regions_with(self.panes_area, &self.panes.dock, showing, &self.panes, self.editor_visible)
-            .of(panel)
+        dock::regions_with(
+            self.panes_area,
+            &self.panes.dock,
+            showing,
+            &self.panes,
+            self.editor_visible,
+        )
+        .of(panel)
     }
 
     /// Draw every contributed pane that is showing, and gather what they asked for.
@@ -3998,7 +4014,8 @@ impl UnluminousApp {
             let Some(plugin) = self.plugin_ui.plugin_of(slot) else {
                 continue;
             };
-            let label = self.plugin_ui.pane(slot).map(|pane| pane.label.clone()).unwrap_or_default();
+            let label =
+                self.plugin_ui.pane(slot).map(|pane| pane.label.clone()).unwrap_or_default();
             let problem = self.plugin_ui.problem_with(&plugin).map(str::to_owned);
             let panel = dock::Panel::Plugin(slot as u8);
             // The header, which is what every other panel in Unluminous has and what the board pane did not: it
@@ -4071,7 +4088,11 @@ impl UnluminousApp {
                         look.palette.text_dim,
                         rect.width() - 24.0,
                     );
-                    pane_ui.painter().galley(rect.min + egui::Vec2::splat(12.0), galley, look.palette.text_dim);
+                    pane_ui.painter().galley(
+                        rect.min + egui::Vec2::splat(12.0),
+                        galley,
+                        look.palette.text_dim,
+                    );
                 }
                 None => {
                     if let Some(provider) = self.plugin_ui.provider(&plugin) {
@@ -4094,7 +4115,8 @@ impl UnluminousApp {
             if items.is_empty() {
                 continue;
             }
-            if let Some((texture, drawn)) = self.canvases.texture_for(ui.ctx(), *id, *body, &items) {
+            if let Some((texture, drawn)) = self.canvases.texture_for(ui.ctx(), *id, *body, &items)
+            {
                 let uv = Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0));
                 painter.set(*shape, egui::Shape::image(texture, drawn, uv, egui::Color32::WHITE));
             }
@@ -4300,14 +4322,17 @@ impl UnluminousApp {
             if panel.is_a_tile_given(&tiles) && self.panes.dock.side_of(panel).is_a_strip() {
                 self.put_the_other_tiles_away(panel);
             }
-        } else if self.focus == Focus::Plugin && !self.plugin_ui.visible().iter().any(|showing| *showing) {
+        } else if self.focus == Focus::Plugin
+            && !self.plugin_ui.visible().iter().any(|showing| *showing)
+        {
             // **The keyboard comes back to the editing area when the last plugin pane goes.** Clicking the board
             // gives the keys to the plugin, and hiding the pane used to leave them there: somebody typed at the
             // caret they could see and nothing appeared until they clicked the editor. `show_the_terminal_tile`
             // already does this and for the same reason. Only when the last one goes, because two plugin panes
             // can be open and the keys still belong to the one that is left.
             self.focus = Focus::Editor;
-            if let Some(provider) = self.plugin_ui.provider(pane.split('/').next().unwrap_or(pane)) {
+            if let Some(provider) = self.plugin_ui.provider(pane.split('/').next().unwrap_or(pane))
+            {
                 provider.keyboard(false);
             }
         }
@@ -4409,13 +4434,25 @@ impl UnluminousApp {
         if answer.is_ok() {
             match command {
                 "open-pane" => {
-                    if let Some(pane) = self.plugin_ui.surfaces().panes.iter().find(|surface| surface.plugin == plugin) {
+                    if let Some(pane) = self
+                        .plugin_ui
+                        .surfaces()
+                        .panes
+                        .iter()
+                        .find(|surface| surface.plugin == plugin)
+                    {
                         let key = pane.key(&pane.what.id);
                         self.show_the_plugin_pane(&key, true);
                     }
                 }
                 "open-tab" => {
-                    if let Some(tab) = self.plugin_ui.surfaces().tabs.iter().find(|surface| surface.plugin == plugin) {
+                    if let Some(tab) = self
+                        .plugin_ui
+                        .surfaces()
+                        .tabs
+                        .iter()
+                        .find(|surface| surface.plugin == plugin)
+                    {
                         let key = tab.key(&tab.what.id);
                         self.open_the_plugin_tab(&key);
                     }
@@ -4447,9 +4484,8 @@ impl UnluminousApp {
                     // nobody is pointing at the window is the case this is for.
                     ctx.request_repaint_after(std::time::Duration::from_millis(120));
                 }
-                asked.extend(
-                    provider.asking().into_iter().map(|request| (plugin.clone(), request)),
-                );
+                asked
+                    .extend(provider.asking().into_iter().map(|request| (plugin.clone(), request)));
             }
         }
         for (plugin, request) in asked {
@@ -4507,9 +4543,7 @@ impl UnluminousApp {
     /// while the pane was put away is not counted as silent.
     fn tick_the_plugins(&mut self) {
         let now = std::time::Instant::now();
-        let due = self
-            .plugins_ticked_at
-            .is_none_or(|last| now.duration_since(last) >= PLUGIN_TICK);
+        let due = self.plugins_ticked_at.is_none_or(|last| now.duration_since(last) >= PLUGIN_TICK);
         if !due {
             return;
         }
@@ -4582,8 +4616,11 @@ impl UnluminousApp {
     /// pane is where its **manifest** asked it to go.
     fn place_the_plugin_panes(&mut self, keep_where_they_were_left: bool) {
         let count = self.plugin_ui.pane_count();
-        let sides: Vec<dock::Side> =
-            (0..count).map(|slot| self.plugin_ui.pane(slot).map(|pane| pane.side).unwrap_or(dock::Side::Right)).collect();
+        let sides: Vec<dock::Side> = (0..count)
+            .map(|slot| {
+                self.plugin_ui.pane(slot).map(|pane| pane.side).unwrap_or(dock::Side::Right)
+            })
+            .collect();
         // A pane whose side the settings file already records keeps where it was left; one it has not
         // spoken about goes where its manifest asked. Where somebody dragged a pane wins over what its
         // manifest wanted, which is the rule every panel already follows.
@@ -4595,7 +4632,9 @@ impl UnluminousApp {
                     && self
                         .store
                         .as_ref()
-                        .map(|store| store.read_values().text(&format!("panes.{key}.side")).is_some())
+                        .map(|store| {
+                            store.read_values().text(&format!("panes.{key}.side")).is_some()
+                        })
                         .unwrap_or(false)
             })
             .collect();
@@ -4839,8 +4878,8 @@ impl UnluminousApp {
     /// is drawn is the same on every run.
     pub fn new_detached_terminal_tab(&mut self, rows: usize, columns: usize) {
         let cell = self.renderer.cell_metrics(self.settings.terminal_font_size);
-        let size =
-            unluminous_terminal::session::Size::new(rows, columns).with_cell(cell.width, cell.height);
+        let size = unluminous_terminal::session::Size::new(rows, columns)
+            .with_cell(cell.width, cell.height);
         self.terminal.visible = true;
         self.terminal.tabs.open_detached(size);
     }
@@ -4853,10 +4892,15 @@ impl UnluminousApp {
     ///
     /// The configuration is kept as a temporary as well, so the widget and the menu list it — which
     /// is what a real run would have done.
-    pub fn new_detached_run(&mut self, configuration: Configuration, rows: usize, columns: usize) -> usize {
+    pub fn new_detached_run(
+        &mut self,
+        configuration: Configuration,
+        rows: usize,
+        columns: usize,
+    ) -> usize {
         let cell = self.renderer.cell_metrics(self.settings.terminal_font_size);
-        let size =
-            unluminous_terminal::session::Size::new(rows, columns).with_cell(cell.width, cell.height);
+        let size = unluminous_terminal::session::Size::new(rows, columns)
+            .with_cell(cell.width, cell.height);
         if self.run_configurations.find(&configuration.name).is_none() {
             self.run_configurations.add_temporary(configuration.clone());
         }
@@ -4900,7 +4944,6 @@ impl UnluminousApp {
         };
         terminal_panel::grid_size(size, cell)
     }
-
 
     /// What the terminal calls to have the window drawn again when new output arrives.
     ///
@@ -5140,7 +5183,8 @@ impl UnluminousApp {
             self.files.at_mut(index).coloured_revision = Some(revision);
             return;
         };
-        let base = unluminous_core::Color::rgb(color::text().r(), color::text().g(), color::text().b());
+        let base =
+            unluminous_core::Color::rgb(color::text().r(), color::text().g(), color::text().b());
         let text = self.files.at(index).document.text().to_string();
         if text.len() > Self::COLOUR_LIMIT {
             self.message = Some(format!(
@@ -5266,19 +5310,23 @@ impl UnluminousApp {
             };
             let inside_theme = crate::services::plugins::scheme_of(inside);
             let start = region.range.start;
-            unluminous_core::syntax::scan(&text[region.range.clone()], &inside.grammar, |range, token| {
-                let shifted = range.start + start..range.end + start;
-                match token {
-                    unluminous_core::Token::Comment => tokens.note(shifted.clone(), true),
-                    unluminous_core::Token::String => tokens.note(shifted.clone(), false),
-                    _ => {}
-                }
-                if token != unluminous_core::Token::Text {
-                    if let Some(colour) = inside_theme.colour(token) {
-                        spans.push((shifted, colour));
+            unluminous_core::syntax::scan(
+                &text[region.range.clone()],
+                &inside.grammar,
+                |range, token| {
+                    let shifted = range.start + start..range.end + start;
+                    match token {
+                        unluminous_core::Token::Comment => tokens.note(shifted.clone(), true),
+                        unluminous_core::Token::String => tokens.note(shifted.clone(), false),
+                        _ => {}
                     }
-                }
-            });
+                    if token != unluminous_core::Token::Text {
+                        if let Some(colour) = inside_theme.colour(token) {
+                            spans.push((shifted, colour));
+                        }
+                    }
+                },
+            );
         }
     }
 
@@ -5290,10 +5338,8 @@ impl UnluminousApp {
         };
         match self.plugins.install(&store, id) {
             Ok(()) => {
-                self.message = Some(format!(
-                    "Installed {id} into {}",
-                    Plugins::folder(&store, id).display()
-                ));
+                self.message =
+                    Some(format!("Installed {id} into {}", Plugins::folder(&store, id).display()));
                 for file in self.files.iter_mut() {
                     file.coloured_revision = None;
                 }
@@ -5305,7 +5351,8 @@ impl UnluminousApp {
     /// Take an installed plugin’s folder away, and go back to the copy that shipped in the binary.
     fn uninstall_plugin(&mut self, id: &str) {
         let Some(store) = self.store.clone() else {
-            self.message = Some("There is nowhere a plugin could have been installed to.".to_owned());
+            self.message =
+                Some("There is nowhere a plugin could have been installed to.".to_owned());
             return;
         };
         match self.plugins.uninstall(&store, id) {
@@ -5315,7 +5362,9 @@ impl UnluminousApp {
                     file.coloured_revision = None;
                 }
             }
-            Err(problem) => self.message = Some(format!("{id} could not be uninstalled: {problem}")),
+            Err(problem) => {
+                self.message = Some(format!("{id} could not be uninstalled: {problem}"))
+            }
         }
     }
 
@@ -5400,7 +5449,10 @@ impl UnluminousApp {
         if what == GitAction::Clone {
             self.prompt = Some(Prompt::new(
                 "Clone",
-                &format!("Clone into a folder under {}, and open it in a window of its own.", self.tree.root().display()),
+                &format!(
+                    "Clone into a folder under {}, and open it in a window of its own.",
+                    self.tree.root().display()
+                ),
                 "",
                 "Clone",
                 Purpose::Clone,
@@ -5510,8 +5562,7 @@ impl UnluminousApp {
             // `Branches...` dialog already sends. Refused when it is the branch already checked out,
             // rather than running a git command that would do nothing and report that it had worked.
             GitAction::Switch(name) => {
-                if git.snapshot.status.branch.as_deref() == Some(name.as_str())
-                {
+                if git.snapshot.status.branch.as_deref() == Some(name.as_str()) {
                     self.message = Some(format!("Already on {name}."));
                     return;
                 }
@@ -5563,7 +5614,10 @@ impl UnluminousApp {
                 let path = exclude.clone();
                 if !path.is_file() {
                     let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
-                    let _ = std::fs::write(&path, "# Paths listed here are ignored, and this file is not committed.\n");
+                    let _ = std::fs::write(
+                        &path,
+                        "# Paths listed here are ignored, and this file is not committed.\n",
+                    );
                 }
                 let _ = self.open_path_permanently(&path);
             }
@@ -5585,8 +5639,7 @@ impl UnluminousApp {
         let stashes = git.snapshot.stashes.clone();
         let repository = git.repository.name();
         let recent = git.recent_messages.clone();
-        let outcome =
-            git_panel::show(ctx, &mut git.panel, &status, &stashes, &repository, &recent);
+        let outcome = git_panel::show(ctx, &mut git.panel, &status, &stashes, &repository, &recent);
         if !outcome.stage.is_empty() {
             git.send(Request::Add(outcome.stage));
         }
@@ -5630,7 +5683,9 @@ impl UnluminousApp {
         if let Some(name) = outcome.drop_stash {
             self.confirmation = Some(Confirmation {
                 title: "Drop Stash".to_owned(),
-                note: format!("Throw {name} away. What is in it is nowhere else, so this cannot be undone."),
+                note: format!(
+                    "Throw {name} away. What is in it is nowhere else, so this cannot be undone."
+                ),
                 button: "DROP".to_owned(),
                 answer: Answer::Git(Request::DropStash(name)),
             });
@@ -5685,7 +5740,9 @@ impl UnluminousApp {
         if let Some(name) = outcome.delete_branch {
             self.confirmation = Some(Confirmation {
                 title: "Delete Branch".to_owned(),
-                note: format!("Delete {name}. Git refuses if it holds commits that are nowhere else."),
+                note: format!(
+                    "Delete {name}. Git refuses if it holds commits that are nowhere else."
+                ),
                 button: "DELETE".to_owned(),
                 answer: Answer::Git(Request::DeleteBranch { name, force: false }),
             });
@@ -5780,7 +5837,8 @@ impl UnluminousApp {
             return;
         }
         if path == self.tree.root() {
-            self.message = Some("The project folder itself cannot be deleted from here.".to_owned());
+            self.message =
+                Some("The project folder itself cannot be deleted from here.".to_owned());
             return;
         }
         let name = path
@@ -5872,7 +5930,8 @@ impl UnluminousApp {
         };
         if let Some(folder) = to.parent() {
             if let Err(problem) = std::fs::create_dir_all(folder) {
-                self.message = Some(format!("Unluminous could not make {}: {problem}", folder.display()));
+                self.message =
+                    Some(format!("Unluminous could not make {}: {problem}", folder.display()));
                 return false;
             }
         }
@@ -6010,28 +6069,27 @@ impl UnluminousApp {
             self.focus = Focus::Editor;
             return None;
         }
-        let key = ui.input(|input| {
-            [
-                egui::Key::ArrowDown,
-                egui::Key::ArrowUp,
-                egui::Key::ArrowRight,
-                egui::Key::ArrowLeft,
-                egui::Key::Enter,
-                egui::Key::Escape,
-                egui::Key::Delete,
-            ]
-            .into_iter()
-            .find(|key| input.key_pressed(*key))
-        })
-        .or_else(|| {
-            // The Mac keyboard has no `Delete`, and `Backspace` on its own is far too close to what
-            // somebody who has just clicked a file is about to type. The reference editor's own answer on macOS
-            // is the command key with it, and that is unambiguous on every platform.
-            ui.input(|input| {
-                input.key_pressed(egui::Key::Backspace) && input.modifiers.command
+        let key = ui
+            .input(|input| {
+                [
+                    egui::Key::ArrowDown,
+                    egui::Key::ArrowUp,
+                    egui::Key::ArrowRight,
+                    egui::Key::ArrowLeft,
+                    egui::Key::Enter,
+                    egui::Key::Escape,
+                    egui::Key::Delete,
+                ]
+                .into_iter()
+                .find(|key| input.key_pressed(*key))
             })
-            .then_some(egui::Key::Delete)
-        })?;
+            .or_else(|| {
+                // The Mac keyboard has no `Delete`, and `Backspace` on its own is far too close to what
+                // somebody who has just clicked a file is about to type. The reference editor's own answer on macOS
+                // is the command key with it, and that is unambiguous on every platform.
+                ui.input(|input| input.key_pressed(egui::Key::Backspace) && input.modifiers.command)
+                    .then_some(egui::Key::Delete)
+            })?;
         match key {
             egui::Key::ArrowDown => self.step_the_selection(1),
             egui::Key::ArrowUp => self.step_the_selection(-1),
@@ -6190,7 +6248,9 @@ impl UnluminousApp {
         }
         match prompt.purpose {
             Purpose::OpenWebAddress => {
-                if let Err(problem) = self.open_browser(&name) { self.message = Some(problem); }
+                if let Err(problem) = self.open_browser(&name) {
+                    self.message = Some(problem);
+                }
             }
             Purpose::NewFile(folder) => {
                 let target = crate::services::file_clipboard::free_name(&folder, &name);
@@ -6201,8 +6261,10 @@ impl UnluminousApp {
                         let _ = self.open_path_permanently(&target);
                     }
                     Err(problem) => {
-                        self.message =
-                            Some(format!("Unluminous could not make {}: {problem}", target.display()))
+                        self.message = Some(format!(
+                            "Unluminous could not make {}: {problem}",
+                            target.display()
+                        ))
                     }
                 }
             }
@@ -6221,8 +6283,10 @@ impl UnluminousApp {
                         self.message = Some(format!("Made {}", target.display()));
                     }
                     Err(problem) => {
-                        self.message =
-                            Some(format!("Unluminous could not make {}: {problem}", target.display()))
+                        self.message = Some(format!(
+                            "Unluminous could not make {}: {problem}",
+                            target.display()
+                        ))
                     }
                 }
             }
@@ -6246,7 +6310,9 @@ impl UnluminousApp {
                     });
                 }
             }
-            Purpose::NewBranch => self.send_git(unluminous_git::worker::Request::CreateBranch(name)),
+            Purpose::NewBranch => {
+                self.send_git(unluminous_git::worker::Request::CreateBranch(name))
+            }
             Purpose::NewTag => self.send_git(unluminous_git::worker::Request::Tag(name)),
             Purpose::Stash => self.send_git(unluminous_git::worker::Request::Stash {
                 message: name,
@@ -6320,7 +6386,9 @@ impl UnluminousApp {
     /// This is the one place a tab is closed — the cross on the tab, `Ctrl+W`, the tab's own menu
     /// and `unluminous-cli tab close` all reach it — so it is one change in one function.
     pub fn close_tab(&mut self, index: usize) {
-        if let Some(id) = self.files.get(index).and_then(|file| file.browser.as_ref()).map(|tab| tab.id) {
+        if let Some(id) =
+            self.files.get(index).and_then(|file| file.browser.as_ref()).map(|tab| tab.id)
+        {
             self.browser.close_tab(id);
         }
         self.save_before_closing(index);
@@ -6367,7 +6435,9 @@ impl UnluminousApp {
     /// Close a tab without writing it, which is what deleting its file means and what
     /// `unluminous-cli tab close --discard` asks for.
     pub fn close_tab_without_saving(&mut self, index: usize) {
-        if let Some(id) = self.files.get(index).and_then(|file| file.browser.as_ref()).map(|tab| tab.id) {
+        if let Some(id) =
+            self.files.get(index).and_then(|file| file.browser.as_ref()).map(|tab| tab.id)
+        {
             self.browser.close_tab(id);
         }
         self.files.close(index);
@@ -6397,7 +6467,8 @@ impl UnluminousApp {
         // write nothing over the file. There is nothing in a picture Unluminous can change, so there is
         // nothing to save.
         if self.files.active().is_picture() {
-            self.message = Some("A picture cannot be edited, so there is nothing to save.".to_owned());
+            self.message =
+                Some("A picture cannot be edited, so there is nothing to save.".to_owned());
             return;
         }
         // A tab a plugin draws holds an empty document with no path, so saving it would write an empty
@@ -6615,7 +6686,11 @@ impl UnluminousApp {
         let base = unluminous_core::CharStyle {
             family: self.settings.font_family.clone(),
             size: self.document().active_style().size,
-            color: unluminous_core::Color::rgb(color::text().r(), color::text().g(), color::text().b()),
+            color: unluminous_core::Color::rgb(
+                color::text().r(),
+                color::text().g(),
+                color::text().b(),
+            ),
             ..unluminous_core::CharStyle::default()
         };
         let colors = unluminous_core::PreviewColors {
@@ -6625,7 +6700,11 @@ impl UnluminousApp {
                 color::text_strong().b(),
             ),
             code: unluminous_core::Color::rgb(0x7E, 0xD3, 0x9B),
-            link: unluminous_core::Color::rgb(color::accent().r(), color::accent().g(), color::accent().b()),
+            link: unluminous_core::Color::rgb(
+                color::accent().r(),
+                color::accent().g(),
+                color::accent().b(),
+            ),
             quiet: unluminous_core::Color::rgb(
                 color::text_dim().r(),
                 color::text_dim().g(),
@@ -6648,7 +6727,8 @@ impl UnluminousApp {
                 size: base.size * 0.95,
                 ..unluminous_core::CharStyle::default()
             };
-            let advance = unluminous_core::FontMetrics::advance(&self.renderer, "M", &code).max(1.0);
+            let advance =
+                unluminous_core::FontMetrics::advance(&self.renderer, "M", &code).max(1.0);
             let options = unluminous_core::PreviewOptions {
                 base: base.clone(),
                 colors,
@@ -6660,13 +6740,8 @@ impl UnluminousApp {
         };
         let pictures = self.read_the_pictures(ctx, &mut preview, width);
         let diagrams = self.lay_the_diagrams_out(ctx, &mut preview, width);
-        let laid = layout(
-            &preview.text,
-            &preview.chars,
-            &preview.paragraphs,
-            &self.renderer,
-            width,
-        );
+        let laid =
+            layout(&preview.text, &preview.chars, &preview.paragraphs, &self.renderer, width);
         // A byte range into text that has been rebuilt means nothing, so a selection in the preview
         // does not survive an edit. It does survive a scroll and a resize, which is where a person
         // actually loses one — and the clamp is what makes a resize safe, since a table laid out at
@@ -6702,19 +6777,16 @@ impl UnluminousApp {
         preview: &mut unluminous_core::Preview,
         width: f32,
     ) -> Vec<PlacedPicture> {
-        let folder = self
-            .document()
-            .path()
-            .and_then(|path| path.parent())
-            .map(std::path::Path::to_path_buf);
+        let folder =
+            self.document().path().and_then(|path| path.parent()).map(std::path::Path::to_path_buf);
         let mut placed = Vec::new();
         for image in preview.images.clone() {
             let ready = self.preview_images.ready(ctx, folder.as_deref(), &image.source);
             let size = match &ready {
                 Some(ready) => {
-                    let (pixels_across, pixels_down) =
-                        (ready.size[0] as f32, ready.size[1] as f32);
-                    let scale = if pixels_across > 0.0 { (width / pixels_across).min(1.0) } else { 1.0 };
+                    let (pixels_across, pixels_down) = (ready.size[0] as f32, ready.size[1] as f32);
+                    let scale =
+                        if pixels_across > 0.0 { (width / pixels_across).min(1.0) } else { 1.0 };
                     Vec2::new(pixels_across * scale, pixels_down * scale)
                 }
                 None => Vec2::ZERO,
@@ -6758,7 +6830,8 @@ impl UnluminousApp {
         }
         let base = self.diagram_style();
         let theme = crate::services::mermaid_scene::theme();
-        let metrics = crate::services::mermaid_scene::EguiMetrics::new(ctx, self.bold_family.clone());
+        let metrics =
+            crate::services::mermaid_scene::EguiMetrics::new(ctx, self.bold_family.clone());
         let mut placed = Vec::with_capacity(preview.diagrams.len());
         for diagram in preview.diagrams.clone() {
             let laid = self.mermaid_scenes.scene(&diagram.source, &base, &metrics, &theme);
@@ -6949,7 +7022,11 @@ impl UnluminousApp {
         crate::services::frame_trace::begin();
         self.receive_browser_events();
         self.browser_placements.clear();
-        if self.files.iter().any(|file| file.browser.as_ref().and_then(|tab| tab.location.source_path()).is_some()) {
+        if self
+            .files
+            .iter()
+            .any(|file| file.browser.as_ref().and_then(|tab| tab.location.source_path()).is_some())
+        {
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
         }
         if !self.themed {
@@ -7025,9 +7102,7 @@ impl UnluminousApp {
         if self.maximised.is_some()
             && !a_modal_has_the_keyboard(ui.ctx())
             && !text_box_has_the_keyboard(ui.ctx())
-            && ui.input_mut(|input| {
-                input.consume_key(egui::Modifiers::NONE, egui::Key::Escape)
-            })
+            && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
         {
             self.restore_the_maximised_pane();
         }
@@ -7086,8 +7161,7 @@ impl UnluminousApp {
 
         // The rail of pane buttons takes the far left of the body, the whole way down, so the terminal
         // button sits at the bottom left corner of the window as `task-1658`'s capture shows it.
-        let rail_rect =
-            Rect::from_min_size(body.min, Vec2::new(size::ACTIVITY_BAR, body.height()));
+        let rail_rect = Rect::from_min_size(body.min, Vec2::new(size::ACTIVITY_BAR, body.height()));
         let panes = Rect::from_min_max(Pos2::new(rail_rect.right(), body.top()), body.max);
 
         // Where every panel goes. Since `task-1697` this is not written out here: the shape of the
@@ -7209,8 +7283,7 @@ impl UnluminousApp {
         // earlier would sit underneath that and never be pressed.
         if branch_width > 0.0 && outcome.branch_rect.width() > 4.0 {
             let chosen = {
-                let mut bar_ui =
-                    ui.new_child(egui::UiBuilder::new().max_rect(outcome.branch_rect));
+                let mut bar_ui = ui.new_child(egui::UiBuilder::new().max_rect(outcome.branch_rect));
                 branch_widget::show(&mut bar_ui, outcome.branch_rect, &branch_state)
             };
             if let Some(chosen) = chosen {
@@ -7277,12 +7350,7 @@ impl UnluminousApp {
                         icon: surface.what.icon.clone(),
                         // Lit when that tab is the one showing, which is what the pill means for every
                         // other button in the rail.
-                        on: self
-                            .files
-                            .active()
-                            .plugin
-                            .as_ref()
-                            .is_some_and(|open| open.key == key),
+                        on: self.files.active().plugin.as_ref().is_some_and(|open| open.key == key),
                         bottom: false,
                         key,
                         slot: 0,
@@ -7373,11 +7441,8 @@ impl UnluminousApp {
                     .into_iter()
                     .map(|path| {
                         let icon = self.plugin_icon(ui.ctx(), Some(&path));
-                        let tint = self
-                            .git
-                            .as_ref()
-                            .and_then(|git| git.state_of(&path))
-                            .map(git_colour);
+                        let tint =
+                            self.git.as_ref().and_then(|git| git.state_of(&path)).map(git_colour);
                         (path, explorer::Decoration { tint, icon })
                     })
                     .collect();
@@ -7615,8 +7680,7 @@ impl UnluminousApp {
                 below.extend(folding);
             }
             let last = self.last_highlight;
-            let outcome =
-                text_menu::show(ui, &menu, &above, &below, state.has_selection, last);
+            let outcome = text_menu::show(ui, &menu, &above, &below, state.has_selection, last);
             if let Some(chosen) = outcome.chosen {
                 action = Some(chosen);
             }
@@ -7752,8 +7816,7 @@ impl UnluminousApp {
                 ui.ctx().copy_text(text);
             }
             if panel_outcome.stop {
-                self.message =
-                    self.run.active().map(|run| format!("Stopping {}", run.name()));
+                self.message = self.run.active().map(|run| format!("Stopping {}", run.name()));
             }
             if panel_outcome.rerun {
                 let name = self.run.active().map(|run| run.name().to_owned());
@@ -7973,8 +8036,7 @@ impl UnluminousApp {
                 let hits = find.hits().to_vec();
                 let (needle, match_case) = (find.query.trim().to_owned(), find.match_case);
                 let with = find.replacement.clone();
-                let report =
-                    self.replace_across_the_project(&hits, &needle, match_case, &with);
+                let report = self.replace_across_the_project(&hits, &needle, match_case, &with);
                 self.message = Some(report.sentence(&with));
                 // The search is asked again, so the list shows what is there now rather than the
                 // matches that have just been replaced.
@@ -8123,12 +8185,15 @@ impl UnluminousApp {
                         inner.set_clip_rect(area);
                         if let Some(opened) = plugins_ui.provider(&plugin) {
                             let wanted = opened.settings(&mut inner, &page_look);
-                            page_asked
-                                .extend(wanted.into_iter().map(|request| (plugin.clone(), request)));
+                            page_asked.extend(
+                                wanted.into_iter().map(|request| (plugin.clone(), request)),
+                            );
                         }
                     }
-                    Err(problem) => page_asked
-                        .push((plugin.clone(), crate::services::plugin_ui::Request::Message(problem))),
+                    Err(problem) => page_asked.push((
+                        plugin.clone(),
+                        crate::services::plugin_ui::Request::Message(problem),
+                    )),
                 }
             },
         );
@@ -8156,7 +8221,8 @@ impl UnluminousApp {
         // that is drawing is a window somebody is looking at. A `Problem` is never dropped by this — only
         // a person takes one of those away, which is `components::toast`'s whole point.
         self.toasts.forget_the_stale_ones();
-        if let Some(dismissed) = crate::components::toast::show(ui, full, &self.toasts, self.settings.font_size)
+        if let Some(dismissed) =
+            crate::components::toast::show(ui, full, &self.toasts, self.settings.font_size)
         {
             self.toasts.dismiss(dismissed);
         }
@@ -8279,7 +8345,8 @@ impl UnluminousApp {
     fn apply_settings(&mut self, before: &Settings) {
         // A `debug.<name>` may have moved, and the search that found the old one is now a lie.
         self.forget_the_adapter_search();
-        if self.settings.font_family != before.font_family || self.settings.font_size != before.font_size
+        if self.settings.font_family != before.font_family
+            || self.settings.font_size != before.font_size
         {
             self.set_the_font_everywhere();
         }
@@ -8775,7 +8842,11 @@ impl UnluminousApp {
             dock::Panel::Explorer | dock::Panel::Plugin(_) => {
                 let was = self.panes.zoom_of(panel);
                 self.panes.set_zoom_of(panel, settings::DEFAULT_ZOOM);
-                self.keep_the_place_through_a_panels_zoom(panel, settings::DEFAULT_ZOOM / was, None);
+                self.keep_the_place_through_a_panels_zoom(
+                    panel,
+                    settings::DEFAULT_ZOOM / was,
+                    None,
+                );
             }
         }
         self.unsaved_settings = true;
@@ -8946,10 +9017,8 @@ impl UnluminousApp {
         // here rather than at each of the places a tab can leave a node, which is `follow_the_open_file`'s
         // rule. `sized_at` is `None` for every tab nothing resized, so this costs one comparison.
         self.put_a_panes_tabs_back_to_the_windows_font(pane);
-        let tabs_rect =
-            Rect::from_min_size(area.min, Vec2::new(area.width(), file_tabs::HEIGHT));
-        let editor_rect =
-            Rect::from_min_max(Pos2::new(area.left(), tabs_rect.bottom()), area.max);
+        let tabs_rect = Rect::from_min_size(area.min, Vec2::new(area.width(), file_tabs::HEIGHT));
+        let editor_rect = Rect::from_min_max(Pos2::new(area.left(), tabs_rect.bottom()), area.max);
         let mut took_the_keyboard = false;
         // Everything in the pane is drawn into a `Ui` of its own, carrying the pane's number as its
         // id salt. egui identifies a widget by its id, and every control inside asks for one with
@@ -8957,9 +9026,8 @@ impl UnluminousApp {
         // two previews, would be one widget as far as egui is concerned and one click would reach
         // both. The alternative was passing a pane number into five components; one salt does it for
         // everything, including whatever is added to a pane later.
-        let ui = &mut ui.new_child(
-            egui::UiBuilder::new().max_rect(area).id_salt(("editor-pane", pane)),
-        );
+        let ui =
+            &mut ui.new_child(egui::UiBuilder::new().max_rect(area).id_salt(("editor-pane", pane)));
 
         // The tabs in this pane, in the order they are drawn. The strip counts within itself, so what
         // it reports is turned back into an index into the open files here.
@@ -9110,7 +9178,10 @@ impl UnluminousApp {
                 self.break_a_tab_out_onto_the_canvas(drag.file, drag.at);
                 return;
             }
-            crate::components::space::landing_mark(ui.painter(), self.where_a_fresh_node_would_be(drag.at));
+            crate::components::space::landing_mark(
+                ui.painter(),
+                self.where_a_fresh_node_would_be(drag.at),
+            );
             return;
         }
         let Some(pane) = pane_rects.iter().position(|rect| rect.contains(drag.at)) else {
@@ -9185,7 +9256,11 @@ impl UnluminousApp {
         path: &std::path::Path,
         at: Pos2,
     ) -> Result<crate::services::space::NodeId, String> {
-        let onto = self.node_tab_strips.iter().find(|(_, rect, _)| rect.contains(at)).map(|(node, _, _)| *node);
+        let onto = self
+            .node_tab_strips
+            .iter()
+            .find(|(_, rect, _)| rect.contains(at))
+            .map(|(node, _, _)| *node);
         let node = match onto {
             Some(node) => node,
             None => {
@@ -9239,7 +9314,11 @@ impl UnluminousApp {
             return;
         }
         // Where it would land: a File Editor node it is over, or the node it would make on the canvas.
-        let over = self.node_tab_strips.iter().find(|(_, rect, _)| rect.contains(drag.at)).map(|(_, rect, _)| *rect);
+        let over = self
+            .node_tab_strips
+            .iter()
+            .find(|(_, rect, _)| rect.contains(drag.at))
+            .map(|(_, rect, _)| *rect);
         let mark = over.unwrap_or_else(|| self.where_a_fresh_node_would_be(drag.at));
         crate::components::space::landing_mark(ui.painter(), mark);
     }
@@ -9250,7 +9329,11 @@ impl UnluminousApp {
     ///
     /// Each panel says this as it is drawn and none of them can act on it, because where a panel
     /// lands depends on where every *other* panel ended up — see [`Self::settle_the_panel_drag`].
-    pub(crate) fn note_a_panel_grab(&mut self, panel: dock::Panel, grab: crate::components::dock::Grab) {
+    pub(crate) fn note_a_panel_grab(
+        &mut self,
+        panel: dock::Panel,
+        grab: crate::components::dock::Grab,
+    ) {
         if let Some(at) = grab.carrying {
             self.panel_drag = Some(PanelDrag { panel, at, dropped: grab.dropped });
         }
@@ -9581,7 +9664,13 @@ impl UnluminousApp {
             }
             None => Rect::ZERO,
         };
-        crate::components::dock::zones(ui, &bands, aimed.map(|(side, _)| side), landing, drag.panel);
+        crate::components::dock::zones(
+            ui,
+            &bands,
+            aimed.map(|(side, _)| side),
+            landing,
+            drag.panel,
+        );
     }
 
     /// Where the panel that was let go actually landed.
@@ -9735,10 +9824,8 @@ impl UnluminousApp {
                 let fraction = self.panes.preview_fraction.clamp(0.15, 0.85);
                 let split = (area.width() * fraction).floor();
                 let left = Rect::from_min_size(area.min, Vec2::new(split, area.height()));
-                let right = Rect::from_min_max(
-                    Pos2::new(area.left() + split, area.top()),
-                    area.max,
-                );
+                let right =
+                    Rect::from_min_max(Pos2::new(area.left() + split, area.top()), area.max);
                 let before = self.where_both_halves_are();
                 let took = self.show_editor(ui, left, focused);
                 self.show_preview(ui, right);
@@ -9792,7 +9879,9 @@ impl UnluminousApp {
         if let Some(command) = outcome.command {
             self.run_browser_command(tab.id, command);
         }
-        if outcome.took_focus { self.focus = Focus::Editor; }
+        if outcome.took_focus {
+            self.focus = Focus::Editor;
+        }
         outcome.took_focus
     }
 
@@ -9817,7 +9906,9 @@ impl UnluminousApp {
     pub fn run_browser_command(&mut self, id: u64, command: BrowserCommand) {
         let step = match command {
             BrowserCommand::Reload => {
-                if let Err(problem) = self.browser.reload(id) { self.message = Some(problem); }
+                if let Err(problem) = self.browser.reload(id) {
+                    self.message = Some(problem);
+                }
                 return;
             }
             // **An address typed into the toolbar's own field.** It goes wherever the tab is: a node's
@@ -9887,10 +9978,18 @@ impl UnluminousApp {
     pub fn act_on_browser_events(&mut self, events: Vec<BrowserEvent>) {
         for event in events {
             match event {
-                BrowserEvent::OpenRequested { url, .. } => { let _ = self.open_browser(&url); }
-                BrowserEvent::Title { id, title } => self.change_browser_tab(id, |tab| tab.title = title),
-                BrowserEvent::LoadStarted { id, .. } => self.change_browser_tab(id, |tab| tab.loading = true),
-                BrowserEvent::LoadFinished { id, url } => self.change_browser_tab(id, |tab| tab.arrived_at(url)),
+                BrowserEvent::OpenRequested { url, .. } => {
+                    let _ = self.open_browser(&url);
+                }
+                BrowserEvent::Title { id, title } => {
+                    self.change_browser_tab(id, |tab| tab.title = title)
+                }
+                BrowserEvent::LoadStarted { id, .. } => {
+                    self.change_browser_tab(id, |tab| tab.loading = true)
+                }
+                BrowserEvent::LoadFinished { id, url } => {
+                    self.change_browser_tab(id, |tab| tab.arrived_at(url))
+                }
             }
         }
     }
@@ -9900,7 +9999,9 @@ impl UnluminousApp {
     /// The writing half of [`Self::browser_tab`], and it looks in the same two places for the same
     /// reason. `task-1905`.
     fn change_browser_tab(&mut self, id: u64, change: impl FnOnce(&mut BrowserTab)) {
-        if let Some(tab) = self.files.iter_mut().filter_map(|file| file.browser.as_mut()).find(|tab| tab.id == id) {
+        if let Some(tab) =
+            self.files.iter_mut().filter_map(|file| file.browser.as_mut()).find(|tab| tab.id == id)
+        {
             change(tab);
             return;
         }
@@ -9954,13 +10055,18 @@ impl UnluminousApp {
     fn scroll_the_two_halves_together(&mut self, before: (f32, f32), area: Rect) {
         let (was_source, was_preview) = before;
         let file = self.files.active();
-        let (source_moved, preview_moved) =
-            ((file.scroll - was_source).abs() > 0.01, (file.preview_scroll - was_preview).abs() > 0.01);
+        let (source_moved, preview_moved) = (
+            (file.scroll - was_source).abs() > 0.01,
+            (file.preview_scroll - was_preview).abs() > 0.01,
+        );
         if source_moved == preview_moved {
             // Neither moved, or a change of font size moved both. Nothing to follow either way.
             return;
         }
-        self.follow_the_other_half(source_moved, (area.height() - size::EDITOR_PADDING_Y * 2.0).max(0.0));
+        self.follow_the_other_half(
+            source_moved,
+            (area.height() - size::EDITOR_PADDING_Y * 2.0).max(0.0),
+        );
     }
 
     /// Move the half of the side by side view that was not scrolled so that it shows what the other
@@ -9980,8 +10086,12 @@ impl UnluminousApp {
         let preview_page = &file.cached.preview_layout;
         let map = &preview.source_lines;
         let (scroll, preview_scroll) = if source_drives {
-            let to =
-                unluminous_core::preview_y_for_source_y(source_page, preview_page, map, file.scroll);
+            let to = unluminous_core::preview_y_for_source_y(
+                source_page,
+                preview_page,
+                map,
+                file.scroll,
+            );
             (file.scroll, to.clamp(0.0, (preview_page.height - room).max(0.0)))
         } else {
             let to = unluminous_core::source_y_for_preview_y(
@@ -10036,7 +10146,11 @@ impl UnluminousApp {
                         look.palette.text_dim,
                         area.width() - 48.0,
                     );
-                    ui.painter().galley(area.min + egui::Vec2::splat(24.0), galley, look.palette.text_dim);
+                    ui.painter().galley(
+                        area.min + egui::Vec2::splat(24.0),
+                        galley,
+                        look.palette.text_dim,
+                    );
                     Vec::new()
                 }
                 None => {
@@ -10066,8 +10180,11 @@ impl UnluminousApp {
         // The renderer the manifest named, matched rather than merely counted: there is one today, and the
         // day there are two this is where the second one is chosen.
         let asked = matches!(self.plugin_ui.surfaces().chrome_for(plugin), Some("vello"));
-        let draws =
-            self.plugin_ui.provider(plugin).map(|provider| provider.draws_chrome()).unwrap_or(false);
+        let draws = self
+            .plugin_ui
+            .provider(plugin)
+            .map(|provider| provider.draws_chrome())
+            .unwrap_or(false);
         match self.settings.plugin_chrome && asked && draws {
             true => crate::services::vello_canvas::Chrome::recording(),
             false => crate::services::vello_canvas::Chrome::off(),
@@ -10219,11 +10336,19 @@ impl UnluminousApp {
             2.0,
         );
         let preview = self.files.active().cached.preview.as_ref().expect("preview was refreshed");
-        editor_view::paint_text(&painter_ui, &self.renderer, &preview.text, self.preview_layout(), origin);
+        editor_view::paint_text(
+            &painter_ui,
+            &self.renderer,
+            &preview.text,
+            self.preview_layout(),
+            origin,
+        );
         self.paint_the_pictures(&painter_ui, origin);
         self.paint_the_diagrams(&painter_ui, origin, text_width);
         // Drawn last, at the position the frame settled on rather than the one it opened with.
-        if let Some(bar) = scrollbar::Bar::new(area, scroll, self.preview_layout().height, view_height) {
+        if let Some(bar) =
+            scrollbar::Bar::new(area, scroll, self.preview_layout().height, view_height)
+        {
             scrollbar::paint(ui, &bar, &bar_name, grab.active || (scroll - was).abs() > 0.01);
         }
     }
@@ -10303,7 +10428,12 @@ impl UnluminousApp {
     /// the status bar. This is the rule `services::preview_images` already keeps about a picture with a
     /// scheme in it: a document must not be able to reach this machine because somebody clicked a word
     /// in it, and a `javascript:` address handed to a web view would run whatever the document said.
-    fn open_a_link_in_the_preview(&mut self, ui: &egui::Ui, response: &egui::Response, origin: Pos2) {
+    fn open_a_link_in_the_preview(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        origin: Pos2,
+    ) {
         let held = ui.input(|input| input.modifiers.command);
         if !held {
             return;
@@ -10483,8 +10613,11 @@ impl UnluminousApp {
             let at = Pos2::new(origin.x, origin.y + line.y);
             match &diagram.laid {
                 Ok(scene) => {
-                    let scale =
-                        if scene.size.width > 0.0 { (width / scene.size.width).min(1.0) } else { 1.0 };
+                    let scale = if scene.size.width > 0.0 {
+                        (width / scene.size.width).min(1.0)
+                    } else {
+                        1.0
+                    };
                     diagram_view::paint(ui, scene, at, scale);
                 }
                 Err(problem) => {
@@ -10838,12 +10971,8 @@ impl UnluminousApp {
         // size this answers with the size it was given and nothing changes.
         gutter.font_size = gutter::fitted_size(ui, &gutter, lines, area.width());
         let gutter_width = gutter::width(ui, &gutter, lines);
-        let gutter_rect =
-            Rect::from_min_size(area.min, Vec2::new(gutter_width, area.height()));
-        let area = Rect::from_min_max(
-            Pos2::new(area.left() + gutter_width, area.top()),
-            area.max,
-        );
+        let gutter_rect = Rect::from_min_size(area.min, Vec2::new(gutter_width, area.height()));
+        let area = Rect::from_min_max(Pos2::new(area.left() + gutter_width, area.top()), area.max);
         let padding =
             if gutter_width > 0.0 { editor_view::PADDING } else { size::EDITOR_PADDING_X };
 
@@ -11300,7 +11429,9 @@ fn git_colour(state: unluminous_git::State) -> Color32 {
         unluminous_git::State::Untracked => color::git_untracked(),
         unluminous_git::State::Added | unluminous_git::State::Copied => color::git_added(),
         unluminous_git::State::Unmerged => color::close(),
-        unluminous_git::State::Ignored | unluminous_git::State::Unchanged => color::text_faint().gamma_multiply(0.7),
+        unluminous_git::State::Ignored | unluminous_git::State::Unchanged => {
+            color::text_faint().gamma_multiply(0.7)
+        }
         _ => color::git_modified(),
     }
 }
@@ -11367,8 +11498,8 @@ impl eframe::App for UnluminousApp {
                 // `show_a_browser_node` applies — a page is not transformed by the node's layer, so the
                 // camera has to be spent here as well. Two places computing one number would be one too
                 // many, so this asks the same question of the same two values.
-                let zoom = self.space.live.page_zoom_of(node)
-                    * self.space.space.current().camera.zoom;
+                let zoom =
+                    self.space.live.page_zoom_of(node) * self.space.space.current().camera.zoom;
                 let _ = self.browser.zoom(id, f64::from(zoom));
             }
         }
@@ -11438,9 +11569,7 @@ impl unluminous_core::CodeHighlighter for PluginHighlighter<'_> {
         if !plugin.grammar.markup {
             return unluminous_core::syntax::highlight(code, &plugin.grammar)
                 .into_iter()
-                .filter_map(|(range, token)| {
-                    scheme.colour(token).map(|colour| (range, colour))
-                })
+                .filter_map(|(range, token)| scheme.colour(token).map(|colour| (range, colour)))
                 .collect();
         }
         // A fence of HTML is coloured the same way a `.html` file is: the outer pass reads the
@@ -11449,26 +11578,35 @@ impl unluminous_core::CodeHighlighter for PluginHighlighter<'_> {
         // claims answers with nothing, and the embedded list is one level deep.
         let mut spans: Vec<(std::ops::Range<usize>, unluminous_core::Color)> = Vec::new();
         let mut embedded: Vec<unluminous_core::syntax::Embedded> = Vec::new();
-        unluminous_core::syntax::scan_with_embedded(code, &plugin.grammar, &mut embedded, |range, token| {
-            if token != unluminous_core::Token::Text {
-                if let Some(colour) = scheme.colour(token) {
-                    spans.push((range, colour));
+        unluminous_core::syntax::scan_with_embedded(
+            code,
+            &plugin.grammar,
+            &mut embedded,
+            |range, token| {
+                if token != unluminous_core::Token::Text {
+                    if let Some(colour) = scheme.colour(token) {
+                        spans.push((range, colour));
+                    }
                 }
-            }
-        });
+            },
+        );
         for region in &embedded {
             let Some(inside) = self.plugins.for_language(&region.language) else {
                 continue;
             };
             let inside_theme = crate::services::plugins::scheme_of(inside);
             let start = region.range.start;
-            unluminous_core::syntax::scan(&code[region.range.clone()], &inside.grammar, |range, token| {
-                if token != unluminous_core::Token::Text {
-                    if let Some(colour) = inside_theme.colour(token) {
-                        spans.push((range.start + start..range.end + start, colour));
+            unluminous_core::syntax::scan(
+                &code[region.range.clone()],
+                &inside.grammar,
+                |range, token| {
+                    if token != unluminous_core::Token::Text {
+                        if let Some(colour) = inside_theme.colour(token) {
+                            spans.push((range.start + start..range.end + start, colour));
+                        }
                     }
-                }
-            });
+                },
+            );
         }
         // The fence's reader walks the spans in order and stops at the first past its line.
         spans.sort_by_key(|(range, _)| range.start);

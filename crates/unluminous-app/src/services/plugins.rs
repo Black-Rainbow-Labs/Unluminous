@@ -124,8 +124,8 @@ pub const CHROME: &[&str] = &["vello"];
 /// Checked for the same reason the three registries above are checked: a rail button drawn as nothing
 /// is worse than a manifest that was refused with the list of icons in the message.
 pub const PANE_ICONS: &[&str] = &[
-    "board", "folder", "terminal", "run", "bug", "clock", "branch", "tick", "plus", "image", "chat",
-    "database", "table",
+    "board", "folder", "terminal", "run", "bug", "clock", "branch", "tick", "plus", "image",
+    "chat", "database", "table",
 ];
 
 /// The icon sets built into this version of Unluminous that a theme's `icons` may name.
@@ -264,10 +264,16 @@ pub struct TabContribution {
 #[derive(Debug, Clone, PartialEq)]
 pub enum MenuItem {
     /// `command=Name`: the name a person reads, and the command handed to the provider.
-    Command { command: String, label: String },
+    Command {
+        command: String,
+        label: String,
+    },
     /// A lone `-` in the list.
     Separator,
-    Submenu { label: String, items: Vec<MenuItem> },
+    Submenu {
+        label: String,
+        items: Vec<MenuItem>,
+    },
 }
 
 /// A menu a plugin contributes, added after the six Unluminous has.
@@ -376,10 +382,7 @@ impl Surfaces {
 
     /// Which renderer this plugin asked for, if it asked and is switched on.
     pub fn chrome_for(&self, plugin: &str) -> Option<&str> {
-        self.chrome
-            .iter()
-            .find(|(id, _)| id == plugin)
-            .map(|(_, renderer)| renderer.as_str())
+        self.chrome.iter().find(|(id, _)| id == plugin).map(|(_, renderer)| renderer.as_str())
     }
 
     /// The provider named by the plugin with this id, from whichever of its contributions names it.
@@ -753,7 +756,8 @@ impl Plugins {
     /// Reading it back from disk rather than simply marking it installed is the point: it is what
     /// proves the loader works on real files and not only on what was baked into the binary.
     pub fn install(&mut self, store: &Store, id: &str) -> std::io::Result<()> {
-        let Some((_, manifest, icon)) = bundled::ALL.iter().find(|(known, _, _)| *known == id) else {
+        let Some((_, manifest, icon)) = bundled::ALL.iter().find(|(known, _, _)| *known == id)
+        else {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 format!("there is no plugin called {id}"),
@@ -855,10 +859,7 @@ impl Grammars {
     /// The grammar that reads this file, if a plugin that is switched on claims it.
     pub fn for_path(&self, path: &Path) -> Option<&Grammar> {
         let extension = path.extension().and_then(|name| name.to_str())?.to_lowercase();
-        self.by_extension
-            .iter()
-            .find(|(known, _)| *known == extension)
-            .map(|(_, grammar)| grammar)
+        self.by_extension.iter().find(|(known, _)| *known == extension).map(|(_, grammar)| grammar)
     }
 
     /// True when this file's language has said enough for a definition to be found in it.
@@ -929,23 +930,25 @@ pub fn parse(values: &Values, bundled: bool) -> Result<Plugin, String> {
     // plugin claims none by construction — Agent-Tasks is not a file type — so the check belongs to the
     // kind rather than to every manifest.
     if kind == Kind::Language && extensions.is_empty() {
-        return Err("language.extensions is empty, so nothing would ever use this plugin".to_owned());
+        return Err(
+            "language.extensions is empty, so nothing would ever use this plugin".to_owned()
+        );
     }
     let contributions = contributions(values, kind)?;
     // Checked against what this version can actually draw, for the same reason `plugin.kind` is: a
     // manifest naming a picture Unluminous does not have should say so rather than load as a language
     // whose files silently never draw.
-    let renders = match values.text("language.renders").map(str::trim).filter(|name| !name.is_empty())
-    {
-        Some(name) if RENDERERS.contains(&name) => Some(name.to_owned()),
-        Some(other) => {
-            return Err(format!(
-                "language.renders is `{other}`, and this version of Unluminous draws {}",
-                RENDERERS.join(", ")
-            ))
-        }
-        None => None,
-    };
+    let renders =
+        match values.text("language.renders").map(str::trim).filter(|name| !name.is_empty()) {
+            Some(name) if RENDERERS.contains(&name) => Some(name.to_owned()),
+            Some(other) => {
+                return Err(format!(
+                    "language.renders is `{other}`, and this version of Unluminous draws {}",
+                    RENDERERS.join(", ")
+                ))
+            }
+            None => None,
+        };
     let name = values.text("plugin.name").unwrap_or(&id).to_owned();
     let grammar = Grammar {
         language: name.clone(),
@@ -1094,7 +1097,9 @@ fn one_theme(values: &Values, plugin: &str, id: &str) -> Result<crate::theme::Th
     let at = |leaf: &str| values.text(&format!("theme.{id}.{leaf}")).map(str::trim);
     let name = at("name")
         .filter(|name| !name.is_empty())
-        .ok_or_else(|| format!("theme.{id}.name is missing, so it would have nothing to be called in the list"))?
+        .ok_or_else(|| {
+            format!("theme.{id}.name is missing, so it would have nothing to be called in the list")
+        })?
         .to_owned();
     // Dark unless it says otherwise, and light is refused with the reason rather than half-supported. The
     // window is drawn on a transparent ground, the depth recipe in `vello_canvas` lifts a surface and
@@ -1109,7 +1114,10 @@ fn one_theme(values: &Values, plugin: &str, id: &str) -> Result<crate::theme::Th
     }
     let icons = match at("icons").filter(|named| !named.is_empty()) {
         Some(named) => crate::theme::IconSet::parse(named).ok_or_else(|| {
-            format!("theme.{id}.icons is `{named}`, and this version of Unluminous draws {}", ICON_SETS.join(", "))
+            format!(
+                "theme.{id}.icons is `{named}`, and this version of Unluminous draws {}",
+                ICON_SETS.join(", ")
+            )
         })?,
         None => crate::theme::IconSet::default(),
     };
@@ -1119,7 +1127,9 @@ fn one_theme(values: &Values, plugin: &str, id: &str) -> Result<crate::theme::Th
     let mut palette = crate::theme::Palette::UNLUMINOUS_DARK;
     for (role, value) in values.starting_with(&format!("theme.{id}.ui.")) {
         let Some(read) = colour(&value) else {
-            return Err(format!("theme.{id}.ui.{role} is `{value}`, which is not a colour such as #FF79C6"));
+            return Err(format!(
+                "theme.{id}.ui.{role} is `{value}`, which is not a colour such as #FF79C6"
+            ));
         };
         if !palette.set(&role, egui::Color32::from_rgb(read.r, read.g, read.b)) {
             return Err(format!(
@@ -1209,8 +1219,10 @@ fn contributions(values: &Values, kind: Kind) -> Result<Contributions, String> {
             ))
         }
         None if kind == Kind::Ui => {
-            return Err("ui.provider is missing, and a ui plugin with no provider would draw nothing"
-                .to_owned())
+            return Err(
+                "ui.provider is missing, and a ui plugin with no provider would draw nothing"
+                    .to_owned(),
+            )
         }
         None => None,
     };
@@ -1390,9 +1402,7 @@ fn menu_items(values: &Values, prefix: &str) -> Result<Vec<MenuItem>, String> {
             continue;
         }
         let Some((command, label)) = entry.split_once('=') else {
-            return Err(format!(
-                "{prefix}.entries holds `{entry}`, which is not `command=Name`"
-            ));
+            return Err(format!("{prefix}.entries holds `{entry}`, which is not `command=Name`"));
         };
         let command = command.trim();
         let label = label.trim();
@@ -1414,9 +1424,7 @@ fn menu_items(values: &Values, prefix: &str) -> Result<Vec<MenuItem>, String> {
         }
         let nested = menu_items(values, &format!("{prefix}.submenu.{key}"))?;
         if nested.is_empty() {
-            return Err(format!(
-                "{prefix}.submenu.{key} is empty, so it would open onto nothing"
-            ));
+            return Err(format!("{prefix}.submenu.{key} is empty, so it would open onto nothing"));
         }
         items.push(MenuItem::Submenu { label: label.to_owned(), items: nested });
     }
@@ -1449,7 +1457,9 @@ fn measurement(values: &Values, name: &str, default: f32) -> Result<f32, String>
         // is refused with what it said and what a width is.
         Some(text) => match text.parse::<f32>() {
             Ok(number) if number > 0.0 => Ok(number),
-            _ => Err(format!("{name} is `{text}`, and a measurement is a number of points above zero")),
+            _ => Err(format!(
+                "{name} is `{text}`, and a measurement is a number of points above zero"
+            )),
         },
         None => Ok(default),
     }
@@ -1589,7 +1599,9 @@ fn path_roots(values: &Values) -> Result<Vec<(String, PathRoot)>, String> {
     let mut found = Vec::new();
     for entry in list(values, "language.path_roots") {
         let Some((word, meaning)) = entry.split_once('=') else {
-            return Err(format!("language.path_roots holds `{entry}`, which is not `word=meaning`"));
+            return Err(format!(
+                "language.path_roots holds `{entry}`, which is not `word=meaning`"
+            ));
         };
         let Some(parsed) = PathRoot::parse(meaning) else {
             let known: Vec<&str> = PathRoot::ALL.iter().map(|root| root.name()).collect();
@@ -1630,7 +1642,9 @@ fn raw_text(values: &Values) -> Result<Vec<(String, Option<String>)>, String> {
         }
         let language = language.map(str::trim).filter(|language| !language.is_empty());
         if entry.contains('=') && language.is_none() {
-            return Err(format!("language.raw_text holds `{entry}`, which names an element and no language"));
+            return Err(format!(
+                "language.raw_text holds `{entry}`, which names an element and no language"
+            ));
         }
         found.push((element.to_owned(), language.map(str::to_owned)));
     }
@@ -1797,8 +1811,16 @@ mod tests {
         let plugin = parse(&Values::parse(&manifest()), false).expect("it should parse");
         assert_eq!(plugin.theme.colour(Token::Keyword), Some(Color::rgb(0xFF, 0x79, 0xC6)));
         assert_eq!(plugin.theme.colour(Token::Comment), Some(Color::rgb(0x62, 0x72, 0xA4)));
-        assert_eq!(plugin.theme.colour(Token::Number), None, "a value that is not a colour is skipped");
-        assert_eq!(plugin.theme.colour(Token::String), None, "a colour that was not named is absent");
+        assert_eq!(
+            plugin.theme.colour(Token::Number),
+            None,
+            "a value that is not a colour is skipped"
+        );
+        assert_eq!(
+            plugin.theme.colour(Token::String),
+            None,
+            "a colour that was not named is absent"
+        );
     }
 
     #[test]
@@ -2075,7 +2097,8 @@ mod tests {
         // quietly flat, which is the exact outcome a checked registry exists to prevent.
         let manifest = "plugin.id = a-board\nplugin.name = A Board\nplugin.kind = ui\n\
                         ui.provider = agent-tasks\nui.chrome = crayons\ntab.id = board\ntab.label = A Board\n";
-        let problem = parse(&Values::parse(manifest), false).expect_err("crayons is not a renderer");
+        let problem =
+            parse(&Values::parse(manifest), false).expect_err("crayons is not a renderer");
         assert!(problem.contains("ui.chrome is `crayons`"), "{problem}");
         assert!(problem.contains("vello"), "and it names what this version does have: {problem}");
 
@@ -2169,7 +2192,8 @@ language.extensions = .aa
     /// not *remove the feature*, which a bundled plugin's button could not do anyway.
     #[test]
     fn installing_then_uninstalling_leaves_the_bundled_plugin() {
-        let folder = std::env::temp_dir().join(format!("unluminous-plugins-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-plugins-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         let store = Store::at(folder.clone());
         let (mut plugins, _) = Plugins::load(None);
@@ -2191,7 +2215,10 @@ language.extensions = .aa
         assert!(back.bundled, "and it is the bundled one again");
         assert!(back.icon.is_some(), "with its icon, read from the manifest that shipped");
 
-        assert!(plugins.uninstall(&store, "not-a-plugin").is_err(), "and only a real id is removed");
+        assert!(
+            plugins.uninstall(&store, "not-a-plugin").is_err(),
+            "and only a real id is removed"
+        );
         let _ = std::fs::remove_dir_all(&folder);
     }
 
@@ -2200,14 +2227,20 @@ language.extensions = .aa
         let (plugins, problems) = Plugins::load(None);
         assert!(problems.is_empty(), "a bundled plugin should always parse: {problems:?}");
         let ids: Vec<&str> = plugins.all().iter().map(|plugin| plugin.id.as_str()).collect();
-        assert!(ids.contains(&"javascript") && ids.contains(&"typescript") && ids.contains(&"rust"));
+        assert!(
+            ids.contains(&"javascript") && ids.contains(&"typescript") && ids.contains(&"rust")
+        );
         assert!(ids.contains(&"mermaid") && ids.contains(&"css") && ids.contains(&"html"));
         assert_eq!(plugins.for_path(Path::new("a.rs")).map(|p| p.id.as_str()), Some("rust"));
         assert_eq!(plugins.for_path(Path::new("a.ts")).map(|p| p.id.as_str()), Some("typescript"));
         assert_eq!(plugins.for_path(Path::new("a.js")).map(|p| p.id.as_str()), Some("javascript"));
         assert_eq!(plugins.for_path(Path::new("a.html")).map(|p| p.id.as_str()), Some("html"));
         assert_eq!(plugins.for_path(Path::new("a.htm")).map(|p| p.id.as_str()), Some("html"));
-        assert_eq!(plugins.for_path(Path::new("a.md")), None, "Markdown is not a plugin's business");
+        assert_eq!(
+            plugins.for_path(Path::new("a.md")),
+            None,
+            "Markdown is not a plugin's business"
+        );
         // Every plugin ships an icon — see `every_bundled_plugin_carries_an_icon` — and every language
         // ships a colour scheme with it. A plugin that draws ships no scheme: a scheme it chose would
         // be the one thing a plugin is never allowed to decide. Its *rail* button is still
@@ -2221,7 +2254,11 @@ language.extensions = .aa
                     assert!(!plugin.theme.is_empty(), "{} has no colour scheme", plugin.id);
                 }
                 Kind::Ui => {
-                    assert!(plugin.theme.is_empty(), "{} names colours, which no plugin may", plugin.id);
+                    assert!(
+                        plugin.theme.is_empty(),
+                        "{} names colours, which no plugin may",
+                        plugin.id
+                    );
                     assert!(plugin.extensions.is_empty(), "{} claims a file type", plugin.id);
                 }
                 // A theme plugin is the one that *does* name colours, which is the whole of what it is
@@ -2229,7 +2266,11 @@ language.extensions = .aa
                 Kind::Theme => {
                     assert!(!plugin.themes.is_empty(), "{} carries no themes", plugin.id);
                     assert!(plugin.extensions.is_empty(), "{} claims a file type", plugin.id);
-                    assert!(plugin.contributions.is_empty(), "{} contributes to the window", plugin.id);
+                    assert!(
+                        plugin.contributions.is_empty(),
+                        "{} contributes to the window",
+                        plugin.id
+                    );
                 }
             }
         }
@@ -2284,7 +2325,10 @@ language.extensions = .aa
             "a plugin that is switched off must stop claiming its extensions, kept answer or not"
         );
         plugins.set_enabled(None, "rust", true);
-        assert!(plugins.grammars().for_path(rust()).is_some(), "and start again when it comes back");
+        assert!(
+            plugins.grammars().for_path(rust()).is_some(),
+            "and start again when it comes back"
+        );
     }
 
     #[test]
@@ -2438,7 +2482,11 @@ language.extensions = .aa
             "and every other is Unluminous's own"
         );
         assert!(theme.syntax.is_none(), "naming no token colours leaves the plugins alone");
-        assert_eq!(theme.icons, crate::theme::IconSet::Material, "and the marks a window comes up in");
+        assert_eq!(
+            theme.icons,
+            crate::theme::IconSet::Material,
+            "and the marks a window comes up in"
+        );
     }
 
     /// Every refusal names what was asked for and what this version has, which is the rule
@@ -2553,7 +2601,10 @@ language.extensions = .aa
             Some("themes-bundle-1/deep-ocean".to_owned()),
             "and by name, whatever the case"
         );
-        assert_eq!(plugins.theme("unluminous/dark").map(|theme| theme.name), Some("Unluminous Dark".to_owned()));
+        assert_eq!(
+            plugins.theme("unluminous/dark").map(|theme| theme.name),
+            Some("Unluminous Dark".to_owned())
+        );
         assert!(plugins.theme("solarized").is_none());
     }
 
@@ -2569,11 +2620,17 @@ language.extensions = .aa
         assert!(!html.claims(Path::new("page.xml")), "XML is a different language, deliberately");
         assert!(html.grammar.markup, "the flag is read");
         assert!(
-            html.grammar.raw_text.iter().any(|(el, lang)| el == "script" && lang.as_deref() == Some("javascript")),
+            html.grammar
+                .raw_text
+                .iter()
+                .any(|(el, lang)| el == "script" && lang.as_deref() == Some("javascript")),
             "a script block holds javascript"
         );
         assert!(
-            html.grammar.raw_text.iter().any(|(el, lang)| el == "style" && lang.as_deref() == Some("css")),
+            html.grammar
+                .raw_text
+                .iter()
+                .any(|(el, lang)| el == "style" && lang.as_deref() == Some("css")),
             "a style block holds css"
         );
         assert!(
@@ -2581,11 +2638,20 @@ language.extensions = .aa
             "a title is escapable raw text, so it decodes its references"
         );
         assert_eq!(html.grammar.word_characters, vec!['-'], "a hyphen is a letter");
-        assert_eq!(html.grammar.block_comment.as_ref(), Some(&("<!--".to_owned(), "-->".to_owned())));
+        assert_eq!(
+            html.grammar.block_comment.as_ref(),
+            Some(&("<!--".to_owned(), "-->".to_owned()))
+        );
         assert!(html.grammar.keywords.contains(&"p".to_owned()), "an element name is a keyword");
         assert!(html.grammar.keywords.contains(&"DOCTYPE".to_owned()), "the declaration colours");
-        assert!(html.grammar.builtins.contains(&"class".to_owned()), "an attribute name is a builtin");
-        assert!(html.grammar.types.is_empty(), "the third list is empty, and the type colour is the tag-name rule");
+        assert!(
+            html.grammar.builtins.contains(&"class".to_owned()),
+            "an attribute name is a builtin"
+        );
+        assert!(
+            html.grammar.types.is_empty(),
+            "the third list is empty, and the type colour is the tag-name rule"
+        );
 
         // What that adds up to, read through the tokeniser the window uses.
         use unluminous_core::syntax::{highlight, Token};
@@ -2599,7 +2665,10 @@ language.extensions = .aa
         assert!(found.contains(&("\"card\"", Token::String)), "the value: {found:?}");
         assert!(found.contains(&("&amp;", Token::Number)), "the reference in prose: {found:?}");
         assert!(
-            !found.iter().any(|(word, _)| *word == "Tom" || *word == "Jerry" || *word == "5" || *word == "3"),
+            !found.iter().any(|(word, _)| *word == "Tom"
+                || *word == "Jerry"
+                || *word == "5"
+                || *word == "3"),
             "a word of the prose is not coloured: {found:?}"
         );
     }
@@ -2613,7 +2682,10 @@ language.extensions = .aa
         assert!(problems.is_empty(), "{problems:?}");
         let html = plugins.get("html").expect("the html plugin");
         assert!(
-            html.grammar.raw_text.iter().any(|(el, lang)| el == "style" && lang.as_deref() == Some("css")),
+            html.grammar
+                .raw_text
+                .iter()
+                .any(|(el, lang)| el == "style" && lang.as_deref() == Some("css")),
             "the style block names css, which is what the window asks for"
         );
         assert!(plugins.for_language("css").is_some(), "css is on, so the block is coloured");
@@ -2735,10 +2807,11 @@ language.extensions = .aa
 
         let typescript = plugins.get("typescript").expect("typescript");
         let source = "class Panel {\n  render(area: Rect) {\n    return area;\n  }\n}\n";
-        let found: Vec<&str> = unluminous_core::symbols::file_definitions(source, &typescript.grammar)
-            .into_iter()
-            .map(|definition| &source[definition.name_range])
-            .collect();
+        let found: Vec<&str> =
+            unluminous_core::symbols::file_definitions(source, &typescript.grammar)
+                .into_iter()
+                .map(|definition| &source[definition.name_range])
+                .collect();
         assert_eq!(found, vec!["Panel", "render"], "the method has no keyword in front of it");
     }
 
@@ -2818,7 +2891,10 @@ language.extensions = .aa
         let problem = parse(&Values::parse(&format!("{head}run.project = gradle")), false)
             .expect_err("gradle is not a detector this version has");
         assert!(problem.contains("gradle"), "{problem}");
-        assert!(problem.contains("cargo") && problem.contains("npm"), "and it says what there is: {problem}");
+        assert!(
+            problem.contains("cargo") && problem.contains("npm"),
+            "and it says what there is: {problem}"
+        );
         // And a run.file with no placeholder in it, which would run the same file whatever was open.
         let problem = parse(&Values::parse(&format!("{head}run.file = node server.js")), false)
             .expect_err("a template with no placeholder");
@@ -2891,7 +2967,10 @@ language.extensions = .aa
         let (mut plugins, _) = Plugins::load(None);
         plugins.install(&store, "rust").expect("install");
         let written = Plugins::folder(&store, "rust");
-        assert!(written.join(MANIFEST).is_file(), "the manifest is written where a person can read it");
+        assert!(
+            written.join(MANIFEST).is_file(),
+            "the manifest is written where a person can read it"
+        );
         assert!(written.join(ICON).is_file());
         // What is loaded now came off disk, which is what proves the loader works on real files.
         let (loaded, problems) = Plugins::load(Some(&store));

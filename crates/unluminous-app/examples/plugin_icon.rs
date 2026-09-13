@@ -33,12 +33,8 @@ fn main() {
     let keyed = key_out_the_background(&image);
     let cropped = crop_to_the_mark(&keyed);
     for size in [128_u32, 32] {
-        let scaled = image::imageops::resize(
-            &cropped,
-            size,
-            size,
-            image::imageops::FilterType::Lanczos3,
-        );
+        let scaled =
+            image::imageops::resize(&cropped, size, size, image::imageops::FilterType::Lanczos3);
         let name = if size == 32 { "icon.png".to_owned() } else { format!("icon-{size}.png") };
         let path = std::path::Path::new(folder).join(&name);
         scaled.save(&path).expect("save the icon");
@@ -55,12 +51,8 @@ fn key_out_the_background(image: &RgbaImage) -> RgbaImage {
     let background = image.get_pixel(0, 0).0;
     let mut out = image.clone();
     let mut seen = vec![false; (width * height) as usize];
-    let mut queue: Vec<(u32, u32)> = vec![
-        (0, 0),
-        (width - 1, 0),
-        (0, height - 1),
-        (width - 1, height - 1),
-    ];
+    let mut queue: Vec<(u32, u32)> =
+        vec![(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)];
     while let Some((x, y)) = queue.pop() {
         let at = (y * width + x) as usize;
         if seen[at] {

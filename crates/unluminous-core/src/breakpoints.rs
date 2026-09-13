@@ -261,7 +261,12 @@ mod tests {
     use super::*;
 
     fn conditional(offset: usize, condition: &str) -> Breakpoint {
-        Breakpoint { offset, enabled: true, condition: Some(condition.to_owned()), log_message: None }
+        Breakpoint {
+            offset,
+            enabled: true,
+            condition: Some(condition.to_owned()),
+            log_message: None,
+        }
     }
 
     fn three() -> Breakpoints {
@@ -284,7 +289,10 @@ mod tests {
         breakpoints.set(Breakpoint::at(10));
         breakpoints.set(conditional(10, "x > 1"));
         assert_eq!(breakpoints.len(), 1, "two dots on one line have no meaning");
-        assert_eq!(breakpoints.at(10).and_then(|one| one.condition.clone()), Some("x > 1".to_owned()));
+        assert_eq!(
+            breakpoints.at(10).and_then(|one| one.condition.clone()),
+            Some("x > 1".to_owned())
+        );
         assert!(breakpoints.check());
     }
 
@@ -379,11 +387,8 @@ mod tests {
     /// And two that land on one offset become one, which is the invariant everything else rests on.
     #[test]
     fn two_breakpoints_a_deletion_brought_together_become_one() {
-        let mut breakpoints = Breakpoints::from_list([
-            Breakpoint::at(10),
-            conditional(14, "x"),
-            Breakpoint::at(18),
-        ]);
+        let mut breakpoints =
+            Breakpoints::from_list([Breakpoint::at(10), conditional(14, "x"), Breakpoint::at(18)]);
         breakpoints.remove(12..20);
         assert!(breakpoints.check());
         assert_eq!(

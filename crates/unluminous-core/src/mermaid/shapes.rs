@@ -153,16 +153,12 @@ impl Shape {
             }
             Shape::Diamond => scene.add(Item::Polygon { points: diamond(rect), fill, stroke }),
             Shape::Hexagon => scene.add(Item::Polygon { points: hexagon(rect), fill, stroke }),
-            Shape::Parallelogram => scene.add(Item::Polygon {
-                points: parallelogram(rect, false),
-                fill,
-                stroke,
-            }),
-            Shape::ParallelogramAlt => scene.add(Item::Polygon {
-                points: parallelogram(rect, true),
-                fill,
-                stroke,
-            }),
+            Shape::Parallelogram => {
+                scene.add(Item::Polygon { points: parallelogram(rect, false), fill, stroke })
+            }
+            Shape::ParallelogramAlt => {
+                scene.add(Item::Polygon { points: parallelogram(rect, true), fill, stroke })
+            }
             Shape::Trapezoid => {
                 scene.add(Item::Polygon { points: trapezoid(rect, false), fill, stroke })
             }
@@ -326,10 +322,22 @@ mod tests {
     fn every_shape_gives_a_size_that_holds_its_words() {
         let words = Size::new(90.0, 40.0);
         for shape in [
-            Shape::Rect, Shape::Round, Shape::Stadium, Shape::Subroutine, Shape::Cylinder,
-            Shape::Circle, Shape::DoubleCircle, Shape::Asymmetric, Shape::Diamond, Shape::Hexagon,
-            Shape::Parallelogram, Shape::ParallelogramAlt, Shape::Trapezoid, Shape::TrapezoidAlt,
-            Shape::Bang, Shape::Cloud,
+            Shape::Rect,
+            Shape::Round,
+            Shape::Stadium,
+            Shape::Subroutine,
+            Shape::Cylinder,
+            Shape::Circle,
+            Shape::DoubleCircle,
+            Shape::Asymmetric,
+            Shape::Diamond,
+            Shape::Hexagon,
+            Shape::Parallelogram,
+            Shape::ParallelogramAlt,
+            Shape::Trapezoid,
+            Shape::TrapezoidAlt,
+            Shape::Bang,
+            Shape::Cloud,
         ] {
             let size = shape.size_for(words);
             assert!(size.width >= words.width, "{shape:?} is too narrow");
@@ -343,9 +351,20 @@ mod tests {
         // the layout has no way to know about.
         let rect = Rect::new(10.0, 20.0, 120.0, 50.0);
         for shape in [
-            Shape::Rect, Shape::Round, Shape::Stadium, Shape::Subroutine, Shape::Cylinder,
-            Shape::Circle, Shape::DoubleCircle, Shape::Asymmetric, Shape::Diamond, Shape::Hexagon,
-            Shape::Parallelogram, Shape::ParallelogramAlt, Shape::Trapezoid, Shape::TrapezoidAlt,
+            Shape::Rect,
+            Shape::Round,
+            Shape::Stadium,
+            Shape::Subroutine,
+            Shape::Cylinder,
+            Shape::Circle,
+            Shape::DoubleCircle,
+            Shape::Asymmetric,
+            Shape::Diamond,
+            Shape::Hexagon,
+            Shape::Parallelogram,
+            Shape::ParallelogramAlt,
+            Shape::Trapezoid,
+            Shape::TrapezoidAlt,
             Shape::Marker,
         ] {
             let mut scene = Scene::new();

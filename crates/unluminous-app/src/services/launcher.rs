@@ -29,7 +29,9 @@ pub fn open_window(folder: &Path) -> Option<u32> {
     let program = match std::env::current_exe() {
         Ok(program) => program,
         Err(problem) => {
-            eprintln!("Unluminous could not find its own program to start another window: {problem}");
+            eprintln!(
+                "Unluminous could not find its own program to start another window: {problem}"
+            );
             return None;
         }
     };
@@ -77,7 +79,10 @@ pub fn reveal(path: &Path) -> bool {
     match reveal_command(path).spawn() {
         Ok(_) => true,
         Err(problem) => {
-            eprintln!("Unluminous could not show {} in the file manager: {problem}", path.display());
+            eprintln!(
+                "Unluminous could not show {} in the file manager: {problem}",
+                path.display()
+            );
             false
         }
     }
@@ -136,7 +141,8 @@ mod tests {
     /// installation, and whatever it is handed it prints a line and exits.
     fn harmless_program() -> PathBuf {
         if cfg!(target_os = "windows") {
-            let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_owned());
+            let system_root =
+                std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_owned());
             PathBuf::from(system_root).join("System32").join("where.exe")
         } else {
             PathBuf::from("/bin/echo")

@@ -114,7 +114,8 @@ pub fn show(ctx: &egui::Context, state: &mut GoToFile) -> GoToFileOutcome {
 
         let body = modal::body(area);
         let field = Rect::from_min_size(body.min, Vec2::new(body.width(), 30.0));
-        let entry = controls::search_field(ui, field, "Go to file", "Type a file name", &mut state.query);
+        let entry =
+            controls::search_field(ui, field, "Go to file", "Type a file name", &mut state.query);
         // The box has the keyboard from the moment the modal opens, because a search box that has to
         // be clicked before it can be typed into is a search box that gets typed past.
         if !entry.has_focus() {
@@ -170,7 +171,9 @@ fn rows(ui: &mut egui::Ui, area: Rect, state: &mut GoToFile) -> Option<std::path
     egui::ScrollArea::vertical().id_salt("go-to-file-rows").show(&mut child, |ui| {
         if state.results.is_empty() {
             ui.add_space(8.0);
-            ui.label(egui::RichText::new("  No file matches").size(11.5).color(color::text_faint()));
+            ui.label(
+                egui::RichText::new("  No file matches").size(11.5).color(color::text_faint()),
+            );
             return;
         }
         for (index, found) in state.results.iter().enumerate() {
@@ -206,7 +209,13 @@ fn rows(ui: &mut egui::Ui, area: Rect, state: &mut GoToFile) -> Option<std::path
                     (true, true) => color::text_strong(),
                     (true, false) => color::text_control(),
                 };
-                let galley = controls::marked_text(painter, &name, &hits, tint, egui::FontId::proportional(12.5));
+                let galley = controls::marked_text(
+                    painter,
+                    &name,
+                    &hits,
+                    tint,
+                    egui::FontId::proportional(12.5),
+                );
                 let width = galley.size().x;
                 painter.galley(
                     Pos2::new(row.left() + 34.0, row.center().y - galley.size().y / 2.0),
@@ -254,7 +263,8 @@ mod tests {
 
     fn state_with(files: &[&str]) -> GoToFile {
         let mut state = GoToFile::default();
-        let paths: Vec<PathBuf> = files.iter().map(|name| Path::new("/project").join(name)).collect();
+        let paths: Vec<PathBuf> =
+            files.iter().map(|name| Path::new("/project").join(name)).collect();
         state.refresh(Path::new("/project"), &paths);
         state
     }

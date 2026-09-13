@@ -103,7 +103,9 @@ pub fn show(
         let after_tabs = tabs(ui, body, panel);
         let rest = Rect::from_min_max(Pos2::new(body.left(), after_tabs), body.max);
         match panel.tab {
-            Tab::Commit => commit_tab(ui, area, rest, panel, status, repository, recent, &mut outcome),
+            Tab::Commit => {
+                commit_tab(ui, area, rest, panel, status, repository, recent, &mut outcome)
+            }
             Tab::Stashes => stashes_tab(ui, area, rest, stashes, &mut outcome),
         }
     });
@@ -133,7 +135,11 @@ fn tabs(ui: &mut egui::Ui, body: Rect, panel: &mut CommitPanel) -> f32 {
                 egui::StrokeKind::Inside,
             );
         } else if response.hovered() {
-            ui.painter().rect_filled(rect, egui::CornerRadius::same(size::CONTROL_CORNER), color::control());
+            ui.painter().rect_filled(
+                rect,
+                egui::CornerRadius::same(size::CONTROL_CORNER),
+                color::control(),
+            );
         }
         let tint = if chosen { color::text_strong() } else { color::text_control() };
         modal::label(ui.painter(), rect, rect.left() + 12.0, name, tint, 12.5);
@@ -174,14 +180,15 @@ fn commit_tab(
     );
     let amend_row = Rect::from_min_size(counts.min + Vec2::new(0.0, 4.0), Vec2::new(200.0, 20.0));
     modal::check(ui, amend_row, "Amend", &mut panel.amend);
-    let summary = format!("{} added   {} modified", status.untracked_count(), status.modified_count());
-    let galley = ui.painter().layout_no_wrap(
-        summary,
-        egui::FontId::proportional(11.5),
-        color::git_added(),
-    );
+    let summary =
+        format!("{} added   {} modified", status.untracked_count(), status.modified_count());
+    let galley =
+        ui.painter().layout_no_wrap(summary, egui::FontId::proportional(11.5), color::git_added());
     ui.painter().galley(
-        Pos2::new(counts.right() - galley.size().x, counts.center().y - galley.size().y / 2.0 + 4.0),
+        Pos2::new(
+            counts.right() - galley.size().x,
+            counts.center().y - galley.size().y / 2.0 + 4.0,
+        ),
         galley,
         color::git_added(),
     );
@@ -334,7 +341,9 @@ fn changes_tree(
         }
         if status.is_clean() {
             ui.add_space(8.0);
-            ui.label(egui::RichText::new("  Nothing has changed.").size(11.5).color(color::text_faint()));
+            ui.label(
+                egui::RichText::new("  Nothing has changed.").size(11.5).color(color::text_faint()),
+            );
         }
     });
 }
@@ -350,12 +359,16 @@ fn group_row(
     let mut clicked = false;
     let response = modal::row(ui, id, heading, false, |painter, row| {
         tick(painter, Pos2::new(row.left() + 14.0, row.center().y), ticked);
-        let mut x = modal::label(painter, row, row.left() + 30.0, heading, color::text_strong(), 12.0);
+        let mut x =
+            modal::label(painter, row, row.left() + 30.0, heading, color::text_strong(), 12.0);
         if let Some((name, branch)) = repository {
             x = modal::label(painter, row, x + 14.0, name, color::text_control(), 12.0);
             // The branch chip, drawn the way the capture shows it.
-            let galley =
-                painter.layout_no_wrap(branch.to_owned(), egui::FontId::proportional(11.0), color::text_strong());
+            let galley = painter.layout_no_wrap(
+                branch.to_owned(),
+                egui::FontId::proportional(11.0),
+                color::text_strong(),
+            );
             let chip = Rect::from_min_size(
                 Pos2::new(x + 12.0, row.center().y - 9.0),
                 Vec2::new(galley.size().x + 14.0, 18.0),
@@ -408,7 +421,10 @@ fn file_row(
     });
     // The tick box takes a click of its own; anywhere else on the row shows the file's diff.
     let box_rect = Rect::from_center_size(
-        Pos2::new(response.rect.left() + 14.0 + depth as f32 * size::INDENT, response.rect.center().y),
+        Pos2::new(
+            response.rect.left() + 14.0 + depth as f32 * size::INDENT,
+            response.rect.center().y,
+        ),
         Vec2::splat(18.0),
     );
     let pointer = response.interact_pointer_pos();
@@ -466,7 +482,14 @@ fn stashes_tab(
             let name = stash.name.clone();
             let message = stash.message.clone();
             let response = modal::row(ui, &stash.name, &stash.name, false, |painter, row| {
-                let x = modal::label(painter, row, row.left() + 14.0, &name, color::text_strong(), 12.0);
+                let x = modal::label(
+                    painter,
+                    row,
+                    row.left() + 14.0,
+                    &name,
+                    color::text_strong(),
+                    12.0,
+                );
                 modal::label(painter, row, x + 14.0, &message, color::text_control(), 11.5);
             });
             if response.clicked() {
@@ -475,7 +498,9 @@ fn stashes_tab(
         }
         if stashes.is_empty() {
             ui.add_space(8.0);
-            ui.label(egui::RichText::new("  Nothing is stashed.").size(11.5).color(color::text_faint()));
+            ui.label(
+                egui::RichText::new("  Nothing is stashed.").size(11.5).color(color::text_faint()),
+            );
         }
     });
     // Acting on the newest stash is what `Unstash Changes` means when nothing is chosen, and

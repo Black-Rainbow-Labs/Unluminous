@@ -61,7 +61,8 @@ impl Camera {
             return;
         }
         let room = Vec2::new((size.x - padding * 2.0).max(1.0), (size.y - padding * 2.0).max(1.0));
-        let zoom = (room.x / bounds.width()).min(room.y / bounds.height()).clamp(MIN_ZOOM, MAX_ZOOM);
+        let zoom =
+            (room.x / bounds.width()).min(room.y / bounds.height()).clamp(MIN_ZOOM, MAX_ZOOM);
         self.zoom = zoom;
         // The middle of what is showing lands on the middle of the pane.
         self.at = bounds.center() - size / (2.0 * zoom);
@@ -235,8 +236,10 @@ pub fn curve_points(from: Pos2, to: Pos2, segments: usize) -> Vec<Pos2> {
         .map(|step| {
             let t = step as f32 / segments as f32;
             let u = 1.0 - t;
-            let x = u * u * u * a.x + 3.0 * u * u * t * b.x + 3.0 * u * t * t * c.x + t * t * t * d.x;
-            let y = u * u * u * a.y + 3.0 * u * u * t * b.y + 3.0 * u * t * t * c.y + t * t * t * d.y;
+            let x =
+                u * u * u * a.x + 3.0 * u * u * t * b.x + 3.0 * u * t * t * c.x + t * t * t * d.x;
+            let y =
+                u * u * u * a.y + 3.0 * u * u * t * b.y + 3.0 * u * t * t * c.y + t * t * t * d.y;
             Pos2::new(x, y)
         })
         .collect()
@@ -280,7 +283,10 @@ mod tests {
             for world in [Pos2::ZERO, Pos2::new(1000.0, -500.0), Pos2::new(-3.25, 7.75)] {
                 let there = camera.to_screen(ORIGIN, world);
                 let back = camera.to_world(ORIGIN, there);
-                assert!((back - world).length() < 0.01, "{world:?} at {zoom} came back as {back:?}");
+                assert!(
+                    (back - world).length() < 0.01,
+                    "{world:?} at {zoom} came back as {back:?}"
+                );
             }
         }
     }
@@ -294,7 +300,10 @@ mod tests {
         for steps in [1, 1, 1, -1, -5, 12] {
             camera.zoom_by(steps, ORIGIN, pointer);
             let after = camera.to_world(ORIGIN, pointer);
-            assert!((after - before).length() < 0.01, "{steps} steps moved {before:?} to {after:?}");
+            assert!(
+                (after - before).length() < 0.01,
+                "{steps} steps moved {before:?} to {after:?}"
+            );
         }
     }
 

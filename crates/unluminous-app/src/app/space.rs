@@ -45,7 +45,6 @@ const AGENT_CHAT: &str = "agent-chat";
 /// The plugin an Agent-Tasks node draws, which is the registry's own provider. See `Kind::Tasks`.
 const AGENT_TASKS: &str = "agent-tasks";
 
-
 /// What is being dragged on the canvas right now.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum Gesture {
@@ -239,11 +238,8 @@ impl UnluminousApp {
     /// Read before the nodes are drawn, over the whole body, so a node drawn afterwards takes the
     /// points it covers and only the empty canvas is left to this.
     fn take_the_canvas_input(&mut self, ui: &mut egui::Ui, body: Rect) {
-        let response = ui.interact(
-            body,
-            ui.id().with("space-canvas"),
-            egui::Sense::click_and_drag(),
-        );
+        let response =
+            ui.interact(body, ui.id().with("space-canvas"), egui::Sense::click_and_drag());
         if response.dragged() {
             let by = response.drag_delta();
             self.space.space.current_mut().camera.pan_by(by);
@@ -351,7 +347,10 @@ impl UnluminousApp {
             }
             let parts = space_view::parts_of(&node);
             let mut node_ui = ui.new_child(
-                egui::UiBuilder::new().layer_id(layer).max_rect(node.rect()).id_salt(("space-node", node.id)),
+                egui::UiBuilder::new()
+                    .layer_id(layer)
+                    .max_rect(node.rect())
+                    .id_salt(("space-node", node.id)),
             );
             node_ui.set_clip_rect(clip);
             let focused = Some(node.id) == chosen && matches!(self.focus, Focus::Space);
@@ -612,9 +611,8 @@ impl UnluminousApp {
         // **One native view a window**, so only the tab it is pointed at renders. The others say so,
         // which is the sentence `browser_view::show` already says for a second rendered tab in
         // another pane.
-        let showing = tab
-            .as_ref()
-            .is_none_or(|tab| self.browser.showing().is_none_or(|id| id == tab.id));
+        let showing =
+            tab.as_ref().is_none_or(|tab| self.browser.showing().is_none_or(|id| id == tab.id));
         // What is being typed lives on the node, so it survives the node scrolling off the canvas and
         // stopping being drawn. Taken out, handed over, and put back if it changed.
         let mut typed = match &node.state {
@@ -761,7 +759,8 @@ impl UnluminousApp {
                 scroll_to: scroll,
                 host: crate::components::explorer::Host::Node,
             };
-            let outcome = crate::components::explorer::show(ui, body, tree, &mut filter, view, &decorate);
+            let outcome =
+                crate::components::explorer::show(ui, body, tree, &mut filter, view, &decorate);
             (outcome, filter)
         };
         let (outcome, filter) = outcome;
@@ -872,15 +871,9 @@ impl UnluminousApp {
     /// Made *beside* means to the right of the folder node with a gap, so the wire is visible rather than
     /// crossing the node that drew it. `task-1905`.
     fn open_from_a_folder_node(&mut self, from: NodeId, path: &std::path::Path) {
-        let wired = self
-            .space
-            .space
-            .current()
-            .reaches(from)
-            .into_iter()
-            .find(|other| {
-                self.space.space.current().node(*other).is_some_and(|node| node.kind() == Kind::Editor)
-            });
+        let wired = self.space.space.current().reaches(from).into_iter().find(|other| {
+            self.space.space.current().node(*other).is_some_and(|node| node.kind() == Kind::Editor)
+        });
         let editor = match wired {
             Some(editor) => editor,
             None => {
@@ -938,9 +931,8 @@ impl UnluminousApp {
                 .holding_the_keyboard(focused)
                 .colouring_with(&highlighter)
                 .drawing_into(&chrome);
-            let mut chat_ui = ui.new_child(
-                egui::UiBuilder::new().max_rect(body).id_salt(("space-chat", node.id)),
-            );
+            let mut chat_ui = ui
+                .new_child(egui::UiBuilder::new().max_rect(body).id_salt(("space-chat", node.id)));
             chat_ui.set_clip_rect(ui.clip_rect().intersect(body));
             match self.space.live.chat_mut(node.id) {
                 Some(chat) => crate::components::agent_chat::pane(chat, &mut chat_ui, &look),
@@ -1002,9 +994,8 @@ impl UnluminousApp {
                 .holding_the_keyboard(focused)
                 .colouring_with(&highlighter)
                 .drawing_into(&chrome);
-            let mut board_ui = ui.new_child(
-                egui::UiBuilder::new().max_rect(body).id_salt(("space-tasks", node.id)),
-            );
+            let mut board_ui = ui
+                .new_child(egui::UiBuilder::new().max_rect(body).id_salt(("space-tasks", node.id)));
             board_ui.set_clip_rect(ui.clip_rect().intersect(body));
             match self.plugin_ui.provider(AGENT_TASKS) {
                 Some(provider) => provider.tab(&mut board_ui, &look),
@@ -1217,7 +1208,10 @@ impl UnluminousApp {
             // `Rect::NOTHING`, and `settle_the_tab_drag` lights the node instead of drawing an insertion
             // mark in a strip that is nowhere.
             false => {
-                self.note_where_an_editor_node_is(node, crate::components::file_tabs::Strip::default());
+                self.note_where_an_editor_node_is(
+                    node,
+                    crate::components::file_tabs::Strip::default(),
+                );
                 body
             }
         };
@@ -1287,7 +1281,11 @@ impl UnluminousApp {
     /// Read by `settle_the_tab_drag` and `settle_the_file_drag` once every panel and every node has been
     /// drawn, which is the earliest moment anything knows where all of them are. The rectangle is the whole
     /// node cut to the canvas, so a node half off the pane takes a drop only over the half that is showing.
-    fn note_where_an_editor_node_is(&mut self, node: &Node, strip: crate::components::file_tabs::Strip) {
+    fn note_where_an_editor_node_is(
+        &mut self,
+        node: &Node,
+        strip: crate::components::file_tabs::Strip,
+    ) {
         let camera = self.space.space.current().camera;
         let on_screen = camera.rect_to_screen(self.space.body.min, node.rect());
         self.node_tab_strips.push((node.id, on_screen.intersect(self.space.body), strip));
@@ -1481,7 +1479,8 @@ impl UnluminousApp {
         &mut self,
         ctx: &egui::Context,
         node: NodeId,
-    ) -> std::collections::HashMap<std::path::PathBuf, crate::components::explorer::Decoration> {
+    ) -> std::collections::HashMap<std::path::PathBuf, crate::components::explorer::Decoration>
+    {
         let Some(tree) = self.space.live.tree(node) else {
             return std::collections::HashMap::new();
         };
@@ -1507,7 +1506,8 @@ impl UnluminousApp {
     pub fn decorations_for_a_folder_node_for_a_test(
         &mut self,
         node: NodeId,
-    ) -> std::collections::HashMap<std::path::PathBuf, crate::components::explorer::Decoration> {
+    ) -> std::collections::HashMap<std::path::PathBuf, crate::components::explorer::Decoration>
+    {
         let ctx = self.context.clone().expect("a window has a context");
         self.decorations_for_a_folder_node(&ctx, node)
     }
@@ -1769,13 +1769,10 @@ impl UnluminousApp {
                 if let Some(index) = self.files.index_of(&wanted) {
                     self.files.show(index);
                     let end = self.files.at(index).document.text().len_bytes();
-                    self.files
-                        .at_mut(index)
-                        .document
-                        .apply(unluminous_core::Command::PlaceCaret {
-                            offset: caret.min(end),
-                            extend: false,
-                        });
+                    self.files.at_mut(index).document.apply(unluminous_core::Command::PlaceCaret {
+                        offset: caret.min(end),
+                        extend: false,
+                    });
                     self.files.at_mut(index).scroll = scroll.max(0.0);
                 }
             }
@@ -1861,15 +1858,21 @@ impl UnluminousApp {
         }
         // The shell the node would have started, kept as the tab's name: what is spawned is the program that
         // prints the screen, and a tab named after that would be a tab named `unluminous-cli`.
-        let shell = settings.shell.clone().unwrap_or_else(unluminous_terminal::session::default_shell);
+        let shell =
+            settings.shell.clone().unwrap_or_else(unluminous_terminal::session::default_shell);
         settings.name = Some(shell.clone());
-        let (program, args) = unluminous_cli::restore::command_line(&restore, &shell, &settings.args);
+        let (program, args) =
+            unluminous_cli::restore::command_line(&restore, &shell, &settings.args);
         settings.shell = Some(program.display().to_string());
         settings.args = args;
     }
 
     /// Make a terminal node's session, or start it again.
-    pub(crate) fn start_a_space_terminal(&mut self, node: NodeId, resume: bool) -> Result<(), String> {
+    pub(crate) fn start_a_space_terminal(
+        &mut self,
+        node: NodeId,
+        resume: bool,
+    ) -> Result<(), String> {
         let Some(found) = self.space.space.current().node(node).cloned() else {
             return Err(format!("There is no node {node}."));
         };
@@ -1914,9 +1917,11 @@ impl UnluminousApp {
                 // with it.
                 if let Some(id) = decided {
                     if Some(&id)
-                        != self.space.space.current().node(node).and_then(|node| match &node.state {
-                            State::Terminal(terminal) => Some(&terminal.session),
-                            _ => None,
+                        != self.space.space.current().node(node).and_then(|node| {
+                            match &node.state {
+                                State::Terminal(terminal) => Some(&terminal.session),
+                                _ => None,
+                            }
                         })
                     {
                         self.space.space.change(node, |state| {
@@ -2049,7 +2054,11 @@ impl UnluminousApp {
     /// A **remote** address on a tab that already exists is a navigation, so the node's history is
     /// kept. Anything else opens a tab, because a local page's root is registered when its tab is
     /// opened and cannot be changed underneath one.
-    pub(crate) fn send_a_space_browser_to(&mut self, node: NodeId, address: &str) -> Result<(), String> {
+    pub(crate) fn send_a_space_browser_to(
+        &mut self,
+        node: NodeId,
+        address: &str,
+    ) -> Result<(), String> {
         let location = crate::services::browser::BrowserLocation::parse(address, self.tree.root())?;
         let remote = location.source_path().is_none();
         if let (true, Some(tab)) = (remote, self.space.live.browser(node).map(|tab| tab.id)) {
@@ -2080,12 +2089,15 @@ impl UnluminousApp {
     }
 
     /// Point a browser node at an address, in a tab of its own.
-    pub(crate) fn open_a_space_browser(&mut self, node: NodeId, address: &str) -> Result<(), String> {
+    pub(crate) fn open_a_space_browser(
+        &mut self,
+        node: NodeId,
+        address: &str,
+    ) -> Result<(), String> {
         if !crate::services::browser::SUPPORTED {
             return Err("Rendered web pages are available on Windows and macOS.".to_owned());
         }
-        let location =
-            crate::services::browser::BrowserLocation::parse(address, self.tree.root())?;
+        let location = crate::services::browser::BrowserLocation::parse(address, self.tree.root())?;
         // The tab this node had, closed before the new one is made: a node shows one page, and a tab
         // nothing points at is a tab the one native view can still be asked to show.
         if let Some(was) = self.space.live.browser(node).map(|tab| tab.id) {
@@ -2102,7 +2114,11 @@ impl UnluminousApp {
     }
 
     /// Put a file in an editor node, moving the tab if it is already open somewhere else.
-    pub fn open_in_a_space_node(&mut self, node: NodeId, path: &std::path::Path) -> Result<(), String> {
+    pub fn open_in_a_space_node(
+        &mut self,
+        node: NodeId,
+        path: &std::path::Path,
+    ) -> Result<(), String> {
         let Some(found) = self.space.space.current().node(node).cloned() else {
             return Err(format!("There is no node {node}."));
         };
@@ -2113,8 +2129,11 @@ impl UnluminousApp {
         // tabs already there. `task-1905` asks for the node to hold several — *"just like our editing
         // area, where I can see and edit files in multiple tabs"* — where it used to close whatever was
         // there before opening the next one.
-        if let Some(already) =
-            self.files.tabs_in_node(node).into_iter().find(|index| self.files.at(*index).path() == Some(path))
+        if let Some(already) = self
+            .files
+            .tabs_in_node(node)
+            .into_iter()
+            .find(|index| self.files.at(*index).path() == Some(path))
         {
             self.files.show(already);
             self.files.focus_node(node);
@@ -2353,14 +2372,8 @@ impl UnluminousApp {
         if ask_what_is_running {
             self.space.asked_what_is_running = Some(now);
         }
-        let nodes: Vec<(NodeId, Kind)> = self
-            .space
-            .space
-            .current()
-            .nodes
-            .iter()
-            .map(|node| (node.id, node.kind()))
-            .collect();
+        let nodes: Vec<(NodeId, Kind)> =
+            self.space.space.current().nodes.iter().map(|node| (node.id, node.kind())).collect();
         for (node, kind) in nodes {
             match kind {
                 Kind::Editor => {
@@ -2371,7 +2384,8 @@ impl UnluminousApp {
                     // **Compared before `change` is called, not inside it.** `Space::change` marks the canvas
                     // dirty whatever the closure did, so asking inside would write `space.conf` on every
                     // frame — which is the one thing `is_dirty` exists to prevent.
-                    let moved = match &self.space.space.current().node(node).map(|node| &node.state) {
+                    let moved = match &self.space.space.current().node(node).map(|node| &node.state)
+                    {
                         Some(State::Editor(editor)) => {
                             editor.caret != caret || (editor.scroll - scroll).abs() > 0.5
                         }
@@ -2388,7 +2402,8 @@ impl UnluminousApp {
                 }
                 Kind::Folder => {
                     let scroll = self.space.live.scroll_of(node);
-                    let moved = match &self.space.space.current().node(node).map(|node| &node.state) {
+                    let moved = match &self.space.space.current().node(node).map(|node| &node.state)
+                    {
                         Some(State::Folder(folder)) => (folder.scroll - scroll).abs() > 0.5,
                         _ => false,
                     };
@@ -2420,14 +2435,8 @@ impl UnluminousApp {
     /// A browser node is here for the same reason with a different clock: its page moves whenever somebody
     /// clicks a link, and the last click before a window closes can land after the last frame that read it.
     pub(crate) fn note_what_the_nodes_hold_now(&mut self) {
-        let nodes: Vec<(NodeId, Kind)> = self
-            .space
-            .space
-            .current()
-            .nodes
-            .iter()
-            .map(|node| (node.id, node.kind()))
-            .collect();
+        let nodes: Vec<(NodeId, Kind)> =
+            self.space.space.current().nodes.iter().map(|node| (node.id, node.kind())).collect();
         for (node, kind) in nodes {
             match kind {
                 Kind::Terminal => self.note_what_a_node_is_running(node),
@@ -2451,7 +2460,8 @@ impl UnluminousApp {
     /// `New` pressed in the node changes it again. Compared before `change` is called, because
     /// `Space::change` marks the canvas dirty whatever the closure did.
     fn note_which_conversation_a_node_is_on(&mut self, node: NodeId) {
-        let Some(now) = self.space.live.chat(node).map(|chat| chat.conversation_id().to_owned()) else {
+        let Some(now) = self.space.live.chat(node).map(|chat| chat.conversation_id().to_owned())
+        else {
             return;
         };
         let was = match self.space.space.current().node(node).map(|found| &found.state) {
@@ -2470,7 +2480,7 @@ impl UnluminousApp {
 
     /// Where a browser node's page really is, written down when it has moved.
     ///
-                fn note_where_a_node_is_browsing(&mut self, node: NodeId) {
+    fn note_where_a_node_is_browsing(&mut self, node: NodeId) {
         // **Where the page really is, which is not where the node was sent.** A click on a link
         // inside a page navigates the view, and `BrowserTab::arrived_at` records that on the
         // **tab** — but `Browser::url` is what `store::write` puts in `space.conf`, and nothing
@@ -2796,7 +2806,12 @@ impl UnluminousApp {
             .root
             .clone()
             .filter(|root| root.is_dir())
-            .or_else(|| folder.root.as_ref().and_then(|root| root.parent().map(std::path::Path::to_path_buf)))
+            .or_else(|| {
+                folder
+                    .root
+                    .as_ref()
+                    .and_then(|root| root.parent().map(std::path::Path::to_path_buf))
+            })
             .unwrap_or_else(|| self.tree.root().to_path_buf());
         let Some(chosen) = rfd::FileDialog::new()
             .set_title("Choose the folder this node shows")
@@ -2977,7 +2992,6 @@ impl UnluminousApp {
         }
     }
 
-
     // ------------------------------------------------------------------------------- keyboard
 
     /// The keys the canvas takes, read before any pane is drawn.
@@ -2987,7 +3001,10 @@ impl UnluminousApp {
     /// its own keys before anything else reads the frame. A terminal node reads none of them - its
     /// grid takes every key it is given, which is what a terminal is - so this is about a **folder**
     /// node's own cursor, and about `Escape`.
-    pub(crate) fn route_the_space_keys(&mut self, ui: &egui::Ui) -> Option<crate::app::actions::Action> {
+    pub(crate) fn route_the_space_keys(
+        &mut self,
+        ui: &egui::Ui,
+    ) -> Option<crate::app::actions::Action> {
         if !matches!(self.focus, Focus::Space) || !self.space.visible {
             return None;
         }
@@ -3153,7 +3170,10 @@ impl UnluminousApp {
     }
 
     /// Draw whichever of the canvas's three right click menus is open, and answer what was chosen.
-    pub(crate) fn show_the_space_menu(&mut self, ui: &mut egui::Ui) -> Option<crate::app::actions::Action> {
+    pub(crate) fn show_the_space_menu(
+        &mut self,
+        ui: &mut egui::Ui,
+    ) -> Option<crate::app::actions::Action> {
         let (at, which) = self.space.menu?;
         let state = self.menu_state();
         let entries = match which {
@@ -3173,7 +3193,6 @@ impl UnluminousApp {
         outcome.chosen
     }
 }
-
 
 /// The `space` area of `unluminous-cli`, which is the agent's half of the canvas.
 ///
@@ -3240,7 +3259,8 @@ impl UnluminousApp {
                     return no(request, code::USAGE, "Say what to call it.");
                 };
                 self.space.space.rename_view(id, &name);
-                let now = self.space.space.view(id).map(|view| view.name.clone()).unwrap_or_default();
+                let now =
+                    self.space.space.view(id).map(|view| view.name.clone()).unwrap_or_default();
                 ok(request, format!("Called it {now}."), json!({ "view": id, "name": now }))
             }
             "duplicate-view" => {
@@ -3314,7 +3334,9 @@ impl UnluminousApp {
                 };
                 match self.space.space.disconnect(edge) {
                     true => done(request, format!("Took connection {edge} away.")),
-                    false => no(request, code::NOT_FOUND, format!("There is no connection {edge}.")),
+                    false => {
+                        no(request, code::NOT_FOUND, format!("There is no connection {edge}."))
+                    }
                 }
             }
             "connections" => self.cli_space_connections(request),
@@ -3526,7 +3548,12 @@ impl UnluminousApp {
                 )
             })
             .collect();
-        let message = format!("{} node{} on {}", rows.len(), if rows.len() == 1 { "" } else { "s" }, view.name);
+        let message = format!(
+            "{} node{} on {}",
+            rows.len(),
+            if rows.len() == 1 { "" } else { "s" },
+            view.name
+        );
         lines(request, message, rows, self.space.space.as_json())
     }
 
@@ -3723,11 +3750,8 @@ impl UnluminousApp {
     fn cli_space_connections(&self, request: &Request) -> Outcome {
         let only = request.number("from").map(|id| id as u64);
         let view = self.space.space.current();
-        let found: Vec<&crate::services::space::Edge> = view
-            .edges
-            .iter()
-            .filter(|edge| only.is_none_or(|from| edge.from == from))
-            .collect();
+        let found: Vec<&crate::services::space::Edge> =
+            view.edges.iter().filter(|edge| only.is_none_or(|from| edge.from == from)).collect();
         let rows: Vec<String> = found
             .iter()
             .map(|edge| {
@@ -3777,7 +3801,10 @@ impl UnluminousApp {
         let camera = self.space.space.current().camera;
         ok(
             request,
-            format!("The canvas is at {:.0},{:.0} at {:.2}x.", camera.at.x, camera.at.y, camera.zoom),
+            format!(
+                "The canvas is at {:.0},{:.0} at {:.2}x.",
+                camera.at.x, camera.at.y, camera.zoom
+            ),
             json!({ "x": camera.at.x, "y": camera.at.y, "zoom": camera.zoom }),
         )
     }
@@ -4003,11 +4030,17 @@ impl UnluminousApp {
         let found = self.space.space.current().node(node).cloned();
         let (factor, own) = match found.as_ref().map(|node| &node.state) {
             Some(State::Terminal(terminal)) => (
-                space_view::font_size_of(found.as_ref().expect("it is there"), self.settings.terminal_font_size),
+                space_view::font_size_of(
+                    found.as_ref().expect("it is there"),
+                    self.settings.terminal_font_size,
+                ),
                 terminal.font_size > 0.0,
             ),
             Some(State::Editor(editor)) => (
-                space_view::editor_font_size_of(found.as_ref().expect("it is there"), self.settings.font_size),
+                space_view::editor_font_size_of(
+                    found.as_ref().expect("it is there"),
+                    self.settings.font_size,
+                ),
                 editor.font_size > 0.0,
             ),
             Some(State::Folder(_) | State::Chat(_) | State::Tasks(_)) => {
@@ -4041,7 +4074,11 @@ impl UnluminousApp {
             Err(outcome) => return outcome,
         };
         let Some(command) = request.text("command") else {
-            return no(request, code::USAGE, "Say what to do: go, back, forward, reload, url or shot.");
+            return no(
+                request,
+                code::USAGE,
+                "Say what to do: go, back, forward, reload, url or shot.",
+            );
         };
         match command.trim() {
             "go" => {
@@ -4081,7 +4118,11 @@ impl UnluminousApp {
             },
             "shot" => {
                 let Some(path) = self.cli_path_argument(request, "path") else {
-                    return no(request, code::USAGE, "Say where to write the picture, with --path.");
+                    return no(
+                        request,
+                        code::USAGE,
+                        "Say where to write the picture, with --path.",
+                    );
                 };
                 let Some(found) = self.space.space.current().node(node).cloned() else {
                     return no(request, code::NOT_FOUND, format!("There is no node {node}."));
@@ -4117,7 +4158,11 @@ impl UnluminousApp {
             Err(outcome) => return outcome,
         };
         let Some(command) = request.text("command") else {
-            return no(request, code::USAGE, "Say what to do: expand, collapse, select, open, root or rows.");
+            return no(
+                request,
+                code::USAGE,
+                "Say what to do: expand, collapse, select, open, root or rows.",
+            );
         };
         let Some(found) = self.space.space.current().node(node).cloned() else {
             return no(request, code::NOT_FOUND, format!("There is no node {node}."));
@@ -4137,7 +4182,14 @@ impl UnluminousApp {
                     tree.toggle(&path);
                 }
                 self.remember_a_folder_nodes_open_folders(node);
-                done(request, format!("{} {} in node {node}.", if wanted { "Opened" } else { "Shut" }, path.display()))
+                done(
+                    request,
+                    format!(
+                        "{} {} in node {node}.",
+                        if wanted { "Opened" } else { "Shut" },
+                        path.display()
+                    ),
+                )
             }
             "select" => {
                 let Some(path) = self.cli_path_argument(request, "path") else {
@@ -4199,7 +4251,11 @@ impl UnluminousApp {
                         format!(
                             "{}{}{}",
                             "  ".repeat(row.depth),
-                            row.entry.path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default(),
+                            row.entry
+                                .path
+                                .file_name()
+                                .map(|name| name.to_string_lossy().to_string())
+                                .unwrap_or_default(),
                             if row.entry.is_directory { "/" } else { "" },
                         )
                     })
@@ -4221,7 +4277,9 @@ impl UnluminousApp {
             other => no(
                 request,
                 code::USAGE,
-                format!("A folder node does expand, collapse, select, open, root or rows, not {other}."),
+                format!(
+                    "A folder node does expand, collapse, select, open, root or rows, not {other}."
+                ),
             ),
         }
     }
@@ -4286,7 +4344,11 @@ impl UnluminousApp {
             return Err(no(
                 request,
                 code::REFUSED,
-                format!("Node {node} is a {} node, not a {} one.", found.kind().name(), wanted.name()),
+                format!(
+                    "Node {node} is a {} node, not a {} one.",
+                    found.kind().name(),
+                    wanted.name()
+                ),
             ));
         }
         let Some(from) = request.number("from").map(|id| id as u64) else {

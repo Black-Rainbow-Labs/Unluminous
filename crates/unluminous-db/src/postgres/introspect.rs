@@ -117,17 +117,24 @@ pub fn table(session: &mut Session, schema: &str, name: &str) -> Answer<Table> {
         usize::MAX,
     )?;
     if rows.rows.is_empty() {
-        return Err(Failure::said(format!("{schema}.{name} has no columns, or is not there any more.")));
+        return Err(Failure::said(format!(
+            "{schema}.{name} has no columns, or is not there any more."
+        )));
     }
     let mut table = Table { schema: schema.to_owned(), name: name.to_owned(), ..Table::default() };
     // The key is gathered in the index's own order, which is the order it has to be written in.
     let mut key: Vec<(i64, String)> = Vec::new();
     for row in &rows.rows {
         let name = row.first().and_then(crate::value::Value::text).unwrap_or_default().to_owned();
-        let type_name = row.get(1).and_then(crate::value::Value::text).unwrap_or_default().to_owned();
+        let type_name =
+            row.get(1).and_then(crate::value::Value::text).unwrap_or_default().to_owned();
         let not_null = row.get(2).and_then(crate::value::Value::text) == Some("t");
         let in_key = row.get(3).and_then(crate::value::Value::text) == Some("t");
-        let at: i64 = row.get(4).and_then(crate::value::Value::text).and_then(|at| at.parse().ok()).unwrap_or(0);
+        let at: i64 = row
+            .get(4)
+            .and_then(crate::value::Value::text)
+            .and_then(|at| at.parse().ok())
+            .unwrap_or(0);
         let mut column = Column::new(&name, type_name);
         column.not_null = not_null;
         column.in_key = in_key;
@@ -166,10 +173,18 @@ pub fn ddl(session: &mut Session, schema: &str, name: &str, kind: Kind) -> Answe
     }
     let table = table(session, schema, name)?;
     let mut out = String::new();
-    out.push_str("-- Composed by Unluminous from the catalogue. PostgreSQL keeps no original text for a\n");
-    out.push_str("-- table, so this is what the columns say rather than what was typed. `pg_dump` is\n");
+    out.push_str(
+        "-- Composed by Unluminous from the catalogue. PostgreSQL keeps no original text for a\n",
+    );
+    out.push_str(
+        "-- table, so this is what the columns say rather than what was typed. `pg_dump` is\n",
+    );
     out.push_str("-- the program that reproduces one exactly.\n");
-    out.push_str(&format!("CREATE TABLE {}.{} (\n", crate::catalog::quoted(schema, '"'), crate::catalog::quoted(name, '"')));
+    out.push_str(&format!(
+        "CREATE TABLE {}.{} (\n",
+        crate::catalog::quoted(schema, '"'),
+        crate::catalog::quoted(name, '"')
+    ));
     let mut lines: Vec<String> = table
         .columns
         .iter()
@@ -188,7 +203,12 @@ pub fn ddl(session: &mut Session, schema: &str, name: &str, kind: Kind) -> Answe
     if !table.key.is_empty() {
         lines.push(format!(
             "    PRIMARY KEY ({})",
-            table.key.iter().map(|name| crate::catalog::quoted(name, '"')).collect::<Vec<String>>().join(", ")
+            table
+                .key
+                .iter()
+                .map(|name| crate::catalog::quoted(name, '"'))
+                .collect::<Vec<String>>()
+                .join(", ")
         ));
     }
     out.push_str(&lines.join(",\n"));

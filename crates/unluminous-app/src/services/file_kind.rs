@@ -51,38 +51,150 @@ pub const SIZE_LIMIT: u64 = 16 * 1024 * 1024;
 /// Extensions that hold text. Not exhaustive, and it does not need to be: an extension that is missing
 /// falls through to rule 3 and is read.
 const TEXT_EXTENSIONS: &[&str] = &[
-    "md", "markdown", "mdx", "txt", "text", "rst", "adoc", "asciidoc", "tex", "bib", "log", "csv",
-    "tsv", "rs", "toml", "lock", "json", "jsonc", "json5", "yaml", "yml", "xml", "svg", "html",
-    "htm", "css", "scss", "sass", "less", "js", "cjs", "mjs", "jsx", "ts", "tsx", "vue", "svelte",
-    "py", "pyi", "rb", "go", "java", "kt", "kts", "scala", "clj", "cljs", "swift", "m", "mm", "c",
-    "h", "cc", "cpp", "cxx", "hpp", "hh", "cs", "fs", "php", "pl", "pm", "lua", "r", "dart", "ex",
-    "exs", "erl", "hrl", "hs", "ml", "nim", "zig", "v", "sh", "bash", "zsh", "fish", "ps1", "bat",
-    "cmd", "make", "mk", "cmake", "gradle", "properties", "ini", "cfg", "conf", "env", "editorconfig",
-    "gitignore", "gitattributes", "dockerfile", "sql", "graphql", "gql", "proto", "diff", "patch",
-    "plist", "srt", "vtt", "ipynb", "mmd", "mermaid",
+    "md",
+    "markdown",
+    "mdx",
+    "txt",
+    "text",
+    "rst",
+    "adoc",
+    "asciidoc",
+    "tex",
+    "bib",
+    "log",
+    "csv",
+    "tsv",
+    "rs",
+    "toml",
+    "lock",
+    "json",
+    "jsonc",
+    "json5",
+    "yaml",
+    "yml",
+    "xml",
+    "svg",
+    "html",
+    "htm",
+    "css",
+    "scss",
+    "sass",
+    "less",
+    "js",
+    "cjs",
+    "mjs",
+    "jsx",
+    "ts",
+    "tsx",
+    "vue",
+    "svelte",
+    "py",
+    "pyi",
+    "rb",
+    "go",
+    "java",
+    "kt",
+    "kts",
+    "scala",
+    "clj",
+    "cljs",
+    "swift",
+    "m",
+    "mm",
+    "c",
+    "h",
+    "cc",
+    "cpp",
+    "cxx",
+    "hpp",
+    "hh",
+    "cs",
+    "fs",
+    "php",
+    "pl",
+    "pm",
+    "lua",
+    "r",
+    "dart",
+    "ex",
+    "exs",
+    "erl",
+    "hrl",
+    "hs",
+    "ml",
+    "nim",
+    "zig",
+    "v",
+    "sh",
+    "bash",
+    "zsh",
+    "fish",
+    "ps1",
+    "bat",
+    "cmd",
+    "make",
+    "mk",
+    "cmake",
+    "gradle",
+    "properties",
+    "ini",
+    "cfg",
+    "conf",
+    "env",
+    "editorconfig",
+    "gitignore",
+    "gitattributes",
+    "dockerfile",
+    "sql",
+    "graphql",
+    "gql",
+    "proto",
+    "diff",
+    "patch",
+    "plist",
+    "srt",
+    "vtt",
+    "ipynb",
+    "mmd",
+    "mermaid",
 ];
 
 /// Extensions that hold something other than text, so there is no point reading them.
 const BINARY_EXTENSIONS: &[&str] = &[
-    "png", "jpg", "jpeg", "gif", "bmp", "ico", "icns", "webp", "tif", "tiff", "avif", "heic", "psd",
-    "pdf", "zip", "gz", "tgz", "bz2", "xz", "zst", "7z", "rar", "jar", "war", "dmg", "iso", "pkg",
-    "deb", "rpm", "mp3", "m4a", "wav", "flac", "ogg", "opus", "aac", "mp4", "m4v", "mov", "avi",
-    "mkv", "webm", "wmv", "ttf", "otf", "ttc", "woff", "woff2", "eot", "so", "dylib", "dll", "exe",
-    "o", "a", "rlib", "rmeta", "class", "pyc", "pyo", "wasm", "bin", "dat", "db", "sqlite",
+    "png", "jpg", "jpeg", "gif", "bmp", "ico", "icns", "webp", "tif", "tiff", "avif", "heic",
+    "psd", "pdf", "zip", "gz", "tgz", "bz2", "xz", "zst", "7z", "rar", "jar", "war", "dmg", "iso",
+    "pkg", "deb", "rpm", "mp3", "m4a", "wav", "flac", "ogg", "opus", "aac", "mp4", "m4v", "mov",
+    "avi", "mkv", "webm", "wmv", "ttf", "otf", "ttc", "woff", "woff2", "eot", "so", "dylib", "dll",
+    "exe", "o", "a", "rlib", "rmeta", "class", "pyc", "pyo", "wasm", "bin", "dat", "db", "sqlite",
     "sqlite3", "bundle", "keystore", "p12", "pfx", "der",
 ];
 
 /// Extensions Unluminous can show as a picture. Every one of them is a format the `image` crate is built
 /// with, so a name here that the decoder does not know would be a tab that opens and stays empty.
-const IMAGE_EXTENSIONS: &[&str] = &[
-    "png", "jpg", "jpeg", "gif", "bmp", "ico", "webp", "tif", "tiff",
-];
+const IMAGE_EXTENSIONS: &[&str] =
+    &["png", "jpg", "jpeg", "gif", "bmp", "ico", "webp", "tif", "tiff"];
 
 /// Names with no extension that are text, so the file does not have to be read to find out.
 const TEXT_NAMES: &[&str] = &[
-    "Makefile", "makefile", "GNUmakefile", "Dockerfile", "Cargo.lock", "LICENSE", "LICENCE",
-    "README", "CHANGELOG", "AUTHORS", "NOTICE", "COPYING", "Rakefile", "Gemfile", "Procfile",
-    "Brewfile", "Justfile", "justfile", "CODEOWNERS",
+    "Makefile",
+    "makefile",
+    "GNUmakefile",
+    "Dockerfile",
+    "Cargo.lock",
+    "LICENSE",
+    "LICENCE",
+    "README",
+    "CHANGELOG",
+    "AUTHORS",
+    "NOTICE",
+    "COPYING",
+    "Rakefile",
+    "Gemfile",
+    "Procfile",
+    "Brewfile",
+    "Justfile",
+    "justfile",
+    "CODEOWNERS",
 ];
 
 /// Why a file cannot be opened, so the explorer can say which of the two reasons it is.
@@ -215,7 +327,8 @@ pub fn holds_text_by_name(path: &Path) -> Option<bool> {
         // A name that is only an extension, such as `.gitignore`, has no extension as far as the
         // standard library is concerned, so it is matched here.
         if let Some(rest) = name.strip_prefix('.') {
-            if !rest.contains('.') && TEXT_EXTENSIONS.contains(&rest.to_ascii_lowercase().as_str()) {
+            if !rest.contains('.') && TEXT_EXTENSIONS.contains(&rest.to_ascii_lowercase().as_str())
+            {
                 return Some(true);
             }
         }
@@ -392,7 +505,10 @@ pub fn folding_applies(path: Option<&Path>) -> bool {
 ///
 /// The window knows which plugin claims a file and whether it is Markdown; `unluminous_core::folding`
 /// deliberately holds no list of languages, so this is where the two are put together.
-pub fn folding_reading<'a>(path: Option<&Path>, grammars: &'a Grammars) -> unluminous_core::folding::Reading<'a> {
+pub fn folding_reading<'a>(
+    path: Option<&Path>,
+    grammars: &'a Grammars,
+) -> unluminous_core::folding::Reading<'a> {
     if let Some(grammar) = path.and_then(|path| grammars.for_path(path)) {
         return unluminous_core::folding::Reading::Code(grammar);
     }
@@ -404,10 +520,7 @@ pub fn folding_reading<'a>(path: Option<&Path>, grammars: &'a Grammars) -> unlum
 
 /// True for the files the Markdown preview is meant for.
 pub fn is_markdown(path: Option<&Path>) -> bool {
-    matches!(
-        path.and_then(extension).as_deref(),
-        Some("md" | "markdown" | "mdx")
-    )
+    matches!(path.and_then(extension).as_deref(), Some("md" | "markdown" | "mdx"))
 }
 
 /// True for the files that are a Mermaid diagram all the way through.
@@ -557,10 +670,10 @@ mod tests {
             folding_reading(Some(Path::new("notes.md")), &grammars),
             unluminous_core::folding::Reading::Markdown
         ));
-        assert!(matches!(
-            folding_reading(None, &grammars),
-            unluminous_core::folding::Reading::Markdown,
-        ), "an untitled document is very often the beginning of a Markdown file");
+        assert!(
+            matches!(folding_reading(None, &grammars), unluminous_core::folding::Reading::Markdown,),
+            "an untitled document is very often the beginning of a Markdown file"
+        );
         assert!(matches!(
             folding_reading(Some(Path::new("config.yaml")), &grammars),
             unluminous_core::folding::Reading::Plain

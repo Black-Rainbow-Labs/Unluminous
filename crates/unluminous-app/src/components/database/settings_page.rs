@@ -124,8 +124,10 @@ fn one_source(
 ) -> f32 {
     let _ = look;
     let row = Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width(), ROW));
-    let remove = Rect::from_min_size(Pos2::new(row.right() - 78.0, row.top()), Vec2::new(78.0, ROW));
-    let edit = Rect::from_min_size(Pos2::new(remove.left() - 66.0, row.top()), Vec2::new(60.0, ROW));
+    let remove =
+        Rect::from_min_size(Pos2::new(row.right() - 78.0, row.top()), Vec2::new(78.0, ROW));
+    let edit =
+        Rect::from_min_size(Pos2::new(remove.left() - 66.0, row.top()), Vec2::new(60.0, ROW));
     let painter = ui.painter_at(body);
     crate::components::database::text(
         &painter,
@@ -142,7 +144,8 @@ fn one_source(
         *removing = Some(source.name.clone());
     }
 
-    let under = Rect::from_min_size(Pos2::new(body.left(), row.bottom()), Vec2::new(body.width(), 18.0));
+    let under =
+        Rect::from_min_size(Pos2::new(body.left(), row.bottom()), Vec2::new(body.width(), 18.0));
     let said = format!(
         "{} · {} · password {}",
         source.where_it_points(),

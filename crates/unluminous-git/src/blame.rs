@@ -201,7 +201,13 @@ mod tests {
 
     #[test]
     fn one_block_a_line_is_read() {
-        let text = block("3f2a1b0e3f2a1b0e3f2a1b0e3f2a1b0e3f2a1b0e", "Jason", 1_777_075_200, "a commit", "code();");
+        let text = block(
+            "3f2a1b0e3f2a1b0e3f2a1b0e3f2a1b0e3f2a1b0e",
+            "Jason",
+            1_777_075_200,
+            "a commit",
+            "code();",
+        );
         let blame = parse(&text);
         assert_eq!(blame.lines.len(), 1);
         let line = &blame.lines[0];
@@ -215,8 +221,20 @@ mod tests {
     fn a_line_of_text_with_a_hash_in_it_is_not_mistaken_for_a_header() {
         // The line's own text is preceded by a tab, which is how a block ends. Forty hexadecimal
         // characters inside a file must not start a new block.
-        let mut text = block("a".repeat(40).as_str(), "Jason", 1_777_075_200, "one", "const hash = 'deadbeef';");
-        text.push_str(&block("b".repeat(40).as_str(), "Sam", 1_745_625_600, "two", &"c".repeat(40)));
+        let mut text = block(
+            "a".repeat(40).as_str(),
+            "Jason",
+            1_777_075_200,
+            "one",
+            "const hash = 'deadbeef';",
+        );
+        text.push_str(&block(
+            "b".repeat(40).as_str(),
+            "Sam",
+            1_745_625_600,
+            "two",
+            &"c".repeat(40),
+        ));
         let blame = parse(&text);
         assert_eq!(blame.lines.len(), 2);
         assert_eq!(blame.lines[1].author, "Sam");

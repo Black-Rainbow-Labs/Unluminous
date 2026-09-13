@@ -74,9 +74,11 @@ impl Pending {
         // A cell of a row that is itself pending goes on that row rather than becoming an `UPDATE` of
         // something that is not there yet.
         if let Row::Added(added) = row {
-            if let Some(Change::Add { values, .. }) = self.changes.iter_mut().find(
-                |change| matches!(change, Change::Add { at, .. } if *at == added),
-            ) {
+            if let Some(Change::Add { values, .. }) = self
+                .changes
+                .iter_mut()
+                .find(|change| matches!(change, Change::Add { at, .. } if *at == added))
+            {
                 values.retain(|(name, _)| name != column);
                 values.push((column.to_owned(), value));
                 return;
@@ -105,8 +107,13 @@ impl Pending {
             self.changes.retain(|change| !touches_added(change, added));
             return;
         }
-        self.changes.retain(|change| !matches!(change, Change::Set { row: other, .. } if *other == row));
-        if !self.changes.iter().any(|change| matches!(change, Change::Delete { row: other } if *other == row)) {
+        self.changes
+            .retain(|change| !matches!(change, Change::Set { row: other, .. } if *other == row));
+        if !self
+            .changes
+            .iter()
+            .any(|change| matches!(change, Change::Delete { row: other } if *other == row))
+        {
             self.changes.push(Change::Delete { row });
         }
     }
@@ -124,7 +131,9 @@ impl Pending {
     /// The value pending in a cell, if there is one, for the grid to draw in place of what it read.
     pub fn value_of(&self, row: &Row, column: &str) -> Option<&Value> {
         self.changes.iter().rev().find_map(|change| match change {
-            Change::Set { row: other, column: name, value } if other == row && name == column => Some(value),
+            Change::Set { row: other, column: name, value } if other == row && name == column => {
+                Some(value)
+            }
             Change::Add { at, values } if *row == Row::Added(*at) => {
                 values.iter().find(|(name, _)| name == column).map(|(_, value)| value)
             }
@@ -134,7 +143,9 @@ impl Pending {
 
     /// True when this row is going away when Submit is pressed.
     pub fn is_deleted(&self, row: &Row) -> bool {
-        self.changes.iter().any(|change| matches!(change, Change::Delete { row: other } if other == row))
+        self.changes
+            .iter()
+            .any(|change| matches!(change, Change::Delete { row: other } if other == row))
     }
 
     /// The rows that have been added and not yet written, in the order they were added.
@@ -153,7 +164,11 @@ impl Pending {
     /// **This is what Preview shows** — the actual statements rather than a summary of them — and it
     /// is exactly what Submit sends, from the same call, so the preview cannot drift from what
     /// happens.
-    pub fn statements(&self, table: &Table, engine: crate::source::Engine) -> Answer<Vec<Statement>> {
+    pub fn statements(
+        &self,
+        table: &Table,
+        engine: crate::source::Engine,
+    ) -> Answer<Vec<Statement>> {
         if let Some(why) = table.why_not_changeable() {
             return Err(Failure::said(why));
         }
@@ -264,19 +279,17 @@ fn insert(
             what: format!("add row {} with every column at its default", at + 1),
         });
     }
-    let names = values
-        .iter()
-        .map(|(name, _)| quoted(name, '"'))
-        .collect::<Vec<String>>()
-        .join(", ");
-    let marks = (1..=values.len())
-        .map(|at| placeholder(engine, at))
-        .collect::<Vec<String>>()
-        .join(", ");
+    let names =
+        values.iter().map(|(name, _)| quoted(name, '"')).collect::<Vec<String>>().join(", ");
+    let marks =
+        (1..=values.len()).map(|at| placeholder(engine, at)).collect::<Vec<String>>().join(", ");
     Ok(Statement {
         sql: format!("INSERT INTO {} ({names}) VALUES ({marks})", table.qualified('"')),
         values: values.iter().map(|(_, value)| value.clone()).collect(),
-        what: format!("add a row with {}", values.iter().map(|(name, _)| name.as_str()).collect::<Vec<&str>>().join(", ")),
+        what: format!(
+            "add a row with {}",
+            values.iter().map(|(name, _)| name.as_str()).collect::<Vec<&str>>().join(", ")
+        ),
     })
 }
 
@@ -348,11 +361,17 @@ mod tests {
         pending.set(keyed("4"), "name", Value::typed("Ada"));
         let statements = pending.statements(&member(), Engine::Postgres).expect("statements");
         assert_eq!(statements.len(), 1);
-        assert_eq!(statements[0].sql, "UPDATE \"public\".\"member\" SET \"name\" = $1 WHERE \"id\" = $2");
+        assert_eq!(
+            statements[0].sql,
+            "UPDATE \"public\".\"member\" SET \"name\" = $1 WHERE \"id\" = $2"
+        );
         assert_eq!(statements[0].values, [Value::typed("Ada"), Value::typed("4")]);
         // And SQLite's placeholders are its own.
         let sqlite = pending.statements(&member(), Engine::Sqlite).expect("statements");
-        assert_eq!(sqlite[0].sql, "UPDATE \"public\".\"member\" SET \"name\" = ?1 WHERE \"id\" = ?2");
+        assert_eq!(
+            sqlite[0].sql,
+            "UPDATE \"public\".\"member\" SET \"name\" = ?1 WHERE \"id\" = ?2"
+        );
     }
 
     #[test]
@@ -382,13 +401,25 @@ mod tests {
         // Matching on one of two parts would update the wrong rows, which is why the key is a list.
         let table = Table {
             key: vec!["tenant".to_owned(), "id".to_owned()],
-            columns: vec![Column::new("tenant", "text"), Column::new("id", "int4"), Column::new("name", "text")],
+            columns: vec![
+                Column::new("tenant", "text"),
+                Column::new("id", "int4"),
+                Column::new("name", "text"),
+            ],
             ..member()
         };
         let mut pending = Pending::default();
-        pending.set(Row::Keyed(vec!["acme".to_owned(), "4".to_owned()]), "name", Value::typed("Ada"));
+        pending.set(
+            Row::Keyed(vec!["acme".to_owned(), "4".to_owned()]),
+            "name",
+            Value::typed("Ada"),
+        );
         let statements = pending.statements(&table, Engine::Postgres).expect("statements");
-        assert!(statements[0].sql.ends_with("WHERE \"tenant\" = $2 AND \"id\" = $3"), "{}", statements[0].sql);
+        assert!(
+            statements[0].sql.ends_with("WHERE \"tenant\" = $2 AND \"id\" = $3"),
+            "{}",
+            statements[0].sql
+        );
         assert_eq!(statements[0].values.len(), 3);
     }
 
@@ -410,7 +441,10 @@ mod tests {
         pending.set(row.clone(), "name", Value::typed("Grace"));
         let statements = pending.statements(&member(), Engine::Postgres).expect("statements");
         assert_eq!(statements.len(), 1, "one insert, not an insert and two updates");
-        assert_eq!(statements[0].sql, "INSERT INTO \"public\".\"member\" (\"id\", \"name\") VALUES ($1, $2)");
+        assert_eq!(
+            statements[0].sql,
+            "INSERT INTO \"public\".\"member\" (\"id\", \"name\") VALUES ($1, $2)"
+        );
         assert_eq!(statements[0].values, [Value::typed("9"), Value::typed("Grace")]);
     }
 
@@ -446,7 +480,11 @@ mod tests {
     fn a_row_named_by_the_wrong_number_of_values_is_refused_rather_than_guessed_at() {
         let table = Table {
             key: vec!["tenant".to_owned(), "id".to_owned()],
-            columns: vec![Column::new("tenant", "text"), Column::new("id", "int4"), Column::new("name", "text")],
+            columns: vec![
+                Column::new("tenant", "text"),
+                Column::new("id", "int4"),
+                Column::new("name", "text"),
+            ],
             ..member()
         };
         let mut pending = Pending::default();

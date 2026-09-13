@@ -244,8 +244,7 @@ fn a_code_block_asks_for_a_panel_behind_it() {
     let preview = preview("above\n\n```\ncode\nmore\n```\n\nbelow");
     let panel = preview.panels.iter().find(|panel| panel.kind == PanelKind::Code).expect("a panel");
     assert_eq!(panel.paragraphs.len(), 2, "one paragraph a line of code");
-    let lines: Vec<String> =
-        preview.text.to_string().lines().map(str::to_owned).collect();
+    let lines: Vec<String> = preview.text.to_string().lines().map(str::to_owned).collect();
     assert_eq!(lines[panel.paragraphs.start], "code");
 }
 

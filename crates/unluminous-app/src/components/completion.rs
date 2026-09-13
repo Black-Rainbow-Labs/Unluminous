@@ -116,7 +116,12 @@ fn frame(ui: &egui::Ui, area: Rect) {
 ///
 /// Named `Completion draw_frame`, because the screenshot tests find controls by name and a control
 /// with no name cannot be tested at all.
-fn draw_row(ui: &mut egui::Ui, area: Rect, row: &unluminous_core::completion::Row, chosen: bool) -> bool {
+fn draw_row(
+    ui: &mut egui::Ui,
+    area: Rect,
+    row: &unluminous_core::completion::Row,
+    chosen: bool,
+) -> bool {
     let name = format!("Completion {}", row.name);
     let response = ui.interact(area, ui.id().with(("completion", &row.name)), Sense::click());
     let painter = ui.painter();
@@ -154,12 +159,16 @@ fn draw_row(ui: &mut egui::Ui, area: Rect, row: &unluminous_core::completion::Ro
             color::text_faint(),
         );
         painter.galley(
-            Pos2::new(area.right() - 6.0 - suffix.size().x, area.center().y - suffix.size().y / 2.0),
+            Pos2::new(
+                area.right() - 6.0 - suffix.size().x,
+                area.center().y - suffix.size().y / 2.0,
+            ),
             suffix,
             color::text_faint(),
         );
     }
-    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, &name));
+    response
+        .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, &name));
     response.clicked()
 }
 

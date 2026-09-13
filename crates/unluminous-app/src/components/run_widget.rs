@@ -153,11 +153,14 @@ pub fn show(ui: &mut egui::Ui, area: Rect, state: &WidgetState) -> Option<Action
             Pos2::new(pen, middle - BUTTON / 2.0),
             Vec2::new(name_width(&label), BUTTON),
         );
-        if let Some(action) =
-            controls::labelled_flyout(ui, button, "Choose a run configuration", &label, PANEL, |panel| {
-                flyout(panel, state)
-            })
-        {
+        if let Some(action) = controls::labelled_flyout(
+            ui,
+            button,
+            "Choose a run configuration",
+            &label,
+            PANEL,
+            |panel| flyout(panel, state),
+        ) {
             chosen = action;
         }
         pen = button.right() + 4.0;
@@ -220,17 +223,15 @@ fn square_button(
     draw: fn(&egui::Painter, Pos2, egui::Color32),
     green: bool,
 ) -> bool {
-    let response = ui
-        .interact(area, ui.id().with(("run-widget", name)), Sense::click())
-        .on_hover_text(name);
+    let response =
+        ui.interact(area, ui.id().with(("run-widget", name)), Sense::click()).on_hover_text(name);
     if response.hovered() {
         ui.painter().rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::control());
     }
     let tint = if green { color::git_added() } else { color::text_control() };
     draw(ui.painter(), area.center(), tint);
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name)
-    });
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
     response.clicked()
 }
 
@@ -238,7 +239,8 @@ fn square_button(
 fn flyout(ui: &mut egui::Ui, state: &WidgetState) -> Option<Action> {
     let mut chosen: Option<Action> = None;
     for row in &state.rows {
-        if let Some(action) = configuration_row(ui, row, state.selected.as_deref() == Some(&row.name))
+        if let Some(action) =
+            configuration_row(ui, row, state.selected.as_deref() == Some(&row.name))
         {
             chosen = Some(action);
         }
@@ -246,7 +248,9 @@ fn flyout(ui: &mut egui::Ui, state: &WidgetState) -> Option<Action> {
     if state.rows.is_empty() {
         ui.add_space(4.0);
         ui.label(
-            egui::RichText::new("  No run configurations yet.").size(11.5).color(color::text_faint()),
+            egui::RichText::new("  No run configurations yet.")
+                .size(11.5)
+                .color(color::text_faint()),
         );
         ui.add_space(4.0);
     }
@@ -273,7 +277,8 @@ fn flyout(ui: &mut egui::Ui, state: &WidgetState) -> Option<Action> {
 fn configuration_row(ui: &mut egui::Ui, row: &Row, selected: bool) -> Option<Action> {
     let (rect, response) =
         ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW), Sense::click());
-    let play = Rect::from_center_size(Pos2::new(rect.right() - 12.0, rect.center().y), Vec2::splat(18.0));
+    let play =
+        Rect::from_center_size(Pos2::new(rect.right() - 12.0, rect.center().y), Vec2::splat(18.0));
     let play_response =
         ui.interact(play, ui.id().with(("run-row-play", &row.name)), Sense::click());
     if response.hovered() || play_response.hovered() {
@@ -329,7 +334,11 @@ mod tests {
     fn a_long_name_is_cut_short_and_a_short_one_is_left_alone() {
         assert_eq!(elide("Dev server"), "Dev server");
         assert_eq!(elide("npm run build:production"), "npm run build:p\u{2026}");
-        assert_eq!(elide(&"x".repeat(NAME_LIMIT)), "x".repeat(NAME_LIMIT), "exactly the limit fits");
+        assert_eq!(
+            elide(&"x".repeat(NAME_LIMIT)),
+            "x".repeat(NAME_LIMIT),
+            "exactly the limit fits"
+        );
     }
 
     #[test]
@@ -350,7 +359,8 @@ mod tests {
         assert!(suggested.has_a_list());
         assert!(width(&suggested) > BUTTON);
         // And a runnable file is enough on its own, because `Run Current File` is a row.
-        let file = WidgetState { current_file: Some("server.js".to_owned()), ..WidgetState::default() };
+        let file =
+            WidgetState { current_file: Some("server.js".to_owned()), ..WidgetState::default() };
         assert!(file.has_a_list());
     }
 

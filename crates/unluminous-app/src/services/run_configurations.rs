@@ -160,13 +160,10 @@ fn with_extensions(candidate: &Path) -> impl Iterator<Item = PathBuf> + '_ {
     let mut spellings = vec![candidate.to_path_buf()];
     #[cfg(windows)]
     {
-        let already = candidate
-            .extension()
-            .map(|extension| !extension.is_empty())
-            .unwrap_or(false);
+        let already = candidate.extension().map(|extension| !extension.is_empty()).unwrap_or(false);
         if !already {
-            let listed = std::env::var("PATHEXT")
-                .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_owned());
+            let listed =
+                std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_owned());
             for extension in listed.split(';').filter(|part| !part.trim().is_empty()) {
                 let mut name = candidate.as_os_str().to_owned();
                 name.push(extension.trim());
@@ -389,7 +386,8 @@ pub fn join_command(program: &str, args: &[String]) -> String {
 /// Only what has to be quoted is quoted, so `cargo run` stays `cargo run` rather than becoming
 /// something a person would not have written.
 pub fn quote_part(part: &str) -> String {
-    if !part.is_empty() && !part.chars().any(|character| character.is_whitespace() || character == '"')
+    if !part.is_empty()
+        && !part.chars().any(|character| character.is_whitespace() || character == '"')
     {
         return part.to_owned();
     }
@@ -414,11 +412,7 @@ pub fn parse_env(text: &str) -> Vec<(String, String)> {
 
 /// The other way round, for a caller that has pairs and needs the field.
 pub fn format_env(pairs: &[(String, String)]) -> String {
-    pairs
-        .iter()
-        .map(|(name, value)| format!("{name}={value}"))
-        .collect::<Vec<_>>()
-        .join("; ")
+    pairs.iter().map(|(name, value)| format!("{name}={value}")).collect::<Vec<_>>().join("; ")
 }
 
 /// Which folder a configuration runs in.
@@ -614,9 +608,10 @@ mod tests {
 
     #[test]
     fn a_command_line_is_split_into_a_program_and_its_arguments() {
-        assert_eq!(split_command("node server.js --port 3000"), vec![
-            "node", "server.js", "--port", "3000"
-        ]);
+        assert_eq!(
+            split_command("node server.js --port 3000"),
+            vec!["node", "server.js", "--port", "3000"]
+        );
         assert_eq!(split_command("cargo run"), vec!["cargo", "run"]);
         assert_eq!(split_command("   spaced    out   "), vec!["spaced", "out"]);
         assert!(split_command("").is_empty());
@@ -636,7 +631,10 @@ mod tests {
 
     #[test]
     fn a_quote_inside_a_quoted_part_is_escaped_with_a_backslash() {
-        assert_eq!(split_command("say \"a \\\"quoted\\\" word\""), vec!["say", "a \"quoted\" word"]);
+        assert_eq!(
+            split_command("say \"a \\\"quoted\\\" word\""),
+            vec!["say", "a \"quoted\" word"]
+        );
         // An empty pair of quotes is an argument somebody asked for.
         assert_eq!(split_command("thing \"\" after"), vec!["thing", "", "after"]);
     }
@@ -652,9 +650,10 @@ mod tests {
     fn nothing_in_a_command_line_is_expanded_or_refused() {
         // No shell runs it, so `&&` is one program with a strange argument rather than two
         // programs, and a wildcard is a wildcard rather than a list of files.
-        assert_eq!(split_command("npm run build && npm test"), vec![
-            "npm", "run", "build", "&&", "npm", "test"
-        ]);
+        assert_eq!(
+            split_command("npm run build && npm test"),
+            vec!["npm", "run", "build", "&&", "npm", "test"]
+        );
         assert_eq!(split_command("rm *.log"), vec!["rm", "*.log"]);
     }
 
@@ -675,15 +674,16 @@ mod tests {
     #[test]
     fn environment_pairs_are_read_and_written_back() {
         let pairs = parse_env("PORT=3000; DEBUG=app:*");
-        assert_eq!(pairs, vec![
-            ("PORT".to_owned(), "3000".to_owned()),
-            ("DEBUG".to_owned(), "app:*".to_owned()),
-        ]);
+        assert_eq!(
+            pairs,
+            vec![("PORT".to_owned(), "3000".to_owned()), ("DEBUG".to_owned(), "app:*".to_owned()),]
+        );
         assert_eq!(format_env(&pairs), "PORT=3000; DEBUG=app:*");
         // A value with an `=` in it keeps it: only the first one divides.
-        assert_eq!(parse_env("URL=https://x/?a=b"), vec![
-            ("URL".to_owned(), "https://x/?a=b".to_owned())
-        ]);
+        assert_eq!(
+            parse_env("URL=https://x/?a=b"),
+            vec![("URL".to_owned(), "https://x/?a=b".to_owned())]
+        );
         // An empty value is kept, because `QUIET=` is a thing programs read; an entry with no `=`
         // at all is dropped rather than guessed at.
         assert_eq!(parse_env("QUIET=; DEBUG"), vec![("QUIET".to_owned(), String::new())]);
@@ -694,7 +694,11 @@ mod tests {
     fn a_relative_directory_is_resolved_against_the_project() {
         let root = Path::new("/project");
         assert_eq!(resolve_directory(root, "backend"), root.join("backend"));
-        assert_eq!(resolve_directory(root, "  "), root.to_path_buf(), "empty means the root itself");
+        assert_eq!(
+            resolve_directory(root, "  "),
+            root.to_path_buf(),
+            "empty means the root itself"
+        );
         let absolute = if cfg!(target_os = "windows") { "C:\\elsewhere" } else { "/elsewhere" };
         assert_eq!(resolve_directory(root, absolute), PathBuf::from(absolute));
     }
@@ -745,7 +749,11 @@ run.4.command = cargo test
         let configurations = read(&values);
         let names: Vec<&str> =
             configurations.permanent().iter().map(|held| held.name.as_str()).collect();
-        assert_eq!(names, vec!["Dev server", "Fine"], "the halves are dropped, the wholes are kept");
+        assert_eq!(
+            names,
+            vec!["Dev server", "Fine"],
+            "the halves are dropped, the wholes are kept"
+        );
     }
 
     #[test]
@@ -802,7 +810,10 @@ run.4.command = cargo test
         assert!(configurations.promote("server.js"));
         assert_eq!(configurations.permanent().len(), 1);
         assert!(configurations.temporary().is_empty());
-        assert_eq!(configurations.find("server.js").map(|(origin, _)| origin), Some(Origin::Permanent));
+        assert_eq!(
+            configurations.find("server.js").map(|(origin, _)| origin),
+            Some(Origin::Permanent)
+        );
         assert!(!configurations.promote("server.js"), "it is not a temporary any more");
         assert!(!configurations.promote("nothing"));
     }
@@ -812,8 +823,14 @@ run.4.command = cargo test
         let mut configurations = RunConfigurations::new();
         configurations.add_permanent(Configuration::new("Dev server", "node server.js"));
         configurations.add_temporary(Configuration::new("one.js", "node one.js"));
-        assert_eq!(configurations.find("Dev server").map(|(origin, _)| origin), Some(Origin::Permanent));
-        assert_eq!(configurations.find("one.js").map(|(origin, _)| origin), Some(Origin::Temporary));
+        assert_eq!(
+            configurations.find("Dev server").map(|(origin, _)| origin),
+            Some(Origin::Permanent)
+        );
+        assert_eq!(
+            configurations.find("one.js").map(|(origin, _)| origin),
+            Some(Origin::Temporary)
+        );
         assert!(configurations.find("nothing").is_none());
         assert!(configurations.remove("one.js"));
         assert!(!configurations.remove("one.js"));
@@ -830,10 +847,7 @@ run.4.command = cargo test
             .into_iter()
             .map(|(origin, configuration)| (origin, configuration.name.as_str()))
             .collect();
-        assert_eq!(listed, vec![
-            (Origin::Permanent, "Dev server"),
-            (Origin::Temporary, "one.js"),
-        ]);
+        assert_eq!(listed, vec![(Origin::Permanent, "Dev server"), (Origin::Temporary, "one.js"),]);
     }
 
     #[test]
@@ -911,7 +925,10 @@ run.4.command = cargo test
         let configuration = for_file("node {file}", root, &root.join("src").join("server.js"));
         assert_eq!(configuration.name, "server.js", "named after the file, which is what is shown");
         let expected = format!("node {}", Path::new("src").join("server.js").display());
-        assert_eq!(configuration.command, expected, "and relative, so a project that moves still runs");
+        assert_eq!(
+            configuration.command, expected,
+            "and relative, so a project that moves still runs"
+        );
         assert!(configuration.directory.is_empty(), "from the project root");
     }
 

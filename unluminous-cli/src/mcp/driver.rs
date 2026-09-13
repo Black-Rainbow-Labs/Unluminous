@@ -281,7 +281,10 @@ mod tests {
 
     #[test]
     fn a_folder_matches_itself_however_it_is_spelled() {
-        assert!(same_folder(Path::new("C:\\jason\\dev\\unluminous"), Path::new("c:/jason/dev/unluminous/")));
+        assert!(same_folder(
+            Path::new("C:\\jason\\dev\\unluminous"),
+            Path::new("c:/jason/dev/unluminous/")
+        ));
         assert!(!same_folder(Path::new("C:\\jason\\dev\\unluminous"), Path::new("C:\\jason\\dev")));
     }
 

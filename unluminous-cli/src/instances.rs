@@ -67,7 +67,6 @@ pub fn is_running(pid: u32) -> bool {
     running_process(pid)
 }
 
-
 /// A zombie answers "yes" here too — `kill(pid, 0)` succeeds until the parent reaps it — and that is
 /// left alone. An Unluminous window is started from a desktop, a terminal or another Unluminous, and
 /// each of those reaps or is itself long gone; the Windows case above is the one that was measured
@@ -122,7 +121,6 @@ fn running_process(_pid: u32) -> bool {
     // is exactly the behaviour this replaced, so a platform with no answer loses nothing.
     true
 }
-
 
 /// What one running Unluminous advertises.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -255,7 +253,9 @@ pub fn listed_in(folder: &Path) -> Vec<Instance> {
         if path.extension().and_then(|e| e.to_str()) != Some("conf") {
             continue;
         }
-        if let Some(instance) = std::fs::read_to_string(&path).ok().and_then(|t| Instance::parse(&t)) {
+        if let Some(instance) =
+            std::fs::read_to_string(&path).ok().and_then(|t| Instance::parse(&t))
+        {
             out.push(instance);
         }
     }

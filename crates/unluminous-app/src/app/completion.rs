@@ -371,12 +371,7 @@ impl UnluminousApp {
     }
 
     /// Every specifier that would reach a file of this language from the file being edited.
-    fn specifier_candidates(
-        &self,
-        from: &Path,
-        typed: &str,
-        grammar: &Grammar,
-    ) -> Vec<Candidate> {
+    fn specifier_candidates(&self, from: &Path, typed: &str, grammar: &Grammar) -> Vec<Candidate> {
         let project = self.the_project();
         imports::specifiers(&project, from, grammar)
             .into_iter()
@@ -846,14 +841,13 @@ impl UnluminousApp {
         let head = self.document().selection().head;
         // `Tab` replaces the whole of what is being written, and inside a specifier the grammar
         // cannot say what the whole of `./lay/out` is — so the reading answers instead.
-        let range = match whole_word {
-            true => state
-                .import
-                .as_ref()
-                .and_then(ImportContext::whole_range)
-                .unwrap_or_else(|| completion::word_at(&text, head, &self.completion_grammar())),
-            false => state.stem.clone(),
-        };
+        let range =
+            match whole_word {
+                true => state.import.as_ref().and_then(ImportContext::whole_range).unwrap_or_else(
+                    || completion::word_at(&text, head, &self.completion_grammar()),
+                ),
+                false => state.stem.clone(),
+            };
         // A range that came out empty is a caret with nothing to its left, which cannot happen while
         // a popup is open; falling back to the stem rather than inserting at a guess keeps it true.
         let range = if range.is_empty() { state.stem.clone() } else { range };
@@ -896,8 +890,7 @@ impl UnluminousApp {
             self.close_the_completion();
             return;
         }
-        self.completion_anchor =
-            Some(CompletionAnchor { caret: box_of_it, pane: area });
+        self.completion_anchor = Some(CompletionAnchor { caret: box_of_it, pane: area });
     }
 
     /// Draw the popup, and take the row a click landed on.
@@ -1064,7 +1057,10 @@ mod tests {
         assert!(app.completion().is_none(), "one character is noise, not an offer");
         typing(&mut app, "r");
         let state = app.completion().expect("the popup opened on the second letter");
-        assert_eq!(state.chosen, 0, "the first row is pre-chosen, so Tab alone takes the best match");
+        assert_eq!(
+            state.chosen, 0,
+            "the first row is pre-chosen, so Tab alone takes the best match"
+        );
         assert_eq!(state.rows[0].name, "draw", "which is the shortest thing starting with `dr`");
         assert!(offered(&app).contains(&"draw_frame".to_owned()), "{:?}", offered(&app));
         std::fs::remove_dir_all(&folder).ok();
@@ -1098,20 +1094,18 @@ mod tests {
         assert!(app.message.is_some());
         let entries = crate::app::actions::completion_entries(&app.menu_state());
         assert!(
-            !entries.iter().any(|entry| matches!(
-                entry,
-                Entry::Item { action: Action::CompleteWord, .. }
-            )),
+            !entries
+                .iter()
+                .any(|entry| matches!(entry, Entry::Item { action: Action::CompleteWord, .. })),
             "the menu entry is absent for a note"
         );
         // A stylesheet is the opposite: no definers, but its own words and keywords are real offers.
         app.open_path_permanently(&folder.join("site.css")).expect("the file opens");
         assert!(app.completion_applies_here(), "CSS completes");
         let entries = crate::app::actions::completion_entries(&app.menu_state());
-        assert!(entries.iter().any(|entry| matches!(
-            entry,
-            Entry::Item { action: Action::CompleteWord, .. }
-        )));
+        assert!(entries
+            .iter()
+            .any(|entry| matches!(entry, Entry::Item { action: Action::CompleteWord, .. })));
         std::fs::remove_dir_all(&folder).ok();
     }
 
@@ -1441,7 +1435,10 @@ mod tests {
             (egui::Key::Enter, egui::Modifiers::SHIFT),
         ] {
             an_open_popup(&mut app, &original);
-            assert!(!pressing(&mut app, key, modifiers), "{key:?} {modifiers:?} is not the popup's");
+            assert!(
+                !pressing(&mut app, key, modifiers),
+                "{key:?} {modifiers:?} is not the popup's"
+            );
         }
         std::fs::remove_dir_all(&folder).ok();
     }
@@ -1524,11 +1521,8 @@ mod tests {
         let folder = std::env::temp_dir().join("unluminous-completion-markup");
         std::fs::remove_dir_all(&folder).ok();
         std::fs::create_dir_all(&folder).expect("make the folder");
-        std::fs::write(
-            folder.join("page.html"),
-            "<div class=\"card\">Hello world</div>\n",
-        )
-        .expect("write page.html");
+        std::fs::write(folder.join("page.html"), "<div class=\"card\">Hello world</div>\n")
+            .expect("write page.html");
         let mut app = UnluminousApp::new(&folder);
         app.open_path_permanently(&folder.join("page.html")).expect("the file opens");
 
@@ -1556,7 +1550,6 @@ mod tests {
 
         std::fs::remove_dir_all(&folder).ok();
     }
-
 
     // Import completion (`task-1680`). The two families, each against a project shaped like one a
     // person really writes in.
@@ -1597,7 +1590,8 @@ mod tests {
         let folder = std::env::temp_dir().join(name);
         std::fs::remove_dir_all(&folder).ok();
         std::fs::create_dir_all(folder.join("crates/unluminous-core/src")).expect("make the core");
-        std::fs::create_dir_all(folder.join("crates/unluminous-app/src/app")).expect("make the app");
+        std::fs::create_dir_all(folder.join("crates/unluminous-app/src/app"))
+            .expect("make the app");
         std::fs::write(folder.join("crates/unluminous-core/src/lib.rs"), "pub mod completion;\n")
             .expect("write core lib.rs");
         std::fs::write(
@@ -1622,7 +1616,8 @@ mod tests {
         let folder = a_workspace(name);
         let mut app = UnluminousApp::new(&folder);
         build_the_index(&mut app);
-        app.open_path_permanently(&folder.join("crates/unluminous-app/src/app/mod.rs")).expect("the file opens");
+        app.open_path_permanently(&folder.join("crates/unluminous-app/src/app/mod.rs"))
+            .expect("the file opens");
         (folder, app)
     }
 
@@ -1746,7 +1741,10 @@ mod tests {
         let rows = offered(&app);
         assert!(rows.contains(&"crate".to_owned()), "{rows:?}");
         assert!(rows.contains(&"super".to_owned()), "{rows:?}");
-        assert!(rows.contains(&"unluminous_core".to_owned()), "a folder named with a hyphen: {rows:?}");
+        assert!(
+            rows.contains(&"unluminous_core".to_owned()),
+            "a folder named with a hyphen: {rows:?}"
+        );
         assert!(!rows.contains(&"unluminous-core".to_owned()), "{rows:?}");
 
         ask_at(&mut app, "use unluminous_core::|");
@@ -1774,7 +1772,11 @@ mod tests {
         ask_at(&mut app, "use crate::app::|");
         assert_eq!(offered(&app), vec!["actions".to_owned()]);
         ask_at(&mut app, "use super::|");
-        assert_eq!(offered(&app), vec!["app".to_owned()], "mod.rs is its folder, so super is above");
+        assert_eq!(
+            offered(&app),
+            vec!["app".to_owned()],
+            "mod.rs is its folder, so super is above"
+        );
         std::fs::remove_dir_all(&folder).ok();
     }
 

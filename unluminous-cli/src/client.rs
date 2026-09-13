@@ -108,11 +108,7 @@ pub fn choose(wanted: Option<&str>) -> Result<Instance, Unreachable> {
         .filter(|instance| {
             instance.pid.to_string() == wanted
                 || instance.port.to_string() == wanted
-                || instance
-                    .folder
-                    .to_string_lossy()
-                    .to_lowercase()
-                    .contains(&wanted.to_lowercase())
+                || instance.folder.to_string_lossy().to_lowercase().contains(&wanted.to_lowercase())
         })
         .cloned()
         .collect();
@@ -167,7 +163,9 @@ pub fn unluminous_program() -> PathBuf {
         return PathBuf::from(named);
     }
     let name = if cfg!(windows) { "unluminous.exe" } else { "unluminous" };
-    if let Some(beside) = std::env::current_exe().ok().and_then(|exe| exe.parent().map(|f| f.join(name))) {
+    if let Some(beside) =
+        std::env::current_exe().ok().and_then(|exe| exe.parent().map(|f| f.join(name)))
+    {
         if beside.is_file() {
             return beside;
         }

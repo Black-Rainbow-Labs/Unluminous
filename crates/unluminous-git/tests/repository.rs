@@ -168,7 +168,10 @@ fn rollback_also_takes_back_something_that_was_staged() {
     write(&root, "readme.md", "# spoiled\n");
     assert!(ops::add(&root, &["readme.md"]).ok);
     assert!(ops::rollback(&root, &["readme.md"]).ok);
-    assert!(status(&root).is_clean(), "rollback takes both sides, which is what the reference editor's does");
+    assert!(
+        status(&root).is_clean(),
+        "rollback takes both sides, which is what the reference editor's does"
+    );
 }
 
 #[test]
@@ -368,7 +371,11 @@ fn a_push_to_another_folder_really_arrives_and_a_pull_brings_it_back() {
     let (outcome, cloned) = ops::clone(&elsewhere, &bare.display().to_string());
     assert!(outcome.ok, "clone: {}", outcome.message());
     assert!(cloned.join("readme.md").is_file(), "the clone landed in {}", cloned.display());
-    for (name, value) in [("user.name", "Someone Else"), ("user.email", "else@unluminous.invalid"), ("commit.gpgsign", "false")] {
+    for (name, value) in [
+        ("user.name", "Someone Else"),
+        ("user.email", "else@unluminous.invalid"),
+        ("commit.gpgsign", "false"),
+    ] {
         assert!(run(&cloned, &["config", name, value]).ok);
     }
     write(&cloned, "from-elsewhere.md", "written on the other side\n");
@@ -395,7 +402,10 @@ fn blame_says_who_wrote_each_line_and_ranks_the_commits_by_age() {
     write(&root, "code.ts", "const one = 1;\nconst two = 2;\n");
     commit_all_dated(&root, "the second line", "2026-04-26T10:00:00+00:00");
 
-    let blame = Repository::discover(&root).expect("a repository").blame(Path::new("code.ts")).expect("blame");
+    let blame = Repository::discover(&root)
+        .expect("a repository")
+        .blame(Path::new("code.ts"))
+        .expect("blame");
     assert_eq!(blame.lines.len(), 2);
     assert_eq!(blame.lines[0].author, "Unluminous Test");
     assert_eq!(blame.lines[1].author, "Someone Else");

@@ -29,7 +29,8 @@ pub fn position_of(text: &unluminous_core::Rope, offset: usize) -> Position {
     let line = text.byte_to_line(offset);
     let start = text.line_to_byte(line);
     let before = text.byte_slice(start..offset);
-    let column = unicode_segmentation::UnicodeSegmentation::graphemes(before.as_str(), true).count();
+    let column =
+        unicode_segmentation::UnicodeSegmentation::graphemes(before.as_str(), true).count();
     Position { line: line + 1, column: column + 1 }
 }
 
@@ -121,7 +122,11 @@ pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) {
         let galley = painter.layout_no_wrap(git.to_owned(), font.clone(), color::text_control());
         right -= 18.0 + galley.size().x;
         crate::theme::icon::branch(&painter, Pos2::new(right - 12.0, middle), color::text_dim());
-        painter.galley(Pos2::new(right, middle - galley.size().y / 2.0), galley, color::text_control());
+        painter.galley(
+            Pos2::new(right, middle - galley.size().y / 2.0),
+            galley,
+            color::text_control(),
+        );
     }
 
     // A message, when there is one, sits after the caret position and **before whatever the right
@@ -137,7 +142,11 @@ pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) {
         let room = right - 26.0 - pen;
         if room > 24.0 {
             let galley = elided(&painter, message, &font, room);
-            painter.galley(Pos2::new(pen, middle - galley.size().y / 2.0), galley, color::text_control());
+            painter.galley(
+                Pos2::new(pen, middle - galley.size().y / 2.0),
+                galley,
+                color::text_control(),
+            );
         }
     }
 }

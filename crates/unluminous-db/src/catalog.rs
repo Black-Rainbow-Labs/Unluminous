@@ -148,7 +148,8 @@ impl Table {
         if self.owned_by.is_some() {
             return false;
         }
-        !self.key.is_empty() && self.key.iter().all(|name| self.columns.iter().any(|column| column.name == *name))
+        !self.key.is_empty()
+            && self.key.iter().all(|name| self.columns.iter().any(|column| column.name == *name))
     }
 
     /// Why not, for the line the grid shows in place of the buttons it does not draw.
@@ -272,7 +273,8 @@ mod tests {
         assert_eq!(quoted("odd\"name", '"'), "\"odd\"\"name\"");
         assert_eq!(a_table(&["id"]).qualified('"'), "\"public\".\"member\"");
         assert_eq!(
-            Table { schema: String::new(), name: "notes".to_owned(), ..Table::default() }.qualified('"'),
+            Table { schema: String::new(), name: "notes".to_owned(), ..Table::default() }
+                .qualified('"'),
             "\"notes\""
         );
     }

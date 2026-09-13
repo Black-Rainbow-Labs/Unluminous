@@ -83,10 +83,7 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
 
 /// The events on one line, which are separated by further colons.
 fn events_of(rest: &str) -> Vec<String> {
-    rest.split(':')
-        .map(source::label)
-        .filter(|words| !words.is_empty())
-        .collect()
+    rest.split(':').map(source::label).filter(|words| !words.is_empty()).collect()
 }
 
 fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
@@ -232,12 +229,8 @@ fn draw_periods(
         );
         y += names[index].height + CARD_GAP;
         for (at, label) in events[index].iter().enumerate() {
-            let rect = Rect::new(
-                lefts[index],
-                y,
-                widths[index],
-                label.height + parts::PADDING_Y * 2.0,
-            );
+            let rect =
+                Rect::new(lefts[index], y, widths[index], label.height + parts::PADDING_Y * 2.0);
             scene.add(Item::Rect {
                 rect,
                 radius: parts::CORNER,
@@ -321,7 +314,8 @@ mod tests {
 
     #[test]
     fn the_first_period_written_is_the_leftmost() {
-        let scene = check::drawn("timeline\n One : a\n Two : b\n Three : c\n", &options(), &["One"]);
+        let scene =
+            check::drawn("timeline\n One : a\n Two : b\n Three : c\n", &options(), &["One"]);
         let circles: Vec<f32> = scene
             .items
             .iter()
@@ -336,7 +330,8 @@ mod tests {
 
     #[test]
     fn a_timeline_with_a_title_and_nothing_else_still_draws() {
-        let scene = super::super::render("timeline\n title Nothing yet\n", &options()).expect("draws");
+        let scene =
+            super::super::render("timeline\n title Nothing yet\n", &options()).expect("draws");
         assert!(scene.texts().iter().any(|words| words.contains("Nothing")));
     }
 }

@@ -174,13 +174,23 @@ pub fn show(
     outcome.strip.area = area;
     let mut pen = area.left() - offset;
     for (index, tab) in tabs.iter().enumerate() {
-        let rect = Rect::from_min_size(Pos2::new(pen, area.top()), Vec2::new(widths[index], area.height()));
+        let rect = Rect::from_min_size(
+            Pos2::new(pen, area.top()),
+            Vec2::new(widths[index], area.height()),
+        );
         pen += widths[index] + GAP;
         outcome.strip.tabs.push(rect);
         if rect.right() < area.left() || rect.left() > area.right() {
             continue;
         }
-        draw_tab(&mut inner, rect, tab, Where { pane, index, focused }, index == active, &mut outcome);
+        draw_tab(
+            &mut inner,
+            rect,
+            tab,
+            Where { pane, index, focused },
+            index == active,
+            &mut outcome,
+        );
     }
     outcome
 }
@@ -285,8 +295,7 @@ fn draw_tab(
     // A transient tab is drawn faintly rather than in italic: egui has no italic face for the
     // family Unluminous installs, and a fake slant is worse than a change of weight.
     let tint = if tab.transient { tint.gamma_multiply(0.75) } else { tint };
-    let galley =
-        painter.layout_no_wrap(tab.name.clone(), egui::FontId::proportional(12.0), tint);
+    let galley = painter.layout_no_wrap(tab.name.clone(), egui::FontId::proportional(12.0), tint);
     painter.galley(
         Pos2::new(rect.left() + PADDING + 16.0, rect.center().y - galley.size().y / 2.0),
         galley,
@@ -306,17 +315,15 @@ fn draw_tab(
             .interact(shut, ui.id().with(("file-tab-close", at.pane, index)), Sense::click())
             .on_hover_text(&shut_name);
         icon::cross(&ui.painter(), shut.center(), color::text_dim());
-        shut_response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &shut_name)
-        });
+        shut_response
+            .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &shut_name));
         if shut_response.clicked() {
             outcome.close = Some(index);
         }
     }
 
-    response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Button, true, active, &name)
-    });
+    response
+        .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, active, &name));
     if response.double_clicked() {
         outcome.keep = Some(index);
     } else if response.clicked() {
@@ -352,7 +359,10 @@ pub fn insertion_mark(painter: &egui::Painter, strip: &Strip, position: usize) {
     };
     let x = x.clamp(strip.area.left() + 1.0, strip.area.right() - 2.0);
     painter.rect_filled(
-        Rect::from_min_size(Pos2::new(x - 1.0, strip.area.top() + 3.0), Vec2::new(2.0, strip.area.height() - 6.0)),
+        Rect::from_min_size(
+            Pos2::new(x - 1.0, strip.area.top() + 3.0),
+            Vec2::new(2.0, strip.area.height() - 6.0),
+        ),
         CornerRadius::same(1),
         color::accent(),
     );

@@ -148,8 +148,9 @@ impl Exchange {
         if let Some(error) = field_of(server_final, 'e') {
             return Err(Failure::said(format!("the server refused the password: {error}")));
         }
-        let signature = field_of(server_final, 'v')
-            .ok_or_else(|| Failure::said("the server's final SCRAM message carries no signature."))?;
+        let signature = field_of(server_final, 'v').ok_or_else(|| {
+            Failure::said("the server's final SCRAM message carries no signature.")
+        })?;
         let given = decode64(&signature)
             .ok_or_else(|| Failure::said("the server's SCRAM signature is not base64."))?;
         if !same(&given, &self.server_signature) {
@@ -166,12 +167,13 @@ impl Exchange {
 fn read_server_first(message: &str) -> Answer<(String, Vec<u8>, u32)> {
     let nonce = field_of(message, 'r')
         .ok_or_else(|| Failure::said("the server's first SCRAM message carries no nonce."))?;
-    let salt = field_of(message, 's')
-        .and_then(|value| decode64(&value))
-        .ok_or_else(|| Failure::said("the server's first SCRAM message carries no readable salt."))?;
-    let iterations: u32 = field_of(message, 'i')
-        .and_then(|value| value.parse().ok())
-        .ok_or_else(|| Failure::said("the server's first SCRAM message carries no iteration count."))?;
+    let salt = field_of(message, 's').and_then(|value| decode64(&value)).ok_or_else(|| {
+        Failure::said("the server's first SCRAM message carries no readable salt.")
+    })?;
+    let iterations: u32 =
+        field_of(message, 'i').and_then(|value| value.parse().ok()).ok_or_else(|| {
+            Failure::said("the server's first SCRAM message carries no iteration count.")
+        })?;
     Ok((nonce, salt, iterations))
 }
 
@@ -245,7 +247,9 @@ fn same(left: &[u8], right: &[u8]) -> bool {
 fn nonce() -> Answer<String> {
     let mut bytes = [0_u8; 24];
     getrandom::fill(&mut bytes).map_err(|why| {
-        Failure::said(format!("this machine would not give Unluminous random bytes for the connection: {why}"))
+        Failure::said(format!(
+            "this machine would not give Unluminous random bytes for the connection: {why}"
+        ))
     })?;
     Ok(encode64(&bytes))
 }
@@ -288,13 +292,13 @@ mod tests {
     fn a_server_signature_that_does_not_match_is_a_refusal() {
         // The half of SCRAM that proves the *server* knew the password. A client that skipped this
         // check would authenticate happily to something that had never seen the password.
-        let mut exchange = Exchange::with_nonce("pencil", "user", "rOprNGfwEbeRWgbNEkqO").expect("an exchange");
+        let mut exchange =
+            Exchange::with_nonce("pencil", "user", "rOprNGfwEbeRWgbNEkqO").expect("an exchange");
         exchange
             .respond("r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096")
             .expect("a final message");
-        let refused = exchange
-            .finish("v=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
-            .expect_err("refused");
+        let refused =
+            exchange.finish("v=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=").expect_err("refused");
         assert!(refused.message.contains("did not know this password"), "{refused}");
         // And a server that says it went wrong is quoted rather than guessed at.
         let said = exchange.finish("e=invalid-proof").expect_err("refused");
@@ -337,9 +341,8 @@ mod tests {
         // RFC 5802's combined nonce is the client's with the server's appended. One that is exactly
         // the client's contributes no freshness at all, and `starts_with` alone would accept it.
         let mut exchange = Exchange::with_nonce("pencil", "", "aaaabbbb").expect("an exchange");
-        let refused = exchange
-            .respond("r=aaaabbbb,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096")
-            .expect_err("refused");
+        let refused =
+            exchange.respond("r=aaaabbbb,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096").expect_err("refused");
         assert!(refused.message.contains("with the server's own added"), "{refused}");
     }
 
@@ -349,10 +352,7 @@ mod tests {
         // 4096 rounds.
         let salt = decode64("W22ZaJ0SNY7soEsUEjb6gQ==").expect("a salt");
         let salted = pbkdf2_sha256(b"pencil", &salt, 4096);
-        assert_eq!(
-            encode64(&salted),
-            "xKSVEDI6tPlSysH6mUQZOeeOp01r6B3fcJbodRPcYV0="
-        );
+        assert_eq!(encode64(&salted), "xKSVEDI6tPlSysH6mUQZOeeOp01r6B3fcJbodRPcYV0=");
     }
 
     #[test]

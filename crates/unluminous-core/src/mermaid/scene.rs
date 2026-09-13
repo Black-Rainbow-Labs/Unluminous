@@ -72,7 +72,12 @@ impl Rect {
 
     /// A rectangle of `size` centred on `centre`.
     pub fn around(centre: Point, size: Size) -> Self {
-        Self::new(centre.x - size.width / 2.0, centre.y - size.height / 2.0, size.width, size.height)
+        Self::new(
+            centre.x - size.width / 2.0,
+            centre.y - size.height / 2.0,
+            size.width,
+            size.height,
+        )
     }
 
     pub fn left(&self) -> f32 {
@@ -125,7 +130,12 @@ impl Rect {
     pub fn union(&self, other: &Rect) -> Rect {
         let left = self.left().min(other.left());
         let top = self.top().min(other.top());
-        Rect::new(left, top, self.right().max(other.right()) - left, self.bottom().max(other.bottom()) - top)
+        Rect::new(
+            left,
+            top,
+            self.right().max(other.right()) - left,
+            self.bottom().max(other.bottom()) - top,
+        )
     }
 }
 
@@ -197,16 +207,39 @@ pub struct TextStyle {
 /// One thing to draw.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
-    Rect { rect: Rect, radius: f32, fill: Option<Paint>, stroke: Option<Stroke> },
-    Circle { centre: Point, radius: f32, fill: Option<Paint>, stroke: Option<Stroke> },
+    Rect {
+        rect: Rect,
+        radius: f32,
+        fill: Option<Paint>,
+        stroke: Option<Stroke>,
+    },
+    Circle {
+        centre: Point,
+        radius: f32,
+        fill: Option<Paint>,
+        stroke: Option<Stroke>,
+    },
     /// A closed shape. Filled, stroked, or both.
-    Polygon { points: Vec<Point>, fill: Option<Paint>, stroke: Option<Stroke> },
+    Polygon {
+        points: Vec<Point>,
+        fill: Option<Paint>,
+        stroke: Option<Stroke>,
+    },
     /// An open path of two or more points. Never filled.
-    Line { points: Vec<Point>, stroke: Stroke, dash: Dash },
+    Line {
+        points: Vec<Point>,
+        stroke: Stroke,
+        dash: Dash,
+    },
     /// One line of text. `at` is the left, middle or right of the text's own baseline box, by
     /// `anchor`, and the top of it: the painter puts the top of the line there, as it does
     /// everywhere else in Unluminous.
-    Text { at: Point, text: String, style: TextStyle, anchor: Anchor },
+    Text {
+        at: Point,
+        text: String,
+        style: TextStyle,
+        anchor: Anchor,
+    },
 }
 
 impl Item {
@@ -336,7 +369,10 @@ mod tests {
     #[test]
     fn a_rectangle_knows_its_edges_and_its_centre() {
         let rect = Rect::new(10.0, 20.0, 100.0, 40.0);
-        assert_eq!((rect.left(), rect.top(), rect.right(), rect.bottom()), (10.0, 20.0, 110.0, 60.0));
+        assert_eq!(
+            (rect.left(), rect.top(), rect.right(), rect.bottom()),
+            (10.0, 20.0, 110.0, 60.0)
+        );
         assert_eq!(rect.centre(), Point::new(60.0, 40.0));
         assert_eq!(rect.grown(5.0), Rect::new(5.0, 15.0, 110.0, 50.0));
     }

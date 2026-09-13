@@ -122,9 +122,7 @@ pub fn show(ctx: &egui::Context, prompt: &mut Prompt) -> PromptOutcome {
                 .desired_width(text_rect.width())
                 .text_color(color::text_control()),
         );
-        entry.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Name")
-        });
+        entry.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Name"));
         // The field has the keyboard as soon as the prompt opens, because a prompt that has to be
         // clicked before it can be typed into is a prompt that gets typed past.
         if !entry.has_focus() {
@@ -188,14 +186,18 @@ fn header(ui: &mut egui::Ui, area: Rect, title: &str, cancelled: &mut bool) {
     let bar = Rect::from_min_size(area.min, Vec2::new(area.width(), HEADER));
     let painter = ui.painter_at(area);
     painter.rect_filled(bar, CornerRadius { nw: 10, ne: 10, sw: 0, se: 0 }, color::title_bar());
-    let galley =
-        painter.layout_no_wrap(title.to_owned(), egui::FontId::proportional(13.0), color::text_strong());
+    let galley = painter.layout_no_wrap(
+        title.to_owned(),
+        egui::FontId::proportional(13.0),
+        color::text_strong(),
+    );
     painter.galley(
         Pos2::new(area.left() + 20.0, bar.center().y - galley.size().y / 2.0),
         galley,
         color::text_strong(),
     );
-    let close = Rect::from_center_size(Pos2::new(area.right() - 24.0, bar.center().y), Vec2::splat(22.0));
+    let close =
+        Rect::from_center_size(Pos2::new(area.right() - 24.0, bar.center().y), Vec2::splat(22.0));
     if crate::components::controls::icon_button(ui, close, "Close", crate::theme::icon::cross) {
         *cancelled = true;
     }

@@ -63,10 +63,8 @@ pub fn show(ui: &mut egui::Ui, area: Rect, current: Rgba) -> Outcome {
     let (mut hue, mut saturation, mut value) = rgb_to_hsv(current);
     let mut alpha = current.a;
 
-    let ring = Rect::from_min_size(
-        Pos2::new(area.center().x - RING / 2.0, area.top()),
-        Vec2::splat(RING),
-    );
+    let ring =
+        Rect::from_min_size(Pos2::new(area.center().x - RING / 2.0, area.top()), Vec2::splat(RING));
     let radius = RING / 2.0;
     paint_ring(ui, ring.center(), radius);
     let square = shade_square(ring.center(), radius);
@@ -79,9 +77,8 @@ pub fn show(ui: &mut egui::Ui, area: Rect, current: Rgba) -> Outcome {
     let ring_response = ui.interact(ring, ui.id().with("highlight-hue"), Sense::click_and_drag());
     let shade_response =
         ui.interact(square, ui.id().with("highlight-shade"), Sense::click_and_drag());
-    ring_response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Highlight hue")
-    });
+    ring_response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Highlight hue"));
     shade_response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Highlight shade")
     });
@@ -174,10 +171,7 @@ fn paint_ring(ui: &egui::Ui, centre: Pos2, radius: f32) {
         let (sin, cos) = angle.sin_cos();
         let colour = theme_colour(hsv_to_rgb(turn, 1.0, 1.0, 0xFF));
         for at in [radius, radius * INNER] {
-            mesh.colored_vertex(
-                Pos2::new(centre.x + cos * at, centre.y + sin * at),
-                colour,
-            );
+            mesh.colored_vertex(Pos2::new(centre.x + cos * at, centre.y + sin * at), colour);
         }
         if step > 0 {
             let base = (step as u32 - 1) * 2;
@@ -279,12 +273,8 @@ fn paint_opacity(ui: &egui::Ui, bar: Rect, solid: Rgba, alpha: u8) {
     let mut mesh = Mesh::default();
     for step in 0..=STEPS {
         let across = step as f32 / STEPS as f32;
-        let colour = theme_colour(Rgba::new(
-            solid.r,
-            solid.g,
-            solid.b,
-            (across * 255.0).round() as u8,
-        ));
+        let colour =
+            theme_colour(Rgba::new(solid.r, solid.g, solid.b, (across * 255.0).round() as u8));
         let x = bar.left() + bar.width() * across;
         mesh.colored_vertex(Pos2::new(x, bar.top()), colour);
         mesh.colored_vertex(Pos2::new(x, bar.bottom()), colour);

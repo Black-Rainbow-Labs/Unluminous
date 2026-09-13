@@ -303,8 +303,9 @@ impl Store {
     }
 
     pub fn sprints(&self) -> Result<Vec<Sprint>, String> {
-        let mut statement = self
-            .prepared("SELECT id, name, status, position, created_at FROM sprint ORDER BY position, id")?;
+        let mut statement = self.prepared(
+            "SELECT id, name, status, position, created_at FROM sprint ORDER BY position, id",
+        )?;
         let rows = statement
             .query_map([], read_sprint)
             .map_err(|problem| format!("the sprints could not be read: {problem}"))?;
@@ -393,9 +394,7 @@ impl Store {
 
     /// Write the fields a person can edit. Every one is optional, so one field is one call.
     pub fn edit_task(&self, id: i64, edit: &TaskEdit, now: &str) -> Result<(), String> {
-        let existing = self
-            .task(id)?
-            .ok_or_else(|| format!("ticket {id} is not on the board"))?;
+        let existing = self.task(id)?.ok_or_else(|| format!("ticket {id} is not on the board"))?;
         self.connection
             .execute(
                 "UPDATE task SET title = ?2, description = ?3, priority = ?4, assignee = ?5, \
@@ -423,7 +422,13 @@ impl Store {
     ///
     /// Positions stay contiguous inside a lane, which is what makes a drag land where the pointer says
     /// rather than after however many holes earlier moves left.
-    pub fn move_task(&self, id: i64, status: Status, position: i64, now: &str) -> Result<(), String> {
+    pub fn move_task(
+        &self,
+        id: i64,
+        status: Status,
+        position: i64,
+        now: &str,
+    ) -> Result<(), String> {
         self.in_transaction(|| self.move_task_now(id, status, position, now))
     }
 
@@ -795,7 +800,9 @@ impl Store {
     pub fn create_epic(&self, name: &str, color: &str) -> Result<Epic, String> {
         let position: i64 = self
             .connection
-            .query_row("SELECT COALESCE(MAX(position), -1) + 1 FROM task_epic", [], |row| row.get(0))
+            .query_row("SELECT COALESCE(MAX(position), -1) + 1 FROM task_epic", [], |row| {
+                row.get(0)
+            })
             .map_err(|problem| format!("the epic's place could not be worked out: {problem}"))?;
         self.connection
             .execute(
@@ -813,7 +820,12 @@ impl Store {
 
     /// Create a sprint. Making one active stands down whichever was active before, because the board
     /// shows one sprint and two active sprints would be two boards.
-    pub fn create_sprint(&self, name: &str, status: SprintStatus, now: &str) -> Result<Sprint, String> {
+    pub fn create_sprint(
+        &self,
+        name: &str,
+        status: SprintStatus,
+        now: &str,
+    ) -> Result<Sprint, String> {
         self.in_transaction(|| self.create_sprint_now(name, status, now))
     }
 
@@ -830,7 +842,9 @@ impl Store {
         if status == SprintStatus::Active {
             self.connection
                 .execute("UPDATE sprint SET status = 'planned' WHERE status = 'active'", [])
-                .map_err(|problem| format!("the previous sprint could not stand down: {problem}"))?;
+                .map_err(|problem| {
+                    format!("the previous sprint could not stand down: {problem}")
+                })?;
         }
         self.connection
             .execute(
@@ -894,7 +908,9 @@ impl Store {
         self.in_transaction(|| {
             self.connection
                 .execute("UPDATE sprint SET status = 'planned' WHERE status = 'active'", [])
-                .map_err(|problem| format!("the previous sprint could not stand down: {problem}"))?;
+                .map_err(|problem| {
+                    format!("the previous sprint could not stand down: {problem}")
+                })?;
             self.connection
                 .execute("UPDATE sprint SET status = 'active' WHERE id = ?1", params![id])
                 .map_err(|problem| format!("the sprint could not be made active: {problem}"))?;
@@ -914,9 +930,10 @@ impl Store {
                 let mut statement = self.prepared(
                     "SELECT id FROM task WHERE sprint_id = ?1 AND status <> 'agent_done'",
                 )?;
-                let rows = statement
-                    .query_map(params![id], |row| row.get(0))
-                    .map_err(|problem| format!("the sprint's tickets could not be read: {problem}"))?;
+                let rows =
+                    statement.query_map(params![id], |row| row.get(0)).map_err(|problem| {
+                        format!("the sprint's tickets could not be read: {problem}")
+                    })?;
                 rows.collect::<Result<Vec<i64>, _>>()
                     .map_err(|problem| format!("a ticket could not be read: {problem}"))?
             };
@@ -948,9 +965,10 @@ impl Store {
             // see `to_the_foot_of_the_backlog`. A sprint holds tens of tickets, not thousands.
             let leaving: Vec<i64> = {
                 let mut statement = self.prepared("SELECT id FROM task WHERE sprint_id = ?1")?;
-                let rows = statement
-                    .query_map(params![id], |row| row.get(0))
-                    .map_err(|problem| format!("the sprint's tickets could not be read: {problem}"))?;
+                let rows =
+                    statement.query_map(params![id], |row| row.get(0)).map_err(|problem| {
+                        format!("the sprint's tickets could not be read: {problem}")
+                    })?;
                 rows.collect::<Result<Vec<i64>, _>>()
                     .map_err(|problem| format!("a ticket could not be read: {problem}"))?
             };
@@ -994,7 +1012,12 @@ impl Store {
     }
 
     /// Rename an epic, recolour it, or both. A `None` leaves that half alone.
-    pub fn edit_epic(&self, id: i64, name: Option<&str>, color: Option<&str>) -> Result<(), String> {
+    pub fn edit_epic(
+        &self,
+        id: i64,
+        name: Option<&str>,
+        color: Option<&str>,
+    ) -> Result<(), String> {
         if let Some(name) = name {
             self.connection
                 .execute("UPDATE task_epic SET name = ?2 WHERE id = ?1", params![id, name])
@@ -1030,8 +1053,9 @@ impl Store {
     /// every epic and the board holds only the active sprint's tickets — an epic used entirely in the
     /// backlog would otherwise read as zero.
     pub fn epic_counts(&self) -> Result<Vec<(i64, i64)>, String> {
-        let mut statement =
-            self.prepared("SELECT epic_id, COUNT(*) FROM task WHERE epic_id IS NOT NULL GROUP BY epic_id")?;
+        let mut statement = self.prepared(
+            "SELECT epic_id, COUNT(*) FROM task WHERE epic_id IS NOT NULL GROUP BY epic_id",
+        )?;
         let rows = statement
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
             .map_err(|problem| format!("the epics could not be counted: {problem}"))?;
@@ -1041,8 +1065,9 @@ impl Store {
 
     /// How many tickets are in each sprint, by sprint id.
     pub fn sprint_counts(&self) -> Result<Vec<(i64, i64)>, String> {
-        let mut statement = self
-            .prepared("SELECT sprint_id, COUNT(*) FROM task WHERE sprint_id IS NOT NULL GROUP BY sprint_id")?;
+        let mut statement = self.prepared(
+            "SELECT sprint_id, COUNT(*) FROM task WHERE sprint_id IS NOT NULL GROUP BY sprint_id",
+        )?;
         let rows = statement
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
             .map_err(|problem| format!("the sprints could not be counted: {problem}"))?;
@@ -1129,7 +1154,9 @@ impl Store {
             )
             .map_err(|problem| format!("the strike could not be recorded: {problem}"))?;
         self.connection
-            .query_row("SELECT watchdog_strikes FROM task WHERE id = ?1", params![id], |row| row.get(0))
+            .query_row("SELECT watchdog_strikes FROM task WHERE id = ?1", params![id], |row| {
+                row.get(0)
+            })
             .map_err(|problem| format!("the strikes could not be read: {problem}"))
     }
 
@@ -1143,7 +1170,9 @@ impl Store {
             )
             .map_err(|problem| format!("the nudge could not be recorded: {problem}"))?;
         self.connection
-            .query_row("SELECT watchdog_nudges FROM task WHERE id = ?1", params![id], |row| row.get(0))
+            .query_row("SELECT watchdog_nudges FROM task WHERE id = ?1", params![id], |row| {
+                row.get(0)
+            })
             .map_err(|problem| format!("the nudges could not be read: {problem}"))
     }
 
@@ -1207,10 +1236,7 @@ impl Store {
     ///
     /// `unchecked_transaction` rather than `transaction`, because the latter wants `&mut Connection` and
     /// every read here takes `&self`. The rollback still happens on drop, which is the part that matters.
-    fn in_transaction<T>(
-        &self,
-        work: impl FnOnce() -> Result<T, String>,
-    ) -> Result<T, String> {
+    fn in_transaction<T>(&self, work: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
         let transaction = self
             .connection
             .unchecked_transaction()
@@ -1327,7 +1353,8 @@ pub struct TaskEdit {
 ///
 /// The counts are counted rather than stored, so they cannot go stale: a todo deleted by a cascade when
 /// its ticket went would have left a stored count naming rows that are not there.
-const TASK_COLUMNS: &str = "SELECT t.id, t.task_key, t.title, t.description, t.priority, t.status, \
+const TASK_COLUMNS: &str =
+    "SELECT t.id, t.task_key, t.title, t.description, t.priority, t.status, \
      t.assignee, t.model, t.effort, t.epic_id, t.sprint_id, t.position, t.project, \
      t.agent_session_id, t.heartbeat_at, t.lease_duration_minutes, t.watchdog_strikes, \
      t.watchdog_nudges, t.watchdog_nudged_at, t.source, t.jira_key, t.jira_url, t.jira_status, \
@@ -1545,11 +1572,16 @@ mod tests {
     /// A board with an active sprint and three tickets in it, which is what most of these read.
     fn filled() -> (Store, i64) {
         let store = board();
-        let sprint = store.create_sprint("Current Sprint", SprintStatus::Active, NOW).expect("a sprint");
+        let sprint =
+            store.create_sprint("Current Sprint", SprintStatus::Active, NOW).expect("a sprint");
         for title in ["First", "Second", "Third"] {
             store
                 .create_task(
-                    NewTask { title: title.to_owned(), sprint_id: Some(sprint.id), ..NewTask::default() },
+                    NewTask {
+                        title: title.to_owned(),
+                        sprint_id: Some(sprint.id),
+                        ..NewTask::default()
+                    },
                     NOW,
                 )
                 .expect("a ticket");
@@ -1564,7 +1596,9 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         {
             let store = Store::open(&path).expect("a new board");
-            store.create_task(NewTask { title: "A".to_owned(), ..NewTask::default() }, NOW).expect("a ticket");
+            store
+                .create_task(NewTask { title: "A".to_owned(), ..NewTask::default() }, NOW)
+                .expect("a ticket");
         }
         // Opening it again reads the ticket back rather than recreating anything, which is what
         // `CREATE TABLE IF NOT EXISTS` and an additive migration are for.
@@ -1582,7 +1616,8 @@ mod tests {
     /// been used, and its list was empty.
     #[test]
     fn a_board_made_before_owner_existed_gains_it_and_a_ticket_can_then_be_claimed() {
-        let folder = std::env::temp_dir().join(format!("unluminous-board-owner-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-board-owner-{}", std::process::id()));
         let path = folder.join(FILE);
         let _ = std::fs::remove_dir_all(&folder);
         let id = {
@@ -1611,7 +1646,10 @@ mod tests {
 
         // Opening it again is what migrates it, which is what happens when Unluminous starts.
         let again = Store::open(&path).expect("the same board");
-        assert!(has_column(&again.connection, "task", "owner").expect("a read"), "the column was added");
+        assert!(
+            has_column(&again.connection, "task", "owner").expect("a read"),
+            "the column was added"
+        );
         let claimed = again
             .claim(id, "a-session", Assignee::Claude, "pid:1", NOW)
             .expect("the claim that used to fail");
@@ -1622,7 +1660,10 @@ mod tests {
             .connection
             .query_row("SELECT value FROM meta WHERE name = 'schema_version'", [], |row| row.get(0))
             .expect("the version");
-        assert_eq!(version, SCHEMA_VERSION, "the version is written after the migration, not before it");
+        assert_eq!(
+            version, SCHEMA_VERSION,
+            "the version is written after the migration, not before it"
+        );
         let _ = std::fs::remove_dir_all(&folder);
     }
 
@@ -1654,7 +1695,11 @@ mod tests {
         assert_eq!(count("task_todo"), 0, "the todos went with their tickets");
         assert_eq!(count("task_comment"), 0, "and so did the comments");
         // And what is not a ticket stays: the sprint the board draws against, and the epics.
-        assert_eq!(board.sprint.as_ref().map(|it| it.id), Some(sprint), "the active sprint is still active");
+        assert_eq!(
+            board.sprint.as_ref().map(|it| it.id),
+            Some(sprint),
+            "the active sprint is still active"
+        );
         assert!(board.epics.iter().any(|it| it.id == epic.id), "the epics are not tickets");
     }
 
@@ -1665,7 +1710,8 @@ mod tests {
     /// ticket is written and the copy is taken in the same breath, with nothing in between to checkpoint it.
     #[test]
     fn the_copy_taken_before_a_clear_holds_the_tickets_that_were_there() {
-        let folder = std::env::temp_dir().join(format!("unluminous-board-clear-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-board-clear-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         let path = folder.join(FILE);
         let store = Store::open(&path).expect("a board on disk");
@@ -1687,7 +1733,9 @@ mod tests {
             .connection
             .prepare("SELECT title FROM task ORDER BY id")
             .and_then(|mut statement| {
-                statement.query_map([], |row| row.get::<usize, String>(0))?.collect::<Result<Vec<String>, _>>()
+                statement
+                    .query_map([], |row| row.get::<usize, String>(0))?
+                    .collect::<Result<Vec<String>, _>>()
             })
             .expect("the titles");
         assert_eq!(titles, vec!["One".to_owned(), "Two".to_owned()]);
@@ -1713,17 +1761,24 @@ mod tests {
         assert_eq!(store.strike(task.id).expect("a strike"), 1);
 
         // What the watchdog does next, which used to undo what it had just done.
-        store.add_comment(task.id, Author::System, "task-1 has not said anything.", LATER).expect("a comment");
+        store
+            .add_comment(task.id, Author::System, "task-1 has not said anything.", LATER)
+            .expect("a comment");
         let candidate = store
             .watchdog_candidates(LATER, 45)
             .expect("the candidates")
             .into_iter()
             .find(|card| card.key == "task-1")
             .expect("the ticket is still a candidate");
-        assert_eq!(candidate.strikes, 1, "the board's own comment is not somebody saying something");
+        assert_eq!(
+            candidate.strikes, 1,
+            "the board's own comment is not somebody saying something"
+        );
 
         // A person's comment **is** activity, and clears it. That half is what `touch` is for and it stays.
-        store.add_comment(task.id, Author::Human, "Still going, give it a minute.", LATER).expect("a comment");
+        store
+            .add_comment(task.id, Author::Human, "Still going, give it a minute.", LATER)
+            .expect("a comment");
         let candidate = store
             .watchdog_candidates(LATER, 45)
             .expect("the candidates")
@@ -1740,7 +1795,10 @@ mod tests {
         let store = board();
         store
             .connection
-            .execute("UPDATE meta SET value = ?1 WHERE name = 'schema_version'", params![SCHEMA_VERSION + 1])
+            .execute(
+                "UPDATE meta SET value = ?1 WHERE name = 'schema_version'",
+                params![SCHEMA_VERSION + 1],
+            )
             .expect("a newer version");
         let problem = store.check_version().expect_err("a newer schema should be refused");
         assert!(problem.contains("newer Unluminous"), "{problem}");
@@ -1783,14 +1841,14 @@ mod tests {
     fn the_four_check_constraints_are_the_boards_rules_written_into_the_file() {
         let store = board();
         let task = store.create_task(NewTask::default(), NOW).expect("a ticket");
-        for (column, value) in [
-            ("status", "done"),
-            ("priority", "urgent"),
-            ("assignee", "gemini"),
-        ] {
+        for (column, value) in [("status", "done"), ("priority", "urgent"), ("assignee", "gemini")]
+        {
             let problem = store
                 .connection
-                .execute(&format!("UPDATE task SET {column} = ?2 WHERE id = ?1"), params![task.id, value])
+                .execute(
+                    &format!("UPDATE task SET {column} = ?2 WHERE id = ?1"),
+                    params![task.id, value],
+                )
                 .expect_err(&format!("{column} = {value} should be refused by the database"));
             assert!(
                 problem.to_string().to_lowercase().contains("constraint"),
@@ -1817,7 +1875,11 @@ mod tests {
             .expect("my own comment can be changed");
         assert_eq!(changed.body, "The format changed in April.");
         assert_eq!(changed.created_at, mine.created_at, "when it was said does not change");
-        assert_eq!(store.comments(ticket.id).expect("the comments").len(), 1, "changed, not added to");
+        assert_eq!(
+            store.comments(ticket.id).expect("the comments").len(),
+            1,
+            "changed, not added to"
+        );
 
         let theirs = store
             .add_comment(ticket.id, Author::Claude, "I read the old importer.", now)
@@ -1828,7 +1890,10 @@ mod tests {
         assert!(problem.contains("record rather than a draft"), "and it says why: `{problem}`");
 
         let missing = store.edit_comment(9999, "nothing", now).expect_err("no such comment");
-        assert!(missing.contains("no comment 9999"), "and a comment that is not there says so: `{missing}`");
+        assert!(
+            missing.contains("no comment 9999"),
+            "and a comment that is not there says so: `{missing}`"
+        );
 
         let emptied = store.edit_comment(mine.id, "   ", now).expect_err("emptying is refused");
         assert!(emptied.contains("cannot be emptied"), "`{emptied}`");
@@ -1903,13 +1968,19 @@ mod tests {
         // says so.
         let (store, _) = filled();
         let task = store.task_by_key("task-1").expect("a read").expect("task-1");
-        assert!(store.claim(task.id, "session-one", Assignee::Claude, "pid:1", NOW).expect("a claim"));
+        assert!(store
+            .claim(task.id, "session-one", Assignee::Claude, "pid:1", NOW)
+            .expect("a claim"));
         assert!(
-            !store.claim(task.id, "session-two", Assignee::Codex, "pid:2", NOW).expect("a second claim"),
+            !store
+                .claim(task.id, "session-two", Assignee::Codex, "pid:2", NOW)
+                .expect("a second claim"),
             "another window is refused"
         );
         assert!(
-            !store.claim(task.id, "session-one", Assignee::Claude, "pid:1", LATER).expect("the same session"),
+            !store
+                .claim(task.id, "session-one", Assignee::Claude, "pid:1", LATER)
+                .expect("the same session"),
             "and so is the same session asking twice, which is still a second agent"
         );
         let claimed = store.task(task.id).expect("a read").expect("task-1");
@@ -1923,7 +1994,9 @@ mod tests {
         assert_eq!(given_back.status, Status::New);
         assert_eq!(given_back.session_id, None);
         assert_eq!(store.owner_of(task.id).expect("the owner"), None);
-        assert!(store.claim(task.id, "session-two", Assignee::Codex, "pid:2", LATER).expect("a new claim"));
+        assert!(store
+            .claim(task.id, "session-two", Assignee::Codex, "pid:2", LATER)
+            .expect("a new claim"));
     }
 
     #[test]
@@ -1946,11 +2019,7 @@ mod tests {
         // `touch`.
         let (store, _) = filled();
         let task = store.task_by_key("task-1").expect("a read").expect("task-1");
-        for (what, act) in [
-            ("a todo", 0),
-            ("a comment", 1),
-            ("a heartbeat", 2),
-        ] {
+        for (what, act) in [("a todo", 0), ("a comment", 1), ("a heartbeat", 2)] {
             store
                 .connection
                 .execute(
@@ -2067,7 +2136,8 @@ mod tests {
                 NOW,
             )
             .expect("a ticket");
-        let keys = |found: Vec<Task>| -> Vec<String> { found.into_iter().map(|task| task.key).collect() };
+        let keys =
+            |found: Vec<Task>| -> Vec<String> { found.into_iter().map(|task| task.key).collect() };
         let only = [task.key.clone()];
         assert_eq!(keys(store.search("plugin").expect("a search")), only);
         assert_eq!(keys(store.search("PLUGIN").expect("a search")), only, "case insensitive");
@@ -2111,19 +2181,37 @@ mod tests {
         // must **not** do is show every ticket that ever existed: `?1 IS NULL OR sprint_id = ?1` means every
         // row when the argument is NULL, which is what this pins.
         let store = board();
-        let old = store.create_sprint("Last month", SprintStatus::Completed, NOW).expect("a sprint");
+        let old =
+            store.create_sprint("Last month", SprintStatus::Completed, NOW).expect("a sprint");
         store
-            .create_task(NewTask { title: "Finished".to_owned(), sprint_id: Some(old.id), ..NewTask::default() }, NOW)
+            .create_task(
+                NewTask {
+                    title: "Finished".to_owned(),
+                    sprint_id: Some(old.id),
+                    ..NewTask::default()
+                },
+                NOW,
+            )
             .expect("a ticket in a closed sprint");
-        store.create_task(NewTask { title: "Loose".to_owned(), ..NewTask::default() }, NOW).expect("a ticket");
+        store
+            .create_task(NewTask { title: "Loose".to_owned(), ..NewTask::default() }, NOW)
+            .expect("a ticket");
         let read = store.board().expect("the board");
         assert!(read.sprint.is_none(), "no sprint is active");
         assert_eq!(read.total(), 1, "the loose ticket, and not the one in the closed sprint");
         assert_eq!(read.lane(Status::New).expect("New").tasks[0].title, "Loose");
         // And with a sprint active, that sprint's tickets and nothing else.
-        let current = store.create_sprint("This month", SprintStatus::Active, NOW).expect("a sprint");
+        let current =
+            store.create_sprint("This month", SprintStatus::Active, NOW).expect("a sprint");
         store
-            .create_task(NewTask { title: "Current".to_owned(), sprint_id: Some(current.id), ..NewTask::default() }, NOW)
+            .create_task(
+                NewTask {
+                    title: "Current".to_owned(),
+                    sprint_id: Some(current.id),
+                    ..NewTask::default()
+                },
+                NOW,
+            )
             .expect("a ticket");
         let read = store.board().expect("the board");
         assert_eq!(read.total(), 1);
@@ -2136,7 +2224,14 @@ mod tests {
         // A ticket in another sprint, which a reclaim must not renumber.
         let other = store.create_sprint("Another", SprintStatus::Planned, NOW).expect("a sprint");
         let elsewhere = store
-            .create_task(NewTask { title: "Elsewhere".to_owned(), sprint_id: Some(other.id), ..NewTask::default() }, NOW)
+            .create_task(
+                NewTask {
+                    title: "Elsewhere".to_owned(),
+                    sprint_id: Some(other.id),
+                    ..NewTask::default()
+                },
+                NOW,
+            )
             .expect("a ticket");
         let first = store.task_by_key("task-1").expect("a read").expect("task-1");
         let second = store.task_by_key("task-2").expect("a read").expect("task-2");
@@ -2183,7 +2278,10 @@ mod tests {
             .expect("an edit");
         let read = store.task(task.id).expect("a read").expect("task-1");
         assert_eq!(read.title, "Renamed");
-        assert_eq!(read.priority, task.priority, "the priority was not given, so it did not change");
+        assert_eq!(
+            read.priority, task.priority,
+            "the priority was not given, so it did not change"
+        );
         assert_eq!(read.assignee, task.assignee);
         assert_eq!(read.description, task.description);
         assert_eq!(read.updated_at, LATER);
@@ -2195,7 +2293,12 @@ mod tests {
         let epic = store.create_epic("Plugins", "#7F5AF0").expect("an epic");
         let task = store
             .create_task(
-                NewTask { title: "A".to_owned(), epic_id: Some(epic.id), sprint_id: Some(sprint), ..NewTask::default() },
+                NewTask {
+                    title: "A".to_owned(),
+                    epic_id: Some(epic.id),
+                    sprint_id: Some(sprint),
+                    ..NewTask::default()
+                },
                 NOW,
             )
             .expect("a ticket");

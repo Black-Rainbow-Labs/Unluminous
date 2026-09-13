@@ -169,7 +169,8 @@ fn draw(board: &Board, source: &Source, options: &Options) -> Scene {
         );
         let mut y = frame.top() + HEADER + CARD_GAP;
         for (at, card) in column.cards.iter().enumerate() {
-            let rect = Rect::new(left + CARD_GAP, y, COLUMN - CARD_GAP * 2.0, cards[index][at].height);
+            let rect =
+                Rect::new(left + CARD_GAP, y, COLUMN - CARD_GAP * 2.0, cards[index][at].height);
             draw_card(&mut scene, card, &cards[index][at], rect, index, options);
             y = rect.bottom() + CARD_GAP;
         }
@@ -264,7 +265,8 @@ mod tests {
 
     #[test]
     fn indentation_tells_a_column_from_a_card() {
-        let text = "kanban\n todo[Todo]\n  a[Write it]\n  b[Test it]\n doing[Doing]\n  c[Ship it]\n";
+        let text =
+            "kanban\n todo[Todo]\n  a[Write it]\n  b[Test it]\n doing[Doing]\n  c[Ship it]\n";
         let board = board(text);
         assert_eq!(board.columns.len(), 2);
         assert_eq!(board.columns[0].label, "Todo");
@@ -308,7 +310,15 @@ mod tests {
         check::drawn(
             text,
             &options(),
-            &["Todo", "In progress", "Done", "Write the parser", "UNLUMINOUS-1", "Lay it out", "Write the TDD"],
+            &[
+                "Todo",
+                "In progress",
+                "Done",
+                "Write the parser",
+                "UNLUMINOUS-1",
+                "Lay it out",
+                "Write the TDD",
+            ],
         );
     }
 
@@ -317,11 +327,8 @@ mod tests {
         // A board where one column is shorter than the one beside it does not read as a board.
         let text = "kanban\n a[One]\n  x[card]\n b[Many]\n  y1[card]\n  y2[card]\n  y3[card]\n";
         let scene = check::drawn(text, &options(), &["One", "Many"]);
-        let columns: Vec<Rect> = scene
-            .rects()
-            .into_iter()
-            .filter(|rect| (rect.width - COLUMN).abs() < 0.01)
-            .collect();
+        let columns: Vec<Rect> =
+            scene.rects().into_iter().filter(|rect| (rect.width - COLUMN).abs() < 0.01).collect();
         assert_eq!(columns.len(), 2);
         assert!((columns[0].height - columns[1].height).abs() < 0.01);
         assert!(columns[0].height > 100.0, "and tall enough for the longest column");

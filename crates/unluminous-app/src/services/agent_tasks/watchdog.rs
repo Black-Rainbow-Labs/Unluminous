@@ -218,7 +218,10 @@ mod tests {
             "the first strike is the one that posts a comment"
         );
         gone.strikes = 1;
-        assert_eq!(decide(&gone, Terminal::Gone, thresholds, false), Decision::Strike { first: false });
+        assert_eq!(
+            decide(&gone, Terminal::Gone, thresholds, false),
+            Decision::Strike { first: false }
+        );
         gone.strikes = 2;
         assert_eq!(
             decide(&gone, Terminal::Gone, thresholds, false),
@@ -232,7 +235,8 @@ mod tests {
         // The whole distinction: this terminal is alive, so the ticket is never taken away from it.
         let mut stalled = card();
         stalled.board_idle_minutes = 60;
-        let decision = decide(&stalled, Terminal::Alive { silent_minutes: 0 }, Thresholds::default(), false);
+        let decision =
+            decide(&stalled, Terminal::Alive { silent_minutes: 0 }, Thresholds::default(), false);
         let Decision::Nudge { instruction, escalated } = decision else {
             panic!("a live terminal should be nudged, got {decision:?}");
         };
@@ -249,9 +253,11 @@ mod tests {
         // stopped rather than one that is thinking. This card's lease has not expired.
         let quiet = card();
         assert!(!quiet.lease_expired());
-        let decision = decide(&quiet, Terminal::Alive { silent_minutes: 10 }, Thresholds::default(), false);
+        let decision =
+            decide(&quiet, Terminal::Alive { silent_minutes: 10 }, Thresholds::default(), false);
         assert!(matches!(decision, Decision::Nudge { .. }), "{decision:?}");
-        let decision = decide(&quiet, Terminal::Alive { silent_minutes: 9 }, Thresholds::default(), false);
+        let decision =
+            decide(&quiet, Terminal::Alive { silent_minutes: 9 }, Thresholds::default(), false);
         assert_eq!(decision, Decision::Leave, "nine minutes is not ten");
     }
 
@@ -278,7 +284,8 @@ mod tests {
         let mut stalled = card();
         stalled.board_idle_minutes = 60;
         stalled.nudges = 2;
-        let decision = decide(&stalled, Terminal::Alive { silent_minutes: 30 }, Thresholds::default(), false);
+        let decision =
+            decide(&stalled, Terminal::Alive { silent_minutes: 30 }, Thresholds::default(), false);
         let Decision::Nudge { instruction, escalated } = decision else {
             panic!("expected a nudge, got {decision:?}");
         };

@@ -68,12 +68,7 @@ fn read(source: &Source) -> Result<Map, Problem> {
         }
         let parent = open.last().map(|(_, node)| *node);
         let index = map.nodes.len();
-        map.nodes.push(Node {
-            label,
-            shape,
-            children: Vec::new(),
-            depth: open.len(),
-        });
+        map.nodes.push(Node { label, shape, children: Vec::new(), depth: open.len() });
         match parent {
             Some(parent) => map.nodes[parent].children.push(index),
             None => map.roots.push(index),
@@ -206,14 +201,7 @@ fn measure_span(map: &Map, placed: &mut [Placed], index: usize) -> f32 {
 }
 
 /// Give every node in a subtree its rectangle, from the root down.
-fn place(
-    map: &Map,
-    placed: &mut [Placed],
-    index: usize,
-    lefts: &[f32],
-    widths: &[f32],
-    top: f32,
-) {
+fn place(map: &Map, placed: &mut [Placed], index: usize, lefts: &[f32], widths: &[f32], top: f32) {
     let depth = map.nodes[index].depth;
     let size = placed[index].size;
     // The node is centred against the room its whole subtree takes, which is what keeps a parent
@@ -309,7 +297,14 @@ mod tests {
         let shapes: Vec<Shape> = map.nodes[1..].iter().map(|node| node.shape).collect();
         assert_eq!(
             shapes,
-            vec![Shape::Rect, Shape::Round, Shape::Circle, Shape::Bang, Shape::Cloud, Shape::Hexagon]
+            vec![
+                Shape::Rect,
+                Shape::Round,
+                Shape::Circle,
+                Shape::Bang,
+                Shape::Cloud,
+                Shape::Hexagon
+            ]
         );
         assert_eq!(map.nodes[1].label, "square");
         assert_eq!(map.nodes[4].label, "bang");
@@ -331,7 +326,17 @@ mod tests {
         let scene = check::drawn(
             text,
             &options(),
-            &["Unluminous", "Editing", "Undo", "Formatting", "Panes", "Explorer", "Terminal", "Git", "Plugins"],
+            &[
+                "Unluminous",
+                "Editing",
+                "Undo",
+                "Formatting",
+                "Panes",
+                "Explorer",
+                "Terminal",
+                "Git",
+                "Plugins",
+            ],
         );
         assert!(scene.size.width > 300.0);
     }
@@ -354,6 +359,9 @@ mod tests {
         let a = boxes[1];
         let (first, last) = (boxes[2], boxes[4]);
         let middle = (first.centre().y + last.centre().y) / 2.0;
-        assert!((a.centre().y - middle).abs() < 1.0, "A is opposite the middle of its three children");
+        assert!(
+            (a.centre().y - middle).abs() < 1.0,
+            "A is opposite the middle of its three children"
+        );
     }
 }

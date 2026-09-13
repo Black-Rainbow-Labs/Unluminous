@@ -120,7 +120,12 @@ pub(crate) fn todo_rows(
         let said = todo.text.clone();
         let ticked = todo.done;
         response.widget_info(|| {
-            egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), ticked, said.clone())
+            egui::WidgetInfo::selected(
+                egui::WidgetType::Checkbox,
+                ui.is_enabled(),
+                ticked,
+                said.clone(),
+            )
         });
         painter.rect(
             box_at,
@@ -157,7 +162,12 @@ pub(crate) fn todo_rows(
             Pos2::new(area.max.x - 12.0, pen + look.row_height / 2.0 - 2.0),
             Vec2::splat(18.0),
         );
-        if crate::components::controls::icon_button(ui, cross, &format!("Remove {}", todo.text), icon::cross) {
+        if crate::components::controls::icon_button(
+            ui,
+            cross,
+            &format!("Remove {}", todo.text),
+            icon::cross,
+        ) {
             removed = Some(todo.id);
         }
         pen += look.row_height;
@@ -222,7 +232,8 @@ pub(crate) fn terminal_section(
 ) -> Vec<Request> {
     let mut requests = Vec::new();
     let painter = ui.painter().clone();
-    let attached = board.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
+    let attached =
+        board.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
     let mut top = area.min.y;
     if heading {
         let head = Rect::from_min_size(area.min, Vec2::new(area.width(), 22.0));
@@ -242,8 +253,10 @@ pub(crate) fn terminal_section(
         // Only a ticket that already has a session gets a button here. Starting an agent is Start work's
         // job, so there is no second control that does it.
         if !attached && task.session_id.is_some() {
-            let at =
-                Rect::from_min_size(Pos2::new(area.max.x - 110.0, head.min.y - 3.0), Vec2::new(110.0, 22.0));
+            let at = Rect::from_min_size(
+                Pos2::new(area.max.x - 110.0, head.min.y - 3.0),
+                Vec2::new(110.0, 22.0),
+            );
             if crate::components::controls::choice_button(ui, at, "Resume session", false) {
                 match board.command_now("resume", std::slice::from_ref(&task.key)) {
                     Ok(answer) if !answer.message.is_empty() => {
@@ -292,7 +305,8 @@ pub(crate) fn comment_section(
     //
     // The scroll is a real `ScrollArea` around the same drawing. Positions inside it are worked out from where
     // the area put its cursor, so the blocks move with the scroll rather than being drawn at fixed places.
-    let list = Rect::from_min_max(Pos2::new(area.min.x, pen), Pos2::new(area.max.x, room_for_comments));
+    let list =
+        Rect::from_min_max(Pos2::new(area.min.x, pen), Pos2::new(area.max.x, room_for_comments));
     let mut inside = ui.new_child(egui::UiBuilder::new().max_rect(list));
     let scrolled = egui::ScrollArea::vertical()
         .id_salt("agent-tasks-comments")
@@ -311,178 +325,213 @@ pub(crate) fn comment_section(
             let mut view_change: Option<(i64, bool)> = None;
             let markdown = &mut board.markdown;
             for comment in comments.iter().rev() {
-        text(
-            &painter,
-            Pos2::new(area.min.x, pen),
-            &format!("{} · {}", comment.author.name(), clock::relative(&comment.created_at, &now)),
-            look.font_size - 2.5,
-            look.palette.text_faint,
-        );
-        // The two view buttons on the comment's own header row, right aligned, the same pair the description has.
-        // Left of the `Edit` and `Send` buttons a person's own comment carries, which is why they stop short of
-        // the right edge.
-        if let Some(as_markdown) = super::raw_or_rendered(
-            ui,
-            look,
-            Rect::from_min_size(
-                Pos2::new(area.min.x, pen - look.font_size - 1.0),
-                Vec2::new(area.width() - 112.0, 16.0),
-            ),
-            &format!("comment {}", comment.id),
-            !raw_comments.contains(&comment.id),
-        ) {
-            view_change = Some((comment.id, !as_markdown));
-        }
-        pen += look.font_size + 1.0;
-        let mine = comment.author == crate::services::agent_tasks::model::Author::Human;
-        let being_edited = editing == Some(comment.id);
-        let height = match being_edited {
-            // A field the height of two comment lines, which is what an edit needs and what the section has room
-            // for. Multiline, because a comment is prose and `Enter` in it has to make a line rather than save.
-            true => {
-                let at = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(area.width(), 48.0));
-                painter.rect(
-                    at,
-                    CornerRadius::same(look.corner_radius as u8),
-                    look.palette.field,
-                    egui::Stroke::new(1.0, look.palette.control_border),
-                    egui::StrokeKind::Inside,
+                text(
+                    &painter,
+                    Pos2::new(area.min.x, pen),
+                    &format!(
+                        "{} · {}",
+                        comment.author.name(),
+                        clock::relative(&comment.created_at, &now)
+                    ),
+                    look.font_size - 2.5,
+                    look.palette.text_faint,
                 );
-                let edit_id = ui.id().with("agent-tasks-comment-edit");
-                let response = ui.put(
-                    crate::components::controls::field_takes_the_whole_rectangle(ui, at, 6.0, edit_id),
-                    egui::TextEdit::multiline(&mut edited)
-                        .id(edit_id)
-                        .frame(egui::Frame::NONE)
-                        .font(egui::FontId::proportional(look.font_size - 1.0))
-                        .text_color(look.palette.text),
-                );
-                if response.changed() {
-                    typed = true;
+                // The two view buttons on the comment's own header row, right aligned, the same pair the description has.
+                // Left of the `Edit` and `Send` buttons a person's own comment carries, which is why they stop short of
+                // the right edge.
+                if let Some(as_markdown) = super::raw_or_rendered(
+                    ui,
+                    look,
+                    Rect::from_min_size(
+                        Pos2::new(area.min.x, pen - look.font_size - 1.0),
+                        Vec2::new(area.width() - 112.0, 16.0),
+                    ),
+                    &format!("comment {}", comment.id),
+                    !raw_comments.contains(&comment.id),
+                ) {
+                    view_change = Some((comment.id, !as_markdown));
                 }
-                48.0
-            }
-            // **Rendered by default.** `task-28`: a comment is read far more often than it is written, and an
-            // agent's comments are markdown with headings, lists and code in them, so the source is the second
-            // view rather than the first. `raw` below is the source, unchanged from what this always drew.
-            false if !raw_comments.contains(&comment.id) => {
-                let colors = crate::components::markdown_text::Colors {
-                    text: look.palette.text_control,
-                    strong: look.palette.text_strong,
-                    code: look.palette.added,
-                    link: look.palette.accent,
-                    quiet: look.palette.text_dim,
-                    rule: look.palette.divider,
+                pen += look.font_size + 1.0;
+                let mine = comment.author == crate::services::agent_tasks::model::Author::Human;
+                let being_edited = editing == Some(comment.id);
+                let height = match being_edited {
+                    // A field the height of two comment lines, which is what an edit needs and what the section has room
+                    // for. Multiline, because a comment is prose and `Enter` in it has to make a line rather than save.
+                    true => {
+                        let at = Rect::from_min_size(
+                            Pos2::new(area.min.x, pen),
+                            Vec2::new(area.width(), 48.0),
+                        );
+                        painter.rect(
+                            at,
+                            CornerRadius::same(look.corner_radius as u8),
+                            look.palette.field,
+                            egui::Stroke::new(1.0, look.palette.control_border),
+                            egui::StrokeKind::Inside,
+                        );
+                        let edit_id = ui.id().with("agent-tasks-comment-edit");
+                        let response = ui.put(
+                            crate::components::controls::field_takes_the_whole_rectangle(
+                                ui, at, 6.0, edit_id,
+                            ),
+                            egui::TextEdit::multiline(&mut edited)
+                                .id(edit_id)
+                                .frame(egui::Frame::NONE)
+                                .font(egui::FontId::proportional(look.font_size - 1.0))
+                                .text_color(look.palette.text),
+                        );
+                        if response.changed() {
+                            typed = true;
+                        }
+                        48.0
+                    }
+                    // **Rendered by default.** `task-28`: a comment is read far more often than it is written, and an
+                    // agent's comments are markdown with headings, lists and code in them, so the source is the second
+                    // view rather than the first. `raw` below is the source, unchanged from what this always drew.
+                    false if !raw_comments.contains(&comment.id) => {
+                        let colors = crate::components::markdown_text::Colors {
+                            text: look.palette.text_control,
+                            strong: look.palette.text_strong,
+                            code: look.palette.added,
+                            link: look.palette.accent,
+                            quiet: look.palette.text_dim,
+                            rule: look.palette.divider,
+                        };
+                        let key = format!("comment-{}", comment.id);
+                        let made = markdown.rendered(
+                            &key,
+                            &comment.body,
+                            look.renderer,
+                            &look.font_family,
+                            look.font_size - 1.0,
+                            colors,
+                            area.width(),
+                            None,
+                        );
+                        // Clipped to sixty points, which is what the source view is clipped to: a very long comment is
+                        // read in the modal's own scrolling list rather than by one block growing without limit.
+                        let height = made.height().min(60.0);
+                        let block = Rect::from_min_size(
+                            Pos2::new(area.min.x, pen),
+                            Vec2::new(area.width(), height),
+                        );
+                        crate::components::markdown_text::show(ui, block, made, look.renderer, 0.0);
+                        height
+                    }
+                    false => {
+                        let galley = painter.layout(
+                            comment.body.clone(),
+                            egui::FontId::proportional(look.font_size - 1.0),
+                            look.palette.text_control,
+                            area.width(),
+                        );
+                        // Clipped to what was drawn rather than laid out for. A three thousand word comment used to paint
+                        // its whole galley while the layout moved on by sixty points, so it drew over everything under it.
+                        let height = galley.size().y.min(60.0);
+                        let block = Rect::from_min_size(
+                            Pos2::new(area.min.x, pen),
+                            Vec2::new(area.width(), height),
+                        );
+                        painter.with_clip_rect(block).galley(
+                            block.min,
+                            galley,
+                            look.palette.text_control,
+                        );
+                        height
+                    }
                 };
-                let key = format!("comment-{}", comment.id);
-                let made = markdown.rendered(
-                    &key,
-                    &comment.body,
-                    look.renderer,
-                    &look.font_family,
-                    look.font_size - 1.0,
-                    colors,
-                    area.width(),
-                    None,
-                );
-                // Clipped to sixty points, which is what the source view is clipped to: a very long comment is
-                // read in the modal's own scrolling list rather than by one block growing without limit.
-                let height = made.height().min(60.0);
-                let block = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(area.width(), height));
-                crate::components::markdown_text::show(ui, block, made, look.renderer, 0.0);
-                height
-            }
-            false => {
-                let galley = painter.layout(
-                    comment.body.clone(),
-                    egui::FontId::proportional(look.font_size - 1.0),
-                    look.palette.text_control,
-                    area.width(),
-                );
-                // Clipped to what was drawn rather than laid out for. A three thousand word comment used to paint
-                // its whole galley while the layout moved on by sixty points, so it drew over everything under it.
-                let height = galley.size().y.min(60.0);
-                let block = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(area.width(), height));
-                painter.with_clip_rect(block).galley(block.min, galley, look.palette.text_control);
-                height
-            }
-        };
-        // A human's own comment can be sent to the agent on its own, which is the browser's `Send to terminal` on
-        // each comment: a comment written before the agent was running still has to be able to reach it. And it
-        // can be changed, which is the browser's `Edit`. Neither is drawn on an agent's comment: what an agent
-        // said is a record, and the store refuses to change one whatever is pressed.
-        if mine {
-            let row = pen - look.font_size - 2.0;
-            match being_edited {
-                // `Save` and `Cancel` in place of the two, because while a comment is being edited those are the
-                // only two things to do with it.
-                true => {
-                    let save_at = Rect::from_min_size(Pos2::new(area.max.x - 106.0, row), Vec2::new(50.0, 18.0));
-                    let cancel_at = Rect::from_min_size(Pos2::new(area.max.x - 52.0, row), Vec2::new(52.0, 18.0));
-                    if ui
-                        .push_id(("agent-tasks-comment-save", comment.id), |ui| {
-                            crate::components::controls::choice_button(ui, save_at, "Save", true)
-                        })
-                        .inner
-                    {
-                        save = true;
-                    }
-                    if ui
-                        .push_id(("agent-tasks-comment-cancel", comment.id), |ui| {
-                            crate::components::controls::choice_button(ui, cancel_at, "Cancel", false)
-                        })
-                        .inner
-                    {
-                        cancel = true;
-                    }
-                }
-                false => {
-                    let edit_at = Rect::from_min_size(Pos2::new(area.max.x - 144.0, row), Vec2::new(40.0, 18.0));
-                    let send_at = Rect::from_min_size(Pos2::new(area.max.x - 100.0, row), Vec2::new(100.0, 18.0));
-                    if ui
-                        .push_id(("agent-tasks-comment-edit", comment.id), |ui| {
-                            crate::components::controls::choice_button_named(
-                                ui,
-                                edit_at,
-                                "Edit",
-                                // Which comment, because a ticket has several and every one of these said
-                                // only `Edit`: a screen reader met four controls with one name between them.
-                                // The author and when it was written, which is what the heading above the comment
-                                // says and what tells two comments by the same author apart. `push_id` makes the
-                                // internal id unique and does nothing for the name a screen reader reads.
-                                &format!(
-                                    "Edit the comment by {} {}",
-                                    comment.author.name(),
-                                    clock::relative(&comment.created_at, &now)
-                                ),
-                                false,
-                            )
-                        })
-                        .inner
-                    {
-                        edit = Some(comment.id);
-                    }
-                    if ui
-                        .push_id(("agent-tasks-resend", comment.id), |ui| {
-                            crate::components::controls::choice_button_named(
-                                ui,
-                                send_at,
-                                "Send to terminal",
-                                &format!(
-                                    "Send the comment by {} {} to the terminal",
-                                    comment.author.name(),
-                                    clock::relative(&comment.created_at, &now)
-                                ),
-                                false,
-                            )
-                        })
-                        .inner
-                    {
-                        resend = Some(comment.body.clone());
+                // A human's own comment can be sent to the agent on its own, which is the browser's `Send to terminal` on
+                // each comment: a comment written before the agent was running still has to be able to reach it. And it
+                // can be changed, which is the browser's `Edit`. Neither is drawn on an agent's comment: what an agent
+                // said is a record, and the store refuses to change one whatever is pressed.
+                if mine {
+                    let row = pen - look.font_size - 2.0;
+                    match being_edited {
+                        // `Save` and `Cancel` in place of the two, because while a comment is being edited those are the
+                        // only two things to do with it.
+                        true => {
+                            let save_at = Rect::from_min_size(
+                                Pos2::new(area.max.x - 106.0, row),
+                                Vec2::new(50.0, 18.0),
+                            );
+                            let cancel_at = Rect::from_min_size(
+                                Pos2::new(area.max.x - 52.0, row),
+                                Vec2::new(52.0, 18.0),
+                            );
+                            if ui
+                                .push_id(("agent-tasks-comment-save", comment.id), |ui| {
+                                    crate::components::controls::choice_button(
+                                        ui, save_at, "Save", true,
+                                    )
+                                })
+                                .inner
+                            {
+                                save = true;
+                            }
+                            if ui
+                                .push_id(("agent-tasks-comment-cancel", comment.id), |ui| {
+                                    crate::components::controls::choice_button(
+                                        ui, cancel_at, "Cancel", false,
+                                    )
+                                })
+                                .inner
+                            {
+                                cancel = true;
+                            }
+                        }
+                        false => {
+                            let edit_at = Rect::from_min_size(
+                                Pos2::new(area.max.x - 144.0, row),
+                                Vec2::new(40.0, 18.0),
+                            );
+                            let send_at = Rect::from_min_size(
+                                Pos2::new(area.max.x - 100.0, row),
+                                Vec2::new(100.0, 18.0),
+                            );
+                            if ui
+                                .push_id(("agent-tasks-comment-edit", comment.id), |ui| {
+                                    crate::components::controls::choice_button_named(
+                                        ui,
+                                        edit_at,
+                                        "Edit",
+                                        // Which comment, because a ticket has several and every one of these said
+                                        // only `Edit`: a screen reader met four controls with one name between them.
+                                        // The author and when it was written, which is what the heading above the comment
+                                        // says and what tells two comments by the same author apart. `push_id` makes the
+                                        // internal id unique and does nothing for the name a screen reader reads.
+                                        &format!(
+                                            "Edit the comment by {} {}",
+                                            comment.author.name(),
+                                            clock::relative(&comment.created_at, &now)
+                                        ),
+                                        false,
+                                    )
+                                })
+                                .inner
+                            {
+                                edit = Some(comment.id);
+                            }
+                            if ui
+                                .push_id(("agent-tasks-resend", comment.id), |ui| {
+                                    crate::components::controls::choice_button_named(
+                                        ui,
+                                        send_at,
+                                        "Send to terminal",
+                                        &format!(
+                                            "Send the comment by {} {} to the terminal",
+                                            comment.author.name(),
+                                            clock::relative(&comment.created_at, &now)
+                                        ),
+                                        false,
+                                    )
+                                })
+                                .inner
+                            {
+                                resend = Some(comment.body.clone());
+                            }
+                        }
                     }
                 }
-            }
-        }
                 pen += height + 8.0;
             }
             // The room the comments really took, so the scroll area knows how far there is to scroll. Without it

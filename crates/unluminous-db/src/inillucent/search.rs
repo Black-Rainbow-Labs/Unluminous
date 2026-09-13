@@ -175,7 +175,9 @@ pub fn is_a_search_declaration(sql: &str) -> bool {
 pub fn kind_of(item: &inillucent_driver::Item, declarations: &Declarations) -> Kind {
     match item.kind {
         inillucent_driver::Kind::Table if declarations.is_search(&item.name) => Kind::Search,
-        inillucent_driver::Kind::Table if declarations.owner_of(&item.name).is_some() => Kind::Shadow,
+        inillucent_driver::Kind::Table if declarations.owner_of(&item.name).is_some() => {
+            Kind::Shadow
+        }
         inillucent_driver::Kind::Table => Kind::Table,
         inillucent_driver::Kind::View => Kind::View,
         inillucent_driver::Kind::Index => Kind::Index,
@@ -200,9 +202,7 @@ pub fn vector_columns(name: &str, declarations: &Declarations, table: &Table) ->
     if declarations.is_search(name) && holds(VECTOR_COLUMN) {
         return vec![VECTOR_COLUMN.to_owned()];
     }
-    let is_content = declarations
-        .owner_of(name)
-        .is_some_and(|_| name.ends_with("_content"));
+    let is_content = declarations.owner_of(name).is_some_and(|_| name.ends_with("_content"));
     match is_content && holds(CONTENT_VECTOR_COLUMN) {
         true => vec![CONTENT_VECTOR_COLUMN.to_owned()],
         false => Vec::new(),
@@ -214,7 +214,10 @@ pub fn vector_columns(name: &str, declarations: &Declarations, table: &Table) ->
 /// @param connection - the open connection
 /// @param name - the search table
 pub fn read_config(connection: &Connection<'_>, name: &str) -> Answer<SearchIndex> {
-    let statement = format!("select k, v from {}", inillucent_driver::introspect::quoted(&format!("{name}_config")));
+    let statement = format!(
+        "select k, v from {}",
+        inillucent_driver::introspect::quoted(&format!("{name}_config"))
+    );
     let answered = connection.query(&statement, &[], usize::MAX).map_err(super::said)?;
     let mut index = SearchIndex { table: name.to_owned(), ..SearchIndex::default() };
     for row in &answered.rows {
@@ -256,11 +259,8 @@ pub fn read_config(connection: &Connection<'_>, name: &str) -> Answer<SearchInde
 /// @param index - what it declared
 pub fn search_statement(name: &str, index: &SearchIndex) -> String {
     let quoted = crate::catalog::quoted(name, '"');
-    let columns: Vec<String> = index
-        .columns
-        .iter()
-        .map(|column| crate::catalog::quoted(column, '"'))
-        .collect();
+    let columns: Vec<String> =
+        index.columns.iter().map(|column| crate::catalog::quoted(column, '"')).collect();
     let selected = match columns.is_empty() {
         true => "*".to_owned(),
         false => columns.join(", "),
@@ -397,7 +397,10 @@ mod tests {
         };
         let statement = search_statement("docs", &index);
         assert!(statement.contains("\"docs\" match 'your query here'"), "{statement}");
-        assert!(statement.contains("and k = 10"), "k is the retrieval depth and is shown: {statement}");
+        assert!(
+            statement.contains("and k = 10"),
+            "k is the retrieval depth and is shown: {statement}"
+        );
         assert!(statement.contains("order by rank"), "{statement}");
         assert!(statement.contains("\"title\", \"body\""), "{statement}");
     }

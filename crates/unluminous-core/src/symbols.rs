@@ -236,7 +236,9 @@ impl FileSymbols {
             // The keyword and the name have to be next to each other. See the note above.
             let adjacent = |after: usize| {
                 after <= range.start
-                    && text[after..range.start].chars().all(|letter| letter == ' ' || letter == '\t')
+                    && text[after..range.start]
+                        .chars()
+                        .all(|letter| letter == ' ' || letter == '\t')
             };
             // The export keyword reaches its declaration along **one line**, over whatever is
             // written between them: `export default function`, `pub(crate) fn`. A line break is
@@ -438,11 +440,8 @@ impl FileSymbols {
     /// Sorted so that a caller can say two files hold the same words by comparing the lists, and so
     /// that the order a stem is scored in is the file's spelling rather than its layout.
     pub fn distinct_words(&self, text: &str) -> Vec<String> {
-        let mut spellings: Vec<&str> = self
-            .words
-            .iter()
-            .filter_map(|word| text.get(word.clone()))
-            .collect();
+        let mut spellings: Vec<&str> =
+            self.words.iter().filter_map(|word| text.get(word.clone())).collect();
         spellings.sort_unstable();
         spellings.dedup();
         spellings.into_iter().map(str::to_owned).collect()
@@ -497,7 +496,6 @@ fn is_whole_word(text: &str, start: usize, end: usize, grammar: &Grammar) -> boo
     bounded(text[..start].chars().next_back()) && bounded(text[end..].chars().next())
 }
 
-
 /// Whether a word directly before `(` is a method being declared rather than one being called.
 ///
 /// The one heuristic in the module, and it exists for the definition Rust never hides but
@@ -541,7 +539,6 @@ fn is_brace_definition(text: &str, name: &Range<usize>) -> bool {
     // line is a style this rule deliberately does not read, for the same reason as the parameters.
     text[at + 1..].trim_start_matches([' ', '\t']).starts_with('{')
 }
-
 
 /// Everything ranking needs to know about one candidate definition, with no idea what a file is.
 ///
@@ -677,7 +674,8 @@ pub fn check_name(name: &str, grammar: &Grammar) -> Result<(), String> {
         }
     }
     if grammar.keywords.iter().any(|keyword| keyword == name) {
-        let language = if grammar.language.is_empty() { "reserved" } else { grammar.language.as_str() };
+        let language =
+            if grammar.language.is_empty() { "reserved" } else { grammar.language.as_str() };
         return Err(format!("'{name}' is a {language} keyword."));
     }
     Ok(())
@@ -773,10 +771,7 @@ mod tests {
         // their declaration along one line, over words and brackets.
         let mut typescript = typescript();
         typescript.export_keyword = Some("export".to_owned());
-        assert_eq!(
-            exports("export default class Foo {}\n", &typescript),
-            vec!["Foo".to_owned()]
-        );
+        assert_eq!(exports("export default class Foo {}\n", &typescript), vec!["Foo".to_owned()]);
         let mut rust = rust();
         rust.export_keyword = Some("pub".to_owned());
         let source = "pub(crate) fn draw() {}\nfn hidden() {}\npub struct Layout;\n";
@@ -1158,12 +1153,9 @@ mod tests {
     fn which_kinds_rename_the_whole_project_by_default() {
         // The table in the TDD's §6.1: a variable is scoped to its own file, everything else is not.
         assert!(!SymbolKind::Variable.renames_the_project());
-        for kind in [
-            SymbolKind::Function,
-            SymbolKind::Type,
-            SymbolKind::Constant,
-            SymbolKind::Module,
-        ] {
+        for kind in
+            [SymbolKind::Function, SymbolKind::Type, SymbolKind::Constant, SymbolKind::Module]
+        {
             assert!(kind.renames_the_project(), "{kind:?}");
         }
     }
@@ -1269,7 +1261,10 @@ mod tests {
     fn reading_the_same_source_twice_gives_an_identical_answer() {
         for (text, grammar) in fixtures() {
             assert_eq!(file_definitions(&text, &grammar), file_definitions(&text, &grammar));
-            assert_eq!(occurrences(&text, "value", &grammar), occurrences(&text, "value", &grammar));
+            assert_eq!(
+                occurrences(&text, "value", &grammar),
+                occurrences(&text, "value", &grammar)
+            );
             assert_eq!(occurrences(&text, "draw", &grammar), occurrences(&text, "draw", &grammar));
         }
     }
@@ -1292,10 +1287,7 @@ mod tests {
                 }
                 expected.push_str(&text[at..]);
                 assert_eq!(after, expected, "renaming {name} in {text:?}");
-                assert_eq!(
-                    after.len(),
-                    text.len() + ranges.len() * ("renamed".len() - name.len())
-                );
+                assert_eq!(after.len(), text.len() + ranges.len() * ("renamed".len() - name.len()));
             }
         }
     }

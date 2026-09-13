@@ -326,7 +326,8 @@ fn class(pattern: &[u8], byte: u8) -> Option<(usize, bool)> {
         }
         first = false;
         // `a-z`, when there is a `-` with something after it that is not the closing bracket.
-        if pattern.get(at + 1) == Some(&b'-') && pattern.get(at + 2).is_some_and(|next| *next != b']')
+        if pattern.get(at + 1) == Some(&b'-')
+            && pattern.get(at + 2).is_some_and(|next| *next != b']')
         {
             if byte >= pattern[at] && byte <= pattern[at + 2] {
                 found = true;

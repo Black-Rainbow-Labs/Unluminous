@@ -34,10 +34,29 @@ pub struct Line {
 
 #[derive(Debug, Clone)]
 pub enum What {
-    Source { name: String, where_it_points: String, connected: bool, open: bool, busy: bool },
-    Problem { source: String, said: String },
-    Schema { source: String, name: String, open: bool },
-    Folder { source: String, schema: String, name: String, count: usize, open: bool },
+    Source {
+        name: String,
+        where_it_points: String,
+        connected: bool,
+        open: bool,
+        busy: bool,
+    },
+    Problem {
+        source: String,
+        said: String,
+    },
+    Schema {
+        source: String,
+        name: String,
+        open: bool,
+    },
+    Folder {
+        source: String,
+        schema: String,
+        name: String,
+        count: usize,
+        open: bool,
+    },
     Item {
         source: String,
         schema: String,
@@ -51,9 +70,16 @@ pub enum What {
         /// wants it in front of them rather than one press away.
         declared: String,
     },
-    Column { name: String, type_name: String, in_key: bool, not_null: bool },
+    Column {
+        name: String,
+        type_name: String,
+        in_key: bool,
+        not_null: bool,
+    },
     /// A schema that has been opened and has nothing in it, which is different from one still loading.
-    Empty { said: String },
+    Empty {
+        said: String,
+    },
 }
 
 /// Every row the tree would draw, in order.
@@ -87,7 +113,11 @@ pub fn lines(explorer: &DatabaseExplorer) -> Vec<Line> {
             let schema_open = loaded.open_schemas.contains(schema);
             out.push(Line {
                 depth: 1,
-                what: What::Schema { source: source.name.clone(), name: schema.clone(), open: schema_open },
+                what: What::Schema {
+                    source: source.name.clone(),
+                    name: schema.clone(),
+                    open: schema_open,
+                },
             });
             if !schema_open {
                 continue;
@@ -173,14 +203,21 @@ fn folders(
                         not_null: column.not_null,
                     },
                 })),
-                None => out.push(Line { depth: 4, what: What::Empty { said: "reading…".to_owned() } }),
+                None => {
+                    out.push(Line { depth: 4, what: What::Empty { said: "reading…".to_owned() } })
+                }
             }
         }
     }
 }
 
 /// Draw the pane.
-pub fn show(explorer: &mut DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
+pub fn show(
+    explorer: &mut DatabaseExplorer,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    area: Rect,
+) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
     let panel = area.shrink(PAD * scale);
@@ -188,16 +225,24 @@ pub fn show(explorer: &mut DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>,
 
     let inner = panel.shrink(PAD * scale);
     let mut pen = inner.top();
-    let bar = Rect::from_min_size(Pos2::new(inner.left(), pen), Vec2::new(inner.width(), TOOLBAR * scale));
+    let bar = Rect::from_min_size(
+        Pos2::new(inner.left(), pen),
+        Vec2::new(inner.width(), TOOLBAR * scale),
+    );
     acts.extend(toolbar(explorer, ui, look, bar));
     pen = bar.bottom() + 4.0 * scale;
 
-    let field = Rect::from_min_size(
-        Pos2::new(inner.left(), pen),
-        Vec2::new(inner.width(), 24.0 * scale),
-    );
+    let field =
+        Rect::from_min_size(Pos2::new(inner.left(), pen), Vec2::new(inner.width(), 24.0 * scale));
     well(ui, look, field, 6.0 * scale);
-    crate::components::controls::search_field_over(ui, field, "Filter database objects", "Filter", &mut explorer.filter, false);
+    crate::components::controls::search_field_over(
+        ui,
+        field,
+        "Filter database objects",
+        "Filter",
+        &mut explorer.filter,
+        false,
+    );
     pen = field.bottom() + 6.0 * scale;
 
     let rows = Rect::from_min_max(Pos2::new(inner.left(), pen), inner.max);
@@ -233,30 +278,64 @@ fn toolbar(explorer: &DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>, bar:
         .map(|chosen| chosen.source.clone())
         .unwrap_or_else(|| explorer.configuration.chosen.clone());
 
-    if crate::components::controls::icon_button(ui, along(bar, &mut at, step), "New data source", icon::plus) {
+    if crate::components::controls::icon_button(
+        ui,
+        along(bar, &mut at, step),
+        "New data source",
+        icon::plus,
+    ) {
         acts.push(Act::NewSource);
     }
     if !chosen_source.is_empty()
-        && crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Refresh", icon::rerun)
+        && crate::components::controls::icon_button(
+            ui,
+            along(bar, &mut at, step),
+            "Refresh",
+            icon::rerun,
+        )
     {
         acts.push(Act::Refresh(chosen_source.clone()));
     }
     // Absent while nothing is connected: a control that cannot apply is not drawn.
     if explorer.is_connected(&chosen_source)
-        && crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Disconnect", icon::stop)
+        && crate::components::controls::icon_button(
+            ui,
+            along(bar, &mut at, step),
+            "Disconnect",
+            icon::stop,
+        )
     {
         acts.push(Act::Disconnect(chosen_source.clone()));
     }
     if !chosen_source.is_empty()
-        && crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Open console", icon::run)
+        && crate::components::controls::icon_button(
+            ui,
+            along(bar, &mut at, step),
+            "Open console",
+            icon::run,
+        )
     {
         acts.push(Act::OpenConsole(chosen_source.clone()));
     }
     if let Some(chosen) = chosen.filter(|chosen| !chosen.name.is_empty()) {
-        if crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Edit data", icon::table) {
-            acts.push(Act::OpenTable(chosen.source.clone(), chosen.schema.clone(), chosen.name.clone()));
+        if crate::components::controls::icon_button(
+            ui,
+            along(bar, &mut at, step),
+            "Edit data",
+            icon::table,
+        ) {
+            acts.push(Act::OpenTable(
+                chosen.source.clone(),
+                chosen.schema.clone(),
+                chosen.name.clone(),
+            ));
         }
-        if crate::components::controls::icon_button(ui, along(bar, &mut at, step), "Show DDL", icon::copy) {
+        if crate::components::controls::icon_button(
+            ui,
+            along(bar, &mut at, step),
+            "Show DDL",
+            icon::copy,
+        ) {
             acts.push(Act::Ddl(chosen.source, chosen.schema, chosen.name));
         }
     }
@@ -264,7 +343,12 @@ fn toolbar(explorer: &DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>, bar:
 }
 
 /// The rows themselves, in a scrolling area, drawing only what is on the screen.
-fn the_rows(explorer: &mut DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
+fn the_rows(
+    explorer: &mut DatabaseExplorer,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    area: Rect,
+) -> Vec<Act> {
     let scale = look.scale();
     let row_height = look.row_height;
     let lines = lines(explorer);
@@ -281,7 +365,8 @@ fn the_rows(explorer: &mut DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>,
         let mut acts = Vec::new();
         for index in range {
             let Some(line) = lines.get(index) else { continue };
-            let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), row_height), Sense::hover());
+            let (rect, _) =
+                ui.allocate_exact_size(Vec2::new(ui.available_width(), row_height), Sense::hover());
             acts.extend(one(explorer, ui, look, rect, line, index, scale));
         }
         acts
@@ -318,7 +403,13 @@ fn one(
 
     // The disclosure, for a row that has anything under it.
     if let Some(open) = opens(line) {
-        icon::disclosure_at(painter, Pos2::new(at + 5.0 * scale, middle), open, color::text_dim(), scale);
+        icon::disclosure_at(
+            painter,
+            Pos2::new(at + 5.0 * scale, middle),
+            open,
+            color::text_dim(),
+            scale,
+        );
     }
     at += 14.0 * scale;
     if let Some(draw) = mark(line) {
@@ -326,12 +417,26 @@ fn one(
         at += 16.0 * scale;
     }
     let room = rect.right() - at - 8.0 * scale;
-    let drawn = text(painter, Pos2::new(at, middle), &name, tint(line), look.font_size * 0.85, room);
-    after(painter, line, Pos2::new(at + drawn + 8.0 * scale, middle), look, rect.right() - 8.0 * scale, scale);
+    let drawn =
+        text(painter, Pos2::new(at, middle), &name, tint(line), look.font_size * 0.85, room);
+    after(
+        painter,
+        line,
+        Pos2::new(at + drawn + 8.0 * scale, middle),
+        look,
+        rect.right() - 8.0 * scale,
+        scale,
+    );
     if let What::Source { busy: true, .. } = &line.what {
-        waiting(painter, Pos2::new(rect.right() - 16.0 * scale, middle), color::accent(), ui.input(|input| input.time));
+        waiting(
+            painter,
+            Pos2::new(rect.right() - 16.0 * scale, middle),
+            color::accent(),
+            ui.input(|input| input.time),
+        );
     }
-    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, &name));
+    response
+        .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, &name));
 
     if response.clicked() {
         acts.extend(clicked(line));
@@ -535,7 +640,9 @@ fn after(painter: &egui::Painter, line: &Line, at: Pos2, look: &Look<'_>, right:
 
 fn opens(line: &Line) -> Option<bool> {
     match &line.what {
-        What::Source { open, .. } | What::Schema { open, .. } | What::Folder { open, .. } => Some(*open),
+        What::Source { open, .. } | What::Schema { open, .. } | What::Folder { open, .. } => {
+            Some(*open)
+        }
         What::Item { open, kind, .. } => kind.holds_rows().then_some(*open),
         _ => None,
     }
@@ -574,7 +681,9 @@ fn tint(line: &Line) -> egui::Color32 {
 fn is_chosen(explorer: &DatabaseExplorer, line: &Line) -> bool {
     let Some(chosen) = &explorer.chosen else { return false };
     match &line.what {
-        What::Source { name, .. } => chosen.source == *name && chosen.name.is_empty() && chosen.schema.is_empty(),
+        What::Source { name, .. } => {
+            chosen.source == *name && chosen.name.is_empty() && chosen.schema.is_empty()
+        }
         What::Schema { source, name, .. } => {
             chosen.source == *source && chosen.schema == *name && chosen.name.is_empty()
         }

@@ -70,9 +70,13 @@ pub fn find(root: &Path, files: &[PathBuf], query: &str, limit: usize) -> Vec<Fo
         // whose name matches is never ranked by a coincidence in the folders above it.
         let relative = if folder.is_empty() { name.clone() } else { format!("{folder}/{name}") };
         match score(&name, &needle) {
-            Some((score, hits)) => {
-                found.push(Found { path: path.clone(), name, folder, score: score + NAME_BONUS, hits })
-            }
+            Some((score, hits)) => found.push(Found {
+                path: path.clone(),
+                name,
+                folder,
+                score: score + NAME_BONUS,
+                hits,
+            }),
             None => {
                 if let Some((score, _)) = score(&relative, &needle) {
                     found.push(Found { path: path.clone(), name, folder, score, hits: Vec::new() });
@@ -188,7 +192,11 @@ mod tests {
     fn letters_are_matched_in_order_rather_than_as_a_substring() {
         let files = paths(&["markdown.rs", "notes.txt"]);
         let found = find(Path::new("/project"), &files, "mdrs", 10);
-        assert_eq!(names(&found), vec!["markdown.rs"], "m-d-rs are all in markdown.rs, in that order");
+        assert_eq!(
+            names(&found),
+            vec!["markdown.rs"],
+            "m-d-rs are all in markdown.rs, in that order"
+        );
     }
 
     #[test]
@@ -223,7 +231,8 @@ mod tests {
 
     #[test]
     fn a_file_in_a_folder_says_which_folder_it_is_in() {
-        let files = vec![PathBuf::from("/project/chapters/one.md"), PathBuf::from("/project/two.md")];
+        let files =
+            vec![PathBuf::from("/project/chapters/one.md"), PathBuf::from("/project/two.md")];
         let found = find(Path::new("/project"), &files, "", 10);
         assert_eq!(found[0].folder, "chapters");
         assert_eq!(found[1].folder, "", "a file in the project's own folder has no folder to name");

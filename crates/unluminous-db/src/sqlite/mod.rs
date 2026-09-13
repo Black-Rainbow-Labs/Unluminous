@@ -105,15 +105,16 @@ impl Session {
         let described: Vec<(String, String)> = prepared
             .columns()
             .iter()
-            .map(|column| (column.name().to_owned(), column.decl_type().unwrap_or_default().to_owned()))
+            .map(|column| {
+                (column.name().to_owned(), column.decl_type().unwrap_or_default().to_owned())
+            })
             .collect();
         let bound: Vec<rusqlite::types::Value> = values.iter().map(to_sqlite).collect();
         let mut out = Rows::default();
         if count == 0 {
             // A statement that returns nothing: `execute` is what reports how many rows it changed.
-            let affected = prepared
-                .execute(rusqlite::params_from_iter(bound.iter()))
-                .map_err(said)?;
+            let affected =
+                prepared.execute(rusqlite::params_from_iter(bound.iter())).map_err(said)?;
             out.affected = Some(affected as u64);
             out.tag = format!("{affected} rows");
             out.elapsed = started.elapsed();
@@ -207,7 +208,9 @@ impl Session {
             usize::MAX,
         )?;
         if rows.rows.is_empty() {
-            return Err(Failure::said(format!("`{name}` has no columns, or is not there any more.")));
+            return Err(Failure::said(format!(
+                "`{name}` has no columns, or is not there any more."
+            )));
         }
         let mut table = Table { schema: String::new(), name: name.to_owned(), ..Table::default() };
         let mut key: Vec<(i64, String)> = Vec::new();
@@ -215,7 +218,8 @@ impl Session {
             let column_name = row.get(1).and_then(Value::text).unwrap_or_default().to_owned();
             let declared = row.get(2).and_then(Value::text).unwrap_or_default().to_owned();
             let not_null = row.get(3).and_then(Value::text) == Some("1");
-            let at: i64 = row.get(5).and_then(Value::text).and_then(|at| at.parse().ok()).unwrap_or(0);
+            let at: i64 =
+                row.get(5).and_then(Value::text).and_then(|at| at.parse().ok()).unwrap_or(0);
             let mut column = Column::new(&column_name, declared);
             column.not_null = not_null;
             column.in_key = at > 0;
@@ -252,10 +256,8 @@ impl Session {
     fn an_unshadowed_rowid(&mut self, name: &str, table: &Table) -> Answer<Option<String>> {
         for alias in ROWID_ALIASES {
             // SQLite identifiers are case-insensitive, so a column called `ROWID` shadows `rowid`.
-            let shadowed = table
-                .columns
-                .iter()
-                .any(|column| column.name.eq_ignore_ascii_case(alias));
+            let shadowed =
+                table.columns.iter().any(|column| column.name.eq_ignore_ascii_case(alias));
             if shadowed {
                 continue;
             }
@@ -334,7 +336,8 @@ mod tests {
     /// Each test names its own file, which is `git_folder(name)`'s rule in the screenshot tests: a
     /// fixture only one test uses may be written each time, and the name is what keeps them apart.
     fn a_database(name: &str) -> PathBuf {
-        let folder = std::env::temp_dir().join(format!("unluminous-db-{}-{name}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-db-{}-{name}", std::process::id()));
         let _ = std::fs::create_dir_all(&folder);
         let file = folder.join("test.db");
         let _ = std::fs::remove_file(&file);
@@ -381,7 +384,8 @@ mod tests {
         // statement means that column — which need not be unique. Taking it as the key would produce
         // an `UPDATE … WHERE "rowid" = ?` matching two rows, which is the one thing the editing rule
         // exists to prevent.
-        let folder = std::env::temp_dir().join(format!("unluminous-db-shadow-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-db-shadow-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&folder);
         let file = folder.join("shadow.db");
         let _ = std::fs::remove_file(&file);
@@ -431,7 +435,8 @@ mod tests {
     fn null_and_the_empty_string_survive_the_round_trip() {
         // The fault a grid that draws both as nothing would hide, checked at the engine boundary.
         let mut session = Session::open(&a_database("nulls"), false).expect("opened");
-        let rows = session.run("select note from member order by id", &[], usize::MAX).expect("rows");
+        let rows =
+            session.run("select note from member order by id", &[], usize::MAX).expect("rows");
         assert_eq!(rows.rows[0][0], Value::Null);
         assert_eq!(rows.rows[1][0], Value::Text(String::new()));
     }
@@ -442,7 +447,11 @@ mod tests {
         let mut session = Session::open(&a_database("awkward"), false).expect("opened");
         let awkward = "it's \"quoted\";\nand C:\\dev\\ -- not a comment";
         session
-            .run("insert into member (id, name) values (?1, ?2)", &[Value::typed("9"), Value::typed(awkward)], 0)
+            .run(
+                "insert into member (id, name) values (?1, ?2)",
+                &[Value::typed("9"), Value::typed(awkward)],
+                0,
+            )
             .expect("inserted");
         let rows = session
             .run("select name from member where id = ?1", &[Value::typed("9")], usize::MAX)
@@ -466,9 +475,15 @@ mod tests {
         let file = a_database("transaction");
         let mut session = Session::open(&file, false).expect("opened");
         let work = vec![
-            ("insert into member (id, name) values (?1, ?2)".to_owned(), vec![Value::typed("3"), Value::typed("Grace")]),
+            (
+                "insert into member (id, name) values (?1, ?2)".to_owned(),
+                vec![Value::typed("3"), Value::typed("Grace")],
+            ),
             // The second one breaks the NOT NULL, so the first must not survive either.
-            ("insert into member (id, name) values (?1, ?2)".to_owned(), vec![Value::typed("4"), Value::Null]),
+            (
+                "insert into member (id, name) values (?1, ?2)".to_owned(),
+                vec![Value::typed("4"), Value::Null],
+            ),
         ];
         assert!(session.in_one_transaction(&work, |_| Ok(())).is_err());
         let rows = session.run("select count(*) from member", &[], usize::MAX).expect("rows");

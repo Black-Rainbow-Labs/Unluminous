@@ -148,11 +148,8 @@ pub fn parse(words: &[String]) -> Result<Typed, Problem> {
         // ..` reads the switch and then sends `cd ..`, while `terminal send git log --oneline`
         // sends the whole shell command. A shell command that itself begins with a dash is reached
         // by putting `--` in front of it.
-        let taking_rest = command
-            .arguments
-            .get(filled)
-            .map(|argument| argument.rest)
-            .unwrap_or(false);
+        let taking_rest =
+            command.arguments.get(filled).map(|argument| argument.rest).unwrap_or(false);
         if !only_values && word.starts_with("--") {
             // The command's own flags are looked at first, so that `terminal read --timeout` is the
             // one that command documents rather than the CLI's own. The two are only ever the same
@@ -170,7 +167,10 @@ pub fn parse(words: &[String]) -> Result<Typed, Problem> {
                 // worth saying so about.
                 if !taking_rest {
                     return Err(Problem::about(
-                        format!("{command} has no flag called --{name}.", command = command.typed()),
+                        format!(
+                            "{command} has no flag called --{name}.",
+                            command = command.typed()
+                        ),
                         command,
                     ));
                 }

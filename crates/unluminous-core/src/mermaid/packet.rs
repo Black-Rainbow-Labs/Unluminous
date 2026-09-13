@@ -67,14 +67,18 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
         let range = range.trim();
         let (from, to) = if let Some(count) = range.strip_prefix('+') {
             let Ok(count) = count.trim().parse::<usize>() else {
-                return Err(Problem::at(line, format!("`+{}` is not a number of bits", count.trim())));
+                return Err(Problem::at(
+                    line,
+                    format!("`+{}` is not a number of bits", count.trim()),
+                ));
             };
             if count == 0 {
                 return Err(Problem::at(line, "a field of no bits has nothing to draw"));
             }
             (next, next + count - 1)
         } else if let Some((first, last)) = range.split_once('-') {
-            let (Ok(first), Ok(last)) = (first.trim().parse::<usize>(), last.trim().parse::<usize>())
+            let (Ok(first), Ok(last)) =
+                (first.trim().parse::<usize>(), last.trim().parse::<usize>())
             else {
                 return Err(Problem::at(line, format!("`{range}` is not a range of bits")));
             };
@@ -117,12 +121,7 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
 
     draw_numbers(&mut scene, rows, grid_top, options);
     draw_fields(&mut scene, diagram, grid_top, options);
-    scene.claim(Rect::new(
-        0.0,
-        0.0,
-        width,
-        grid_top + (ROW + NUMBERS) * rows as f32,
-    ));
+    scene.claim(Rect::new(0.0, 0.0, width, grid_top + (ROW + NUMBERS) * rows as f32));
     parts::finish(&mut scene);
     scene
 }
@@ -210,7 +209,11 @@ mod tests {
         let diagram = diagram("packet-beta\n +1: \"a\"\n +8: \"b\"\n 9-15: \"c\"\n +4: \"d\"\n");
         let ranges: Vec<(usize, usize)> =
             diagram.fields.iter().map(|field| (field.from, field.to)).collect();
-        assert_eq!(ranges, vec![(0, 0), (1, 8), (9, 15), (16, 19)], "and mixes with the other form");
+        assert_eq!(
+            ranges,
+            vec![(0, 0), (1, 8), (9, 15), (16, 19)],
+            "and mixes with the other form"
+        );
     }
 
     #[test]
@@ -235,7 +238,11 @@ mod tests {
     #[test]
     fn a_field_that_crosses_a_row_becomes_one_rectangle_a_row() {
         // Bits 24 to 39 straddle the boundary at 32.
-        let scene = check::drawn("packet-beta\n 0-23: \"Head\"\n 24-39: \"Straddles\"\n", &options(), &["Head"]);
+        let scene = check::drawn(
+            "packet-beta\n 0-23: \"Head\"\n 24-39: \"Straddles\"\n",
+            &options(),
+            &["Head"],
+        );
         let rects = scene.rects();
         assert_eq!(rects.len(), 3, "one for Head and two for the field that straddles");
         assert!(rects[1].bottom() <= rects[2].top() + 0.01, "the second piece is on the row below");
@@ -247,11 +254,7 @@ mod tests {
             0-15: \"Source Port\"\n 16-31: \"Destination Port\"\n\
             32-63: \"Sequence Number\"\n 64-95: \"Acknowledgment Number\"\n\
             96-99: \"Data Offset\"\n 100-105: \"Reserved\"\n 106: \"URG\"\n 107: \"ACK\"\n";
-        check::drawn(
-            text,
-            &options(),
-            &["TCP", "Source Port", "Sequence Number", "URG", "ACK"],
-        );
+        check::drawn(text, &options(), &["TCP", "Source Port", "Sequence Number", "URG", "ACK"]);
     }
 
     #[test]

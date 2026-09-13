@@ -113,16 +113,14 @@ pub fn resolve(folder: Option<&Path>, source: &str) -> Option<PathBuf> {
     }
     // Nothing with a scheme is read. `://` catches `https://`, and the bare `data:` and `mailto:`
     // forms are caught by the colon before any separator.
-    if source.contains("://") || source.split_once(':').is_some_and(|(head, _)| looks_like_scheme(head)) {
+    if source.contains("://")
+        || source.split_once(':').is_some_and(|(head, _)| looks_like_scheme(head))
+    {
         return None;
     }
     let decoded = source.replace("%20", " ");
     let path = Path::new(&decoded);
-    let path = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        folder?.join(path)
-    };
+    let path = if path.is_absolute() { path.to_path_buf() } else { folder?.join(path) };
     path.is_file().then_some(path)
 }
 
@@ -172,7 +170,10 @@ mod tests {
     #[test]
     fn angle_brackets_round_the_path_are_not_part_of_the_path() {
         let folder = folder();
-        assert_eq!(resolve(Some(&folder), "<pictures/one.png>"), Some(folder.join("pictures/one.png")));
+        assert_eq!(
+            resolve(Some(&folder), "<pictures/one.png>"),
+            Some(folder.join("pictures/one.png"))
+        );
     }
 
     #[test]

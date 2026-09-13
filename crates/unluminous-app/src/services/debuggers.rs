@@ -288,12 +288,7 @@ pub fn find(name: &str) -> Option<&'static Debugger> {
 pub enum Refusal {
     /// No adapter of that name is on this machine. `install` is the command that would get one,
     /// empty when this version of Unluminous does not know the adapter at all and so cannot say.
-    NotInstalled {
-        name: String,
-        looked_for: Vec<String>,
-        comes_from: String,
-        install: String,
-    },
+    NotInstalled { name: String, looked_for: Vec<String>, comes_from: String, install: String },
     /// The configuration runs a build tool rather than a program, so debugging it would debug the
     /// build tool.
     BuildTool { program: String, advice: String },
@@ -311,10 +306,8 @@ impl Refusal {
             // The install command is the half `task-1692` added: naming what was looked for without
             // saying where to get it is what makes a person go and find out for themselves.
             Refusal::NotInstalled { name, looked_for, comes_from, install } => {
-                let said = format!(
-                    "Debugging with {name} needs {}. {comes_from}.",
-                    either(looked_for)
-                );
+                let said =
+                    format!("Debugging with {name} needs {}. {comes_from}.", either(looked_for));
                 match install.is_empty() {
                     true => said,
                     false => format!("{said} Install it with: {install}"),
@@ -570,8 +563,10 @@ fn codelldb() -> Option<PathBuf> {
 /// the choice `tools/get-debug-adapter.ps1` already made, read here rather than restated.
 pub fn unluminous_adapters() -> Option<PathBuf> {
     match cfg!(windows) {
-        true => std::env::var_os("LOCALAPPDATA").map(|local| PathBuf::from(local).join("Unluminous").join("adapters")),
-        false => home_folder().map(|home| home.join(".local").join("share").join("unluminous").join("adapters")),
+        true => std::env::var_os("LOCALAPPDATA")
+            .map(|local| PathBuf::from(local).join("Unluminous").join("adapters")),
+        false => home_folder()
+            .map(|home| home.join(".local").join("share").join("unluminous").join("adapters")),
     }
 }
 
@@ -584,7 +579,10 @@ fn lldb_dap() -> Option<PathBuf> {
             folders.push(PathBuf::from(local).join(r"Programs\LLVM\bin"));
         }
         // Visual Studio's own LLVM, which is two globbed segments down: the year and the edition.
-        for root in [r"C:\Program Files\Microsoft Visual Studio", r"C:\Program Files (x86)\Microsoft Visual Studio"] {
+        for root in [
+            r"C:\Program Files\Microsoft Visual Studio",
+            r"C:\Program Files (x86)\Microsoft Visual Studio",
+        ] {
             for year in children(Path::new(root)) {
                 for edition in children(&year) {
                     folders.push(edition.join(r"VC\Tools\Llvm\x64\bin"));
@@ -616,7 +614,8 @@ fn lldb_dap() -> Option<PathBuf> {
     // the one to prefer — hence the descending walk rather than a fixed list.
     if !cfg!(windows) {
         for folder in &folders {
-            if let Some(versioned) = newest_child(folder, "lldb-dap-").filter(|path| path.is_file()) {
+            if let Some(versioned) = newest_child(folder, "lldb-dap-").filter(|path| path.is_file())
+            {
                 return Some(versioned);
             }
         }
@@ -695,7 +694,8 @@ fn newest_child(folder: &Path, prefix: &str) -> Option<PathBuf> {
             let rest = name.strip_prefix(prefix)?;
             // `ms-vscode.js-debug-` is a prefix of `ms-vscode.js-debug-nightly-1.2.3`, and a
             // nightly is not a version of the stable extension. A version begins with a digit.
-            rest.starts_with(|first: char| first.is_ascii_digit()).then(|| (version_key(rest), path))
+            rest.starts_with(|first: char| first.is_ascii_digit())
+                .then(|| (version_key(rest), path))
         })
         .collect();
     matched.sort_by(|left, right| left.0.cmp(&right.0));
@@ -759,10 +759,7 @@ fn either(names: &[String]) -> String {
 /// Here rather than in the window so that running a file and debugging it split the template the
 /// same way — `run_configurations::split_command`'s rules, one reading.
 pub fn command_for_file(template: &str, path: &Path) -> String {
-    template.replace(
-        crate::services::run_configurations::FILE_PLACEHOLDER,
-        &path.to_string_lossy(),
-    )
+    template.replace(crate::services::run_configurations::FILE_PLACEHOLDER, &path.to_string_lossy())
 }
 
 /// Which debugger a command line wants, read from the command line itself.
@@ -786,8 +783,10 @@ pub fn adapter_for(program: &str) -> Option<&'static str> {
         }
         _ => {}
     }
-    let extension =
-        path.extension().map(|extension| extension.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let extension = path
+        .extension()
+        .map(|extension| extension.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
     match extension.as_str() {
         "js" | "mjs" | "cjs" | "ts" | "tsx" | "mts" | "cts" => Some("node"),
         "exe" => Some("lldb"),
@@ -837,7 +836,9 @@ pub fn can_debug(name: &str, command: &str) -> bool {
     match name {
         // A native debugger needs the built binary rather than the tool that builds it — unless a
         // locator can ask the tool which binary that is, which is what makes `cargo run` debuggable.
-        "lldb" => build_tool(&program).is_none() || crate::services::locators::locate(command).is_some(),
+        "lldb" => {
+            build_tool(&program).is_none() || crate::services::locators::locate(command).is_some()
+        }
         // js-debug runs the command through its own runtime, so a build tool is an ordinary thing
         // for it to be pointed at: `npx tsx server.ts` is exactly what it is for.
         _ => true,
@@ -940,14 +941,18 @@ mod tests {
     #[test]
     fn every_entry_says_where_it_comes_from() {
         for entry in ALL {
-            assert!(!entry.comes_from.is_empty(), "{} has no second half to its refusal", entry.name);
+            assert!(
+                !entry.comes_from.is_empty(),
+                "{} has no second half to its refusal",
+                entry.name
+            );
             assert!(!entry.programs.is_empty(), "{} looks for nothing", entry.name);
             // And the third half, which is `task-1692`: a refusal that does not say how to get one
             // is what sends a person off to find out for themselves. Either a package manager on
             // every platform, or an extension — `node` has only the second, because js-debug
             // publishes no standalone installer at all.
-            let by_hand =
-                [entry.install.windows, entry.install.macos, entry.install.linux].map(str::is_empty);
+            let by_hand = [entry.install.windows, entry.install.macos, entry.install.linux]
+                .map(str::is_empty);
             assert!(
                 !entry.extension.is_empty() || by_hand.iter().all(|missing| !missing),
                 "{} can be installed on some platforms and not others, which is a message nobody can write",
@@ -1003,7 +1008,11 @@ mod tests {
         assert_eq!(adapter_for("server.js"), Some("node"));
         assert_eq!(adapter_for("src/server.ts"), Some("node"));
         assert_eq!(adapter_for("target\\debug\\unluminous.exe"), Some("lldb"));
-        assert_eq!(adapter_for("./target/debug/unluminous"), Some("lldb"), "no extension is a program");
+        assert_eq!(
+            adapter_for("./target/debug/unluminous"),
+            Some("lldb"),
+            "no extension is a program"
+        );
         // A bare word with no extension is a program on `PATH` whose language nothing here knows, so
         // the plugins are asked next rather than it being guessed at.
         assert_eq!(adapter_for("python"), None);
@@ -1062,10 +1071,7 @@ mod tests {
     fn one_name_is_named_on_its_own_and_three_read_as_a_list() {
         assert_eq!(either(&["node".to_owned()]), "node");
         assert_eq!(either(&["a".to_owned(), "b".to_owned()]), "a or b");
-        assert_eq!(
-            either(&["a".to_owned(), "b".to_owned(), "c".to_owned()]),
-            "a, b or c"
-        );
+        assert_eq!(either(&["a".to_owned(), "b".to_owned(), "c".to_owned()]), "a, b or c");
     }
 
     /// Rather than being cleverly wrong, `cargo run` under lldb is refused with the sentence that
@@ -1092,8 +1098,10 @@ mod tests {
         assert!(can_debug("lldb", "cargo run"), "a locator can answer for cargo");
         assert!(can_debug("lldb", "cargo test --release"));
         assert!(!can_debug("lldb", "cargo fmt"), "and only where one really can");
-        let built =
-            Some(("C:\\p\\target\\debug\\unluminous.exe".to_owned(), vec!["--control".to_owned(), "off".to_owned()]));
+        let built = Some((
+            "C:\\p\\target\\debug\\unluminous.exe".to_owned(),
+            vec!["--control".to_owned(), "off".to_owned()],
+        ));
         let prepared = prepare(
             "lldb",
             &configuration("cargo run -- --control off"),
@@ -1197,11 +1205,15 @@ mod tests {
     #[test]
     fn node_finds_its_own_server_when_one_has_been_unpacked() {
         let found = js_debug();
-        let prepared = prepare("node", &configuration("node server.js"), Path::new("."), None, None);
+        let prepared =
+            prepare("node", &configuration("node server.js"), Path::new("."), None, None);
         match found {
             Some(server) => {
                 let launch = prepared.expect("js-debug is on this machine");
-                assert_eq!(launch.adapter.args.first().map(String::as_str), Some(&*server.to_string_lossy()));
+                assert_eq!(
+                    launch.adapter.args.first().map(String::as_str),
+                    Some(&*server.to_string_lossy())
+                );
                 assert_eq!(launch.body["program"], "server.js");
             }
             None => {
@@ -1213,10 +1225,7 @@ mod tests {
 
     #[test]
     fn a_file_template_becomes_a_command_line_with_the_path_in_it() {
-        assert_eq!(
-            command_for_file("node {file}", Path::new("C:\\p\\a.js")),
-            "node C:\\p\\a.js"
-        );
+        assert_eq!(command_for_file("node {file}", Path::new("C:\\p\\a.js")), "node C:\\p\\a.js");
         assert_eq!(
             command_for_file("npx tsx {file}", Path::new("C:\\p\\a.ts")),
             "npx tsx C:\\p\\a.ts"
@@ -1235,7 +1244,8 @@ mod tests {
     /// every machine that can build Unluminous has.
     #[test]
     fn a_program_that_is_really_on_the_path_is_found() {
-        let found = on_path("cargo").expect("cargo is on the PATH of a machine building Unluminous");
+        let found =
+            on_path("cargo").expect("cargo is on the PATH of a machine building Unluminous");
         assert!(found.is_file(), "{}", found.display());
     }
 }

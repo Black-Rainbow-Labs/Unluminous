@@ -193,22 +193,18 @@ fn attach_to_real_nodes(graph: &Graph, placed: &mut Placed) {
 /// this again and is then placed inside as a single node, which is what keeps its contents from ever
 /// overlapping anything outside it.
 fn place_container(graph: &Graph, group: Option<usize>, turned: bool) -> Placed {
-    let nodes: Vec<usize> = (0..graph.nodes.len())
-        .filter(|&index| graph.nodes[index].group == group)
-        .collect();
-    let children: Vec<usize> = (0..graph.groups.len())
-        .filter(|&index| graph.groups[index].parent == group)
-        .collect();
+    let nodes: Vec<usize> =
+        (0..graph.nodes.len()).filter(|&index| graph.nodes[index].group == group).collect();
+    let children: Vec<usize> =
+        (0..graph.groups.len()).filter(|&index| graph.groups[index].parent == group).collect();
 
     // Each child group becomes one box, laid out first so that its size is known.
     let inner: Vec<Placed> =
         children.iter().map(|&child| place_container(graph, Some(child), turned)).collect();
 
     // The things this container places: its own nodes, then its child groups.
-    let mut entity_size: Vec<Size> = nodes
-        .iter()
-        .map(|&index| turn(graph.nodes[index].size, turned))
-        .collect();
+    let mut entity_size: Vec<Size> =
+        nodes.iter().map(|&index| turn(graph.nodes[index].size, turned)).collect();
     for (position, &child) in children.iter().enumerate() {
         let title = turn(graph.groups[child].title, turned);
         entity_size.push(frame_size(inner[position].size, title));
@@ -565,7 +561,8 @@ fn build_joins(chains: &Chains, edges: &[Lifted], reversed: &[bool]) -> Joins {
 /// Move each slot to the median position of what it is joined to in the neighbouring rank.
 fn median_pass(layers: &mut [Vec<Slot>], joins: &Joins, downwards: bool) {
     let count = layers.len();
-    let order: Vec<usize> = if downwards { (1..count).collect() } else { (0..count - 1).rev().collect() };
+    let order: Vec<usize> =
+        if downwards { (1..count).collect() } else { (0..count - 1).rev().collect() };
     for rank in order {
         let neighbour = if downwards { rank - 1 } else { rank + 1 };
         let positions: HashMap<SlotKey, usize> = layers[neighbour]
@@ -577,13 +574,15 @@ fn median_pass(layers: &mut [Vec<Slot>], joins: &Joins, downwards: bool) {
             .iter()
             .enumerate()
             .map(|(at, slot)| {
-                let median = median_of(key(*slot, rank), joins, &positions, downwards)
-                    .unwrap_or(at as f32);
+                let median =
+                    median_of(key(*slot, rank), joins, &positions, downwards).unwrap_or(at as f32);
                 (median, at, *slot)
             })
             .collect();
         // Ties keep the order they had, which is what makes this deterministic.
-        scored.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)));
+        scored.sort_by(|a, b| {
+            a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1))
+        });
         layers[rank] = scored.into_iter().map(|(_, _, slot)| slot).collect();
     }
 }
@@ -645,11 +644,8 @@ fn crossings(layers: &[Vec<Slot>], joins: &Joins) -> usize {
 
 /// Count the crossings between two neighbouring ranks, by counting inversions.
 fn crossings_between(layers: &[Vec<Slot>], joins: &Joins, upper: usize, lower: usize) -> usize {
-    let lower_at: HashMap<SlotKey, usize> = layers[lower]
-        .iter()
-        .enumerate()
-        .map(|(at, slot)| (key(*slot, lower), at))
-        .collect();
+    let lower_at: HashMap<SlotKey, usize> =
+        layers[lower].iter().enumerate().map(|(at, slot)| (key(*slot, lower), at)).collect();
     let mut ends: Vec<usize> = Vec::new();
     for slot in &layers[upper] {
         let Some((_, below)) = joins.get(&key(*slot, upper)) else {
@@ -762,9 +758,11 @@ fn relax(
     downwards: bool,
 ) {
     let count = order.len();
-    let ranks: Vec<usize> = if downwards { (0..count).collect() } else { (0..count).rev().collect() };
+    let ranks: Vec<usize> =
+        if downwards { (0..count).collect() } else { (0..count).rev().collect() };
     for rank in ranks {
-        let neighbour = if downwards { rank.checked_sub(1) } else { (rank + 1 < count).then_some(rank + 1) };
+        let neighbour =
+            if downwards { rank.checked_sub(1) } else { (rank + 1 < count).then_some(rank + 1) };
         let Some(neighbour) = neighbour else {
             continue;
         };

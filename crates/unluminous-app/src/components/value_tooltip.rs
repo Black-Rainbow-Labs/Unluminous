@@ -101,29 +101,26 @@ pub fn show(
             let inner = area.shrink(PADDING);
             let mut scroll = ui.new_child(egui::UiBuilder::new().max_rect(inner));
             scroll.set_clip_rect(ui.painter().clip_rect().intersect(inner));
-            egui::ScrollArea::vertical().id_salt("value-tooltip-rows").show(
-                &mut scroll,
-                |ui| {
-                    // No gap between the rows: the popup's height is `rows * ROW` exactly, and
-                    // egui's default spacing between allocated widgets would push the last row out
-                    // of a box measured without it.
-                    ui.spacing_mut().item_spacing.y = 0.0;
-                    let mut what = RowOutcome::default();
-                    for row in &hover.rows {
-                        let (rect, response) =
-                            ui.allocate_exact_size(Vec2::new(inner.width(), ROW), Sense::click());
-                        let can_set = match row.depth {
-                            0 => can_set_root,
-                            _ => can_set_child,
-                        };
-                        debug_panel::show_row(
-                            ui, rect, response, row, editing, can_set, "Value", &mut what,
-                        );
-                    }
-                    outcome.toggle_row = what.toggle_row;
-                    outcome.set_value = what.set_value;
-                },
-            );
+            egui::ScrollArea::vertical().id_salt("value-tooltip-rows").show(&mut scroll, |ui| {
+                // No gap between the rows: the popup's height is `rows * ROW` exactly, and
+                // egui's default spacing between allocated widgets would push the last row out
+                // of a box measured without it.
+                ui.spacing_mut().item_spacing.y = 0.0;
+                let mut what = RowOutcome::default();
+                for row in &hover.rows {
+                    let (rect, response) =
+                        ui.allocate_exact_size(Vec2::new(inner.width(), ROW), Sense::click());
+                    let can_set = match row.depth {
+                        0 => can_set_root,
+                        _ => can_set_child,
+                    };
+                    debug_panel::show_row(
+                        ui, rect, response, row, editing, can_set, "Value", &mut what,
+                    );
+                }
+                outcome.toggle_row = what.toggle_row;
+                outcome.set_value = what.set_value;
+            });
         });
     outcome
 }
@@ -157,13 +154,7 @@ pub fn goes_above(rows: usize, word: Rect, pane: Rect) -> bool {
 /// A pure function of its arguments, so the side and the clamp can be checked with no window — which
 /// is `completion::where_it_goes`'s own arrangement, and this is deliberately the same shape.
 /// `above` is the side already settled on, or `None` to work it out from this many rows.
-pub fn where_it_goes(
-    rows: usize,
-    width: f32,
-    word: Rect,
-    pane: Rect,
-    above: Option<bool>,
-) -> Rect {
+pub fn where_it_goes(rows: usize, width: f32, word: Rect, pane: Rect, above: Option<bool>) -> Rect {
     let above = above.unwrap_or_else(|| goes_above(rows, word, pane));
     // How tall it may be **on the side it is on**, so a tree that grew past the pane scrolls rather
     // than hanging off the end of it. One row always fits, or there would be nothing to look at.

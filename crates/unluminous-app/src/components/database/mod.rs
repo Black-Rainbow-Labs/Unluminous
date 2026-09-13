@@ -142,7 +142,12 @@ pub fn pane(explorer: &mut DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>)
                 0,
                 crate::theme::color::divider(),
             );
-            acts.extend(workspace::show(explorer, ui, look, workspace_at.shrink2(Vec2::new(0.0, 1.0))));
+            acts.extend(workspace::show(
+                explorer,
+                ui,
+                look,
+                workspace_at.shrink2(Vec2::new(0.0, 1.0)),
+            ));
         }
         // After the rows, so the popup is over them and takes the pointer first — the rule
         // `components::resize_edges` gives for anything added last.
@@ -179,7 +184,9 @@ pub fn apply(explorer: &mut DatabaseExplorer, acts: Vec<Act>) -> Vec<Request> {
             Act::ToggleFolder(source, schema, folder) => {
                 explorer.toggle_folder(&source, &schema, &folder)
             }
-            Act::ToggleTable(source, schema, name) => explorer.toggle_table(&source, &schema, &name),
+            Act::ToggleTable(source, schema, name) => {
+                explorer.toggle_table(&source, &schema, &name)
+            }
             Act::Choose(source, schema, name) => {
                 explorer.chosen = Some(crate::services::database::Chosen { source, schema, name });
             }
@@ -216,7 +223,9 @@ pub fn apply(explorer: &mut DatabaseExplorer, acts: Vec<Act>) -> Vec<Request> {
                     requests.push(Request::Message(why));
                 }
             }
-            Act::NewSource => explorer.modal = Some(Modal::Source(commands::a_new_source(explorer))),
+            Act::NewSource => {
+                explorer.modal = Some(Modal::Source(commands::a_new_source(explorer)))
+            }
             Act::EditSource(name) => {
                 if let Some(source) = explorer.configuration.source(&name) {
                     explorer.modal = Some(Modal::Source(commands::a_form_for(source)));
@@ -228,7 +237,8 @@ pub fn apply(explorer: &mut DatabaseExplorer, acts: Vec<Act>) -> Vec<Request> {
                 }
             }
             Act::NewTable(source, schema) => {
-                explorer.modal = Some(Modal::NewTable(commands::a_new_table(explorer, &source, &schema)));
+                explorer.modal =
+                    Some(Modal::NewTable(commands::a_new_table(explorer, &source, &schema)));
             }
             Act::DropTable(source, schema, name) => {
                 let sql = match unluminous_db::sql::drop_table(&schema, &name) {
@@ -329,7 +339,8 @@ pub fn apply(explorer: &mut DatabaseExplorer, acts: Vec<Act>) -> Vec<Request> {
             }),
             Act::CommitCell(id) => with_grid(explorer, id, |grid| {
                 let Some(editing) = grid.editing.take() else { return };
-                let Some(name) = grid.rows.columns.get(editing.column).map(|column| column.name.clone())
+                let Some(name) =
+                    grid.rows.columns.get(editing.column).map(|column| column.name.clone())
                 else {
                     return;
                 };
@@ -362,7 +373,8 @@ pub fn apply(explorer: &mut DatabaseExplorer, acts: Vec<Act>) -> Vec<Request> {
             Act::CancelCell(id) => with_grid(explorer, id, |grid| grid.editing = None),
             Act::NullTheCell(id) => with_grid(explorer, id, |grid| {
                 let Some((at, column)) = grid.chosen else { return };
-                let Some(name) = grid.rows.columns.get(column).map(|column| column.name.clone()) else {
+                let Some(name) = grid.rows.columns.get(column).map(|column| column.name.clone())
+                else {
                     return;
                 };
                 if let Some(row) = grid.row_of(at) {
@@ -371,7 +383,8 @@ pub fn apply(explorer: &mut DatabaseExplorer, acts: Vec<Act>) -> Vec<Request> {
                 grid.editing = None;
             }),
             Act::SetCell(id, at, column, value) => with_grid(explorer, id, |grid| {
-                let Some(name) = grid.rows.columns.get(column).map(|column| column.name.clone()) else {
+                let Some(name) = grid.rows.columns.get(column).map(|column| column.name.clone())
+                else {
                     return;
                 };
                 if let Some(row) = grid.row_of(at) {
@@ -399,14 +412,25 @@ pub fn apply(explorer: &mut DatabaseExplorer, acts: Vec<Act>) -> Vec<Request> {
     requests
 }
 
-fn with_grid(explorer: &mut DatabaseExplorer, id: u64, work: impl FnOnce(&mut crate::services::database::Grid)) {
-    if let Some(Page { sheet: Sheet::Grid(grid), .. }) = explorer.pages.iter_mut().find(|page| page.id == id) {
+fn with_grid(
+    explorer: &mut DatabaseExplorer,
+    id: u64,
+    work: impl FnOnce(&mut crate::services::database::Grid),
+) {
+    if let Some(Page { sheet: Sheet::Grid(grid), .. }) =
+        explorer.pages.iter_mut().find(|page| page.id == id)
+    {
         work(grid);
     }
 }
 
 /// What kind of thing the tree says this is, defaulting to a table.
-fn kind_of(explorer: &DatabaseExplorer, source: &str, schema: &str, name: &str) -> unluminous_db::Kind {
+fn kind_of(
+    explorer: &DatabaseExplorer,
+    source: &str,
+    schema: &str,
+    name: &str,
+) -> unluminous_db::Kind {
     explorer
         .loaded
         .get(source)
@@ -461,7 +485,8 @@ pub fn text(
     size: f32,
     width: f32,
 ) -> f32 {
-    let mut galley = painter.layout_no_wrap(words.to_owned(), egui::FontId::proportional(size), tint);
+    let mut galley =
+        painter.layout_no_wrap(words.to_owned(), egui::FontId::proportional(size), tint);
     if galley.size().x > width && width > 12.0 {
         // Cut by characters rather than by bytes, so a name with an accent in it is not cut in half.
         let mut kept: String = words.to_owned();

@@ -234,8 +234,11 @@ fn show_header(
     // `components::dock` for why it has to be this way round.
     outcome.grab = crate::components::dock::handle(ui, area, crate::app::dock::Panel::Debug);
     let painter = ui.painter_at(area);
-    let heading =
-        painter.layout_no_wrap("Debug".to_owned(), egui::FontId::proportional(12.0), color::text_dim());
+    let heading = painter.layout_no_wrap(
+        "Debug".to_owned(),
+        egui::FontId::proportional(12.0),
+        color::text_dim(),
+    );
     painter.galley(
         Pos2::new(area.left() + 16.0, area.center().y - heading.size().y / 2.0),
         heading.clone(),
@@ -261,15 +264,15 @@ fn show_header(
     let paused = debug.is_some_and(DebugState::is_paused);
     let alive = debug.is_some_and(DebugState::is_alive);
     let mut pen = area.left() + 16.0 + heading.size().x + 18.0;
-    let mut button = |ui: &mut egui::Ui, name: &str, enabled: bool, draw: &dyn Fn(&egui::Painter, Pos2)| {
-        let rect = Rect::from_center_size(Pos2::new(pen + 11.0, area.center().y), Vec2::splat(22.0));
-        pen += 26.0;
-        let pressed = dimmable(ui, rect, name, enabled, draw);
-        pressed
-    };
-    if button(ui, "Resume", paused, &|painter, at| {
-        icon::resume(painter, at, tint(paused))
-    }) {
+    let mut button =
+        |ui: &mut egui::Ui, name: &str, enabled: bool, draw: &dyn Fn(&egui::Painter, Pos2)| {
+            let rect =
+                Rect::from_center_size(Pos2::new(pen + 11.0, area.center().y), Vec2::splat(22.0));
+            pen += 26.0;
+            let pressed = dimmable(ui, rect, name, enabled, draw);
+            pressed
+        };
+    if button(ui, "Resume", paused, &|painter, at| icon::resume(painter, at, tint(paused))) {
         outcome.step = Some(unluminous_dap::Step::Resume);
     }
     if button(ui, "Step Over", paused, &|painter, at| {
@@ -287,9 +290,7 @@ fn show_header(
     }) {
         outcome.step = Some(unluminous_dap::Step::Out);
     }
-    if button(ui, "Stop Debugging", alive, &|painter, at| {
-        icon::stop(painter, at, tint(alive))
-    }) {
+    if button(ui, "Stop Debugging", alive, &|painter, at| icon::stop(painter, at, tint(alive))) {
         outcome.stop = true;
     }
 
@@ -302,20 +303,21 @@ fn show_header(
                 Rect::from_center_size(Pos2::new(pen + 11.0, area.center().y), Vec2::splat(22.0));
             pen += 30.0;
             let mut chosen: Vec<String> = debug.filters.clone();
-            let changed = controls::flyout(ui, rect, "Exception Breakpoints", icon::bug, 240.0, |ui| {
-                let mut changed = false;
-                for filter in offered {
-                    let mut on = chosen.contains(&filter.filter);
-                    if ui.checkbox(&mut on, &filter.label).changed() {
-                        changed = true;
-                        match on {
-                            true => chosen.push(filter.filter.clone()),
-                            false => chosen.retain(|known| *known != filter.filter),
+            let changed =
+                controls::flyout(ui, rect, "Exception Breakpoints", icon::bug, 240.0, |ui| {
+                    let mut changed = false;
+                    for filter in offered {
+                        let mut on = chosen.contains(&filter.filter);
+                        if ui.checkbox(&mut on, &filter.label).changed() {
+                            changed = true;
+                            match on {
+                                true => chosen.push(filter.filter.clone()),
+                                false => chosen.retain(|known| *known != filter.filter),
+                            }
                         }
                     }
-                }
-                changed
-            });
+                    changed
+                });
             if changed == Some(true) {
                 outcome.filters = Some(chosen);
             }
@@ -331,14 +333,9 @@ fn show_header(
             true => color::text_control(),
             false => color::text_dim(),
         };
-        let label =
-            ui.painter().layout_no_wrap(said, egui::FontId::proportional(11.5), tint);
+        let label = ui.painter().layout_no_wrap(said, egui::FontId::proportional(11.5), tint);
         let x = (right - 16.0 - label.size().x).max(pen + 8.0);
-        ui.painter().galley(
-            Pos2::new(x, area.center().y - label.size().y / 2.0),
-            label,
-            tint,
-        );
+        ui.painter().galley(Pos2::new(x, area.center().y - label.size().y / 2.0), label, tint);
     }
 }
 
@@ -354,12 +351,17 @@ fn show_frames(ui: &mut egui::Ui, area: Rect, debug: &DebugState, outcome: &mut 
             .find(|thread| Some(thread.id) == debug.frames.first().map(|_| thread.id))
             .map(|thread| thread.name.clone())
             .unwrap_or_else(|| format!("{} threads", debug.threads.len()));
-        let label = painter.layout_no_wrap(name, egui::FontId::proportional(11.0), color::text_dim());
+        let label =
+            painter.layout_no_wrap(name, egui::FontId::proportional(11.0), color::text_dim());
         painter.galley(Pos2::new(area.left() + 16.0, top + 3.0), label, color::text_dim());
         top += 22.0;
     }
     if debug.frames.is_empty() {
-        empty(ui, Rect::from_min_max(Pos2::new(area.left(), top), area.max), "No stack while the program is running.");
+        empty(
+            ui,
+            Rect::from_min_max(Pos2::new(area.left(), top), area.max),
+            "No stack while the program is running.",
+        );
         return;
     }
     let list = Rect::from_min_max(Pos2::new(area.left(), top), area.max);
@@ -367,10 +369,8 @@ fn show_frames(ui: &mut egui::Ui, area: Rect, debug: &DebugState, outcome: &mut 
     scroll.set_clip_rect(ui.painter().clip_rect().intersect(list));
     egui::ScrollArea::vertical().id_salt("debug-frames").show(&mut scroll, |ui| {
         for frame in &debug.frames {
-            let (rect, response) = ui.allocate_exact_size(
-                Vec2::new(list.width(), ROW),
-                Sense::click(),
-            );
+            let (rect, response) =
+                ui.allocate_exact_size(Vec2::new(list.width(), ROW), Sense::click());
             let selected = debug.frame == Some(frame.id);
             if selected {
                 ui.painter().rect_filled(
@@ -466,7 +466,8 @@ fn show_watches(
         Pos2::new(area.left() + 12.0, area.top() + 3.0),
         Vec2::new((area.width() - 24.0).max(60.0), WATCH_HEADER - 4.0),
     );
-    let response = controls::search_field(ui, field, "Watch", "Watch an expression", &mut panel.watch);
+    let response =
+        controls::search_field(ui, field, "Watch", "Watch an expression", &mut panel.watch);
     if response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
         let expression = panel.watch.trim().to_owned();
         if !expression.is_empty() {
@@ -511,11 +512,10 @@ fn show_watch(ui: &mut egui::Ui, row: Rect, watch: &Watch, outcome: &mut DebugOu
         value,
         tint,
     );
-    let cross = Rect::from_center_size(
-        Pos2::new(row.right() - 16.0, row.center().y),
-        Vec2::splat(18.0),
-    );
-    if controls::icon_button(ui, cross, &format!("Remove watch: {}", watch.expression), icon::cross) {
+    let cross =
+        Rect::from_center_size(Pos2::new(row.right() - 16.0, row.center().y), Vec2::splat(18.0));
+    if controls::icon_button(ui, cross, &format!("Remove watch: {}", watch.expression), icon::cross)
+    {
         outcome.remove_watch = Some(watch.expression.clone());
     }
 }
@@ -586,11 +586,8 @@ pub fn show_row(
         true => color::text_dim(),
         false => color::text(),
     };
-    let name = ui.painter().layout_no_wrap(
-        row.name.clone(),
-        egui::FontId::monospace(11.5),
-        name_tint,
-    );
+    let name =
+        ui.painter().layout_no_wrap(row.name.clone(), egui::FontId::monospace(11.5), name_tint);
     ui.painter().galley(
         Pos2::new(pen, rect.center().y - name.size().y / 2.0),
         name.clone(),
@@ -639,9 +636,8 @@ pub fn show_row(
             );
             editor.request_focus();
             let name = format!("Set {what}: {}", row.name);
-            editor.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, &name)
-            });
+            editor
+                .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, &name));
             if ui.input(|input| input.key_pressed(egui::Key::Enter)) {
                 outcome.set_value = Some((row.key.clone(), typed.clone()));
                 *editing = None;
@@ -659,16 +655,9 @@ pub fn show_row(
             true => color::value_changed(),
             false => color::text_control(),
         };
-        let value = ui.painter().layout_no_wrap(
-            elide(&row.value),
-            egui::FontId::monospace(11.5),
-            tint,
-        );
-        ui.painter().galley(
-            Pos2::new(pen, rect.center().y - value.size().y / 2.0),
-            value,
-            tint,
-        );
+        let value =
+            ui.painter().layout_no_wrap(elide(&row.value), egui::FontId::monospace(11.5), tint);
+        ui.painter().galley(Pos2::new(pen, rect.center().y - value.size().y / 2.0), value, tint);
     }
 
     // `what` is what this row is called where it is drawn — `Variable` in the tile, `Value` in the
@@ -719,7 +708,11 @@ fn show_idle(ui: &mut egui::Ui, area: Rect, idle: &Idle, outcome: &mut DebugOutc
     };
     let size = text.size();
     let top = area.center().y - (size.y + buttons) / 2.0;
-    ui.painter_at(area).galley(Pos2::new(area.center().x - size.x / 2.0, top), text, color::text_faint());
+    ui.painter_at(area).galley(
+        Pos2::new(area.center().x - size.x / 2.0, top),
+        text,
+        color::text_faint(),
+    );
     if !has_a_command {
         return;
     }
@@ -748,10 +741,7 @@ fn empty(ui: &egui::Ui, area: Rect, message: &str) {
         (area.width() - 48.0).max(60.0),
     );
     painter.galley(
-        Pos2::new(
-            area.center().x - label.size().x / 2.0,
-            area.center().y - label.size().y / 2.0,
-        ),
+        Pos2::new(area.center().x - label.size().x / 2.0, area.center().y - label.size().y / 2.0),
         label,
         color::text_faint(),
     );

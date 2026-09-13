@@ -40,11 +40,8 @@ const FORMAT: &str = "%H\u{1f}%h\u{1f}%an\u{1f}%ae\u{1f}%at\u{1f}%s\u{1f}%b\u{1f
 /// asks for. `limit` is there because a repository can hold a hundred thousand commits and a window
 /// shows a few dozen.
 pub fn read(folder: &Path, path: Option<&Path>, limit: usize) -> Result<Vec<Commit>, Outcome> {
-    let mut arguments: Vec<std::ffi::OsString> = vec![
-        "log".into(),
-        format!("--format={FORMAT}").into(),
-        format!("-n{limit}").into(),
-    ];
+    let mut arguments: Vec<std::ffi::OsString> =
+        vec!["log".into(), format!("--format={FORMAT}").into(), format!("-n{limit}").into()];
     if let Some(path) = path {
         arguments.push("--follow".into());
         arguments.push("--".into());
@@ -118,7 +115,14 @@ impl TrimNewline for str {
 mod tests {
     use super::*;
 
-    fn record(hash: &str, author: &str, time: i64, subject: &str, body: &str, refs: &str) -> String {
+    fn record(
+        hash: &str,
+        author: &str,
+        time: i64,
+        subject: &str,
+        body: &str,
+        refs: &str,
+    ) -> String {
         format!("{hash}\u{1f}{}\u{1f}{author}\u{1f}a@b\u{1f}{time}\u{1f}{subject}\u{1f}{body}\u{1f}{refs}\u{1e}\n", &hash[..7])
     }
 

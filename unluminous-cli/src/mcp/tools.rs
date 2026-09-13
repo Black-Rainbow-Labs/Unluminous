@@ -245,9 +245,9 @@ fn grouped() -> Vec<Tool> {
         let renamed: Vec<String> = RENAMED_IN_A_GROUPED_CALL
             .iter()
             .filter(|(real, _)| {
-                commands.iter().any(|command| {
-                    command.arguments.iter().any(|argument| argument.name == *real)
-                })
+                commands
+                    .iter()
+                    .any(|command| command.arguments.iter().any(|argument| argument.name == *real))
             })
             .map(|(real, offered)| format!("`{real}` as `{offered}`"))
             .collect();
@@ -279,9 +279,9 @@ fn grouped_schema(commands: &[&'static Command], verbs: Vec<Value>) -> Value {
         for argument in command.arguments {
             // Under a name that cannot be mistaken for the tool's own. See
             // `RENAMED_IN_A_GROUPED_CALL`.
-            arguments.entry(offered_as(argument.name).to_owned()).or_insert_with(|| {
-                json!({ "type": "string" })
-            });
+            arguments
+                .entry(offered_as(argument.name).to_owned())
+                .or_insert_with(|| json!({ "type": "string" }));
         }
         for flag in command.flags {
             arguments.entry(flag.name.to_owned()).or_insert_with(|| {
@@ -411,9 +411,12 @@ fn command_schema(command: &Command) -> Value {
     for argument in command.arguments {
         let mut help = String::from(argument.help);
         if argument.rest {
-            help.push_str(" It is the rest of the line, so it may hold spaces and needs no quoting.");
+            help.push_str(
+                " It is the rest of the line, so it may hold spaces and needs no quoting.",
+            );
         }
-        properties.insert(argument.name.to_owned(), json!({ "type": "string", "description": help }));
+        properties
+            .insert(argument.name.to_owned(), json!({ "type": "string", "description": help }));
         if argument.required {
             required.push(json!(argument.name));
         }
@@ -550,11 +553,7 @@ pub fn resolve_in(
                     catalogue::in_area(area).len()
                 )));
             };
-            let wanted = if area.is_empty() {
-                verb.to_owned()
-            } else {
-                format!("{area}.{verb}")
-            };
+            let wanted = if area.is_empty() { verb.to_owned() } else { format!("{area}.{verb}") };
             let Some(command) = catalogue::find(&wanted).filter(|command| offered(command)) else {
                 return Err(Unresolved(format!(
                     "`{verb}` is not one of {name}'s commands. They are: {}.",
@@ -823,9 +822,14 @@ mod tests {
             let properties = tool.schema["properties"]["arguments"]["properties"]
                 .as_object()
                 .expect("grouped argument properties");
-            assert_eq!(tool.schema["properties"]["arguments"]["additionalProperties"], json!(false));
+            assert_eq!(
+                tool.schema["properties"]["arguments"]["additionalProperties"],
+                json!(false)
+            );
             for command in catalogue::in_area(area) {
-                if !offered(command) { continue }
+                if !offered(command) {
+                    continue;
+                }
                 for name in catalogue::value_names(command) {
                     // Under the name the tool offers it as, which for `command` and `arguments` is
                     // not the name the command uses -- see `RENAMED_IN_A_GROUPED_CALL`.
@@ -859,7 +863,8 @@ mod tests {
             .expect("the definition tool");
         assert!(definition.schema["properties"].get("name").is_some());
         assert!(
-            !definition.schema
+            !definition
+                .schema
                 .get("required")
                 .and_then(Value::as_array)
                 .is_some_and(|required| required.iter().any(|name| name == "name")),
@@ -926,9 +931,8 @@ mod tests {
             .into_iter()
             .find(|tool| tool.name == "unluminous_terminal_read")
             .expect("terminal read");
-        let described = read.schema["properties"]["timeout"]["description"]
-            .as_str()
-            .expect("a description");
+        let described =
+            read.schema["properties"]["timeout"]["description"].as_str().expect("a description");
         assert!(described.contains("--wait-for"), "{described}");
     }
 
@@ -1015,8 +1019,9 @@ mod tests {
     fn a_hyphenated_verb_becomes_an_underscore_and_still_resolves() {
         let name = tool_name("tab", "save-as");
         assert_eq!(name, "unluminous_tab_save_as");
-        let call = resolve(Shape::Every, &name, json!({ "path": "x.md" }).as_object().expect("map"))
-            .expect("it resolves");
+        let call =
+            resolve(Shape::Every, &name, json!({ "path": "x.md" }).as_object().expect("map"))
+                .expect("it resolves");
         assert_eq!(call.command.wire(), "tab.save-as");
     }
 
@@ -1096,7 +1101,11 @@ mod tests {
         let named = |areas: &Areas| -> Vec<String> {
             tools_in(Shape::Grouped, areas).into_iter().map(|tool| tool.name).collect()
         };
-        assert!(named(&editor).iter().any(|name| name.contains("definition")), "{:?}", named(&editor));
+        assert!(
+            named(&editor).iter().any(|name| name.contains("definition")),
+            "{:?}",
+            named(&editor)
+        );
         assert!(!named(&git).iter().any(|name| name.contains("definition")), "{:?}", named(&git));
     }
 
@@ -1250,10 +1259,7 @@ mod tests {
     fn the_real_names_still_work_when_a_caller_manages_to_send_them() {
         let given = Map::from_iter([
             ("command".to_owned(), json!("run")),
-            (
-                "arguments".to_owned(),
-                json!({ "id": "agent-chat", "command": "providers" }),
-            ),
+            ("arguments".to_owned(), json!({ "id": "agent-chat", "command": "providers" })),
         ]);
         let call = resolve(Shape::Grouped, "unluminous_plugins", &given).expect("it resolves");
         assert_eq!(call.arguments.get("command"), Some(&json!("providers")));
@@ -1311,7 +1317,11 @@ mod tests {
         // the areas it needs and leaves the rest out — the same catalogue at 4,491 tokens for
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
-        assert!(grouped.len() / 4 < 23_500, "grouped MCP schema exceeded budget: {} bytes", grouped.len());
+        assert!(
+            grouped.len() / 4 < 23_500,
+            "grouped MCP schema exceeded budget: {} bytes",
+            grouped.len()
+        );
         for command in commands() {
             assert!(
                 grouped.contains(command.verb),

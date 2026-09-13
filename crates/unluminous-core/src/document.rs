@@ -7,15 +7,17 @@
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
+use crate::breakpoints::Breakpoints;
 use crate::cursor::{self, Selection};
 use crate::encoding::{Encoding, LineEnding};
-use crate::incremental::Dirt;
-use crate::breakpoints::Breakpoints;
 use crate::folding::Folds;
 use crate::highlights::{Highlights, Rgba};
+use crate::incremental::Dirt;
 use crate::layout::Layout;
 use crate::rope::Rope;
-use crate::style::{Align, CharStyle, Color, ParagraphStyle, ParagraphStyles, StyleChange, StyleSpans};
+use crate::style::{
+    Align, CharStyle, Color, ParagraphStyle, ParagraphStyles, StyleChange, StyleSpans,
+};
 
 /// Something the user asked for.
 #[derive(Debug, Clone, PartialEq)]
@@ -28,17 +30,36 @@ pub enum Command {
     DeleteForward,
     /// Delete the word before the caret.
     DeleteWordBackward,
-    MoveLeft { extend: bool },
-    MoveRight { extend: bool },
-    MoveWordLeft { extend: bool },
-    MoveWordRight { extend: bool },
-    MoveLineStart { extend: bool },
-    MoveLineEnd { extend: bool },
-    MoveDocumentStart { extend: bool },
-    MoveDocumentEnd { extend: bool },
+    MoveLeft {
+        extend: bool,
+    },
+    MoveRight {
+        extend: bool,
+    },
+    MoveWordLeft {
+        extend: bool,
+    },
+    MoveWordRight {
+        extend: bool,
+    },
+    MoveLineStart {
+        extend: bool,
+    },
+    MoveLineEnd {
+        extend: bool,
+    },
+    MoveDocumentStart {
+        extend: bool,
+    },
+    MoveDocumentEnd {
+        extend: bool,
+    },
     SelectAll,
     /// Put the caret at a document offset, from a mouse click.
-    PlaceCaret { offset: usize, extend: bool },
+    PlaceCaret {
+        offset: usize,
+        extend: bool,
+    },
     /// Replace several ranges at once, as **one** undo step.
     ///
     /// This is what a rename is applied by. Undo in Unluminous restores a snapshot, so a whole
@@ -54,14 +75,18 @@ pub enum Command {
     /// indent rather than a type. With no selection it indents the line the caret is on, so the
     /// command line can ask it about a document that has neither. The selection follows the text it
     /// covered, so pressing the key again indents the same lines again. `task-1747`.
-    Indent { unit: IndentUnit },
+    Indent {
+        unit: IndentUnit,
+    },
     /// Remove one indent from each line the selection touches, the reverse of `Indent`.
     ///
     /// This is what `Shift+Tab` and `Shift+Space` do over a selection. A line only loses a
     /// character when it starts with exactly the unit's own character; a line with no indentation,
     /// or one indented with the other unit, is left alone, because there is no tab width to fall
     /// back on and guessing at a mismatched indent would be wrong more often than right.
-    Dedent { unit: IndentUnit },
+    Dedent {
+        unit: IndentUnit,
+    },
     /// Apply character formatting to the selection, or to the next text typed if nothing is selected.
     ApplyStyle(StyleChange),
     /// Turn bold on for the selection, or off if all of it is already bold.
@@ -528,7 +553,9 @@ impl Document {
             // panic inside the span list, and a colour is never worth a crash.
             let start = range.start.min(end);
             let stop = range.end.min(end);
-            if start >= stop || !self.text.is_char_boundary(start) || !self.text.is_char_boundary(stop)
+            if start >= stop
+                || !self.text.is_char_boundary(start)
+                || !self.text.is_char_boundary(stop)
             {
                 continue;
             }
@@ -750,7 +777,11 @@ impl Document {
 
     /// Change the breakpoint on the line `offset` is in, which is what the edit modal and
     /// `Disable Breakpoint` both do. True when there was one to change.
-    pub fn change_breakpoint(&mut self, offset: usize, change: impl FnOnce(&mut crate::breakpoints::Breakpoint)) -> bool {
+    pub fn change_breakpoint(
+        &mut self,
+        offset: usize,
+        change: impl FnOnce(&mut crate::breakpoints::Breakpoint),
+    ) -> bool {
         let start = self.line_start_of(offset);
         let Some(breakpoint) = self.breakpoints.at_mut(start) else {
             return false;
@@ -1171,10 +1202,7 @@ impl Document {
         } else {
             // The line holding the byte before the end: a selection that ends on a line break
             // touches the line above it, because it holds no byte of the line below.
-            (
-                self.text.byte_to_line(range.start),
-                self.text.byte_to_line(range.end - 1),
-            )
+            (self.text.byte_to_line(range.start), self.text.byte_to_line(range.end - 1))
         };
         let starts: Vec<usize> = (first..=last).map(|line| self.text.line_to_byte(line)).collect();
         let unit = unit.text();
@@ -1192,7 +1220,8 @@ impl Document {
             self.breakpoints.insert(at, unit.len());
             self.chars.set(at..at + unit.len(), &style_as_change(&style));
         }
-        let shift = |offset: usize| starts.iter().filter(|start| **start <= offset).count() * unit.len();
+        let shift =
+            |offset: usize| starts.iter().filter(|start| **start <= offset).count() * unit.len();
         let selection = self.selection;
         self.selection.anchor += shift(selection.anchor);
         self.selection.head += shift(selection.head);
@@ -1221,16 +1250,14 @@ impl Document {
             let line = self.text.byte_to_line(range.start);
             (line, line)
         } else {
-            (
-                self.text.byte_to_line(range.start),
-                self.text.byte_to_line(range.end - 1),
-            )
+            (self.text.byte_to_line(range.start), self.text.byte_to_line(range.end - 1))
         };
         let unit = unit.text();
         let starts: Vec<usize> = (first..=last)
             .map(|line| self.text.line_to_byte(line))
             .filter(|&at| {
-                at + unit.len() <= self.text.len_bytes() && self.text.byte_slice(at..at + unit.len()) == unit
+                at + unit.len() <= self.text.len_bytes()
+                    && self.text.byte_slice(at..at + unit.len()) == unit
             })
             .collect();
         if starts.is_empty() {
@@ -1246,7 +1273,8 @@ impl Document {
             self.folds.remove(removed.clone());
             self.breakpoints.remove(removed.clone());
         }
-        let shift = |offset: usize| starts.iter().filter(|start| **start < offset).count() * unit.len();
+        let shift =
+            |offset: usize| starts.iter().filter(|start| **start < offset).count() * unit.len();
         let selection = self.selection;
         self.selection.anchor = selection.anchor.saturating_sub(shift(selection.anchor));
         self.selection.head = selection.head.saturating_sub(shift(selection.head));
@@ -1485,7 +1513,10 @@ mod base_style_tests {
     #[test]
     fn the_base_style_changes_the_family_and_size_of_the_whole_document() {
         let mut document = Document::from_text("two lines here\nand the second");
-        document.set_base_style(StyleChange { size: Some(28.0), ..StyleChange::family("Courier".to_owned()) });
+        document.set_base_style(StyleChange {
+            size: Some(28.0),
+            ..StyleChange::family("Courier".to_owned())
+        });
         for offset in [0, 5, 20, document.text().len_bytes() - 1] {
             let style = document.chars().style_at(offset);
             assert_eq!(style.family, "Courier", "offset {offset} should have the new family");
@@ -1595,16 +1626,21 @@ mod tests {
     /// top of the file moves them, in the one place that knows the text moved.
     #[test]
     fn a_breakpoint_stays_on_its_line_while_the_file_is_edited_above_it() {
-        let mut document = Document::from_text("one
+        let mut document = Document::from_text(
+            "one
 two
 three
-");
+",
+        );
         let two = document.text().to_string().find("two").expect("two");
         assert!(document.toggle_breakpoint(two + 1), "a caret anywhere in the line means the line");
         assert_eq!(document.line_number_of(document.breakpoints().all()[0].offset), 2);
         document.apply(Command::MoveDocumentStart { extend: false });
-        document.apply(Command::Insert("zero
-".to_owned()));
+        document.apply(Command::Insert(
+            "zero
+"
+            .to_owned(),
+        ));
         assert_eq!(
             document.line_number_of(document.breakpoints().all()[0].offset),
             3,
@@ -1618,31 +1654,41 @@ three
     /// window repaints, the file is not modified, and there is nothing to undo.
     #[test]
     fn putting_a_breakpoint_on_a_line_is_not_an_edit() {
-        let mut document = Document::from_text("one
+        let mut document = Document::from_text(
+            "one
 two
-");
+",
+        );
         let revision = document.revision();
         let text_revision = document.text_revision();
         assert!(document.toggle_breakpoint(4));
         assert!(document.revision() > revision, "the gutter has to be drawn again");
         assert_eq!(document.text_revision(), text_revision, "nothing was laid out again");
-        assert!(!document.is_modified(), "what Unluminous saves is plain text, and a dot is not in it");
+        assert!(
+            !document.is_modified(),
+            "what Unluminous saves is plain text, and a dot is not in it"
+        );
         assert!(!document.can_undo());
     }
 
     /// It does ride the undo snapshot, because undo restores a state.
     #[test]
     fn undoing_an_edit_brings_the_breakpoints_back_where_they_were() {
-        let mut document = Document::from_text("one
+        let mut document = Document::from_text(
+            "one
 two
 three
-");
+",
+        );
         document.toggle_breakpoint(document.offset_of_line_number(3));
         let before = document.breakpoints().clone();
         document.apply(Command::MoveDocumentStart { extend: false });
-        document.apply(Command::Insert("zero
+        document.apply(Command::Insert(
+            "zero
 minus
-".to_owned()));
+"
+            .to_owned(),
+        ));
         assert_ne!(document.breakpoints(), &before, "the edit moved it");
         document.apply(Command::Undo);
         assert_eq!(document.breakpoints(), &before, "and undo restored where it was");
@@ -1650,9 +1696,11 @@ minus
 
     #[test]
     fn a_second_click_on_a_line_takes_the_breakpoint_away() {
-        let mut document = Document::from_text("one
+        let mut document = Document::from_text(
+            "one
 two
-");
+",
+        );
         assert!(document.toggle_breakpoint(5));
         // A different byte of the same line is the same line, which is what makes the gutter's row
         // and the caret's position one question.
@@ -1662,14 +1710,20 @@ two
 
     #[test]
     fn the_two_line_conversions_are_each_others_inverse() {
-        let document = Document::from_text("one
+        let document = Document::from_text(
+            "one
 two
 three
-");
+",
+        );
         for line in 1..=3 {
             let at = document.offset_of_line_number(line);
             assert_eq!(document.line_number_of(at), line);
-            assert_eq!(document.line_start_of(at + 1), at, "any byte of the line snaps to its start");
+            assert_eq!(
+                document.line_start_of(at + 1),
+                at,
+                "any byte of the line snaps to its start"
+            );
         }
     }
 
@@ -1677,8 +1731,10 @@ three
     /// than left to panic the layout engine.
     #[test]
     fn a_set_put_back_is_clamped_to_the_text_it_lands_in() {
-        let mut document = Document::from_text("short
-");
+        let mut document = Document::from_text(
+            "short
+",
+        );
         assert!(document.set_breakpoints(crate::breakpoints::Breakpoints::from_list([
             crate::breakpoints::Breakpoint::at(0),
             crate::breakpoints::Breakpoint::at(9000),
@@ -1693,8 +1749,10 @@ three
 
     #[test]
     fn changing_a_breakpoint_that_is_not_there_changes_nothing() {
-        let mut document = Document::from_text("one
-");
+        let mut document = Document::from_text(
+            "one
+",
+        );
         assert!(!document.change_breakpoint(0, |one| one.enabled = false));
         document.toggle_breakpoint(0);
         assert!(document.change_breakpoint(0, |one| one.enabled = false));
@@ -1715,10 +1773,7 @@ three
         assert!(!document.apply(Command::ReplaceMany(Vec::new())));
         assert_eq!(document.text().to_string(), "short");
         // Overlapping ranges are applied once rather than twice.
-        document.apply(Command::ReplaceMany(vec![
-            (0..3, "A".to_owned()),
-            (1..4, "B".to_owned()),
-        ]));
+        document.apply(Command::ReplaceMany(vec![(0..3, "A".to_owned()), (1..4, "B".to_owned())]));
         assert_eq!(document.text().to_string(), "Art", "the earlier of two overlapping edits wins");
     }
 
@@ -1755,7 +1810,6 @@ three
         crate::symbols::replacements(text, &ranges, to)
     }
 
-
     fn typed(text: &str) -> Document {
         let mut document = Document::new();
         document.apply(Command::Insert(text.to_owned()));
@@ -1775,10 +1829,12 @@ three
     /// A document with something of everything in it, so that a command applied to it has something
     /// to do: several paragraphs, a bold word, a coloured word, a marked passage and a selection.
     fn a_document_with_something_of_everything() -> Document {
-        let mut document = Document::from_text("the first line
+        let mut document = Document::from_text(
+            "the first line
 the second line
 
-the fourth line");
+the fourth line",
+        );
         document.apply(Command::PlaceCaret { offset: 4, extend: false });
         document.apply(Command::PlaceCaret { offset: 9, extend: true });
         document.apply(Command::ToggleBold);
@@ -1795,8 +1851,11 @@ the fourth line");
     fn every_command() -> Vec<Command> {
         vec![
             Command::Insert("x".to_owned()),
-            Command::Insert("
-".to_owned()),
+            Command::Insert(
+                "
+"
+                .to_owned(),
+            ),
             Command::DeleteBackward,
             Command::DeleteForward,
             Command::DeleteWordBackward,
@@ -1971,7 +2030,11 @@ the fourth line");
         document.apply(Command::PlaceCaret { offset: 2, extend: false });
         document.apply(Command::PlaceCaret { offset: 8, extend: true });
         document.apply(Command::MoveLeft { extend: false });
-        assert_eq!(document.selection(), Selection::caret(2), "collapses to the start, does not move past it");
+        assert_eq!(
+            document.selection(),
+            Selection::caret(2),
+            "collapses to the start, does not move past it"
+        );
 
         document.apply(Command::PlaceCaret { offset: 2, extend: false });
         document.apply(Command::PlaceCaret { offset: 8, extend: true });
@@ -2033,7 +2096,8 @@ the fourth line");
 
         document.move_vertically(&placed, 1, false);
         assert_eq!(
-            document.selection().head, 22,
+            document.selection().head,
+            22,
             "the remembered column brings the caret back to column 8 on the long line"
         );
     }
@@ -2063,7 +2127,10 @@ the fourth line");
         let placed = lay_out(&document, 60.0);
         assert!(placed.lines.len() > 2, "the paragraph must wrap for this test to mean anything");
         document.move_vertically(&placed, 1, false);
-        assert!(document.selection().head > 0, "moved onto the second visual line of one paragraph");
+        assert!(
+            document.selection().head > 0,
+            "moved onto the second visual line of one paragraph"
+        );
         assert_eq!(document.text().byte_to_line(document.selection().head), 0, "still paragraph 0");
     }
 
@@ -2504,7 +2571,10 @@ the fourth line");
         let mut document = Document::from_text("one two three");
         let revision = document.revision();
         assert!(document.highlight(4..7, MARK));
-        assert!(!document.is_modified(), "a mark is not written to the file, so nothing is unsaved");
+        assert!(
+            !document.is_modified(),
+            "a mark is not written to the file, so nothing is unsaved"
+        );
         assert!(!document.can_undo(), "and nothing goes onto the undo history");
         assert!(document.revision() > revision, "but it does have to be drawn again");
     }
@@ -2568,9 +2638,9 @@ the fourth line");
         let before = document.text().to_string().find("two").expect("two");
         document.highlight(before..before + 3, MARK);
         let stem = document.text().to_string().find("dra").expect("dra");
-        assert!(document.apply(Command::ReplaceMany(vec![
-            (stem..stem + 3, "draw_frame".to_owned()),
-        ])));
+        assert!(
+            document.apply(Command::ReplaceMany(vec![(stem..stem + 3, "draw_frame".to_owned()),]))
+        );
         assert_eq!(document.text().to_string(), "let draw_frame = one two three");
         let grown = "draw_frame".len() - "dra".len();
         let mark = document.highlights().at(before + grown).expect("the mark");
@@ -2649,7 +2719,6 @@ the fourth line");
         document.apply(Command::Undo);
         assert_eq!(document.folds().offsets(), &[4], "back where it was before the edit");
     }
-
 }
 
 #[cfg(test)]
@@ -2682,11 +2751,7 @@ mod indent_tests {
         let mut document = Document::from_text("one\ntwo\nthree");
         selected(&mut document, 0, 4); // "one\n"
         assert!(document.apply(Command::Indent { unit: IndentUnit::Tab }));
-        assert_eq!(
-            document.text().to_string(),
-            "\tone\ntwo\nthree",
-            "only the first line moved"
-        );
+        assert_eq!(document.text().to_string(), "\tone\ntwo\nthree", "only the first line moved");
     }
 
     /// The command answers for a bare caret too, because the command line asks it about a document
@@ -2699,7 +2764,11 @@ mod indent_tests {
         assert!(document.apply(Command::Indent { unit: IndentUnit::Tab }));
         assert_eq!(document.text().to_string(), "one\n\ttwo\nthree");
         let caret = document.selection().head;
-        assert_eq!(&document.text().to_string()[caret - 1..caret + 2], "two", "still between the same letters");
+        assert_eq!(
+            &document.text().to_string()[caret - 1..caret + 2],
+            "two",
+            "still between the same letters"
+        );
     }
 
     /// Each end of the selection moves past the indents put at or before it, no further: the
@@ -2815,7 +2884,10 @@ mod dedent_tests {
     fn a_line_indented_with_the_other_unit_is_left_alone() {
         let mut document = Document::from_text(" one\n two");
         selected(&mut document, 0, 9);
-        assert!(!document.apply(Command::Dedent { unit: IndentUnit::Tab }), "neither line starts with a tab");
+        assert!(
+            !document.apply(Command::Dedent { unit: IndentUnit::Tab }),
+            "neither line starts with a tab"
+        );
         assert_eq!(document.text().to_string(), " one\n two");
     }
 
@@ -2839,7 +2911,11 @@ mod dedent_tests {
         assert!(document.apply(Command::Dedent { unit: IndentUnit::Tab }));
         assert_eq!(document.text().to_string(), "one\ntwo\nthree");
         let caret = document.selection().head;
-        assert_eq!(&document.text().to_string()[caret - 1..caret + 2], "two", "still between the same letters");
+        assert_eq!(
+            &document.text().to_string()[caret - 1..caret + 2],
+            "two",
+            "still between the same letters"
+        );
     }
 
     /// Each end of the selection moves back past the removals at or before it: the highlight stays
@@ -2855,9 +2931,17 @@ mod dedent_tests {
             "\tone\n\ttwo\n\tthree\n\tfour",
             "one level removed from each line"
         );
-        assert_eq!(document.selection().range(), 1..22, "the same bytes, shifted back by the four removals");
+        assert_eq!(
+            document.selection().range(),
+            1..22,
+            "the same bytes, shifted back by the four removals"
+        );
         document.apply(Command::Dedent { unit: IndentUnit::Tab });
-        assert_eq!(document.text().to_string(), "one\ntwo\nthree\nfour", "the second level is gone too");
+        assert_eq!(
+            document.text().to_string(),
+            "one\ntwo\nthree\nfour",
+            "the second level is gone too"
+        );
         assert_eq!(document.selection().range(), 0..18);
     }
 

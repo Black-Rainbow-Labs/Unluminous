@@ -46,14 +46,8 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 6] = [
-        Kind::Terminal,
-        Kind::Browser,
-        Kind::Folder,
-        Kind::Editor,
-        Kind::Chat,
-        Kind::Tasks,
-    ];
+    pub const ALL: [Kind; 6] =
+        [Kind::Terminal, Kind::Browser, Kind::Folder, Kind::Editor, Kind::Chat, Kind::Tasks];
 
     /// The name the command line and the file on disk use: lower case, one word.
     pub fn name(self) -> &'static str {
@@ -82,10 +76,16 @@ impl Kind {
     /// One line in the add modal, under the name.
     pub fn summary(self) -> &'static str {
         match self {
-            Kind::Terminal => "A real terminal running this machine's own shell, or a program you name.",
+            Kind::Terminal => {
+                "A real terminal running this machine's own shell, or a program you name."
+            }
             Kind::Browser => "A web page, with back, forward, reload and an address.",
-            Kind::Folder => "A folder tree, with the explorer's own rows, icons and right click menu.",
-            Kind::Editor => "A file, with the editing area's gutter, folding, breakpoints and find.",
+            Kind::Folder => {
+                "A folder tree, with the explorer's own rows, icons and right click menu."
+            }
+            Kind::Editor => {
+                "A file, with the editing area's gutter, folding, breakpoints and find."
+            }
             Kind::Chat => {
                 "An agent, with its own conversation, that can drive the nodes it is wired to."
             }
@@ -312,7 +312,9 @@ impl Default for Editor {
 impl Editor {
     /// The file that was showing, when this node had one.
     pub fn showing(&self) -> Option<&std::path::Path> {
-        self.paths.get(self.showing.min(self.paths.len().saturating_sub(1))).map(|path| path.as_path())
+        self.paths
+            .get(self.showing.min(self.paths.len().saturating_sub(1)))
+            .map(|path| path.as_path())
     }
 }
 
