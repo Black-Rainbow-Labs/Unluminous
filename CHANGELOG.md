@@ -15,6 +15,20 @@ bumps the release script makes are left out, because they are the boundaries rat
 - Clippy over every target, and B7 to B20 (`task-1922`)
 - Re-accept the Windows screenshots, and three faults found by looking at them (`task-1922`)
 - The first green CI run found two things this machine could not (`task-1922`)
+- The changelog gate was red whenever anything was in progress (`task-1922`)
+- Two more tests that only ever passed on this machine (`task-1922`)
+- A second push started a second run of five jobs and failed all of them (`task-1922`)
+- A test that asked whether claude is installed on the machine running it (`task-1922`)
+- The five jobs that failed in seven seconds were a billing answer, not a second run (`task-1922`)
+- A terminal test that failed a release could not say what went wrong (`task-1922`)
+- The environment test drove a shell that writes and exits in a millisecond (`task-1922`)
+- The environment test reads a file the child wrote, not a pseudoconsole (`task-1922`)
+- A session rewrote the whole process environment every time one started (`task-1922`)
+- The test that stopped five releases was asking about the machine (`task-1922`)
+- A test that reads source text had to be told where the source went (`task-1922`)
+- A settings page was drawing a control 89 points below the dialog (`task-1922`)
+- The line commands are a `Code` menu, and 211 pictures gained a word in the bar (`task-1922`)
+- Five palette tests that had never been run, and what each was asking for (`task-1922`)
 
 ## 0.44.1 — 2026-09-12
 
