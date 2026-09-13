@@ -649,6 +649,10 @@ mod tests {
                     Some(command.wire()),
                     "the example `{example}` runs a different command"
                 );
+                // And none of them puts a word where the command takes a number, which the window
+                // refuses. `task-1922` B13.
+                let wrong = catalogue::wrong_numbers(command, &typed.arguments);
+                assert!(wrong.is_empty(), "the example `{example}` would be refused: {wrong:?}");
             }
         }
     }

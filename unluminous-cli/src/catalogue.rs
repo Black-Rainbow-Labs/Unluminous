@@ -37,6 +37,39 @@
 
 use serde_json::{Map, Value};
 
+/// What a value has to be, when the catalogue knows more about it than that it is text.
+///
+/// [`Argument::values`] narrows a value to a closed set of words; this narrows one to a number, and
+/// the two are the same idea applied to the two halves of the values that are not free text. It is
+/// declared once here and read in two places: the MCP schema gives such a property `integer` or
+/// `number` rather than `string`, so a model is stopped before it sends a word; and
+/// [`wrong_numbers`] refuses one that arrives anyway.
+///
+/// `task-1922` B13 is why it exists. [`crate::protocol::Request::number`] answers `None` both when a
+/// key is absent and when its value will not parse, so `window size --width nonsense` set no width,
+/// reported `ok`, and left the caller with no way to tell the two apart — which is `task-1804`'s own
+/// rule about a mistyped flag, wearing the value's clothes rather than the name's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// Anything at all: a path, a name, a sentence, a word out of a closed set.
+    Text,
+    /// A whole number: a line, a column, a tab, a count, a node's id, a number of milliseconds.
+    Whole,
+    /// A number that may have a fractional part: a size in points, a share of a width, a zoom.
+    Number,
+}
+
+impl Kind {
+    /// What a refusal calls it, in the sentence that says what arrived instead.
+    pub fn named(&self) -> &'static str {
+        match self {
+            Kind::Text => "text",
+            Kind::Whole => "a whole number",
+            Kind::Number => "a number",
+        }
+    }
+}
+
 /// One value typed after the verb.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Argument {
@@ -51,6 +84,8 @@ pub struct Argument {
     /// and the MCP tools narrow the argument's schema to an `enum` of them, so a model is told what
     /// is accepted rather than finding out from a refusal.
     pub values: &'static [&'static str],
+    /// What the value has to be. [`Kind::Text`] unless the argument was written as a number.
+    pub kind: Kind,
 }
 
 /// One `--name` or `--name value`.
@@ -60,6 +95,8 @@ pub struct Flag {
     /// The name of the value it takes. `None` makes it a switch that is either given or not.
     pub value: Option<&'static str>,
     pub help: &'static str,
+    /// What the value has to be. [`Kind::Text`] for a switch, which has no value at all.
+    pub kind: Kind,
 }
 
 /// One command.
@@ -291,6 +328,67 @@ pub fn unknown_arguments(command: &Command, arguments: &Map<String, Value>) -> V
         .collect()
 }
 
+/// What kind of value this command takes under this name, or `None` when it takes none.
+///
+/// One lookup over the positional arguments and the flags together, because the wire has one object
+/// and the window reads a positional and a flag through the same name.
+pub fn kind_of(command: &Command, name: &str) -> Option<Kind> {
+    let name = canonical_argument_name(name);
+    if let Some(argument) = command.arguments.iter().find(|value| value.name == name) {
+        return Some(argument.kind);
+    }
+    command.flags.iter().find(|flag| flag.name == name).map(|flag| flag.kind)
+}
+
+/// The keys in a request whose value is not the number the catalogue says that key holds, with what
+/// arrived under each.
+///
+/// The companion to [`unknown_arguments`], and the same rule: a value that cannot be used is refused
+/// rather than dropped, so a caller is told instead of being told the command worked.
+/// [`crate::protocol::Request::number`] answers `None` for both an absent key and an unusable one,
+/// so `window size --width nonsense` set no width and reported success — `task-1804`'s rule about a
+/// mistyped name, applied to a value whose name is spelled perfectly well.
+///
+/// **What is accepted here is exactly what `Request::number` reads**, because a declaration and its
+/// reader disagreeing would put a value back in the gap this closes: a number however it was
+/// spelled, including as text, since a person typing `--line 42` and a program sending `42` mean the
+/// same thing. A `null` is an absent value everywhere else on this wire and is one here too.
+///
+/// A number that is the wrong *shape* — a negative count, a fraction where a line belongs — is
+/// deliberately not refused. `Request::whole` has always read those by clamping or truncating, and
+/// this is about the value that could not be read at all.
+pub fn wrong_numbers(command: &Command, arguments: &Map<String, Value>) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for (key, value) in arguments {
+        let name = canonical_argument_name(key);
+        match kind_of(command, &name) {
+            Some(Kind::Whole) | Some(Kind::Number) => {}
+            _ => continue,
+        }
+        let readable = match value {
+            Value::Number(number) => number.as_f64().is_some(),
+            Value::String(text) => text.trim().parse::<f64>().is_ok(),
+            Value::Null => true,
+            _ => false,
+        };
+        if !readable {
+            out.push((name, as_written(value)));
+        }
+    }
+    out
+}
+
+/// What a refusal quotes back, which is the value as the caller wrote it rather than as JSON.
+///
+/// A string is quoted without its quotation marks, because `nonsense` is what was typed and
+/// `"nonsense"` is what the wire made of it.
+fn as_written(value: &Value) -> String {
+    match value {
+        Value::String(text) => text.clone(),
+        other => other.to_string(),
+    }
+}
+
 /// The command an agent most likely meant when it puts a neighbouring command's value on this one.
 ///
 /// These are intentionally explicit: a generic search would offer several equally plausible
@@ -409,12 +507,25 @@ pub fn area_note(area: &'static str) -> &'static str {
 }
 
 const fn argument(name: &'static str, required: bool, help: &'static str) -> Argument {
-    Argument { name, required, rest: false, help, values: NO_VALUES }
+    Argument { name, required, rest: false, help, values: NO_VALUES, kind: Kind::Text }
 }
 
 /// An argument that takes the rest of the line, so the text after it needs no quoting.
 const fn rest(name: &'static str, required: bool, help: &'static str) -> Argument {
-    Argument { name, required, rest: true, help, values: NO_VALUES }
+    Argument { name, required, rest: true, help, values: NO_VALUES, kind: Kind::Text }
+}
+
+/// An argument that is a whole number: a line, a column, a position, a node's id.
+///
+/// Written this way rather than as [`argument`] so that a word sent where a number belongs is
+/// refused rather than dropped. See [`Kind`].
+const fn whole(name: &'static str, required: bool, help: &'static str) -> Argument {
+    Argument { name, required, rest: false, help, values: NO_VALUES, kind: Kind::Whole }
+}
+
+/// An argument that is a number and may have a fractional part: a size in points, a share, a zoom.
+const fn number(name: &'static str, required: bool, help: &'static str) -> Argument {
+    Argument { name, required, rest: false, help, values: NO_VALUES, kind: Kind::Number }
 }
 
 /// An argument that only ever holds one of a closed set of words, such as `add, remove or list`.
@@ -427,15 +538,25 @@ const fn closed(
     help: &'static str,
     values: &'static [&'static str],
 ) -> Argument {
-    Argument { name, required, rest: false, help, values }
+    Argument { name, required, rest: false, help, values, kind: Kind::Text }
 }
 
 const fn switch(name: &'static str, help: &'static str) -> Flag {
-    Flag { name, value: None, help }
+    Flag { name, value: None, help, kind: Kind::Text }
 }
 
 const fn option(name: &'static str, value: &'static str, help: &'static str) -> Flag {
-    Flag { name, value: Some(value), help }
+    Flag { name, value: Some(value), help, kind: Kind::Text }
+}
+
+/// A `--name` whose value is a whole number: a line, a tab, a count, a number of milliseconds.
+const fn whole_option(name: &'static str, value: &'static str, help: &'static str) -> Flag {
+    Flag { name, value: Some(value), help, kind: Kind::Whole }
+}
+
+/// A `--name` whose value is a number and may have a fractional part.
+const fn number_option(name: &'static str, value: &'static str, help: &'static str) -> Flag {
+    Flag { name, value: Some(value), help, kind: Kind::Number }
 }
 
 const NO_ARGUMENTS: &[Argument] = &[];
@@ -469,7 +590,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Start another Unluminous on a folder and wait until it answers.",
         arguments: &[argument("folder", false, "The project to open. The current folder when it is left out.")],
         flags: &[
-            option("timeout", "milliseconds", "How long to wait for the new window to answer. 20000 by default."),
+            whole_option("timeout", "milliseconds", "How long to wait for the new window to answer. 20000 by default."),
             switch("no-wait", "Return as soon as the process starts, without waiting for it to answer."),
         ],
         examples: &["unluminous-cli launch C:\\jason\\dev\\unluminous", "unluminous-cli launch . --timeout 40000"],
@@ -508,7 +629,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "screenshot",
         summary: "Write what the window is showing to a PNG file. The picture is of the real window, so it is how what a command did can be looked at.",
         arguments: &[argument("file", true, "Where to write the PNG. A folder that is not there is made.")],
-        flags: &[option("timeout", "milliseconds", "How long to wait for the picture. 5000 by default.")],
+        flags: &[whole_option("timeout", "milliseconds", "How long to wait for the picture. 5000 by default.")],
         examples: &["unluminous-cli window screenshot _agent_output/after.png"],
         local: false,
     },
@@ -527,8 +648,8 @@ pub const COMMANDS: &[Command] = &[
         summary: "Read how large the window is, or set it. A fixed size is what makes two screenshots comparable.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("width", "points", "How wide to make it."),
-            option("height", "points", "How tall to make it."),
+            number_option("width", "points", "How wide to make it."),
+            number_option("height", "points", "How tall to make it."),
         ],
         examples: &["unluminous-cli window size", "unluminous-cli window size --width 1100 --height 720"],
         local: false,
@@ -539,8 +660,8 @@ pub const COMMANDS: &[Command] = &[
         summary: "Read where the window is on the screen, or move it.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("x", "points", "How far from the left of the screen."),
-            option("y", "points", "How far from the top of the screen."),
+            number_option("x", "points", "How far from the left of the screen."),
+            number_option("y", "points", "How far from the top of the screen."),
         ],
         examples: &["unluminous-cli window position --x 40 --y 40"],
         local: false,
@@ -668,10 +789,10 @@ pub const COMMANDS: &[Command] = &[
         area: "tab",
         verb: "move",
         summary: "Move a tab along its strip, or into another pane, which is what dragging it does. The position counts the tabs of the pane it is going to, as they are on the screen now.",
-        arguments: &[argument("position", true, "Where it goes, counting from 0. Past the end means the end.")],
+        arguments: &[whole("position", true, "Where it goes, counting from 0. Past the end means the end.")],
         flags: &[
             option("tab", "tab", "Which tab to move: its number, name or path. The tab that is showing when it is left out."),
-            option("pane", "number", "Which pane to move it into, counting from 0. The pane it is already in when it is left out."),
+            whole_option("pane", "number", "Which pane to move it into, counting from 0. The pane it is already in when it is left out."),
         ],
         examples: &["unluminous-cli tab move 0", "unluminous-cli tab move 0 --tab notes.md --pane 1"],
         local: false,
@@ -735,7 +856,7 @@ pub const COMMANDS: &[Command] = &[
         area: "pane",
         verb: "focus",
         summary: "Put the keyboard in a pane, so that the next file opened lands in it.",
-        arguments: &[argument("pane", true, "Its number counting from 0, left to right.")],
+        arguments: &[whole("pane", true, "Its number counting from 0, left to right.")],
         flags: NO_FLAGS,
         examples: &["unluminous-cli pane focus 1"],
         local: false,
@@ -745,8 +866,8 @@ pub const COMMANDS: &[Command] = &[
         verb: "width",
         summary: "Set one pane's share of the editing area, which is what dragging the divider between two panes does. The other panes share what is left.",
         arguments: &[
-            argument("pane", true, "Its number counting from 0."),
-            argument("fraction", true, "Its share of the width, between 0.05 and 0.95."),
+            whole("pane", true, "Its number counting from 0."),
+            number("fraction", true, "Its share of the width, between 0.05 and 0.95."),
         ],
         flags: NO_FLAGS,
         examples: &["unluminous-cli pane width 0 0.35"],
@@ -786,8 +907,8 @@ pub const COMMANDS: &[Command] = &[
         summary: "Read the text of the tab that is showing.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("from-line", "number", "The first line to read, counting from 1."),
-            option("to-line", "number", "The last line to read, counting from 1."),
+            whole_option("from-line", "number", "The first line to read, counting from 1."),
+            whole_option("to-line", "number", "The last line to read, counting from 1."),
         ],
         examples: &["unluminous-cli editor text", "unluminous-cli editor text --from-line 1 --to-line 20"],
         local: false,
@@ -816,8 +937,8 @@ pub const COMMANDS: &[Command] = &[
         summary: "Read where the caret is, or move it. Lines and columns count from 1, which is what the status bar shows.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("line", "number", "The line to move to."),
-            option("column", "number", "The column to move to. The start of the line when it is left out."),
+            whole_option("line", "number", "The line to move to."),
+            whole_option("column", "number", "The column to move to. The start of the line when it is left out."),
         ],
         examples: &["unluminous-cli editor caret", "unluminous-cli editor caret --line 42 --column 5"],
         local: false,
@@ -830,10 +951,10 @@ pub const COMMANDS: &[Command] = &[
         flags: &[
             switch("all", "Select the whole document."),
             switch("none", "Drop the selection, leaving the caret where it was."),
-            option("from-line", "number", "The line the selection starts on."),
-            option("from-column", "number", "The column it starts at. 1 when it is left out."),
-            option("to-line", "number", "The line it ends on."),
-            option("to-column", "number", "The column it ends at. The end of the line when it is left out."),
+            whole_option("from-line", "number", "The line the selection starts on."),
+            whole_option("from-column", "number", "The column it starts at. 1 when it is left out."),
+            whole_option("to-line", "number", "The line it ends on."),
+            whole_option("to-column", "number", "The column it ends at. The end of the line when it is left out."),
         ],
         examples: &["unluminous-cli editor select --all", "unluminous-cli editor select --from-line 3 --to-line 6"],
         local: false,
@@ -873,7 +994,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "lines",
         summary: "Edit whole lines: duplicate, move up or down, join, or sort. Each is one undo step, and each is about the lines the selection touches, or the caret's line when nothing is selected. Sort needs a selection.",
         arguments: &[closed("what", true, "duplicate, move, join or sort.", &["duplicate", "move", "join", "sort"])],
-        flags: &[option("by", "number", "For move: how far and which way. -1 is up and 1 is down, which is what Alt+Up and Alt+Down send.")],
+        flags: &[whole_option("by", "number", "For move: how far and which way. -1 is up and 1 is down, which is what Alt+Up and Alt+Down send.")],
         examples: &[
             "unluminous-cli editor lines duplicate",
             "unluminous-cli editor lines move --by -1",
@@ -888,9 +1009,9 @@ pub const COMMANDS: &[Command] = &[
         summary: "The bracket answering the one beside the caret, as both byte offsets and both line and column positions. It tells a bracket in a comment or a string from one in the code, which a search for the character cannot. --go moves the caret to it.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("offset", "bytes", "Ask about this position in the file rather than about the caret."),
-            option("line", "number", "Ask about this line, counting from 1."),
-            option("column", "number", "The column on that line. 1 when it is left out."),
+            whole_option("offset", "bytes", "Ask about this position in the file rather than about the caret."),
+            whole_option("line", "number", "Ask about this line, counting from 1."),
+            whole_option("column", "number", "The column on that line. 1 when it is left out."),
             switch("go", "Move the caret to the bracket that answers it."),
         ],
         examples: &["unluminous-cli editor bracket --json", "unluminous-cli editor bracket --go"],
@@ -938,8 +1059,8 @@ pub const COMMANDS: &[Command] = &[
         summary: "Read how far the tab that is showing is scrolled, or scroll it. With no flags it reports both halves of the side by side view. In side by side the other half follows, exactly as it does when you scroll with the wheel.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("line", "number", "Scroll so this line is at the top, counting from 1."),
-            option("to", "points", "Scroll to this many points down the page."),
+            whole_option("line", "number", "Scroll so this line is at the top, counting from 1."),
+            number_option("to", "points", "Scroll to this many points down the page."),
             switch("top", "Scroll to the top."),
             switch("bottom", "Scroll to the bottom."),
             switch("preview", "Scroll the Markdown preview rather than the source."),
@@ -966,8 +1087,8 @@ pub const COMMANDS: &[Command] = &[
         summary: "What is selected in the Markdown preview, and selecting something in it. The preview is read only, so a selection there is for reading and copying rather than editing; the offsets are into the preview's own text, which is what `editor preview` prints.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("from", "bytes", "Where the selection starts in the preview's text."),
-            option("to", "bytes", "Where it ends. The end of the text when it is left out."),
+            whole_option("from", "bytes", "Where the selection starts in the preview's text."),
+            whole_option("to", "bytes", "Where it ends. The end of the text when it is left out."),
             switch("all", "Select the whole preview."),
             switch("none", "Select nothing."),
             switch("copy", "Put whatever is selected on the clipboard."),
@@ -985,9 +1106,9 @@ pub const COMMANDS: &[Command] = &[
         summary: "Where a name is defined, from Unluminous's live open tabs and project symbol index. Give the name directly or leave it out for the word at the caret; every candidate is printed best first and --open navigates through the editor.",
         arguments: &[argument("name", false, "The name to find. The word at the caret when it is left out.")],
         flags: &[
-            option("offset", "bytes", "Ask about this position in the file rather than about the caret."),
-            option("line", "number", "Ask about this line, counting from 1."),
-            option("column", "number", "The column on that line. 1 when it is left out."),
+            whole_option("offset", "bytes", "Ask about this position in the file rather than about the caret."),
+            whole_option("line", "number", "Ask about this line, counting from 1."),
+            whole_option("column", "number", "The column on that line. 1 when it is left out."),
             switch("open", "Go to the best candidate, opening its file as a tab."),
         ],
         examples: &[
@@ -1008,7 +1129,7 @@ pub const COMMANDS: &[Command] = &[
             switch("next", "Move to the match after the one that is current, wrapping round the end of the file."),
             switch("previous", "Move to the match before it, wrapping round the start."),
             switch("close", "Put the Find bar away, leaving the caret on the match it was on."),
-            option("limit", "number", "List at most this many matches. 50 when it is left out, and 0 means all of them."),
+            whole_option("limit", "number", "List at most this many matches. 50 when it is left out, and 0 means all of them."),
         ],
         examples: &[
             "unluminous-cli editor find relayout --json",
@@ -1045,7 +1166,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Use this instead of grep to find every place a name is used across the project: the file, line, column and whether it is code or a word inside a comment or string. Reads unsaved open tabs as they stand and everything else from the disk.",
         arguments: &[argument("name", false, "The name to look for. The word at the caret when it is left out.")],
         flags: &[
-            option("timeout", "milliseconds", "How long to wait for the search. 10000 by default."),
+            whole_option("timeout", "milliseconds", "How long to wait for the search. 10000 by default."),
             switch("code-only", "Leave out the matches inside comments and strings."),
         ],
         examples: &[
@@ -1063,7 +1184,7 @@ pub const COMMANDS: &[Command] = &[
             option("name", "text", "Rename this name rather than the word at the caret."),
             option("scope", "file|project", "Which files to change. The default follows what the name resolves to: a variable or a name with no known definition is this file, and a function, type, constant or module is the project."),
             option("include", "comments,strings", "Also change the matches inside comments or strings, which are left alone by default."),
-            option("timeout", "milliseconds", "How long to wait for the search that finds them. 10000 by default."),
+            whole_option("timeout", "milliseconds", "How long to wait for the search that finds them. 10000 by default."),
             switch("apply", "Make the change. Without it the change set is printed and nothing is edited or written."),
         ],
         examples: &[
@@ -1079,11 +1200,11 @@ pub const COMMANDS: &[Command] = &[
         summary: "The names a word could become, best first, with what each row is and where it came from. By default the word is read from the document at the caret; --stem asks hypothetically without editing the document. Inside an import the rows are what can be imported instead. --choose applies a real document row exactly as Enter would, and takes the row's name rather than its position.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("offset", "bytes", "Ask about this position in the file rather than about the caret."),
-            option("line", "number", "Ask about this line, counting from 1."),
-            option("column", "number", "The column on that line. 1 when it is left out."),
+            whole_option("offset", "bytes", "Ask about this position in the file rather than about the caret."),
+            whole_option("line", "number", "Ask about this line, counting from 1."),
+            whole_option("column", "number", "The column on that line. 1 when it is left out."),
             option("stem", "text", "Ask what this hypothetical word would offer at the position, without inserting it or changing the document."),
-            option("limit", "number", "Print at most this many rows. 50 when it is left out, and 0 means all of them."),
+            whole_option("limit", "number", "Print at most this many rows. 50 when it is left out, and 0 means all of them."),
             option("choose", "name", "Apply this row to the word being typed, as Enter would. It is the completion's **name**, never a row number: `--choose 0` is refused with the names there are."),
         ],
         examples: &[
@@ -1119,7 +1240,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "check",
         summary: "Whether a newer Unluminous has been released, and what this one is. One request to the GitHub releases page, made only when this is run or when a person asks in the window - Unluminous sends nothing at startup unless the update.check setting says to. It reports the version and never installs anything.",
         arguments: NO_ARGUMENTS,
-        flags: &[option("timeout", "milliseconds", "How long to wait for the answer. 15000 by default.")],
+        flags: &[whole_option("timeout", "milliseconds", "How long to wait for the answer. 15000 by default.")],
         examples: &["unluminous-cli update check --json"],
         local: false,
     },
@@ -1139,10 +1260,10 @@ pub const COMMANDS: &[Command] = &[
         summary: "Mark a passage in a colour. Give it lines and columns, or --text to mark every occurrence of some words. The file need not be open.",
         arguments: &[argument("path", false, "The file to mark. The tab that is showing when it is left out.")],
         flags: &[
-            option("from-line", "number", "The line the passage starts on, counting from 1."),
-            option("from-column", "number", "The column it starts at. 1 when it is left out."),
-            option("to-line", "number", "The line it ends on. The line it started on when it is left out."),
-            option("to-column", "number", "The column it ends at. The end of the line when it is left out."),
+            whole_option("from-line", "number", "The line the passage starts on, counting from 1."),
+            whole_option("from-column", "number", "The column it starts at. 1 when it is left out."),
+            whole_option("to-line", "number", "The line it ends on. The line it started on when it is left out."),
+            whole_option("to-column", "number", "The column it ends at. The end of the line when it is left out."),
             option("text", "words", "Mark every occurrence of these words in the file instead of a range."),
             option("color", "name", "yellow, green, blue, pink, or a colour of your own as #rrggbb or #rrggbbaa. Yellow when it is left out."),
         ],
@@ -1159,8 +1280,8 @@ pub const COMMANDS: &[Command] = &[
         summary: "Take marks away: a range of lines, a whole file, or every file in the project.",
         arguments: &[argument("path", false, "The file to clear. The tab that is showing when it is left out.")],
         flags: &[
-            option("from-line", "number", "The first line to clear, counting from 1. The whole file when it is left out."),
-            option("to-line", "number", "The last line to clear. The line it started on when it is left out."),
+            whole_option("from-line", "number", "The first line to clear, counting from 1. The whole file when it is left out."),
+            whole_option("to-line", "number", "The last line to clear. The line it started on when it is left out."),
             switch("all", "Clear every file in the project."),
         ],
         examples: &[
@@ -1202,7 +1323,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Collapse a block that is showing, or expand one that is collapsed. The block at the caret when no line is given. The answer is how many blocks are collapsed; --regions adds the list.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("line", "number", "The line the block starts on, counting from 1. `fold list` says which lines those are."),
+            whole_option("line", "number", "The line the block starts on, counting from 1. `fold list` says which lines those are."),
             switch("regions", "Also answer with the list of every block and whether it is collapsed."),
         ],
         examples: &["unluminous-cli fold toggle", "unluminous-cli fold toggle --line 42", "unluminous-cli fold toggle --regions --json"],
@@ -1214,7 +1335,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Collapse one block, every block in the file, or one block and every block inside it. The answer is how many blocks are collapsed; --regions adds the list.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("line", "number", "The line the block starts on, counting from 1."),
+            whole_option("line", "number", "The line the block starts on, counting from 1."),
             switch("all", "Collapse every block in the file."),
             switch("recursive", "With --line, collapse that block and every block inside it rather than just that block."),
             switch("regions", "Also answer with the list of every block and whether it is collapsed."),
@@ -1228,7 +1349,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Expand one block, show all again, or expand one block and every block inside it. The answer is how many blocks are collapsed; --regions adds the list.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("line", "number", "The line the block starts on, counting from 1."),
+            whole_option("line", "number", "The line the block starts on, counting from 1."),
             switch("all", "Expand every block in the file."),
             switch("recursive", "With --line, expand that block and every block inside it, opening the whole of it rather than one level."),
             switch("regions", "Also answer with the list of every block and whether it is collapsed."),
@@ -1266,8 +1387,7 @@ pub const COMMANDS: &[Command] = &[
             argument("panel", true, "explorer, terminal, run, debug, or a contributed pane's <plugin>/<pane>."),
             closed("side", true, "left, right, top or bottom.", &["left", "right", "top", "bottom"]),
         ],
-        flags: &[option(
-            "position",
+        flags: &[whole_option("position",
             "number",
             "Where in that side, counting the panels already there from the left, starting at 0. The end of the side when it is not given.",
         )],
@@ -1284,8 +1404,8 @@ pub const COMMANDS: &[Command] = &[
         summary: "Set how wide or how tall a panel is, including a pane a plugin contributed. A panel at the left or the right is read by its width and one along the top or the bottom by its height, so both are kept and moving a panel does not lose the size it had on the other side. The same numbers are `settings set panes.<panel>.width` and `.height`.",
         arguments: &[argument("panel", true, "explorer, terminal, run, debug, or a contributed pane's <plugin>/<pane>.")],
         flags: &[
-            option("width", "points", "How wide it is when it is a column at the left or the right."),
-            option("height", "points", "How tall it is when it is in a strip along the top or the bottom."),
+            number_option("width", "points", "How wide it is when it is a column at the left or the right."),
+            number_option("height", "points", "How tall it is when it is in a strip along the top or the bottom."),
         ],
         examples: &[
             "unluminous-cli panel size debug --width 640",
@@ -1343,8 +1463,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "here",
         summary: "Which node this command is running inside, what that node is wired to, and the command that drives each of them. Run this **first** when `UNLUMINOUS_SPACE_NODE` is set in your environment: it is the one command that answers where you are, because the answer depends on which process is asking. Outside a node it says so and says what that means — every node is reachable and no `--from` is needed, which is the window's own agent.",
         arguments: NO_ARGUMENTS,
-        flags: &[option(
-            "node",
+        flags: &[whole_option("node",
             "node",
             "Answer about this node rather than the one this process is in. Filled in from UNLUMINOUS_SPACE_NODE when it is not given, which is the ordinary case and needs nothing.",
         )],
@@ -1446,10 +1565,10 @@ pub const COMMANDS: &[Command] = &[
             &["terminal", "browser", "folder", "editor", "chat", "tasks"],
         )],
         flags: &[
-            option("x", "points", "Where to put it, in canvas points. The middle of what is showing when it is not given."),
-            option("y", "points", "The same, down the canvas."),
-            option("width", "points", "How wide, in canvas points."),
-            option("height", "points", "How tall."),
+            number_option("x", "points", "Where to put it, in canvas points. The middle of what is showing when it is not given."),
+            number_option("y", "points", "The same, down the canvas."),
+            number_option("width", "points", "How wide, in canvas points."),
+            number_option("height", "points", "How tall."),
             option("title", "text", "What the header says. Empty means call it after what it holds."),
             option("command", "text", "A terminal node: the program to run instead of the shell."),
             option("url", "address", "A browser node: the page to open."),
@@ -1467,10 +1586,10 @@ pub const COMMANDS: &[Command] = &[
         area: "space",
         verb: "move",
         summary: "Move a node to a place on the canvas, in canvas points.",
-        arguments: &[argument("node", true, "The node's id, from `space list`.")],
+        arguments: &[whole("node", true, "The node's id, from `space list`.")],
         flags: &[
-            option("x", "points", "Where its left hand edge goes."),
-            option("y", "points", "Where its top edge goes."),
+            number_option("x", "points", "Where its left hand edge goes."),
+            number_option("y", "points", "Where its top edge goes."),
         ],
         examples: &["unluminous-cli space move 7 --x 320 --y 180"],
         local: false,
@@ -1479,8 +1598,8 @@ pub const COMMANDS: &[Command] = &[
         area: "space",
         verb: "size",
         summary: "Resize a node. It is never made smaller than its kind allows, and the reply says what size it really came out.",
-        arguments: &[argument("node", true, "The node's id.")],
-        flags: &[option("width", "points", "How wide."), option("height", "points", "How tall.")],
+        arguments: &[whole("node", true, "The node's id.")],
+        flags: &[number_option("width", "points", "How wide."), number_option("height", "points", "How tall.")],
         examples: &["unluminous-cli space size 7 --width 900 --height 520"],
         local: false,
     },
@@ -1489,7 +1608,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "title",
         summary: "Call a node something else. An empty name puts it back to being called after what it holds.",
         arguments: &[
-            argument("node", true, "The node's id."),
+            whole("node", true, "The node's id."),
             rest("title", true, "What the header says."),
         ],
         examples: &["unluminous-cli space title 7 the agent"],
@@ -1500,7 +1619,7 @@ pub const COMMANDS: &[Command] = &[
         area: "space",
         verb: "remove",
         summary: "Take a node off the canvas, stopping whatever was running in it. A file editor node's tab is closed, which writes it first if it was edited.",
-        arguments: &[argument("node", true, "The node's id.")],
+        arguments: &[whole("node", true, "The node's id.")],
         flags: NO_FLAGS,
         examples: &["unluminous-cli space remove 7"],
         local: false,
@@ -1509,7 +1628,7 @@ pub const COMMANDS: &[Command] = &[
         area: "space",
         verb: "focus",
         summary: "Choose a node, bring it to the front and give it the keyboard.",
-        arguments: &[argument("node", true, "The node's id.")],
+        arguments: &[whole("node", true, "The node's id.")],
         flags: NO_FLAGS,
         examples: &["unluminous-cli space focus 7"],
         local: false,
@@ -1519,8 +1638,8 @@ pub const COMMANDS: &[Command] = &[
         verb: "connect",
         summary: "Wire one node's output to another's input. A connection is what lets an agent in a terminal node act on the node it is wired to; with `--pipe lines` it also types each line the first node's program writes into the second node's terminal.",
         arguments: &[
-            argument("from", true, "The node the wire leaves."),
-            argument("to", true, "The node it arrives at."),
+            whole("from", true, "The node the wire leaves."),
+            whole("to", true, "The node it arrives at."),
         ],
         flags: &[option("pipe", "lines", "Carry text as well as permission. Only into a terminal node, because only a terminal has an input to type into.")],
         examples: &[
@@ -1533,7 +1652,7 @@ pub const COMMANDS: &[Command] = &[
         area: "space",
         verb: "disconnect",
         summary: "Take a connection away, by its id from `space connections`.",
-        arguments: &[argument("connection", true, "The connection's id.")],
+        arguments: &[whole("connection", true, "The connection's id.")],
         flags: NO_FLAGS,
         examples: &["unluminous-cli space disconnect 12"],
         local: false,
@@ -1543,7 +1662,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "connections",
         summary: "Every connection on the view that is showing: its id, which node it leaves, which it arrives at, and whether it carries lines. `--from` narrows it to one node's own, which is what an agent in a terminal node asks to find out what it may act on.",
         arguments: NO_ARGUMENTS,
-        flags: &[option("from", "node", "Only the connections leaving this node.")],
+        flags: &[whole_option("from", "node", "Only the connections leaving this node.")],
         examples: &["unluminous-cli space connections --from 7"],
         local: false,
     },
@@ -1553,9 +1672,9 @@ pub const COMMANDS: &[Command] = &[
         summary: "Pan and zoom the canvas. With `--fit` it moves so that every node is on the screen at once, which is how to find something that has been dragged out of sight.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("x", "points", "The canvas point drawn at the top left corner."),
-            option("y", "points", "The same, down the canvas."),
-            option("zoom", "factor", "How many screen points one canvas point is, from 0.25 to 2.5."),
+            number_option("x", "points", "The canvas point drawn at the top left corner."),
+            number_option("y", "points", "The same, down the canvas."),
+            number_option("zoom", "factor", "How many screen points one canvas point is, from 0.25 to 2.5."),
             switch("fit", "Put every node on the screen at once."),
         ],
         examples: &["unluminous-cli space camera --fit", "unluminous-cli space camera --zoom 0.5"],
@@ -1566,10 +1685,10 @@ pub const COMMANDS: &[Command] = &[
         verb: "send",
         summary: "Type a line into a terminal node and press Enter. `--from` says which node is asking, and a node may only send to a node it is wired to; with no `--from` it is the window's own and may reach any of them.",
         arguments: &[
-            argument("node", true, "The terminal node to type into."),
+            whole("node", true, "The terminal node to type into."),
             rest("text", true, "The line to type."),
         ],
-        flags: &[option("from", "node", "Which node is asking. It must be wired to the one it names.")],
+        flags: &[whole_option("from", "node", "Which node is asking. It must be wired to the one it names.")],
         examples: &[
             "unluminous-cli space send 9 cargo test",
             "unluminous-cli space send 9 cargo test --from 7",
@@ -1580,8 +1699,8 @@ pub const COMMANDS: &[Command] = &[
         area: "space",
         verb: "read",
         summary: "Read what a terminal node is showing: the scrollback as well as the screen, so the commands that have scrolled above the fold are in it. This is what `terminal read` is for the terminal panel, and it is the way to check what a node printed, what it came back showing after a project was reopened, and what an agent running in a node has said.",
-        arguments: &[argument("node", true, "The terminal node's id.")],
-        flags: &[option("tail", "lines", "Answer with only the last N lines.")],
+        arguments: &[whole("node", true, "The terminal node's id.")],
+        flags: &[whole_option("tail", "lines", "Answer with only the last N lines.")],
         examples: &["unluminous-cli space read 7", "unluminous-cli space read 7 --tail 40"],
         local: false,
     },
@@ -1590,7 +1709,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "chat",
         summary: "Drive an Agent Chat node's own conversation: `new`, `send`, `stop`, `state`, `messages`, `last`, `attach`, `providers`, `use`, `history`, `open`, `remove`, `tools` and `view`, which are the same verbs `plugins run agent-chat` has and reach the same code. The difference is whose conversation: each chat node holds one of its own, where `plugins run agent-chat` drives the pane's. Like the pane's, `send` does not wait - `state` says when the answer has arrived.",
         arguments: &[
-            argument("node", true, "The chat node's id, from `space list`."),
+            whole("node", true, "The chat node's id, from `space list`."),
             closed(
                 "verb",
                 true,
@@ -1602,7 +1721,7 @@ pub const COMMANDS: &[Command] = &[
             ),
             rest("words", false, "What the verb takes: the message for `send`, the conversation id for `open`, `on` or `off` for `tools`. It is the rest of the line, so a message needs no quoting."),
         ],
-        flags: &[option("from", "node", "Which node is asking. It must be wired to the one it names.")],
+        flags: &[whole_option("from", "node", "Which node is asking. It must be wired to the one it names.")],
         examples: &[
             "unluminous-cli space chat 7 state",
             "unluminous-cli space chat 7 send Summarise what this project does",
@@ -1614,7 +1733,7 @@ pub const COMMANDS: &[Command] = &[
         area: "space",
         verb: "restart",
         summary: "Start a terminal node's program again in the same folder. With `--resume` it starts the agent on the conversation it named, which Claude takes and Codex does not. With `--running` it types the program the node was last seen running into the shell it already has, which is what a node comes back as when somebody typed an agent into a plain terminal rather than giving the node a command.",
-        arguments: &[argument("node", true, "The terminal node's id.")],
+        arguments: &[whole("node", true, "The terminal node's id.")],
         flags: &[
             switch("resume", "Start the agent on the session it named, rather than a fresh one."),
             switch("running", "Type what the node was last seen running into its shell, continuing an agent's most recent conversation in that folder. What is recorded is a program name rather than a command line, so its arguments are not restored."),
@@ -1626,9 +1745,9 @@ pub const COMMANDS: &[Command] = &[
         area: "space",
         verb: "font",
         summary: "How big a terminal node's letters are. The ticket this canvas comes from asks for a size a node keeps for itself, so a node that has been given one follows it and one that has not follows `terminal.font.size`. With no flag at all it answers the size the node is drawn at.",
-        arguments: &[argument("node", true, "The terminal node's id.")],
+        arguments: &[whole("node", true, "The terminal node's id.")],
         flags: &[
-            option("size", "points", "Any size from 6 to 96, which is what `terminal.font.size` itself takes."),
+            number_option("size", "points", "Any size from 6 to 96, which is what `terminal.font.size` itself takes."),
             switch("bigger", "One step up the list the Settings window offers."),
             switch("smaller", "One step down it."),
             switch("reset", "Follow the terminal's own setting again."),
@@ -1640,13 +1759,13 @@ pub const COMMANDS: &[Command] = &[
         area: "space",
         verb: "zoom",
         summary: "How big one node draws what it holds. Each kind walks the number that really decides its size: a terminal and a file editor a point size, a folder view, an agent chat and the tasks board a multiplier over everything they draw, and a web browser the page's own zoom. With no flag at all it answers the factor the node is drawn at. This is what the modifier wheel over a node does, and it changes nothing about the canvas's own zoom, which is `space camera`.",
-        arguments: &[argument("node", true, "The node's id.")],
+        arguments: &[whole("node", true, "The node's id.")],
         flags: &[
-            option("factor", "number", "How big, as a multiplier for a folder, a chat, the board or a browser, or a point size for a terminal or an editor."),
+            number_option("factor", "number", "How big, as a multiplier for a folder, a chat, the board or a browser, or a point size for a terminal or an editor."),
             switch("bigger", "One step up."),
             switch("smaller", "One step down."),
             switch("reset", "Back to the size the window's own setting gives."),
-            option("from", "node", "Which node is asking. It must be wired to the one it names."),
+            whole_option("from", "node", "Which node is asking. It must be wired to the one it names."),
         ],
         examples: &["unluminous-cli space zoom 7 --bigger", "unluminous-cli space zoom 9 --factor 1.5"],
         local: false,
@@ -1656,10 +1775,10 @@ pub const COMMANDS: &[Command] = &[
         verb: "address",
         summary: "Type an address into a browser node's own address bar and enter it, which is what pressing Enter in that field does. `space browser <node> go` is the same navigation asked for directly; this exists so the control a person uses has a way in of its own.",
         arguments: &[
-            argument("node", true, "The browser node's id."),
+            whole("node", true, "The browser node's id."),
             argument("url", true, "The address, or a path to a local page in this project."),
         ],
-        flags: &[option("from", "node", "Which node is asking. It must be wired to the one it names.")],
+        flags: &[whole_option("from", "node", "Which node is asking. It must be wired to the one it names.")],
         examples: &["unluminous-cli space address 9 https://example.com/"],
         local: false,
     },
@@ -1668,7 +1787,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "browser",
         summary: "Drive a browser node: `go` to an address, `back`, `forward`, `reload`, `url` to read where it is, and `shot` to write a picture of the node to a file. A window renders one page at a time, so the node acted on is shown first. **`shot` photographs the node as Unluminous drew it and not the page inside it**: a rendered page is a native child window the operating system composites on top, and no picture taken from inside Unluminous contains one. Use it to see the node, its address bar and where it is on the canvas; use `url` to read the address, and the agent's own tools to read what a page says.",
         arguments: &[
-            argument("node", true, "The browser node's id."),
+            whole("node", true, "The browser node's id."),
             closed(
                 "command",
                 true,
@@ -1678,7 +1797,7 @@ pub const COMMANDS: &[Command] = &[
         ],
         flags: &[
             option("url", "address", "Where to go, for `go`."),
-            option("from", "node", "Which node is asking. It must be wired to the one it names."),
+            whole_option("from", "node", "Which node is asking. It must be wired to the one it names."),
             option("path", "file", "Where to write the picture, for `shot`."),
         ],
         examples: &[
@@ -1692,7 +1811,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "folder",
         summary: "Drive a folder node: `expand` and `collapse` a folder in it, `select` a row, `open` a file, `root` to point it at another folder, and `rows` to read what it is showing. `open` puts the file in a File Editor node this one is wired to when there is one, and in the editing area when there is not — which is what a double click in the node does. `root` is what the node's own `Choose Folder...` menu row calls, so several folder nodes can show several different folders.",
         arguments: &[
-            argument("node", true, "The folder node's id."),
+            whole("node", true, "The folder node's id."),
             closed(
                 "command",
                 true,
@@ -1702,7 +1821,7 @@ pub const COMMANDS: &[Command] = &[
         ],
         flags: &[
             option("path", "path", "Which row, or which folder for `root`."),
-            option("from", "node", "Which node is asking. It must be wired to the one it names."),
+            whole_option("from", "node", "Which node is asking. It must be wired to the one it names."),
         ],
         examples: &[
             "unluminous-cli space folder 11 expand --path crates/unluminous-app --from 7",
@@ -1715,10 +1834,10 @@ pub const COMMANDS: &[Command] = &[
         verb: "editor",
         summary: "Put a file in a file editor node. A file already open somewhere else is moved into the node rather than opened twice, because two tabs on one file would be two documents over one path.",
         arguments: &[
-            argument("node", true, "The editor node's id."),
+            whole("node", true, "The editor node's id."),
             argument("path", true, "The file, relative to the project or absolute."),
         ],
-        flags: &[option("from", "node", "Which node is asking. It must be wired to the one it names.")],
+        flags: &[whole_option("from", "node", "Which node is asking. It must be wired to the one it names.")],
         examples: &["unluminous-cli space editor 13 src/main.rs --from 7"],
         local: false,
     },
@@ -1728,8 +1847,8 @@ pub const COMMANDS: &[Command] = &[
         verb: "move",
         summary: "Move the pointer to a place in the window and leave it there, which is what makes something hover. Positions are the window's own points with 0,0 at its top left corner - the same points `window screenshot` writes out, so a position measured off a picture is the position to use. Nothing about this needs the window to be in front: the person's own pointer does not move and the window is never activated.",
         arguments: &[
-            argument("x", true, "Across the window, in points."),
-            argument("y", true, "Down the window, in points."),
+            number("x", true, "Across the window, in points."),
+            number("y", true, "Down the window, in points."),
         ],
         flags: NO_FLAGS,
         examples: &["unluminous-cli input move 300 220"],
@@ -1740,8 +1859,8 @@ pub const COMMANDS: &[Command] = &[
         verb: "click",
         summary: "Click at a place in the window: the pointer moves there, the button goes down and comes up again, over three frames, which is what makes it a click rather than a flicker. The window does not have to be in front and is not brought to the front. Positions are the window's own points, which is what `window screenshot` writes out.",
         arguments: &[
-            argument("x", true, "Across the window, in points."),
-            argument("y", true, "Down the window, in points."),
+            number("x", true, "Across the window, in points."),
+            number("y", true, "Down the window, in points."),
         ],
         flags: &[
             switch("right", "The secondary button, which opens a context menu."),
@@ -1764,13 +1883,13 @@ pub const COMMANDS: &[Command] = &[
         verb: "drag",
         summary: "Drag from one place in the window to another: the pointer arrives, the button goes down, it is moved in steps, and it is let go. The steps are frames of their own because that is what a drag is - every drag in Unluminous is settled from the difference between two frames.",
         arguments: &[
-            argument("x", true, "Where the drag starts, across the window."),
-            argument("y", true, "Where the drag starts, down the window."),
+            number("x", true, "Where the drag starts, across the window."),
+            number("y", true, "Where the drag starts, down the window."),
         ],
         flags: &[
-            option("to-x", "points", "Where it ends, across the window."),
-            option("to-y", "points", "Where it ends, down the window."),
-            option("steps", "count", "How many positions it is moved through. 20 when it is not given."),
+            number_option("to-x", "points", "Where it ends, across the window."),
+            number_option("to-y", "points", "Where it ends, down the window."),
+            whole_option("steps", "count", "How many positions it is moved through. 20 when it is not given."),
         ],
         examples: &["unluminous-cli input drag 660 110 --to-x 1250 --to-y 700"],
         local: false,
@@ -1785,7 +1904,7 @@ pub const COMMANDS: &[Command] = &[
             switch("shift", "Hold shift."),
             switch("alt", "Hold alt."),
             switch("cmd", "Hold command on macOS, control on Windows - the key a menu shortcut names."),
-            option("times", "count", "Press it more than once."),
+            whole_option("times", "count", "Press it more than once."),
         ],
         examples: &[
             "unluminous-cli input key Escape",
@@ -1807,9 +1926,9 @@ pub const COMMANDS: &[Command] = &[
         area: "input",
         verb: "wheel",
         summary: "Turn the mouse wheel where the pointer is, in notches. A negative number scrolls down the page, which is what turning the wheel towards you does. `input move` is what puts the pointer over the thing to scroll.",
-        arguments: &[argument("notches", true, "How many notches, negative for down the page.")],
+        arguments: &[number("notches", true, "How many notches, negative for down the page.")],
         flags: &[
-            option("across", "notches", "Sideways, for a list that scrolls that way."),
+            number_option("across", "notches", "Sideways, for a list that scrolls that way."),
             switch("ctrl", "Hold control, which is what zooms."),
             switch("cmd", "Hold command, which is what zooms on macOS."),
         ],
@@ -1866,8 +1985,8 @@ pub const COMMANDS: &[Command] = &[
         area: "terminal",
         verb: "select",
         summary: "Show one of the terminal tabs. The only verb that changes which tab is showing.",
-        arguments: &[argument("index", false, "Its number, counting from 0. The --tab flag when it is given.")],
-        flags: &[option("tab", "index", "Which tab to show, counting from 0.")],
+        arguments: &[whole("index", false, "Its number, counting from 0. The --tab flag when it is given.")],
+        flags: &[whole_option("tab", "index", "Which tab to show, counting from 0.")],
         examples: &["unluminous-cli terminal select 1", "unluminous-cli terminal select --tab 1"],
         local: false,
     },
@@ -1875,8 +1994,8 @@ pub const COMMANDS: &[Command] = &[
         area: "terminal",
         verb: "close",
         summary: "Close a terminal tab. Closing the last one puts the terminal away.",
-        arguments: &[argument("index", false, "Its number. The --tab flag when it is given, the tab that is showing when both are left out.")],
-        flags: &[option("tab", "index", "Which tab to close, counting from 0. The one that is showing when it is left out.")],
+        arguments: &[whole("index", false, "Its number. The --tab flag when it is given, the tab that is showing when both are left out.")],
+        flags: &[whole_option("tab", "index", "Which tab to close, counting from 0. The one that is showing when it is left out.")],
         examples: &["unluminous-cli terminal close", "unluminous-cli terminal close --tab 1"],
         local: false,
     },
@@ -1885,7 +2004,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "rename",
         summary: "Call a terminal tab something else. The name stays put when the program in the tab sets a title of its own; an empty name puts the tab back to being named after its program.",
         arguments: &[rest("name", true, "What to call it. Everything after the verb is taken as the name, so it needs no quotes.")],
-        flags: &[option("tab", "index", "Which tab, counting from 0. The one that is showing when it is left out.")],
+        flags: &[whole_option("tab", "index", "Which tab, counting from 0. The one that is showing when it is left out.")],
         examples: &[
             "unluminous-cli terminal rename build",
             "unluminous-cli terminal rename --tab 1 the long running one",
@@ -1896,8 +2015,8 @@ pub const COMMANDS: &[Command] = &[
         area: "terminal",
         verb: "move",
         summary: "Move a terminal tab along the strip, which is what dragging one does.",
-        arguments: &[argument("position", true, "Where it goes, counting the tabs as they are on the screen now from 0.")],
-        flags: &[option("tab", "index", "Which tab to move, counting from 0. The one that is showing when it is left out.")],
+        arguments: &[whole("position", true, "Where it goes, counting the tabs as they are on the screen now from 0.")],
+        flags: &[whole_option("tab", "index", "Which tab to move, counting from 0. The one that is showing when it is left out.")],
         examples: &["unluminous-cli terminal move 0", "unluminous-cli terminal move --tab 2 0"],
         local: false,
     },
@@ -1907,7 +2026,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Send a command to the shell in a terminal tab, the one that is showing when --tab is left out. Naming a tab does not show it. Enter is pressed for you unless you say not to.",
         arguments: &[rest("text", false, "The command. Everything after the verb is taken as the command, so it needs no quotes.")],
         flags: &[
-            option("tab", "index", "Which tab to send to, counting from 0. The one that is showing when it is left out."),
+            whole_option("tab", "index", "Which tab to send to, counting from 0. The one that is showing when it is left out."),
             switch("no-enter", "Type the text and leave it on the prompt without running it."),
             option("key", "name", "Send a key instead of text: enter, tab, escape, up, down, left, right, backspace, ctrl-c, ctrl-d, ctrl-l."),
         ],
@@ -1925,10 +2044,10 @@ pub const COMMANDS: &[Command] = &[
         summary: "Read what a terminal tab has on its screen, the one that is showing when --tab is left out. Reading a tab does not show it.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("tab", "index", "Which tab to read, counting from 0. The one that is showing when it is left out."),
-            option("lines", "number", "Only the last so many lines."),
+            whole_option("tab", "index", "Which tab to read, counting from 0. The one that is showing when it is left out."),
+            whole_option("lines", "number", "Only the last so many lines."),
             option("wait-for", "text", "Wait until this text is on the named tab's screen before answering, which is how to wait for a command to finish."),
-            option("timeout", "milliseconds", "How long to wait for --wait-for. 10000 by default."),
+            whole_option("timeout", "milliseconds", "How long to wait for --wait-for. 10000 by default."),
         ],
         examples: &[
             "unluminous-cli terminal read --lines 20",
@@ -1941,7 +2060,7 @@ pub const COMMANDS: &[Command] = &[
         area: "terminal",
         verb: "height",
         summary: "Read how tall the terminal tile is, or set it. The same measurement dragging its top edge changes.",
-        arguments: &[argument("points", false, "How tall to make it. Read it when this is left out.")],
+        arguments: &[number("points", false, "How tall to make it. Read it when this is left out.")],
         flags: NO_FLAGS,
         examples: &["unluminous-cli terminal height 400"],
         local: false,
@@ -2026,9 +2145,9 @@ pub const COMMANDS: &[Command] = &[
         summary: "What a run has written, as text. It ran in a pseudoterminal, so this is what it would have printed to a terminal — colours and progress bars included, with the escape sequences already read.",
         arguments: &[argument("name", false, "The configuration. The run that is showing when it is left out.")],
         flags: &[
-            option("tail", "number", "Only the last so many lines."),
+            whole_option("tail", "number", "Only the last so many lines."),
             option("wait-for", "text", "Wait until this text has been written before answering, which is how to wait for a server to say it is listening."),
-            option("timeout", "milliseconds", "How long to wait for --wait-for. 10000 by default."),
+            whole_option("timeout", "milliseconds", "How long to wait for --wait-for. 10000 by default."),
         ],
         examples: &[
             "unluminous-cli run output --tail 20",
@@ -2053,7 +2172,7 @@ pub const COMMANDS: &[Command] = &[
         arguments: &[argument("name", false, "The configuration. The chosen one when it is left out.")],
         flags: &[
             switch("wait-for-pause", "Wait until the program stops somewhere before answering, so a script can set a breakpoint, start, and read a variable in three commands."),
-            option("timeout", "milliseconds", "How long to wait for --wait-for-pause. 30000 by default."),
+            whole_option("timeout", "milliseconds", "How long to wait for --wait-for-pause. 30000 by default."),
         ],
         examples: &[
             "unluminous-cli debug start",
@@ -2077,7 +2196,7 @@ pub const COMMANDS: &[Command] = &[
         arguments: NO_ARGUMENTS,
         flags: &[
             switch("wait-for-pause", "Wait until it stops again before answering."),
-            option("timeout", "milliseconds", "How long to wait. 30000 by default."),
+            whole_option("timeout", "milliseconds", "How long to wait. 30000 by default."),
         ],
         examples: &["unluminous-cli debug continue --wait-for-pause"],
         local: false,
@@ -2089,7 +2208,7 @@ pub const COMMANDS: &[Command] = &[
         arguments: NO_ARGUMENTS,
         flags: &[
             switch("wait-for-pause", "Wait until it stops again before answering."),
-            option("timeout", "milliseconds", "How long to wait. 30000 by default."),
+            whole_option("timeout", "milliseconds", "How long to wait. 30000 by default."),
         ],
         examples: &["unluminous-cli debug step-over --wait-for-pause"],
         local: false,
@@ -2101,7 +2220,7 @@ pub const COMMANDS: &[Command] = &[
         arguments: NO_ARGUMENTS,
         flags: &[
             switch("wait-for-pause", "Wait until it stops again before answering."),
-            option("timeout", "milliseconds", "How long to wait. 30000 by default."),
+            whole_option("timeout", "milliseconds", "How long to wait. 30000 by default."),
         ],
         examples: &["unluminous-cli debug step-into --wait-for-pause"],
         local: false,
@@ -2113,7 +2232,7 @@ pub const COMMANDS: &[Command] = &[
         arguments: NO_ARGUMENTS,
         flags: &[
             switch("wait-for-pause", "Wait until it stops again before answering."),
-            option("timeout", "milliseconds", "How long to wait. 30000 by default."),
+            whole_option("timeout", "milliseconds", "How long to wait. 30000 by default."),
         ],
         examples: &["unluminous-cli debug step-out --wait-for-pause"],
         local: false,
@@ -2124,11 +2243,11 @@ pub const COMMANDS: &[Command] = &[
         summary: "Run until the program reaches a line, then stop there. A temporary breakpoint, a resume, and the breakpoint taken away again — which is how every debugger builds this.",
         arguments: &[
             argument("path", true, "The file, relative to the project or absolute."),
-            argument("line", true, "The line, counting from 1."),
+            whole("line", true, "The line, counting from 1."),
         ],
         flags: &[
             switch("wait-for-pause", "Wait until it stops before answering."),
-            option("timeout", "milliseconds", "How long to wait. 30000 by default."),
+            whole_option("timeout", "milliseconds", "How long to wait. 30000 by default."),
         ],
         examples: &["unluminous-cli debug run-to src/main.rs 42 --wait-for-pause"],
         local: false,
@@ -2145,7 +2264,7 @@ pub const COMMANDS: &[Command] = &[
                 &["add", "remove", "enable", "disable", "list", "clear"],
             ),
             argument("path", false, "The file. Not needed for list or clear."),
-            argument("line", false, "The line, counting from 1."),
+            whole("line", false, "The line, counting from 1."),
         ],
         flags: &[
             option("condition", "expression", "Stop only while this is true. The debugger evaluates it, in the program's own language."),
@@ -2174,7 +2293,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "The variables of the frame that is showing. Only what has been read is printed, because a debugger reads a structure's contents only when somebody opens it; --expand asks for one row's children by name.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("frame", "number", "Which frame, counting from 0 at the top. The one that is showing when it is left out."),
+            whole_option("frame", "number", "Which frame, counting from 0 at the top. The one that is showing when it is left out."),
             option("expand", "path", "Read the children of this row and print them, naming it the way `variables` prints it — Locals/items."),
         ],
         examples: &[
@@ -2201,12 +2320,12 @@ pub const COMMANDS: &[Command] = &[
         summary: "What a person sees when they rest the pointer on a name while the program is stopped: the expression Unluminous reads at that position, its value and type, and its children as a tree. Reads the name plus the field path in front of it, so a point on `count` in `self.items.count` asks about the whole of it. Unlike `evaluate`, the answer can be walked into with --expand.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("offset", "bytes", "Ask about this position in the file rather than about the caret."),
-            option("line", "number", "Ask about this line, counting from 1."),
-            option("column", "number", "The column on that line. 1 when it is left out."),
+            whole_option("offset", "bytes", "Ask about this position in the file rather than about the caret."),
+            whole_option("line", "number", "Ask about this line, counting from 1."),
+            whole_option("column", "number", "The column on that line. 1 when it is left out."),
             option("expression", "text", "Ask about this expression outright rather than about a position, which is how a value from `evaluate` is expanded."),
             option("expand", "path", "Open this row and read its children, naming it the way the rows are printed - self.items/0."),
-            option("timeout", "milliseconds", "How long to wait for the debugger. 10000 by default."),
+            whole_option("timeout", "milliseconds", "How long to wait for the debugger. 10000 by default."),
         ],
         examples: &[
             "unluminous-cli debug hover --line 42 --column 9 --json",
@@ -2231,7 +2350,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "evaluate",
         summary: "Evaluate an expression in the frame that is showing. The debugger's own answer, or its own refusal.",
         arguments: &[rest("expression", true, "The expression. Everything after the verb is taken as it was typed, so it needs no quotes.")],
-        flags: &[option("timeout", "milliseconds", "How long to wait for the answer. 10000 by default.")],
+        flags: &[whole_option("timeout", "milliseconds", "How long to wait for the answer. 10000 by default.")],
         examples: &["unluminous-cli debug evaluate items.len()"],
         local: false,
     },
@@ -2252,7 +2371,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "output",
         summary: "What the debugger itself has said: what it loaded, what it could not find, and why it refused something. Not the program's own output, which goes to the run tile and is read with `run output`.",
         arguments: NO_ARGUMENTS,
-        flags: &[option("tail", "number", "Only the last so many lines.")],
+        flags: &[whole_option("tail", "number", "Only the last so many lines.")],
         examples: &["unluminous-cli debug output --tail 20"],
         local: false,
     },
@@ -2263,7 +2382,7 @@ pub const COMMANDS: &[Command] = &[
         arguments: NO_ARGUMENTS,
         flags: &[
             switch("wait-for-pause", "Wait until the program stops before answering, which is how a script waits for a breakpoint it has already set."),
-            option("timeout", "milliseconds", "How long to wait. 30000 by default."),
+            whole_option("timeout", "milliseconds", "How long to wait. 30000 by default."),
         ],
         examples: &["unluminous-cli debug status --json", "unluminous-cli debug status --wait-for-pause"],
         local: false,
@@ -2318,7 +2437,7 @@ pub const COMMANDS: &[Command] = &[
         area: "explorer",
         verb: "width",
         summary: "Read how wide the explorer is, or set it. The same measurement dragging its edge changes.",
-        arguments: &[argument("points", false, "How wide to make it, from 150 to 620. Read it when this is left out.")],
+        arguments: &[number("points", false, "How wide to make it, from 150 to 620. Read it when this is left out.")],
         flags: NO_FLAGS,
         examples: &["unluminous-cli explorer width 320"],
         local: false,
@@ -2355,7 +2474,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "tree",
         summary: "The rows the explorer is showing, in order, with the depth of each and whether it is a folder.",
         arguments: NO_ARGUMENTS,
-        flags: &[option("limit", "number", "At most this many rows. 200 by default.")],
+        flags: &[whole_option("limit", "number", "At most this many rows. 200 by default.")],
         examples: &["unluminous-cli explorer tree --json"],
         local: false,
     },
@@ -2364,7 +2483,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "files",
         summary: "Every file in the project that Unluminous searches, which leaves out what a build wrote: target, node_modules and __pycache__.",
         arguments: NO_ARGUMENTS,
-        flags: &[option("limit", "number", "At most this many paths. 500 by default.")],
+        flags: &[whole_option("limit", "number", "At most this many paths. 500 by default.")],
         examples: &["unluminous-cli explorer files --limit 20 --json"],
         local: false,
     },
@@ -2515,8 +2634,8 @@ pub const COMMANDS: &[Command] = &[
         summary: "What the modal that is open has found: the files Go to File matched, or the lines Find in Files matched.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("limit", "number", "At most this many. 50 by default."),
-            option("wait", "milliseconds", "Wait up to this long for a search that is still running to finish."),
+            whole_option("limit", "number", "At most this many. 50 by default."),
+            whole_option("wait", "milliseconds", "Wait up to this long for a search that is still running to finish."),
         ],
         examples: &["unluminous-cli modal results --limit 10 --json", "unluminous-cli modal results --wait 5000 --json"],
         local: false,
@@ -2525,7 +2644,7 @@ pub const COMMANDS: &[Command] = &[
         area: "modal",
         verb: "choose",
         summary: "Move the chosen row in the modal that is open, without opening anything.",
-        arguments: &[argument("index", true, "The row, counting from 0.")],
+        arguments: &[whole("index", true, "The row, counting from 0.")],
         flags: NO_FLAGS,
         examples: &["unluminous-cli modal choose 2"],
         local: false,
@@ -2534,7 +2653,7 @@ pub const COMMANDS: &[Command] = &[
         area: "modal",
         verb: "accept",
         summary: "Do what pressing Enter in the modal does: open the chosen file, jump to the chosen match, or press the modal's main button.",
-        arguments: &[argument("index", false, "Choose this row first.")],
+        arguments: &[whole("index", false, "Choose this row first.")],
         flags: NO_FLAGS,
         examples: &["unluminous-cli modal accept", "unluminous-cli modal accept 0"],
         local: false,
@@ -2554,8 +2673,8 @@ pub const COMMANDS: &[Command] = &[
         summary: "Drag the modal that is open to a place on the window, the way its header does.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("x", "points", "How far from the left of the window its left edge goes."),
-            option("y", "points", "How far from the top of the window its top edge goes."),
+            number_option("x", "points", "How far from the left of the window its left edge goes."),
+            number_option("y", "points", "How far from the top of the window its top edge goes."),
         ],
         examples: &["unluminous-cli modal move --x 60 --y 60"],
         local: false,
@@ -2566,8 +2685,8 @@ pub const COMMANDS: &[Command] = &[
         summary: "Resize the modal that is open, the way its edges do.",
         arguments: NO_ARGUMENTS,
         flags: &[
-            option("width", "points", "How wide to make it."),
-            option("height", "points", "How tall to make it."),
+            number_option("width", "points", "How wide to make it."),
+            number_option("height", "points", "How tall to make it."),
         ],
         examples: &["unluminous-cli modal size --width 900 --height 600"],
         local: false,
@@ -2632,7 +2751,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "fonts",
         summary: "The font families this machine has that the editor can be set to.",
         arguments: NO_ARGUMENTS,
-        flags: &[option("limit", "number", "At most this many. 100 by default.")],
+        flags: &[whole_option("limit", "number", "At most this many. 100 by default.")],
         examples: &["unluminous-cli settings fonts --json"],
         local: false,
     },
@@ -2808,7 +2927,7 @@ pub const COMMANDS: &[Command] = &[
         arguments: &[argument("name", true, "The entry, such as commit, push, pull, fetch, branches or annotate.")],
         flags: &[
             option("path", "path", "The file it is about. The file that is showing when it is left out."),
-            option("wait", "milliseconds", "Wait up to this long for git to answer before returning."),
+            whole_option("wait", "milliseconds", "Wait up to this long for git to answer before returning."),
         ],
         examples: &[
             "unluminous-cli git action fetch --wait 20000",
@@ -2831,7 +2950,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "switch",
         summary: "Move to a branch that already exists, which is what choosing one from the title bar's branch button does. It goes through the machine's real git on a thread, so uncommitted work that would be overwritten stops it with git's own message rather than being discarded; `git action new-branch` is how a branch is started.",
         arguments: &[argument("branch", true, "The branch to move to, as `git branches` names it.")],
-        flags: &[option("wait", "milliseconds", "Wait up to this long for git to answer before returning.")],
+        flags: &[whole_option("wait", "milliseconds", "Wait up to this long for git to answer before returning.")],
         examples: &["unluminous-cli git switch main --wait 20000"],
         local: false,
     },
@@ -2850,7 +2969,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "find",
         summary: "Menu entries whose wording matches some text, best first - the Find Action palette's own list as data. Use it rather than reading all of `action list` when you roughly know the name: the letters match as a subsequence, so `tln` finds Toggle Line Numbers, and the menu counts, so `git commit` finds Commit.",
         arguments: &[rest("text", false, "What to look for. Every entry, in menu order, when it is left out.")],
-        flags: &[option("limit", "number", "Print at most this many rows. 20 when it is left out, and 0 means all of them.")],
+        flags: &[whole_option("limit", "number", "Print at most this many rows. 20 when it is left out, and 0 means all of them.")],
         examples: &[
             "unluminous-cli action find line numbers --json",
             "unluminous-cli action find comment --json",
@@ -2893,7 +3012,7 @@ pub const COMMANDS: &[Command] = &[
         arguments: NO_ARGUMENTS,
         flags: &[
             option("transport", "stdio|http", "How the client talks to it. `stdio` by default."),
-            option("port", "number", "Which port to listen on, for `--transport http`. 7345 by default."),
+            whole_option("port", "number", "Which port to listen on, for `--transport http`. 7345 by default."),
             option("tools", "grouped|every", "One tool per area, or one tool per command. `grouped` by default."),
             option("instance", "which", "Which running Unluminous to drive, when several are running."),
         ],
@@ -2916,7 +3035,7 @@ pub const COMMANDS: &[Command] = &[
         arguments: &[closed("client", true, "`claude`, `codex`, or `both`.", &["claude", "codex", "both"])],
         flags: &[
             option("transport", "stdio|http", "Which way the agent should talk to it. `stdio` by default, which needs no port."),
-            option("port", "number", "The port to point at, for `--transport http`."),
+            whole_option("port", "number", "The port to point at, for `--transport http`."),
             option("scope", "user|project", "`user` for every project, `project` for this folder only. `user` by default."),
             option("name", "name", "What the server is called in the agent's configuration. `unluminous` by default."),
             switch("remove", "Take it out again rather than putting it in."),
@@ -2931,7 +3050,7 @@ pub const COMMANDS: &[Command] = &[
         arguments: &[closed("client", false, "`claude` or `codex`. Both when it is left out.", &["claude", "codex"])],
         flags: &[
             option("transport", "stdio|http", "Which way to describe. `stdio` by default."),
-            option("port", "number", "The port to name, for `--transport http`."),
+            whole_option("port", "number", "The port to name, for `--transport http`."),
             option("name", "name", "What to call the server. `unluminous` by default."),
         ],
         examples: &["unluminous-cli mcp config", "unluminous-cli mcp config codex --transport http"],
@@ -3148,6 +3267,105 @@ mod tests {
                     "{}'s {name} is written with the dashes a caller's key has them taken off",
                     command.typed()
                 );
+            }
+        }
+    }
+
+    /// The fault `task-1922` B13 closes: a value of a kind the command cannot use was dropped, and
+    /// the command ran and reported success as though it had not been sent.
+    #[test]
+    fn a_word_where_a_number_belongs_is_reported_rather_than_dropped() {
+        let size = find("window size").expect("window size");
+        assert_eq!(
+            wrong_numbers(size, &given(json!({ "width": "nonsense" }))),
+            vec![("width".to_owned(), "nonsense".to_owned())]
+        );
+        assert!(
+            wrong_numbers(size, &given(json!({ "width": 1100, "height": "720" }))).is_empty(),
+            "a number is one however it was spelled, which is what `Request::number` reads"
+        );
+        assert!(
+            !wrong_numbers(size, &given(json!({ "--width": "nonsense" }))).is_empty(),
+            "the dashes are not what makes a value unreadable"
+        );
+        assert!(
+            wrong_numbers(size, &given(json!({ "width": Value::Null }))).is_empty(),
+            "a null is an absent value everywhere else on this wire"
+        );
+        assert!(
+            !wrong_numbers(size, &given(json!({ "width": true }))).is_empty(),
+            "a switch sent where a number belongs is not a number"
+        );
+        let open = find("tab open").expect("tab open");
+        assert!(
+            wrong_numbers(open, &given(json!({ "path": "a.rs" }))).is_empty(),
+            "a name that holds text takes text"
+        );
+    }
+
+    /// Fractional where a line belongs, and negative where a count does, are deliberately left alone.
+    ///
+    /// [`crate::protocol::Request::whole`] has always read those by truncating or by answering
+    /// nothing, and `wrong_numbers` is about the value that could not be read at all. Narrowing them
+    /// as well would refuse values that work today, which is a separate decision.
+    #[test]
+    fn a_number_of_the_wrong_shape_is_still_a_number() {
+        let caret = find("editor caret").expect("editor caret");
+        assert!(wrong_numbers(caret, &given(json!({ "line": 4.5 }))).is_empty());
+        assert!(wrong_numbers(caret, &given(json!({ "line": -2 }))).is_empty());
+    }
+
+    /// A name holds a number or it holds text, and both halves of that are asserted here.
+    ///
+    /// The second half is the one worth having: a name marked as a number that really takes a word
+    /// would refuse a command line that works, so the three that look numeric and are not are named.
+    #[test]
+    fn the_names_that_hold_a_number_are_the_ones_read_as_one() {
+        let numeric = [
+            ("editor caret", "line", Kind::Whole),
+            ("explorer tree", "limit", Kind::Whole),
+            ("terminal read", "tab", Kind::Whole),
+            ("space move", "node", Kind::Whole),
+            ("window size", "width", Kind::Number),
+            ("explorer width", "points", Kind::Number),
+            ("pane width", "fraction", Kind::Number),
+        ];
+        for (name, value, kind) in numeric {
+            let command = find(name).unwrap_or_else(|| panic!("{name}"));
+            assert_eq!(kind_of(command, value), Some(kind), "{name}'s {value}");
+        }
+        // And the ones that look like a number and are not. `panel zoom` takes the word `reset`;
+        // `space connect --pipe` takes the word `lines`; a tab is named by its number, its name or
+        // its path, so `2` and `notes.md` are both answers to it.
+        let text = [
+            ("panel zoom", "factor"),
+            ("space connect", "pipe"),
+            ("tab show", "tab"),
+            ("tab close", "tab"),
+            ("tab move", "tab"),
+            ("space open-view", "view"),
+            ("settings set", "value"),
+        ];
+        for (name, value) in text {
+            let command = find(name).unwrap_or_else(|| panic!("{name}"));
+            assert_eq!(kind_of(command, value), Some(Kind::Text), "{name}'s {value}");
+        }
+    }
+
+    /// A switch has no value, so it can never be a number.
+    #[test]
+    fn a_switch_holds_no_number() {
+        for command in COMMANDS {
+            for flag in command.flags {
+                if flag.value.is_none() {
+                    assert_eq!(
+                        flag.kind,
+                        Kind::Text,
+                        "{}'s --{} is a switch and cannot hold a number",
+                        command.typed(),
+                        flag.name
+                    );
+                }
             }
         }
     }

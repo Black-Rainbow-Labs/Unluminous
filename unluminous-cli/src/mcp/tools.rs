@@ -293,7 +293,7 @@ fn grouped_schema(commands: &[&'static Command], verbs: Vec<Value>) -> Value {
         }
         for flag in command.flags {
             arguments.entry(flag.name.to_owned()).or_insert_with(|| {
-                let kind = if flag.value.is_some() { "string" } else { "boolean" };
+                let kind = if flag.value.is_some() { value_type(flag.kind) } else { "boolean" };
                 json!({ "type": kind })
             });
         }
@@ -460,7 +460,7 @@ fn command_schema(command: &Command) -> Value {
     }
     for flag in command.flags {
         let described = match flag.value {
-            Some(_) => json!({ "type": "string", "description": flag.help }),
+            Some(_) => json!({ "type": value_type(flag.kind), "description": flag.help }),
             None => json!({ "type": "boolean", "description": flag.help }),
         };
         properties.insert(flag.name.to_owned(), described);
@@ -481,14 +481,28 @@ fn command_schema(command: &Command) -> Value {
     schema
 }
 
-/// The schema for one argument on its own: a string, narrowed to an `enum` of its
-/// [`catalogue::Argument::values`] when it has any. Shared by `command_schema` and
-/// `grouped_schema`, so the two shapes cannot narrow a closed argument two different ways.
+/// The schema for one argument on its own: narrowed to an `enum` of its
+/// [`catalogue::Argument::values`] when it has any, and otherwise typed by its
+/// [`catalogue::Kind`]. Shared by `command_schema` and `grouped_schema`, so the two shapes cannot
+/// narrow a closed argument two different ways.
 fn argument_property(argument: &catalogue::Argument) -> Value {
     if argument.values.is_empty() {
-        json!({ "type": "string" })
+        json!({ "type": value_type(argument.kind) })
     } else {
         json!({ "type": "string", "enum": argument.values })
+    }
+}
+
+/// What JSON Schema calls a [`catalogue::Kind`].
+///
+/// A numeric key says so rather than saying `string`, so a model is stopped by its own client before
+/// it sends a word where a number belongs — which is the half of `task-1922` B13 that happens before
+/// anything reaches the window. `wrong_numbers` is the half that happens when one arrives anyway.
+fn value_type(kind: catalogue::Kind) -> &'static str {
+    match kind {
+        catalogue::Kind::Text => "string",
+        catalogue::Kind::Whole => "integer",
+        catalogue::Kind::Number => "number",
     }
 }
 
@@ -855,7 +869,7 @@ mod tests {
             }
             for flag in command.flags {
                 let kind = properties[flag.name]["type"].as_str().expect("a type");
-                let wanted = if flag.value.is_some() { "string" } else { "boolean" };
+                let wanted = if flag.value.is_some() { value_type(flag.kind) } else { "boolean" };
                 assert_eq!(kind, wanted, "{}'s --{} is the wrong kind", tool.name, flag.name);
             }
             // Every tool can say which window it means, in both shapes.
