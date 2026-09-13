@@ -234,15 +234,17 @@ impl Session {
         //
         // **Once for the life of the process, and that is a correctness rule rather than a saving.**
         // `setup_env` calls `std::env::set_var`, which rewrites the process's whole environment
-        // block and is not safe to call while another thread is reading it -- which is exactly what
-        // `CreateProcess` does when a second session is being started. `task-1922` measured the
-        // consequence: with several sessions spawning at once, a child came up with **no `windir`
-        // at all**, which on a real window would be a shell with no `PATH`. It was found by a test
-        // that asks the child what it saw, and it took four releases to catch because a child with
-        // a broken environment still starts: Unluminous names its program in full.
+        // block, and that is not safe to do while another thread is reading it -- which is exactly
+        // what `CreateProcess` does. It is not only the tests that can be in that position:
+        // `unluminous_chat::agent` starts its program on a worker thread, so a terminal tab opened
+        // at the moment an agent is starting is two threads, one writing the environment and one
+        // reading it. Rust 2024 makes `set_var` `unsafe` for this reason.
         //
-        // The values are the same on every call, so calling it once is not a change in what any
-        // child is told. Rust 2024 makes `set_var` `unsafe` for this reason.
+        // **This was not the cause of anything that has been seen**, and it is worth saying so:
+        // `task-1922` reached for it while chasing a child with a missing variable, and that turned
+        // out to be the launching shell's own environment rather than a race. It stays because
+        // calling it once is right on its own terms and the values it writes are the same every
+        // time, so calling it once changes nothing about what any child is told.
         static ONCE: std::sync::Once = std::sync::Once::new();
         ONCE.call_once(alacritty_terminal::tty::setup_env);
 
@@ -1815,7 +1817,17 @@ Start-Sleep -Seconds 900"
         // replacing it -- a child with no `PATH` is a bug nobody enjoys finding, and it is the one
         // thing this could get wrong silently, because the program would still start: Unluminous
         // names it in full. A file says what the child really saw, with no timing in the answer.
-        let name = if cfg!(target_os = "windows") { "windir" } else { "HOME" };
+        // **The variable is one this process really has, and that is checked before the child is
+        // started.** `task-1922`: this named `windir`, and it stopped five releases in a row -- not
+        // because anything was wrong with the inheritance, but because the PowerShell that
+        // `tools/release.ps1` runs in here has a 75 entry environment built by npm with no `windir`
+        // in it at all, while the Git Bash beside it has 80 and does have one. So the test passed
+        // from one shell and failed from the other, and what it was reporting as a fault in the
+        // code was a fact about the machine. `SystemRoot` is the one Windows always carries.
+        let name = if cfg!(target_os = "windows") { "SystemRoot" } else { "HOME" };
+        let here = std::env::var(name).unwrap_or_else(|_| {
+            panic!("this process has no {name} of its own, so there is nothing to inherit")
+        });
         let folder = std::env::temp_dir().join("unluminous-terminal-tests").join("inherited");
         std::fs::create_dir_all(&folder).expect("make the folder");
         // Named after this process, because two runs of this binary at once would otherwise read
@@ -1864,11 +1876,11 @@ Start-Sleep -Seconds 900"
             std::thread::sleep(std::time::Duration::from_millis(25));
         };
         std::fs::remove_file(&wrote).ok();
-        assert!(
-            said != format!("[%{name}%]") && said != "[]",
-            "the inherited environment should still be there, and the child saw {said:?}"
+        assert_eq!(
+            said,
+            format!("[{here}]"),
+            "the child should have inherited this process's own {name}"
         );
-        assert!(said.starts_with('[') && said.ends_with(']'), "the child wrote {said:?}");
     }
 
     #[test]
