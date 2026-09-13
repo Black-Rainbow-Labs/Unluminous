@@ -481,14 +481,65 @@ fn refusal(status: u16, body: &str) -> String {
 ///
 /// Whole-value replacement rather than a pattern: what is being looked for is known exactly, so there
 /// is nothing to guess at and nothing that can be nearly right. A short value is not looked for at
-/// all — `redacted` would otherwise chew a sentence to pieces over a two character key.
+/// all — `redacted` would otherwise chew a sentence to pieces over a two character key. The caller
+/// keeps that rule, at eight characters.
+///
+/// **Three spellings of the same secret, not one.** `task-1922` B19: an exact match is what a server
+/// that echoes the request back verbatim produces, and it is not the only thing a server does. A
+/// gateway that puts the request in a URL percent encodes it, and one that normalises a header
+/// re-cases it — and either of those got past an exact match and put the key in the pane, and then
+/// in the transcript on disk.
 fn redacted(text: &str, secrets: &[String]) -> String {
     let mut out = text.to_owned();
     for secret in secrets {
-        if out.contains(secret.as_str()) {
-            out = out.replace(secret.as_str(), "\u{2026}");
+        for spelling in [secret.clone(), percent_encoded(secret)] {
+            out = replaced_ignoring_case(&out, &spelling);
         }
     }
+    out
+}
+
+/// `secret` with everything but RFC 3986's unreserved characters percent encoded, as a URL carries it.
+///
+/// Upper case hex, which is what the RFC prefers. The match that uses this ignores case anyway, so a
+/// server that wrote lower case hex is caught by the same pass.
+fn percent_encoded(secret: &str) -> String {
+    let mut out = String::with_capacity(secret.len());
+    for byte in secret.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(byte as char)
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
+/// `text` with every occurrence of `needle`, compared without ASCII case, replaced by an ellipsis.
+///
+/// Written out rather than lower casing the whole of `text` and replacing there, because the answer
+/// has to be the original text with holes in it: lower casing it would change every other word of the
+/// message a person is being shown to understand what went wrong.
+fn replaced_ignoring_case(text: &str, needle: &str) -> String {
+    if needle.is_empty() {
+        return text.to_owned();
+    }
+    // `to_ascii_lowercase` maps each ASCII byte to one ASCII byte and leaves every other byte alone,
+    // so an offset into the lower cased copy is the same offset into the original, and the slices
+    // below are on character boundaries. None of that holds for a case fold that changes length,
+    // which is why this is the ASCII one.
+    let haystack = text.to_ascii_lowercase();
+    let wanted = needle.to_ascii_lowercase();
+    let mut out = String::with_capacity(text.len());
+    let mut at = 0;
+    while let Some(found) = haystack[at..].find(&wanted) {
+        let start = at + found;
+        out.push_str(&text[at..start]);
+        out.push('\u{2026}');
+        at = start + wanted.len();
+    }
+    out.push_str(&text[at..]);
     out
 }
 
@@ -791,6 +842,35 @@ data: [DONE]\n\n";
     /// the turn in flight would have. Dropping the client must reach it: before `Drop` existed, only
     /// the stop button did, so closing a conversation mid turn left `claude` running with nobody
     /// reading it.
+    /// **A key is taken out of a server's own words in more than one spelling.** `task-1922` B19.
+    ///
+    /// A refusal is quoted verbatim, which is the right rule and is `unluminous-git`'s. What makes it
+    /// safe is that the key is taken out of it first — and an exact match only covers a server that
+    /// echoes the request back byte for byte. A gateway that puts the request in a URL percent
+    /// encodes it, and one that normalises a header re-cases it; either put the key in the pane and
+    /// then in the transcript on disk.
+    #[test]
+    fn a_key_is_redacted_however_the_server_spells_it_back() {
+        let secrets = vec!["sk-ant-SECRET/value+here".to_owned()];
+        let exact = redacted("refused: sk-ant-SECRET/value+here is not valid", &secrets);
+        assert!(!exact.contains("SECRET"), "{exact}");
+
+        let recased = redacted("refused: SK-ANT-secret/VALUE+HERE is not valid", &secrets);
+        assert!(!recased.contains("secret"), "a re-cased key is still the key: {recased}");
+        assert!(recased.contains("refused:"), "and the rest of the sentence survives: {recased}");
+
+        let encoded = redacted("GET /v1?key=sk-ant-SECRET%2Fvalue%2Bhere failed", &secrets);
+        assert!(!encoded.contains("SECRET"), "a percent encoded key is still the key: {encoded}");
+        assert!(encoded.contains("failed"), "and the rest of the sentence survives: {encoded}");
+
+        let lower_hex = redacted("GET /v1?key=sk-ant-SECRET%2fvalue%2bhere failed", &secrets);
+        assert!(!lower_hex.contains("SECRET"), "lower case hex too: {lower_hex}");
+
+        // And a message with no key in it comes back exactly as it arrived.
+        let untouched = redacted("refused: the model is overloaded", &secrets);
+        assert_eq!(untouched, "refused: the model is overloaded");
+    }
+
     #[test]
     fn dropping_a_client_kills_the_agent_it_left_running() {
         let mut command = match cfg!(windows) {
