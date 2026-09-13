@@ -18455,24 +18455,27 @@ fn the_space_manager() {
 /// **The id is one Unluminous gives, not one it reads back**, which is `services::agent_tasks`' own answer to
 /// the same problem: a first run is `claude --session-id <uuid>` and a later one `claude --resume <uuid>`, so
 /// the id is one Claude answers to rather than one parsed out of somebody else's stream.
+///
+/// **Nothing here asks the node what it recorded**, and that is `task-1922`'s correction. A node writes its
+/// conversation down inside the `Ok` arm of `Session::spawn`, so that a node whose program would not start
+/// is not left claiming a conversation nothing is on. Whether there is anything to read is therefore the
+/// question *is `claude` installed on this machine*. It is on the machine this was written on and it is not
+/// on a CI runner, so the assertion that read it passed here and failed there, on both platforms. What is
+/// asserted instead is the command line, which is built with no process behind it and is where the id is
+/// decided. That the recorded value agrees with what was sent is `launch::session_for`'s own unit test,
+/// which pins the two halves against each other in every combination.
 #[test]
 fn an_agent_node_is_started_on_the_session_it_was_left_on() {
     use unluminous_app::services::space::State;
     let mut harness = harness("");
     did(&mut harness, "space show");
-    // A node naming an agent that takes an id. It will not start — there is no `claude` on a test's PATH —
-    // and that is the point: what is asserted is the command line and the id, with no process behind it.
+    // A node naming an agent that takes an id. Whether it really starts is a fact about the machine, and
+    // nothing below depends on it.
     let node = did(&mut harness, "space add terminal --x 40 --y 30 --command claude")["node"]
         .as_u64()
         .expect("id");
     harness.run();
 
-    // **A first run is given an id**, and it is written down.
-    let first = match &harness.state().space.space.current().node(node).expect("the node").state {
-        State::Terminal(terminal) => terminal.session.clone(),
-        other => panic!("{other:?}"),
-    };
-    assert!(!first.is_empty(), "a first run of an agent node was given no conversation id");
     let line = harness
         .state()
         .space_terminal_settings(node, "a-fresh-id")
@@ -18486,14 +18489,22 @@ fn an_agent_node_is_started_on_the_session_it_was_left_on() {
         "a run that is not a resume should ask for the id it was handed, and asks {said:?}",
     );
 
-    // **Coming back, the same node resumes that conversation** rather than beginning another.
+    // **Coming back, the same node resumes that conversation** rather than beginning another. The id is put
+    // on the node by hand for the reason above: a node that never started has none, and what is under test
+    // here is the command line built from one rather than where the one came from.
+    let was = "the-conversation-it-was-left-on";
+    harness.state_mut().space.space.change(node, |state| {
+        if let State::Terminal(terminal) = state {
+            terminal.session = was.to_owned();
+        }
+    });
     let resumed = harness
         .state()
         .space_terminal_settings_resuming(node)
         .expect("a terminal node builds a command line");
     let said = resumed.args.join(" ");
     assert!(
-        said.contains("--resume") && said.contains(&first),
+        said.contains("--resume") && said.contains(was),
         "a restored node should resume the conversation it was on, and asks {said:?}",
     );
     assert!(!said.contains("--session-id"), "and not both at once: {said:?}");
