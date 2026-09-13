@@ -8,6 +8,10 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- A session has a beginning, and a terminal prints its own screen back (`task-1912`)
+
+## 0.42.0 — 2026-09-11
+
 - The windows come back, and a terminal brings its screen with it (`task-1908`)
 - The replay's own edge cases, asked rather than assumed (`task-1908`)
 
