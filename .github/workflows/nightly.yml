@@ -134,4 +134,4 @@ jobs:
           node_adapter=$(find "$LOCALAPPDATA/Unluminous/adapters" -name dapDebugServer.js | head -1)
           echo "lldb:  $lldb"
           echo "node:  $node_adapter"
-          UNLUMINOUS_LLDB_ADAPTER="$lldb" UNLUMINOUS_NODE_ADAPTER="$node_adapter"             cargo test -p unluminous-app --test screenshots -- --ignored --test-threads=1
+          UNLUMINOUS_LLDB_ADAPTER="$lldb" UNLUMINOUS_NODE_ADAPTER="$node_adapter"             cargo test -p unluminous-app --test debugging -- --ignored --test-threads=1

@@ -167,8 +167,12 @@ jobs:
       - name: The toolchain rust-toolchain.toml names
         run: rustup show
       - uses: Swatinem/rust-cache@v2
-      - name: cargo test -p unluminous-app --test screenshots
-        run: cargo test -p unluminous-app --test screenshots
+      # **Every test target of the crate, rather than one named one.** `task-1922` split
+      # `tests/screenshots.rs` into twelve files, and a workflow naming the old target answers
+      # "no test target named `screenshots`" rather than running anything. Naming the crate instead
+      # of the twelve means a thirteenth is run the day it is written.
+      - name: cargo test -p unluminous-app --tests
+        run: cargo test -p unluminous-app --tests
       # What was rendered, so a failure can be looked at rather than guessed at. `.new.png` is what
       # the run produced and `.diff.png` is where it differs, which is how a person decides whether a
       # change was meant.
