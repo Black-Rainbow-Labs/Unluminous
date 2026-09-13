@@ -31,7 +31,7 @@ pub mod syntax;
 pub use breakpoints::{Breakpoint, Breakpoints};
 pub use completion::{Candidate, Row as CompletionRow, Source as CompletionSource};
 pub use cursor::Selection;
-pub use document::{Command, Document, IndentUnit};
+pub use document::{indentation_for_a_new_line, Command, Document, IndentUnit};
 pub use encoding::{Decoded, Encoding, LineEnding};
 pub use folding::{Folds, Hidden, Kind as FoldKind, Reading as FoldReading, Region as FoldRegion};
 pub use highlights::{Highlight, Highlights, Rgba};

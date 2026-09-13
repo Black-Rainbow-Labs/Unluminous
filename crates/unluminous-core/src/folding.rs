@@ -141,7 +141,12 @@ impl Tokens {
     }
 
     /// True when `offset` is inside a comment or a string.
-    fn covers(&self, offset: usize) -> bool {
+    ///
+    /// Public because a second reader wants the same answer: `Document::bracket_pair` asks it of
+    /// every bracket it walks past, so that a `}` inside `// }` or inside `"}"` is not a bracket.
+    /// Reading a file for its blocks and matching one pair of brackets are the same question about
+    /// the same tokens, and one of them already has them read.
+    pub fn covers(&self, offset: usize) -> bool {
         let index = self.quiet.partition_point(|(range, _)| range.end <= offset);
         self.quiet.get(index).is_some_and(|(range, _)| range.contains(&offset))
     }

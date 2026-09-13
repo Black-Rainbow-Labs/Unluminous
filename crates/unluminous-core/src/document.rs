@@ -87,6 +87,67 @@ pub enum Command {
     Dedent {
         unit: IndentUnit,
     },
+    /// Comment or uncomment every line the selection touches, with the language's own marker.
+    ///
+    /// **The marker is passed in**, because this crate holds no list of languages: the window reads
+    /// `language.line_comment` off the plugin that claims the file and hands it down, which is the
+    /// seam `folding::Reading` and `markdown::CodeHighlighter` already are.
+    ///
+    /// It **uncomments when every line the selection touches that has anything on it already begins
+    /// with the marker**, and comments otherwise, which is what makes one key both. A wholly blank
+    /// line is left out of that reckoning and is left alone, so a selection with a blank line in the
+    /// middle of it comes back byte for byte when the key is pressed again. Exactly the marker is
+    /// put in and exactly the marker is taken out — a space after it is part of the marker or it is
+    /// not there, and that is what makes the toggle its own inverse.
+    ///
+    /// With no selection it is the line the caret is on, as [`Command::Indent`] is.
+    ToggleLineComment {
+        marker: String,
+    },
+    /// Wrap the selection in the language's block comment markers, or take them off again.
+    ///
+    /// The same decision [`Command::ToggleLineComment`] makes, made once over the whole range rather
+    /// than once a line: the range is uncommented when what it holds, ignoring the whitespace at
+    /// either end, opens with `open` and closes with `close`. The markers hug the words rather than
+    /// the indentation, so a second press gives back the bytes the first one changed.
+    ///
+    /// With no selection the range is the line the caret is on, which is what a person pressing the
+    /// chord on one line means.
+    ToggleBlockComment {
+        open: String,
+        close: String,
+    },
+    /// Copy the lines the selection touches in below themselves.
+    ///
+    /// The selection stays on the lines it was on rather than moving to the copy, which is
+    /// [`Command::Indent`]'s promise: pressing the key again duplicates the same lines again.
+    DuplicateLines,
+    /// Move the lines the selection touches up or down, carrying the selection with them.
+    ///
+    /// `by` is a direction and a count: `-1` and `1` are what the two key chords send. A block
+    /// already against the top or the bottom of the file does not move.
+    MoveLines {
+        by: i32,
+    },
+    /// Join the lines the selection touches into one, with a single space at each seam.
+    ///
+    /// The joined line's leading whitespace goes, and so does the trailing whitespace of the line it
+    /// is joined to — which is the only way "one space between" can be true of a line that ended in
+    /// one. With no selection it joins the caret's line to the line below it, so the chord can be
+    /// pressed again to pull up the next one.
+    JoinLines,
+    /// Sort the lines the selection touches, in byte order, keeping equal lines in the order they
+    /// were in.
+    ///
+    /// Nothing is selected, nothing is sorted: one line is already in order, and a command that
+    /// silently sorted the whole file would be a command nobody could undo in their head.
+    SortLines,
+    /// Take the trailing whitespace off every line in the document.
+    ///
+    /// **This does not know about saving.** Whether it runs when a file is written is the window's
+    /// question, because the setting that answers it and the language it has to be withheld from —
+    /// Markdown, where two trailing spaces are a line break — are both the window's knowledge.
+    TrimTrailingWhitespace,
     /// Apply character formatting to the selection, or to the next text typed if nothing is selected.
     ApplyStyle(StyleChange),
     /// Turn bold on for the selection, or off if all of it is already bold.
@@ -912,6 +973,13 @@ impl Document {
             Command::ReplaceMany(edits) => self.replace_many(edits),
             Command::Indent { unit } => self.indent(unit),
             Command::Dedent { unit } => self.dedent(unit),
+            Command::ToggleLineComment { marker } => self.toggle_line_comment(&marker),
+            Command::ToggleBlockComment { open, close } => self.toggle_block_comment(&open, &close),
+            Command::DuplicateLines => self.duplicate_lines(),
+            Command::MoveLines { by } => self.move_lines(by),
+            Command::JoinLines => self.join_lines(),
+            Command::SortLines => self.sort_lines(),
+            Command::TrimTrailingWhitespace => self.trim_trailing_whitespace(),
             Command::ApplyStyle(change) => self.apply_style(change),
             Command::ToggleBold => {
                 let on = !self.active_style().bold;
@@ -1226,15 +1294,7 @@ impl Document {
     /// press is one snapshot and one undo step, for the reason `replace_many` states. No line break
     /// is inserted or removed, so the paragraph list is left exactly as it was.
     fn indent(&mut self, unit: IndentUnit) {
-        let range = self.selection.range();
-        let (first, last) = if range.is_empty() {
-            let line = self.text.byte_to_line(range.start);
-            (line, line)
-        } else {
-            // The line holding the byte before the end: a selection that ends on a line break
-            // touches the line above it, because it holds no byte of the line below.
-            (self.text.byte_to_line(range.start), self.text.byte_to_line(range.end - 1))
-        };
+        let (first, last) = self.touched_lines();
         let starts: Vec<usize> = (first..=last).map(|line| self.text.line_to_byte(line)).collect();
         let unit = unit.text();
         self.push_undo(EditKind::Other);
@@ -1272,13 +1332,7 @@ impl Document {
     /// end moves back past the removals at or before it, so pressing the key again removes another
     /// level from whatever is still indented.
     fn dedent(&mut self, unit: IndentUnit) {
-        let range = self.selection.range();
-        let (first, last) = if range.is_empty() {
-            let line = self.text.byte_to_line(range.start);
-            (line, line)
-        } else {
-            (self.text.byte_to_line(range.start), self.text.byte_to_line(range.end - 1))
-        };
+        let (first, last) = self.touched_lines();
         let unit = unit.text();
         let starts: Vec<usize> = (first..=last)
             .map(|line| self.text.line_to_byte(line))
@@ -1303,6 +1357,573 @@ impl Document {
         self.desired_x = None;
         self.mark_changed();
         self.last_edit = EditKind::Other;
+    }
+
+    // --------------------------------------------------------------------------- the line commands
+
+    // Seven commands that work on whole lines, and one question about brackets. `task-1922` §5.5.
+    //
+    // Every one of them makes its edits through `Self::splice`, which is the one place in this crate
+    // that knows a range of bytes moved: that is what carries the marked passages, the folds and the
+    // breakpoints along with the text rather than leaving them behind on the wrong line. Each is one
+    // `push_undo` and one `mark_changed` however many lines it touched, which is `replace_many`'s
+    // rule — one gesture is one thing to undo — and a command that finds nothing to do pushes no
+    // undo step at all, for the reason `replace_many` drops an edit that would change no byte.
+
+    /// The lines the selection touches, counting from zero: the first and the last.
+    ///
+    /// With nothing selected it is the line the caret is on, so the command line can ask for a line
+    /// operation on a document nobody has selected anything in. A selection that ends on a line
+    /// break touches the line above it rather than the line below, because it holds no byte of the
+    /// line below — which is what the byte before the end is for.
+    fn touched_lines(&self) -> (usize, usize) {
+        let range = self.selection.range();
+        if range.is_empty() {
+            let line = self.text.byte_to_line(range.start);
+            (line, line)
+        } else {
+            (self.text.byte_to_line(range.start), self.text.byte_to_line(range.end - 1))
+        }
+    }
+
+    /// The byte range of whole lines `first` to `last`, including the line break that ends `last`.
+    ///
+    /// The last line of a file that does not end in a line break has no break to include, which is
+    /// the one case every command here has to say something about rather than assume.
+    fn block_of(&self, first: usize, last: usize) -> Range<usize> {
+        let start = self.text.line_to_byte(first);
+        let end = match self.line_ends_in_a_break(last) {
+            true => self.text.line_to_byte(last + 1),
+            false => self.text.len_bytes(),
+        };
+        start..end.max(start)
+    }
+
+    /// True when line `last` ends in a line break, which is the same question as whether there is a
+    /// line under it.
+    fn line_ends_in_a_break(&self, last: usize) -> bool {
+        last + 1 < self.text.len_lines()
+    }
+
+    /// The text of one line, without the line break that ends it.
+    fn line_text(&self, line: usize) -> String {
+        self.text.byte_slice(self.text.line_range(line))
+    }
+
+    /// The character formatting of a byte range, as changes measured from `base`.
+    ///
+    /// What a command that copies or moves a line uses to give it the formatting it had.
+    /// [`Self::splice`] only makes room in the span list — see its comment — so text put in carries
+    /// the formatting of the place it landed until somebody says otherwise, which is right for a
+    /// typed letter and wrong for a duplicated paragraph.
+    fn formatting_of(&self, range: Range<usize>, base: usize) -> Vec<(Range<usize>, StyleChange)> {
+        let from = range.start;
+        self.chars
+            .runs_in(range)
+            .into_iter()
+            .map(|(run, style)| {
+                (base + run.start - from..base + run.end - from, style_as_change(style))
+            })
+            .collect()
+    }
+
+    /// Put `text` in at `at`, with the formatting of the place it lands and `over` laid on top.
+    ///
+    /// `over` holds absolute ranges inside the new text, which is what [`Self::formatting_of`]
+    /// answers with. `set_in` rather than `set`, for the reason [`Self::insert`] gives: `set`
+    /// rebuilds the whole span list to apply one change.
+    fn splice_in(&mut self, at: usize, text: &str, over: &[(Range<usize>, StyleChange)]) {
+        if text.is_empty() {
+            return;
+        }
+        let style = self.chars.style_for_insertion(at);
+        self.splice(at..at, text);
+        self.chars.set_in(at..at + text.len(), &style_as_change(&style), over);
+    }
+
+    /// What every command here does once its edits are made.
+    ///
+    /// The whole file is read again for its colours rather than the stretch that changed. A line
+    /// move, a sort or a comment marker changes what the tokens **are** rather than shifting them,
+    /// and `Dirt::Part` describes one contiguous edit where these make several — so this is `undo`'s
+    /// answer for `undo`'s reason: there is no edit here to be incremental about.
+    fn finish_the_line_edit(&mut self) {
+        self.syntax_dirt = Dirt::Whole;
+        self.desired_x = None;
+        self.mark_changed();
+        self.last_edit = EditKind::Other;
+    }
+
+    /// Move each end of the selection to where the text it was on went.
+    fn move_the_selection_by(&mut self, edits: &[(usize, usize, usize)]) {
+        let selection = self.selection;
+        self.selection.anchor = self.clamp_to_boundary(moved_by(selection.anchor, edits));
+        self.selection.head = self.clamp_to_boundary(moved_by(selection.head, edits));
+    }
+
+    /// Put the selection back over a block of lines that has moved from `was` to `now`.
+    fn put_the_selection_on_the_block(&mut self, was: usize, now: usize, length: usize) {
+        let move_it = |offset: usize| now + offset.saturating_sub(was).min(length);
+        let selection = self.selection;
+        self.selection.anchor = self.clamp_to_boundary(move_it(selection.anchor));
+        self.selection.head = self.clamp_to_boundary(move_it(selection.head));
+    }
+
+    /// Comment or uncomment every line the selection touches. [`Command::ToggleLineComment`].
+    fn toggle_line_comment(&mut self, marker: &str) {
+        if marker.trim().is_empty() || marker.contains('\n') {
+            return;
+        }
+        let (first, last) = self.touched_lines();
+        let lines: Vec<(usize, String)> = (first..=last)
+            .map(|line| (self.text.line_to_byte(line), self.line_text(line)))
+            .collect();
+        // A wholly blank line is neither asked about nor commented: a marker with nothing after it
+        // is an edit the uncommenting press would then have to undo as well, and that is exactly how
+        // a toggle stops being its own inverse.
+        let said: Vec<&(usize, String)> =
+            lines.iter().filter(|(_, text)| !text.trim().is_empty()).collect();
+        if said.is_empty() {
+            return;
+        }
+        let commented = said.iter().all(|(_, text)| text.trim_start().starts_with(marker));
+        let edits: Vec<(usize, usize, usize)> = match commented {
+            true => said
+                .iter()
+                .map(|(start, text)| (start + leading_whitespace(text).len(), marker.len(), 0))
+                .collect(),
+            // Every marker goes in at one column, the least indented line's, so a block that was
+            // aligned is still aligned once it is commented out.
+            false => {
+                let column =
+                    said.iter().map(|(_, text)| leading_whitespace(text).len()).min().unwrap_or(0);
+                said.iter().map(|(start, _)| (start + column, 0, marker.len())).collect()
+            }
+        };
+        self.push_undo(EditKind::Other);
+        // Back to front, so an earlier line's start is not moved by a later line's edit, which is
+        // `indent`'s rule and the reason `edits` stays in file order for the selection to read.
+        for &(at, removed, _) in edits.iter().rev() {
+            match removed {
+                0 => self.splice_in(at, marker, &[]),
+                _ => self.splice(at..at + removed, ""),
+            }
+        }
+        self.move_the_selection_by(&edits);
+        self.finish_the_line_edit();
+    }
+
+    /// Wrap the selection in block comment markers, or take them off again.
+    /// [`Command::ToggleBlockComment`].
+    fn toggle_block_comment(&mut self, open: &str, close: &str) {
+        if open.is_empty() || close.is_empty() || open.contains('\n') || close.contains('\n') {
+            return;
+        }
+        let asked_about_a_line = self.selection.is_empty();
+        let range = match asked_about_a_line {
+            true => self.text.line_range(self.text.byte_to_line(self.selection.head)),
+            false => self.selection.range(),
+        };
+        let text = self.text.byte_slice(range.clone());
+        // The markers hug the words rather than the indentation, so that the second press gives back
+        // the bytes the first one changed whichever end of a line the selection began at.
+        let lead = text.len() - text.trim_start().len();
+        let tail = text.len() - text.trim_end().len();
+        let inner = range.start + lead..(range.end - tail).max(range.start + lead);
+        let body = text.trim();
+        let commented = body.len() >= open.len() + close.len()
+            && body.starts_with(open)
+            && body.ends_with(close);
+        self.push_undo(EditKind::Other);
+        if commented {
+            self.splice(inner.end - close.len()..inner.end, "");
+            self.splice(inner.start..inner.start + open.len(), "");
+            let end = inner.end - open.len() - close.len();
+            self.selection = match asked_about_a_line {
+                true => Selection::caret(inner.start),
+                false => Selection::new(inner.start, end),
+            };
+        } else {
+            self.splice_in(inner.end, close, &[]);
+            self.splice_in(inner.start, open, &[]);
+            self.selection = match asked_about_a_line {
+                // The caret lands inside the markers, which is where the next word goes.
+                true => Selection::caret(inner.start + open.len()),
+                false => Selection::new(inner.start, inner.end + open.len() + close.len()),
+            };
+        }
+        self.finish_the_line_edit();
+    }
+
+    /// Copy the lines the selection touches in below themselves. [`Command::DuplicateLines`].
+    fn duplicate_lines(&mut self) {
+        let (first, last) = self.touched_lines();
+        let block = self.block_of(first, last);
+        if block.is_empty() {
+            return;
+        }
+        let text = self.text.byte_slice(block.clone());
+        let at = block.end;
+        // A block that is the last line of a file with no line break at the end of it needs one in
+        // front of the copy, or the line and its copy arrive as one line.
+        let (put, base) = match text.ends_with('\n') {
+            true => (text, at),
+            false => (format!("\n{text}"), at + 1),
+        };
+        let formatting = self.formatting_of(block, base);
+        self.push_undo(EditKind::Other);
+        self.splice_in(at, &put, &formatting);
+        // The selection does not move, because everything it covers is in front of the copy. That is
+        // `indent`'s promise kept: pressing the key again duplicates the same lines again.
+        self.finish_the_line_edit();
+    }
+
+    /// Move the lines the selection touches up or down. [`Command::MoveLines`].
+    fn move_lines(&mut self, by: i32) {
+        if by == 0 {
+            return;
+        }
+        let down = by > 0;
+        let (first, last) = self.touched_lines();
+        let can_move = match down {
+            true => self.line_ends_in_a_break(last),
+            false => first > 0,
+        };
+        if !can_move {
+            return;
+        }
+        self.push_undo(EditKind::Other);
+        for _ in 0..by.unsigned_abs() {
+            if !self.move_the_lines_one_line(down) {
+                break;
+            }
+        }
+        self.finish_the_line_edit();
+    }
+
+    /// One line of it, and the whole of the reason this is two splices rather than one.
+    ///
+    /// **The line that is swapped past is what moves; the block stays where it is in the rope.** A
+    /// block lifted out and put back would lose every mark, fold and breakpoint on it, because
+    /// [`Self::splice`] is told that a range went and each of those three drops or collapses what
+    /// was inside it. Shifting the block by an edit on the other side of it carries all three
+    /// instead. The line it swaps with pays that price, which is the right way round: the block is
+    /// what somebody selected.
+    ///
+    /// Going down, the neighbour comes back in **in front of** the block's first byte rather than at
+    /// it, by carrying a line break across with it. `Folds::insert` and `Breakpoints::insert`
+    /// deliberately leave an offset that is exactly at an insertion point where it is, so putting
+    /// the neighbour in at the block's own start would leave a fold or a breakpoint on the block's
+    /// first line behind. The one place with nothing in front of it to insert at is byte zero, and
+    /// there a fold or a breakpoint on the first line of the file does stay where it is.
+    fn move_the_lines_one_line(&mut self, down: bool) -> bool {
+        let (first, last) = self.touched_lines();
+        let block = self.block_of(first, last);
+        let block_ends_in_a_break = self.line_ends_in_a_break(last);
+        if down {
+            if !block_ends_in_a_break {
+                return false;
+            }
+            let next = self.block_of(last + 1, last + 1);
+            let next_ends_in_a_break = self.line_ends_in_a_break(last + 1);
+            // The neighbour and one line break: its own where it has one, and otherwise the block's,
+            // which the block gives up because it is about to be the last line of the file.
+            let (removal, body) = match next_ends_in_a_break {
+                true => (next.start..next.end, next.start..next.end - 1),
+                false => (next.start - 1..next.end, next.start..next.end),
+            };
+            let text = self.text.byte_slice(body.clone());
+            let (at, put) = match block.start {
+                0 => (0, format!("{text}\n")),
+                start => (start - 1, format!("\n{text}")),
+            };
+            let base = at + usize::from(block.start > 0);
+            let formatting = self.formatting_of(body, base);
+            let length = block.len() - usize::from(!next_ends_in_a_break);
+            let put_length = put.len();
+            self.splice(removal, "");
+            self.splice_in(at, &put, &formatting);
+            self.put_the_selection_on_the_block(block.start, block.start + put_length, length);
+        } else {
+            if first == 0 {
+                return false;
+            }
+            let previous = self.block_of(first - 1, first - 1);
+            // The line above the block always ends in a line break, because the block is under it.
+            let body = previous.start..previous.end - 1;
+            let text = self.text.byte_slice(body.clone());
+            let put = match block_ends_in_a_break {
+                true => format!("{text}\n"),
+                false => format!("\n{text}"),
+            };
+            let at = block.end - previous.len();
+            let base = at + usize::from(!block_ends_in_a_break);
+            let formatting = self.formatting_of(body, base);
+            self.splice(previous.clone(), "");
+            self.splice_in(at, &put, &formatting);
+            self.put_the_selection_on_the_block(block.start, previous.start, block.len());
+        }
+        true
+    }
+
+    /// Join the lines the selection touches into one. [`Command::JoinLines`].
+    fn join_lines(&mut self) {
+        let (first, last) = self.touched_lines();
+        // With nothing selected the line below is pulled up, so the chord can be pressed again to
+        // pull up the next one.
+        let seams = match last > first {
+            true => last - first,
+            false => 1,
+        };
+        // Forwards, joining the first line to the one under it over and over, rather than reading
+        // every seam first and applying them back to front. Each join is decided against the text as
+        // it is by then, which is what puts one space into `one`, a blank line, `two`: the blank line
+        // goes with the first join and the second join then has words on both sides of it.
+        let mut seam = None;
+        for _ in 0..seams {
+            if !self.line_ends_in_a_break(first) {
+                break;
+            }
+            let above = self.text.line_range(first);
+            let below = self.text.line_range(first + 1);
+            let above_text = self.text.byte_slice(above.clone());
+            let below_text = self.text.byte_slice(below.clone());
+            let from = above.start + above_text.trim_end().len();
+            let to = below.start + leading_whitespace(&below_text).len();
+            // No space where there is nothing on one side of the seam to put one between.
+            let between = match above_text.trim().is_empty() || below_text.trim().is_empty() {
+                true => "",
+                false => " ",
+            };
+            if seam.is_none() {
+                self.push_undo(EditKind::Other);
+                seam = Some(from);
+            }
+            self.splice(from..to, "");
+            self.splice_in(from, between, &[]);
+        }
+        // The caret lands on the first seam, which is the one place from which the chord pressed
+        // again pulls up the next line.
+        let Some(seam) = seam else {
+            return;
+        };
+        self.selection = Selection::caret(self.clamp_to_boundary(seam));
+        self.finish_the_line_edit();
+    }
+
+    /// Sort the lines the selection touches, stably, in byte order. [`Command::SortLines`].
+    fn sort_lines(&mut self) {
+        if self.selection.is_empty() {
+            return;
+        }
+        let (first, last) = self.touched_lines();
+        if last <= first {
+            return;
+        }
+        let lines: Vec<(Range<usize>, String)> = (first..=last)
+            .map(|line| {
+                let range = self.text.line_range(line);
+                (range.clone(), self.text.byte_slice(range))
+            })
+            .collect();
+        // Which line ends up where, rather than the sorted text, so that each line's character
+        // formatting travels with it. `sort_by` is stable, which is what keeps two equal lines in
+        // the order somebody wrote them.
+        let mut order: Vec<usize> = (0..lines.len()).collect();
+        order.sort_by(|a, b| lines[*a].1.cmp(&lines[*b].1));
+        if order.iter().enumerate().all(|(to, from)| lines[*from].1 == lines[to].1) {
+            return;
+        }
+        let formatting: Vec<Vec<(Range<usize>, StyleChange)>> =
+            lines.iter().map(|(range, _)| self.formatting_of(range.clone(), 0)).collect();
+        self.push_undo(EditKind::Other);
+        // Back to front, and each line **put in before its old content is taken out**. A fold and a
+        // breakpoint sit at the start of their line and `Folds::remove` drops an offset inside what
+        // went, so writing a line the other way round would take the arrow off it. What cannot
+        // survive is a marked passage on a line the sort moved: the words it was drawn over are not
+        // on that line any more, and no shift of an offset can say where they went.
+        for (to, from) in order.iter().enumerate().rev() {
+            let now = lines[*from].1.clone();
+            let range = lines[to].0.clone();
+            if now == lines[to].1 {
+                continue;
+            }
+            let over = formatting_at(&formatting[*from], range.start);
+            self.splice_in(range.start, &now, &over);
+            self.splice(range.start + now.len()..range.end + now.len(), "");
+        }
+        // Over the lines it sorted, so that sorting again sorts the same lines.
+        let block = self.block_of(first, last);
+        self.selection = Selection::new(block.start, block.end);
+        self.finish_the_line_edit();
+    }
+
+    /// Take the trailing whitespace off every line. [`Command::TrimTrailingWhitespace`].
+    fn trim_trailing_whitespace(&mut self) {
+        // One reading of the text rather than one slice a line: this runs over a whole file, and a
+        // file with no trailing whitespace in it — which is most of them — has to be cheap to ask.
+        let text = self.text.to_string();
+        let mut edits: Vec<(usize, usize, usize)> = Vec::new();
+        let mut at = 0;
+        for line in text.split('\n') {
+            let keep = line.trim_end().len();
+            if keep < line.len() {
+                edits.push((at + keep, line.len() - keep, 0));
+            }
+            at += line.len() + 1;
+        }
+        if edits.is_empty() {
+            return;
+        }
+        self.push_undo(EditKind::Other);
+        for &(from, removed, _) in edits.iter().rev() {
+            self.splice(from..from + removed, "");
+        }
+        self.move_the_selection_by(&edits);
+        self.finish_the_line_edit();
+    }
+
+    /// The bracket the caret is on and the one that answers it.
+    ///
+    /// The caret is between two bytes, so both are asked about: the bracket it is in front of first
+    /// and then the one behind it, which is what makes the answer the same whichever side of a `)`
+    /// somebody put it.
+    ///
+    /// `read` is every comment and string in the file, so that a `}` inside `// }` or inside `"}"`
+    /// is not a bracket. It is handed in rather than read here for the reason
+    /// [`crate::folding::regions_from`] takes one: the window has already read the file for its
+    /// colours at this text revision, and a second `syntax::scan` was worth 2.5 ms a keystroke on
+    /// the largest file in this repository. A caller with nothing read hands in
+    /// `&folding::Tokens::default()` and gets an answer that does not know about comments.
+    ///
+    /// Nesting is counted over the one pair of brackets rather than over all three, which is the
+    /// tier this is: half-typed source is the ordinary state of a file being edited, and a stack
+    /// over all three would have to decide what a stray closer of another kind means.
+    ///
+    /// The search is bounded at [`BRACKET_SEARCH_LIMIT`] bytes each way. A pair further apart than
+    /// that is a pair nobody is reading both ends of at once, and the alternative is walking a two
+    /// megabyte file every time the caret moves.
+    pub fn bracket_pair(
+        &self,
+        offset: usize,
+        read: &crate::folding::Tokens,
+    ) -> Option<(usize, usize)> {
+        let offset = offset.min(self.text.len_bytes());
+        let mut candidates = Vec::with_capacity(2);
+        if offset < self.text.len_bytes() {
+            candidates.push(offset);
+        }
+        if offset > 0 {
+            candidates.push(offset - 1);
+        }
+        for at in candidates {
+            let Some(byte) = self.ascii_at(at) else { continue };
+            let Some((open, close, forwards)) = bracket(byte) else { continue };
+            if read.covers(at) {
+                continue;
+            }
+            let other = match forwards {
+                true => self.match_forwards(at, open, close, read),
+                false => self.match_backwards(at, open, close, read),
+            };
+            if let Some(other) = other {
+                return Some((at, other));
+            }
+        }
+        None
+    }
+
+    /// Where the bracket at `offset` is closed or opened.
+    ///
+    /// [`Self::bracket_pair`] is the same answer with the bracket it was asked about beside it,
+    /// which is what a painter drawing both ends needs and what `editor bracket` prints.
+    pub fn matching_bracket(&self, offset: usize, read: &crate::folding::Tokens) -> Option<usize> {
+        self.bracket_pair(offset, read).map(|(_, other)| other)
+    }
+
+    /// The indentation a new line started at the caret should begin with.
+    ///
+    /// The reckoning is [`indentation_for_a_new_line`], which is a pure function over a text and an
+    /// offset; this is it asked of the caret's own line rather than of the whole document, so the
+    /// window does not have to build the file's text to ask a question about one line.
+    pub fn indentation_for_a_new_line(&self) -> String {
+        let (window, base) = self.line_window(self.selection.head);
+        indentation_for_a_new_line(&window, self.selection.head - base).to_owned()
+    }
+
+    /// The byte at `at`, when a whole character starts and ends around it — so a byte in the middle
+    /// of a multi-byte character answers nothing rather than answering about half of one.
+    fn ascii_at(&self, at: usize) -> Option<u8> {
+        let end = at + 1;
+        if end > self.text.len_bytes()
+            || !self.text.is_char_boundary(at)
+            || !self.text.is_char_boundary(end)
+        {
+            return None;
+        }
+        self.text.byte_slice(at..end).bytes().next()
+    }
+
+    /// The closer that answers the opener at `from`.
+    fn match_forwards(
+        &self,
+        from: usize,
+        open: u8,
+        close: u8,
+        read: &crate::folding::Tokens,
+    ) -> Option<usize> {
+        let end = self.clamp_to_boundary((from + BRACKET_SEARCH_LIMIT).min(self.text.len_bytes()));
+        let window = self.text.byte_slice(from..end);
+        let mut depth = 0usize;
+        for (index, byte) in window.bytes().enumerate() {
+            if byte != open && byte != close {
+                continue;
+            }
+            let at = from + index;
+            if read.covers(at) {
+                continue;
+            }
+            if byte == open {
+                depth += 1;
+                continue;
+            }
+            depth = depth.checked_sub(1)?;
+            if depth == 0 {
+                return Some(at);
+            }
+        }
+        None
+    }
+
+    /// The opener that the closer at `from` answers.
+    fn match_backwards(
+        &self,
+        from: usize,
+        open: u8,
+        close: u8,
+        read: &crate::folding::Tokens,
+    ) -> Option<usize> {
+        let start = self.clamp_to_boundary(from.saturating_sub(BRACKET_SEARCH_LIMIT));
+        let window = self.text.byte_slice(start..from + 1);
+        let mut depth = 0usize;
+        for (index, byte) in window.bytes().enumerate().rev() {
+            if byte != open && byte != close {
+                continue;
+            }
+            let at = start + index;
+            if read.covers(at) {
+                continue;
+            }
+            if byte == close {
+                depth += 1;
+                continue;
+            }
+            depth = depth.checked_sub(1)?;
+            if depth == 0 {
+                return Some(at);
+            }
+        }
+        None
     }
 
     fn remove_range(&mut self, range: Range<usize>) {
@@ -1445,6 +2066,86 @@ impl Document {
 
 /// Turn a full style into a change that sets every field, so that inserted text is given exactly that
 /// style rather than inheriting from its neighbours.
+/// How far a bracket is looked for, in bytes, in each direction.
+///
+/// A pair further apart than this is a pair nobody is reading both ends of at once, and the question
+/// is asked every time the caret moves — so the alternative is walking a two megabyte file to answer
+/// it. `folding::regions` reads the whole file, but it reads it once a change rather than once a
+/// frame.
+pub const BRACKET_SEARCH_LIMIT: usize = 64 * 1024;
+
+/// The indentation a new line started at `at` should begin with: the spaces and tabs the line
+/// holding `at` begins with, and no more of them than are in front of `at`.
+///
+/// **The reckoning only.** Whether a new line gets it is the window's question, because the setting
+/// that answers it is the window's — the split [`crate::folding::regions`] and [`crate::Folds`]
+/// already are. What the window does with the answer is insert `"\n"` and this as one
+/// [`Command::Insert`], so a new line and its indentation are one thing to undo.
+///
+/// Clamped to `at` so that pressing Enter in the middle of a line's indentation does not double it:
+/// the whitespace after the caret goes down to the new line by itself.
+pub fn indentation_for_a_new_line(text: &str, at: usize) -> &str {
+    let mut at = at.min(text.len());
+    while at > 0 && !text.is_char_boundary(at) {
+        at -= 1;
+    }
+    let start = text[..at].rfind('\n').map_or(0, |line_break| line_break + 1);
+    let end = text[start..at]
+        .find(|character: char| character != ' ' && character != '\t')
+        .map_or(at, |offset| start + offset);
+    &text[start..end]
+}
+
+/// The run of spaces and tabs a line begins with.
+fn leading_whitespace(line: &str) -> &str {
+    let end =
+        line.find(|character: char| character != ' ' && character != '\t').unwrap_or(line.len());
+    &line[..end]
+}
+
+/// What a bracket is: the pair it belongs to, and whether its partner lies after it.
+fn bracket(byte: u8) -> Option<(u8, u8, bool)> {
+    match byte {
+        b'{' => Some((b'{', b'}', true)),
+        b'}' => Some((b'{', b'}', false)),
+        b'[' => Some((b'[', b']', true)),
+        b']' => Some((b'[', b']', false)),
+        b'(' => Some((b'(', b')', true)),
+        b')' => Some((b'(', b')', false)),
+        _ => None,
+    }
+}
+
+/// The same formatting, measured from a different place.
+fn formatting_at(
+    runs: &[(Range<usize>, StyleChange)],
+    base: usize,
+) -> Vec<(Range<usize>, StyleChange)> {
+    runs.iter()
+        .map(|(range, change)| (base + range.start..base + range.end, change.clone()))
+        .collect()
+}
+
+/// Where an offset ends up after a list of edits, each of them `(at, removed, inserted)` in the
+/// coordinates of the text before any of them was made.
+///
+/// The edits must not overlap. An offset at or past the end of one moves by the difference; one
+/// inside what went lands at the start of it; and one **exactly at** an insertion point moves
+/// forward, so a selection that began where a comment marker was put still covers the words it
+/// covered. That last rule is `Document::indent`'s, written down once here rather than as a closure
+/// in each of the commands that needs it.
+fn moved_by(offset: usize, edits: &[(usize, usize, usize)]) -> usize {
+    let mut delta: isize = 0;
+    for &(at, removed, inserted) in edits {
+        if offset >= at + removed {
+            delta += inserted as isize - removed as isize;
+        } else if offset > at {
+            delta -= (offset - at) as isize;
+        }
+    }
+    (offset as isize + delta).max(0) as usize
+}
+
 fn style_as_change(style: &CharStyle) -> StyleChange {
     StyleChange {
         family: Some(style.family.clone()),
@@ -1893,6 +2594,15 @@ the fourth line",
             Command::Indent { unit: IndentUnit::Space },
             Command::Dedent { unit: IndentUnit::Tab },
             Command::Dedent { unit: IndentUnit::Space },
+            Command::ToggleLineComment { marker: "//".to_owned() },
+            Command::ToggleLineComment { marker: "# ".to_owned() },
+            Command::ToggleBlockComment { open: "/*".to_owned(), close: "*/".to_owned() },
+            Command::DuplicateLines,
+            Command::MoveLines { by: -1 },
+            Command::MoveLines { by: 1 },
+            Command::JoinLines,
+            Command::SortLines,
+            Command::TrimTrailingWhitespace,
             Command::SelectAll,
             Command::ApplyStyle(StyleChange::size(28.0)),
             Command::ToggleBold,
@@ -2999,5 +3709,637 @@ mod dedent_tests {
         document.apply(Command::Dedent { unit: IndentUnit::Space });
         assert_eq!(document.text().to_string(), "one\ntwo\nthree");
         assert_eq!(document.selection().range(), 0..13);
+    }
+}
+
+/// The seven commands that work on whole lines. `task-1922` §5.5.
+///
+/// Two of these are worth more than the others and are written first: a toggle is its own inverse,
+/// and a marked passage, a collapsed block and a breakpoint follow the text every one of them moves.
+/// The second is the property `Document::splice` exists for, and the one a later change is most
+/// likely to break.
+#[cfg(test)]
+mod line_command_tests {
+    use super::*;
+
+    fn selected(document: &mut Document, from: usize, to: usize) {
+        document.apply(Command::PlaceCaret { offset: from, extend: false });
+        document.apply(Command::PlaceCaret { offset: to, extend: true });
+    }
+
+    fn caret_at(document: &mut Document, offset: usize) {
+        document.apply(Command::PlaceCaret { offset, extend: false });
+    }
+
+    fn all_of(document: &mut Document) {
+        document.apply(Command::SelectAll);
+    }
+
+    fn comment(marker: &str) -> Command {
+        Command::ToggleLineComment { marker: marker.to_owned() }
+    }
+
+    /// Comment a selection, comment it again, and the bytes are the bytes that were there.
+    ///
+    /// Three shapes, because each of them is a different way of getting it wrong: a selection that
+    /// starts part way through its first line, one with a blank line in the middle of it, and one
+    /// where a line was already commented before anybody pressed anything.
+    #[test]
+    fn a_line_comment_toggled_twice_gives_back_every_byte() {
+        let cases = [
+            ("    let a = 1;\n    let b = 2;\n", 8usize, 20usize),
+            ("    let a = 1;\n\n    let b = 2;\n", 0, 29),
+            ("let a = 1;\n// already\nlet b = 2;\n", 0, 32),
+        ];
+        for (source, from, to) in cases {
+            let mut document = Document::from_text(source);
+            selected(&mut document, from, to);
+            document.apply(comment("// "));
+            assert_ne!(document.text().to_string(), source, "{source:?} was not commented at all");
+            document.apply(comment("// "));
+            assert_eq!(document.text().to_string(), source, "{source:?} did not come back");
+            assert_eq!(
+                document.selection().range(),
+                from..to,
+                "{source:?} left the selection somewhere else"
+            );
+        }
+    }
+
+    /// A marked passage, a collapsed block and a breakpoint follow the text each command moves.
+    ///
+    /// One document a command, because what "where the text moved" means differs: a line that was
+    /// copied has not moved at all, and a line that was sorted has moved somewhere no offset can
+    /// describe — which is `a_marked_passage_on_a_line_the_sort_moved_does_not_survive_it`, the one
+    /// honest exception and the reason it has a test of its own.
+    #[test]
+    fn a_mark_a_fold_and_a_breakpoint_follow_the_text_through_every_line_command() {
+        // Commenting: everything stays on the line it was on, with three bytes in front of it.
+        let mut document = marked("alpha\nbravo marked\ncharlie\ndelta\n", 2);
+        all_of(&mut document);
+        document.apply(comment("// "));
+        assert_eq!(marks_of(&document), ("marked".to_owned(), 2, 2));
+
+        // A block comment round the middle line, the same.
+        let mut document = marked("alpha\nbravo marked\ncharlie\ndelta\n", 2);
+        selected(&mut document, 6, 18);
+        document
+            .apply(Command::ToggleBlockComment { open: "/*".to_owned(), close: "*/".to_owned() });
+        assert_eq!(document.text().to_string(), "alpha\n/*bravo marked*/\ncharlie\ndelta\n");
+        assert_eq!(marks_of(&document), ("marked".to_owned(), 2, 2));
+
+        // Duplicating: the copy goes in underneath, so nothing on the original line moves.
+        let mut document = marked("alpha\nbravo marked\ncharlie\ndelta\n", 2);
+        caret_at(&mut document, 8);
+        document.apply(Command::DuplicateLines);
+        assert_eq!(marks_of(&document), ("marked".to_owned(), 2, 2));
+
+        // Moving down: all three land on the line the block landed on.
+        let mut document = marked("alpha\nbravo marked\ncharlie\ndelta\n", 2);
+        caret_at(&mut document, 8);
+        document.apply(Command::MoveLines { by: 1 });
+        assert_eq!(document.text().to_string(), "alpha\ncharlie\nbravo marked\ndelta\n");
+        assert_eq!(marks_of(&document), ("marked".to_owned(), 3, 3));
+
+        // And moving up.
+        let mut document = marked("alpha\nbravo marked\ncharlie\ndelta\n", 2);
+        caret_at(&mut document, 8);
+        document.apply(Command::MoveLines { by: -1 });
+        assert_eq!(document.text().to_string(), "bravo marked\nalpha\ncharlie\ndelta\n");
+        assert_eq!(marks_of(&document), ("marked".to_owned(), 1, 1));
+
+        // Joining pulls the line below up, so the line itself stays where it is.
+        let mut document = marked("alpha\nbravo marked\ncharlie\ndelta\n", 2);
+        caret_at(&mut document, 8);
+        document.apply(Command::JoinLines);
+        assert_eq!(document.text().to_string(), "alpha\nbravo marked charlie\ndelta\n");
+        assert_eq!(marks_of(&document), ("marked".to_owned(), 2, 2));
+
+        // Sorting, with the marked line already in the place the sort puts it.
+        let mut document = marked("apple marked\ncherry\nbanana\n", 1);
+        all_of(&mut document);
+        document.apply(Command::SortLines);
+        assert_eq!(document.text().to_string(), "apple marked\nbanana\ncherry\n");
+        assert_eq!(marks_of(&document), ("marked".to_owned(), 1, 1));
+
+        // And trimming, where what goes is at the far end of a line from all three.
+        let mut document = marked("alpha   \nbravo marked   \ncharlie\n", 2);
+        document.apply(Command::TrimTrailingWhitespace);
+        assert_eq!(document.text().to_string(), "alpha\nbravo marked\ncharlie\n");
+        assert_eq!(marks_of(&document), ("marked".to_owned(), 2, 2));
+    }
+
+    /// A document with the word `marked` marked, and a collapsed block and a breakpoint on line
+    /// `line`, counting from one.
+    fn marked(source: &str, line: usize) -> Document {
+        let mut document = Document::from_text(source);
+        let at = source.find("marked").expect("the word the tests read back");
+        document.highlight(at..at + "marked".len(), Rgba::new(0xFF, 0xC0, 0x40, 0x60));
+        let mut folds = Folds::new();
+        folds.add(document.offset_of_line_number(line));
+        document.set_folds(folds);
+        document.toggle_breakpoint(document.offset_of_line_number(line));
+        document
+    }
+
+    /// What the mark now covers, and which line the fold and the breakpoint are on. A zero says the
+    /// thing is gone, which is a failure everywhere it is read.
+    fn marks_of(document: &Document) -> (String, usize, usize) {
+        let text = document.text().to_string();
+        let mark = document
+            .highlights()
+            .iter()
+            .next()
+            .map(|mark| text[mark.range.clone()].to_owned())
+            .unwrap_or_default();
+        let fold =
+            document.folds().offsets().first().map(|at| document.line_number_of(*at)).unwrap_or(0);
+        let breakpoint = document
+            .breakpoints()
+            .all()
+            .first()
+            .map(|breakpoint| document.line_number_of(breakpoint.offset))
+            .unwrap_or(0);
+        (mark, fold, breakpoint)
+    }
+
+    /// The one thing a line command cannot carry, written down rather than left to be rediscovered.
+    ///
+    /// A sort is a permutation, and `Document::splice` describes a range going and a range arriving
+    /// rather than a line changing places. The fold and the breakpoint survive because they sit at
+    /// the start of their line and a line keeps its number; the mark does not, because the words it
+    /// was drawn over are somewhere else in the file. Sorting lines somebody has marked passages on
+    /// is not a thing anybody does, and the alternative is a second place that knows bytes moved.
+    #[test]
+    fn a_marked_passage_on_a_line_the_sort_moved_does_not_survive_it() {
+        let mut document = marked("cherry\napple\nbravo marked\n", 3);
+        all_of(&mut document);
+        document.apply(Command::SortLines);
+        assert_eq!(document.text().to_string(), "apple\nbravo marked\ncherry\n");
+        let (mark, fold, breakpoint) = marks_of(&document);
+        assert_eq!(mark, "", "the mark went with the words, which are not on that line any more");
+        assert_eq!(fold, 3, "the fold and the breakpoint keep the line they were put on");
+        assert_eq!(breakpoint, 3);
+    }
+
+    // ------------------------------------------------------------------------- the comment toggles
+
+    /// Every marker goes in at one column, so a block that was aligned is aligned commented out.
+    #[test]
+    fn a_line_comment_goes_in_at_the_least_indented_line_of_the_block() {
+        let mut document = Document::from_text("    one\n        two\n    three\n");
+        all_of(&mut document);
+        document.apply(comment("// "));
+        assert_eq!(document.text().to_string(), "    // one\n    //     two\n    // three\n");
+    }
+
+    /// A blank line is neither commented nor asked about, which is what makes the toggle exact.
+    #[test]
+    fn a_blank_line_in_a_selection_is_left_alone() {
+        let mut document = Document::from_text("one\n\ntwo\n");
+        all_of(&mut document);
+        document.apply(comment("#"));
+        assert_eq!(document.text().to_string(), "#one\n\n#two\n");
+        document.apply(comment("#"));
+        assert_eq!(document.text().to_string(), "one\n\ntwo\n");
+    }
+
+    /// One line still commented anywhere in the selection means the press comments rather than
+    /// uncomments, which is what stops a half-commented block being made more half-commented.
+    #[test]
+    fn one_line_that_is_not_commented_makes_the_press_comment() {
+        let mut document = Document::from_text("// one\ntwo\n");
+        all_of(&mut document);
+        document.apply(comment("// "));
+        assert_eq!(document.text().to_string(), "// // one\n// two\n");
+    }
+
+    /// With nothing selected it is the line the caret is on, as `Indent` is.
+    #[test]
+    fn with_nothing_selected_a_line_comment_is_the_caret_s_line() {
+        let mut document = Document::from_text("one\ntwo\nthree\n");
+        caret_at(&mut document, 5);
+        document.apply(comment("// "));
+        assert_eq!(document.text().to_string(), "one\n// two\nthree\n");
+    }
+
+    /// A selection of nothing but blank lines is nothing to do, so there is no undo step either.
+    #[test]
+    fn a_selection_of_blank_lines_is_not_an_edit() {
+        let mut document = Document::from_text("one\n\n\ntwo\n");
+        selected(&mut document, 4, 6);
+        assert!(!document.apply(comment("// ")));
+        assert!(!document.can_undo());
+    }
+
+    /// A block comment wraps the words rather than the indentation, and a second press takes it off.
+    #[test]
+    fn a_block_comment_hugs_the_words_and_toggles_off_again() {
+        let source = "    let a = 1;\n";
+        let mut document = Document::from_text(source);
+        selected(&mut document, 0, 14);
+        document
+            .apply(Command::ToggleBlockComment { open: "/*".to_owned(), close: "*/".to_owned() });
+        assert_eq!(document.text().to_string(), "    /*let a = 1;*/\n");
+        document
+            .apply(Command::ToggleBlockComment { open: "/*".to_owned(), close: "*/".to_owned() });
+        assert_eq!(document.text().to_string(), source);
+    }
+
+    /// With nothing selected the line is what is wrapped, and the caret lands inside the markers.
+    #[test]
+    fn a_block_comment_with_no_selection_wraps_the_line() {
+        let mut document = Document::from_text("one\ntwo\n");
+        caret_at(&mut document, 5);
+        document.apply(Command::ToggleBlockComment {
+            open: "<!--".to_owned(),
+            close: "-->".to_owned(),
+        });
+        assert_eq!(document.text().to_string(), "one\n<!--two-->\n");
+        assert_eq!(document.selection(), Selection::caret(8));
+    }
+
+    // ---------------------------------------------------------------------------- the line editing
+
+    #[test]
+    fn duplicating_puts_the_copy_underneath_and_leaves_the_selection_where_it_was() {
+        let mut document = Document::from_text("one\ntwo\nthree\n");
+        selected(&mut document, 0, 7);
+        document.apply(Command::DuplicateLines);
+        assert_eq!(document.text().to_string(), "one\ntwo\none\ntwo\nthree\n");
+        assert_eq!(document.selection().range(), 0..7, "a second press duplicates the same lines");
+        document.apply(Command::DuplicateLines);
+        assert_eq!(document.text().to_string(), "one\ntwo\none\ntwo\none\ntwo\nthree\n");
+    }
+
+    /// The last line of a file with no line break at the end of it needs one in front of the copy.
+    #[test]
+    fn duplicating_the_last_line_of_a_file_with_no_line_break_gives_two_lines() {
+        let mut document = Document::from_text("one\ntwo");
+        caret_at(&mut document, 5);
+        document.apply(Command::DuplicateLines);
+        assert_eq!(document.text().to_string(), "one\ntwo\ntwo");
+    }
+
+    #[test]
+    fn moving_a_line_down_and_back_up_again_gives_back_the_file() {
+        let source = "one\ntwo\nthree\n";
+        let mut document = Document::from_text(source);
+        caret_at(&mut document, 1);
+        document.apply(Command::MoveLines { by: 1 });
+        assert_eq!(document.text().to_string(), "two\none\nthree\n");
+        assert_eq!(document.selection(), Selection::caret(5), "the caret went with the line");
+        document.apply(Command::MoveLines { by: -1 });
+        assert_eq!(document.text().to_string(), source);
+        assert_eq!(document.selection(), Selection::caret(1));
+    }
+
+    /// The selection covers the same lines afterwards, which is what makes the chord repeat.
+    #[test]
+    fn a_selection_of_several_lines_moves_as_one_block() {
+        let mut document = Document::from_text("one\ntwo\nthree\nfour\n");
+        selected(&mut document, 4, 13);
+        document.apply(Command::MoveLines { by: 1 });
+        assert_eq!(document.text().to_string(), "one\nfour\ntwo\nthree\n");
+        assert_eq!(document.selection().range(), 9..18);
+        assert_eq!(&document.text().to_string()[9..18], "two\nthree");
+    }
+
+    /// A move of more than one line is that many moves in one undo step.
+    #[test]
+    fn a_move_of_two_lines_moves_two_lines() {
+        let mut document = Document::from_text("one\ntwo\nthree\nfour\n");
+        caret_at(&mut document, 0);
+        document.apply(Command::MoveLines { by: 2 });
+        assert_eq!(document.text().to_string(), "two\nthree\none\nfour\n");
+        document.apply(Command::Undo);
+        assert_eq!(document.text().to_string(), "one\ntwo\nthree\nfour\n");
+    }
+
+    /// A block against the edge of the file does not move, and leaves nothing to undo.
+    ///
+    /// The bottom edge is the last line there is, which in a file that ends in a line break is the
+    /// empty line after it — a line the gutter numbers and the caret can be put on, so a line the
+    /// one above it can be swapped with. The file used here has no line break at the end of it, so
+    /// `two` really is the last line.
+    #[test]
+    fn a_block_against_the_edge_of_the_file_does_not_move() {
+        let mut document = Document::from_text("one\ntwo");
+        caret_at(&mut document, 0);
+        assert!(!document.apply(Command::MoveLines { by: -1 }));
+        assert!(!document.can_undo());
+        caret_at(&mut document, 5);
+        assert!(!document.apply(Command::MoveLines { by: 1 }));
+        assert!(!document.can_undo());
+    }
+
+    /// The last line of a file with no line break at the end of it: the break moves with the lines.
+    #[test]
+    fn moving_past_the_last_line_of_a_file_with_no_line_break_keeps_the_lines_apart() {
+        let mut document = Document::from_text("one\ntwo");
+        caret_at(&mut document, 0);
+        document.apply(Command::MoveLines { by: 1 });
+        assert_eq!(document.text().to_string(), "two\none");
+        document.apply(Command::MoveLines { by: -1 });
+        assert_eq!(document.text().to_string(), "one\ntwo");
+    }
+
+    #[test]
+    fn joining_puts_one_space_in_and_takes_the_indentation_out() {
+        let mut document = Document::from_text("one   \n     two\nthree\n");
+        caret_at(&mut document, 0);
+        document.apply(Command::JoinLines);
+        assert_eq!(document.text().to_string(), "one two\nthree\n");
+        assert_eq!(document.selection(), Selection::caret(3));
+        document.apply(Command::JoinLines);
+        assert_eq!(document.text().to_string(), "one two three\n");
+    }
+
+    /// A blank line between two lines with words on them goes, and one space is left behind.
+    #[test]
+    fn joining_over_a_blank_line_still_leaves_one_space() {
+        let mut document = Document::from_text("one\n\ntwo\n");
+        all_of(&mut document);
+        document.apply(Command::JoinLines);
+        assert_eq!(document.text().to_string(), "one two\n");
+    }
+
+    /// With a selection every line it touches becomes one line.
+    #[test]
+    fn joining_a_selection_makes_one_line_of_all_of_it() {
+        let mut document = Document::from_text("one\ntwo\nthree\nfour\n");
+        selected(&mut document, 0, 13);
+        document.apply(Command::JoinLines);
+        assert_eq!(document.text().to_string(), "one two three\nfour\n");
+    }
+
+    #[test]
+    fn the_last_line_of_a_file_has_nothing_to_join_to() {
+        let mut document = Document::from_text("one\ntwo");
+        caret_at(&mut document, 5);
+        assert!(!document.apply(Command::JoinLines));
+        assert!(!document.can_undo());
+    }
+
+    #[test]
+    fn sorting_puts_the_selection_s_lines_in_byte_order() {
+        let mut document = Document::from_text("cherry\nApple\nbanana\n");
+        all_of(&mut document);
+        document.apply(Command::SortLines);
+        assert_eq!(
+            document.text().to_string(),
+            "Apple\nbanana\ncherry\n",
+            "byte order, so a capital letter comes first"
+        );
+        assert_eq!(document.selection().range(), 0..20, "over the lines it sorted");
+    }
+
+    /// Stable: two lines that are the same stay in the order somebody wrote them, which is only
+    /// visible through something else the lines carry — here the formatting on one of them.
+    #[test]
+    fn sorting_keeps_equal_lines_in_the_order_they_were_in() {
+        let mut document = Document::from_text("b\na\na\n");
+        selected(&mut document, 2, 3);
+        document.apply(Command::ToggleBold);
+        all_of(&mut document);
+        document.apply(Command::SortLines);
+        assert_eq!(document.text().to_string(), "a\na\nb\n");
+        assert!(document.text().to_string().is_char_boundary(0));
+        let bold: Vec<bool> =
+            [0usize, 2, 4].iter().map(|at| document.chars().style_at(*at).bold).collect();
+        assert_eq!(bold, vec![true, false, false], "the first `a` is still the one that was bold");
+    }
+
+    #[test]
+    fn sorting_with_nothing_selected_is_not_an_edit() {
+        let mut document = Document::from_text("cherry\napple\n");
+        caret_at(&mut document, 0);
+        assert!(!document.apply(Command::SortLines));
+        assert!(!document.can_undo());
+    }
+
+    #[test]
+    fn sorting_lines_that_are_already_in_order_is_not_an_edit() {
+        let mut document = Document::from_text("apple\nbanana\n");
+        all_of(&mut document);
+        assert!(!document.apply(Command::SortLines));
+        assert!(!document.can_undo());
+    }
+
+    #[test]
+    fn trimming_takes_the_trailing_whitespace_off_every_line() {
+        let mut document = Document::from_text("one   \ntwo\t\n\t\nthree ");
+        document.apply(Command::TrimTrailingWhitespace);
+        assert_eq!(document.text().to_string(), "one\ntwo\n\nthree");
+    }
+
+    /// A caret standing in the whitespace that went lands at the end of what is left of its line.
+    #[test]
+    fn trimming_brings_the_caret_back_to_the_end_of_its_line() {
+        let mut document = Document::from_text("one   \ntwo\n");
+        caret_at(&mut document, 5);
+        document.apply(Command::TrimTrailingWhitespace);
+        assert_eq!(document.text().to_string(), "one\ntwo\n");
+        assert_eq!(document.selection(), Selection::caret(3));
+    }
+
+    #[test]
+    fn trimming_a_file_with_nothing_to_trim_is_not_an_edit() {
+        let mut document = Document::from_text("one\ntwo\n");
+        assert!(!document.apply(Command::TrimTrailingWhitespace));
+        assert!(!document.can_undo());
+    }
+
+    // ---------------------------------------------------------------------------------- the undo
+
+    /// Every one of them is one undo step, however many lines it touched. That follows from one
+    /// `push_undo` and then every edit, which is `replace_many`'s rule.
+    #[test]
+    fn every_line_command_is_one_undo_step() {
+        let commands = [
+            comment("// "),
+            Command::ToggleBlockComment { open: "/*".to_owned(), close: "*/".to_owned() },
+            Command::DuplicateLines,
+            Command::MoveLines { by: 1 },
+            Command::JoinLines,
+            Command::SortLines,
+            Command::TrimTrailingWhitespace,
+        ];
+        for command in commands {
+            let mut document = Document::from_text("cherry  \napple\nbanana\ndamson\n");
+            all_of(&mut document);
+            let before = document.text().to_string();
+            assert!(document.apply(command.clone()), "{command:?} changed nothing");
+            assert_ne!(document.text().to_string(), before);
+            document.apply(Command::Undo);
+            assert_eq!(document.text().to_string(), before, "{command:?} is not one step");
+            assert!(!document.can_undo(), "{command:?} pushed more than one step");
+        }
+    }
+
+    /// And every one of them says the file has to be coloured again. A comment marker, a moved line
+    /// and a sorted block change what the tokens are rather than shifting them, so a reading that
+    /// started at the edit would be reading against the wrong list.
+    #[test]
+    fn every_line_command_says_the_colours_have_to_be_read_again() {
+        let commands = [
+            comment("// "),
+            Command::ToggleBlockComment { open: "/*".to_owned(), close: "*/".to_owned() },
+            Command::DuplicateLines,
+            Command::MoveLines { by: 1 },
+            Command::JoinLines,
+            Command::SortLines,
+            Command::TrimTrailingWhitespace,
+        ];
+        for command in commands {
+            let mut document = Document::from_text("cherry  \napple\nbanana\ndamson\n");
+            document.set_syntax(Color::WHITE, &[]);
+            assert_eq!(document.syntax_dirt(), crate::incremental::Dirt::Clean);
+            all_of(&mut document);
+            document.apply(command.clone());
+            assert_eq!(
+                document.syntax_dirt(),
+                crate::incremental::Dirt::Whole,
+                "{command:?} left the colours as they were"
+            );
+        }
+    }
+}
+
+/// Matching one bracket against the one that answers it.
+#[cfg(test)]
+mod bracket_tests {
+    use super::*;
+    use crate::folding::Tokens;
+    use crate::syntax::Grammar;
+
+    /// Enough of Rust for a tokeniser to find the comments and the strings in the sample below.
+    fn rust() -> Grammar {
+        Grammar {
+            language: "rust".to_owned(),
+            keywords: vec!["fn".to_owned(), "let".to_owned()],
+            line_comment: Some("//".to_owned()),
+            block_comment: Some(("/*".to_owned(), "*/".to_owned())),
+            strings: vec!['"'],
+            escapes: true,
+            operators: vec!['{', '}', '(', ')'],
+            numbers: true,
+            ..Grammar::default()
+        }
+    }
+
+    const SOURCE: &str = "fn main() {\n    let a = \"}\";\n    // }\n}\n";
+
+    fn read(source: &str) -> Tokens {
+        crate::folding::tokens(source, &rust())
+    }
+
+    /// The brace that closes the function is the one at the end, not the one in the string and not
+    /// the one in the comment. That is the whole of what handing the tokens in buys.
+    #[test]
+    fn a_brace_inside_a_string_or_a_comment_is_not_a_bracket() {
+        let document = Document::from_text(SOURCE);
+        let open = SOURCE.find('{').expect("the opening brace");
+        let close = SOURCE.rfind('}').expect("the closing brace");
+        assert_eq!(document.matching_bracket(open, &read(SOURCE)), Some(close));
+        assert_eq!(document.bracket_pair(open, &read(SOURCE)), Some((open, close)));
+    }
+
+    /// And with nothing read, the same question answers with the brace in the string — which is
+    /// what a caller that hands in an empty `Tokens` is asking for and should know it is getting.
+    #[test]
+    fn with_no_tokens_read_a_brace_in_a_string_answers_for_one() {
+        let document = Document::from_text(SOURCE);
+        let open = SOURCE.find('{').expect("the opening brace");
+        let in_a_string = SOURCE.find("\"}\"").expect("the string") + 1;
+        assert_eq!(document.matching_bracket(open, &Tokens::default()), Some(in_a_string));
+    }
+
+    /// The caret is between two bytes, so a closer is found from the far side of it as well.
+    #[test]
+    fn the_bracket_behind_the_caret_is_asked_about_too() {
+        let document = Document::from_text(SOURCE);
+        let open = SOURCE.find('(').expect("the open parenthesis");
+        let close = SOURCE.find(')').expect("the close parenthesis");
+        assert_eq!(document.matching_bracket(close + 1, &read(SOURCE)), Some(open));
+        assert_eq!(document.matching_bracket(close, &read(SOURCE)), Some(open));
+    }
+
+    #[test]
+    fn nesting_of_the_same_bracket_is_counted() {
+        let source = "a[b[c]d]e";
+        let document = Document::from_text(source);
+        assert_eq!(document.matching_bracket(1, &Tokens::default()), Some(7));
+        assert_eq!(document.matching_bracket(3, &Tokens::default()), Some(5));
+    }
+
+    #[test]
+    fn a_caret_on_nothing_and_a_bracket_that_never_closes_answer_nothing() {
+        let document = Document::from_text("fn main( {\n");
+        assert_eq!(
+            document.matching_bracket(2, &Tokens::default()),
+            None,
+            "a letter is not a bracket"
+        );
+        let open = 7;
+        assert_eq!(document.matching_bracket(open, &Tokens::default()), None, "nothing closes it");
+    }
+
+    /// A byte in the middle of a character is not a bracket, and asking about one is not a panic.
+    #[test]
+    fn a_byte_inside_a_character_answers_nothing() {
+        let document = Document::from_text("éé");
+        for offset in 0..=4 {
+            assert_eq!(document.matching_bracket(offset, &Tokens::default()), None);
+        }
+    }
+}
+
+/// What a new line's indentation should be. The reckoning only: when it is applied is the window's.
+#[cfg(test)]
+mod auto_indent_tests {
+    use super::*;
+
+    #[test]
+    fn a_new_line_starts_with_the_indentation_of_the_line_it_was_started_on() {
+        assert_eq!(indentation_for_a_new_line("        let a = 1;", 18), "        ");
+        assert_eq!(indentation_for_a_new_line("\t\tlet a = 1;", 12), "\t\t");
+        assert_eq!(indentation_for_a_new_line("let a = 1;", 10), "");
+    }
+
+    /// The line the offset is on, not the first line of the file.
+    #[test]
+    fn it_is_the_line_the_offset_is_on() {
+        let text = "fn main() {\n    let a = 1;\n";
+        assert_eq!(indentation_for_a_new_line(text, text.len() - 1), "    ");
+        assert_eq!(indentation_for_a_new_line(text, 11), "");
+    }
+
+    /// Clamped to the offset, so that pressing Enter in the middle of a line's indentation does not
+    /// double it: the whitespace after the caret goes down to the new line by itself.
+    #[test]
+    fn it_is_no_longer_than_what_is_in_front_of_the_offset() {
+        assert_eq!(indentation_for_a_new_line("        let a = 1;", 3), "   ");
+        assert_eq!(indentation_for_a_new_line("        ", 8), "        ");
+    }
+
+    /// An offset in the middle of a character answers rather than panicking, which is the rule every
+    /// offset taken from outside this crate is read under.
+    #[test]
+    fn an_offset_inside_a_character_is_not_a_panic() {
+        assert_eq!(indentation_for_a_new_line("  é", 3), "  ");
+        assert_eq!(indentation_for_a_new_line("é", 1), "");
+        assert_eq!(indentation_for_a_new_line("  é", 99), "  ");
+    }
+
+    /// The document asks it of the caret's own line, so the window does not have to build the whole
+    /// file's text to ask about one line.
+    #[test]
+    fn the_document_answers_for_the_caret_s_line() {
+        let mut document = Document::from_text("fn main() {\n    let a = 1;\n");
+        document.apply(Command::PlaceCaret { offset: 25, extend: false });
+        assert_eq!(document.indentation_for_a_new_line(), "    ");
+        document.apply(Command::PlaceCaret { offset: 5, extend: false });
+        assert_eq!(document.indentation_for_a_new_line(), "");
     }
 }
