@@ -8,6 +8,11 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- No continuous integration, by choice (`task-1928`)
+- Three things the coverage tests found, and the one I got wrong first (`task-1922`)
+
+## 0.45.0 — 2026-09-13
+
 - A code review of Unluminous, and the plan that acts on it (`task-1922`)
 - CI has produced no jobs since 7 September because a `with:` block was orphaned (`task-1922`)
 - Rustfmt over the workspace, no other change (`task-1922`)
