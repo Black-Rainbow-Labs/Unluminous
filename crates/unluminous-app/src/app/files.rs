@@ -1116,7 +1116,7 @@ impl OpenFiles {
         self.step(false);
     }
 
-    fn step(&mut self, forwards: bool) {
+    pub(crate) fn step(&mut self, forwards: bool) {
         // **Whichever home has the keyboard**, which since `task-1905` may be a File Editor node rather than
         // a pane. `last_pane` is where the keyboard was last in the *editing area*, so with a node focused
         // Next Tab walked an unrelated pane's tabs — the Codex Sol review of `task-1905` found it. `focus` is

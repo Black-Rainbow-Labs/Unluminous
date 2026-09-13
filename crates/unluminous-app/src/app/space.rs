@@ -23,7 +23,7 @@ use egui::{Pos2, Rect, Vec2};
 use crate::app::actions::SpaceAction;
 use crate::app::dock;
 use crate::app::files::{Home, OpenFile};
-use crate::app::{Focus, UnluminousApp};
+use crate::app::{Drag, Focus, UnluminousApp, ZoomClaim};
 use serde_json::{json, Value};
 
 use unluminous_cli::protocol::{code, Request};
@@ -385,17 +385,17 @@ impl UnluminousApp {
     /// node.
     ///
     /// **Claimed here, before `zoom_over_a_panel(Panel::Space)` is reached**, which is the last line of
-    /// `show_the_space`: `zoom_taken` is the lock, one level further in than `task-1771` put it. And
+    /// `show_the_space`: the zoom claim is the lock, one level further in than `task-1771` put it. And
     /// `zoom_steps` is called **at most once a frame**, because calling it twice spends the same notch
     /// twice — so which node the pointer is in is decided first and it is called once for that node.
     fn zoom_over_a_node(&mut self, ui: &egui::Ui, under_the_pointer: Option<NodeId>) {
-        if self.zoom_taken {
+        if self.zoom == ZoomClaim::Taken {
             return;
         }
         let Some(node) = under_the_pointer else {
             return;
         };
-        self.zoom_taken = true;
+        self.zoom = ZoomClaim::Taken;
         let steps = self.zoom_steps(ui);
         if steps != 0 {
             self.zoom_a_node(node, steps);
@@ -855,11 +855,8 @@ impl UnluminousApp {
         if outcome.moved.is_none() {
             if let Some((path, at, dropped)) = outcome.carrying {
                 let camera = self.space.space.current().camera;
-                self.file_drag = Some(crate::app::FileDrag {
-                    path,
-                    at: camera.to_screen(self.space.body.min, at),
-                    dropped,
-                });
+                let at = camera.to_screen(self.space.body.min, at);
+                self.file_drag = Drag::carrying(path, at, dropped);
             }
         }
     }
@@ -1357,11 +1354,8 @@ impl UnluminousApp {
                 // The pointer comes back in the node's own world points, and the drag is settled in screen
                 // points against every strip in the window — so it is converted here, where the camera is
                 // to hand.
-                self.tab_drag = Some(crate::app::TabDrag {
-                    file,
-                    at: camera.to_screen(self.space.body.min, pointer),
-                    dropped: outcome.dropped,
-                });
+                let at = camera.to_screen(self.space.body.min, pointer);
+                self.tab_drag = Drag::carrying(file, at, outcome.dropped);
             }
         }
         if let Some(index) = outcome.show.and_then(at).or_else(|| outcome.keep.and_then(at)) {

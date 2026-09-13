@@ -31,7 +31,7 @@ use std::sync::Arc;
 use unluminous_core::symbols::{self, Confidence, FileSymbols, RankKey, Role, SymbolKind};
 use unluminous_core::{Command, Grammar};
 
-use crate::app::UnluminousApp;
+use crate::app::{SymbolIndexState, UnluminousApp};
 use crate::components::references::{self, Purpose, References};
 use crate::services::file_kind;
 use crate::services::symbol_index::Indexer;
@@ -131,10 +131,12 @@ impl UnluminousApp {
         let files = self.tree.file_count();
         // The file list and the plugins together are what the answer depends on, so a plugin
         // switched off or a folder that grew is what asks for another read. A file *changed* is not
-        // in there, deliberately: saving is what says so, through `self.symbols_stale`.
+        // in there, deliberately: saving is what says so, through `SymbolIndexState::is_stale`.
         let asked = (root, files, self.plugins.enabled_count());
-        if self.symbols_asked.as_ref() == Some(&asked) && !self.symbols_stale {
-            if let Some(indexer) = self.symbols.as_mut() {
+        let up_to_date = !self.symbol_index.is_stale()
+            && matches!(&self.symbol_index, SymbolIndexState::Reading { asked: recorded, .. } if *recorded == asked);
+        if up_to_date {
+            if let SymbolIndexState::Reading { indexer, .. } = &mut self.symbol_index {
                 indexer.poll();
             }
             return;
@@ -142,15 +144,30 @@ impl UnluminousApp {
         let waker = self.thread_waker();
         let grammars = Arc::new(self.plugins.grammars().clone());
         let list = self.tree.all_files().to_vec();
-        let indexer = self.symbols.get_or_insert_with(|| Indexer::start(waker));
+        if matches!(self.symbol_index, SymbolIndexState::NotStarted) {
+            self.symbol_index = SymbolIndexState::Reading {
+                indexer: Box::new(Indexer::start(waker)),
+                asked: asked.clone(),
+                stale: false,
+            };
+        }
+        let SymbolIndexState::Reading { indexer, asked: recorded, stale } = &mut self.symbol_index
+        else {
+            return;
+        };
         indexer.rebuild(list, grammars);
-        self.symbols_asked = Some(asked);
-        self.symbols_stale = false;
+        *recorded = asked;
+        *stale = false;
     }
 
     /// Say that a file on the disk has changed, so the index is read again on the next frame.
+    ///
+    /// Nothing to say when no index has been started: the next question rebuilds it anyway, because
+    /// it has no record of having been asked.
     pub fn the_project_changed_on_disk(&mut self) {
-        self.symbols_stale = true;
+        if let SymbolIndexState::Reading { stale, .. } = &mut self.symbol_index {
+            *stale = true;
+        }
     }
 
     /// The index and the thread it is read on, once something has asked for one.
@@ -158,7 +175,7 @@ impl UnluminousApp {
     /// Public because a screenshot test has to wait for the read the way it waits for git and for
     /// the text search, and because `symbol_cost` reports what it holds.
     pub fn symbols_indexer(&self) -> Option<&Indexer> {
-        self.symbols.as_ref()
+        self.symbol_index.indexer()
     }
 
     /// The grammar that reads a file, if a plugin that is switched on claims it.
@@ -231,7 +248,7 @@ impl UnluminousApp {
                 });
             }
         }
-        if let Some(indexer) = self.symbols.as_ref() {
+        if let Some(indexer) = self.symbol_index.indexer() {
             for entry in indexer.index().definitions_of(name) {
                 if open.iter().any(|known| known == &entry.path) {
                     continue;
@@ -256,7 +273,7 @@ impl UnluminousApp {
         asked_in: Option<&Path>,
         asked_at: usize,
     ) -> Vec<Candidate> {
-        let order = self.symbols.as_ref();
+        let order = self.symbol_index.indexer();
         let keys: Vec<RankKey> = candidates
             .iter()
             .map(|candidate| RankKey {
@@ -1009,7 +1026,7 @@ mod tests {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while std::time::Instant::now() < deadline {
             app.keep_the_symbol_index_fresh();
-            if app.symbols.as_ref().is_some_and(|indexer| !indexer.is_building()) {
+            if app.symbols_indexer().is_some_and(|indexer| !indexer.is_building()) {
                 return;
             }
             std::thread::sleep(std::time::Duration::from_millis(5));
@@ -1465,7 +1482,7 @@ mod tests {
         let mut app = UnluminousApp::new(&folder);
         let walked = app.tree.all_files().len();
         build_the_index(&mut app);
-        let index = app.symbols.as_ref().expect("an indexer").index();
+        let index = app.symbols_indexer().expect("an indexer").index();
         assert_eq!(index.files(), walked, "the index read the list the walker handed it");
         assert_eq!(index.names(), walked, "one name a file, because that is what they define");
         assert_eq!(
@@ -1607,11 +1624,14 @@ mod tests {
         let (folder, mut app) = a_window("unluminous-symbols-staleness");
         // Nothing changed: asking again does not start another build.
         app.keep_the_symbol_index_fresh();
-        assert!(!app.symbols.as_ref().expect("an indexer").is_building());
+        assert!(!app.symbols_indexer().expect("an indexer").is_building());
         // A save says the disk moved, and the next frame reads it again.
         app.the_project_changed_on_disk();
         app.keep_the_symbol_index_fresh();
-        assert!(app.symbols.as_ref().expect("an indexer").is_building() || !app.symbols_stale);
+        assert!(
+            app.symbols_indexer().expect("an indexer").is_building()
+                || !app.symbol_index.is_stale()
+        );
         std::fs::remove_dir_all(&folder).ok();
     }
 

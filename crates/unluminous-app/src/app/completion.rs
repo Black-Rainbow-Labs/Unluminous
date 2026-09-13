@@ -263,7 +263,7 @@ impl UnluminousApp {
         }
 
         // The project's definitions, with the open files' paths dropped: the ownership rule.
-        if let Some(indexer) = self.symbols.as_ref() {
+        if let Some(indexer) = self.symbols_indexer() {
             let index = indexer.index();
             for name in index.sorted_names() {
                 if !completion::could_match(stem, name) {
@@ -467,7 +467,7 @@ impl UnluminousApp {
                 })
                 .collect();
         }
-        let Some(indexer) = self.symbols.as_ref() else {
+        let Some(indexer) = self.symbols_indexer() else {
             return Vec::new();
         };
         indexer
