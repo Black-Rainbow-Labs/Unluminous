@@ -693,3 +693,414 @@ fn is_chosen(explorer: &DatabaseExplorer, line: &Line) -> bool {
         _ => false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::database::{Chosen, Loaded};
+    use unluminous_db::{Column, Source, Table};
+
+    /// One source, `db`, opened with one schema, `public`, opened, holding one table, `users`, with
+    /// its `tables` folder open and the table itself open — so `lines` walks every depth it can walk.
+    fn a_tree() -> DatabaseExplorer {
+        let mut explorer = DatabaseExplorer::new();
+        explorer.configuration.sources.push(Source { name: "db".to_owned(), ..Default::default() });
+        explorer.open_sources.insert("db".to_owned());
+        let mut loaded = Loaded::default();
+        loaded.schemas.push("public".to_owned());
+        loaded.open_schemas.insert("public".to_owned());
+        loaded.items.insert(
+            "public".to_owned(),
+            vec![
+                unluminous_db::Item { name: "users".to_owned(), kind: Kind::Table },
+                unluminous_db::Item { name: "get_user".to_owned(), kind: Kind::Routine },
+            ],
+        );
+        loaded.open_folders.insert(("public".to_owned(), "tables".to_owned()));
+        loaded.open_folders.insert(("public".to_owned(), "routines".to_owned()));
+        loaded.open_tables.insert(("public".to_owned(), "users".to_owned()));
+        loaded.columns.insert(
+            ("public".to_owned(), "users".to_owned()),
+            Table {
+                schema: "public".to_owned(),
+                name: "users".to_owned(),
+                columns: vec![
+                    Column {
+                        name: "id".to_owned(),
+                        type_name: "integer".to_owned(),
+                        numeric: true,
+                        not_null: true,
+                        in_key: true,
+                    },
+                    Column {
+                        name: "email".to_owned(),
+                        type_name: "text".to_owned(),
+                        numeric: false,
+                        not_null: false,
+                        in_key: false,
+                    },
+                ],
+                key: vec!["id".to_owned()],
+                ..Default::default()
+            },
+        );
+        explorer.loaded.insert("db".to_owned(), loaded);
+        explorer
+    }
+
+    #[test]
+    fn every_row_the_tree_would_draw_is_in_order_at_the_right_depth() {
+        let rows = lines(&a_tree());
+        let shapes: Vec<(usize, String)> =
+            rows.iter().map(|line| (line.depth, row_name(line))).collect();
+        assert_eq!(
+            shapes,
+            vec![
+                (0, "db".to_owned()),
+                (1, "public".to_owned()),
+                (2, "tables".to_owned()),
+                (3, "users".to_owned()),
+                (4, "id".to_owned()),
+                (4, "email".to_owned()),
+                (2, "routines".to_owned()),
+                (3, "get_user".to_owned()),
+            ]
+        );
+    }
+
+    /// A folder the filter's text does not match in anything it holds is not drawn at all — the
+    /// reference editor's own `Show Elements | Empty Groups` set to off.
+    #[test]
+    fn a_folder_with_nothing_matching_the_filter_is_left_out_entirely() {
+        let mut explorer = a_tree();
+        explorer.filter = "nothing matches this".to_owned();
+        let rows = lines(&explorer);
+        let names: Vec<String> = rows.iter().map(row_name).collect();
+        assert_eq!(names, vec!["db".to_owned(), "public".to_owned()], "no folder had a match");
+    }
+
+    /// A folder a filter matched inside is opened even though nobody clicked it, because a filter
+    /// nobody can see the results of is a filter that looks broken. The filter is matched against an
+    /// item's own name, not its columns.
+    #[test]
+    fn a_matching_filter_opens_the_folder_it_matched_in() {
+        let mut explorer = a_tree();
+        explorer.filter = "users".to_owned();
+        let rows = lines(&explorer);
+        let names: Vec<String> = rows.iter().map(row_name).collect();
+        assert!(names.contains(&"tables".to_owned()));
+        assert!(names.contains(&"users".to_owned()));
+        assert!(!names.contains(&"routines".to_owned()), "nothing in it matched `users`");
+    }
+
+    #[test]
+    fn a_closed_source_shows_nothing_beneath_it() {
+        let mut explorer = a_tree();
+        explorer.open_sources.clear();
+        let rows = lines(&explorer);
+        assert_eq!(rows.len(), 1, "only the source's own row");
+    }
+
+    #[test]
+    fn only_a_source_a_schema_and_an_item_can_be_aimed_at() {
+        assert_eq!(
+            aimed_at(&Line {
+                depth: 0,
+                what: What::Source {
+                    name: "db".to_owned(),
+                    where_it_points: String::new(),
+                    connected: false,
+                    open: true,
+                    busy: false,
+                }
+            }),
+            Some(Aimed::Source("db".to_owned()))
+        );
+        assert_eq!(
+            aimed_at(&Line {
+                depth: 1,
+                what: What::Schema {
+                    source: "db".to_owned(),
+                    name: "public".to_owned(),
+                    open: true,
+                }
+            }),
+            Some(Aimed::Schema("db".to_owned(), "public".to_owned()))
+        );
+        assert_eq!(
+            aimed_at(&Line {
+                depth: 2,
+                what: What::Folder {
+                    source: "db".to_owned(),
+                    schema: "public".to_owned(),
+                    name: "tables".to_owned(),
+                    count: 1,
+                    open: true,
+                }
+            }),
+            None,
+            "a menu with one dimmed row in it is worse than no menu"
+        );
+        assert_eq!(
+            aimed_at(&Line { depth: 2, what: What::Empty { said: "reading…".to_owned() } }),
+            None
+        );
+    }
+
+    #[test]
+    fn clicking_a_source_chooses_it_and_toggles_it_open() {
+        let line = Line {
+            depth: 0,
+            what: What::Source {
+                name: "db".to_owned(),
+                where_it_points: String::new(),
+                connected: false,
+                open: false,
+                busy: false,
+            },
+        };
+        assert_eq!(
+            clicked(&line),
+            vec![
+                Act::Choose("db".to_owned(), String::new(), String::new()),
+                Act::ToggleSource("db".to_owned())
+            ]
+        );
+    }
+
+    #[test]
+    fn clicking_a_view_chooses_it_but_does_not_toggle_it_open() {
+        // A view holds rows, so clicking it also toggles it — but a routine does not, so clicking a
+        // routine only chooses it, which is what leaves it with nothing to expand.
+        let opens_and_toggles = Line {
+            depth: 3,
+            what: What::Item {
+                source: "db".to_owned(),
+                schema: "public".to_owned(),
+                name: "users".to_owned(),
+                kind: Kind::Table,
+                open: false,
+                declared: String::new(),
+            },
+        };
+        assert_eq!(
+            clicked(&opens_and_toggles).len(),
+            2,
+            "a table holds rows, so it can be toggled"
+        );
+
+        let chooses_only = Line {
+            depth: 3,
+            what: What::Item {
+                source: "db".to_owned(),
+                schema: "public".to_owned(),
+                name: "get_user".to_owned(),
+                kind: Kind::Routine,
+                open: false,
+                declared: String::new(),
+            },
+        };
+        assert_eq!(
+            clicked(&chooses_only),
+            vec![Act::Choose("db".to_owned(), "public".to_owned(), "get_user".to_owned())],
+            "a routine holds no rows, so there is nothing to toggle"
+        );
+    }
+
+    #[test]
+    fn a_problem_row_is_clicked_to_try_the_connection_again() {
+        let line = Line {
+            depth: 1,
+            what: What::Problem { source: "db".to_owned(), said: "refused".to_owned() },
+        };
+        assert_eq!(clicked(&line), vec![Act::Connect("db".to_owned())]);
+        assert_eq!(row_name(&line), "refused");
+    }
+
+    #[test]
+    fn opens_answers_for_the_rows_that_can_be_opened_and_nothing_for_the_rest() {
+        let table = Line {
+            depth: 3,
+            what: What::Item {
+                source: "db".to_owned(),
+                schema: "public".to_owned(),
+                name: "users".to_owned(),
+                kind: Kind::Table,
+                open: true,
+                declared: String::new(),
+            },
+        };
+        assert_eq!(opens(&table), Some(true));
+
+        let routine = Line {
+            depth: 3,
+            what: What::Item {
+                source: "db".to_owned(),
+                schema: "public".to_owned(),
+                name: "get_user".to_owned(),
+                kind: Kind::Routine,
+                open: true,
+                declared: String::new(),
+            },
+        };
+        assert_eq!(opens(&routine), None, "a routine holds no rows, so it cannot be opened either");
+
+        assert_eq!(
+            opens(&Line {
+                depth: 4,
+                what: What::Column {
+                    name: "id".to_owned(),
+                    type_name: "integer".to_owned(),
+                    in_key: true,
+                    not_null: true,
+                }
+            }),
+            None
+        );
+    }
+
+    #[test]
+    fn a_column_in_the_key_is_marked_and_every_other_row_kind_has_its_own_mark_or_none() {
+        let key_column = Line {
+            depth: 4,
+            what: What::Column {
+                name: "id".to_owned(),
+                type_name: "integer".to_owned(),
+                in_key: true,
+                not_null: true,
+            },
+        };
+        assert!(mark(&key_column).is_some());
+
+        let plain_column = Line {
+            depth: 4,
+            what: What::Column {
+                name: "email".to_owned(),
+                type_name: "text".to_owned(),
+                in_key: false,
+                not_null: false,
+            },
+        };
+        assert!(mark(&plain_column).is_none(), "an ordinary column carries no icon of its own");
+
+        assert!(
+            mark(&Line { depth: 2, what: What::Empty { said: "reading…".to_owned() } }).is_none()
+        );
+    }
+
+    #[test]
+    fn a_search_index_is_marked_with_the_magnifier_rather_than_a_table_icon() {
+        let table = What::Item {
+            source: "db".to_owned(),
+            schema: "public".to_owned(),
+            name: "docs".to_owned(),
+            kind: Kind::Table,
+            open: false,
+            declared: String::new(),
+        };
+        let search = What::Item {
+            source: "db".to_owned(),
+            schema: "public".to_owned(),
+            name: "docs".to_owned(),
+            kind: Kind::Search,
+            open: false,
+            declared: String::new(),
+        };
+        // Compared by address rather than with `assert_ne!`, because two `fn` items are not
+        // guaranteed distinct addresses in general but are here — this is the one place in the
+        // window that answers "is a search index drawn differently from a table", so it is asked
+        // directly rather than through equality on values that merely happen to be function pointers.
+        let table_mark = mark(&Line { depth: 3, what: table }).expect("a table has a mark");
+        let search_mark =
+            mark(&Line { depth: 3, what: search }).expect("a search index has a mark");
+        assert!(
+            !std::ptr::fn_addr_eq(table_mark, search_mark),
+            "a search index does not wear the same mark as an ordinary table"
+        );
+    }
+
+    #[test]
+    fn a_problem_is_tinted_in_the_colour_unluminous_uses_for_something_wrong() {
+        let problem = Line {
+            depth: 1,
+            what: What::Problem { source: "db".to_owned(), said: "refused".to_owned() },
+        };
+        assert_eq!(tint(&problem), color::unsaved());
+    }
+
+    #[test]
+    fn a_connected_source_reads_stronger_than_one_that_is_not() {
+        let connected = Line {
+            depth: 0,
+            what: What::Source {
+                name: "db".to_owned(),
+                where_it_points: String::new(),
+                connected: true,
+                open: true,
+                busy: false,
+            },
+        };
+        let not_connected = Line {
+            depth: 0,
+            what: What::Source {
+                name: "db".to_owned(),
+                where_it_points: String::new(),
+                connected: false,
+                open: true,
+                busy: false,
+            },
+        };
+        assert_eq!(tint(&connected), color::text_strong());
+        assert_eq!(tint(&not_connected), color::text());
+    }
+
+    #[test]
+    fn the_schema_a_new_table_goes_in_is_the_sources_first_when_nothing_is_named() {
+        let explorer = a_tree();
+        assert_eq!(first_schema_of(&explorer, "db"), "public");
+        assert_eq!(first_schema_of(&explorer, "nothing-like-this"), "");
+    }
+
+    #[test]
+    fn only_the_row_that_is_really_chosen_says_so() {
+        let mut explorer = a_tree();
+        let table = Line {
+            depth: 3,
+            what: What::Item {
+                source: "db".to_owned(),
+                schema: "public".to_owned(),
+                name: "users".to_owned(),
+                kind: Kind::Table,
+                open: true,
+                declared: String::new(),
+            },
+        };
+        assert!(!is_chosen(&explorer, &table), "nothing is chosen yet");
+
+        explorer.chosen = Some(Chosen {
+            source: "db".to_owned(),
+            schema: "public".to_owned(),
+            name: "users".to_owned(),
+        });
+        assert!(is_chosen(&explorer, &table));
+
+        let other_table = Line {
+            depth: 3,
+            what: What::Item {
+                source: "db".to_owned(),
+                schema: "public".to_owned(),
+                name: "orders".to_owned(),
+                kind: Kind::Table,
+                open: true,
+                declared: String::new(),
+            },
+        };
+        assert!(!is_chosen(&explorer, &other_table));
+
+        let schema = Line {
+            depth: 1,
+            what: What::Schema { source: "db".to_owned(), name: "public".to_owned(), open: true },
+        };
+        assert!(!is_chosen(&explorer, &schema), "a table is chosen, not the schema it is in");
+    }
+}

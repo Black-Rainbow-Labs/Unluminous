@@ -1288,3 +1288,120 @@ impl UnluminousApp {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::plugins::{PaneContribution, RailGroup, Surface};
+
+    /// A pane a fictional plugin contributed, so the visibility slots can be exercised without
+    /// loading a real manifest. `provider` deliberately names nothing in `UI_PROVIDERS`, because
+    /// none of these tests ever asks one to be built.
+    fn a_pane(id: &str, applies: &str) -> Surface<PaneContribution> {
+        Surface {
+            plugin: "demo".to_owned(),
+            provider: "demo".to_owned(),
+            what: PaneContribution {
+                id: id.to_owned(),
+                label: id.to_owned(),
+                icon: "board".to_owned(),
+                group: RailGroup::Bottom,
+                side: dock::Side::Right,
+                width: 300.0,
+                height: 300.0,
+                applies: applies.to_owned(),
+            },
+        }
+    }
+
+    #[test]
+    fn a_pane_that_always_applies_does_so_with_or_without_a_project() {
+        let mut ui = PluginUi::default();
+        ui.surfaces.panes.push(a_pane("board", "always"));
+        assert!(ui.applies(0));
+        ui.set_project(Some(PathBuf::from("/a/project")));
+        assert!(ui.applies(0));
+    }
+
+    #[test]
+    fn a_pane_that_asks_for_a_project_is_absent_without_one() {
+        let mut ui = PluginUi::default();
+        ui.surfaces.panes.push(a_pane("board", "in_project"));
+        assert!(!ui.applies(0), "no project is open");
+        ui.set_project(Some(PathBuf::from("/a/project")));
+        assert!(ui.applies(0), "one is open now");
+    }
+
+    #[test]
+    fn the_pane_count_never_exceeds_the_number_of_slots_there_are() {
+        let mut ui = PluginUi::default();
+        for index in 0..PLUGIN_PANES + 3 {
+            ui.surfaces.panes.push(a_pane(&format!("pane-{index}"), "always"));
+        }
+        assert_eq!(ui.pane_count(), PLUGIN_PANES);
+    }
+
+    #[test]
+    fn a_pane_is_found_by_its_key_and_a_key_is_found_by_its_slot() {
+        let mut ui = PluginUi::default();
+        ui.surfaces.panes.push(a_pane("board", "always"));
+        assert_eq!(ui.pane_key(0), Some("demo/board".to_owned()));
+        assert_eq!(ui.slot_of("demo/board"), Some(0));
+        assert_eq!(ui.slot_of("nothing/like-this"), None);
+    }
+
+    #[test]
+    fn showing_or_hiding_an_out_of_range_slot_is_refused_rather_than_panicking() {
+        let mut ui = PluginUi::default();
+        assert!(ui.set_visible(0, true).is_some(), "there is no pane in slot 0 yet");
+    }
+
+    #[test]
+    fn a_pane_that_needs_a_project_cannot_be_shown_without_one() {
+        let mut ui = PluginUi::default();
+        ui.surfaces.panes.push(a_pane("board", "in_project"));
+        let refusal = ui.set_visible(0, true);
+        assert!(refusal.is_some());
+        assert!(!ui.is_visible(0), "refused, so it never opened");
+
+        ui.set_project(Some(PathBuf::from("/a/project")));
+        // Hiding never has to open anything, so it is never refused by the condition — only showing is.
+        assert!(ui.set_visible(0, false).is_none());
+    }
+
+    #[test]
+    fn a_panes_slot_maps_onto_a_plugin_panel_only_within_the_slots_there_are() {
+        assert_eq!(Panel::plugin_pane(0), Some(Panel::Plugin(0)));
+        assert_eq!(
+            Panel::plugin_pane(PLUGIN_PANES - 1),
+            Some(Panel::Plugin((PLUGIN_PANES - 1) as u8))
+        );
+        assert_eq!(
+            Panel::plugin_pane(PLUGIN_PANES),
+            None,
+            "there is no fifth slot to move a pane into"
+        );
+    }
+
+    /// `refresh` is what withdraws a contribution the moment its plugin is switched off — the rule
+    /// `Plugins::renders` already keeps for a Mermaid diagram, applied to a pane instead. `showing` is
+    /// set directly here rather than through `set_visible`, which would have to build a real provider;
+    /// `refresh`'s pruning does not care how a pane came to be marked open.
+    #[test]
+    fn a_pane_stops_showing_the_moment_its_plugin_is_switched_off() {
+        let (mut plugins, _) = Plugins::load(None);
+        let mut ui = PluginUi::default();
+        ui.refresh(&plugins);
+        let slot = ui.slot_of("agent-tasks/board").expect("agent-tasks contributes a pane");
+        ui.showing.push("agent-tasks/board".to_owned());
+        assert!(ui.is_visible(slot));
+
+        plugins.set_enabled(None, "agent-tasks", false);
+        ui.refresh(&plugins);
+        assert_eq!(ui.slot_of("agent-tasks/board"), None, "the plugin contributes nothing now");
+        assert!(
+            !ui.showing.contains(&"agent-tasks/board".to_owned()),
+            "a pane whose plugin has gone cannot still be showing"
+        );
+    }
+}

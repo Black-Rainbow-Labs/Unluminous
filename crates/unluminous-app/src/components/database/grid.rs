@@ -349,6 +349,41 @@ fn the_grid(
     acts
 }
 
+/// Where one column's header cell sits, and whether it is worth drawing at all.
+///
+/// Off either edge of the strip costs nothing to skip — `task-1666`'s rule, applied to a row of
+/// columns instead of a column of lines: a table with a hundred columns draws the handful that are
+/// actually scrolled into view.
+fn column_cell(
+    head: Rect,
+    index: usize,
+    column_width: f32,
+    offset: f32,
+    gutter: f32,
+) -> Option<Rect> {
+    let left = head.left() + gutter + index as f32 * column_width - offset;
+    if left > head.right() || left + column_width < head.left() {
+        return None;
+    }
+    Some(Rect::from_min_size(Pos2::new(left, head.top()), Vec2::new(column_width, head.height())))
+}
+
+/// Which way a column is sorted, read out of the server's own `ORDER BY`.
+///
+/// `Some(true)` for ascending, `Some(false)` for descending, and `None` for a column the order says
+/// nothing about — which is how a grid says "the order you are looking at is the server's own"
+/// rather than guessing at one.
+fn sort_mark(order: &str, column: &str) -> Option<bool> {
+    let sorting = order.trim();
+    if sorting == format!("{column} asc") {
+        Some(true)
+    } else if sorting == format!("{column} desc") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 /// The column names, with their types and a sort chevron.
 #[allow(clippy::too_many_arguments)]
 fn header(
@@ -370,14 +405,9 @@ fn header(
     let painter = ui.painter_at(head);
     painter.rect_filled(head, egui::CornerRadius::same(6), look.palette.board_lane);
     for (index, column) in rows.columns.iter().enumerate() {
-        let left = head.left() + GUTTER * scale + index as f32 * column_width - offset;
-        if left > head.right() || left + column_width < head.left() {
+        let Some(rect) = column_cell(head, index, column_width, offset, GUTTER * scale) else {
             continue;
-        }
-        let rect = Rect::from_min_size(
-            Pos2::new(left, head.top()),
-            Vec2::new(column_width, head.height()),
-        );
+        };
         let response =
             ui.interact(rect, ui.id().with(("database-column", id, index)), Sense::click());
         if response.hovered() {
@@ -407,20 +437,11 @@ fn header(
         }
         // The chevron says which way this column is sorted, and nothing at all when it is not — which
         // is how a grid says "the order you are looking at is the server's own".
-        let sorting = order.trim();
-        if sorting == format!("{} asc", column.name) {
+        if let Some(ascending) = sort_mark(&order, &column.name) {
             icon::disclosure_at(
                 &painter,
                 Pos2::new(rect.right() - 10.0 * scale, rect.center().y),
-                true,
-                color::accent(),
-                scale,
-            );
-        } else if sorting == format!("{} desc", column.name) {
-            icon::disclosure_at(
-                &painter,
-                Pos2::new(rect.right() - 10.0 * scale, rect.center().y),
-                false,
+                ascending,
                 color::accent(),
                 scale,
             );
@@ -672,6 +693,16 @@ fn draw_a_value(
     }
 }
 
+/// The paging strip's own sentence: `no rows`, `1-200 of 4317`, or `1-200 of 200+` when one more row
+/// than was kept says there could be more but nobody counted the rest.
+fn page_summary(first: usize, last: usize, empty: bool, more: bool) -> String {
+    match (empty, more) {
+        (true, _) => "no rows".to_owned(),
+        (false, true) => format!("{first}-{last} of {last}+"),
+        (false, false) => format!("{first}-{last} of {last}"),
+    }
+}
+
 /// `|< < 1-200 of 200+ > >|`, which is the reference editor's own widget and its own honesty about the count.
 fn paging(
     explorer: &DatabaseExplorer,
@@ -686,13 +717,7 @@ fn paging(
     let size = explorer.configuration.page_size;
     let first = grid.at * size + 1;
     let last = grid.at * size + grid.rows.rows.len();
-    let said = match (grid.rows.rows.is_empty(), grid.rows.more) {
-        (true, _) => "no rows".to_owned(),
-        // `of N+` rather than `of N`, because nobody counted the rest: the statement asked for one
-        // more row than it kept and that is all it knows.
-        (false, true) => format!("{first}-{last} of {last}+"),
-        (false, false) => format!("{first}-{last} of {last}"),
-    };
+    let said = page_summary(first, last, grid.rows.rows.is_empty(), grid.rows.more);
     let mut at = foot.left();
     let step = 22.0 * scale;
     if grid.at > 0 {
@@ -792,4 +817,58 @@ pub fn rows_only(ui: &mut egui::Ui, look: &Look<'_>, area: Rect, rows: &Rows, id
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_empty_result_says_so_whatever_else_is_true() {
+        assert_eq!(page_summary(1, 0, true, true), "no rows");
+        assert_eq!(page_summary(1, 0, true, false), "no rows");
+    }
+
+    #[test]
+    fn a_result_the_size_of_the_page_says_there_could_be_more() {
+        // One more row than was kept was asked for and thrown away, so `200+` is the honest answer:
+        // nobody counted the rest, only that there is a next one.
+        assert_eq!(page_summary(1, 200, false, true), "1-200 of 200+");
+    }
+
+    #[test]
+    fn a_result_smaller_than_the_page_is_the_whole_of_it() {
+        // An engine that materialises, such as Inillucent, answers with the real count — no `+` on the end.
+        assert_eq!(page_summary(1, 200, false, false), "1-200 of 200");
+        assert_eq!(page_summary(201, 4317, false, false), "201-4317 of 4317");
+    }
+
+    #[test]
+    fn a_column_off_either_edge_of_the_strip_is_not_drawn() {
+        let head = Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(300.0, 24.0));
+        // Column 0 sits right at the gutter and is fully visible.
+        let first = column_cell(head, 0, 150.0, 0.0, 44.0).expect("the first column is on screen");
+        assert_eq!(first.left(), 44.0);
+        assert_eq!(first.width(), 150.0);
+
+        // Column 2 would start at 44 + 2*150 = 344, off the right of a 300 point strip.
+        assert_eq!(column_cell(head, 2, 150.0, 0.0, 44.0), None);
+
+        // Scrolled two columns right, column 0 is off the left of the strip entirely.
+        assert_eq!(column_cell(head, 0, 150.0, 300.0, 44.0), None);
+
+        // And the same scroll brings column 2 into view.
+        let scrolled = column_cell(head, 2, 150.0, 300.0, 44.0).expect("scrolled into view");
+        assert_eq!(scrolled.left(), 44.0 + 2.0 * 150.0 - 300.0);
+    }
+
+    #[test]
+    fn a_columns_sort_mark_reads_the_servers_own_order_by() {
+        assert_eq!(sort_mark("name asc", "name"), Some(true));
+        assert_eq!(sort_mark("name desc", "name"), Some(false));
+        assert_eq!(sort_mark("name asc", "other"), None, "the order names a different column");
+        assert_eq!(sort_mark("", "name"), None, "no order at all");
+        // Padded the way a person might type it into the `ORDER BY` field.
+        assert_eq!(sort_mark("  name asc  ", "name"), Some(true));
+    }
 }

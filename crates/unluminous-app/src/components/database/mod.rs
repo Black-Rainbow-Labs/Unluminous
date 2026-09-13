@@ -549,3 +549,100 @@ pub fn along(area: Rect, at: &mut f32, width: f32) -> Rect {
     *at += width;
     rect
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::database::Chosen;
+
+    #[test]
+    fn along_lays_out_left_to_right_and_moves_the_pen_on() {
+        let toolbar = Rect::from_min_size(Pos2::new(10.0, 20.0), Vec2::new(300.0, 32.0));
+        let mut at = toolbar.left();
+        let first = along(toolbar, &mut at, 24.0);
+        assert_eq!(first, Rect::from_min_size(Pos2::new(10.0, 20.0), Vec2::new(24.0, 32.0)));
+        assert_eq!(at, 34.0);
+        let second = along(toolbar, &mut at, 40.0);
+        assert_eq!(second, Rect::from_min_size(Pos2::new(34.0, 20.0), Vec2::new(40.0, 32.0)));
+        assert_eq!(at, 74.0);
+    }
+
+    #[test]
+    fn a_name_the_tree_has_not_read_yet_defaults_to_a_table() {
+        let mut explorer = DatabaseExplorer::new();
+        let mut loaded = crate::services::database::Loaded::default();
+        loaded.items.insert(
+            "public".to_owned(),
+            vec![unluminous_db::Item {
+                name: "docs".to_owned(),
+                kind: unluminous_db::Kind::Search,
+            }],
+        );
+        explorer.loaded.insert("db".to_owned(), loaded);
+        assert_eq!(kind_of(&explorer, "db", "public", "docs"), unluminous_db::Kind::Search);
+        assert_eq!(
+            kind_of(&explorer, "db", "public", "nothing-like-this"),
+            unluminous_db::Kind::Table
+        );
+        assert_eq!(
+            kind_of(&explorer, "no-such-source", "public", "docs"),
+            unluminous_db::Kind::Table
+        );
+    }
+
+    #[test]
+    fn toggling_an_unknown_source_records_the_refusal_rather_than_panicking() {
+        let mut explorer = DatabaseExplorer::new();
+        let requests = apply(&mut explorer, vec![Act::ToggleSource("missing".to_owned())]);
+        assert!(requests.is_empty(), "toggling records the problem on the explorer, not a request");
+        assert!(
+            explorer.open_sources.contains("missing"),
+            "it opens even though it could not connect"
+        );
+        assert!(explorer.problem.is_some(), "why it could not connect is kept somewhere");
+    }
+
+    #[test]
+    fn connecting_or_removing_a_source_that_is_not_there_is_a_message_not_a_panic() {
+        let mut explorer = DatabaseExplorer::new();
+        assert_eq!(
+            apply(&mut explorer, vec![Act::Connect("missing".to_owned())]),
+            vec![Request::Message("there is no data source called `missing`.".to_owned())]
+        );
+        assert_eq!(
+            apply(&mut explorer, vec![Act::RemoveSource("missing".to_owned())]),
+            vec![Request::Message("there is no data source called `missing`.".to_owned())]
+        );
+    }
+
+    #[test]
+    fn choosing_a_row_sets_what_the_tree_and_a_new_console_point_at() {
+        let mut explorer = DatabaseExplorer::new();
+        let requests = apply(
+            &mut explorer,
+            vec![Act::Choose("db".to_owned(), "public".to_owned(), "users".to_owned())],
+        );
+        assert!(requests.is_empty());
+        assert_eq!(
+            explorer.chosen,
+            Some(Chosen {
+                source: "db".to_owned(),
+                schema: "public".to_owned(),
+                name: "users".to_owned()
+            })
+        );
+    }
+
+    #[test]
+    fn opening_the_trees_menu_and_copying_text_both_reach_the_explorer() {
+        let mut explorer = DatabaseExplorer::new();
+        let at = Pos2::new(4.0, 8.0);
+        let aimed = Aimed::Source("db".to_owned());
+        let requests = apply(&mut explorer, vec![Act::OpenMenu(at, aimed.clone())]);
+        assert!(requests.is_empty());
+        assert_eq!(explorer.menu, Some((at, aimed)));
+
+        let requests = apply(&mut explorer, vec![Act::Copy("a value".to_owned())]);
+        assert_eq!(requests, vec![Request::Copy("a value".to_owned())]);
+    }
+}

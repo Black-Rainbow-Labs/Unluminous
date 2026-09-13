@@ -80,6 +80,45 @@ fn group_head(look: &Look<'_>) -> f32 {
     GROUP_HEAD_AT_DEFAULT * look.scale()
 }
 
+/// Which sentence an empty listing shows.
+///
+/// Backlog stays on the screen after saying so — the `+ New sprint` toolbar above it still has
+/// something to do — while Completed has nothing under an empty message and the caller returns once
+/// it has drawn it. Only the words differ; what happens next is decided at the call site.
+fn listing_empty_message(finished: bool) -> &'static str {
+    match finished {
+        true => "No completed sprints yet.",
+        false => "Nothing in the backlog, and no sprints to put anything in.",
+    }
+}
+
+/// The empty state for one group with no tickets in it.
+///
+/// A sprint is somewhere to drop a ticket in; the backlog is where a ticket goes to lose its sprint —
+/// two different reasons to be looking at an empty group, so the two say different things.
+fn group_empty_message(has_sprint: bool) -> &'static str {
+    match has_sprint {
+        true => "Nothing here yet — drag a ticket in",
+        false => "No backlog tickets — drag one here to take it out of its sprint",
+    }
+}
+
+/// Which group a row lands in when it is let go, or nothing if it was let go outside every group.
+///
+/// Asked once every group has been drawn: a row reports that it is being carried as it is drawn, so a
+/// group drawn before that row would be asked the question before there was anything to ask about.
+/// That is `settle_the_tab_drag`'s own reason, and it is the same shape. The **whole** group is the
+/// target rather than its rows, which is what the page this is modelled on does — an empty sprint has
+/// to be a target, or there would be no way to put the first ticket in one.
+fn settle_the_group_drop(
+    carrying: Option<(i64, Pos2)>,
+    placed: &[(Option<i64>, Rect)],
+) -> Option<Option<i64>> {
+    carrying
+        .map(|(_, at)| at)
+        .and_then(|at| placed.iter().find(|(_, rect)| rect.contains(at)).map(|(id, _)| *id))
+}
+
 /// What one frame of a listing reported, applied by [`act`] once the drawing is over.
 ///
 /// A value rather than a call, for the reason every component in Unluminous reports rather than acts: the
@@ -249,10 +288,7 @@ pub fn groups(
         text(
             ui.painter(),
             area.min + Vec2::new(PAD, PAD),
-            match finished {
-                true => "No completed sprints yet.",
-                false => "Nothing in the backlog, and no sprints to put anything in.",
-            },
+            listing_empty_message(finished),
             look.font_size,
             look.palette.text_dim,
         );
@@ -320,10 +356,7 @@ pub fn groups(
     // Which group the pointer is over, for a row let go anywhere in it. The **whole** group rather than its
     // rows, which is what the page this is modelled on does: an empty sprint has to be a target, or there
     // would be no way to put the first ticket in one.
-    let over: Option<Option<i64>> = pressed
-        .carrying
-        .map(|(_, at)| at)
-        .and_then(|at| placed.iter().find(|(_, rect)| rect.contains(at)).map(|(id, _)| *id));
+    let over: Option<Option<i64>> = settle_the_group_drop(pressed.carrying, &placed);
     look.chrome.unclip();
     if pressed.carrying.is_some() || pressed.dropped {
         board.hover_group(over);
@@ -417,10 +450,7 @@ fn one_group(
         text(
             ui.painter(),
             Pos2::new(head.min.x + 4.0 * scale, pen + (row_height(look) - look.font_size) / 2.0),
-            match group.sprint.is_some() {
-                true => "Nothing here yet — drag a ticket in",
-                false => "No backlog tickets — drag one here to take it out of its sprint",
-            },
+            group_empty_message(group.sprint.is_some()),
             look.font_size - 1.0,
             look.palette.text_faint,
         );
@@ -1374,5 +1404,159 @@ fn epic_card(ui: &mut egui::Ui, look: &Look<'_>, card: EpicCard<'_>, pressed: &m
     );
     if delete.1 {
         pressed.ask_about_epic = Some(Some(epic.id));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::agent_tasks::model::{Assignee, Priority, Source, SprintStatus, Task};
+    use crate::services::text_renderer::TextRenderer;
+    use crate::settings::Settings;
+
+    fn a_look(renderer: &TextRenderer) -> Look<'_> {
+        Look::of(&Settings::new(), renderer)
+    }
+
+    /// A ticket with nothing in it worth naming, for tests that only count rows.
+    fn a_task(id: i64) -> Task {
+        Task {
+            id,
+            key: format!("task-{id}"),
+            title: String::new(),
+            description: String::new(),
+            priority: Priority::Medium,
+            status: Status::New,
+            assignee: Assignee::Claude,
+            model: None,
+            effort: None,
+            epic_id: None,
+            sprint_id: None,
+            position: 0,
+            project: None,
+            session_id: None,
+            heartbeat_at: None,
+            lease_minutes: None,
+            watchdog_strikes: 0,
+            watchdog_nudges: 0,
+            watchdog_nudged_at: None,
+            source: Source::Local,
+            jira_key: None,
+            jira_url: None,
+            jira_status: None,
+            jira_issue_type: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+            todo_count: 0,
+            todo_done_count: 0,
+            comment_count: 0,
+        }
+    }
+
+    fn a_sprint(id: i64, status: SprintStatus) -> Sprint {
+        Sprint { id, name: format!("Sprint {id}"), status, position: 0, created_at: String::new() }
+    }
+
+    #[test]
+    fn a_row_and_a_group_head_scale_with_the_editor_font() {
+        let renderer = TextRenderer::new();
+        let mut settings = Settings::new();
+        settings.font_size = crate::settings::DEFAULT_FONT_SIZE;
+        let normal = Look::of(&settings, &renderer);
+        assert_eq!(row_height(&normal), ROW_AT_DEFAULT);
+        assert_eq!(group_head(&normal), GROUP_HEAD_AT_DEFAULT);
+
+        settings.font_size = crate::settings::DEFAULT_FONT_SIZE * 3.0;
+        let large = Look::of(&settings, &renderer);
+        assert_eq!(large.scale(), 3.0);
+        assert_eq!(row_height(&large), ROW_AT_DEFAULT * 3.0);
+        assert_eq!(group_head(&large), GROUP_HEAD_AT_DEFAULT * 3.0);
+    }
+
+    #[test]
+    fn an_empty_listing_says_a_different_thing_for_backlog_and_completed() {
+        assert_eq!(
+            listing_empty_message(false),
+            "Nothing in the backlog, and no sprints to put anything in."
+        );
+        assert_eq!(listing_empty_message(true), "No completed sprints yet.");
+    }
+
+    #[test]
+    fn an_empty_group_says_whether_it_is_a_sprint_or_the_backlog_itself() {
+        assert_eq!(group_empty_message(true), "Nothing here yet — drag a ticket in");
+        assert_eq!(
+            group_empty_message(false),
+            "No backlog tickets — drag one here to take it out of its sprint"
+        );
+    }
+
+    /// A group's height is its heading plus its rows, unless it is a **completed** sprint that has
+    /// been folded shut — in which case its rows do not count at all, whatever is in it.
+    #[test]
+    fn a_groups_height_is_its_heading_and_its_rows_unless_it_is_folded_shut() {
+        let renderer = TextRenderer::new();
+        let look = a_look(&renderer);
+        let scale = look.scale();
+        let head = group_head(&look) + GROUP_PAD * scale;
+
+        let empty = Group { sprint: None, tasks: Vec::new() };
+        // An empty group still draws one row's worth of height, for its own empty message.
+        assert_eq!(
+            group_height(&AgentTasks::new(), &empty, &look, false),
+            head + row_height(&look) + GROUP_PAD * scale
+        );
+
+        let three = Group { sprint: None, tasks: vec![a_task(1), a_task(2), a_task(3)] };
+        assert_eq!(
+            group_height(&AgentTasks::new(), &three, &look, false),
+            head + 3.0 * row_height(&look) + 2.0 * ROW_GAP * scale + GROUP_PAD * scale
+        );
+
+        // A completed sprint that has been folded shut is its heading and nothing else, whatever it
+        // holds — that is the whole point of folding it.
+        let mut board = AgentTasks::new();
+        let sprint = a_sprint(9, SprintStatus::Completed);
+        let full = Group { sprint: Some(sprint.clone()), tasks: vec![a_task(1), a_task(2)] };
+        assert!(
+            group_height(&board, &full, &look, true) > head,
+            "not folded, so its rows still count"
+        );
+        board.toggle_collapsed(9);
+        assert_eq!(
+            group_height(&board, &full, &look, true),
+            head + GROUP_PAD * scale,
+            "folded, so only the heading is left"
+        );
+        // Folding means nothing to the Backlog view: nothing in it can be collapsed shut, because a
+        // group there is somewhere to drop a ticket rather than a record of what was done.
+        assert!(
+            group_height(&board, &full, &look, false) > head + GROUP_PAD * scale,
+            "the same sprint's rows still count when it is not shown as finished"
+        );
+    }
+
+    #[test]
+    fn a_dropped_row_lands_in_the_group_the_pointer_is_over() {
+        let placed: Vec<(Option<i64>, Rect)> = vec![
+            (None, Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(100.0, 100.0))),
+            (Some(1), Rect::from_min_size(Pos2::new(0.0, 100.0), Vec2::new(100.0, 100.0))),
+        ];
+        assert_eq!(
+            settle_the_group_drop(Some((7, Pos2::new(50.0, 50.0))), &placed),
+            Some(None),
+            "over the backlog group"
+        );
+        assert_eq!(
+            settle_the_group_drop(Some((7, Pos2::new(50.0, 150.0))), &placed),
+            Some(Some(1)),
+            "over the sprint group"
+        );
+        assert_eq!(
+            settle_the_group_drop(Some((7, Pos2::new(500.0, 500.0))), &placed),
+            None,
+            "let go outside every group, which is a drag thought better of"
+        );
+        assert_eq!(settle_the_group_drop(None, &placed), None, "nothing is being carried at all");
     }
 }

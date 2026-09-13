@@ -412,3 +412,20 @@ pub(crate) fn plural(count: i64, what: &str) -> String {
         other => format!("{other} {what}s"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Zero is plural, one is not, and everything else is — which is what stops the board reading
+    /// `1 comments` and is the whole reason the function exists rather than a bare `format!` at each
+    /// of the three call sites.
+    #[test]
+    fn only_one_of_a_thing_is_singular() {
+        assert_eq!(plural(0, "comment"), "0 comments");
+        assert_eq!(plural(1, "comment"), "1 comment");
+        assert_eq!(plural(2, "comment"), "2 comments");
+        assert_eq!(plural(1, "task"), "1 task");
+        assert_eq!(plural(7, "task"), "7 tasks");
+    }
+}

@@ -979,3 +979,45 @@ fn field_row(
         .inner;
     (changed.then_some(typed), look.font_size + 30.0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::text_renderer::TextRenderer;
+    use crate::settings::Settings;
+
+    /// A `Context` answers `content_rect()` from the size a pass began with — `begin_pass` is what
+    /// reads it, and it is the only thing this needs; no `Ui` is ever built.
+    fn a_context(width: f32, height: f32) -> egui::Context {
+        let context = egui::Context::default();
+        context.begin_pass(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::Vec2::new(width, height),
+            )),
+            ..Default::default()
+        });
+        context
+    }
+
+    #[test]
+    fn a_wide_window_gets_a_modal_with_margins_on_every_side() {
+        let renderer = TextRenderer::new();
+        let look = Look::of(&Settings::new(), &renderer);
+        let context = a_context(1600.0, 1000.0);
+        // 5% of the window is left clear on each side, so 90% of it is the modal.
+        assert_eq!(size(&context, &look), (1440.0, 900.0));
+    }
+
+    #[test]
+    fn a_window_smaller_than_the_floor_asks_for_no_more_than_the_window_itself() {
+        // `modal::fit` clamps anything larger than the window, so a modal that asked for more than a
+        // small window has would simply be shrunk back down there — the floor costs nothing to keep.
+        let renderer = TextRenderer::new();
+        let look = Look::of(&Settings::new(), &renderer);
+        let context = a_context(500.0, 400.0);
+        let (width, height) = size(&context, &look);
+        assert!(width <= 500.0, "{width} should not exceed the window's own width");
+        assert!(height <= 400.0, "{height} should not exceed the window's own height");
+    }
+}

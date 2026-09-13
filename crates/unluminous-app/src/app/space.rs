@@ -4434,3 +4434,162 @@ pub fn rehome(file: &mut OpenFile) {
         file.home = Home::Pane(0);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A project of its own for each test, so `UnluminousApp::new` has somewhere real to root a
+    /// canvas in — no window, no graphics device, just the state a frame would otherwise hold.
+    fn a_window(name: &str) -> UnluminousApp {
+        let folder = std::env::temp_dir().join(format!("unluminous-space-test-{name}"));
+        let _ = std::fs::create_dir_all(&folder);
+        UnluminousApp::new(&folder)
+    }
+
+    #[test]
+    fn what_an_agent_is_told_to_run_a_command_with_names_the_kind_and_both_nodes() {
+        assert_eq!(drives(Kind::Terminal, 2, 1), "space send 2 <text> --from 1");
+        assert_eq!(drives(Kind::Browser, 2, 1), "space browser 2 go --url <address> --from 1");
+        assert_eq!(drives(Kind::Folder, 2, 1), "space folder 2 rows --from 1");
+        assert_eq!(drives(Kind::Editor, 2, 1), "space editor 2 <path> --from 1");
+        // Neither a chat node nor a tasks node takes a command of its own — reading the first and
+        // asking the board for the second are the whole of it.
+        assert!(drives(Kind::Chat, 2, 1).contains("space list"));
+        assert!(drives(Kind::Tasks, 2, 1).contains("plugins run agent-tasks"));
+    }
+
+    fn a_node(kind: Kind) -> Node {
+        Node {
+            id: 1,
+            at: Pos2::ZERO,
+            size: kind.opens_at(),
+            title: String::new(),
+            state: State::new(kind, None),
+        }
+    }
+
+    #[test]
+    fn only_the_three_kinds_with_no_point_size_of_their_own_keep_a_multiplier() {
+        let mut folder = a_node(Kind::Folder);
+        assert_eq!(node_zoom_of(&folder), 1.0, "nothing set yet");
+        set_node_zoom(&mut folder.state, 1.5);
+        assert_eq!(node_zoom_of(&folder), 1.5);
+
+        let mut chat = a_node(Kind::Chat);
+        set_node_zoom(&mut chat.state, 2.0);
+        assert_eq!(node_zoom_of(&chat), 2.0);
+
+        let mut tasks = a_node(Kind::Tasks);
+        set_node_zoom(&mut tasks.state, 0.5);
+        assert_eq!(node_zoom_of(&tasks), 0.5);
+
+        // A terminal and a browser and an editor all walk a point size of their own instead, so a
+        // kind with none is left exactly alone — "not scaled" reads as 1.0 and nothing else changes.
+        let mut terminal = a_node(Kind::Terminal);
+        assert_eq!(node_zoom_of(&terminal), 1.0);
+        set_node_zoom(&mut terminal.state, 3.0);
+        assert_eq!(node_zoom_of(&terminal), 1.0, "there was nowhere for it to go");
+    }
+
+    #[test]
+    fn a_tab_on_a_node_that_has_gone_moves_back_into_the_first_pane() {
+        let mut file = OpenFile::new(unluminous_core::Document::new());
+        file.home = Home::Node(7);
+        rehome(&mut file);
+        assert_eq!(file.home, Home::Pane(0));
+
+        // A tab already in a pane is left exactly where it was.
+        file.home = Home::Pane(3);
+        rehome(&mut file);
+        assert_eq!(file.home, Home::Pane(3));
+    }
+
+    #[test]
+    fn a_wire_refuses_to_connect_a_node_to_itself() {
+        let mut app = a_window("self-wire");
+        let node = app.new_detached_space_node(Kind::Terminal, Pos2::ZERO);
+        app.land_the_wire(node, node);
+        assert_eq!(app.message.as_deref(), Some("A node cannot be wired to itself."));
+    }
+
+    #[test]
+    fn a_wire_between_two_real_nodes_connects_them_once() {
+        let mut app = a_window("wire-once");
+        let terminal = app.new_detached_space_node(Kind::Terminal, Pos2::new(0.0, 0.0));
+        let editor = app.new_detached_space_node(Kind::Editor, Pos2::new(400.0, 0.0));
+
+        app.land_the_wire(editor, terminal);
+        assert_eq!(app.message.as_deref(), Some("Connected."));
+
+        // Wiring the same two nodes the same way round again is refused rather than duplicated.
+        app.land_the_wire(editor, terminal);
+        assert_eq!(app.message.as_deref(), Some("Those two are already wired that way round."));
+    }
+
+    #[test]
+    fn a_wire_to_a_node_that_is_not_there_says_so() {
+        let mut app = a_window("wire-nowhere");
+        let terminal = app.new_detached_space_node(Kind::Terminal, Pos2::ZERO);
+        app.land_the_wire(terminal, 999_999);
+        assert_eq!(app.message.as_deref(), Some("There is no node 999999."));
+    }
+
+    fn terminal_running(app: &UnluminousApp, node: NodeId) -> String {
+        match app.space.space.current().node(node).map(|node| &node.state) {
+            Some(State::Terminal(terminal)) => terminal.running.clone(),
+            _ => String::new(),
+        }
+    }
+
+    /// A detached session has no real pseudoconsole behind it, so `Session::foreground` always
+    /// answers nothing — which is exactly the shape a restored node's *first* reading has, before
+    /// anybody has touched it. What is under test is the guard around that answer, not the answer
+    /// itself.
+    #[test]
+    fn a_restored_programs_name_survives_until_the_node_is_used_and_then_clears() {
+        let mut app = a_window("terminal-restore-protection");
+        let node = app.new_detached_space_node(Kind::Terminal, Pos2::ZERO);
+        // What the canvas file said was running before the node had been read even once.
+        app.space.space.change(node, |state| {
+            if let State::Terminal(terminal) = state {
+                terminal.running = "sleep".to_owned();
+            }
+        });
+
+        app.note_what_a_node_is_running(node);
+        assert_eq!(
+            terminal_running(&app, node),
+            "sleep",
+            "an untouched node keeps what the file said, even though this session reports nothing"
+        );
+
+        app.space.live.typed_into(node, "anything");
+        app.note_what_a_node_is_running(node);
+        assert_eq!(
+            terminal_running(&app, node),
+            "",
+            "the node has been used now, so an idle prompt really does clear it"
+        );
+    }
+
+    /// A page that has been clicked through to somewhere else is written down at the address it
+    /// really is, not the one the node was sent to originally.
+    #[test]
+    fn a_browser_nodes_written_down_address_follows_where_the_page_really_is() {
+        let mut app = a_window("browser-follows-the-page");
+        let node = app.new_detached_space_node(Kind::Browser, Pos2::ZERO);
+        let tab = app
+            .new_detached_space_page(node, "https://example.com/")
+            .expect("a detached tab needs no native view");
+        app.arrived_at_for_tests(tab, "https://example.com/moved".to_owned());
+
+        app.note_where_a_node_is_browsing(node);
+
+        let held = match app.space.space.current().node(node).map(|node| &node.state) {
+            Some(State::Browser(browser)) => browser.url.clone(),
+            _ => String::new(),
+        };
+        assert_eq!(held, "https://example.com/moved");
+    }
+}

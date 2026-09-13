@@ -680,3 +680,141 @@ fn header(ui: &mut egui::Ui, look: &Look<'_>, lane: Rect, status: Status, count:
 // `task-1771` asked for both to be what the page this board is modelled on has - groups by sprint, rows
 // rather than cards, drag and drop between them, and epics you can rename, recolour and delete - which is
 // enough of its own thing to be its own file: `components::agent_tasks::listings`.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::agent_tasks::model::{Assignee, Priority, Source, Task};
+    use crate::services::plugin_ui::Look;
+    use crate::services::text_renderer::TextRenderer;
+    use crate::settings::Settings;
+
+    /// A minimal ticket, for the fields `live_for` and the heights below actually read. Every field
+    /// still has to be given something, because `Task` has no `Default` — a ticket that could be
+    /// half built is a ticket a caller could forget to finish.
+    fn a_task(session_id: Option<&str>, assignee: Assignee) -> Task {
+        Task {
+            id: 1,
+            key: "task-1".to_owned(),
+            title: "A ticket".to_owned(),
+            description: String::new(),
+            priority: Priority::Medium,
+            status: Status::InProgress,
+            assignee,
+            model: None,
+            effort: None,
+            epic_id: None,
+            sprint_id: None,
+            position: 0,
+            project: None,
+            session_id: session_id.map(str::to_owned),
+            heartbeat_at: None,
+            lease_minutes: None,
+            watchdog_strikes: 0,
+            watchdog_nudges: 0,
+            watchdog_nudged_at: None,
+            source: Source::Local,
+            jira_key: None,
+            jira_url: None,
+            jira_status: None,
+            jira_issue_type: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+            todo_count: 0,
+            todo_done_count: 0,
+            comment_count: 0,
+        }
+    }
+
+    /// The look a test measures against: the default font, so `Look::scale()` is exactly 1.0 and the
+    /// `AT_DEFAULT` constants in this file are the numbers read back.
+    fn a_look(renderer: &TextRenderer) -> Look<'_> {
+        Look::of(&Settings::new(), renderer)
+    }
+
+    #[test]
+    fn only_the_new_lane_reserves_room_for_the_quick_launch_band() {
+        let renderer = TextRenderer::new();
+        let look = a_look(&renderer);
+        assert_eq!(under_the_heading(Status::New, &look), lane_header(&look) + 42.0);
+        for status in [Status::QaFailed, Status::InProgress, Status::AgentDone] {
+            assert_eq!(
+                under_the_heading(status, &look),
+                lane_header(&look),
+                "{status:?} has no quick launch band under its heading"
+            );
+        }
+    }
+
+    #[test]
+    fn every_fixed_height_scales_with_the_editor_font() {
+        let renderer = TextRenderer::new();
+        let mut settings = Settings::new();
+        settings.font_size = crate::settings::DEFAULT_FONT_SIZE * 2.0;
+        let look = Look::of(&settings, &renderer);
+        assert_eq!(look.scale(), 2.0);
+        assert_eq!(lane_header(&look), LANE_HEADER_AT_DEFAULT * 2.0);
+        assert_eq!(under_the_heading(Status::New, &look), (57.0 + 42.0) * 2.0);
+    }
+
+    #[test]
+    fn only_the_new_lane_keeps_room_clear_of_cards_for_add_task() {
+        let renderer = TextRenderer::new();
+        let look = a_look(&renderer);
+        assert_eq!(foot(Status::New, &look), FOOT_AT_DEFAULT);
+        assert_eq!(foot(Status::QaFailed, &look), LANE_INSET);
+    }
+
+    #[test]
+    fn a_run_of_cards_has_one_gap_between_each_pair_and_none_after_the_last() {
+        let renderer = TextRenderer::new();
+        let look = a_look(&renderer);
+        let one = card::height(&look) + card::GAP;
+        assert_eq!(cards_tall(0, &look), 0.0, "an empty lane has nothing to be tall for");
+        assert_eq!(cards_tall(1, &look), card::height(&look), "one card, and no trailing gap");
+        assert_eq!(cards_tall(2, &look), 2.0 * one - card::GAP);
+        assert_eq!(cards_tall(5, &look), 5.0 * one - card::GAP);
+    }
+
+    /// `live_for`'s `attached` half needs a real terminal session, which this board has none of; every
+    /// case here is therefore the board with no terminal running, which is `attached: false` for any
+    /// ticket. What is exercised is the other half: whether Start could do anything.
+    #[test]
+    fn a_ticket_with_no_session_can_always_be_started() {
+        let board = AgentTasks::new();
+        let task = a_task(None, Assignee::Claude);
+        assert!(live_for(&board, &task).can_start, "nothing has claimed it yet");
+    }
+
+    #[test]
+    fn a_claude_ticket_with_a_session_offers_resume_rather_than_start() {
+        let board = AgentTasks::new();
+        let task = a_task(Some("session-1"), Assignee::Claude);
+        assert!(
+            !live_for(&board, &task).can_start,
+            "Claude resumes the session it has, so Start would do nothing"
+        );
+    }
+
+    #[test]
+    fn a_codex_ticket_whose_session_has_gone_can_be_started_again() {
+        // Codex names its own sessions, so the id on the ticket is only a marker that a worker was
+        // here once — there is nothing behind it to resume. See `agent::can_resume`.
+        let board = AgentTasks::new();
+        let task = a_task(Some("codex-session"), Assignee::Codex);
+        assert!(
+            live_for(&board, &task).can_start,
+            "a dead Codex session can only be started afresh"
+        );
+    }
+
+    #[test]
+    fn a_persons_own_ticket_offers_no_start_button_at_all() {
+        let board = AgentTasks::new();
+        let task = a_task(Some("whatever"), Assignee::Human);
+        assert!(
+            !live_for(&board, &task).can_start,
+            "a person is not launched in a terminal, so Start has nothing to do"
+        );
+    }
+}

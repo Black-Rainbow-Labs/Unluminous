@@ -985,3 +985,126 @@ pub(crate) fn clipped_in(
     }
     painter.galley(at, galley, tint);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::text_renderer::TextRenderer;
+    use crate::settings::Settings;
+    use egui::Color32;
+
+    #[test]
+    fn the_boards_own_fixed_heights_scale_with_the_editor_font() {
+        let renderer = TextRenderer::new();
+        let mut settings = Settings::new();
+        settings.font_size = crate::settings::DEFAULT_FONT_SIZE;
+        let normal = Look::of(&settings, &renderer);
+        assert_eq!(header_height(&normal), HEADER_AT_DEFAULT);
+        // Four view buttons at 36 points with a 10 point gap between each and 12 points of padding
+        // top and bottom: 24 + 144 + 30, worked out independently of `rail_height`'s own arithmetic.
+        assert_eq!(rail_height(&normal), 198.0);
+
+        settings.font_size = crate::settings::DEFAULT_FONT_SIZE * 2.0;
+        let large = Look::of(&settings, &renderer);
+        assert_eq!(header_height(&large), HEADER_AT_DEFAULT * 2.0);
+        assert_eq!(rail_height(&large), rail_height(&normal) * 2.0);
+    }
+
+    /// `rail_inset` is asked for rather than written down, because the number that matters is how far
+    /// a raised surface's shadow reaches. Measured against `Lift::Medium.reach()`'s own arithmetic —
+    /// 6 + 7 * 2.5 + 2 — which is 25.5, ceiled to 26.
+    #[test]
+    fn the_rail_is_inset_by_its_own_shadows_reach() {
+        assert_eq!(rail_inset(), 26.0);
+    }
+
+    #[test]
+    fn lighten_and_darken_move_a_colour_towards_white_or_black_and_leave_its_alpha() {
+        // `theme::closed_palette::no_component_writes_a_colour_of_its_own` refuses a literal RGB
+        // triple in `components/`, so the colour under test is one already in the closed palette
+        // rather than one invented here — a component cannot choose a colour of its own, and neither
+        // can this test.
+        let start = crate::theme::color::text_dim().gamma_multiply(0.8);
+        let alpha = start.a();
+        assert_eq!(lighten(start, 0.0), start, "no amount changes nothing");
+        let lit = lighten(start, 0.5);
+        assert!(lit.r() > start.r(), "moved towards white");
+        assert_eq!(lit.a(), alpha, "alpha is untouched");
+        assert_eq!(lighten(start, 1.0).r(), 255, "the whole way is white");
+
+        let dark = darken(start, 0.5);
+        assert!(dark.r() < start.r(), "moved towards black");
+        assert_eq!(dark.a(), alpha);
+        assert_eq!(darken(start, 1.0).r(), 0, "the whole way is black");
+
+        // Out of range amounts are clamped rather than over- or under-shooting.
+        assert_eq!(lighten(start, 2.0), lighten(start, 1.0));
+        assert_eq!(darken(start, -1.0), start);
+    }
+
+    /// A fresh `egui::Context` has no fonts until a pass has begun once — `begin_pass` is what loads
+    /// them — and after that a `Painter` can be built and drawn into directly, with no `Ui` anywhere.
+    /// That is what makes this a test of the truncation arithmetic rather than of a window.
+    fn a_painter() -> egui::Painter {
+        let context = egui::Context::default();
+        context.begin_pass(egui::RawInput::default());
+        egui::Painter::new(context, egui::LayerId::debug(), egui::Rect::EVERYTHING)
+    }
+
+    /// What ended up drawn, read back off the layer the painter drew into.
+    fn drawn_text(painter: &egui::Painter) -> Vec<String> {
+        // `begin_pass` loaded the font atlas into a texture delta that nothing here ever uploads
+        // anywhere, and `epaint` panics on drop rather than let one go unhandled in silence — so it
+        // is cleared explicitly once the shapes it came with have been read.
+        let mut output = painter.ctx().end_pass();
+        let drawn = output
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(shape) => Some(shape.galley.text().to_owned()),
+                _ => None,
+            })
+            .collect();
+        output.textures_delta.clear();
+        drawn
+    }
+
+    #[test]
+    fn text_that_fits_is_drawn_exactly_as_it_was_given() {
+        let painter = a_painter();
+        clipped(&painter, Pos2::ZERO, "a short title", 14.0, Color32::WHITE, 400.0, 1);
+        assert_eq!(drawn_text(&painter), vec!["a short title".to_owned()]);
+    }
+
+    #[test]
+    fn text_that_does_not_fit_is_shortened_with_an_ellipsis() {
+        let painter = a_painter();
+        let long = "x".repeat(400);
+        clipped(&painter, Pos2::ZERO, &long, 14.0, Color32::WHITE, 80.0, 1);
+        let drawn = drawn_text(&painter);
+        assert_eq!(drawn.len(), 1);
+        assert!(drawn[0].ends_with('…'), "{:?}", drawn[0]);
+        assert!(drawn[0].len() < long.len(), "it was actually shortened");
+    }
+
+    /// Two lines of room hold roughly twice what one does, so the same words that had to be cut short
+    /// at one line are left whole once a second line is on offer.
+    #[test]
+    fn a_second_line_of_room_holds_what_a_single_line_could_not() {
+        let painter = a_painter();
+        let title = "a title just long enough to wrap onto a second line of a card";
+        clipped(&painter, Pos2::new(0.0, 0.0), title, 14.0, Color32::WHITE, 140.0, 1);
+        let one_line = drawn_text(&painter);
+        assert_eq!(one_line.len(), 1);
+        assert!(one_line[0].ends_with('…'), "one line is not room enough for it: {one_line:?}");
+
+        let painter = a_painter();
+        clipped(&painter, Pos2::new(0.0, 0.0), title, 14.0, Color32::WHITE, 140.0, 2);
+        let two_lines = drawn_text(&painter);
+        assert_eq!(two_lines.len(), 1);
+        assert!(
+            two_lines[0].chars().count() > one_line[0].chars().count(),
+            "a second line holds more of it: {one_line:?} against {two_lines:?}"
+        );
+    }
+}
