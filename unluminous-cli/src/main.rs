@@ -604,15 +604,20 @@ fn remotely(command: &'static Command, typed: Typed) -> i32 {
 /// That stretch applies only to a command that really does wait, which the catalogue already knows
 /// because it is the list this line was parsed against. For everything else `--timeout` is exactly
 /// how long to wait, so `--timeout 500 tab list` fails in half a second — `task-1691` reported that
-/// the floor made failing fast impossible, and `mcp::driver::timeout_for` reads the same rule from
-/// the same place, because the two must not come to different answers about one flag.
+/// the floor made failing fast impossible.
+///
+/// **The rule itself is `Command::deadline`**, in the catalogue, and `mcp::driver::timeout_for`
+/// calls the same function: `task-1922` B11 found that the flag check was written out twice here and
+/// that neither copy knew what the *window* waits. A `debug start --wait-for-pause` with no
+/// `--timeout` gave up after fifteen seconds while the window was still correctly waiting thirty, or
+/// ten minutes when a build had to happen first.
 fn client_timeout(typed: &Typed) -> Duration {
-    let asked = typed.global.timeout.map(Duration::from_millis);
-    let waits = typed
-        .command
-        .map(|command| command.flag("timeout").is_some() || command.flag("wait").is_some())
-        .unwrap_or(false);
-    let waiting: u64 = ["timeout", "wait"]
+    let Some(command) = typed.command else {
+        return typed.global.timeout.map(Duration::from_millis).unwrap_or(DEFAULT_TIMEOUT);
+    };
+    // The largest number this call gave for either name: `--timeout` as a global flag, and the
+    // command's own `--wait` or `--timeout` argument.
+    let asked = ["timeout", "wait"]
         .iter()
         .filter_map(|name| typed.arguments.get(*name))
         .filter_map(|value| match value {
@@ -620,15 +625,9 @@ fn client_timeout(typed: &Typed) -> Duration {
             Value::Number(number) => number.as_u64(),
             _ => None,
         })
-        .max()
-        .unwrap_or(0);
-    match (asked, waits) {
-        (asked, true) => {
-            asked.unwrap_or(DEFAULT_TIMEOUT).max(Duration::from_millis(waiting + 5_000))
-        }
-        (Some(asked), false) => asked,
-        (None, false) => DEFAULT_TIMEOUT,
-    }
+        .chain(typed.global.timeout)
+        .max();
+    command.deadline(asked, DEFAULT_TIMEOUT)
 }
 
 /// Print a reply, and turn it into an exit code.

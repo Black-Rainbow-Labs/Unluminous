@@ -37,10 +37,6 @@ use crate::protocol::{code, Reply};
 /// comes back says what it was waiting for rather than "no answer".
 const DEFAULT_TIMEOUT: Duration = client::DEFAULT_TIMEOUT;
 
-/// Added to the wait of a command that waits on purpose, so the window's own timeout is the one
-/// that fires and says what it was waiting for.
-const SLACK: Duration = Duration::from_secs(5);
-
 /// The driver a real server uses.
 pub struct UnluminousWindows {
     /// The project this server would rather drive when several are running. See the module comment.
@@ -226,18 +222,17 @@ fn launched(arguments: &Map<String, Value>) -> Reply {
 /// call is prepared to wait, and it is used exactly as given. `task-1691` reported that it could
 /// not be: `DEFAULT_TIMEOUT.max(...)` made fifteen seconds a floor, so an agent could raise the
 /// deadline and never lower it, and there was no way to fail fast.
+///
+/// The rule is `Command::deadline`, in the catalogue, which `unluminous-cli`'s own `client_timeout`
+/// also calls. `task-1922` B11: it was written out twice, and neither copy knew what the window
+/// waits when no number is given at all.
 fn timeout_for(command: &Command, arguments: &Map<String, Value>) -> Duration {
     let asked = ["timeout", "wait"]
         .iter()
         .filter_map(|name| arguments.get(*name))
         .filter_map(as_millis)
         .max();
-    let waits = command.flag("timeout").is_some() || command.flag("wait").is_some();
-    match (asked, waits) {
-        (Some(asked), true) => DEFAULT_TIMEOUT.max(Duration::from_millis(asked) + SLACK),
-        (Some(asked), false) => Duration::from_millis(asked),
-        (None, _) => DEFAULT_TIMEOUT,
-    }
+    command.deadline(asked, DEFAULT_TIMEOUT)
 }
 
 fn as_millis(value: &Value) -> Option<u64> {

@@ -4912,14 +4912,18 @@ impl UnluminousApp {
     ///
     /// Longer than [`DEFAULT_WAIT`], because a `continue` runs to the next breakpoint and how long
     /// that takes is a fact about the program rather than about Unluminous.
-    const DEBUG_WAIT: Duration = Duration::from_millis(30_000);
+    ///
+    /// **The number is the catalogue's**, because the client has to know it: with no explicit
+    /// `--timeout` a client waited fifteen seconds while the window was still correctly waiting
+    /// thirty, and reported a timeout for something that was about to work. `task-1922` B11.
+    const DEBUG_WAIT: Duration = Duration::from_millis(unluminous_cli::catalogue::DEBUG_WAIT_MS);
 
     /// How long `debug start --wait-for-pause` waits when a locator has to build the program first.
     ///
     /// Ten minutes, because a cold `cargo build` of a real workspace is minutes and a caller that
     /// gave up after thirty seconds would report a failure of a build that was working perfectly.
-    /// The same reasoning as [`Self::DEBUG_WAIT`], one step further out.
-    const BUILD_WAIT: Duration = Duration::from_millis(600_000);
+    /// The same reasoning as [`Self::DEBUG_WAIT`], one step further out, and from the same place.
+    const BUILD_WAIT: Duration = Duration::from_millis(unluminous_cli::catalogue::BUILD_WAIT_MS);
 
     fn cli_debug(&mut self, request: &Request, verb: &str) -> Outcome {
         match verb {

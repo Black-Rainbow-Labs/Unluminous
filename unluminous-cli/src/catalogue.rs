@@ -71,6 +71,30 @@ pub struct Command {
     pub local: bool,
 }
 
+/// How long the window waits for a debugger to stop, when `--wait-for-pause` was given and
+/// `--timeout` was not.
+///
+/// `task-1922` B11. This number and [`BUILD_WAIT_MS`] lived in `app/cli.rs` and the client knew
+/// nothing about either, so a client with no explicit `--timeout` gave up after
+/// [`crate::client::DEFAULT_TIMEOUT`] -- fifteen seconds -- while the window was still correctly
+/// waiting thirty, or ten minutes if a build had to happen first. `debug start --wait-for-pause` on
+/// a cargo project reported a timeout for something that was about to work, every time.
+///
+/// They live here because this crate is the one both halves depend on, which is the same reason the
+/// catalogue itself is here: one number, read by the window that waits and by the client that waits
+/// for it.
+pub const DEBUG_WAIT_MS: u64 = 30_000;
+
+/// How long the window waits when the configuration has to be built before it can be debugged.
+///
+/// A cold `cargo build` of a real project is minutes rather than seconds. See [`DEBUG_WAIT_MS`].
+pub const BUILD_WAIT_MS: u64 = 600_000;
+
+/// Added to a waiting command's own deadline, so the window's timeout is the one that fires.
+///
+/// A reply that says what it was waiting for is more use than one that says there was no answer.
+pub const SLACK_MS: u64 = 5_000;
+
 impl Command {
     /// What a person types, with a space: `tab open`.
     pub fn typed(&self) -> String {
@@ -79,6 +103,53 @@ impl Command {
         } else {
             format!("{} {}", self.area, self.verb)
         }
+    }
+
+    /// How long the **window** waits for this command when its wait switch was given and
+    /// `--timeout` was not, in milliseconds. `None` for a command whose own wait is shorter than the
+    /// client's default, where there is nothing to stretch.
+    ///
+    /// `task-1922` B11. Only the debug family is here, because only its waits are longer than the
+    /// fifteen seconds the client waits by default: everything else in the catalogue that holds an
+    /// answer open waits ten seconds or five. The whole family answers with [`BUILD_WAIT_MS`] rather
+    /// than [`DEBUG_WAIT_MS`], because whether a build has to happen first is something the window
+    /// knows and the client cannot -- and waiting too long costs nothing, since the window answers
+    /// its own timeout as soon as it fires and says what it was waiting for.
+    pub fn waits_for(&self) -> Option<u64> {
+        match (self.area, self.verb) {
+            (
+                "debug",
+                "start" | "continue" | "step-over" | "step-into" | "step-out" | "run-to" | "status",
+            ) => Some(BUILD_WAIT_MS),
+            _ => None,
+        }
+    }
+
+    /// How long a client should wait for this command, given whatever `--timeout` or `--wait` said.
+    ///
+    /// One reading of the rule, in the crate both the command line and the MCP driver depend on,
+    /// because `task-1691` had already found what two readings cost. `asked` is the largest number
+    /// the call gave for `timeout` or `wait`, in milliseconds.
+    ///
+    /// - A command that **waits on purpose** -- one with a `timeout` or `wait` flag of its own --
+    ///   gets whatever it was told to wait for plus [`SLACK_MS`], never less than the client's own
+    ///   default, and never less than [`Command::waits_for`] when the call named no number at all.
+    /// - Every other command uses `asked` exactly as given, so `--timeout 500 tab list` fails in half
+    ///   a second. `task-1691` reported that a floor made failing fast impossible.
+    pub fn deadline(
+        &self,
+        asked: Option<u64>,
+        default: std::time::Duration,
+    ) -> std::time::Duration {
+        let waits = self.flag("timeout").is_some() || self.flag("wait").is_some();
+        if !waits {
+            return asked.map(std::time::Duration::from_millis).unwrap_or(default);
+        }
+        let mine = match asked {
+            Some(asked) => asked + SLACK_MS,
+            None => self.waits_for().map(|wait| wait + SLACK_MS).unwrap_or(0),
+        };
+        default.max(std::time::Duration::from_millis(mine))
     }
 
     /// What goes over the wire, with a dot: `tab.open`. Two spellings of one name, because a
@@ -2745,6 +2816,72 @@ pub const COMMANDS: &[Command] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **A client never gives up before the window does.** `task-1922` B11.
+    ///
+    /// The window's own wait for `debug start --wait-for-pause` is thirty seconds, or ten minutes
+    /// when a locator has to build the program first, and the client waited fifteen with no explicit
+    /// `--timeout` -- so `debug start --wait-for-pause` on a cargo project reported a timeout while
+    /// the build was still running and the window was still correctly waiting. This walks every
+    /// command that holds an answer open and checks the deadline against what the window waits.
+    #[test]
+    fn a_client_waits_at_least_as_long_as_the_window_does() {
+        let client_default = std::time::Duration::from_millis(15_000);
+        for command in COMMANDS {
+            let waits = command.flag("timeout").is_some() || command.flag("wait").is_some();
+            if !waits {
+                continue;
+            }
+            if let Some(window) = command.waits_for() {
+                let deadline = command.deadline(None, client_default);
+                assert!(
+                    deadline >= std::time::Duration::from_millis(window),
+                    "{} waits {window} ms in the window and the client would give up after {:?}",
+                    command.typed(),
+                    deadline
+                );
+            }
+            // And a number the caller gave is still honoured, with slack, so the window's own
+            // timeout is the one that fires and says what it was waiting for.
+            let asked = command.deadline(Some(90_000), client_default);
+            assert!(
+                asked >= std::time::Duration::from_millis(90_000 + SLACK_MS),
+                "{} should wait out what it was asked for, got {asked:?}",
+                command.typed()
+            );
+        }
+    }
+
+    /// **Every debug verb that can wait for a pause names the window's wait.** `task-1922` B11.
+    ///
+    /// The list in `Command::waits_for` is written by hand, so this is what stops a new stepping verb
+    /// being added with the old fifteen-second client deadline behind it.
+    #[test]
+    fn every_command_that_waits_for_a_pause_says_how_long_the_window_waits() {
+        for command in COMMANDS {
+            let pauses = command.flag("wait-for-pause").is_some();
+            assert_eq!(
+                pauses,
+                command.waits_for().is_some(),
+                "{} has --wait-for-pause = {pauses} and waits_for() = {:?}",
+                command.typed(),
+                command.waits_for()
+            );
+        }
+    }
+
+    /// **A command that does not wait uses `--timeout` exactly as given.** `task-1691`'s rule, kept.
+    #[test]
+    fn a_command_that_does_not_wait_can_still_be_asked_to_fail_fast() {
+        let listing = COMMANDS
+            .iter()
+            .find(|command| command.area == "tab" && command.verb == "list")
+            .expect("tab list");
+        assert_eq!(
+            listing.deadline(Some(500), std::time::Duration::from_millis(15_000)),
+            std::time::Duration::from_millis(500)
+        );
+    }
     use serde_json::json;
 
     fn given(pairs: Value) -> Map<String, Value> {
