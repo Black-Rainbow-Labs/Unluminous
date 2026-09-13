@@ -17,7 +17,7 @@
 use std::ffi::OsString;
 use std::path::Path;
 
-use crate::command::{run, Outcome};
+use crate::command::{run, Outcome, END_OF_OPTIONS};
 
 /// Stage paths, which is what a tick in the commit panel does.
 ///
@@ -98,6 +98,7 @@ pub fn push(folder: &Path, target: &PushTarget) -> Outcome {
     if target.tags {
         arguments.push("--tags".into());
     }
+    arguments.push(END_OF_OPTIONS.into());
     arguments.push(target.remote.as_str().into());
     arguments.push(target.branch.as_str().into());
     run(folder, &arguments)
@@ -116,6 +117,7 @@ pub fn pull(folder: &Path, remote: &str, branch: &str, strategy: PullStrategy) -
         PullStrategy::Merge => "--no-rebase".into(),
         PullStrategy::Rebase => "--rebase".into(),
     });
+    arguments.push(END_OF_OPTIONS.into());
     arguments.push(remote.into());
     arguments.push(branch.into());
     run(folder, &arguments)
@@ -177,7 +179,7 @@ impl ResetMode {
 }
 
 pub fn reset(folder: &Path, revision: &str, mode: ResetMode) -> Outcome {
-    run(folder, &["reset", mode.flag(), revision])
+    run(folder, &["reset", mode.flag(), END_OF_OPTIONS, revision])
 }
 
 /// Put the changes away under a message, so the working tree is clean.
@@ -219,15 +221,15 @@ pub fn stashes(folder: &Path) -> Vec<Stash> {
 
 /// Put a stash back. `drop` is the difference between `git stash pop` and `git stash apply`.
 pub fn unstash(folder: &Path, name: &str, drop: bool) -> Outcome {
-    run(folder, &["stash", if drop { "pop" } else { "apply" }, name])
+    run(folder, &["stash", if drop { "pop" } else { "apply" }, END_OF_OPTIONS, name])
 }
 
 pub fn drop_stash(folder: &Path, name: &str) -> Outcome {
-    run(folder, &["stash", "drop", name])
+    run(folder, &["stash", "drop", END_OF_OPTIONS, name])
 }
 
 pub fn tag(folder: &Path, name: &str) -> Outcome {
-    run(folder, &["tag", name])
+    run(folder, &["tag", END_OF_OPTIONS, name])
 }
 
 /// One remote, and where it points.
@@ -258,15 +260,15 @@ pub fn remotes(folder: &Path) -> Vec<Remote> {
 }
 
 pub fn add_remote(folder: &Path, name: &str, url: &str) -> Outcome {
-    run(folder, &["remote", "add", name, url])
+    run(folder, &["remote", "add", END_OF_OPTIONS, name, url])
 }
 
 pub fn set_remote_url(folder: &Path, name: &str, url: &str) -> Outcome {
-    run(folder, &["remote", "set-url", name, url])
+    run(folder, &["remote", "set-url", END_OF_OPTIONS, name, url])
 }
 
 pub fn remove_remote(folder: &Path, name: &str) -> Outcome {
-    run(folder, &["remote", "remove", name])
+    run(folder, &["remote", "remove", END_OF_OPTIONS, name])
 }
 
 /// Clone `url` into a folder under `parent`, and say where it ended up.

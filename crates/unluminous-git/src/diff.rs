@@ -17,7 +17,7 @@
 use std::ffi::OsString;
 use std::path::Path;
 
-use crate::command::{run, Outcome};
+use crate::command::{run, Outcome, END_OF_OPTIONS};
 
 /// How a line differs from the version git has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +38,7 @@ pub fn of_path(folder: &Path, path: &Path, staged: bool, revision: Option<&str>)
         arguments.push("--cached".into());
     }
     if let Some(revision) = revision {
+        arguments.push(END_OF_OPTIONS.into());
         arguments.push(revision.into());
     }
     arguments.push("--".into());
@@ -47,7 +48,7 @@ pub fn of_path(folder: &Path, path: &Path, staged: bool, revision: Option<&str>)
 
 /// The unified diff of a whole commit.
 pub fn of_commit(folder: &Path, hash: &str) -> Outcome {
-    run(folder, &["show", "--stat", "--patch", hash])
+    run(folder, &["show", "--stat", "--patch", END_OF_OPTIONS, hash])
 }
 
 /// Which lines of a file as it is now differ from the version git has.

@@ -511,3 +511,52 @@ fn a_path_with_a_space_in_it_survives_the_whole_round_trip() {
     assert!(ops::commit(&root, "a file with a space in its name", false).ok);
     assert!(status(&root).is_clean());
 }
+
+/// **A value a person typed cannot become a git option.** `task-1922` B4.
+///
+/// Paths were already put after `--`; revisions, branch names, tags, remote names and URLs were not,
+/// so a value beginning with a dash was read by git as an option to the subcommand it was handed to.
+/// The dangerous shape is not the one that errors, it is the one that *works*: `Compare with
+/// Revision` and `Reset` both take a revision from a text field, and `git reset --soft --hard` is a
+/// hard reset -- git takes the last mode named. A person who typed `--hard` into a box asking for a
+/// revision, meaning nothing by it, lost everything they had not committed.
+///
+/// The protection is `--end-of-options`, which is git's own and which every one of these subcommands
+/// accepts. It was measured against git 2.53 rather than assumed: with it, `git reset --soft
+/// --end-of-options -1` refuses, `git branch --end-of-options -x` says `'-x' is not a valid branch
+/// name`, and `git tag --end-of-options -v1` says the same about a tag.
+#[test]
+fn a_revision_or_a_name_beginning_with_a_dash_cannot_become_an_option() {
+    let root = repository("dash-arguments");
+
+    // The one that used to do damage. `--hard` in the revision box, with `Soft` asked for.
+    write(&root, "readme.md", "# edited, and not committed\n");
+    let outcome = ops::reset(&root, "--hard", ResetMode::Soft);
+    assert!(!outcome.ok, "a revision that is not a revision is refused: {outcome:?}");
+    assert_eq!(
+        read(&root, "readme.md"),
+        "# edited, and not committed\n",
+        "and the uncommitted work is still there, which is what a hard reset would have taken"
+    );
+
+    // A branch name, a tag and a remote name: git's own words about each, rather than a switch it
+    // thinks it was given.
+    let branch = branch::create(&root, "-x");
+    assert!(!branch.ok, "{branch:?}");
+    assert!(
+        branch.stderr.contains("not a valid branch name"),
+        "git's own wording, not one Unluminous invented: {}",
+        branch.stderr
+    );
+    let tag = ops::tag(&root, "-v1");
+    assert!(!tag.ok && tag.stderr.contains("not a valid tag name"), "{tag:?}");
+
+    // And a merge of a branch called `--abort`, which without this aborts a merge instead.
+    let merge = branch::merge(&root, "--abort", MergeOptions::default());
+    assert!(!merge.ok, "{merge:?}");
+
+    // An ordinary value is untouched by any of it.
+    assert!(branch::create(&root, "ordinary").ok);
+    assert!(ops::tag(&root, "v1.0.0").ok);
+    assert!(ops::reset(&root, "HEAD", ResetMode::Mixed).ok);
+}

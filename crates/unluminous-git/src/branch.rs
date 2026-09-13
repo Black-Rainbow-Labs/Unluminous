@@ -8,7 +8,7 @@
 
 use std::path::Path;
 
-use crate::command::{run, Outcome};
+use crate::command::{run, Outcome, END_OF_OPTIONS};
 
 /// One branch.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,18 +84,23 @@ fn read(folder: &Path, namespace: &str, remote: bool) -> Vec<Branch> {
 /// Checking out a remote branch by its remote name starts a local branch that tracks it, which is
 /// what a person clicking `origin/feature` means and is what `git switch` does on its own.
 pub fn switch(folder: &Path, name: &str) -> Outcome {
-    run(folder, &["switch", name])
+    run(folder, &["switch", END_OF_OPTIONS, name])
 }
 
 /// Start a branch here and move to it.
 pub fn create(folder: &Path, name: &str) -> Outcome {
+    // **No `END_OF_OPTIONS` here, and that is measured rather than an oversight.** The new
+    // branch's name is the argument to `-c`, so git never reads it as an option of its own:
+    // `git switch -c -x` already answers `'-x' is not a valid branch name`. Putting the guard in
+    // front of it makes `--end-of-options` the branch name and `name` the start point, which is
+    // what broke every test in this file that starts a branch.
     run(folder, &["switch", "-c", name])
 }
 
 /// Delete a branch. `force` is the difference between `-d`, which refuses to delete a branch holding
 /// commits that are nowhere else, and `-D`, which does it anyway.
 pub fn delete(folder: &Path, name: &str, force: bool) -> Outcome {
-    run(folder, &["branch", if force { "-D" } else { "-d" }, name])
+    run(folder, &["branch", if force { "-D" } else { "-d" }, END_OF_OPTIONS, name])
 }
 
 /// How a merge is made.
@@ -115,12 +120,13 @@ pub fn merge(folder: &Path, name: &str, options: MergeOptions) -> Outcome {
     if options.squash {
         arguments.push("--squash");
     }
+    arguments.push(END_OF_OPTIONS);
     arguments.push(name);
     run(folder, &arguments)
 }
 
 pub fn rebase(folder: &Path, name: &str) -> Outcome {
-    run(folder, &["rebase", name])
+    run(folder, &["rebase", END_OF_OPTIONS, name])
 }
 
 /// What to do about a merge or a rebase that stopped on a conflict.

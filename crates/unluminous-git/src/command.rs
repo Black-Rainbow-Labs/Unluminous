@@ -60,6 +60,23 @@ impl Outcome {
 ///
 /// The working directory is set rather than `-C` being passed, so that a caller reading the command
 /// back sees the same thing git sees.
+/// What git is told before a value a person typed, so the value cannot be read as an option.
+///
+/// `task-1922` B4. Paths were already put after `--`; revisions, branch names, tags, remote names and
+/// URLs were not, so a value beginning with a dash was read by git as an option to the subcommand it
+/// was handed to. The shape that mattered was not the one that errors, it was the one that *works*:
+/// `Reset` takes its revision from a text field and `git reset --soft --hard` is a hard reset,
+/// because git takes the last mode named. Somebody who typed `--hard` into a box asking for a
+/// revision lost everything they had not committed, and git reported success.
+///
+/// `--` does not answer it. For `reset`, `show` and `diff` the thing after `--` is a *path*, so
+/// putting a revision there means something else entirely. `--end-of-options` is git's own answer,
+/// exists in every builtin that parses options, and says exactly this: nothing after here is an
+/// option. Measured against git 2.53 on each subcommand this crate uses it for -- `reset`, `switch`,
+/// `branch`, `tag`, `merge`, `rebase`, `show`, `diff`, `push`, `pull`, `stash` and `remote` -- an
+/// ordinary value is unaffected and a value beginning with a dash is refused in git's own words.
+pub const END_OF_OPTIONS: &str = "--end-of-options";
+
 pub fn run<S: AsRef<OsStr>>(folder: &Path, arguments: &[S]) -> Outcome {
     let mut command = Command::new("git");
     command.current_dir(folder);
