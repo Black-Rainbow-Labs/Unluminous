@@ -115,8 +115,18 @@ fn sample_folder() -> std::path::PathBuf {
 }
 
 /// Write the sample folder out. Called once, through [`sample_folder`].
+///
+/// **Cleared first**, which is `task-1922`: this only ever added to the folder, so anything an older
+/// version of a test had written into it stayed there for ever and appeared in the explorer of every
+/// picture taken afterwards. On this machine that was a `space-round-trip` row, left by the test that
+/// `a_canvas_comes_back_when_the_project_is_opened_again`'s own comment records moving out of here --
+/// the code was fixed and the folder on disk was not, so the fixture said one thing and the machine
+/// held another. It is safe to clear because every caller comes through `sample_folder`'s `OnceLock`,
+/// so this runs before any test has the path; and it is the rule `git_folder(name)` and
+/// `repository(name)` already keep about a fixture a test writes to.
 fn build_sample_folder() -> std::path::PathBuf {
     let root = std::env::temp_dir().join("unluminous-screenshot-folder");
+    std::fs::remove_dir_all(&root).ok();
     std::fs::create_dir_all(root.join("chapters/appendix")).expect("make the nested folders");
     std::fs::create_dir_all(root.join("drafts")).expect("make the drafts folder");
     std::fs::write(root.join("readme.md"), "# Unluminous\n").expect("write readme.md");
@@ -267,6 +277,57 @@ fn shot(name: &str) -> String {
     } else {
         format!("linux/{name}")
     }
+}
+
+/// **Every accepted image on this platform is named by some test.** `task-1922`.
+///
+/// A picture nobody takes any more is a picture nobody looks at, and it stays in the repository
+/// being read as evidence of something. The review found two: `agent_tasks_pane.png` and
+/// `agent_tasks_detail.png`, neither of which any test had mentioned since the board's own tab was
+/// split out of it.
+///
+/// **It reads the test source rather than recording what ran**, because `cargo test <filter>` runs a
+/// subset and a test that added up what it had seen would fail on every filtered run.
+///
+/// The rule is a substring search rather than a parse. A name counts as used when `"the_name"`
+/// appears in the source, or when the name can be cut in two so that `"head{` and `"tail"` both do --
+/// which is how the twenty `mermaid_<type>` images are named, from `shot(&format!("mermaid_{name}"))`
+/// and the list of types beside it. Pairing up quotation marks was tried first and is wrong here: the
+/// file holds raw strings of sample source code with quotation marks inside them, and one of those
+/// puts every literal after it on the wrong side of the count.
+#[test]
+fn every_accepted_image_is_named_by_a_test() {
+    let source = include_str!("screenshots.rs");
+    let named = |stem: &str| {
+        if source.contains(&format!("\"{stem}\"")) {
+            return true;
+        }
+        // `shot(&format!("<head>{...}"))` with `<tail>` as one of the words beside it.
+        (1..stem.len()).any(|at| {
+            source.contains(&format!("\"{}{{", &stem[..at]))
+                && source.contains(&format!("\"{}\"", &stem[at..]))
+        })
+    };
+
+    let platform = shot("");
+    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/snapshots")
+        .join(platform.trim_end_matches('/'));
+    let mut orphans: Vec<String> = std::fs::read_dir(&folder)
+        .expect("the accepted images")
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let stem = name.strip_suffix(".png")?.to_owned();
+            let scratch = [".new", ".diff", ".old"].iter().any(|end| stem.ends_with(end));
+            (!scratch && !named(&stem)).then_some(stem)
+        })
+        .collect();
+    orphans.sort();
+    assert!(
+        orphans.is_empty(),
+        "these accepted images are named by no test, so nothing takes them any more: {orphans:?}"
+    );
 }
 
 /// What the contributed pane called `key` is called, from its own manifest.
@@ -17215,7 +17276,15 @@ fn every_panel_shows_with_no_editing_area() {
     // One panel on a strip and one on a column, which is the arrangement that broke. The canvas along the
     // bottom, the explorer down the left.
     did(&mut harness, "space show");
-    did(&mut harness, "space add terminal --x 40 --y 30");
+    // **A detached node rather than `space add terminal`.** `task-1922`: that command starts a real
+    // shell, and this picture then holds whatever PowerShell had printed by the frame it was taken
+    // on -- its version banner, or nothing at all, depending on the machine and the moment. Measured
+    // here: the same commit produced both. It is the rule the terminal's own screenshot tests have
+    // kept since `task-1654`, applied to a node.
+    harness.state_mut().new_detached_space_node(
+        unluminous_app::services::space::Kind::Terminal,
+        egui::pos2(40.0, 30.0),
+    );
     did(&mut harness, "action run toggle-editor");
     harness.run();
 
@@ -18362,7 +18431,12 @@ fn the_space_manager() {
         did(&mut harness, &format!("space new-view {name}"));
     }
     did(&mut harness, "space open-view Main");
-    did(&mut harness, "space add terminal --x 40 --y 30");
+    // Detached, so the node draws nothing a real shell decided. See
+    // `every_panel_shows_with_no_editing_area` for the measurement.
+    harness.state_mut().new_detached_space_node(
+        unluminous_app::services::space::Kind::Terminal,
+        egui::pos2(40.0, 30.0),
+    );
     did(&mut harness, "space manage");
     harness.run();
     harness.snapshot(shot("space_manager").as_str());

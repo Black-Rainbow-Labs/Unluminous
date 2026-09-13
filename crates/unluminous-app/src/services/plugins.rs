@@ -517,6 +517,21 @@ impl Plugins {
                     if !path.is_dir() {
                         continue;
                     }
+                    // **A folder with no manifest at all is not a plugin that failed to load.**
+                    // `services::plugin_settings` keeps a *bundled* plugin's own configuration at
+                    // `<store>/plugins/<id>/settings.conf`, so configuring Agent-Chat's provider row
+                    // or the Database plugin's sources makes a folder here that has never held a
+                    // manifest and never will. Reading it as a broken plugin put
+                    // `A plugin could not be read -- ...: plugin.conf could not be read` in the
+                    // status bar after every reload, for ever, on any machine where somebody had
+                    // configured a plugin that ships in the binary. Found by `task-1922` B14, which
+                    // made the reload's problems reach the reply that had been discarding them.
+                    //
+                    // A manifest that is there and will not parse is still a refusal with its reason,
+                    // which is the half this must not take away.
+                    if !path.join(MANIFEST).exists() {
+                        continue;
+                    }
                     match read_folder(&path) {
                         Ok(plugin) => {
                             // A plugin on disk shadows the bundled one of the same id, so a bundled
@@ -2440,6 +2455,40 @@ language.extensions = .aa
             plugins.grammars().for_path(rust()).is_some(),
             "and start again when it comes back"
         );
+    }
+
+    /// **A bundled plugin's own settings folder is not read as a broken plugin.** `task-1922`.
+    ///
+    /// `plugin_settings::write` keeps a bundled plugin's configuration at
+    /// `<store>/plugins/<id>/settings.conf`, and the same folder is where an *installed* plugin's
+    /// manifest goes -- so configuring Agent-Chat's provider row made a folder with no manifest in
+    /// it, and the loader reported that as a plugin it could not read. The status bar then said
+    /// `A plugin could not be read` after every reload, for ever, on any machine where somebody had
+    /// configured a plugin that ships in the binary.
+    ///
+    /// The half this must not take away is the other one: a manifest that is there and will not
+    /// parse is still refused with its reason.
+    #[test]
+    fn a_folder_with_no_manifest_in_the_plugin_store_is_not_a_broken_plugin() {
+        let folder = std::env::temp_dir().join("unluminous-plugins-settings-only");
+        std::fs::remove_dir_all(&folder).ok();
+        let store = crate::services::store::Store::at(&folder);
+        let plugins = folder.join("plugins");
+
+        // What configuring a bundled plugin leaves behind: a folder holding settings and nothing else.
+        std::fs::create_dir_all(plugins.join("agent-chat")).expect("make the folder");
+        std::fs::write(plugins.join("agent-chat/settings.conf"), "provider.0.program = claude\n")
+            .expect("write the settings");
+        let (_, problems) = Plugins::load(Some(&store));
+        assert!(problems.is_empty(), "a settings folder is not a plugin: {problems:?}");
+
+        // And a manifest that is there and will not parse still says so.
+        std::fs::create_dir_all(plugins.join("broken")).expect("make the folder");
+        std::fs::write(plugins.join("broken/plugin.conf"), "plugin.name = No id here\n")
+            .expect("write the manifest");
+        let (_, problems) = Plugins::load(Some(&store));
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("plugin.id"), "{problems:?}");
     }
 
     /// **A misspelt key in any namespace is refused, naming the key it meant.** `task-1922` B13.
