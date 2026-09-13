@@ -699,6 +699,33 @@ rectangle while two dozen `msedgewebview2` processes are running. A picture that
 would be a capture of the **desktop** rather than of the surface, which is what
 `documentation/overview.md` was taken with and is a platform specific path on both platforms.
 
+**A terminal node comes back showing what was on it, and the screen is printed *inside* its own console.**
+`task-1912` measured why there is no other way on Windows: the console host clears the screen the first time
+the program writes and thereafter repaints the cells it believes it owns, so a screen written into the
+emulator from outside is erased — and put back later it survives until the next keystroke and then comes back
+visibly corrupt. `CreatePseudoConsole` is called by `alacritty_terminal` with `dwFlags = 0`, which is *"a
+standard pseudoconsole creation"*, against the `PSEUDOCONSOLE_INHERIT_CURSOR` that exists for exactly this;
+carrying a fork of the emulator to pass it is refused in §8 of the design. So a node with a screen to restore
+starts `unluminous-cli --replay-screen <file> -- <shell>`, which prints the bytes and then becomes the shell
+— `exec` on Unix, spawn and wait on Windows. What comes back is then ordinary output of the node's own
+console: the console host holds it, its repaints keep it, a resize reflows it, and the rows that scroll off
+reach the scrollback as any command's output does.
+
+**It is `unluminous-cli` and not the window's own binary**, which is also measured: `alacritty_terminal`
+creates the child with `STARTF_USESTDHANDLES` and every handle null, and Windows fills a *console* subsystem
+program's standard handles in from the console while a *windows* subsystem one's stay null — so
+`unluminous.exe` as the shim printed nothing and the shell under it printed nothing either. What is saved is
+the **scrollback and the screen**, bounded by `REPLAY_ROWS` and `REPLAY_LIMIT`, because the visible grid alone
+was fourteen rows and the report asks for five commands. `examples/replay_probe` is how any of this is
+measured again.
+
+**And what a node is running is readable on Windows now.** A ConPTY has no foreground process group, so
+`unluminous_terminal::foreground` walks the process tree below the pseudoconsole's child and stops at the
+first thing that is neither a shell nor the shim. Walking all the way down was wrong in the case the feature
+exists for — `claude` starts programs for its own tools, so a node running it with a `bash` open underneath
+was recorded as running `bash`. Until `task-1912` this answered `None` on Windows, so a node where somebody
+typed `claude` came back a bare shell and resumed no conversation.
+
 **The canvas is written when it changes and not on every frame.** `Space::is_dirty` is set by every
 mutation and cleared by the write, so dragging a node writes `.unluminous/space.conf` once at the end
 rather than sixty times a second — which is the one thing this deliberately does not copy from
@@ -1810,17 +1837,28 @@ reads it back from egui once a frame rather than having the title bar's drag, th
 platform's snap and `unluminous-cli window position` each remember to report — `follow_the_open_file`'s
 rule about a list whose next entry is the one that forgets.
 
-**And `session.txt`, beside `recent.txt`, is the windows Unluminous had open.** An Unluminous window is a
-process, so the only place two of them can both see is the person's own settings folder. A window
-adds its project when it opens and **leaves its line behind when it closes**; starting Unluminous with no
-folder named — the shortcut launch, which is the same condition `starting_folder` already tests —
-opens the last line itself, starts a process for each of the others, and rewrites the file to exactly
-what was restored. The trade-off is stated rather than hidden: closing one window while another is
-open still brings both back, which is what the ticket asked for and is the only rule available, since
-Unluminous has no application-wide quit and by the time the last window closes the earlier ones are gone
-from any live registry. `SESSION_LIMIT` bounds the cost, and `remember_open_window` writes nothing
-when the project is already listed — which is what keeps three windows starting at once from losing
-each other's lines.
+**And `session.txt`, beside `recent.txt`, is the windows Unluminous had open during the last session.** An
+Unluminous window is a process, so the only place two of them can both see is the person's own settings
+folder. Each row is a process id and a project. Starting Unluminous with no folder named — the shortcut
+launch, which is the same condition `starting_folder` already tests — opens the last row itself, starts a
+process for each of the others, and writes the file out as exactly what was restored with the process id of
+each window it started.
+
+**A session has a beginning, and that is the whole of the rule**: a window that opens while no listed window
+is still running is the first window of a new session, and the file becomes that one row. Without it the file
+is a *history* rather than a session — `task-1912` reported a launch from the desktop opening eight projects,
+six of them agent scratch folders from tickets weeks old, because nothing ever took a row out and
+`write_session`, whose own comment said it was what restoring does, had no caller outside the tests. A row is
+alive when a **listed instance** has that id and that process is running, because a bare process id would be
+fooled by one the operating system has handed to something else — and a fooled answer keeps the file from ever
+resetting, which is the reported fault by a side door. A window's own row counts as alive without being asked
+about, which is what makes restoring safe however the starts interleave.
+
+**A line is still kept when a window closes**, and that trade-off is stated rather than hidden: a project
+closed in the middle of a session comes back at the next start, because by the time the last window closes the
+ones that closed before it are gone from any live registry and it cannot tell which of them were deliberate.
+It is bounded to one session now rather than to the life of the settings folder. `SESSION_LIMIT` bounds the
+rest, and `remember_open_window` writes nothing when the project is already listed.
 
 **The run widget takes the right hand end of the title bar and the text tools sit in front of it.**
 That is the other way round from `task-1683`, and the reason is that only one of the two changes
@@ -3821,6 +3859,11 @@ trade that away to be a shade nearer a screenshot.
   things `epaint` cannot draw of the picture, the `Decor`/`Chrome`/`Canvas` seam, the five plugin
   architecture changes, and the cost — what was measured, what was kept, what was rejected, and the one
   lever that cannot be pulled while epaint shares the crate.
+- `tasks/task-1912-a-session-and-a-terminal-tdd.md` — the windows that were open and a terminal that really
+  comes back: why a session file with no beginning is a history rather than a session, the measurement that
+  says a pseudoconsole owns the screen and erases anything drawn onto it from outside, the shim that prints a
+  node's screen inside its own console and why it has to be the console program, the scrollback that five
+  commands need, and the process walk that finally answers what a node is running on Windows.
 - `tasks/task-1904-base-of-infinite-space-tdd.md` — the Base of Infinite Space: why the canvas is a
   fifth core panel rather than a plugin, how a zoom costs a matrix rather than a relayout and what
   that costs in return, the two coordinate systems a node is drawn in, `OpenFile::home` and what it

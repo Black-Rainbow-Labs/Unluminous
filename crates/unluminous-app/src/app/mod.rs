@@ -1285,7 +1285,15 @@ impl UnluminousApp {
         // And that this project has a window open, which is what `task-1693` asks Unluminous to bring
         // back next time. A window that is already in the list writes nothing — `Store::open_windows`
         // records why.
-        store.remember_open_window(self.tree.root());
+        //
+        // **Which window, and whether any other one is still running.** `task-1912`: a window opening while
+        // nothing else is running begins a new session and the file becomes that one row, which is what stops
+        // the list being every project there has ever been. A *listed instance* rather than a bare process id,
+        // because an id the operating system has handed to something else would read as a session still going.
+        store.remember_open_window(self.tree.root(), std::process::id(), &|pid| {
+            unluminous_cli::instances::listed().iter().any(|instance| instance.pid == pid)
+                && unluminous_cli::instances::is_running(pid)
+        });
         self.recent = store.recent_projects();
         let (plugins, problems) = Plugins::load(Some(&store));
         self.plugins = plugins;
@@ -2080,7 +2088,7 @@ impl UnluminousApp {
                     // `task-1658` asks for: a project is a window, so opening a second one keeps the
                     // first. Only if a second process cannot be started does the folder take this
                     // window, which is better than the entry doing nothing at all.
-                    if !launcher::open_window(&folder) {
+                    if launcher::open_window(&folder).is_none() {
                         self.open_folder(&folder);
                     }
                 }
@@ -2161,7 +2169,7 @@ impl UnluminousApp {
             }
             Action::OpenRecent(folder) => {
                 // A window of its own, as the reference editor does it, so the project that is open stays open.
-                if !launcher::open_window(&folder) {
+                if launcher::open_window(&folder).is_none() {
                     self.open_folder(&folder);
                 }
             }

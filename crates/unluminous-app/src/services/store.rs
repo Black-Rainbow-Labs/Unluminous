@@ -179,32 +179,32 @@ impl Store {
         self.folder.join(SESSION_FILE)
     }
 
-    /// The projects Unluminous had a window open on, oldest first.
+    /// The projects Unluminous had a window open on **during the last session**, oldest first.
     ///
     /// `task-1693` asks that quitting and starting again bring back "the windows/projects I had
     /// open". An Unluminous window is a **process** — `services::launcher` records why — so the only place
     /// both of them can see is a file here, beside `recent.txt`.
     ///
-    /// **A line is kept when a window closes.** That is the trade-off, and it is stated rather than
-    /// hidden: closing one window while another is open still brings both back next time, which is
-    /// what the ticket asks for in as many words and is the only rule available. Unluminous has no
-    /// application-wide quit to hang the question on, and by the time the last window closes the
-    /// ones that closed before it are long gone from any live registry. The cost is that a folder
-    /// opened once stays in the list until [`SESSION_LIMIT`] others push it out.
+    /// **A session has a beginning, and [`Self::remember_open_window`] is where it is found.** Without one
+    /// this list is a history rather than a session: nothing takes a line out, so `task-1912` reported a
+    /// launch from the desktop opening eight projects, six of them agent scratch folders from weeks before.
+    /// What other editors restore is the *last session* — VS Code's `window.restoreWindows` defaults to
+    /// `all`, which its own documentation defines as *"all windows you worked on during your previous
+    /// session"* — and VS Code can say where one ends because its windows are one process. Here they are one
+    /// process each, so the beginning of a session is derived: it is a window opening while no other one is
+    /// running.
+    ///
+    /// **A line is still kept when a window closes**, and that is the trade-off, stated rather than hidden: a
+    /// project closed in the middle of a session comes back at the next start, because by the time the last
+    /// window closes the ones that closed before it are gone from any live registry and it cannot tell which
+    /// of them were deliberate. It is bounded to one session now rather than to the life of the settings
+    /// folder.
     ///
     /// A folder that is no longer there is left out, for the reason [`Self::recent_projects`] leaves
     /// one out of the menu.
     pub fn open_windows(&self) -> Vec<PathBuf> {
-        let Ok(text) = std::fs::read_to_string(self.session_path()) else {
-            return Vec::new();
-        };
         let mut out: Vec<PathBuf> = Vec::new();
-        for line in text.lines() {
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            let path = unluminous_terminal::paths::plain(Path::new(line));
+        for (_, path) in self.session_rows() {
             if out.contains(&path) || !path.is_dir() {
                 continue;
             }
@@ -214,35 +214,83 @@ impl Store {
         out
     }
 
-    /// Add `folder` to the session list if it is not in it already.
+    /// The session file as it is written: which window wrote each line, and which project it was on.
+    ///
+    /// **A line with no process id in front of it is a path with a dead window**, which is what a file written
+    /// by an older Unluminous looks like. It reads, and the first launch after this version arrives finds
+    /// nothing alive in it and begins a session — so an accumulated file corrects itself rather than needing
+    /// anybody to delete one.
+    fn session_rows(&self) -> Vec<(u32, PathBuf)> {
+        let Ok(text) = std::fs::read_to_string(self.session_path()) else {
+            return Vec::new();
+        };
+        text.lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(|line| match line.split_once(' ') {
+                Some((first, rest)) => match first.parse::<u32>() {
+                    Ok(pid) => (pid, PathBuf::from(rest.trim())),
+                    // A path with a space in it and no id, which is most of the paths on this machine.
+                    Err(_) => (0, PathBuf::from(line)),
+                },
+                None => (0, PathBuf::from(line)),
+            })
+            .map(|(pid, path)| (pid, unluminous_terminal::paths::plain(&path)))
+            .collect()
+    }
+
+    /// Record that this window, running as `pid`, has `folder` open.
+    ///
+    /// **One rule, and it is where a session begins.** A window that opens while no listed window is still
+    /// running is the first window of a new session, and the file becomes that one row. A window that opens
+    /// while another is running joins the session and is appended. That is the whole of `task-1912`'s first
+    /// report: without it nothing ever takes a row out and the list is every project there has ever been.
+    ///
+    /// `alive` answers whether a process id belongs to an Unluminous that is still running. It is passed in
+    /// rather than asked here so that this rule can be run by a test with no processes in it — and because
+    /// the honest answer is *a listed instance with that id*, which is knowledge `unluminous-cli` owns. A bare
+    /// process id would be fooled by one the operating system has handed to something else, and a fooled
+    /// answer keeps the file from ever resetting, which is the reported fault returning by a side door.
     ///
     /// Newest **last**, which is the other way round from `recent.txt`: the list is restored in
     /// order and the last entry is the one the restoring process opens itself, so oldest-first is
     /// also what makes truncating the front of the list drop the oldest.
-    pub fn remember_open_window(&self, folder: &Path) {
+    pub fn remember_open_window(&self, folder: &Path, pid: u32, alive: &dyn Fn(u32) -> bool) {
         let folder = plain_absolute(folder);
-        let mut windows = self.open_windows();
-        // Appended only when it is not there already, which is what keeps three windows starting at
-        // once from fighting over the file: restoring a session opens two or three processes within
-        // a few hundred milliseconds and every one of them reads this list and writes it back. A
-        // window that is already in it writes nothing at all, so the only moment two processes can
-        // both write is when two brand new projects are opened in the same instant.
-        if windows.contains(&folder) {
+        let mut rows = self.session_rows();
+        // **A session nobody is in is over.** Whatever the file holds was written by windows that have all
+        // gone, so this window is the first of the next one.
+        //
+        // **A row that is this window counts as alive without being asked about**, which is what makes
+        // restoring a session safe however the starts interleave: `main` writes the whole restored session
+        // down with the process id of each window it started, so every one of them finds itself in the file
+        // and none of them can decide the session is over and throw the others away. Asking the instance list
+        // instead would depend on when each window got round to writing its instance file.
+        if !rows.iter().any(|(id, _)| *id != 0 && (*id == pid || alive(*id))) {
+            self.write_session(&[(pid, folder)]);
             return;
         }
-        windows.push(folder);
-        while windows.len() > SESSION_LIMIT {
-            windows.remove(0);
+        // A project that is already listed writes nothing at all, which is what keeps three windows starting
+        // at once from fighting over the file: restoring a session opens two or three processes within a few
+        // hundred milliseconds and every one of them reads this list and writes it back.
+        if rows.iter().any(|(_, path)| *path == folder) {
+            return;
         }
-        self.write_session(&windows);
+        rows.push((pid, folder));
+        while rows.len() > SESSION_LIMIT {
+            rows.remove(0);
+        }
+        self.write_session(&rows);
     }
 
-    /// Write the session list out as exactly `windows`.
+    /// Write the session list out as exactly `windows`, each with the window that has it open.
     ///
-    /// What restoring does once it has started them all, so the list is what was really restored
-    /// rather than growing for ever.
-    pub fn write_session(&self, windows: &[PathBuf]) {
-        let text: String = windows.iter().map(|path| format!("{}\n", path.display())).collect();
+    /// What restoring does once it has started them all, so the list is what was really restored rather than
+    /// growing for ever — and it is called now, by `main`, which is half of `task-1912`'s first report: this
+    /// function's own comment said that was its purpose while nothing outside the tests called it.
+    pub fn write_session(&self, windows: &[(u32, PathBuf)]) {
+        let text: String =
+            windows.iter().map(|(pid, path)| format!("{pid} {}\n", path.display())).collect();
         if let Err(problem) = self.write(&self.session_path(), &text) {
             eprintln!("Unluminous could not write its open windows: {problem}");
         }
@@ -385,7 +433,15 @@ mod tests {
         folder
     }
 
+    /// Nothing is running, so nothing answers. What every test here starts from.
+    fn nothing_is_alive(_: u32) -> bool {
+        false
+    }
+
     /// `task-1693`: the windows Unluminous had open, so that starting it again brings them all back.
+    ///
+    /// The three windows of one session are three windows that opened while each other were running, which is
+    /// what `alive` says here and what makes this a session rather than a history.
     #[test]
     fn every_window_that_was_open_is_remembered_and_a_line_is_kept_when_one_closes() {
         let folder = temporary("unluminous-store-session");
@@ -395,18 +451,97 @@ mod tests {
         std::fs::create_dir_all(&first).expect("make the first project");
         std::fs::create_dir_all(&second).expect("make the second project");
 
-        store.remember_open_window(&first);
-        store.remember_open_window(&second);
+        store.remember_open_window(&first, 101, &nothing_is_alive);
+        store.remember_open_window(&second, 102, &|pid| pid == 101);
         let windows = store.open_windows();
         assert_eq!(windows.len(), 2, "both windows are in the list");
         assert!(windows.last().is_some_and(|last| last.ends_with("second")), "newest last");
 
         // Opening the first again writes nothing, which is what keeps three windows starting at
         // once from losing each other's lines.
-        store.remember_open_window(&first);
+        store.remember_open_window(&first, 101, &|pid| pid == 102);
         let windows = store.open_windows();
         assert_eq!(windows.len(), 2, "it is already there, so nothing is written");
         assert!(windows.last().is_some_and(|last| last.ends_with("second")));
+    }
+
+    /// `task-1912`: *"all projects I've ever opened are reopened, rather than just the windows I had open."*
+    ///
+    /// The reported file, made: three projects whose windows have all gone. A window opening into that is the
+    /// first window of a new session, and what it leaves behind is itself. **Fails on the code as it was**,
+    /// where every one of the three stayed for ever.
+    #[test]
+    fn a_new_session_replaces_the_windows_of_the_last_one() {
+        let folder = temporary("unluminous-store-session-new");
+        let store = Store::at(&folder);
+        let mut projects = Vec::new();
+        for name in ["one", "two", "three"] {
+            let project = folder.join(name);
+            std::fs::create_dir_all(&project).expect("make a project");
+            projects.push((0, project));
+        }
+        let fresh = folder.join("fresh");
+        std::fs::create_dir_all(&fresh).expect("make the fresh project");
+        store.write_session(&[(301, projects[0].1.clone()), (302, projects[1].1.clone()), (303, projects[2].1.clone())]);
+
+        store.remember_open_window(&fresh, 400, &nothing_is_alive);
+        let windows = store.open_windows();
+        assert_eq!(windows.len(), 1, "a session nobody is in is over, and the list is {windows:?}");
+        assert!(windows[0].ends_with("fresh"));
+    }
+
+    /// The other half of the same rule: a second window while the first is running joins its session.
+    #[test]
+    fn a_window_that_opens_beside_a_live_one_joins_its_session() {
+        let folder = temporary("unluminous-store-session-join");
+        let store = Store::at(&folder);
+        let first = folder.join("first");
+        let second = folder.join("second");
+        std::fs::create_dir_all(&first).expect("make the first project");
+        std::fs::create_dir_all(&second).expect("make the second project");
+        store.write_session(&[(501, first.clone())]);
+
+        store.remember_open_window(&second, 502, &|pid| pid == 501);
+        assert_eq!(store.open_windows().len(), 2, "the live window's session is joined, not replaced");
+    }
+
+    /// The reported case in the other direction, which must keep working: quitting three windows and starting
+    /// again brings back three. Closing takes no row out, so the file still holds all three and they are all
+    /// dead by the time anything reads it.
+    #[test]
+    fn the_windows_of_one_session_all_come_back() {
+        let folder = temporary("unluminous-store-session-all-back");
+        let store = Store::at(&folder);
+        let mut rows = Vec::new();
+        for (pid, name) in [(601, "one"), (602, "two"), (603, "three")] {
+            let project = folder.join(name);
+            std::fs::create_dir_all(&project).expect("make a project");
+            rows.push((pid, project));
+        }
+        store.write_session(&rows);
+        assert_eq!(store.open_windows().len(), 3, "every window of the last session");
+    }
+
+    /// A file written by 0.42.0 has bare paths in it and no process ids. It reads, and the first launch after
+    /// this version arrives finds nothing alive in it and begins a session — so an accumulated file corrects
+    /// itself rather than needing anybody to delete one.
+    #[test]
+    fn a_session_file_from_an_older_version_is_read_and_replaced() {
+        let folder = temporary("unluminous-store-session-older");
+        let store = Store::at(&folder);
+        let old = folder.join("old project");
+        let fresh = folder.join("fresh");
+        std::fs::create_dir_all(&old).expect("make the old project");
+        std::fs::create_dir_all(&fresh).expect("make the fresh project");
+        // Written the way the older version wrote it: the path alone, and with a space in it, which is what
+        // makes reading the process id off the front a question rather than a split.
+        store.write(&store.session_path(), &format!("{}\n", old.display())).expect("write it");
+        assert_eq!(store.open_windows(), vec![old], "an older file still says what was open");
+
+        store.remember_open_window(&fresh, 700, &nothing_is_alive);
+        let windows = store.open_windows();
+        assert_eq!(windows.len(), 1, "and the next session replaces it: {windows:?}");
+        assert!(windows[0].ends_with("fresh"));
     }
 
     /// The cap is what bounds the cost of keeping a line behind when a window closes.
@@ -418,7 +553,8 @@ mod tests {
         for index in 0..SESSION_LIMIT + 3 {
             let project = folder.join(format!("project-{index}"));
             std::fs::create_dir_all(&project).expect("make a project");
-            store.remember_open_window(&project);
+            // Every window of one session, so the list grows to its limit rather than resetting.
+            store.remember_open_window(&project, 800 + index as u32, &|pid| pid >= 800);
             made.push(project);
         }
         let windows = store.open_windows();
@@ -437,8 +573,7 @@ mod tests {
         let store = Store::at(&folder);
         let here = folder.join("here");
         std::fs::create_dir_all(&here).expect("make the project");
-        store.remember_open_window(&here);
-        store.write_session(&[here.clone(), folder.join("never-existed")]);
+        store.write_session(&[(901, here.clone()), (902, folder.join("never-existed"))]);
         assert_eq!(store.open_windows(), vec![here]);
     }
 

@@ -1768,6 +1768,23 @@ unluminous-cli space send 9 cargo test
 unluminous-cli space send 9 cargo test --from 7
 ```
 
+### space read
+
+```
+unluminous-cli space read <node> [--tail <lines>]
+```
+
+Read what a terminal node is showing: the scrollback as well as the screen, so the commands that have scrolled above the fold are in it. This is what `terminal read` is for the terminal panel, and it is the way to check what a node printed, what it came back showing after a project was reopened, and what an agent running in a node has said.
+
+- `node` — The terminal node's id.
+
+- `--tail <lines>` — Answer with only the last N lines.
+
+```sh
+unluminous-cli space read 7
+unluminous-cli space read 7 --tail 40
+```
+
 ### space restart
 
 ```

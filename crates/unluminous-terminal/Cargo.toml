@@ -23,4 +23,9 @@ libc.workspace = true
 # Job objects, and nothing else: the one promise Windows will make about a program outliving the
 # terminal it was started in. See `src/reap.rs` for why a pseudoterminal closing is not that promise.
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true, features = ["Win32_System_JobObjects"] }
+windows-sys = { workspace = true, features = [
+    "Win32_System_JobObjects",
+    # `task-1912`: a ConPTY has no foreground process group, so what a terminal node is running is read by
+    # walking the process tree below the child the pseudoconsole was given. See `foreground`.
+    "Win32_System_Diagnostics_ToolHelp",
+] }

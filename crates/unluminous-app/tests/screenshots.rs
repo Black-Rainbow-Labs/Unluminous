@@ -19128,15 +19128,59 @@ fn a_terminal_node_comes_back_showing_what_was_on_it() {
     let saved = unluminous_app::services::space::store::screen_path(&folder, node);
     assert!(saved.is_file(), "the screen was written down at {}", saved.display());
 
-    // And what a fresh session is given when the node starts again. Read directly, because a detached session
-    // is what a test has and `take_a_screen` is what the real path calls.
-    let bytes = unluminous_app::services::space::store::take_a_screen(&folder, node)
-        .expect("the screen comes back");
+    // And what the node is started with when it opens again. `task-1912`: what is replayed is not written into
+    // the terminal from outside — the console host erases that on Windows — but printed by a program inside the
+    // node's own console, so what a test can hold is the command line that program is given and the bytes it
+    // will print.
+    let printing = unluminous_app::services::space::store::a_screen_to_print(&folder, node)
+        .expect("there is a screen to print");
+    assert_eq!(printing, saved, "and it is the file that was written down");
+    let restore = unluminous_cli::restore::Restore {
+        file: printing.clone(),
+        shim: std::path::PathBuf::from("/apps/unluminous-cli"),
+    };
+    let (program, args) = unluminous_cli::restore::command_line(&restore, "zsh", &[]);
+    assert_eq!(program, restore.shim, "the node starts the program that prints and then becomes the shell");
+    assert_eq!(args.last().map(String::as_str), Some("zsh"), "and the shell is the last word of it");
+
+    // What that program will print, read by a terminal, is the screen the node was left showing.
+    let bytes = std::fs::read(&printing).expect("the screen comes back");
     let mut fresh = unluminous_terminal::Session::detached(unluminous_terminal::Size::new(12, 40));
-    assert!(fresh.replay(&bytes), "a fresh session takes it");
+    fresh.feed(&bytes);
     let screen = fresh.snapshot();
     assert!(screen.contains("total 48"), "the `ls` output came back: {:?}", screen.text());
     assert!(screen.contains("Cargo.toml"), "all of it, not just the first line");
+
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// A node starting with nothing to restore takes away whatever was lying there.
+///
+/// `task-1908`'s rule, kept now that the reading has moved out of this process: a screen is printed by the
+/// shim and deleted by it, and this is the other way a file stops existing. Without both, a canvas that failed
+/// to come back would replay a week-old screen for ever.
+#[test]
+fn a_screen_nobody_printed_is_not_kept_for_ever() {
+    use unluminous_app::services::space::Kind;
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screen-forgotten");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().restore_project();
+    harness.run();
+
+    did(&mut harness, "space show");
+    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    harness.state_mut().feed_a_space_terminal(node, b"$ ls\r\ntotal 48\r\n");
+    harness.run();
+    harness.state_mut().write_the_screens_down();
+
+    let saved = unluminous_app::services::space::store::screen_path(&folder, node);
+    assert!(saved.is_file(), "a screen was written down");
+    unluminous_app::services::space::store::forget_a_screen(&folder, node);
+    assert!(!saved.exists(), "and a node starting without it takes it away");
+    assert!(
+        unluminous_app::services::space::store::a_screen_to_print(&folder, node).is_none(),
+        "so there is nothing to print"
+    );
 
     std::fs::remove_dir_all(&folder).ok();
 }

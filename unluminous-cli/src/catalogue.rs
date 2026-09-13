@@ -1412,6 +1412,15 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         area: "space",
+        verb: "read",
+        summary: "Read what a terminal node is showing: the scrollback as well as the screen, so the commands that have scrolled above the fold are in it. This is what `terminal read` is for the terminal panel, and it is the way to check what a node printed, what it came back showing after a project was reopened, and what an agent running in a node has said.",
+        arguments: &[argument("node", true, "The terminal node's id.")],
+        flags: &[option("tail", "lines", "Answer with only the last N lines.")],
+        examples: &["unluminous-cli space read 7", "unluminous-cli space read 7 --tail 40"],
+        local: false,
+    },
+    Command {
+        area: "space",
         verb: "restart",
         summary: "Start a terminal node's program again in the same folder. With `--resume` it starts the agent on the conversation it named, which Claude takes and Codex does not. With `--running` it types the program the node was last seen running into the shell it already has, which is what a node comes back as when somebody typed an agent into a plain terminal rather than giving the node a command.",
         arguments: &[argument("node", true, "The terminal node's id.")],

@@ -25,19 +25,22 @@ pub fn command_for(program: &Path, folder: &Path) -> Command {
 ///
 /// The new process is not waited for and its output is left where this one's goes. Failing to start it is
 /// reported and otherwise ignored, because the window that asked is still working.
-pub fn open_window(folder: &Path) -> bool {
+pub fn open_window(folder: &Path) -> Option<u32> {
     let program = match std::env::current_exe() {
         Ok(program) => program,
         Err(problem) => {
             eprintln!("Unluminous could not find its own program to start another window: {problem}");
-            return false;
+            return None;
         }
     };
     match command_for(&program, folder).spawn() {
-        Ok(_) => true,
+        // **The process id, which restoring a session needs.** `task-1912`: the window that restores a session
+        // writes the whole session down itself, and a row is the window that has that project open — so the
+        // windows it starts have to be identified as it starts them, which is the one moment anything knows.
+        Ok(child) => Some(child.id()),
         Err(problem) => {
             eprintln!("Unluminous could not start another window: {problem}");
-            false
+            None
         }
     }
 }

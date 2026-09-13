@@ -1590,6 +1590,9 @@ impl AgentTasks {
                 environment.extend(self.configuration.environment());
                 environment
             },
+            // The agent is the program that is started, so the tab is named after it in the ordinary way.
+            // `SessionSettings::name` is the canvas's, for a node being restored.
+            name: None,
         };
         let waker = self.waker.clone().unwrap_or_else(|| std::sync::Arc::new(|| {}));
         let session = unluminous_terminal::Session::spawn(

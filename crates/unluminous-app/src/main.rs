@@ -211,10 +211,28 @@ fn main() -> eframe::Result {
     // The other windows, each with its project named on the command line so that none of them tries
     // to restore the session in its turn. Each reads its own project's geometry, so they come back
     // where they were left.
-    for other in &session {
-        if *other != folder {
-            unluminous_app::services::launcher::open_window(other);
+    //
+    // **And the session is written down as exactly what was restored**, with the process id of the window
+    // that holds each project. `task-1912`: `write_session` has said since it was written that this is what
+    // restoring does, and nothing outside the tests called it — so the list only ever grew. Writing it here,
+    // where every one of those process ids is known, also means no restored window has to append a row of its
+    // own, which is the read-modify-write three windows starting at once would have raced over.
+    if !session.is_empty() {
+        let mut restored: Vec<(u32, PathBuf)> = Vec::new();
+        for other in &session {
+            if *other == folder {
+                continue;
+            }
+            if let Some(pid) = unluminous_app::services::launcher::open_window(other) {
+                restored.push((pid, other.clone()));
+            }
         }
+        // This window's own row last, because the list is oldest first and this is the one that is opening
+        // now. `session` has had this window's project taken off it by `pop` above, so it is added here
+        // rather than looked for — and it is what lets every window started here find itself in the file,
+        // which is what `remember_open_window` needs to know the session is not over.
+        restored.push((std::process::id(), folder.clone()));
+        store.write_session(&restored);
     }
 
     // Where this project's window was left, which `task-1693` asks for and which has to be known

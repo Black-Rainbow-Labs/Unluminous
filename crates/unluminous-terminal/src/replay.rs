@@ -34,6 +34,19 @@ use crate::screen::{Screen, ScreenCell};
 /// which is what somebody reading their last command wants back.
 pub const REPLAY_LIMIT: usize = 256 * 1024;
 
+/// How many rows of a terminal's scrollback and screen are kept.
+///
+/// **The number `task-1912` is about.** What was written down before it was the *visible grid*, so a node
+/// fourteen rows tall kept fourteen rows and the report — *"if I've ran 5 commands, all 5 and their results
+/// should be shown"* — was answered with the last two of them.
+///
+/// A thousand is a deliberate multiple of what the surveyed tools keep: VS Code's
+/// `terminal.integrated.persistentSessionScrollback` is **100 lines** by default. Five commands with real
+/// output is more than a hundred lines more often than not, and a project folder can hold a quarter of a
+/// megabyte without anybody minding — which is [`REPLAY_LIMIT`], and whichever of the two binds first is the
+/// one that applies.
+pub const REPLAY_ROWS: usize = 1000;
+
 /// The bytes that would draw `screen`, from an empty terminal.
 ///
 /// The stream is: for each row, the cells in runs of one style, then a newline; then the cursor put back where
@@ -272,6 +285,78 @@ mod tests {
         session
     }
 
+    /// What a terminal is told to write down holds its scrollback, not only what is on its screen.
+    ///
+    /// **`task-1912`'s first fault against the restore.** `screen_to_replay` answered with `snapshot`, which is
+    /// the *visible grid*, so a node fourteen rows tall wrote fourteen rows down — measured at 457 bytes for
+    /// five commands, four of which were already above the fold. Forty rows into a six row terminal here, and
+    /// the first of them has to be in the stream.
+    #[test]
+    fn what_is_written_down_holds_the_scrollback_and_not_only_the_screen() {
+        let mut session = Session::detached(Size::new(6, 20));
+        for line in 0..40 {
+            session.feed(format!("line{line}\r\n").as_bytes());
+        }
+        let only_the_screen = bytes_of(&session.snapshot());
+        assert!(
+            !String::from_utf8_lossy(&only_the_screen).contains("line0\r"),
+            "the screen alone cannot hold the first line, which is what made this a fault"
+        );
+        let with_the_history = bytes_of(&session.screen_and_history(REPLAY_ROWS));
+        let text = String::from_utf8_lossy(&with_the_history);
+        assert!(text.contains("line0"), "the first line is in the stream");
+        assert!(text.contains("line39"), "and so is the last");
+    }
+
+    /// The report's own arithmetic: five commands and their output, through two sessions.
+    ///
+    /// *"if I've ran 5 commands, all 5 and their results should be shown when I reopen."* A terminal this
+    /// shape shows two of them, so every one of the five is a test of the scrollback rather than of the screen.
+    #[test]
+    fn five_commands_and_their_output_all_come_back() {
+        let mut session = Session::detached(Size::new(6, 40));
+        for command in ["one", "two", "three", "four", "five"] {
+            session.feed(format!("$ echo {command}\r\n{command}\r\n").as_bytes());
+        }
+        let written = bytes_within(&session.screen_and_history(REPLAY_ROWS), REPLAY_LIMIT);
+
+        // A fresh terminal, given what was written down, with room to be read back in.
+        let mut back = Session::detached(Size::new(40, 40));
+        back.feed(&written);
+        let text = back.written_text(None);
+        for command in ["one", "two", "three", "four", "five"] {
+            assert!(text.contains(&format!("$ echo {command}")), "{command} came back: {text:?}");
+        }
+    }
+
+    /// The colours of a row that has scrolled off are the colours it had.
+    ///
+    /// The scrollback is read out of the grid directly rather than through `renderable_content`, which walks
+    /// only the visible rows, so this is what says the second reading resolves a cell the way the first one
+    /// does.
+    #[test]
+    fn a_row_in_the_scrollback_keeps_its_colours() {
+        let mut session = Session::detached(Size::new(4, 20));
+        session.feed(b"\x1b[31mred line\x1b[0m\r\n");
+        for line in 0..8 {
+            session.feed(format!("plain{line}\r\n").as_bytes());
+        }
+        let screen = session.screen_and_history(REPLAY_ROWS);
+        let coloured = (0..screen.rows)
+            .find(|row| {
+                (0..screen.columns)
+                    .filter_map(|column| screen.cell(*row, column))
+                    .map(|cell| cell.character)
+                    .collect::<String>()
+                    .starts_with("red")
+            })
+            .expect("the red line is in the scrollback");
+        let cell = screen.cell(coloured, 0).expect("its first cell");
+        let plain = Session::detached(Size::new(4, 20)).snapshot();
+        let ordinary = plain.cell(0, 0).expect("an ordinary cell").foreground;
+        assert_ne!(cell.foreground, ordinary, "a scrolled-off row kept the colour it was written in");
+    }
+
     /// A screen written down and replayed is the same screen.
     ///
     /// **Compared cell for cell**, which is what makes this a test of the fidelity rather than of the text: a
@@ -360,35 +445,7 @@ mod tests {
     /// so `is_empty` asked under that lock is the honest question. The real shell below is what tests the flag;
     /// the detached session above tests the grid.
     #[test]
-    fn a_session_that_has_read_from_its_program_refuses_a_replay() {
-        let mut fresh = Session::detached(Size::new(6, 20));
-        assert!(fresh.replay(b"hello"), "an empty session takes one");
-        // **And a session with anything on its grid does not**, whether that came from a program or from a
-        // `feed`: what the rule protects is a screen being put back over something already drawn, and where the
-        // something came from does not change that.
-        assert!(!fresh.replay(b"again"), "a grid with something on it refuses a second replay");
-
-        let settings = crate::session::SessionSettings {
-            shell: Some("bash".to_owned()),
-            args: vec!["--norc".to_owned(), "-c".to_owned(), "echo hello".to_owned()],
-            ..Default::default()
-        };
-        let waker: crate::session::Waker = std::sync::Arc::new(|| {});
-        let mut real = Session::spawn(&settings, Size::new(6, 20), waker).expect("a shell");
-        assert!(real.replay(b"before"), "before the program has written, a replay is taken");
-        // Waits rather than polls: what is being tested is what is true once the program really has written,
-        // and `pump` is what reads the events it sent.
-        for _ in 0..50 {
-            std::thread::sleep(std::time::Duration::from_millis(40));
-            real.pump();
-            if real.snapshot().contains("hello") {
-                break;
-            }
-        }
-        assert!(real.snapshot().contains("hello"), "the program really wrote something");
-        assert!(!real.replay(b"after"), "and afterwards a replay is refused");
-    }
-
+ 
     /// A row filled to its last column does not push the screen down by one.
     ///
     /// **The case a terminal's auto-wrap makes dangerous.** Writing the last column of a row leaves most

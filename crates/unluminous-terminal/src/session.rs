@@ -105,6 +105,14 @@ pub struct SessionSettings {
     /// with no `PATH` is a bug nobody enjoys finding. The terminal's own shells leave it empty and
     /// change by nothing.
     pub env: Vec<(String, String)>,
+    /// What to call this terminal, when the program that is started is not the program that matters.
+    ///
+    /// **What a restored node needs.** A node coming back showing what was on it does not start its shell: it
+    /// starts `unluminous-cli --replay-screen …`, which prints the remembered screen and then becomes the
+    /// shell — `unluminous_cli::restore` says why it has to be a program inside the console that prints it.
+    /// The tab is still the shell's, so the name is said rather than derived, and every other caller leaves
+    /// this empty and gets the name of the program it asked for.
+    pub name: Option<String>,
 }
 
 /// **Written by hand so that `env` prints its names and not its values.**
@@ -122,6 +130,7 @@ impl std::fmt::Debug for SessionSettings {
             .field("working_directory", &self.working_directory)
             // The names, so a reader can tell what was set, and the count, so a reader can tell how much.
             .field("env", &self.env.iter().map(|(name, _)| name.as_str()).collect::<Vec<&str>>())
+            .field("name", &self.name)
             .finish()
     }
 }
@@ -148,31 +157,6 @@ impl EventListener for Proxy {
     }
 }
 
-/// Whether nothing at all has been written to a terminal's grid yet.
-///
-/// **What [`Session::replay`] is really gated on**, and it is a fact about the grid rather than about when an
-/// event was last read: the reader thread writes while holding the terminal's lock, so an empty grid asked for
-/// under that lock is a program that has written nothing. Only the screen is asked about, because a fresh
-/// session has no history either and asking about both would be the same answer twice.
-///
-/// **It reads whichever grid is active**, which is the normal one for every caller there is: `Session::replay` is
-/// the only one, and it runs between a shell starting and its first byte — long before anything could ask for
-/// the alternate screen. A session already on the alternate screen would be answered about *that* grid, which is
-/// the honest reading of "has anything been written here" and is also a state no replay can reach.
-fn is_empty(term: &Term<Proxy>) -> bool {
-    let grid = term.grid();
-    if term.history_size() > 0 {
-        return false;
-    }
-    (0..grid.screen_lines()).all(|line| {
-        (0..grid.columns()).all(|column| {
-            let point = Point::new(Line(line as i32), Column(column));
-            let cell = &grid[point];
-            cell.c == ' ' || cell.c == '\0'
-        })
-    })
-}
-
 /// One terminal.
 pub struct Session {
     term: Arc<FairMutex<Term<Proxy>>>,
@@ -189,8 +173,6 @@ pub struct Session {
     ///
     /// **What [`Session::replay`] is gated on.** Putting a screen back is safe only before the program's own
     /// output has started arriving; afterwards it would land in the middle of whatever the program is drawing.
-    /// `Event::Wakeup` is the reader thread saying the grid changed, which is the honest signal. `task-1908`.
-    has_read_from_the_program: bool,
     /// The pseudoterminal, kept only to be asked what program is in the foreground of it.
     ///
     /// See [`crate::foreground`]: a node's recorded command is what it was *given*, and what is running in it
@@ -217,6 +199,14 @@ pub struct Session {
     bells: usize,
     /// The name shown on the tab before the program sets a title of its own.
     name: String,
+    /// The program that was really started, which is not always the one the tab is named after.
+    ///
+    /// **What a restored node needs.** It starts `unluminous-cli --replay-screen …`, which prints the screen
+    /// it was left showing and then becomes the shell — and a pseudoconsole sets its title to the program it
+    /// was created with, so the node came back with `\\…\\unluminous-cli.exe` written across its header.
+    /// That title says no more than the name of a program, which is the case `title_is_only_the_program`
+    /// already exists for; it could not see it, because the name it was asked about was the shell's.
+    started: String,
     /// The name a person typed for this tab, which beats both of the two above.
     ///
     /// Empty until somebody renames the tab. A name that was asked for by hand is the one thing in
@@ -234,9 +224,16 @@ impl Session {
         alacritty_terminal::tty::setup_env();
 
         let shell = settings.shell.clone().unwrap_or_else(default_shell);
+        // **The name is what the caller says it is, whatever is really started.** A node restoring its screen
+        // starts `unluminous-cli --replay-screen …`, which prints the screen and then becomes the shell, and a
+        // tab named after the program that was spawned would be a tab named `unluminous-cli`. See
+        // `SessionSettings::name`.
         let name = program_name(&shell);
+        let name = settings.name.clone().unwrap_or(name);
+        let started = program_name(&shell);
+        let args = settings.args.clone();
         let options = alacritty_terminal::tty::Options {
-            shell: Some(alacritty_terminal::tty::Shell::new(shell, settings.args.clone())),
+            shell: Some(alacritty_terminal::tty::Shell::new(shell, args)),
             // Through `paths::plain`, because a verbatim Windows path is a path `cmd.exe` will not
             // start in: it says so and starts in `C:\Windows` instead, which is a terminal that opens,
             // works, and is quietly in the wrong folder. That module says where such a path comes from.
@@ -303,7 +300,6 @@ impl Session {
             notifier: Some(notifier),
             reaper,
             master,
-            has_read_from_the_program: false,
             parser: None,
             size,
             palette,
@@ -313,6 +309,7 @@ impl Session {
             exit_code: None,
             bells: 0,
             name,
+            started,
             given: String::new(),
         })
     }
@@ -335,7 +332,6 @@ impl Session {
             notifier: None,
             reaper: Reaper::detached(),
             master: crate::foreground::Master::detached(),
-            has_read_from_the_program: false,
             parser: Some(Processor::new()),
             size,
             palette,
@@ -345,6 +341,7 @@ impl Session {
             exit_code: None,
             bells: 0,
             name: "detached".to_owned(),
+            started: String::new(),
             given: String::new(),
         }
     }
@@ -376,40 +373,34 @@ impl Session {
         // sooner or later — the stream is mostly `\x1b[0;38;2;232;235;241;48;2;26;31;38m` — and half a sequence
         // is not a shorter sequence, it is text: the tail `35;241m` would be *printed*. So the bound is applied
         // to the screen before it is written, which is where a row boundary exists to respect.
-        Some(crate::replay::bytes_within(&self.snapshot(), crate::replay::REPLAY_LIMIT))
+        //
+        // **The scrollback and the screen**, which is `task-1912`'s first fault against this: a snapshot is
+        // the visible grid, so a node fourteen rows tall wrote fourteen rows down and the five commands
+        // somebody wanted back were three of them short. Two bounds, whichever binds first.
+        Some(crate::replay::bytes_within(
+            &self.screen_and_history(crate::replay::REPLAY_ROWS),
+            crate::replay::REPLAY_LIMIT,
+        ))
     }
 
-    /// Put a screen back, before anything has been read from the program.
+    /// Write bytes into the terminal whatever the program has been doing, which [`Self::replay`] refuses to do.
     ///
-    /// **What `task-1908` asks for**: a terminal node comes back showing what was on it, which is a stream of
-    /// the bytes that would draw it — see [`crate::replay`] for what is in one and why it is bytes rather than
-    /// text.
+    /// **The measurement `task-1912` needed, and then the mechanism it needed.** On Windows the pseudoconsole
+    /// clears the screen and repaints it the first time the program writes — measured on `pwsh`, `cmd.exe` and
+    /// `powershell.exe` alike, which is what says it is the console host rather than any one shell — so a
+    /// screen put back *before* the program has written is pushed into the scrollback and erased from view.
+    /// Putting it back has to happen after that repaint, and after it `Self::replay`'s rule is false by
+    /// construction.
     ///
-    /// **Not [`Self::feed`]**, and the difference is a rule rather than an inconvenience. `feed` works only on a
-    /// detached session, because a session with a shell has the reader thread's parser and two parsers over one
-    /// stream would interleave. Replaying is not input: it happens before the first byte of the program's own
-    /// output, so there is nothing to interleave with. A parser of its own is made for it, used once and
-    /// dropped.
-    ///
-    /// **Refused once anything has been read**, which is what keeps that true. Answers whether it happened, so
-    /// a caller that has left it too late is told rather than believing a screen was put back.
-    pub fn replay(&mut self, bytes: &[u8]) -> bool {
-        if self.has_read_from_the_program {
-            return false;
-        }
+    /// **Nothing in Unluminous puts a screen back this way**, and this is here so that can go on being true:
+    /// `examples/replay_probe` is what calls it, to measure what the console host does to a screen that was
+    /// drawn from outside. What a restored node does instead is print its screen *inside* its own console —
+    /// `unluminous_cli::restore`, and §2 of `tasks/task-1912-a-session-and-a-terminal-tdd.md` for why there is
+    /// no other place it survives.
+    pub fn draw_over_the_terminal(&mut self, bytes: &[u8]) {
         let mut parser: Processor = Processor::new();
         let mut term = self.term.lock();
-        // **Asked of the grid, under the lock, rather than of the flag alone.** The flag is set when
-        // `Event::Wakeup` is *read*, which happens in `pump` — so between the reader thread writing and the next
-        // pump the flag is still false, and a replay in that window would land in the middle of whatever the
-        // program had begun to draw. The grid itself cannot be out of date: the reader thread writes to it while
-        // holding this lock, so an empty grid under the lock is a program that has genuinely written nothing.
-        if !is_empty(&term) {
-            return false;
-        }
         parser.advance(&mut *term, bytes);
-        drop(term);
-        true
     }
 
     /// The name for the tab: the title the program set, or the program's own name.
@@ -423,7 +414,10 @@ impl Session {
         if !self.given.is_empty() {
             return &self.given;
         }
-        if self.title.is_empty() || title_is_only_the_program(&self.title, &self.name) {
+        if self.title.is_empty()
+            || title_is_only_the_program(&self.title, &self.name)
+            || title_is_only_the_program(&self.title, &self.started)
+        {
             &self.name
         } else {
             &self.title
@@ -534,10 +528,9 @@ impl Session {
                     self.running = false;
                 }
                 Event::Exit => self.running = false,
-                // **`Wakeup` is the reader thread saying the grid changed**, which is the one signal that the
-                // program has written something. `Session::replay` is refused after it, because a replay is
-                // only safe before the first byte of the program's own output — see that function.
-                Event::Wakeup => self.has_read_from_the_program = true,
+                // **`Wakeup` is the reader thread saying the grid changed**, which the window needs no more
+                // from than the frame it is already drawing: the waker has asked for one.
+                Event::Wakeup => {}
                 Event::MouseCursorDirty | Event::CursorBlinkingChange => {}
             }
         }
@@ -770,6 +763,79 @@ impl Session {
         (first..=last).map(row_text).collect::<Vec<String>>().join("\n")
     }
 
+    /// The last `rows` rows of the scrollback **and** the screen, as one [`Screen`].
+    ///
+    /// **What "five commands and their results" needs**, and what [`Self::snapshot`] cannot give: a snapshot is
+    /// the visible grid, so a node fourteen rows tall wrote fourteen rows down and the first commands were
+    /// already gone. `task-1912` measured that at 457 bytes for five commands. This is the reading
+    /// [`Self::written_text`] has always done — the grid indexes history at negative lines — with the colours
+    /// and the attributes kept, which is what makes the difference between a restored terminal and a
+    /// transcript of one.
+    ///
+    /// Trailing blank rows are left in: [`crate::replay::bytes_of`] drops them, and doing it twice in two
+    /// places is two rules about the same thing.
+    pub fn screen_and_history(&self, rows: usize) -> Screen {
+        let term = self.term.lock();
+        let columns = term.columns();
+        let screen_lines = term.screen_lines() as i32;
+        let history = term.history_size() as i32;
+        let first = (screen_lines - rows as i32).max(-history);
+        let taken = (screen_lines - first).max(0) as usize;
+        let mut screen =
+            Screen::empty(taken, columns, self.palette.foreground, self.palette.background);
+        // The colours a program may have redefined, which `renderable_content` is the only way to reach. The
+        // grid is read directly afterwards, because `display_iter` walks the *visible* rows and the point of
+        // this is the rows behind them.
+        let colours = *term.renderable_content().colors;
+        let grid = term.grid();
+        for line in first..screen_lines {
+            let row = &grid[Line(line)];
+            let into = (line - first) as usize;
+            for column in 0..columns {
+                screen.cells[into * columns + column] =
+                    self.cell_of(&row[Column(column)], &colours);
+            }
+        }
+        screen
+    }
+
+    /// One cell of the grid, with its colours resolved against the palette and whatever the program changed.
+    ///
+    /// Shared by [`Self::snapshot`] and [`Self::screen_and_history`], because a cell that came out looking one
+    /// way on the screen and another way in the file would be a restored terminal that is visibly not the one
+    /// somebody left.
+    fn cell_of(
+        &self,
+        cell: &alacritty_terminal::term::cell::Cell,
+        colours: &alacritty_terminal::term::color::Colors,
+    ) -> ScreenCell {
+        let flags = cell.flags;
+        let bold = flags.contains(Flags::BOLD) || flags.contains(Flags::DIM_BOLD);
+        let dim = flags.contains(Flags::DIM);
+        let mut foreground = self.palette.resolve(cell.fg, bold && !dim, colours);
+        if dim {
+            foreground = foreground.dimmed();
+        }
+        let mut background = self.palette.resolve(cell.bg, false, colours);
+        if flags.contains(Flags::INVERSE) {
+            std::mem::swap(&mut foreground, &mut background);
+        }
+        ScreenCell {
+            character: cell.c,
+            marks: cell.zerowidth().map(<[char]>::to_vec).unwrap_or_default(),
+            foreground,
+            background,
+            bold,
+            italic: flags.contains(Flags::ITALIC) || flags.contains(Flags::BOLD_ITALIC),
+            underline: flags.intersects(Flags::ALL_UNDERLINES),
+            strikethrough: flags.contains(Flags::STRIKEOUT),
+            wide: flags.contains(Flags::WIDE_CHAR),
+            spacer: flags.contains(Flags::WIDE_CHAR_SPACER)
+                || flags.contains(Flags::LEADING_WIDE_CHAR_SPACER),
+            hidden: flags.contains(Flags::HIDDEN),
+        }
+    }
+
     /// A point in the grid from a row on the screen, taking the scrollback into account.
     fn point_at(&self, row: usize, column: usize) -> Point {
         let term = self.term.lock();
@@ -799,38 +865,12 @@ impl Session {
             if row >= rows || column >= columns {
                 continue;
             }
-            let cell = indexed.cell;
-            let flags = cell.flags;
-            let bold = flags.contains(Flags::BOLD) || flags.contains(Flags::DIM_BOLD);
-            let dim = flags.contains(Flags::DIM);
-
-            // Bold text in a named colour is drawn in the bright variant, which is what every terminal
-            // does. Dim text is drawn in the darker one.
-            let mut foreground = self.palette.resolve(cell.fg, bold && !dim, colours);
-            if dim {
-                foreground = foreground.dimmed();
-            }
-            let mut background = self.palette.resolve(cell.bg, false, colours);
-            // Inverse video swaps the two, which is how a program marks a line without changing its
-            // colours. Resolved here so the painter has one rule: draw the background, draw the letter.
-            if flags.contains(Flags::INVERSE) {
-                std::mem::swap(&mut foreground, &mut background);
-            }
-
-            screen.cells[row * columns + column] = ScreenCell {
-                character: cell.c,
-                marks: cell.zerowidth().map(<[char]>::to_vec).unwrap_or_default(),
-                foreground,
-                background,
-                bold,
-                italic: flags.contains(Flags::ITALIC) || flags.contains(Flags::BOLD_ITALIC),
-                underline: flags.intersects(Flags::ALL_UNDERLINES),
-                strikethrough: flags.contains(Flags::STRIKEOUT),
-                wide: flags.contains(Flags::WIDE_CHAR),
-                spacer: flags.contains(Flags::WIDE_CHAR_SPACER)
-                    || flags.contains(Flags::LEADING_WIDE_CHAR_SPACER),
-                hidden: flags.contains(Flags::HIDDEN),
-            };
+            // Bold text in a named colour is drawn in the bright variant, which is what every terminal does;
+            // dim text is drawn in the darker one; and inverse video swaps the two, which is how a program
+            // marks a line without changing its colours. All three are resolved in `cell_of`, so the painter
+            // has one rule — draw the background, draw the letter — and so that a cell written down for a
+            // restore is the cell that was on the screen.
+            screen.cells[row * columns + column] = self.cell_of(indexed.cell, colours);
         }
 
         // The cursor. Hidden while the view is scrolled back, because it is not on the screen being looked
@@ -918,7 +958,7 @@ fn config() -> Config {
 /// `COMSPEC` is still the last resort, for a Windows with no PowerShell on the path at all.
 /// `terminal.shell` in the settings file beats all of it, which is how a person who wants `cmd` back
 /// asks for it.
-fn default_shell() -> String {
+pub fn default_shell() -> String {
     if cfg!(target_os = "windows") {
         for shell in ["pwsh.exe", "powershell.exe"] {
             if on_the_path(shell) {
@@ -1630,6 +1670,7 @@ Start-Sleep -Seconds 900"),
             args: vec![shell_flag.to_owned(), command],
             working_directory: None,
             env: vec![("UNLUMINOUS_RUN_TEST".to_owned(), "it-arrived".to_owned())],
+            name: None,
         };
         let waker: Waker = Arc::new(|| {});
         let mut session =
@@ -1684,6 +1725,7 @@ Start-Sleep -Seconds 900"),
             args: vec![shell_flag.to_owned(), command],
             working_directory: None,
             env: vec![("UNLUMINOUS_RUN_TEST".to_owned(), "one".to_owned())],
+            name: None,
         };
         let waker: Waker = Arc::new(|| {});
         let mut session =

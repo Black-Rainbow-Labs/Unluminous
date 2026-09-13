@@ -1496,6 +1496,59 @@ impl UnluminousApp {
         }
     }
 
+    /// Start this node by printing the screen it was left showing, and then becoming the shell.
+    ///
+    /// **What the node was left showing, printed by its own console rather than drawn onto it.** `task-1912`
+    /// measured why that is the only thing that works: on Windows the console host clears the screen the first
+    /// time the program writes and thereafter repaints the cells it believes it owns, so a screen put into the
+    /// terminal from outside is erased — and put back later it is overwritten by the next keystroke and left
+    /// visibly corrupt. §2 of the design has the table. So the shell is started *underneath*
+    /// `unluminous-cli --replay-screen`, which prints the bytes and then becomes it, and what comes back is
+    /// ordinary output of the node's own console: the console host holds it, its repaints keep it, a resize
+    /// reflows it, and the rows that scroll off reach the scrollback as any command's output does.
+    ///
+    /// **Nothing happens for every start but one**, which is the ordinary case: a screen is written down only
+    /// when a window closes, and whoever prints it takes the file away, so the one moment a node has one is
+    /// the first time it starts in a new window. `Restart` on a node later in the session finds nothing and
+    /// gets the shell it asked for, which is what it means. A node starting with nothing to restore takes away
+    /// anything lying there, which is `task-1908`'s rule kept where the reading now happens.
+    ///
+    /// A project Unluminous is not remembering — a test's window — restores nothing, which is the rule the
+    /// whole of `project_state` keeps.
+    fn print_a_remembered_screen_first(
+        &self,
+        node: NodeId,
+        settings: &mut unluminous_terminal::session::SessionSettings,
+    ) {
+        if !self.remembers_this_project() {
+            return;
+        }
+        let root = self.tree.root();
+        let Some(file) = crate::services::space::store::a_screen_to_print(root, node) else {
+            return;
+        };
+        // **`unluminous-cli`, which is installed beside this program and is a console program.** Both halves
+        // matter: it is certainly there, and on Windows only a console subsystem program is given standard
+        // handles inside a pseudoconsole — `restore::Restore::shim` has the measurement. A shim that is not
+        // there leaves the shell to start plainly, because a terminal that will not open is worse than a
+        // terminal that opens with nothing restored.
+        let shim = std::path::PathBuf::from(crate::services::agent_tasks::beside_this_program(
+            "unluminous-cli",
+        ));
+        let restore = unluminous_cli::restore::Restore { file, shim };
+        if !unluminous_cli::restore::is_worth_trying(&restore) {
+            crate::services::space::store::forget_a_screen(root, node);
+            return;
+        }
+        // The shell the node would have started, kept as the tab's name: what is spawned is the program that
+        // prints the screen, and a tab named after that would be a tab named `unluminous-cli`.
+        let shell = settings.shell.clone().unwrap_or_else(unluminous_terminal::session::default_shell);
+        settings.name = Some(shell.clone());
+        let (program, args) = unluminous_cli::restore::command_line(&restore, &shell, &settings.args);
+        settings.shell = Some(program.display().to_string());
+        settings.args = args;
+    }
+
     /// Make a terminal node's session, or start it again.
     pub(crate) fn start_a_space_terminal(&mut self, node: NodeId, resume: bool) -> Result<(), String> {
         let Some(found) = self.space.space.current().node(node).cloned() else {
@@ -1519,31 +1572,15 @@ impl UnluminousApp {
             &session_wanted,
         )
         .1;
-        let settings = self.space_terminal_settings_for(&found, resume, &session_wanted)?;
+        let mut settings = self.space_terminal_settings_for(&found, resume, &session_wanted)?;
+        self.print_a_remembered_screen_first(node, &mut settings);
         let parts = space_view::parts_of(&found);
         let font = space_view::font_size_of(&found, self.settings.terminal_font_size);
         let cell = self.renderer.cell_metrics(font);
         let size = crate::components::terminal_panel::grid_size(parts.body.size(), cell);
         let waker = self.waker();
         match unluminous_terminal::Session::spawn(&settings, size, waker) {
-            Ok(mut session) => {
-                // **The screen it was left showing, put back before anything has been read.** `task-1908`:
-                // *"one with `ls` command executed … I want both exactly restored so I see … the contents of
-                // `ls`."* The bytes are taken as they are read, so a node that fails to start does not replay
-                // the same screen for ever, and `Session::replay` refuses once the program has written — which
-                // is why this is here, in the moment between the shell starting and its first output.
-                //
-                // **A restore is told from a restart by the file existing at all.** A screen is written down
-                // only when the window closes and is taken away as it is read, so the one moment a node has a
-                // saved screen is the first time it starts in a new window. `Restart` on a node later in the
-                // session finds nothing and gets the shell it asked for, which is what it means.
-                if self.remembers_this_project() {
-                    if let Some(bytes) =
-                        crate::services::space::store::take_a_screen(self.tree.root(), node)
-                    {
-                        session.replay(&bytes);
-                    }
-                }
+            Ok(session) => {
                 self.space.live.start_terminal(node, session);
                 self.space.live.follow_from_here(node);
                 // **Written down once it really started**, so a node whose program would not start is not
@@ -1647,6 +1684,10 @@ impl UnluminousApp {
                     (crate::services::agent_tasks::agent::ENV_INSTANCE.to_owned(), instance),
                 ]
             },
+            // **Filled in by the caller, not here.** Whether a node has a screen to come back showing is a
+            // question about this window's project and about whether the node is starting for the first time,
+            // and this function answers what the node *is* — `print_a_remembered_screen_first` puts it on.
+            name: None,
         })
     }
 
@@ -2907,6 +2948,7 @@ impl UnluminousApp {
             "connections" => self.cli_space_connections(request),
             "camera" => self.cli_space_camera(request),
             "send" => self.cli_space_send(request),
+            "read" => self.cli_space_read(request),
             "restart" => {
                 let node = match self.a_named_node(request, "node") {
                     Ok(node) => node,
@@ -3385,6 +3427,31 @@ impl UnluminousApp {
             session.send(format!("{}\r", text.trim_end()).into_bytes());
         }
         done(request, format!("Typed into node {node}."))
+    }
+
+    /// What a terminal node is showing, scrollback and all.
+    ///
+    /// **The one thing an agent could not ask about.** `space view` answers with a node's command, folder,
+    /// size and session id, and `terminal read` reads the terminal *panel* — so until `task-1912` there was no
+    /// way at all to read a terminal node, which is the rule this repository opens with turned on its head. It
+    /// is also why every measurement in that ticket had to be a photograph of a window.
+    ///
+    /// **The scrollback as well as the screen**, which is `run output`'s own distinction and is what a
+    /// restored node needs: the commands somebody wants to see again are very often above the fold.
+    fn cli_space_read(&mut self, request: &Request) -> Outcome {
+        let node = match self.a_reachable_node(request, "node", Kind::Terminal) {
+            Ok(node) => node,
+            Err(outcome) => return outcome,
+        };
+        // Take in whatever the program has written since the last frame, so a read straight after a send is
+        // not looking at the screen as it was before the command ran. `cli_terminal_read`'s own rule.
+        self.space.live.catch_up();
+        let lines = request.whole("tail");
+        let Some(session) = self.space.live.terminal(node) else {
+            return no(request, code::REFUSED, format!("Node {node} has no terminal running."));
+        };
+        let text = session.written_text(lines);
+        ok(request, String::new(), json!({ "node": node, "text": text }))
     }
 
     /// How big a terminal node's letters are.

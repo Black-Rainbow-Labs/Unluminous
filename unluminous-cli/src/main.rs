@@ -55,6 +55,20 @@ fn main() {
 /// Read the command line and do what it says. Split out from `main` so that it returns the exit
 /// code rather than taking the process down, which is what makes it testable.
 fn run(words: &[String]) -> i32 {
+    // **Before the catalogue, because this is not a command.** A terminal node that is coming back showing
+    // what was on it starts `unluminous-cli --replay-screen <file> -- <shell> [args]`, which prints the
+    // remembered screen and then becomes the shell. It is here, in the program that does four things and no
+    // more, for one measured reason: `alacritty_terminal` gives a pseudoconsole's child null standard handles,
+    // and Windows fills those in from the console for a **console** program and not for a windows subsystem
+    // one — so the window's own binary printed nothing at all, and neither did the shell it started.
+    // `unluminous_terminal::restore` owns both ends of the shape, and §3 of
+    // `tasks/task-1912-a-session-and-a-terminal-tdd.md` says why a screen cannot be put back any other way.
+    //
+    // Read whole and first, because everything after the separator is the shell's own command line and may
+    // hold anything at all, including words that look like this program's own flags.
+    if let Some((file, program, args)) = unluminous_cli::restore::asked_for(words) {
+        return unluminous_cli::restore::run(&file, &program, &args);
+    }
     let typed = match parse::parse(words) {
         Ok(typed) => typed,
         Err(problem) => {

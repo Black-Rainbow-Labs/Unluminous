@@ -276,6 +276,9 @@ impl RunPanel {
                 environment.extend(configuration.environment());
                 environment
             },
+            // The program the configuration names is the program that is started, so the tab is named after
+            // it in the ordinary way. `SessionSettings::name` is the canvas's, for a node being restored.
+            name: None,
         };
         let session = Session::spawn(&settings, size, waker)
             .map_err(|problem| format!("Unluminous could not start {program}: {problem}"))?;

@@ -35,7 +35,7 @@
 //! terminal tile. What is added is the **session id** an agent named, so a node can offer to resume the
 //! conversation rather than only the program.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use egui::{Pos2, Vec2};
 
@@ -717,13 +717,30 @@ pub fn save_a_screen(
         .map_err(|problem| format!("{} could not be written: {problem}", file.display()))
 }
 
-/// Read back a terminal node's screen, and take the file away.
+/// The file a terminal node is to come back showing, when there is one worth showing.
 ///
-/// **Taken away as it is read**, so a canvas that fails to start a node does not replay the same screen for
-/// ever. What is on a terminal is the last thing that was on it, not a thing a project owns.
-pub fn take_a_screen(root: &Path, node: crate::services::space::NodeId) -> Option<Vec<u8>> {
+/// **The path rather than the bytes**, because what reads them is no longer this process: `task-1912` measured
+/// that a screen written into a terminal from outside is erased by the console host on Windows, so what is
+/// restored is printed by a program *inside* the node's own console — `unluminous_terminal::restore`. The file
+/// is taken away by whoever printed it.
+///
+/// An empty file answers `None` and is removed, so a node whose screen was written down as nothing does not
+/// start a shim to print nothing.
+pub fn a_screen_to_print(root: &Path, node: crate::services::space::NodeId) -> Option<PathBuf> {
     let file = screen_path(root, node);
-    let bytes = std::fs::read(&file).ok()?;
-    let _ = std::fs::remove_file(&file);
-    (!bytes.is_empty()).then_some(bytes)
+    let worth_it = std::fs::metadata(&file).map(|about| about.len() > 0).unwrap_or(false);
+    if !worth_it {
+        let _ = std::fs::remove_file(&file);
+        return None;
+    }
+    Some(file)
+}
+
+/// Throw away whatever a node had written down, because it is starting without it.
+///
+/// **What keeps `task-1908`'s rule true now that the reading has moved**: a canvas that failed to come back
+/// must not replay a week-old screen for ever. The shim deletes the file once it has printed it, and this is
+/// the other way a file stops existing — a node started with nothing to restore.
+pub fn forget_a_screen(root: &Path, node: crate::services::space::NodeId) {
+    let _ = std::fs::remove_file(screen_path(root, node));
 }

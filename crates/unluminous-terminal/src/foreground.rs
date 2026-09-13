@@ -18,11 +18,13 @@
 //! So a node running `claude` can be asked, and a node sitting at a prompt answers with the shell — which is
 //! the distinction the feature needs.
 //!
-//! **Windows answers nothing, and that is honest rather than unfinished.** A ConPTY is a pipe, not a
-//! controlling terminal, so there is no foreground process group to ask for; the control that offers to start
-//! a program again simply does not appear there, which is Unluminous's own rule about a control that cannot
-//! apply. The shape a later ticket would take is a process tree walk from the child handle `reap::Reaper`
-//! already holds on that platform.
+//! **Windows has no foreground process group, so it is answered by walking the process tree.** A ConPTY is a
+//! pipe rather than a controlling terminal, so there is nothing to ask `tcgetpgrp` of — and for two versions
+//! this module said so and answered `None`, which meant that on Windows a node where somebody typed `claude`
+//! recorded nothing, came back a bare shell, and resumed no conversation. That is the second half of
+//! `task-1912`'s report, and the fix is the one this module's own note named: a walk down from the child
+//! process the pseudoconsole was given. [`descendant_program`] is that walk and §5 of
+//! `tasks/task-1912-a-session-and-a-terminal-tdd.md` is the three rules it keeps.
 
 /// A duplicate of a session's pseudoterminal, kept only to be asked what is running in it.
 ///
@@ -32,6 +34,9 @@
 pub struct Master {
     #[cfg(unix)]
     fd: Option<std::os::fd::OwnedFd>,
+    /// The process the pseudoconsole was given, which on Windows is where the walk down starts.
+    #[cfg(windows)]
+    child: Option<u32>,
 }
 
 impl Master {
@@ -43,7 +48,17 @@ impl Master {
             use std::os::fd::AsFd;
             Self { fd: pty.file().as_fd().try_clone_to_owned().ok() }
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            // The process id rather than the handle, because that is what a snapshot of the process table is
+            // keyed on and because an id that has gone simply matches nothing — where a handle kept open would
+            // hold the dead process's object alive for as long as this session lives.
+            let handle = pty.child_watcher().raw_handle() as *mut std::ffi::c_void;
+            // Safe: the handle belongs to the pseudoterminal and is open for the length of this call.
+            let id = unsafe { windows_sys::Win32::System::Threading::GetProcessId(handle) };
+            Self { child: (id != 0).then_some(id) }
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             Self {}
         }
@@ -55,7 +70,11 @@ impl Master {
         {
             Self { fd: None }
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            Self { child: None }
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             Self {}
         }
@@ -80,7 +99,11 @@ impl Master {
             }
             program_named(group)
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            descendant_program(self.child?)
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             None
         }
@@ -193,6 +216,177 @@ fn argv_zero(pid: i32) -> Option<String> {
     (!named.is_empty()).then_some(named)
 }
 
+/// The name of the program a Windows terminal is talking to, found by walking down from `root`.
+///
+/// **Four rules, and each is the answer to a case that would otherwise be plausible and wrong.**
+///
+/// - **The newest child at each level**, by creation time. A shell that has run two programs has two children
+///   only while the first is still exiting, and the one somebody is talking to is the one that started last.
+/// - **The walk stops at the first thing that is neither a shell nor the shim**, which is the job the terminal
+///   started. Walking all the way down instead was the first version of this and it is wrong in the case the
+///   whole feature exists for: `claude` starts programs of its own for its tools, so a node running `claude`
+///   with a `bash` open under it would have been recorded as running `bash`. This is what `tcgetpgrp` means by
+///   a foreground process *group* on the other platform.
+/// - **But it walks *through* a shell**, because a program is often reached by one: an `npm` installed
+///   `claude.cmd` is `cmd.exe` with a program under it, and stopping at the shell would answer nothing.
+/// - **The console's own child is a candidate rather than a step.** A node given a command runs that command
+///   as the pseudoconsole's child with no shell at all, and a walk that moved down before looking answered
+///   with whatever that program had started: measured against a real `claude`, whose node recorded
+///   `running = python` for a helper it had spawned.
+/// - **The shim is stepped over.** A node restoring its screen starts `unluminous-cli --replay-screen …`,
+///   which prints the screen and then becomes the shell — so the pseudoconsole's own child is that program,
+///   and a walk that did not know it would report every restored node as running `unluminous-cli`.
+///
+/// A walk that finds only shells answers with the last of them, which is a node sitting at a prompt.
+/// `services::space::launch::is_a_shell` is what turns that into nothing on the other side, so the two
+/// platforms are filtered by one rule rather than two.
+///
+/// One snapshot of the process table serves the whole walk, which matters because this is asked of every
+/// terminal node on a clock.
+#[cfg(windows)]
+pub fn descendant_program(root: u32) -> Option<String> {
+    let table = process_table()?;
+    let mut at = root;
+    // **The console's own child is a candidate, not a step to take.** A node given a command runs that command
+    // *as* the pseudoconsole's child with no shell at all, so a walk that moved down before looking answered
+    // with whatever the program had started: measured against a real `claude`, whose node recorded
+    // `running = python` — a helper it had spawned — where the answer is `claude`.
+    let mut name = table
+        .iter()
+        .find(|process| process.id == root)
+        .map(|process| without_the_extension(&process.name).to_owned());
+    // Bounded, because a process table read while processes are starting and stopping can in principle
+    // describe a cycle, and a walk down a tree that cannot be deeper than this is not worth a visited set.
+    for _ in 0..32 {
+        // Only a shell or the shim is walked through: anything else is the job the terminal is talking to.
+        if !name.as_deref().is_some_and(|named| is_the_shim(named) || looks_like_a_shell(named)) {
+            break;
+        }
+        let Some(next) = newest_child(&table, at) else { break };
+        at = next.id;
+        name = Some(without_the_extension(&next.name).to_owned());
+    }
+    // A walk that got no further than the shim found no shell under it, which is a node whose program has
+    // already gone: the shim is not a thing to report as running.
+    let named = name.filter(|named| !is_the_shim(named))?;
+    (!named.is_empty()).then_some(named)
+}
+
+/// Whether a program name is Unluminous itself, printing a node's remembered screen before becoming its shell.
+///
+/// Split out so that the rule has a name a test can hold: on Windows the pseudoconsole's own child is the shim
+/// for the life of a restored node, and a walk that reported it would say every restored node was running
+/// `unluminous`. The extension comes off first, because what the process table answers with is a file name.
+#[cfg(windows)]
+fn is_the_shim(named: &str) -> bool {
+    without_the_extension(named).eq_ignore_ascii_case("unluminous-cli")
+}
+
+/// Whether a program name is a shell, which is a reason to keep walking rather than an answer.
+///
+/// **The same list `services::space::launch::is_a_shell` holds, for a different question.** That one decides
+/// whether what a node is running is worth writing down; this one decides where to stop walking. It is a few
+/// words rather than a dependency, because this crate is below the one that owns the other, and a name missing
+/// from here costs a walk that stops one level early rather than a wrong answer.
+#[cfg(windows)]
+fn looks_like_a_shell(named: &str) -> bool {
+    const SHELLS: [&str; 8] = ["pwsh", "powershell", "cmd", "bash", "sh", "zsh", "fish", "wsl"];
+    SHELLS.iter().any(|shell| named.eq_ignore_ascii_case(shell))
+}
+
+/// A program name with `.exe` taken off it, however it is spelled.
+///
+/// The process table answers with the file name the file system holds, and `PING.EXE` is what it really gives
+/// back — so a case-sensitive comparison takes the extension off some names and not others.
+#[cfg(windows)]
+fn without_the_extension(named: &str) -> &str {
+    match named.len() >= 4 && named[named.len() - 4..].eq_ignore_ascii_case(".exe") {
+        true => &named[..named.len() - 4],
+        false => named,
+    }
+}
+
+/// One row of the process table: who it is, who started it, and when.
+#[cfg(windows)]
+struct Process {
+    id: u32,
+    parent: u32,
+    name: String,
+}
+
+/// Every process on the machine, read once.
+#[cfg(windows)]
+fn process_table() -> Option<Vec<Process>> {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    // Safe: a snapshot of the process list, closed below whatever happens after it.
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snapshot == INVALID_HANDLE_VALUE {
+        return None;
+    }
+    let mut out = Vec::new();
+    let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+    // Safe: `entry` is sized as the call requires and lives for the length of the loop.
+    let mut more = unsafe { Process32FirstW(snapshot, &mut entry) } != 0;
+    while more {
+        let end = entry.szExeFile.iter().position(|unit| *unit == 0).unwrap_or(entry.szExeFile.len());
+        out.push(Process {
+            id: entry.th32ProcessID,
+            parent: entry.th32ParentProcessID,
+            name: String::from_utf16_lossy(&entry.szExeFile[..end]),
+        });
+        more = unsafe { Process32NextW(snapshot, &mut entry) } != 0;
+    }
+    // Safe: the snapshot was made above and is not used again.
+    unsafe { CloseHandle(snapshot) };
+    Some(out)
+}
+
+/// The child of `parent` that started most recently.
+///
+/// **Creation time asked of the process itself**, because the table's own order is the order the operating
+/// system happened to walk it in and says nothing about age. A process that has gone between the snapshot and
+/// this question answers with the beginning of time, so it loses to a live sibling rather than winning.
+#[cfg(windows)]
+fn newest_child<'a>(table: &'a [Process], parent: u32) -> Option<&'a Process> {
+    table
+        .iter()
+        .filter(|process| process.parent == parent && process.id != parent)
+        .max_by_key(|process| started_at(process.id))
+}
+
+/// When a process was created, as the number the operating system keeps.
+#[cfg(windows)]
+fn started_at(pid: u32) -> u64 {
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};
+    use windows_sys::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    // Safe: a handle asked for with the narrowest access that answers this question, closed below.
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        return 0;
+    }
+    let mut created = FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+    let mut exited = created;
+    let mut kernel = created;
+    let mut user = created;
+    // Safe: four owned structures, and a handle opened immediately above.
+    let asked = unsafe {
+        GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user)
+    };
+    // Safe: the handle was opened above and is not used again.
+    unsafe { CloseHandle(handle) };
+    match asked {
+        0 => 0,
+        _ => ((created.dwHighDateTime as u64) << 32) | created.dwLowDateTime as u64,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,6 +399,73 @@ mod tests {
     #[test]
     fn a_terminal_with_no_pseudoterminal_answers_with_nothing() {
         assert_eq!(Master::detached().foreground(), None);
+    }
+
+    /// A shell with a program running under it answers with the program, which is what a terminal is.
+    ///
+    /// **The Windows half of this module, and until `task-1912` there was none.** A ConPTY has no foreground
+    /// process group, so what a node is running is read by walking down from the process the pseudoconsole was
+    /// given — and a walk with no test is a walk that answers plausibly and wrongly. Real processes rather
+    /// than a pseudoterminal, because what is under test is the walk and not the console.
+    ///
+    /// **A shell with the program under it**, which is the shape a node really has and is what says the walk
+    /// goes *through* a shell rather than stopping at one. It is also what makes this test its own: walking
+    /// from the test process would find whatever shell another test in this binary had just started.
+    #[cfg(windows)]
+    #[test]
+    fn a_real_program_is_seen_running_under_a_shell() {
+        // A program that stays alive long enough to be seen and ends on its own if this test does not reach
+        // its kill: `ping` against the loopback address, which is on every Windows there is.
+        let mut shell = std::process::Command::new("cmd.exe")
+            .args(["/c", "ping -n 20 127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .expect("start a shell with a program under it");
+        // The table is a snapshot, and the child is not in it until the operating system has made it.
+        let mut seen = None;
+        for _ in 0..60 {
+            seen = descendant_program(shell.id());
+            if seen.as_deref().is_some_and(|name| !looks_like_a_shell(name)) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let _ = shell.kill();
+        let _ = shell.wait();
+        let seen = seen.expect("a program running under the shell is seen");
+        assert_eq!(
+            seen.to_ascii_lowercase(),
+            "ping",
+            "the program under the shell, named rather than pathed"
+        );
+    }
+
+    /// A process with nothing under it answers with nothing, which is what a shell at a prompt is.
+    ///
+    /// `services::space::launch::is_a_shell` is what turns a shell's own name into nothing on the other side
+    /// of this; what matters here is that a leaf is a leaf rather than an error.
+    #[cfg(windows)]
+    #[test]
+    fn a_process_with_nothing_under_it_is_running_nothing() {
+        // Deliberately absurd rather than merely large: no process is running under it, so nothing can be a
+        // child of it either.
+        assert_eq!(descendant_program(0x7fff_fff0), None);
+    }
+
+    /// The shim is not what a node is running.
+    ///
+    /// A node restoring its screen starts `crate::restore`'s shim, which prints the screen and then becomes
+    /// the shell — so on Windows the pseudoconsole's own child is Unluminous, and a walk that did not know it
+    /// would report every restored node as running `unluminous`. Asked of this process, which during a test
+    /// run is `unluminous-terminal`'s test binary and not the shim, the rule is what is checked rather than
+    /// the accident.
+    #[cfg(windows)]
+    #[test]
+    fn the_shim_is_not_what_a_node_is_running() {
+        assert!(!is_the_shim("pwsh.exe"));
+        assert!(!is_the_shim("unluminous"), "the window is not the shim; the command line program is");
+        assert!(is_the_shim("unluminous-cli"));
+        assert!(is_the_shim("UNLUMINOUS-CLI.EXE"), "however the file system spells it");
     }
 
     /// The shell this test is running under is a real process with a real name.
