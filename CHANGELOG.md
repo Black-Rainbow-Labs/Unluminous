@@ -8,6 +8,10 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- Drive and photograph the window without taking the keyboard (`task-1914`)
+
+## 0.43.0 — 2026-09-12
+
 - Two more node kinds, a page that keeps its width, and a canvas you can drop on (`task-1914`)
 
 ## 0.42.1 — 2026-09-12
