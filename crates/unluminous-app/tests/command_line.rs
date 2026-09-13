@@ -844,6 +844,12 @@ fn settings_list_keeps_a_long_value_and_its_help_apart() {
 /// The help of every setting, so the test can find the seam in a row without a second copy of the
 /// settings list.
 const SETTINGS_HELP: &[&str] = &[
+    // `task-1922` WP4's three, which are the reason this list is a list rather than a rule: a help
+    // string added to `cli_settings::SETTINGS` and not added here fails this test, which is what it
+    // is for.
+    "What one indent is made of, which is what the Tab key types where nothing is selected. Tabs, which is what it has always typed. Indenting a selection is still one character a line, because unluminous-core's indent unit is a character.",
+    "Whether a new line starts with the indentation of the line it was started from.",
+    "Whether the trailing whitespace goes off every line when a file is written. Off. It never runs on a Markdown file, where two trailing spaces are a line break.",
     "The family the editor sets text in.",
     "The point size the editor sets text in, in every tab.",
     "How opaque the window is. Below 1 the desktop shows through.",
@@ -1327,7 +1333,7 @@ fn the_palette_is_a_modal_the_command_line_can_drive_like_go_to_file() {
     assert_eq!(rows["results"][0]["name"], "toggle-line-numbers");
 
     let was = harness.state().settings.line_numbers;
-    did(&mut harness, "modal accept --index 0");
+    did(&mut harness, "modal accept 0");
     assert_eq!(harness.state().settings.line_numbers, !was);
     assert_eq!(
         did(&mut harness, "modal state")["open"],
@@ -1339,7 +1345,7 @@ fn the_palette_is_a_modal_the_command_line_can_drive_like_go_to_file() {
     // what the palette itself does: somebody looking for Redo wants to be told there is nothing to
     // redo, not told there is no such command.
     did(&mut harness, "modal open command-palette --query redo");
-    assert_eq!(refused(&mut harness, "modal accept --index 0"), "not-applicable");
+    assert_eq!(refused(&mut harness, "modal accept 0"), "not-applicable");
     assert_eq!(did(&mut harness, "modal state")["open"], "command-palette");
     did(&mut harness, "modal cancel");
 }

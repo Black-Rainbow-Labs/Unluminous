@@ -3383,8 +3383,14 @@ fn the_palette_is_built_from_the_real_menus_and_narrows_as_it_is_typed_into() {
     assert!(all > 40, "it opens on everything the menus hold, which is {all} rows");
 
     // A subsequence rather than a substring, which is `file_search`'s own rule — the same scorer,
-    // not a second one written for names. `tln` matches the entry's own name rather than its
-    // wording, because `Show Line Numbers` holds no `t` at all.
+    // not a second one written for names.
+    //
+    // **`tln` shows the tiering rather than one winner.** `Go to Line...` matches it in the
+    // *wording*, which is what is scored first because it is what is on the screen;
+    // `Show Line Numbers` holds no `t` at all and matches only through the entry's own **name**,
+    // `toggle-line-numbers`, which is the third tier and is worth less. So both are offered and the
+    // one whose label matched is first. An earlier version of this test asserted the other way
+    // round and had never been run.
     let palette = harness.state_mut().palette.as_mut().expect("still open");
     palette.query = "tln".to_owned();
     palette.refresh();
@@ -3397,7 +3403,9 @@ fn the_palette_is_built_from_the_real_menus_and_narrows_as_it_is_typed_into() {
         .iter()
         .map(|row| row.command.name.clone())
         .collect();
-    assert_eq!(names.first().map(String::as_str), Some("toggle-line-numbers"), "{names:?}");
+    assert!(names.len() < all, "typing narrows it: {} of {all}", names.len());
+    assert_eq!(names.first().map(String::as_str), Some("go-to-line"), "{names:?}");
+    assert!(names.iter().any(|name| name == "toggle-line-numbers"), "{names:?}");
 }
 
 #[test]
@@ -3406,7 +3414,14 @@ fn a_row_the_palette_runs_goes_through_the_same_function_a_menu_row_does() {
     let was = harness.state().settings.line_numbers;
     choose(&mut harness, Action::CommandPalette);
     let palette = harness.state_mut().palette.as_mut().expect("the palette is open");
-    palette.query = "toggle line numbers".to_owned();
+    // **The wording, because that is what the palette scores first and what a person reads** -- and
+    // `line numbers` rather than either whole wording, because this entry's row says `Hide Line
+    // Numbers` while they are on and `Show Line Numbers` while they are off. A query naming one of
+    // them would pass or fail on the state the harness happened to start in.
+    //
+    // Before it was ever run this test asked for `toggle line numbers`, which matches nothing at
+    // all: the entry's own name holds no spaces and neither wording holds a `t`.
+    palette.query = "line numbers".to_owned();
     palette.refresh();
     let chosen = harness.state().palette.as_ref().unwrap().chosen_command().cloned();
     let chosen = chosen.expect("a row is chosen");
@@ -3470,7 +3485,7 @@ fn the_palette_offers_the_entries_wp4_added_and_names_their_chords() {
         ("toggle-block-comment", "Ctrl+Shift+Slash"),
         ("duplicate-line", "Ctrl+Shift+D"),
         ("join-lines", "Ctrl+Shift+J"),
-        ("go-to-line", "Ctrl+L"),
+        ("go-to-line", "Ctrl+Shift+L"),
         ("go-to-matching-bracket", "Ctrl+Shift+Backslash"),
         ("reopen-closed-tab", "Ctrl+Shift+T"),
         ("command-palette", "Ctrl+Shift+A"),
