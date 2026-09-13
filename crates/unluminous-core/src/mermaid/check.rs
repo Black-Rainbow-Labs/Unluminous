@@ -170,3 +170,77 @@ pub fn refused(text: &str, options: &Options) -> Problem {
         Err(problem) => problem,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::scene::{Anchor, TextStyle};
+    use super::*;
+    use crate::style::Color;
+
+    fn plain_rect(rect: Rect) -> Item {
+        Item::Rect { rect, radius: 0.0, fill: None, stroke: None }
+    }
+
+    fn plain_text(at: Point, text: &str, size: f32) -> Item {
+        Item::Text {
+            at,
+            text: text.to_owned(),
+            style: TextStyle {
+                family: "Helvetica".to_owned(),
+                size,
+                bold: false,
+                italic: false,
+                color: Color::WHITE,
+            },
+            anchor: Anchor::Start,
+        }
+    }
+
+    // Every one of the twenty diagram types is held to this checker, so if it stopped checking
+    // nothing would say so. These four are built by hand rather than laid out, so each fails for
+    // exactly the reason it names rather than for whatever a renderer happened to produce.
+
+    #[test]
+    #[should_panic(expected = "two boxes overlap")]
+    fn two_overlapping_node_rectangles_fail() {
+        let rects = vec![
+            Rect::new(0.0, 0.0, 50.0, 20.0),
+            Rect::new(25.0, 0.0, 50.0, 20.0), // twenty five points into the first box
+        ];
+        no_two_rectangles_overlap(&rects);
+    }
+
+    #[test]
+    #[should_panic(expected = "not a number")]
+    fn a_nan_anywhere_fails() {
+        // A `Text` item's bounds are its own origin alone, because this crate cannot measure a
+        // string, so a NaN hiding in its *style* passes the "nothing is outside the scene" check
+        // and is caught only by the finite-numbers one. Building it this way, rather than putting
+        // the NaN in a rectangle, is what makes this a test of that check and not of the other one.
+        let mut scene = Scene::new();
+        scene.add(plain_rect(Rect::new(0.0, 0.0, 100.0, 40.0)));
+        scene.add(plain_text(Point::new(10.0, 10.0), "caption", f32::NAN));
+        properties(&scene, &["caption"]);
+    }
+
+    #[test]
+    #[should_panic(expected = "does not say")]
+    fn a_missing_source_label_fails() {
+        let mut scene = Scene::new();
+        scene.add(plain_rect(Rect::new(0.0, 0.0, 100.0, 40.0)));
+        scene.add(plain_text(Point::new(10.0, 10.0), "Start", 12.0));
+        properties(&scene, &["Finish"]);
+    }
+
+    #[test]
+    fn a_good_scene_passes() {
+        let mut scene = Scene::new();
+        scene.add(plain_rect(Rect::new(0.0, 0.0, 100.0, 40.0)));
+        scene.add(plain_rect(Rect::new(120.0, 0.0, 100.0, 40.0)));
+        scene.add(plain_text(Point::new(10.0, 10.0), "Start", 12.0));
+        scene.add(plain_text(Point::new(130.0, 10.0), "Finish", 12.0));
+
+        properties(&scene, &["Start", "Finish"]);
+        no_two_rectangles_overlap(&scene.rects());
+    }
+}

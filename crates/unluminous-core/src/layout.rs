@@ -1346,6 +1346,164 @@ mod tests {
         }
     }
 
+    /// One randomly parameterised edit of the named shape, applied to `document`. Returns what it
+    /// did, which is what a failing round's assertion names.
+    fn apply_one_random_edit(
+        document: &mut Document,
+        shape: usize,
+        words: &[&str],
+        next: &mut impl FnMut() -> usize,
+    ) -> &'static str {
+        let boundary = |rope: &Rope, mut at: usize| {
+            while at > 0 && !rope.is_char_boundary(at) {
+                at -= 1;
+            }
+            at
+        };
+        let len = document.text().len_bytes();
+        let lines = document.text().len_lines();
+
+        match shape {
+            0 => {
+                // a plain insert
+                let at = boundary(document.text(), next() % (len + 1));
+                let word = words[next() % words.len()].to_owned();
+                document.apply(Command::ReplaceMany(vec![(at..at, word)]));
+                "a plain insert"
+            }
+            1 => {
+                // a plain delete: a handful of characters, wherever they land
+                let at = boundary(document.text(), next() % (len + 1));
+                let end = boundary(document.text(), (at + 1 + next() % 6).min(len));
+                let (start, end) = (at.min(end), at.max(end));
+                document.apply(Command::ReplaceMany(vec![(start..end, String::new())]));
+                "a plain delete"
+            }
+            2 => {
+                // a replacement: the same shape of range as a delete, filled with different words
+                let at = boundary(document.text(), next() % (len + 1));
+                let end = boundary(document.text(), (at + 1 + next() % 6).min(len));
+                let (start, end) = (at.min(end), at.max(end));
+                let words =
+                    format!("{} {}", words[next() % words.len()], words[next() % words.len()]);
+                document.apply(Command::ReplaceMany(vec![(start..end, words)]));
+                "a replacement"
+            }
+            3 if lines >= 3 => {
+                // spanning two paragraphs: from partway through one paragraph to partway through
+                // the one after next, taking a whole paragraph out of the middle of the range.
+                let first = next() % (lines - 2);
+                let start = boundary(
+                    document.text(),
+                    (document.text().line_range(first).start + next() % 3).min(len),
+                );
+                let end = boundary(
+                    document.text(),
+                    (document.text().line_range(first + 2).start + next() % 3).min(len),
+                );
+                let (start, end) = (start.min(end), start.max(end));
+                document.apply(Command::ReplaceMany(vec![(start..end, "joined".to_owned())]));
+                "an edit spanning two paragraphs"
+            }
+            4 if lines >= 2 => {
+                // exactly on a paragraph boundary: delete the line break itself, which is what
+                // `relayout`'s prefix and suffix match has to get right at the seam.
+                let line = 1 + next() % (lines - 1);
+                let at = document.text().line_range(line).start;
+                document
+                    .apply(Command::ReplaceMany(vec![(at.saturating_sub(1)..at, String::new())]));
+                "an edit exactly on a paragraph boundary"
+            }
+            _ => {
+                // formatting only: not one byte of the text moves.
+                let at = boundary(document.text(), next() % (len + 1));
+                let end = boundary(document.text(), (at + 1 + next() % 8).min(len));
+                let (start, end) = (at.min(end), at.max(end));
+                if start == end {
+                    return "formatting with nothing selected";
+                }
+                document.apply(Command::PlaceCaret { offset: start, extend: false });
+                document.apply(Command::PlaceCaret { offset: end, extend: true });
+                document.apply(Command::ToggleBold);
+                "a formatting only change"
+            }
+        }
+    }
+
+    /// **A few hundred edits, every shape, checked against a fresh layout after each one.**
+    ///
+    /// The model is `incremental.rs`'s
+    /// `five_hundred_random_edits_all_agree_with_reading_the_whole_file`: a tiny seeded generator
+    /// rather than the machine's own randomness, so a failure is reproducible from the seed printed
+    /// in the assertion. The bar this crate's own comments set for `relayout` is **identical**, not
+    /// close, because a stale line here looks like a drawing fault and lives in the model rather
+    /// than in the painter.
+    ///
+    /// Six shapes are cycled through rather than left to chance, because the prefix and suffix
+    /// match is exactly where `relayout` could disagree with a fresh layout and the awkward cases
+    /// are the ones worth forcing: a plain insert, a plain delete, a replacement, one that spans two
+    /// paragraphs, one sitting exactly on a paragraph boundary (which is what joins two paragraphs
+    /// into one), and one that changes formatting alone and touches no byte of the text. Three
+    /// hundred rounds, against one document that keeps growing and shrinking under them, because
+    /// that is what a real editing session does to a file rather than starting fresh every time.
+    #[test]
+    fn relayout_agrees_with_layout_after_hundreds_of_random_edits() {
+        let seed = 0x5EED_1922_u64;
+        let mut state = seed;
+        let mut next = move || {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (state >> 33) as usize
+        };
+
+        let words = ["alpha", "beta", "gamma delta", "epsilon zeta", "eta", "theta iota kappa"];
+        let mut text = String::new();
+        for index in 0..40 {
+            if index % 9 == 0 {
+                text.push('\n'); // an empty paragraph
+            } else if index % 4 == 0 {
+                text.push_str(&format!(
+                    "paragraph {index} is a good deal longer than the ones near it, long enough \
+                     that it wraps more than once at the width this test lays out at\n"
+                ));
+            } else {
+                text.push_str(&format!("line {index} {}\n", words[index % words.len()]));
+            }
+        }
+
+        let mut document = Document::from_text(&text);
+        document.set_syntax(Color::WHITE, &[(4..9, Color::RED), (20..30, Color::BLUE)]);
+
+        for round in 0..300 {
+            let before = layout(
+                document.text(),
+                document.chars(),
+                document.paragraphs(),
+                &FixedMetrics::default(),
+                200.0,
+            );
+
+            let what = apply_one_random_edit(&mut document, round % 6, &words, &mut next);
+
+            let fresh = layout(
+                document.text(),
+                document.chars(),
+                document.paragraphs(),
+                &FixedMetrics::default(),
+                200.0,
+            );
+            let incremental = relayout(
+                before,
+                document.text(),
+                document.chars(),
+                document.paragraphs(),
+                &FixedMetrics::default(),
+                200.0,
+                &Hidden::none(),
+            );
+            assert_eq!(incremental, fresh, "seed {seed:#x} round {round} disagreed after {what}");
+        }
+    }
+
     /// A layout kept from a different width is not something to build on, so the whole thing is laid
     /// out again. Dragging the divider beside the editing area is what does this.
     #[test]

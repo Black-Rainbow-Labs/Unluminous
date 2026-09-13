@@ -236,4 +236,77 @@ mod tests {
         assert_eq!(next_word(text, 0, 7), 7);
         assert_eq!(prev_word(text, 0, 0), 0);
     }
+
+    /// `next_grapheme` and `Layout`'s own clusters decide where a character boundary is by two
+    /// different routes — one walking a plain string, the other retained from laying a paragraph
+    /// out — and they have to agree, because a caret that lands somewhere the layout would never
+    /// put a cluster boundary is a caret nobody can see.
+    ///
+    /// A single uniform run, deliberately: both routes end up calling the same
+    /// `unicode-segmentation` function over the same bytes, so a disagreement here is not a
+    /// question of which segmentation rule is "right" — it would be this crate's own arithmetic
+    /// putting the boundary somewhere the library never said. That is worth failing loudly for
+    /// rather than working around, which is why this stops at the first mismatch and reports the
+    /// exact string and offset rather than skipping past it.
+    #[test]
+    fn next_grapheme_and_the_layouts_clusters_agree_on_where_a_character_ends() {
+        use crate::layout::layout;
+        use crate::metrics::FixedMetrics;
+        use crate::rope::Rope;
+        use crate::style::{CharStyle, ParagraphStyles, StyleSpans};
+
+        // Combining marks, an emoji, an emoji with a skin tone modifier, an emoji joined out of
+        // several code points with zero width joiners, and three scripts whose ordinary spelling
+        // puts combining marks on a base letter.
+        let pieces = [
+            "e\u{0301}",                 // e + combining acute accent
+            "a\u{0300}\u{0301}\u{0302}", // three combining marks stacked
+            "\u{1F600}",                 // a plain emoji
+            "\u{1F44D}\u{1F3FD}",        // thumbs up + skin tone modifier
+            "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}", // a family, joined by ZWJ
+            "\u{0928}\u{092E}\u{0938}\u{094D}\u{0924}\u{0947}",             // Devanagari "namaste"
+            "\u{0E01}\u{0E33}\u{0E25}\u{0E31}\u{0E07}",                     // Thai with tone marks
+            "\u{05E9}\u{05B8}\u{05C1}\u{05D5}\u{05B9}\u{05DD}", // Hebrew "shalom" with niqud
+        ];
+        let text = pieces.join(" ");
+
+        let mut cursor_boundaries = vec![0usize];
+        let mut at = 0;
+        while at < text.len() {
+            let after = next_grapheme(&text, 0, at);
+            assert!(after > at, "next_grapheme made no progress at {at} in {text:?}");
+            cursor_boundaries.push(after);
+            at = after;
+        }
+
+        let rope = Rope::from_str(&text);
+        let spans = StyleSpans::new(rope.len_bytes(), CharStyle::default());
+        let paragraphs = ParagraphStyles::new(rope.len_lines());
+        // A width wide enough that nothing wraps: wrapping only ever breaks between clusters, but
+        // keeping this to one line keeps the comparison to the one question this test is about.
+        let laid_out = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 100_000.0);
+        let mut layout_boundaries = vec![0usize];
+        for line in &laid_out.lines {
+            for cluster in line.clusters() {
+                layout_boundaries.push(cluster.bytes().end);
+            }
+        }
+
+        // Walk both lists together and name the first place they part company, rather than just
+        // dumping two long vectors of numbers at whoever reads this failure.
+        for (index, pair) in cursor_boundaries.iter().zip(layout_boundaries.iter()).enumerate() {
+            assert_eq!(
+                pair.0, pair.1,
+                "cursor::next_grapheme and Layout's clusters disagree in {text:?}: at boundary \
+                 {index}, next_grapheme said {} and the layout said {}",
+                pair.0, pair.1
+            );
+        }
+        assert_eq!(
+            cursor_boundaries.len(),
+            layout_boundaries.len(),
+            "cursor::next_grapheme and Layout's clusters found a different number of boundaries \
+             in {text:?}: {cursor_boundaries:?} against {layout_boundaries:?}"
+        );
+    }
 }
