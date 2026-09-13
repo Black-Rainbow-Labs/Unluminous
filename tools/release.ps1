@@ -60,7 +60,10 @@ param(
     [string] $Notes,
     [switch] $SkipInstall,
     [switch] $SkipPublish,
-    [switch] $WhatIf
+    [switch] $WhatIf,
+    # Skip the suite. For a release whose tests were just run by hand; the gate exists because
+    # `task-1922` found every release so far had been made with nothing checking the build at all.
+    [switch] $SkipTests
 )
 
 $ErrorActionPreference = 'Stop'
@@ -255,6 +258,7 @@ Write-Host "Unluminous $current -> $next  on $branch"
 if ($WhatIf) {
     Write-Host ''
     Write-Host 'What would happen:' -ForegroundColor Yellow
+    Write-Host "  0. cargo test --workspace --exclude unluminous-app, then -p unluminous-app --lib --bins"
     Write-Host "  1. Cargo.toml version -> $next"
     Write-Host "  2. installer\windows\build.ps1$(if (-not $SkipInstall) { ' -Install' })"
     Write-Host "  3. releases\UnluminousSetup-$next-x64.exe"
@@ -268,6 +272,28 @@ $dirty = & git status --porcelain
 if ($dirty) {
     Write-Host ($dirty -join "`n")
     throw 'The working tree is not clean. Commit the task''s own work first: a release built from a dirty checkout is one nobody can rebuild.'
+}
+
+Write-Step 'Running the suite'
+# `task-1922`: a release was tagged, installed and published before CI on the same push had answered
+# anything, and CI had not answered anything for 56 runs. This is the `suite` job of
+# `.github/workflows/ci.yml`, run here, so a release cannot be made from a workspace whose tests do
+# not pass.
+#
+# The screenshot suite is deliberately not here. It needs a graphics card and it needs a person to
+# open any image that changed, which is the rule a script must not be allowed to satisfy on its own;
+# it runs on CI on the same push, and the line below says so rather than leaving it unsaid.
+if (-not $SkipTests) {
+    Invoke-Checked 'cargo test --workspace --exclude unluminous-app' {
+        & cargo test --manifest-path $Manifest --workspace --exclude unluminous-app
+    }
+    Invoke-Checked 'cargo test -p unluminous-app --lib --bins' {
+        & cargo test --manifest-path $Manifest -p unluminous-app --lib --bins
+    }
+    Write-Host 'The window through wgpu is not run here: it needs a graphics card and a person to look'
+    Write-Host 'at any image that changed. It runs on CI on this push.'
+} else {
+    Write-Host 'Skipped by -SkipTests.'
 }
 
 # Everything GitHub needs is checked here, before anything is changed, so that a missing credential

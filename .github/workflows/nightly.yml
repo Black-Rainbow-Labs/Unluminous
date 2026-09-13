@@ -58,7 +58,8 @@ jobs:
         shell: bash
         run: |
           git config --global url."https://x-access-token:${{ secrets.INILLUCENT_TOKEN }}@github.com/".insteadOf "https://github.com/"
-      - uses: dtolnay/rust-toolchain@stable
+      - name: The toolchain rust-toolchain.toml names
+        run: rustup show
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with:
@@ -91,3 +92,46 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "\`cargo test -p unluminous-app --test agent_board -- --ignored --test-threads=1\`" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  real-debuggers:
+    name: The three tests that drive a real debugger
+    runs-on: windows-latest
+    # `task-1922`: these three were written to skip with a message and `return` when no adapter is
+    # installed, which reports a **pass** -- so the suite said it had checked something it had never
+    # run. They are `#[ignore]`d now, the way `agent_board.rs`'s are, and this is the once-a-night
+    # somebody asking for them. Windows because that is the platform Unluminous is developed on and the
+    # one whose MSVC debug information `services::debuggers` carries a warning about.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      # `inillucent` is a private repository, so the token `actions/checkout` uses cannot reach it and
+      # cargo stops at `failed to authenticate when downloading repository` before a single crate is
+      # built. `shell: bash` because the Windows runners default to PowerShell, which reads the dots
+      # in `url."...".insteadOf` as its own syntax.
+      - name: Reach the private Inillucent repository
+        shell: bash
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.INILLUCENT_TOKEN }}@github.com/".insteadOf "https://github.com/"
+      - name: The toolchain rust-toolchain.toml names
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # CodeLLDB and js-debug, through the repository's own fetchers, so the runner installs what a
+      # person on this machine is told to install and nothing else has to be kept in step.
+      - name: Fetch CodeLLDB
+        run: pwsh tools/get-debug-adapter.ps1
+      - name: Fetch js-debug
+        shell: bash
+        run: bash tools/get-debug-adapter.sh node
+
+      - name: Point the tests at them and run them
+        shell: bash
+        run: |
+          lldb="$LOCALAPPDATA/Unluminous/adapters/codelldb/extension/adapter/codelldb.exe"
+          node_adapter=$(find "$LOCALAPPDATA/Unluminous/adapters" -name dapDebugServer.js | head -1)
+          echo "lldb:  $lldb"
+          echo "node:  $node_adapter"
+          UNLUMINOUS_LLDB_ADAPTER="$lldb" UNLUMINOUS_NODE_ADAPTER="$node_adapter"             cargo test -p unluminous-app --test screenshots -- --ignored --test-threads=1

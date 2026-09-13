@@ -40,6 +40,7 @@
 #   tools/release.sh --skip-publish      # everything up to the tag, and stop before GitHub
 #   tools/release.sh --skip-notarize     # sign but do not send it to Apple: a build for this machine only
 #   tools/release.sh --dry-run           # say what would happen and change nothing
+#   tools/release.sh --skip-tests        # for a release whose suite was just run by hand
 #
 # **No `gh` and no second credential.** `release.ps1` installs the GitHub CLI with winget the first
 # time; the equivalent here would be a download, because this machine has no homebrew either. The
@@ -62,6 +63,7 @@ notes=""
 skip_install=0
 skip_publish=0
 skip_notarize=0
+skip_tests=0
 dry_run=0
 
 # A while loop rather than `for argument in "$@"`, because the bash macOS ships is 3.2 and that one
@@ -74,6 +76,7 @@ while [ "$#" -gt 0 ]; do
         --skip-install) skip_install=1 ;;
         --skip-publish) skip_publish=1 ;;
         --skip-notarize) skip_notarize=1 ;;
+        --skip-tests) skip_tests=1 ;;
         --dry-run|--whatif) dry_run=1 ;;
         -h|--help) sed -n '3,49p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -131,6 +134,7 @@ echo "Unluminous $current -> $next  on $branch"
 if [ "$dry_run" = 1 ]; then
     echo
     echo "What would happen:"
+    echo "  0. cargo test --workspace --exclude unluminous-app, then -p unluminous-app --lib --bins"
     echo "  1. Cargo.toml version -> $next"
     echo "  2. installer/macos/build.sh$([ "$skip_install" = 1 ] || echo ' --install')$([ "$skip_notarize" = 1 ] || echo ' --notarize')"
     echo "  3. $image"
@@ -144,6 +148,24 @@ dirty="$(git status --porcelain)"
 if [ -n "$dirty" ]; then
     echo "$dirty"
     die "The working tree is not clean. Commit the task's own work first: a release built from a dirty checkout is one nobody can rebuild."
+fi
+
+step 'Running the suite'
+# `task-1922`: a release was tagged, installed and published before CI on the same push had answered
+# anything, and CI had not answered anything for 56 runs. This is the `suite` job of
+# `.github/workflows/ci.yml`, run here, so a release cannot be made from a workspace whose tests do
+# not pass.
+#
+# The screenshot suite is deliberately not here. It needs a graphics card and it needs a person to
+# open any image that changed, which is the rule a script must not be allowed to satisfy on its own;
+# it runs on CI on the same push, and the line below says so rather than leaving it unsaid.
+if [ "$skip_tests" = 1 ]; then
+    echo 'Skipped by --skip-tests.'
+else
+    cargo test --manifest-path "$repo/Cargo.toml" --workspace --exclude unluminous-app
+    cargo test --manifest-path "$repo/Cargo.toml" -p unluminous-app --lib --bins
+    echo 'The window through wgpu is not run here: it needs a graphics card and a person to look at'
+    echo 'any image that changed. It runs on CI on this push.'
 fi
 
 # Everything GitHub needs is checked here, before anything is changed, so a missing credential cannot
