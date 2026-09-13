@@ -8,6 +8,10 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- Two more node kinds, a page that keeps its width, and a canvas you can drop on (`task-1914`)
+
+## 0.42.1 — 2026-09-12
+
 - A session has a beginning, and a terminal prints its own screen back (`task-1912`)
 
 ## 0.42.0 — 2026-09-11
