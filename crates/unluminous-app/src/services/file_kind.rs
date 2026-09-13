@@ -459,6 +459,50 @@ pub fn definitions_apply(path: Option<&Path>, grammars: &Grammars) -> bool {
     path.is_some_and(|path| !is_image(path) && grammars.defines_symbols(path))
 }
 
+/// The marker that starts a line comment in this file's language, when it has one. `task-1922` WP4.
+///
+/// **The answer is the marker rather than a yes**, because the menu and the command line need
+/// different halves of the same question — whether to draw `Comment with Line Comment` at all, and
+/// what to put in front of each line — and two functions would be two chances to disagree about a
+/// file. The seventh question of the shape [`formatting_applies`] started, and it keeps that rule:
+/// a language whose grammar names no marker gets **no entry**, not a dimmed one, because no amount
+/// of waiting will give CSS a `//`.
+///
+/// It comes from the plugin, never from a list of languages here, which is `folding_reading`'s rule
+/// and `language.renders`'.
+pub fn line_comment(path: Option<&Path>, grammars: &Grammars) -> Option<String> {
+    let path = path?;
+    if is_image(path) {
+        return None;
+    }
+    grammars.for_path(path)?.line_comment.clone()
+}
+
+/// The pair that opens and closes a block comment in this file's language, when it has one.
+///
+/// [`line_comment`]'s twin, and a language may name either, both or neither: CSS has `/* */` and no
+/// line comment, and a shell has `#` and no block comment.
+pub fn block_comment(path: Option<&Path>, grammars: &Grammars) -> Option<(String, String)> {
+    let path = path?;
+    if is_image(path) {
+        return None;
+    }
+    grammars.for_path(path)?.block_comment.clone()
+}
+
+/// True when trailing whitespace may be taken off this file when it is written.
+///
+/// **False for Markdown, whatever the setting says**, because two spaces at the end of a line there
+/// are a line break: trimming them changes what the document means rather than tidying it. A picture
+/// holds no text to trim. `task-1922` WP4.
+///
+/// A document nobody has saved anywhere is Markdown too, which is the answer [`preview_applies`] and
+/// [`folding_reading`] already give it and is not a guess: `UnluminousApp::save` writes an untitled
+/// document to `untitled.md`.
+pub fn trimming_applies(path: Option<&Path>) -> bool {
+    path.is_some() && !is_markdown(path) && !path.is_some_and(is_image)
+}
+
 /// True when `Find References` and `Rename Symbol` can apply to this file.
 ///
 /// A wider question than [`definitions_apply`], because neither needs a definition: finding every
@@ -874,6 +918,50 @@ mod tests {
         for prose in ["notes.md", "notes.txt"] {
             assert!(formatting_applies(Some(Path::new(prose))));
         }
+    }
+
+    /// The comment markers come from the plugins that are switched on, not from a list here.
+    ///
+    /// `task-1922` WP4. CSS is the case worth having: it has `/* */` and **no** line comment, so the
+    /// two questions are genuinely separate and a file with one and not the other gets one entry on
+    /// the menu rather than two or none.
+    #[test]
+    fn the_comment_markers_come_from_the_plugin_that_claims_the_file() {
+        let plugins = crate::services::plugins::Plugins::load(None).0;
+        let grammars = plugins.grammars();
+        for code in ["main.rs", "app.js", "index.ts"] {
+            let path = Path::new(code);
+            assert_eq!(line_comment(Some(path), grammars).as_deref(), Some("//"), "{code}");
+            assert_eq!(
+                block_comment(Some(path), grammars),
+                Some(("/*".to_owned(), "*/".to_owned())),
+                "{code}"
+            );
+        }
+        let css = Path::new("site.css");
+        assert_eq!(line_comment(Some(css), grammars), None, "// is not a comment in CSS");
+        assert!(block_comment(Some(css), grammars).is_some());
+        // Prose and a picture have no language at all, so both answers are nothing and both menu
+        // entries are absent.
+        for other in ["notes.md", "notes.txt", "picture.png"] {
+            let path = Path::new(other);
+            assert_eq!(line_comment(Some(path), grammars), None, "{other}");
+            assert_eq!(block_comment(Some(path), grammars), None, "{other}");
+        }
+        assert_eq!(line_comment(None, grammars), None, "an unsaved document has no language");
+    }
+
+    /// Trailing whitespace means something in Markdown and nowhere else Unluminous opens.
+    #[test]
+    fn markdown_is_the_one_file_whose_trailing_whitespace_is_left_alone() {
+        for path in ["notes.md", "readme.markdown", "page.mdx"] {
+            assert!(!trimming_applies(Some(Path::new(path))), "{path}");
+        }
+        for path in ["main.rs", "app.js", "notes.txt", "site.css"] {
+            assert!(trimming_applies(Some(Path::new(path))), "{path}");
+        }
+        assert!(!trimming_applies(Some(Path::new("picture.png"))), "a picture holds no lines");
+        assert!(!trimming_applies(None), "an unsaved document is prose until it is saved");
     }
 
     #[test]

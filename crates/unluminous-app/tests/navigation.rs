@@ -1887,3 +1887,138 @@ fn a_picture_has_no_folding_entries_at_all() {
     assert!(unluminous_app::app::actions::folding_menu(&state).is_empty());
     assert!(unluminous_app::app::actions::folding_here_menu(&state).is_empty());
 }
+
+// -------------------------------------------------------------------------------------- task-1922
+//
+// `Go to Line` and the bracket pair. WP4's navigation half: two ways of arriving somewhere in the
+// file in front of you, each with a menu entry, a chord and a command.
+
+/// A file with brackets in the code, in a comment and in a string, which is the whole difficulty.
+fn bracket_folder() -> std::path::PathBuf {
+    fixture(
+        "unluminous-1922-brackets",
+        &[("main.rs", "fn one() {\n    // a } in a comment\n    let a = \"}\";\n}\nfn two() {}\n")],
+    )
+}
+
+#[test]
+fn the_bracket_pair_skips_the_one_in_the_comment_and_the_one_in_the_string() {
+    // The reason this is a command rather than a search for the character: a `}` inside `// }` and
+    // one inside `"}"` are not brackets, and only a reading that knows comments from code can say
+    // so. The tokens come from the colouring, which has already read this file at this revision.
+    let mut harness = harness_in(&bracket_folder());
+    did(&mut harness, "tab open main.rs --permanent");
+    let text = harness.state().document().text().to_string();
+    let opener = text.find('{').expect("the opening brace");
+    let closer = text.rfind("}\nfn two").expect("the closing brace of the first function");
+
+    let pair = did(&mut harness, &format!("editor bracket --offset {opener}"));
+    assert_eq!(pair["from"], opener);
+    assert_eq!(pair["to"], closer, "the two inside the body are not brackets");
+    assert_eq!(pair["moved"], false, "without --go it reads and changes nothing");
+    assert_eq!(harness.state().document().selection().head, 0);
+
+    // Both offsets, because an agent handed only the answer would have to work out where it asked
+    // from. And both as line and column, which is what a person reads.
+    assert_eq!(pair["fromLine"], 1);
+    assert_eq!(pair["toLine"], 4);
+
+    // Asked from the closer it answers about the opener, so the pair is one answer either way.
+    let back = did(&mut harness, &format!("editor bracket --offset {closer}"));
+    assert_eq!(back["to"], opener);
+}
+
+#[test]
+fn go_to_matching_bracket_moves_the_caret_and_says_so_when_there_is_nowhere_to_go() {
+    let mut harness = harness_in(&bracket_folder());
+    did(&mut harness, "tab open main.rs --permanent");
+    let text = harness.state().document().text().to_string();
+    let opener = text.find('{').expect("the opening brace");
+    let closer = text.rfind("}\nfn two").expect("the closing brace");
+
+    did(&mut harness, &format!("editor caret --line 1 --column {}", opener + 1));
+    choose(&mut harness, Action::GoToMatchingBracket);
+    assert_eq!(harness.state().document().selection().head, closer);
+
+    // The command line reaches the same place through the same function.
+    did(&mut harness, &format!("editor caret --line 1 --column {}", opener + 1));
+    let went = did(&mut harness, "editor bracket --go");
+    assert_eq!(went["moved"], true);
+    assert_eq!(harness.state().document().selection().head, closer);
+
+    // A caret that is not beside a bracket is told so rather than left wondering.
+    did(&mut harness, "editor caret --line 1 --column 1");
+    assert_eq!(refused(&mut harness, "editor bracket"), "not-found");
+    choose(&mut harness, Action::GoToMatchingBracket);
+    let said = harness.state().message.clone().unwrap_or_default();
+    assert!(said.contains("bracket"), "the status bar should say why: {said}");
+}
+
+#[test]
+fn go_to_line_takes_a_line_or_a_line_and_a_column() {
+    let folder =
+        fixture("unluminous-1922-go-to-line", &[("main.rs", "one\ntwo\nthree\nfour\nfive\n")]);
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open main.rs --permanent");
+
+    // The menu entry opens the prompt, seeded with the line the status bar is already showing, so
+    // the chord followed by Enter is not a jump to somewhere else.
+    choose(&mut harness, Action::GoToLine);
+    let prompt = harness.state().prompt.clone().expect("the prompt is open");
+    assert_eq!(prompt.title, "Go to Line");
+    assert_eq!(prompt.value, "1");
+
+    let mut typed = prompt;
+    typed.value = "3".to_owned();
+    harness.state_mut().run_prompt_for_test(typed.clone());
+    harness.run();
+    assert_eq!(did(&mut harness, "editor caret")["line"], 3);
+
+    typed.value = "4:3".to_owned();
+    harness.state_mut().run_prompt_for_test(typed.clone());
+    harness.run();
+    let at = did(&mut harness, "editor caret");
+    assert_eq!(at["line"], 4);
+    assert_eq!(at["column"], 3);
+
+    // A line past the end is the end rather than a refusal, which is what every editor does and
+    // what somebody typing 9999 means.
+    typed.value = "9999".to_owned();
+    harness.state_mut().run_prompt_for_test(typed.clone());
+    harness.run();
+    assert_eq!(did(&mut harness, "editor caret")["line"], 6);
+
+    // And something that is not a line number says so in the status bar rather than moving.
+    typed.value = "banana".to_owned();
+    harness.state_mut().run_prompt_for_test(typed);
+    harness.run();
+    let said = harness.state().message.clone().unwrap_or_default();
+    assert!(said.contains("banana"), "the refusal quotes what was typed: {said}");
+}
+
+#[test]
+fn alt_and_an_arrow_moves_the_line_without_moving_the_caret_off_it() {
+    // The one WP4 chord pair with no menu entry, so it is read before the panes are drawn — and the
+    // key is taken out of the frame, or the same press would also move the caret up a line.
+    let folder = fixture("unluminous-1922-move-lines", &[("main.rs", "one\ntwo\nthree\n")]);
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open main.rs --permanent");
+    did(&mut harness, "editor caret --line 2 --column 1");
+    harness.state_mut().focus = unluminous_app::app::Focus::Editor;
+    harness.run();
+
+    harness.event(egui::Event::Key {
+        key: egui::Key::ArrowUp,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers { alt: true, ..Modifiers::NONE },
+    });
+    harness.run();
+    assert_eq!(harness.state().document().text().to_string(), "two\none\nthree\n");
+    assert_eq!(
+        did(&mut harness, "editor caret")["line"],
+        1,
+        "the caret went with the line rather than up off it"
+    );
+}

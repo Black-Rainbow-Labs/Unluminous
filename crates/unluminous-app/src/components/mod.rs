@@ -14,6 +14,7 @@ pub mod agent_tasks;
 pub mod branch_widget;
 pub mod browser_view;
 pub mod color_wheel;
+pub mod command_palette;
 pub mod completion;
 pub mod context_menu;
 pub mod controls;

@@ -366,6 +366,10 @@ impl UnluminousApp {
                     self.message = Some(format!("That node is called {name}"));
                 }
             }
+            Purpose::GoToLine => match self.go_to_line(&name) {
+                Ok((line, column)) => self.message = Some(format!("Line {line}, column {column}")),
+                Err(problem) => self.message = Some(problem),
+            },
             Purpose::RenameSpaceView(view) => {
                 if self.space.space.rename_view(view, name.trim()) {
                     self.message = Some(format!("That view is called {name}"));

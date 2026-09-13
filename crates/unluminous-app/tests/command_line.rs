@@ -1209,3 +1209,137 @@ fn browser_tabs_open_through_the_shared_cli_and_action_paths() {
             || harness.state().files.active().browser.as_ref().map(|tab| tab.id) != Some(2)
     );
 }
+
+// -------------------------------------------------------------------------------------- task-1922
+//
+// WP4's command line half: the two commands that have no editing `Command` behind them, and the
+// three settings. Everything else WP4 added is driven from `editor_formatting.rs` and
+// `navigation.rs`, where the text it changes can be read back.
+
+#[test]
+fn a_closed_tab_is_reopened_where_it_was_and_the_list_is_walked_backwards() {
+    let folder = fixture(
+        "unluminous-1922-reopen",
+        &[("one.rs", "fn one() {}\n"), ("two.rs", "fn two() {}\n")],
+    );
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open one.rs --permanent");
+    did(&mut harness, "tab open two.rs --permanent");
+
+    // Nothing closed yet, so there is nothing to reopen and the menu row is dimmed rather than
+    // absent — it is `Undo`'s shape, not the absent control rule.
+    let mut fresh = harness_in(&folder);
+    assert_eq!(refused(&mut fresh, "tab reopen"), "not-applicable");
+
+    did(&mut harness, "tab close two.rs");
+    did(&mut harness, "tab close one.rs");
+    assert!(harness.state().files.index_of(&folder.join("one.rs")).is_none());
+
+    let back = did(&mut harness, "tab reopen");
+    assert!(back["path"].as_str().unwrap().ends_with("one.rs"), "the newest first: {back}");
+    assert_eq!(back["left"], 1);
+    assert!(harness.state().files.index_of(&folder.join("one.rs")).is_some());
+
+    // Run again and it reaches the one before that, which is what "the ten most recent" buys.
+    let older = did(&mut harness, "tab reopen");
+    assert!(older["path"].as_str().unwrap().ends_with("two.rs"), "{older}");
+    assert_eq!(refused(&mut harness, "tab reopen"), "not-applicable");
+}
+
+#[test]
+fn reopening_a_closed_tab_from_the_menu_reaches_the_same_file() {
+    let folder = fixture("unluminous-1922-reopen-menu", &[("one.rs", "fn one() {}\n")]);
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open one.rs --permanent");
+    did(&mut harness, "tab close");
+    choose(&mut harness, Action::ReopenClosedTab);
+    assert!(harness.state().files.index_of(&folder.join("one.rs")).is_some());
+}
+
+#[test]
+fn action_find_ranks_the_menu_entries_the_way_the_palette_does() {
+    let mut harness = harness_in(&sample_folder());
+    let found = did(&mut harness, "action find line numbers");
+    let first = found["actions"][0]["name"].as_str().unwrap_or_default().to_owned();
+    assert_eq!(first, "toggle-line-numbers");
+    // The menu counts as well as the wording, so a command can be found by where it lives.
+    let git = did(&mut harness, "action find git commit");
+    let names: Vec<String> = git["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["name"].as_str().unwrap_or_default().to_owned())
+        .collect();
+    assert!(names.iter().any(|name| name == "git-commit"), "{names:?}");
+    // With nothing to look for it is `action list` cut to a readable number, in menu order.
+    let all = did(&mut harness, "action find");
+    assert_eq!(all["actions"].as_array().unwrap().len(), 20);
+    let every = did(&mut harness, "action find --limit 0");
+    let listed = did(&mut harness, "action list");
+    assert_eq!(
+        every["actions"].as_array().unwrap().len(),
+        listed["actions"].as_array().unwrap().len(),
+        "`--limit 0` is every entry `action list` has"
+    );
+}
+
+#[test]
+fn the_three_editing_settings_are_read_written_and_refused_by_name() {
+    let mut harness = harness_in(&sample_folder());
+    // What a fresh Unluminous has, which is what it did before any of them existed.
+    assert_eq!(did(&mut harness, "settings get editor.indent")["value"], "tabs");
+    assert_eq!(did(&mut harness, "settings get editor.auto_indent")["value"], "true");
+    assert_eq!(did(&mut harness, "settings get editor.trim")["value"], "false");
+
+    did(&mut harness, "settings set editor.indent spaces:2");
+    assert_eq!(did(&mut harness, "settings get editor.indent")["value"], "spaces:2");
+    did(&mut harness, "settings set editor.trim true");
+    assert!(harness.state().settings.trim_on_save);
+    did(&mut harness, "settings set editor.auto_indent false");
+    assert!(!harness.state().settings.auto_indent);
+
+    // A word this version has not got is refused with what it does take, which is the rule every
+    // other named setting keeps.
+    let reply = run(&mut harness, "settings set editor.indent four");
+    assert!(!reply.ok);
+    assert!(reply.message.contains("spaces:N"), "{}", reply.message);
+    assert_eq!(refused(&mut harness, "settings set editor.auto_indent perhaps"), "usage");
+
+    // And all three are in `settings list`, which is what an agent reads to find out they exist.
+    let listed = did(&mut harness, "settings list");
+    for name in ["editor.indent", "editor.auto_indent", "editor.trim"] {
+        assert!(listed.get(name).is_some(), "{name} should be in `settings list`");
+    }
+}
+
+#[test]
+fn the_palette_is_a_modal_the_command_line_can_drive_like_go_to_file() {
+    // `modal` is how an agent drives a dialog, so a dialog it has never heard of is a dialog an
+    // agent can only look at. `action find` plus `action run` reaches the same command; this is the
+    // window's own box being typed into, which is what a screenshot is taken of.
+    let mut harness = harness_in(&sample_folder());
+    let opened = did(&mut harness, "modal open command-palette");
+    assert_eq!(opened["open"], "command-palette");
+    assert_eq!(did(&mut harness, "modal state")["open"], "command-palette");
+
+    did(&mut harness, "modal type line numbers");
+    let rows = did(&mut harness, "modal results");
+    assert_eq!(rows["results"][0]["name"], "toggle-line-numbers");
+
+    let was = harness.state().settings.line_numbers;
+    did(&mut harness, "modal accept --index 0");
+    assert_eq!(harness.state().settings.line_numbers, !was);
+    assert_eq!(
+        did(&mut harness, "modal state")["open"],
+        serde_json::Value::Null,
+        "running a row shuts it"
+    );
+
+    // A row that cannot be used is refused with the reason and the palette stays open, which is
+    // what the palette itself does: somebody looking for Redo wants to be told there is nothing to
+    // redo, not told there is no such command.
+    did(&mut harness, "modal open command-palette --query redo");
+    assert_eq!(refused(&mut harness, "modal accept --index 0"), "not-applicable");
+    assert_eq!(did(&mut harness, "modal state")["open"], "command-palette");
+    did(&mut harness, "modal cancel");
+}

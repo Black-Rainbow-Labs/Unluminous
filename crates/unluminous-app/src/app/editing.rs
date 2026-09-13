@@ -968,12 +968,19 @@ impl UnluminousApp {
                     matches!(event, egui::Event::Text(text) if !text.chars().any(char::is_control))
                 })
             });
+        // Read before the tab is borrowed, because both come off the settings and the borrow below
+        // takes the whole window otherwise. `task-1922` WP4.
+        let typing = editor_view::Typing {
+            indent: self.indent_text(),
+            auto_indent: self.settings.auto_indent,
+        };
         let file = self.files.active_mut();
         let laid = &file.cached.layout;
         let document = &mut file.document;
         let pointer = editor_view::handle_pointer(&response, document, laid, origin, &symbol);
         let pointer_changed = pointer.changed;
-        let outcome = editor_view::handle_input(ui, document, laid, has_keyboard, formatting);
+        let outcome =
+            editor_view::handle_input(ui, document, laid, has_keyboard, formatting, &typing);
         // The window decides what a jump means, which is the rule every component follows.
         if let Some(offset) = pointer.jump {
             self.focus = Focus::Editor;
@@ -1073,6 +1080,13 @@ impl UnluminousApp {
 
         let origin = Pos2::new(area.left() + padding, area.top() + size::EDITOR_PADDING_Y - scroll);
 
+        // The two brackets around the caret, and **only in the pane that has the keyboard**: they
+        // are about where somebody is typing, and painting them in three panes at once would say
+        // that three carets are being watched. It is a binary search over the comments and strings
+        // the colouring already read, bounded at `BRACKET_SEARCH_LIMIT` bytes each way, which is why
+        // it can be asked once a frame. `task-1922` WP4.
+        let bracket_pair = focused.then(|| self.bracket_pair_at_the_caret()).flatten();
+
         // Where the completion popup hangs, worked out from the caret's own box at the position the
         // frame settled on. Recorded rather than drawn here: the window draws it after the whole row
         // of panes, so it sits over the dividers rather than under one.
@@ -1121,6 +1135,7 @@ impl UnluminousApp {
                 execution_point,
                 inline_values: &inline_values,
                 find_matches: &find_matches,
+                bracket_pair,
             },
         );
         // The Find bar, over the text at the top right. After the editing area for the reason the

@@ -425,6 +425,9 @@ impl UnluminousApp {
             "terminal.font.size" => format!("{:.0}", self.settings.terminal_font_size),
             "terminal.shell" => self.settings.terminal_shell.clone(),
             "editor.line_numbers" => self.settings.line_numbers.to_string(),
+            "editor.indent" => self.settings.indent.name(),
+            "editor.auto_indent" => self.settings.auto_indent.to_string(),
+            "editor.trim" => self.settings.trim_on_save.to_string(),
             "editor.suggestions" => self.settings.suggestions.name().to_owned(),
             "editor.line_ending" => self.settings.line_endings.name().to_owned(),
             "update.check" => self.settings.update_check.name().to_owned(),
@@ -547,6 +550,17 @@ impl UnluminousApp {
             // and is a better message than one made up here.
             "terminal.shell" => settings.terminal_shell = value.trim().to_owned(),
             "editor.line_numbers" => settings.line_numbers = flag()?,
+            "editor.indent" => {
+                settings.indent = crate::settings::Indent::parse(value).ok_or_else(|| {
+                    format!(
+                        "{name} wants tabs or spaces:N with N from {} to {}, and {value} is neither.",
+                        crate::settings::Indent::MIN_WIDTH,
+                        crate::settings::Indent::MAX_WIDTH
+                    )
+                })?
+            }
+            "editor.auto_indent" => settings.auto_indent = flag()?,
+            "editor.trim" => settings.trim_on_save = flag()?,
             "editor.suggestions" => {
                 settings.suggestions =
                     crate::settings::Suggestions::parse(value).ok_or_else(|| {
@@ -1015,6 +1029,21 @@ const SETTINGS: &[SettingKey] = &[
         help: "Whether the editing area has a column of line numbers.",
     },
     SettingKey {
+        name: "editor.indent",
+        accepts: "tabs or spaces:N, N from 2 to 8",
+        help: "What one indent is made of, which is what the Tab key types where nothing is selected. Tabs, which is what it has always typed. Indenting a selection is still one character a line, because unluminous-core's indent unit is a character.",
+    },
+    SettingKey {
+        name: "editor.auto_indent",
+        accepts: "true or false",
+        help: "Whether a new line starts with the indentation of the line it was started from.",
+    },
+    SettingKey {
+        name: "editor.trim",
+        accepts: "true or false",
+        help: "Whether the trailing whitespace goes off every line when a file is written. Off. It never runs on a Markdown file, where two trailing spaces are a line break.",
+    },
+    SettingKey {
         name: "editor.suggestions",
         accepts: "automatic or manual",
         help: "Whether the completion popup arrives as you type. Ctrl+Space works either way.",
@@ -1115,6 +1144,9 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "terminal.font.size" => format!("{:.0}", fresh.terminal_font_size),
         "terminal.shell" => fresh.terminal_shell.clone(),
         "editor.line_numbers" => fresh.line_numbers.to_string(),
+        "editor.indent" => fresh.indent.name(),
+        "editor.auto_indent" => fresh.auto_indent.to_string(),
+        "editor.trim" => fresh.trim_on_save.to_string(),
         "editor.suggestions" => fresh.suggestions.name().to_owned(),
         "editor.line_ending" => fresh.line_endings.name().to_owned(),
         "update.check" => fresh.update_check.name().to_owned(),

@@ -1,6 +1,6 @@
-//! `modal` -- the dialogs that take the whole window's keyboard while they are open: `Go to
-//! File`, `Find in Files`, `Settings`, the text prompts and the confirmations. `MODALS` is the one
-//! list of which ones exist at all.
+//! `modal` -- the dialogs that take the whole window's keyboard while they are open: `Find Action`,
+//! `Go to File`, `Find in Files`, `Settings`, the text prompts and the confirmations. `MODALS` is
+//! the one list of which ones exist at all.
 
 use super::*;
 
@@ -41,6 +41,9 @@ impl UnluminousApp {
 
     /// Which modal is open, by the name `modal open` takes.
     fn open_modal(&self) -> Option<String> {
+        if self.palette.is_some() {
+            return Some("command-palette".to_owned());
+        }
         if self.go_to_file.is_some() {
             return Some("go-to-file".to_owned());
         }
@@ -88,6 +91,11 @@ impl UnluminousApp {
             })),
         });
         let map = value.as_object_mut().expect("an object");
+        if let Some(palette) = &self.palette {
+            map.insert("query".to_owned(), json!(palette.query));
+            map.insert("results".to_owned(), json!(palette.results().len()));
+            map.insert("chosen".to_owned(), json!(palette.chosen));
+        }
         if let Some(go) = &self.go_to_file {
             map.insert("query".to_owned(), json!(go.query));
             map.insert("results".to_owned(), json!(go.results().len()));
@@ -129,6 +137,21 @@ impl UnluminousApp {
         };
         let query = request.text("query").unwrap_or_default();
         match name.as_str() {
+            // The palette is opened over the entries the menus hold right now, which is the one
+            // function `Find Action` itself calls — `task-1922` WP4.
+            "command-palette" => {
+                self.close_every_modal();
+                self.open_the_command_palette();
+                let palette = self.palette.as_mut().expect("it is open");
+                palette.query = query;
+                palette.refresh();
+                let found = palette.results().len();
+                ok(
+                    request,
+                    format!("Find Action is open with {found} results"),
+                    json!({ "open": "command-palette", "results": found }),
+                )
+            }
             "go-to-file" => {
                 self.close_every_modal();
                 self.tree.reload();
@@ -262,6 +285,16 @@ impl UnluminousApp {
 
     fn cli_modal_type(&mut self, request: &Request) -> Outcome {
         let text = request.text("text").unwrap_or_default();
+        if let Some(palette) = &mut self.palette {
+            palette.query = text.clone();
+            palette.refresh();
+            let found = palette.results().len();
+            return ok(
+                request,
+                format!("{found} commands match {text}"),
+                json!({ "query": text, "results": found }),
+            );
+        }
         if let Some(go) = &mut self.go_to_file {
             go.query = text.clone();
             let root = self.tree.root().to_path_buf();
@@ -319,6 +352,41 @@ impl UnluminousApp {
 
     /// What `modal results` answers, once there is something to answer with.
     pub(crate) fn modal_results_reply(&self, request: &Request, limit: usize) -> Reply {
+        if let Some(palette) = &self.palette {
+            let rows: Vec<Value> = palette
+                .results()
+                .iter()
+                .take(limit)
+                .enumerate()
+                .map(|(at, row)| {
+                    json!({
+                        "index": at,
+                        "name": row.command.name,
+                        "label": row.command.label,
+                        "menu": row.command.menu,
+                        "shortcut": row.command.shortcut,
+                        "enabled": row.command.enabled,
+                    })
+                })
+                .collect();
+            let printed: Vec<String> = palette
+                .results()
+                .iter()
+                .take(limit)
+                .enumerate()
+                .map(|(at, row)| format!("{at:<4}{:<32}{}", row.command.label, row.command.menu))
+                .collect();
+            return Reply::done(
+                &request.command,
+                format!("{} commands match {}", palette.results().len(), palette.query),
+                json!({
+                    "results": rows,
+                    "total": palette.results().len(),
+                    "chosen": palette.chosen,
+                    "lines": printed,
+                }),
+            );
+        }
         if let Some(go) = &self.go_to_file {
             let rows: Vec<Value> = go
                 .results()
@@ -400,6 +468,22 @@ impl UnluminousApp {
         let Some(index) = request.whole("index") else {
             return no(request, code::USAGE, "Say which row, counting from 0.");
         };
+        if let Some(palette) = &mut self.palette {
+            if index >= palette.results().len() {
+                return no(
+                    request,
+                    code::NOT_FOUND,
+                    format!("There is no row {index}; there are {}.", palette.results().len()),
+                );
+            }
+            palette.chosen = index;
+            let name = palette.chosen_command().map(|command| command.name.clone());
+            return ok(
+                request,
+                format!("Chose row {index}"),
+                json!({ "chosen": index, "name": name }),
+            );
+        }
         if let Some(go) = &mut self.go_to_file {
             if index >= go.results().len() {
                 return no(
@@ -437,6 +521,36 @@ impl UnluminousApp {
                     return Outcome::Reply(reply);
                 }
             }
+        }
+        if let Some(palette) = self.palette.take() {
+            let Some(command) = palette.chosen_command().cloned() else {
+                self.palette = Some(palette);
+                return no(
+                    request,
+                    code::NOT_FOUND,
+                    "Nothing is chosen, so there is nothing to run.",
+                );
+            };
+            if !command.enabled {
+                // Refused with the reason rather than run, which is what the palette itself does
+                // with a dimmed row — and it is left open, because being told why is the answer.
+                self.palette = Some(palette);
+                return no(
+                    request,
+                    code::NOT_APPLICABLE,
+                    format!(
+                        "{} cannot be used just now. It is on the {} menu.",
+                        command.label, command.menu
+                    ),
+                );
+            }
+            let name = command.name.clone();
+            self.run_action(command.action, ctx);
+            return ok(
+                request,
+                self.message.clone().unwrap_or_else(|| format!("Ran {name}")),
+                json!({ "ran": name, "message": self.message }),
+            );
         }
         if let Some(go) = self.go_to_file.take() {
             let Some(path) = go.chosen_path() else {
@@ -525,6 +639,7 @@ impl UnluminousApp {
     /// `pub(crate)` because `run_action` is in `app::mod`, two modules up from here rather than one,
     /// and `About Unluminous` shuts the others exactly as `modal open` does.
     pub(crate) fn close_every_modal(&mut self) {
+        self.palette = None;
         self.go_to_file = None;
         self.find_in_files = None;
         self.about = None;
@@ -583,6 +698,7 @@ impl UnluminousApp {
 
 /// The modals `modal open` knows, and what each one is.
 const MODALS: &[(&str, &str)] = &[
+    ("command-palette", "Find Action: find a menu entry by part of its wording and run it."),
     ("go-to-file", "Find a file in the project by part of its name and open it."),
     ("find-in-files", "Search every file's text, with the chosen file shown underneath."),
     (
@@ -597,6 +713,7 @@ const MODALS: &[(&str, &str)] = &[
 /// The egui id a modal is drawn under, which is what its placement is remembered against.
 fn modal_id(name: &str) -> Option<&'static str> {
     Some(match name {
+        "command-palette" => "unluminous-command-palette",
         "go-to-file" => "unluminous-go-to-file",
         "find-in-files" => "unluminous-find-in-files",
         "settings" => "unluminous-settings",

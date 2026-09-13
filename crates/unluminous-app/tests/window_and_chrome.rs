@@ -3368,3 +3368,119 @@ fn the_hand_cursor_is_set_after_the_text_cursor_so_it_wins_over_a_link() {
         "the hand is set after the text cursor, or egui replaces it in the same frame"
     );
 }
+
+// -------------------------------------------------------------------------------------- task-1922
+//
+// The `Find Action` palette. WP4's answer to the question `unluminous-cli action list` already
+// answers — what can this window be asked to do — put in front of a person: one box, a list that
+// narrows as you type, and Enter.
+
+#[test]
+fn the_palette_is_built_from_the_real_menus_and_narrows_as_it_is_typed_into() {
+    let mut harness = harness_in(&sample_folder());
+    choose(&mut harness, Action::CommandPalette);
+    let all = harness.state().palette.as_ref().expect("the palette is open").results().len();
+    assert!(all > 40, "it opens on everything the menus hold, which is {all} rows");
+
+    // A subsequence rather than a substring, which is `file_search`'s own rule — the same scorer,
+    // not a second one written for names. `tln` matches the entry's own name rather than its
+    // wording, because `Show Line Numbers` holds no `t` at all.
+    let palette = harness.state_mut().palette.as_mut().expect("still open");
+    palette.query = "tln".to_owned();
+    palette.refresh();
+    let names: Vec<String> = harness
+        .state()
+        .palette
+        .as_ref()
+        .unwrap()
+        .results()
+        .iter()
+        .map(|row| row.command.name.clone())
+        .collect();
+    assert_eq!(names.first().map(String::as_str), Some("toggle-line-numbers"), "{names:?}");
+}
+
+#[test]
+fn a_row_the_palette_runs_goes_through_the_same_function_a_menu_row_does() {
+    let mut harness = harness_in(&sample_folder());
+    let was = harness.state().settings.line_numbers;
+    choose(&mut harness, Action::CommandPalette);
+    let palette = harness.state_mut().palette.as_mut().expect("the palette is open");
+    palette.query = "toggle line numbers".to_owned();
+    palette.refresh();
+    let chosen = harness.state().palette.as_ref().unwrap().chosen_command().cloned();
+    let chosen = chosen.expect("a row is chosen");
+    assert_eq!(chosen.name, "toggle-line-numbers");
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_a_palette_row(chosen, &ctx);
+    harness.run();
+    assert_eq!(harness.state().settings.line_numbers, !was);
+}
+
+#[test]
+fn a_command_that_cannot_be_used_is_shown_dimmed_and_refused_with_the_reason() {
+    // Somebody looking for `Redo` wants to be told there is nothing to redo, not told there is no
+    // such command — so the row is listed, drawn dimmed, and running it says why.
+    let mut harness = harness_in(&sample_folder());
+    choose(&mut harness, Action::CommandPalette);
+    let palette = harness.state_mut().palette.as_mut().expect("the palette is open");
+    palette.query = "redo".to_owned();
+    palette.refresh();
+    let chosen = harness
+        .state()
+        .palette
+        .as_ref()
+        .unwrap()
+        .results()
+        .iter()
+        .find(|row| row.command.name == "redo")
+        .map(|row| row.command.clone())
+        .expect("Redo is offered even though it cannot be used");
+    assert!(!chosen.enabled);
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_a_palette_row(chosen, &ctx);
+    harness.run();
+    let said = harness.state().message.clone().unwrap_or_default();
+    assert!(said.contains("Redo") && said.contains("Edit"), "{said}");
+}
+
+#[test]
+fn the_palette_offers_the_entries_wp4_added_and_names_their_chords() {
+    // The machinery's own promise: an entry added to a menu is in the palette with no list anywhere
+    // to add it to. These are the seven WP4 put on `Edit` and the one it put on `Find`.
+    let folder = fixture("unluminous-1922-palette", &[("main.rs", "fn one() {}\n")]);
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open main.rs --permanent");
+    // Read through `action list`, which since WP4 is the **same walk of the menus** the palette
+    // draws from — one list rather than two that agree today — and which is not cut to a page.
+    let listed = did(&mut harness, "action list");
+    let rows: Vec<(String, String)> = listed["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| {
+            (
+                row["name"].as_str().unwrap_or_default().to_owned(),
+                row["shortcut"].as_str().unwrap_or_default().to_owned(),
+            )
+        })
+        .collect();
+    for (name, chord) in [
+        ("toggle-line-comment", "Ctrl+Slash"),
+        ("toggle-block-comment", "Ctrl+Shift+Slash"),
+        ("duplicate-line", "Ctrl+Shift+D"),
+        ("join-lines", "Ctrl+Shift+J"),
+        ("go-to-line", "Ctrl+L"),
+        ("go-to-matching-bracket", "Ctrl+Shift+Backslash"),
+        ("reopen-closed-tab", "Ctrl+Shift+T"),
+        ("command-palette", "Ctrl+Shift+A"),
+    ] {
+        let found = rows.iter().find(|(had, _)| had == name);
+        assert!(found.is_some(), "{name} should be on a menu: {rows:?}");
+        // The chord is spelled the way the menu spells it, which is what the palette shows on the
+        // right of the row. Written for Windows, where `command` is the control key.
+        if cfg!(not(target_os = "macos")) {
+            assert_eq!(found.unwrap().1, chord, "{name}");
+        }
+    }
+}

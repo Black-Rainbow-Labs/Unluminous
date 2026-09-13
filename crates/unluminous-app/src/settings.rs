@@ -232,6 +232,73 @@ impl Suggestions {
     }
 }
 
+/// What one indent is made of: a tab, or that many spaces. `task-1922` WP4.
+///
+/// **The default is a tab, because that is what the `Tab` key types today and a setting added to a
+/// shipped editor does not get to change what a key already does.** `task-1922` §2 says so in as
+/// many words — *where this design adds a setting the current behaviour stays the default* — and
+/// §5.5's note that `spaces:4` is what Unluminous already does was measured and is not: with nothing
+/// selected, `Tab` applies `Command::Insert("\t")`.
+///
+/// Written `tabs` or `spaces:N`, with N from [`Indent::MIN_WIDTH`] to [`Indent::MAX_WIDTH`]. A width
+/// outside that, or a word this version has not got, is **not read** — which is `Suggestions::parse`'s
+/// own answer and `plugin.kind`'s: a file naming something unknown falls back to the default rather
+/// than to nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Indent {
+    /// One tab character, which is what `Tab` has always typed.
+    #[default]
+    Tab,
+    /// This many spaces.
+    Spaces(usize),
+}
+
+impl Indent {
+    /// The narrowest and widest a space indent may be, which is the range every editor offers.
+    pub const MIN_WIDTH: usize = 2;
+    pub const MAX_WIDTH: usize = 8;
+
+    /// The word the settings file, the command line and a test spell it with.
+    pub fn name(self) -> String {
+        match self {
+            Indent::Tab => "tabs".to_owned(),
+            Indent::Spaces(width) => format!("spaces:{width}"),
+        }
+    }
+
+    /// Read a value, or nothing when the file holds something this version does not have.
+    pub fn parse(name: &str) -> Option<Self> {
+        let name = name.trim().to_lowercase();
+        if name == "tab" || name == "tabs" {
+            return Some(Indent::Tab);
+        }
+        let width = name.strip_prefix("spaces:").or_else(|| name.strip_prefix("space:"))?;
+        let width: usize = width.trim().parse().ok()?;
+        (Self::MIN_WIDTH..=Self::MAX_WIDTH).contains(&width).then_some(Indent::Spaces(width))
+    }
+
+    /// What one indent is, as text — which is what the `Tab` key types where nothing is selected.
+    pub fn text(self) -> String {
+        match self {
+            Indent::Tab => "\t".to_owned(),
+            Indent::Spaces(width) => " ".repeat(width),
+        }
+    }
+
+    /// Which single character `Command::Indent` and `Command::Dedent` walk a selection with.
+    ///
+    /// `unluminous_core::IndentUnit` is **one character** and says so: the crate has no tab width,
+    /// because the key that asked is what decides. So indenting a selection under `spaces:4` moves
+    /// each line by one space rather than by four, and that is a gap rather than a decision — see
+    /// the note in `app::code_editing`.
+    pub fn unit(self) -> unluminous_core::IndentUnit {
+        match self {
+            Indent::Tab => unluminous_core::IndentUnit::Tab,
+            Indent::Spaces(_) => unluminous_core::IndentUnit::Space,
+        }
+    }
+}
+
 /// Whether Unluminous asks the releases page for a newer version when it starts.
 ///
 /// **Off, and that is the whole design rather than a cautious default.** `task-1692` drew the line
@@ -372,10 +439,11 @@ pub enum Page {
     Appearance,
     /// The theme, the accent and the icon set: what every colour in the window means.
     ///
-    /// A page of its own rather than a section on Appearance, because the Settings window is one size for
-    /// every page, no page scrolls, and Appearance already fills its 640 points. The reference editor separates them
-    /// too — Appearance holds the theme and Editor holds the colour scheme — and here the two are one
-    /// question, because an Unluminous theme carries both.
+    /// A page of its own rather than a section on Appearance, because Appearance already fills the body
+    /// on its own. The reference editor separates them too — Appearance holds the theme and Editor holds
+    /// the colour scheme — and here the two are one question, because an Unluminous theme carries both.
+    /// The window is still one size for every page; since `task-1922` a page taller than the body
+    /// scrolls inside it rather than the window being made taller again.
     Theme,
     /// The editing area itself: the gutter, and the colour scheme code is set in.
     Editor,
@@ -723,11 +791,25 @@ settings! {
         plugin_chrome = true => "plugins.chrome";
         /// Whether this Unluminous hosts the MCP server over HTTP, so an agent can reach it at a URL.
         mcp_enabled = false => "mcp.enabled";
+        /// Whether a new line starts with the indentation of the line it was started from.
+        ///
+        /// `unluminous_core::indentation_for_a_new_line` is the reckoning; this is the window's half,
+        /// which is where it belongs because the setting is the window's. On by default, which is what
+        /// `task-1922` §5.5 asks for and what every editor a person comes from does.
+        auto_indent = true => "editor.auto_indent";
+        /// Whether the trailing whitespace goes off every line when a file is written.
+        ///
+        /// **Off**, because a save that silently changed bytes nobody typed is a save nobody asked
+        /// for. It never runs on a Markdown file whatever this says — two trailing spaces there are a
+        /// line break — which `services::file_kind::trimming_applies` is what decides.
+        trim_on_save = false => "editor.trim";
     }
 
     coded {
         /// Whether the completion popup arrives while you type, or waits to be asked.
         suggestions: Suggestions = Suggestions::Automatic => "editor.suggestions";
+        /// What one indent is made of. See [`Indent`], whose default is what `Tab` already typed.
+        indent: Indent = Indent::Tab => "editor.indent";
         /// What line breaks a file is written back with. See [`LineEndings`].
         line_endings: LineEndings = LineEndings::Keep => "editor.line_ending";
         /// Whether the window asks for a newer version as it opens. See [`UpdateCheck`].
@@ -1301,7 +1383,10 @@ mod tests {
             "editor.line_numbers",
             "plugins.chrome",
             "mcp.enabled",
+            "editor.auto_indent",
+            "editor.trim",
             "editor.suggestions",
+            "editor.indent",
             "editor.line_ending",
             "update.check",
             "debug.value_tooltip",
@@ -1314,6 +1399,40 @@ mod tests {
         assert_eq!(actual, expected, "a name was added or lost in the settings! declaration");
     }
 
+    /// `editor.indent` reads what it writes, and refuses a width no editor offers.
+    ///
+    /// A width outside the range is **not read** rather than being clamped, which is
+    /// `Suggestions::parse`'s answer: a file asking for something this version has not got falls
+    /// back to the default. Clamping would turn `spaces:40` into `spaces:8` silently.
+    #[test]
+    fn an_indent_reads_back_what_it_was_written_as() {
+        for indent in [Indent::Tab, Indent::Spaces(2), Indent::Spaces(4), Indent::Spaces(8)] {
+            assert_eq!(Indent::parse(&indent.name()), Some(indent), "{indent:?}");
+        }
+        assert_eq!(Indent::parse("TABS"), Some(Indent::Tab));
+        assert_eq!(Indent::parse("spaces:1"), None, "narrower than any editor offers");
+        assert_eq!(Indent::parse("spaces:9"), None, "wider than any editor offers");
+        assert_eq!(Indent::parse("spaces"), None);
+        assert_eq!(Indent::parse("four"), None);
+    }
+
+    /// **What `Tab` types is unchanged until somebody sets the setting**, which is `task-1922` §2's
+    /// non goal: where this design adds a setting the current behaviour stays the default.
+    #[test]
+    fn a_fresh_unluminous_still_types_a_tab_for_a_tab() {
+        assert_eq!(Settings::new().indent, Indent::Tab);
+        assert_eq!(Settings::new().indent.text(), "\t");
+        assert_eq!(Indent::Spaces(4).text(), "    ");
+    }
+
+    /// Trailing whitespace is left alone unless somebody asks, because a save that changed bytes
+    /// nobody typed is a save nobody asked for.
+    #[test]
+    fn trimming_on_save_is_off_and_auto_indent_is_on() {
+        assert!(!Settings::new().trim_on_save);
+        assert!(Settings::new().auto_indent);
+    }
+
     #[test]
     fn settings_survive_being_written_and_read_back() {
         let settings = Settings {
@@ -1323,6 +1442,9 @@ mod tests {
             terminal_font_size: 14.0,
             terminal_shell: "pwsh.exe".to_owned(),
             line_numbers: false,
+            indent: Indent::Spaces(4),
+            auto_indent: false,
+            trim_on_save: true,
             suggestions: Suggestions::Manual,
             line_endings: LineEndings::Crlf,
             update_check: UpdateCheck::Start,

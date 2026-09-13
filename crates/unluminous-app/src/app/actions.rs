@@ -72,6 +72,44 @@ pub enum Action {
     NavigateBack,
     /// The mirror of it, pushed by [`Action::NavigateBack`] and cleared by any new jump.
     NavigateForward,
+    /// Put the language's line comment marker in front of every line the selection touches, or take
+    /// it off again. `task-1922` WP4.
+    ///
+    /// **Absent** for a language whose grammar names no marker, which is
+    /// `services::file_kind::line_comment` answering `None`.
+    ToggleLineComment,
+    /// Wrap the selection in the language's block comment markers, or take them off.
+    ToggleBlockComment,
+    /// Copy the lines the selection touches in below themselves.
+    DuplicateLines,
+    /// Move the lines the selection touches up or down, carrying the selection with them.
+    ///
+    /// **The one pair here with no menu entry**, so `Alt+Up` and `Alt+Down` are read from the
+    /// keyboard rather than by the menu watcher — `app::frame::route_the_line_move_keys` says why.
+    MoveLines {
+        down: bool,
+    },
+    /// Join the lines the selection touches into one, with a single space at each seam.
+    JoinLines,
+    /// Sort the lines the selection touches. **Dimmed** with nothing selected, because sorting one
+    /// line is a command that would appear to do nothing.
+    SortLines,
+    /// Take the trailing whitespace off every line of the tab that is showing.
+    ///
+    /// The same command `editor.trim` runs on a save, asked for by hand. **Absent** for a Markdown
+    /// file, where two trailing spaces are a line break.
+    TrimTrailingWhitespace,
+    /// Open the prompt that asks which line to go to, taking `line` or `line:column`.
+    GoToLine,
+    /// Move the caret to the bracket answering the one beside it.
+    GoToMatchingBracket,
+    /// Open the palette that finds a menu entry by name and runs it.
+    CommandPalette,
+    /// Open the last tab that was closed, in the pane it was closed from.
+    ///
+    /// Dimmed when nothing has been closed, which is `Undo`'s shape: it is a control that could be
+    /// used in a moment rather than one that can never apply.
+    ReopenClosedTab,
     /// Open a project that has been open before, in a window of its own.
     OpenRecent(PathBuf),
     /// Forget the recent projects.
@@ -722,7 +760,10 @@ impl Shortcut {
             if !matches!(key, egui::Key::Plus | egui::Key::Equals) || modifiers.alt != self.alt {
                 return false;
             }
-        } else if self.key != key || modifiers.shift != self.shift || modifiers.alt != self.alt {
+        } else if (self.key != key && !(self.shift && shifted_spelling(self.key) == Some(key)))
+            || modifiers.shift != self.shift
+            || modifiers.alt != self.alt
+        {
             return false;
         }
         if cfg!(target_os = "macos") {
@@ -758,6 +799,25 @@ impl Shortcut {
         parts.push(key);
         parts.join("+")
     }
+}
+
+/// What a punctuation key is called once shift is held. `task-1922` WP4.
+///
+/// Measured rather than assumed: `egui_winit` builds its key from `logical_key.or(physical_key)`,
+/// the **logical** one first, so on a keyboard where shift and `/` produce `?` the frame carries
+/// `Key::Questionmark` and never `Key::Slash`. Without this, `Cmd+Shift+/` — the block comment
+/// chord — and `Cmd+Shift+\` — go to matching bracket — could not be pressed at all on a US layout,
+/// and would have looked like a chord that simply did nothing.
+///
+/// It is only consulted when the shortcut itself asks for shift, so nothing unshifted changes, and
+/// the shift flag is still compared exactly afterwards — which is what keeps `Cmd+/` and
+/// `Cmd+Shift+/` two different chords.
+fn shifted_spelling(key: egui::Key) -> Option<egui::Key> {
+    Some(match key {
+        egui::Key::Slash => egui::Key::Questionmark,
+        egui::Key::Backslash => egui::Key::Pipe,
+        _ => return None,
+    })
 }
 
 /// The name of a key as a menu spells it.
@@ -982,6 +1042,20 @@ pub struct MenuState {
     pub can_undo: bool,
     pub can_redo: bool,
     pub has_selection: bool,
+    /// True when the open file's language names a line comment marker, which is what puts
+    /// `Comment with Line Comment` on the menu. **Absent** rather than dimmed when it is false,
+    /// like the code navigation entries: CSS will never have a `//`. `task-1922` WP4.
+    pub line_comment_applies: bool,
+    /// The same for `Comment with Block Comment`. A language may name either, both or neither.
+    pub block_comment_applies: bool,
+    /// True when the open file holds text that can be edited a line at a time, which is what puts
+    /// the five line commands on the menu. False for a picture and for a rendered page.
+    pub line_edits_apply: bool,
+    /// True when trailing whitespace may be taken off this file, which is Markdown's exception.
+    pub trimming_applies: bool,
+    /// True when a tab has been closed that could be opened again, which is what dims
+    /// `Reopen Closed Tab`. Dimmed rather than absent, because it is `Undo`'s shape.
+    pub can_reopen_tab: bool,
     /// True while the Find bar is open, which is what decides whether Find Next can be used.
     /// `task-1804`.
     pub finding: bool,
@@ -1560,6 +1634,14 @@ fn file_menu(state: &MenuState) -> Menu {
             Shortcut { alt: true, ..Shortcut::command(egui::Key::O) },
         ),
         Entry::Submenu { name: "Recent Projects".to_owned(), entries: recent_entries(state) },
+        // Dimmed rather than absent while nothing has been closed, which is `Undo`'s shape: a tab
+        // somebody closes a moment from now makes it live. `task-1922` WP4.
+        Entry::with_shortcut(
+            "Reopen Closed Tab",
+            Action::ReopenClosedTab,
+            Shortcut::command_shift(egui::Key::T),
+        )
+        .enabled(state.can_reopen_tab),
         Entry::Separator,
         Entry::with_shortcut("Save", Action::Save, Shortcut::command(egui::Key::S)),
         Entry::with_shortcut("Save As", Action::SaveAs, Shortcut::command_shift(egui::Key::S)),
@@ -1676,6 +1758,77 @@ pub fn navigation_entries(state: &MenuState) -> Vec<Entry> {
     ]
 }
 
+/// The line editing entries, in the order the `Edit` menu holds them. `task-1922` WP4.
+///
+/// Built here rather than written into the menu inline, for `symbol_entries`' reason: they are a
+/// group with one rule about when each is there, and a second list would be a second answer.
+///
+/// **Three kinds of absence, and they are not the same thing.** A file that holds no text at all —
+/// a picture, a rendered page — gets none of them, because none can ever apply to it. The two
+/// comment rows are absent for a language that names no marker, which is the same rule and the same
+/// reason. `Sort Lines` is **dimmed** with nothing selected rather than absent, because a selection
+/// is a thing a person can make in a moment; that is the line `task-1693` drew between the two.
+fn line_edit_entries(state: &MenuState) -> Vec<Entry> {
+    if !state.line_edits_apply {
+        return Vec::new();
+    }
+    let mut entries = Vec::new();
+    if state.line_comment_applies {
+        entries.push(Entry::with_shortcut(
+            "Comment with Line Comment",
+            Action::ToggleLineComment,
+            Shortcut::command(egui::Key::Slash),
+        ));
+    }
+    if state.block_comment_applies {
+        entries.push(Entry::with_shortcut(
+            "Comment with Block Comment",
+            Action::ToggleBlockComment,
+            Shortcut::command_shift(egui::Key::Slash),
+        ));
+    }
+    // Not `Cmd+D`, which is the Git menu's `Show Diff`. `_agent_output/task-1928-plans/wp4-chords.md`
+    // measured every chord in this file before any of these were bound, and moving a chord somebody
+    // already has in their fingers so that a new feature can have it was weighed and refused.
+    entries.push(Entry::with_shortcut(
+        "Duplicate Line",
+        Action::DuplicateLines,
+        Shortcut::command_shift(egui::Key::D),
+    ));
+    entries.push(Entry::with_shortcut(
+        "Join Lines",
+        Action::JoinLines,
+        Shortcut::command_shift(egui::Key::J),
+    ));
+    entries.push(Entry::item("Sort Lines", Action::SortLines).enabled(state.has_selection));
+    if state.trimming_applies {
+        entries.push(Entry::item("Trim Trailing Whitespace", Action::TrimTrailingWhitespace));
+    }
+    entries.push(Entry::Separator);
+    // **Not `Cmd+G` and not `Cmd+L`.** `Cmd+G` is `Find Next` with `Cmd+Shift+G` as `Find Previous`
+    // beside it, so that whole family is spoken for. `Cmd+L` is the reference editor's own Go to Line
+    // on macOS and reads better than this, and it is taken too -- by **align left**, which
+    // `components::editor_view` reads for itself because the alignments are on no menu. That does not
+    // show up in a list of the menus' shortcuts, which is how it was nearly missed.
+    //
+    // A menu's watcher does not consume a key press, so one press of a chord that is both would open
+    // this prompt *and* left-align the paragraph behind it. Taking the chord off align left was
+    // weighed and refused: it is a chord somebody already has in their fingers, and a feature added
+    // today does not get to take one. So Go to Line is `Cmd+Shift+L`, and align left compares shift
+    // -- which is exactly what `Cmd+Shift+J` and justify had to do on the line above. `task-1922`.
+    entries.push(Entry::with_shortcut(
+        "Go to Line...",
+        Action::GoToLine,
+        Shortcut::command_shift(egui::Key::L),
+    ));
+    entries.push(Entry::with_shortcut(
+        "Go to Matching Bracket",
+        Action::GoToMatchingBracket,
+        Shortcut::command_shift(egui::Key::Backslash),
+    ));
+    entries
+}
+
 fn edit_menu(state: &MenuState) -> Menu {
     let mut entries = vec![
         Entry::with_shortcut("Undo", Action::Undo, Shortcut::command(egui::Key::Z))
@@ -1692,9 +1845,14 @@ fn edit_menu(state: &MenuState) -> Menu {
         Entry::with_shortcut("Paste", Action::Paste, Shortcut::command(egui::Key::V))
             .not_from_the_keyboard(),
         Entry::with_shortcut("Select All", Action::SelectAll, Shortcut::command(egui::Key::A)),
-        Entry::Separator,
-        Entry::Submenu { name: "Highlight".to_owned(), entries: highlight_menu(state) },
     ];
+    let lines = line_edit_entries(state);
+    if !lines.is_empty() {
+        entries.push(Entry::Separator);
+        entries.extend(lines);
+    }
+    entries.push(Entry::Separator);
+    entries.push(Entry::Submenu { name: "Highlight".to_owned(), entries: highlight_menu(state) });
     let completion = completion_entries(state);
     if !completion.is_empty() {
         entries.push(Entry::Separator);
@@ -1732,6 +1890,17 @@ fn edit_menu(state: &MenuState) -> Menu {
 /// are two more ways of asking where something is and one of changing it everywhere it was found.
 fn find_menu(state: &MenuState) -> Menu {
     let mut entries = vec![
+        // The command palette. **On `Find` rather than on `Edit`**, which is where `task-1922` §5.5
+        // put it, and the reason is the reason this menu exists at all: its own note above says the
+        // Edit menu ran off the bottom of a 740 point window once four searching entries were added
+        // to it, and WP4 adds seven more. Finding a menu entry by name is a way of finding
+        // something, which is what every other row here is.
+        Entry::with_shortcut(
+            "Find Action...",
+            Action::CommandPalette,
+            Shortcut::command_shift(egui::Key::A),
+        ),
+        Entry::Separator,
         Entry::with_shortcut("Find...", Action::Find, Shortcut::command(egui::Key::F)),
         Entry::with_shortcut("Replace...", Action::Replace, Shortcut::command(egui::Key::H)),
         Entry::with_shortcut("Find Next", Action::FindNext, Shortcut::command(egui::Key::G))

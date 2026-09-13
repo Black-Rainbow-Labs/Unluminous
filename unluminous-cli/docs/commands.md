@@ -591,6 +591,18 @@ unluminous-cli tab close notes.md
 unluminous-cli tab close --discard
 ```
 
+### tab reopen
+
+```
+unluminous-cli tab reopen
+```
+
+Open the last tab that was closed again, in the pane it was closed from. The ten most recent are remembered while this window is open, so running it again reaches the one before that. The file is read from the disk.
+
+```sh
+unluminous-cli tab reopen
+```
+
 ### tab next
 
 ```
@@ -898,6 +910,71 @@ Remove one indent from each line the selection touches, or the caret's line when
 ```sh
 unluminous-cli editor dedent
 unluminous-cli editor dedent --space
+```
+
+### editor comment
+
+```
+unluminous-cli editor comment [--toggle] [--block]
+```
+
+Comment or uncomment the lines the selection touches, or the caret's line when nothing is selected, with the marker this file's language uses. It is the same command both ways. The marker comes from the plugin that claims the file, so a language that names none is refused rather than guessed at.
+
+- `--toggle` — Use the line comment marker, such as // or #. This is what it does when neither flag is given.
+- `--block` — Use the block comment markers instead, such as /* and */, wrapping the whole selection once rather than each line.
+
+```sh
+unluminous-cli editor comment --toggle
+unluminous-cli editor comment --block
+```
+
+### editor lines
+
+```
+unluminous-cli editor lines <duplicate|move|join|sort> [--by <number>]
+```
+
+Edit whole lines: duplicate, move up or down, join, or sort. Each is one undo step, and each is about the lines the selection touches, or the caret's line when nothing is selected. Sort needs a selection.
+
+- `what` — duplicate, move, join or sort.
+
+- `--by <number>` — For move: how far and which way. -1 is up and 1 is down, which is what Alt+Up and Alt+Down send.
+
+```sh
+unluminous-cli editor lines duplicate
+unluminous-cli editor lines move --by -1
+unluminous-cli editor lines join
+unluminous-cli editor lines sort
+```
+
+### editor bracket
+
+```
+unluminous-cli editor bracket [--offset <bytes>] [--line <number>] [--column <number>] [--go]
+```
+
+The bracket answering the one beside the caret, as both byte offsets and both line and column positions. It tells a bracket in a comment or a string from one in the code, which a search for the character cannot. --go moves the caret to it.
+
+- `--offset <bytes>` — Ask about this position in the file rather than about the caret.
+- `--line <number>` — Ask about this line, counting from 1.
+- `--column <number>` — The column on that line. 1 when it is left out.
+- `--go` — Move the caret to the bracket that answers it.
+
+```sh
+unluminous-cli editor bracket --json
+unluminous-cli editor bracket --go
+```
+
+### editor trim
+
+```
+unluminous-cli editor trim
+```
+
+Take the trailing whitespace off every line of the tab that is showing, as one undo step. The editor.trim setting does this on every save; this asks for it once. Refused for a Markdown file, where two trailing spaces are a line break.
+
+```sh
+unluminous-cli editor trim
 ```
 
 ### editor undo
@@ -2942,12 +3019,12 @@ unluminous-cli modal list --json
 ### modal open
 
 ```
-unluminous-cli modal open <go-to-file|find-in-files|settings|about|new-file|rename> [--query <text>] [--path <path>] [--page <name>]
+unluminous-cli modal open <command-palette|go-to-file|find-in-files|settings|about|new-file|rename> [--query <text>] [--path <path>] [--page <name>]
 ```
 
 Open a modal, and put something in its box in the same breath.
 
-- `name` — go-to-file, find-in-files, settings, about, new-file or rename.
+- `name` — command-palette, go-to-file, find-in-files, settings, about, new-file or rename.
 
 - `--query <text>` — Type this into the modal's box as it opens.
 - `--path <path>` — The folder a new file goes in, or the file being renamed. Needed by new-file and rename.
@@ -3466,6 +3543,23 @@ Every entry on every menu, with the name `action run` takes, the menu it is on, 
 ```sh
 unluminous-cli action list --json
 unluminous-cli action list --menu view --json
+```
+
+### action find
+
+```
+unluminous-cli action find [text] [--limit <number>]
+```
+
+Menu entries whose wording matches some text, best first - the Find Action palette's own list as data. Use it rather than reading all of `action list` when you roughly know the name: the letters match as a subsequence, so `tln` finds Toggle Line Numbers, and the menu counts, so `git commit` finds Commit.
+
+- `text` (optional) — What to look for. Every entry, in menu order, when it is left out. Everything after it on the line belongs to it.
+
+- `--limit <number>` — Print at most this many rows. 20 when it is left out, and 0 means all of them.
+
+```sh
+unluminous-cli action find line numbers --json
+unluminous-cli action find comment --json
 ```
 
 ### action run

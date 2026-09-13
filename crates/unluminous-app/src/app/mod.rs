@@ -36,6 +36,7 @@ pub mod actions;
 mod breakpoints;
 mod browsing;
 pub mod cli;
+pub mod code_editing;
 pub mod completion;
 pub mod debug;
 pub mod dock;
@@ -1009,6 +1010,18 @@ pub struct UnluminousApp {
     pub prompt: Option<Prompt>,
     /// The `Go to File` modal, when it is open.
     pub go_to_file: Option<GoToFile>,
+    /// The `Find Action` palette, when it is open — `task-1922` WP4.
+    ///
+    /// It holds the menu entries as they stood when it opened rather than asking every frame: the
+    /// menus are rebuilt out of `MenuState` each time they are asked for, and a list that changed
+    /// under the arrow keys would move the row somebody was about to press Enter on.
+    pub palette: Option<crate::components::command_palette::CommandPalette>,
+    /// The tabs that have been closed, oldest first, so the newest can be opened again.
+    ///
+    /// Travel history rather than state: bounded at
+    /// [`code_editing::CLOSED_TABS_KEPT`] and not written to disk, which is the line `back` and
+    /// `forward` already draw.
+    pub(crate) closed_tabs: Vec<code_editing::ClosedTab>,
     /// A check for a newer release, while one is running. `task-1804` §6.
     ///
     /// `None` unless somebody asked, which is the whole of the design: see `services::update`.
@@ -1274,6 +1287,8 @@ impl UnluminousApp {
             explorer_menu: None,
             prompt: None,
             go_to_file: None,
+            palette: None,
+            closed_tabs: Vec::new(),
             update: None,
             update_answer: None,
             find: None,

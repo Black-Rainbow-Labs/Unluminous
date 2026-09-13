@@ -107,6 +107,7 @@ impl UnluminousApp {
         // The modals, newest first: the one a person asked for most recently belongs on top of the
         // older ones.
         self.show_the_prompt(ui);
+        self.show_the_command_palette(ui);
         self.show_go_to_file(ui);
         self.show_find_in_files(ui);
         // The references, the candidate list and the rename, which are one modal wearing three faces.
@@ -744,6 +745,14 @@ impl UnluminousApp {
         if let Some(chosen) = self.route_the_space_keys(ui) {
             *action = Some(chosen);
         }
+        // And `Alt+Up` and `Alt+Down`, the one WP4 chord pair with no menu entry — so the menu's own
+        // watcher cannot deliver them and they have to be read somewhere. Here, for the reason every
+        // other reader in this function is here: a key taken before the panes are drawn never reaches
+        // `editor_view::handle_input`, where a bare `ArrowUp` moves the caret, so one press cannot
+        // both move the line and move the caret off it.
+        if let Some(chosen) = self.route_the_line_move_keys(ui) {
+            *action = Some(chosen);
+        }
         // And the copy, when what is selected is in a preview rather than in a document. Before the
         // panes for the same reason again: in the side-by-side view the source is drawn first and
         // would otherwise take the event and copy its own selection instead.
@@ -1283,6 +1292,27 @@ impl UnluminousApp {
         }
     }
 
+    /// `Find Action`: the palette that finds a menu entry by name and runs it. `task-1922` WP4.
+    ///
+    /// Drawn beside `Go to File`, because it is the same kind of thing asked about a different list.
+    /// What it chose is run **here** rather than being put in `action`, because `action` is one
+    /// action a frame and a palette row can be a `PluginCommand` that opens another modal.
+    fn show_the_command_palette(&mut self, ui: &mut egui::Ui) {
+        if let Some(mut palette) = self.palette.take() {
+            palette.refresh();
+            let outcome = crate::components::command_palette::show(ui.ctx(), &mut palette);
+            if !outcome.close {
+                self.palette = Some(palette);
+            }
+            if let Some(command) = outcome.refused {
+                self.run_a_palette_row(command, ui.ctx());
+            }
+            if let Some(command) = outcome.run {
+                self.run_a_palette_row(command, ui.ctx());
+            }
+        }
+    }
+
     /// `Go to File`.
     fn show_go_to_file(&mut self, ui: &mut egui::Ui) {
         // `Go to File`, drawn after the prompt for the same reason the prompt is drawn after the git
@@ -1489,7 +1519,12 @@ impl UnluminousApp {
                 match plugins_ui.opened(&plugin, &provider) {
                     Ok(_) => {
                         let mut inner = page_ui.new_child(egui::UiBuilder::new().max_rect(area));
-                        inner.set_clip_rect(area);
+                        // Intersected rather than assigned: `Ui::set_clip_rect` assigns, so writing a
+                        // component's own rectangle over it throws away whatever the caller had cut it
+                        // to. `components::explorer` has recorded that since `task-1905`, and the
+                        // dialog is a caller that cuts it now -- it clips the page to the body so a
+                        // page taller than the body runs under the footer rather than over it.
+                        inner.set_clip_rect(page_ui.clip_rect().intersect(area));
                         if let Some(opened) = plugins_ui.provider(&plugin) {
                             let wanted = opened.settings(&mut inner, &page_look);
                             page_asked.extend(

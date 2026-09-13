@@ -3,6 +3,13 @@
 
 use super::*;
 
+/// How many rows `action find` prints when the caller does not say.
+///
+/// Twenty, because the rows are already best first and a twenty-first-best match for two words of a
+/// command's name is not an answer anybody was going to read. `action list` is still there for the
+/// whole of it. `task-1704`'s rule about a payload proportionate to the question.
+const ACTIONS_FOUND: usize = 20;
+
 impl UnluminousApp {
     pub(crate) fn cli_action(
         &mut self,
@@ -57,9 +64,66 @@ impl UnluminousApp {
                 };
                 lines(request, sentence, rows, json!({ "actions": value }))
             }
+            "find" => self.cli_action_find(request),
             "run" => self.cli_action_run(request, ctx),
             _ => unknown(request),
         }
+    }
+
+    /// `unluminous-cli action find <text>` -- the palette's own list, asked for as data.
+    ///
+    /// **The same ranking the palette draws**, from `command_palette::rank`, so a row an agent is
+    /// given and a row a person sees are in the same order. `action list` is still the whole list;
+    /// this is the answer to *what is the command called* without reading all of it, which is
+    /// `task-1704`'s rule about a payload proportionate to the question.
+    fn cli_action_find(&mut self, request: &Request) -> Outcome {
+        use crate::components::command_palette;
+        let text = request.text("text").unwrap_or_default();
+        let limit = match request.whole("limit") {
+            Some(0) => usize::MAX,
+            Some(asked) => asked,
+            None => ACTIONS_FOUND,
+        };
+        let commands = self.every_menu_command();
+        let found = command_palette::rank(&commands, &text, limit);
+        let rows: Vec<String> = found
+            .iter()
+            .map(|row| {
+                format!(
+                    "{}{:<24}{:<18}{}",
+                    if row.command.enabled { " " } else { "-" },
+                    row.command.name,
+                    row.command.shortcut,
+                    row.command.menu
+                )
+            })
+            .collect();
+        let value: Vec<Value> = found
+            .iter()
+            .map(|row| {
+                json!({
+                    "name": row.command.name,
+                    "label": row.command.label,
+                    "menu": row.command.menu,
+                    "shortcut": row.command.shortcut,
+                    "enabled": row.command.enabled,
+                })
+            })
+            .collect();
+        lines(
+            request,
+            match text.trim().is_empty() {
+                true => format!("{} menu entries", found.len()),
+                false => format!(
+                    "{} entr{} matching {}",
+                    found.len(),
+                    if found.len() == 1 { "y" } else { "ies" },
+                    text.trim()
+                ),
+            },
+            rows,
+            json!({ "actions": value }),
+        )
     }
 
     fn cli_action_run(&mut self, request: &Request, ctx: &egui::Context) -> Outcome {
@@ -106,32 +170,21 @@ impl UnluminousApp {
     /// Every entry on every menu, as it stands right now.
     ///
     /// Built by walking the real menus rather than from a list of its own, which is the point: a
-    /// menu entry added later is on the command line the day it is added.
+    /// menu entry added later is on the command line the day it is added. **The walk itself is
+    /// `UnluminousApp::every_menu_command`**, which the `Find Action` palette and `action find` also
+    /// read -- one walk rather than three that agree today. `task-1922` WP4.
     fn every_menu_entry(&self) -> Vec<MenuEntry> {
-        use crate::app::actions::{self, Entry};
-        fn walk(entries: &[Entry], menu: &str, out: &mut Vec<MenuEntry>) {
-            for entry in entries {
-                match entry {
-                    Entry::Item { name, action, shortcut, enabled, checked, .. } => {
-                        out.push(MenuEntry {
-                            name: action.name(),
-                            menu: menu.to_owned(),
-                            label: name.clone(),
-                            shortcut: shortcut.map(|keys| keys.label()).unwrap_or_default(),
-                            enabled: *enabled,
-                            checked: *checked,
-                        });
-                    }
-                    Entry::Submenu { name, entries } => walk(entries, name, out),
-                    Entry::Separator => {}
-                }
-            }
-        }
-        let mut out = Vec::new();
-        for menu in actions::menus(&self.menu_state()) {
-            walk(&menu.entries, &menu.name, &mut out);
-        }
-        out
+        self.every_menu_command()
+            .into_iter()
+            .map(|command| MenuEntry {
+                name: command.name,
+                menu: command.menu,
+                label: command.label,
+                shortcut: command.shortcut,
+                enabled: command.enabled,
+                checked: command.checked,
+            })
+            .collect()
     }
 
     pub(crate) fn cli_project(&mut self, request: &Request, verb: &str) -> Outcome {

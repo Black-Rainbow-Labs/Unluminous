@@ -41,6 +41,23 @@ impl UnluminousApp {
                 Err(outcome) => *outcome,
             },
             "close" => self.cli_tab_close(request),
+            // Through the same function `File -> Reopen Closed Tab` calls, so the tab an agent
+            // brings back and the tab a person brings back come from the same list.
+            "reopen" => match self.reopen_the_last_closed_tab() {
+                Ok(path) => {
+                    self.focus = crate::app::Focus::Editor;
+                    ok(
+                        request,
+                        format!("Reopened {}", path.display()),
+                        json!({
+                            "path": path.to_string_lossy(),
+                            "tab": self.files.active_index(),
+                            "left": self.closed_tabs.len(),
+                        }),
+                    )
+                }
+                Err(problem) => no(request, code::NOT_APPLICABLE, problem),
+            },
             "next" => {
                 self.files.next();
                 self.forget_layout();

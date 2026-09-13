@@ -83,12 +83,33 @@ pub struct ViewOutcome {
 /// `services::file_kind` answers them from the same file: formatting is for prose, and a definition
 /// needs a language that says what one looks like. Without this the two would both fire on one
 /// press, which is exactly the fault the `Tab` guard below records.
+/// What the settings say about typing into this file — `task-1922` WP4.
+///
+/// A value rather than two more parameters, so that a third thing the settings decide about a
+/// keystroke arrives as a field here rather than as an eighth argument. Its `Default` is what
+/// Unluminous did before any of it existed: a tab types a tab, and a new line starts at the left
+/// margin — which is what makes a test that does not care about either say nothing about it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Typing {
+    /// What the `Tab` key types where nothing is selected. `settings.indent.text()`.
+    pub indent: String,
+    /// Whether a new line starts with the indentation of the line it was started from.
+    pub auto_indent: bool,
+}
+
+impl Default for Typing {
+    fn default() -> Self {
+        Self { indent: "\t".to_owned(), auto_indent: false }
+    }
+}
+
 pub fn handle_input(
     ui: &egui::Ui,
     document: &mut Document,
     layout: &Layout,
     has_focus: bool,
     formatting: bool,
+    typing: &Typing,
 ) -> ViewOutcome {
     let mut outcome = ViewOutcome::default();
     if !has_focus {
@@ -197,7 +218,16 @@ pub fn handle_input(
                     egui::Key::Backspace if word => document.apply(Command::DeleteWordBackward),
                     egui::Key::Backspace => document.apply(Command::DeleteBackward),
                     egui::Key::Delete => document.apply(Command::DeleteForward),
-                    egui::Key::Enter => document.apply(Command::Insert("\n".to_owned())),
+                    // A new line, and the indentation of the line it was started from with it —
+                    // **as one `Command::Insert`**, so a new line and its indentation are one thing
+                    // to undo, which is what `indentation_for_a_new_line`'s own note asks for.
+                    egui::Key::Enter => {
+                        let indent = match typing.auto_indent {
+                            true => document.indentation_for_a_new_line(),
+                            false => String::new(),
+                        };
+                        document.apply(Command::Insert(format!("\n{indent}")))
+                    }
                     // A bare Tab. With control held it belongs to `Next Tab` and `Previous Tab` on
                     // the View menu, and finding the action there does not consume the key press, so
                     // without this guard control and Tab moved to the next file **and** typed a tab
@@ -212,7 +242,9 @@ pub fn handle_input(
                         // half of the same key, removing one tab from each touched line rather than
                         // adding one.
                         if document.selection().is_empty() {
-                            document.apply(Command::Insert("\t".to_owned()))
+                            // What one indent is, which `editor.indent` decides and which is a tab
+                            // unless somebody has said otherwise.
+                            document.apply(Command::Insert(typing.indent.clone()))
                         } else if shift {
                             document.apply(Command::Dedent { unit: IndentUnit::Tab })
                         } else {
@@ -229,10 +261,25 @@ pub fn handle_input(
                     egui::Key::X if shortcut && modifiers.shift => {
                         document.apply(Command::ToggleStrikethrough)
                     }
-                    egui::Key::L if shortcut => document.apply(Command::SetAlign(Align::Left)),
+                    // The alignment chords, and the two that had to compare shift for `task-1922`.
+                    //
+                    // **Both keep their chords, and the new menu entries took shifted ones instead.**
+                    // A menu's watcher does not consume a key press — the rule the `Tab` guard above
+                    // records — so a chord that is both a menu entry and one of these would do two
+                    // things on one press: open the prompt *and* align the paragraph behind it. `L`
+                    // and `J` were each in that position, against `Go to Line` and `Join Lines`, and
+                    // the answer was to give the new entries `Cmd+Shift+L` and `Cmd+Shift+J` rather
+                    // than to take a chord away from something somebody already uses.
+                    //
+                    // These two arms therefore compare shift where the three above do not.
+                    egui::Key::L if shortcut && !shift => {
+                        document.apply(Command::SetAlign(Align::Left))
+                    }
                     egui::Key::E if shortcut => document.apply(Command::SetAlign(Align::Center)),
                     egui::Key::R if shortcut => document.apply(Command::SetAlign(Align::Right)),
-                    egui::Key::J if shortcut => document.apply(Command::SetAlign(Align::Justify)),
+                    egui::Key::J if shortcut && !shift => {
+                        document.apply(Command::SetAlign(Align::Justify))
+                    }
                     _ => false,
                 };
                 if handled {
@@ -330,6 +377,13 @@ pub struct PaintStyle<'a> {
     /// is shut. Two colours for two meanings, which is what `color::find_match` says about itself.
     /// `task-1804` §3.1.
     pub find_matches: &'a [std::ops::Range<usize>],
+    /// The two brackets that answer each other around the caret, when the caret is beside one.
+    ///
+    /// Two bytes rather than a range, because they are two separate marks that can be a screenful
+    /// apart. Painted in `theme::color::bracket_match`, which **is** the Find bar's band: the two
+    /// say the same thing — *the thing you are looking at is also here* — and a second colour for it
+    /// would be a third meaning nobody asked for. `task-1922` WP4.
+    pub bracket_pair: Option<(usize, usize)>,
 }
 
 pub fn paint(
@@ -348,6 +402,7 @@ pub fn paint(
         execution_point,
         inline_values,
         find_matches,
+        bracket_pair,
     } = style;
     let painter = ui.painter();
     let to_screen = |x: f32, y: f32| Pos2::new(text_origin.x + x, text_origin.y + y);
@@ -378,6 +433,27 @@ pub fn paint(
                 2.0,
                 color::find_match(),
             );
+        }
+    }
+
+    // The two brackets, beside the search's bands and for the same reason they are there: over the
+    // selection so neither is covered, and under the glyphs like every other background. Each is one
+    // character, so each is one rectangle unless it is scrolled off, which `selection_rects_in`
+    // answers with none.
+    if let Some((here, other)) = bracket_pair {
+        for at in [here, other] {
+            // One byte each, because `Document::bracket_pair` only ever answers about an ASCII
+            // bracket — it reads a single byte and refuses one that is not a whole character.
+            for rect in layout.selection_rects_in(visible.clone(), at..at + 1) {
+                painter.rect_filled(
+                    Rect::from_min_size(
+                        to_screen(rect.x, rect.y),
+                        Vec2::new(rect.width, rect.height),
+                    ),
+                    2.0,
+                    crate::theme::color::bracket_match(),
+                );
+            }
         }
     }
 

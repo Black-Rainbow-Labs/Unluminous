@@ -438,6 +438,9 @@ impl UnluminousApp {
         {
             self.browser.close_tab(id);
         }
+        // Written down **before** it is closed, because afterwards there is no tab to ask where it
+        // was. `task-1922` WP4.
+        self.remember_a_closed_tab(index);
         self.save_before_closing(index);
         self.files.close(index);
         self.forget_layout();
@@ -464,6 +467,8 @@ impl UnluminousApp {
             return;
         };
         let name = file.name();
+        // The same trim a save from the menu does, because closing a modified tab **is** a save.
+        self.trim_before_writing(index);
         match self.files.at_mut(index).document.save() {
             Ok(()) => {
                 self.files.at_mut(index).note_what_is_on_disk();
@@ -487,6 +492,9 @@ impl UnluminousApp {
         {
             self.browser.close_tab(id);
         }
+        // A tab closed with `--discard` is still a tab somebody may want back, and what reopening it
+        // means is reading the file again — which is what it would have meant either way.
+        self.remember_a_closed_tab(index);
         self.files.close(index);
         self.forget_layout();
     }
@@ -531,6 +539,11 @@ impl UnluminousApp {
             }
             return;
         }
+        // `editor.trim`, before the bytes are written and as an ordinary `Command`, so it is one undo
+        // step somebody who did not mean it can put back. Off unless it has been asked for, and never
+        // on a Markdown file. `task-1922` WP4.
+        let index = self.files.active_index();
+        self.trim_before_writing(index);
         // The setting is applied at the moment of writing rather than at the moment of opening, so
         // that changing it takes effect on the next save of a file that is already open, and so that
         // `keep` -- the default -- never touches what was read. `task-1804` §7.1.

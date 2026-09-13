@@ -56,6 +56,12 @@ pub enum Purpose {
     RenameSpaceNode(u64),
     /// Call this view on the Base of Infinite Space whatever is typed.
     RenameSpaceView(u64),
+    /// Put the caret on the line that is typed, which may be `42` or `42:5` — `task-1922` WP4.
+    ///
+    /// The one purpose here that is not a name for something. It is this prompt rather than a modal
+    /// of its own because it is exactly what this modal is: one line of text, a note saying what
+    /// will happen, and a button that does it.
+    GoToLine,
 }
 
 /// A prompt the window is showing.

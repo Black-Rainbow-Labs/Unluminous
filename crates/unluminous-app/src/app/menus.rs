@@ -73,6 +73,15 @@ impl UnluminousApp {
             can_undo: self.document().can_undo(),
             can_redo: self.document().can_redo(),
             has_selection: !self.document().selection().is_empty(),
+            // The same three questions the key chords and the command line ask, of the same
+            // functions, so the menu cannot come to a different answer about the tab that is
+            // showing — which is what `file_kind`'s family exists to prevent. `task-1922` WP4.
+            line_comment_applies: self.line_comment_marker().is_some(),
+            block_comment_applies: self.block_comment_markers().is_some(),
+            line_edits_apply: self.line_edits_apply_here(),
+            trimming_applies: self.line_edits_apply_here()
+                && file_kind::trimming_applies(self.document().path()),
+            can_reopen_tab: !self.closed_tabs.is_empty(),
             finding: self.find.is_some(),
             recent: self.recent.clone(),
             view_mode: self.view_mode(),
@@ -157,11 +166,22 @@ impl UnluminousApp {
             | Action::Save
             | Action::SaveAs
             | Action::CloseWindow
+            | Action::ReopenClosedTab
             | Action::Quit => self.a_file_entry(action, ctx),
+            Action::ToggleLineComment
+            | Action::ToggleBlockComment
+            | Action::DuplicateLines
+            | Action::MoveLines { .. }
+            | Action::JoinLines
+            | Action::SortLines
+            | Action::TrimTrailingWhitespace
+            | Action::GoToLine
+            | Action::GoToMatchingBracket => self.a_line_entry(action),
             Action::Find
             | Action::Replace
             | Action::FindNext
             | Action::FindPrevious
+            | Action::CommandPalette
             | Action::FindInFiles => self.a_find_entry(action),
             Action::Settings
             | Action::Undo
@@ -345,6 +365,13 @@ impl UnluminousApp {
                     }
                 }
             }
+            Action::ReopenClosedTab => match self.reopen_the_last_closed_tab() {
+                Ok(path) => {
+                    self.message = Some(format!("Reopened {}", path.display()));
+                    self.focus = Focus::Editor;
+                }
+                Err(problem) => self.message = Some(problem),
+            },
             Action::CloseWindow | Action::Quit => {
                 self.closing = true;
                 self.write_settings();
@@ -401,7 +428,68 @@ impl UnluminousApp {
                 self.tree.reload();
                 self.find_in_files = Some(FindInFiles::open(self.thread_waker()));
             }
+            Action::CommandPalette => self.open_the_command_palette(),
             other => unreachable!("{other:?} is not handled by a_find_entry"),
+        }
+    }
+
+    /// The line editing entries, the two comment toggles, `Go to Line` and the bracket.
+    ///
+    /// `task-1922` WP4. Reached only from [`Self::run_action`], which is what decides that an action
+    /// is one of these, so the last arm cannot happen. Every one of them is a `Command` in
+    /// `unluminous-core` applied through `Document::apply`, so each is one undo step; what is here is
+    /// the marker the language names and what the status bar says when there is nothing to do.
+    fn a_line_entry(&mut self, action: Action) {
+        match action {
+            Action::ToggleLineComment => {
+                if let Err(problem) = self.toggle_line_comment() {
+                    self.message = Some(problem);
+                }
+            }
+            Action::ToggleBlockComment => {
+                if let Err(problem) = self.toggle_block_comment() {
+                    self.message = Some(problem);
+                }
+            }
+            Action::DuplicateLines => {
+                self.duplicate_lines();
+            }
+            Action::MoveLines { down } => {
+                if !self.move_lines(if down { 1 } else { -1 }) {
+                    self.message = Some(
+                        "Those lines are already at the end of the file they were moving towards."
+                            .to_owned(),
+                    );
+                }
+            }
+            Action::JoinLines => {
+                if !self.join_lines() {
+                    self.message =
+                        Some("There is no line below this one to join it to.".to_owned());
+                }
+            }
+            Action::SortLines => {
+                if let Err(problem) = self.sort_lines() {
+                    self.message = Some(problem);
+                }
+            }
+            Action::TrimTrailingWhitespace => match self.trim_trailing_whitespace() {
+                Ok(true) => self.message = Some("Trimmed the trailing whitespace".to_owned()),
+                Ok(false) => {
+                    self.message = Some("No line ends in whitespace.".to_owned());
+                }
+                Err(problem) => self.message = Some(problem),
+            },
+            Action::GoToLine => self.ask_which_line(),
+            Action::GoToMatchingBracket => {
+                if self.go_to_matching_bracket().is_none() {
+                    self.message = Some(
+                        "The caret is not beside a bracket that has a partner in this file."
+                            .to_owned(),
+                    );
+                }
+            }
+            other => unreachable!("{other:?} is not handled by a_line_entry"),
         }
     }
 

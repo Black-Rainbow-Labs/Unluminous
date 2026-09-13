@@ -1363,6 +1363,14 @@ mod tests {
         //            arguments — before this the schema's only `required` was `["command"]`, so a
         //            model was told which word a verb was and left to find its required arguments
         //            from a refusal. Ceiling moved to 27,000 afterwards.
+        //   26,973   `task-1922` WP4's six: `editor comment`, `editor lines`, `editor bracket`,
+        //            `editor trim`, `tab reopen` and `action find`. Ceiling moved to 27,500
+        //            afterwards — **not** because 26,973 does not fit under 27,000, but because
+        //            twenty-seven tokens of headroom is a ceiling that stops the next command
+        //            rather than reporting on it, which is the fault the Settings window's own
+        //            height records. The six cost about 600 tokens between them; a third of that
+        //            came back by shortening the summaries, which is where a summary should be
+        //            shortened.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
@@ -1370,7 +1378,7 @@ mod tests {
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
         assert!(
-            grouped.len() / 4 < 27_000,
+            grouped.len() / 4 < 27_500,
             "grouped MCP schema exceeded budget: {} bytes",
             grouped.len()
         );

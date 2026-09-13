@@ -1462,3 +1462,239 @@ fn the_four_colours_and_the_two_ways_of_clearing_are_menu_entries_with_names() {
         assert!(names.contains(&name.to_owned()), "`action list` should offer {name}");
     }
 }
+
+// -------------------------------------------------------------------------------------- task-1922
+//
+// The line commands, the comment toggles and the two settings that decide what a keystroke types.
+// WP4's editing half: each is a `Command` in `unluminous-core` reached two ways — the menu entry a
+// person clicks and the command the catalogue offers — and what these prove is that the two ways
+// arrive at the same text.
+
+/// A project with one file of each of the three shapes the comment rules care about.
+fn commenting_folder() -> std::path::PathBuf {
+    fixture(
+        "unluminous-1922-comments",
+        &[
+            ("main.rs", "fn one() {}\nfn two() {}\nfn three() {}\n"),
+            ("site.css", "a { color: red; }\nb { color: blue; }\n"),
+            ("notes.md", "one  \ntwo  \n"),
+        ],
+    )
+}
+
+fn opened(name: &str) -> Harness<'static, UnluminousApp> {
+    let folder = commenting_folder();
+    let mut harness = harness_in(&folder);
+    did(&mut harness, &format!("tab open {name} --permanent"));
+    harness
+}
+
+#[test]
+fn the_line_comment_marker_comes_from_the_plugin_and_the_toggle_is_its_own_inverse() {
+    let mut harness = opened("main.rs");
+    let was = harness.state().document().text().to_string();
+    did(&mut harness, "editor select --from-line 1 --to-line 2");
+    let commented = did(&mut harness, "editor comment --toggle");
+    assert_eq!(
+        commented["marker"], "//",
+        "the marker is the Rust plugin's, not a list in Unluminous"
+    );
+    assert_eq!(commented["lines"], 2);
+    let text = harness.state().document().text().to_string();
+    assert!(text.starts_with("//fn one() {}\n//fn two() {}\n"), "{text}");
+    assert!(text.ends_with("fn three() {}\n"), "the third line was not touched: {text}");
+    // The same command again gives the bytes back, which is what makes one chord both.
+    did(&mut harness, "editor comment --toggle");
+    assert_eq!(harness.state().document().text().to_string(), was);
+    // And it is one undo step whichever way it went.
+    did(&mut harness, "editor comment --toggle");
+    did(&mut harness, "editor undo");
+    assert_eq!(harness.state().document().text().to_string(), was);
+}
+
+#[test]
+fn a_language_with_no_line_comment_is_refused_and_has_no_menu_entry() {
+    // CSS has a block comment and no `//`, so one of the two entries is absent and the other is
+    // there — which is the whole reason the two questions are separate.
+    let mut harness = opened("site.css");
+    assert_eq!(refused(&mut harness, "editor comment --toggle"), "not-applicable");
+    let found = did(&mut harness, "action find comment");
+    let names: Vec<String> = found["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["name"].as_str().unwrap_or_default().to_owned())
+        .collect();
+    assert!(!names.contains(&"toggle-line-comment".to_owned()), "absent, not dimmed: {names:?}");
+    assert!(
+        names.contains(&"toggle-block-comment".to_owned()),
+        "CSS keeps the block one: {names:?}"
+    );
+    // And the block one really works on it.
+    did(&mut harness, "editor select --from-line 1 --to-line 1");
+    did(&mut harness, "editor comment --block");
+    assert!(harness.state().document().text().to_string().starts_with("/*"));
+}
+
+#[test]
+fn the_four_line_commands_change_the_text_and_each_is_one_undo_step() {
+    let mut harness = opened("main.rs");
+    let was = harness.state().document().text().to_string();
+
+    did(&mut harness, "editor caret --line 1");
+    let duplicated = did(&mut harness, "editor lines duplicate");
+    assert_eq!(duplicated["lines"], 1);
+    assert!(harness
+        .state()
+        .document()
+        .text()
+        .to_string()
+        .starts_with("fn one() {}\nfn one() {}\n"));
+    did(&mut harness, "editor undo");
+    assert_eq!(harness.state().document().text().to_string(), was);
+
+    did(&mut harness, "editor caret --line 2");
+    assert_eq!(did(&mut harness, "editor lines move --by -1")["moved"], true);
+    assert!(harness
+        .state()
+        .document()
+        .text()
+        .to_string()
+        .starts_with("fn two() {}\nfn one() {}\n"));
+    did(&mut harness, "editor undo");
+    assert_eq!(harness.state().document().text().to_string(), was);
+
+    did(&mut harness, "editor caret --line 1");
+    assert_eq!(did(&mut harness, "editor lines join")["joined"], true);
+    assert!(harness.state().document().text().to_string().starts_with("fn one() {} fn two() {}"));
+    did(&mut harness, "editor undo");
+    assert_eq!(harness.state().document().text().to_string(), was);
+
+    did(&mut harness, "editor select --from-line 1 --to-line 3");
+    did(&mut harness, "editor lines sort");
+    let sorted = harness.state().document().text().to_string();
+    assert!(sorted.starts_with("fn one() {}\nfn three() {}\nfn two() {}\n"), "{sorted}");
+    did(&mut harness, "editor undo");
+    assert_eq!(harness.state().document().text().to_string(), was);
+}
+
+#[test]
+fn sorting_with_nothing_selected_is_refused_rather_than_sorting_the_whole_file() {
+    let mut harness = opened("main.rs");
+    let was = harness.state().document().text().to_string();
+    assert_eq!(refused(&mut harness, "editor lines sort"), "not-applicable");
+    assert_eq!(harness.state().document().text().to_string(), was);
+    // And the menu row says the same thing by being dimmed rather than absent: a selection is a
+    // thing somebody can make in a moment.
+    let row = did(&mut harness, "action find sort lines");
+    assert_eq!(row["actions"][0]["name"], "sort-lines");
+    assert_eq!(row["actions"][0]["enabled"], false);
+}
+
+#[test]
+fn a_menu_entry_and_its_command_reach_the_same_text() {
+    // The rule the whole of WP4 is held to: a person's half and an agent's half are one function.
+    let mut harness = opened("main.rs");
+    did(&mut harness, "editor select --from-line 1 --to-line 2");
+    did(&mut harness, "editor comment --toggle");
+    let by_command = harness.state().document().text().to_string();
+    did(&mut harness, "editor undo");
+
+    did(&mut harness, "editor select --from-line 1 --to-line 2");
+    choose(&mut harness, Action::ToggleLineComment);
+    assert_eq!(harness.state().document().text().to_string(), by_command);
+}
+
+#[test]
+fn trimming_never_runs_on_a_markdown_file_whatever_the_setting_says() {
+    // Two spaces at the end of a line are a line break there, so trimming them would change what
+    // the document means rather than tidying it.
+    let mut harness = opened("notes.md");
+    assert_eq!(refused(&mut harness, "editor trim"), "not-applicable");
+    assert_eq!(harness.state().document().text().to_string(), "one  \ntwo  \n");
+    did(&mut harness, "settings set editor.trim true");
+    did(&mut harness, "tab save");
+    assert_eq!(
+        harness.state().document().text().to_string(),
+        "one  \ntwo  \n",
+        "saving a Markdown file leaves its line breaks alone even with the setting on"
+    );
+}
+
+#[test]
+fn trailing_whitespace_goes_on_a_save_only_once_the_setting_asks_for_it() {
+    let folder = fixture("unluminous-1922-trim", &[("main.rs", "fn one() {}   \nfn two() {}\t\n")]);
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open main.rs --permanent");
+    // Off, which is the shipped default: a save that changed bytes nobody typed is a save nobody
+    // asked for.
+    did(&mut harness, "editor caret --line 1 --column 1");
+    did(&mut harness, "editor insert x");
+    did(&mut harness, "tab save");
+    assert!(std::fs::read_to_string(folder.join("main.rs")).unwrap().contains("   \n"));
+
+    did(&mut harness, "settings set editor.trim true");
+    did(&mut harness, "editor insert y");
+    did(&mut harness, "tab save");
+    let written = std::fs::read_to_string(folder.join("main.rs")).unwrap();
+    assert!(!written.contains("   \n"), "{written:?}");
+    assert!(!written.contains("\t\n"), "{written:?}");
+}
+
+/// Press one key the way a keyboard does, which is the only way to find out what it types.
+fn press(harness: &mut Harness<'static, UnluminousApp>, key: egui::Key) {
+    harness.event(egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    });
+    harness.run();
+}
+
+#[test]
+fn what_the_tab_key_types_is_a_tab_until_the_indent_setting_says_otherwise() {
+    let folder = fixture("unluminous-1922-tab", &[("main.rs", "one\n")]);
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open main.rs --permanent");
+    did(&mut harness, "editor caret --line 1 --column 4");
+    harness.state_mut().focus = unluminous_app::app::Focus::Editor;
+    harness.run();
+
+    press(&mut harness, egui::Key::Tab);
+    assert_eq!(harness.state().document().text().to_string(), "one\t\n");
+
+    did(&mut harness, "settings set editor.indent spaces:4");
+    press(&mut harness, egui::Key::Tab);
+    assert_eq!(harness.state().document().text().to_string(), "one\t    \n");
+    // And a width no editor offers is refused rather than clamped, so `spaces:40` does not quietly
+    // become `spaces:8`.
+    assert_eq!(refused(&mut harness, "settings set editor.indent spaces:40"), "usage");
+    assert_eq!(did(&mut harness, "settings get editor.indent")["value"], "spaces:4");
+}
+
+#[test]
+fn a_new_line_starts_where_the_line_it_was_started_from_starts() {
+    let folder =
+        fixture("unluminous-1922-indent", &[("main.rs", "fn one() {\n    let a = 1;\n}\n")]);
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open main.rs --permanent");
+    did(&mut harness, "editor caret --line 2 --column 15");
+    harness.state_mut().focus = unluminous_app::app::Focus::Editor;
+    harness.run();
+    press(&mut harness, egui::Key::Enter);
+    let text = harness.state().document().text().to_string();
+    assert!(text.contains("    let a = 1;\n    \n}"), "{text:?}");
+    // One undo step, because the line break and its indentation are one `Command::Insert`.
+    did(&mut harness, "editor undo");
+    assert_eq!(harness.state().document().text().to_string(), "fn one() {\n    let a = 1;\n}\n");
+
+    did(&mut harness, "settings set editor.auto_indent false");
+    press(&mut harness, egui::Key::Enter);
+    let text = harness.state().document().text().to_string();
+    assert!(
+        text.contains("    let a = 1;\n\n}"),
+        "switched off, a new line is a new line: {text:?}"
+    );
+}

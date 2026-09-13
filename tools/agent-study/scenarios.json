@@ -122,5 +122,16 @@
 {"id":"s27-space","area":"space","name":"Wire a terminal to a browser on the canvas and drive it",
  "expect":"Uses the space area to open the canvas, add two nodes, connect them, then drive the browser as the terminal node with --from and read the address back, rather than opening a tab or shelling out.",
  "prompts":["Open the Base of Infinite Space, put a terminal node and a web browser node on it, and connect the terminal to the browser.",
-            "Now, acting as that terminal node, send the browser to https://example.com/ and tell me what address it ended up on."]}
+            "Now, acting as that terminal node, send the browser to https://example.com/ and tell me what address it ended up on."]},
+
+{"id":"s28-comment","area":"editor","name":"Comment a block out and put it back",
+ "before":{"editor":["editor","status"]},"after":{"text":["editor","text"]},
+ "expect":"Uses `editor select` and `editor comment` rather than reading the file, adding // itself and writing it back. The marker has to come from the reply rather than from the model's idea of Rust, and the second turn has to be the same command again rather than a search and replace.",
+ "prompts":["Open src/shapes.rs and comment out the body of the same_size function so I can test something without it.",
+            "Actually put it back the way it was."]},
+
+{"id":"s29-palette","area":"action","name":"Find a command by roughly what it is called",
+ "after":{"settings":["settings","list"]},
+ "expect":"Uses `action find` to look the entry up by its wording and then `action run` on the name it was given, rather than guessing an action name until one is accepted or reaching for its own shell. The first run of this measured a model trying `toggle-line-numbers`, `line-numbers` and `show-line-numbers` in turn.",
+ "prompts":["I want to turn the line numbers off but I do not know what the command is called. Find it and run it, and tell me what it is called so I know for next time."]}
 ]

@@ -330,6 +330,16 @@ pub mod derived {
     pub fn attached() -> Color32 {
         color::git_added()
     }
+
+    /// Behind the two brackets that answer each other around the caret. `task-1922` WP4.
+    ///
+    /// The Find bar's own band, because the two say the same thing: *the thing you are looking at is
+    /// also here*. Derived rather than a role of its own, which is [`breakpoint`]'s decision made
+    /// again — the palette is closed, a theme that recoloured its find band and left its bracket band
+    /// behind would be a theme with two answers to one question, and no theme has to name this.
+    pub fn bracket_match() -> Color32 {
+        color::find_match()
+    }
 }
 
 /// Which drawn set an icon comes from.

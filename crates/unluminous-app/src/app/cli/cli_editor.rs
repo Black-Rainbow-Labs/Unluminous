@@ -1,7 +1,7 @@
 //! `editor` -- the text itself: reading and writing it, the caret and the selection, undo, the
-//! three view modes, and the syntactic tier of definitions, references, rename and completion.
-//! Twenty-two commands, the largest single area in the catalogue, because a text editor is what
-//! Unluminous is.
+//! three view modes, the line commands and the comment toggles, and the syntactic tier of
+//! definitions, references, rename and completion. Twenty-six commands, the largest single area in
+//! the catalogue, because a text editor is what Unluminous is.
 //!
 //! `cli_offset` stays in `cli.rs` rather than here even though most of its callers are editor
 //! commands, because `debug.rs`'s `cli_debug_hover` asks it the same question -- see the note beside
@@ -55,6 +55,10 @@ impl UnluminousApp {
             "select" => self.cli_editor_select(request),
             "indent" => self.cli_editor_indent(request),
             "dedent" => self.cli_editor_dedent(request),
+            "comment" => self.cli_editor_comment(request),
+            "lines" => self.cli_editor_lines(request),
+            "bracket" => self.cli_editor_bracket(request),
+            "trim" => self.cli_editor_trim(request),
             "undo" => self.cli_editor_history(request, true),
             "redo" => self.cli_editor_history(request, false),
             "view" => self.cli_editor_view(request, ctx),
@@ -643,6 +647,189 @@ impl UnluminousApp {
                 "end": selection.end(),
             }),
         )
+    }
+
+    /// `unluminous-cli editor comment` -- the agent's half of `Cmd/Ctrl+/` and `Cmd/Ctrl+Shift+/`.
+    ///
+    /// Through `toggle_line_comment` and `toggle_block_comment`, the same two functions the menu
+    /// entries call, so the marker an agent gets and the marker a person gets come from the same
+    /// plugin. `--toggle` is the default because a command given neither flag means the commoner of
+    /// the two, and naming it explicitly is what `task-1804`'s rule about a dropped key asks for.
+    fn cli_editor_comment(&mut self, request: &Request) -> Outcome {
+        if let Some(refusal) = self.not_a_document(request) {
+            return refusal;
+        }
+        if request.switch("block") && request.switch("toggle") {
+            return no(
+                request,
+                code::USAGE,
+                "Say --toggle or --block, not both: one comments each line and the other wraps the whole selection once.",
+            );
+        }
+        let block = request.switch("block");
+        let commented = match block {
+            true => self.toggle_block_comment(),
+            false => self.toggle_line_comment(),
+        };
+        let lines = match commented {
+            Ok(lines) => lines,
+            Err(problem) => return no(request, code::NOT_APPLICABLE, problem),
+        };
+        let marker = match block {
+            true => self.block_comment_markers().map(|(open, close)| format!("{open} {close}")),
+            false => self.line_comment_marker(),
+        }
+        .unwrap_or_default();
+        ok(
+            request,
+            format!("Toggled the comment on {lines} line{}", if lines == 1 { "" } else { "s" }),
+            json!({
+                "lines": lines,
+                "kind": if block { "block" } else { "line" },
+                "marker": marker,
+            }),
+        )
+    }
+
+    /// `unluminous-cli editor lines <what>` -- duplicate, move, join and sort, through the four
+    /// `Command` variants the menu entries use.
+    ///
+    /// One verb with a word after it rather than four verbs, because they are one family and an
+    /// agent looking for "the line commands" finds them in one place -- which is `task-1695`'s rule
+    /// about naming a command the way an agent guesses.
+    fn cli_editor_lines(&mut self, request: &Request) -> Outcome {
+        if let Some(refusal) = self.not_a_document(request) {
+            return refusal;
+        }
+        if !self.line_edits_apply_here() {
+            return no(
+                request,
+                code::NOT_APPLICABLE,
+                "This tab holds no text to edit by the line.",
+            );
+        }
+        let Some(what) = request.text("what") else {
+            return no(request, code::USAGE, "Say duplicate, move, join or sort.");
+        };
+        match what.trim().to_lowercase().as_str() {
+            "duplicate" => {
+                let lines = self.duplicate_lines();
+                ok(
+                    request,
+                    format!("Duplicated {lines} line{}", if lines == 1 { "" } else { "s" }),
+                    json!({ "lines": lines }),
+                )
+            }
+            "move" => {
+                // A direction and a count, which is what `Command::MoveLines` takes and what the two
+                // chords send. One down when it is left out, because a move with no direction named
+                // is not a thing anybody means.
+                let by = request.number("by").unwrap_or(1.0) as i32;
+                if by == 0 {
+                    return no(request, code::USAGE, "--by 0 would move nothing. Use -1 or 1.");
+                }
+                let moved = self.move_lines(by);
+                let where_to = if by < 0 { "up" } else { "down" };
+                ok(
+                    request,
+                    match moved {
+                        true => format!("Moved {} line{where_to}", by.abs()),
+                        false => format!(
+                            "Nothing moved: those lines are already as far {where_to} as they go"
+                        ),
+                    },
+                    json!({ "moved": moved, "by": by }),
+                )
+            }
+            "join" => {
+                let joined = self.join_lines();
+                ok(
+                    request,
+                    match joined {
+                        true => "Joined the lines".to_owned(),
+                        false => "There is no line below this one to join it to".to_owned(),
+                    },
+                    json!({ "joined": joined }),
+                )
+            }
+            "sort" => match self.sort_lines() {
+                Ok(lines) => {
+                    ok(request, format!("Sorted {lines} lines"), json!({ "lines": lines }))
+                }
+                Err(problem) => no(request, code::NOT_APPLICABLE, problem),
+            },
+            other => no(
+                request,
+                code::USAGE,
+                format!(
+                    "There is no line command called {other}. It is duplicate, move, join or sort."
+                ),
+            ),
+        }
+    }
+
+    /// `unluminous-cli editor bracket` -- both ends of the pair, and optionally a jump to the other.
+    ///
+    /// **Both offsets**, which is what `task-1922` §5.5 asks for: an agent that was handed only the
+    /// answer would have to work out where it asked from. The positions are line and column beside
+    /// the bytes, because that is what every other editor command prints and what a person reads.
+    fn cli_editor_bracket(&mut self, request: &Request) -> Outcome {
+        if let Some(refusal) = self.not_a_document(request) {
+            return refusal;
+        }
+        let offset = match self.cli_offset(request) {
+            Ok(offset) => offset,
+            Err(problem) => return no(request, code::USAGE, problem),
+        };
+        let Some((here, other)) = self.bracket_pair_at(offset) else {
+            return no(
+                request,
+                code::NOT_FOUND,
+                "There is no bracket there with a partner in this file. A bracket inside a comment or a string is not matched, and a pair more than 64 KB apart is not searched for.",
+            );
+        };
+        if request.switch("go") {
+            self.document_mut()
+                .apply(unluminous_core::Command::PlaceCaret { offset: other, extend: false });
+            self.reveal_caret = true;
+        }
+        let text = self.document().text();
+        let at = status_bar::position_of(text, here);
+        let partner = status_bar::position_of(text, other);
+        ok(
+            request,
+            format!(
+                "The bracket at line {} column {} answers the one at line {} column {}",
+                at.line, at.column, partner.line, partner.column
+            ),
+            json!({
+                "from": here,
+                "to": other,
+                "fromLine": at.line,
+                "fromColumn": at.column,
+                "toLine": partner.line,
+                "toColumn": partner.column,
+                "moved": request.switch("go"),
+            }),
+        )
+    }
+
+    /// `unluminous-cli editor trim` -- the `editor.trim` setting asked for once.
+    fn cli_editor_trim(&mut self, request: &Request) -> Outcome {
+        if let Some(refusal) = self.not_a_document(request) {
+            return refusal;
+        }
+        match self.trim_trailing_whitespace() {
+            Ok(trimmed) => ok(
+                request,
+                match trimmed {
+                    true => "Trimmed the trailing whitespace".to_owned(),
+                    false => "No line ends in whitespace".to_owned(),
+                },
+                json!({ "trimmed": trimmed }),
+            ),
+            Err(problem) => no(request, code::NOT_APPLICABLE, problem),
+        }
     }
 
     fn cli_editor_history(&mut self, request: &Request, undo: bool) -> Outcome {
