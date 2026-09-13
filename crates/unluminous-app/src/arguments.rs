@@ -25,7 +25,7 @@ use crate::components::title_bar::MenuPlacement;
 /// The one line that says what the program takes, quoted by `--help` and by the module comment.
 pub const USAGE: &str = "Usage: unluminous [path] [--opacity N] [--view raw|side|preview] \
                          [--menu-bar native|in-window] [--terminal] [--control on|off] \
-                         [--print-menus] [--version]";
+                         [--background] [--print-menus] [--version]";
 
 /// The settings a window opens with, once the command line has been read.
 #[derive(Debug, Clone, PartialEq)]
@@ -42,6 +42,19 @@ pub struct Arguments {
     pub print_menus: bool,
     /// False when `--control off` was given, or `UNLUMINOUS_CONTROL=off` is in the environment.
     pub control: bool,
+    /// `--background`: open the window without making it the foreground window.
+    ///
+    /// **This is the Windows half of `open -g`.** `task-1848` recorded that driving the real window must
+    /// never take the keyboard out of whatever a person is typing into, and answered the *launching* half
+    /// of it on macOS with `open -g`; on Windows there was no answer, so every script that started a
+    /// window activated one — and activating a window that is on another virtual desktop **switches the
+    /// desktop**, which is `task-1914`'s report.
+    ///
+    /// It reaches `egui::ViewportBuilder::with_active(false)`, which `winit` turns into
+    /// `SW_SHOWNOACTIVATE` on Windows: the window appears where it was started, drawing and answering the
+    /// command channel, and the foreground window does not change. `tools/drive-a-window.ps1` is what uses
+    /// it, and `tasks/task-1914-testing-without-stealing-focus-tdd.md` is the design.
+    pub background: bool,
 }
 
 impl Default for Arguments {
@@ -56,6 +69,7 @@ impl Default for Arguments {
             terminal: false,
             print_menus: false,
             control: true,
+            background: false,
         }
     }
 }
@@ -113,6 +127,7 @@ pub fn read(
                 settings.control =
                     !matches!(rest.next().unwrap_or_default().trim(), "off" | "no" | "0" | "false");
             }
+            "--background" | "--no-activate" => settings.background = true,
             "--print-menus" => settings.print_menus = true,
             "--version" | "-V" => return Start::Answer(version()),
             "--help" | "-h" => return Start::Answer(help()),
@@ -150,6 +165,7 @@ pub fn help() -> String {
         "  --menu-bar WHERE  native for the screen's own bar, in-window for the title bar",
         "  --terminal      open the terminal at the bottom",
         "  --control WHICH on to let unluminous-cli drive this window, off to close the channel. On by default.",
+        "  --background    open the window without taking the keyboard from whatever is in front",
         "  --print-menus   print the menus and their shortcuts, and stop",
         "  --version       print the version and the build date, and stop",
     ]
@@ -227,7 +243,16 @@ mod tests {
     fn help_is_answered_and_lists_every_switch_that_is_read() {
         let Start::Answer(said) = read_line(&["--help"]) else { panic!("--help is an answer") };
         for switch in
-            ["--opacity", "--view", "--menu-bar", "--terminal", "--control", "--print-menus", "--version"]
+            [
+                "--opacity",
+                "--view",
+                "--menu-bar",
+                "--terminal",
+                "--control",
+                "--background",
+                "--print-menus",
+                "--version",
+            ]
         {
             assert!(said.contains(switch), "--help does not mention {switch}:\n{said}");
         }

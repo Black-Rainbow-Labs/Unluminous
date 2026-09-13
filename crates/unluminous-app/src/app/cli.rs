@@ -111,6 +111,14 @@ pub enum Waiting {
     /// take one - a native child view is composited by the operating system, so nothing inside
     /// Unluminous can render it on its own.
     Screenshot { path: PathBuf, until: Instant, settled: Instant, asked: bool, crop: Option<Rect> },
+    /// Input that has been queued and not yet reached a frame.
+    ///
+    /// **A count rather than a flag**, which is the shape `DebugState::reads` already has: two `input`
+    /// commands in flight would each see the other's empty queue and answer for a gesture that was not
+    /// theirs. `settle` is the frames to draw *after* the last step, so a screenshot taken straight after
+    /// an `input click` is a picture of the window after the click rather than during it - which is the
+    /// same reason `Waiting::Screenshot` settles.
+    Input { target: u64, settle: u8, until: Instant },
     /// Some text on a terminal tab's screen.
     ///
     /// `tab` is the tab the wait was asked about, resolved to a number when the request arrived,
@@ -170,6 +178,7 @@ impl Waiting {
     fn until(&self) -> Instant {
         match self {
             Waiting::Screenshot { until, .. }
+            | Waiting::Input { until, .. }
             | Waiting::TerminalText { until, .. }
             | Waiting::RunOutput { until, .. }
             | Waiting::ModalResults { until, .. }
@@ -381,6 +390,18 @@ impl UnluminousApp {
                     ),
                 })
             }
+            Waiting::Input { target, settle, .. } => {
+                if self.input.fed() < *target {
+                    ctx.request_repaint();
+                    return None;
+                }
+                if *settle > 0 {
+                    *settle -= 1;
+                    ctx.request_repaint();
+                    return None;
+                }
+                Some(Reply::done(&request.command, "Done.", json!({ "frames": *target })))
+            }
             Waiting::TerminalText { tab, needle, lines, .. } => {
                 let screen = self.terminal_text(*tab, *lines)?;
                 screen.contains(needle.as_str()).then(|| {
@@ -504,6 +525,102 @@ impl UnluminousApp {
         }
     }
 
+    /// Click, type, drag and scroll in this window, without it being in front.
+    ///
+    /// **The one command family that produces input**, and the reason it exists rather than a script
+    /// sending `mouse_event` is that synthetic operating system input goes to the *foreground* window —
+    /// so a script had to bring Unluminous to the front, and on Windows bringing a window on another
+    /// virtual desktop to the front switches the desktop with it. That is `task-1914`'s report and
+    /// `tasks/task-1914-testing-without-stealing-focus-tdd.md` is the design.
+    ///
+    /// What is queued is `egui::Event`, which is what `egui-winit` builds out of a real device, and it is
+    /// fed to `RawInput` one step a frame from `raw_input_hook`. So the window is driven down the same
+    /// path a mouse drives it, with no focus, no pointer moving on the person's screen, and no desktop
+    /// switch. Positions are the window's own points, which is what `window screenshot` writes out.
+    fn cli_input(&mut self, request: &Request, verb: &str) -> Outcome {
+        use crate::services::input;
+        let modifiers = input_modifiers(request);
+        let at = |name: &str, down: &str| -> Option<egui::Pos2> {
+            Some(egui::Pos2::new(request.number(name)? as f32, request.number(down)? as f32))
+        };
+        let steps = match verb {
+            "move" => {
+                let Some(at) = at("x", "y") else {
+                    return no(request, code::USAGE, "Say where, as an x and a y in window points.");
+                };
+                input::moved(at)
+            }
+            "click" => {
+                let Some(at) = at("x", "y") else {
+                    return no(request, code::USAGE, "Say where, as an x and a y in window points.");
+                };
+                let button = match (request.switch("right"), request.switch("middle")) {
+                    (true, _) => input::Button::Secondary,
+                    (_, true) => input::Button::Middle,
+                    _ => input::Button::Primary,
+                };
+                let times = if request.switch("twice") { 2 } else { 1 };
+                input::clicked(at, button, modifiers, times)
+            }
+            "drag" => {
+                let Some(from) = at("x", "y") else {
+                    return no(request, code::USAGE, "Say where the drag starts, as an x and a y.");
+                };
+                let Some(to) = at("to-x", "to-y") else {
+                    return no(request, code::USAGE, "Say where it ends, with --to-x and --to-y.");
+                };
+                let along = request.number("steps").unwrap_or(20.0).max(1.0) as usize;
+                input::dragged(from, to, along, modifiers)
+            }
+            "key" => {
+                let Some(name) = request.text("key") else {
+                    return no(request, code::USAGE, "Say which key, by its name.");
+                };
+                let Some(key) = input::key_named(&name) else {
+                    return no(
+                        request,
+                        code::USAGE,
+                        format!(
+                            "There is no key called {name}. A letter, a digit, or a name like Enter, Escape, Tab, Backspace, Space, ArrowDown or F2."
+                        ),
+                    );
+                };
+                let times = request.number("times").unwrap_or(1.0).max(1.0) as usize;
+                input::pressed(key, modifiers, times)
+            }
+            "text" => {
+                let Some(text) = request.text("text") else {
+                    return no(request, code::USAGE, "Say what to type.");
+                };
+                if text.is_empty() {
+                    return no(request, code::USAGE, "Say what to type.");
+                }
+                input::typed(&text)
+            }
+            "wheel" => {
+                let Some(notches) = request.number("notches") else {
+                    return no(request, code::USAGE, "Say how many notches, negative for down.");
+                };
+                let across = request.number("across").unwrap_or(0.0) as f32;
+                input::wheeled(notches as f32, across, modifiers)
+            }
+            _ => return unknown(request),
+        };
+        // **The window has to be drawing for any of this to land**, and an idle one is asleep: nothing has
+        // happened yet, so nothing has asked for a frame. The wait asks for one on every pass, and
+        // `raw_input_hook` asks for the next while any step is left.
+        let frames = steps.len() as u64;
+        self.input.push(steps);
+        Outcome::Hold(Waiting::Input {
+            target: self.input.fed() + frames,
+            // One frame after the last step, so what the input did has been drawn before the caller is
+            // told it happened — which is what makes `input click` then `window screenshot` a picture of
+            // the window after the click. `Waiting::Screenshot` settles for the same reason.
+            settle: 1,
+            until: Instant::now() + DEFAULT_WAIT,
+        })
+    }
+
     /// What to say when the time ran out.
     fn timed_out(&mut self, waiting: &Waiting) -> Reply {
         let (command, message) = match waiting {
@@ -513,6 +630,11 @@ impl UnluminousApp {
                     "The window did not paint a frame to capture, so nothing was written to {}.",
                     path.display()
                 ),
+            ),
+            Waiting::Input { .. } => (
+                "input",
+                "The window did not draw the frames the input needed, so it may not all have arrived."
+                    .to_owned(),
             ),
             Waiting::TerminalText { tab, needle, lines, .. } => {
                 let screen = self.terminal_text(*tab, *lines).unwrap_or_default();
@@ -671,6 +793,7 @@ impl UnluminousApp {
         match area {
             "" => self.cli_top(request, verb, ctx),
             "window" => self.cli_window(request, verb, ctx),
+            "input" => self.cli_input(request, verb),
             "browser" => self.cli_browser(request, verb),
             "tab" => self.cli_tab(request, verb),
             "pane" => self.cli_pane(request, verb),
@@ -8305,6 +8428,22 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "panes.preview.fraction" => format!("{:.3}", panes.preview_fraction),
         "panes.find.split" => format!("{:.3}", panes.find_split),
         _ => String::new(),
+    }
+}
+
+/// The modifiers an `input` command was given, as `egui` counts them.
+///
+/// `command` is the key a menu shortcut names — the Apple key on macOS and control on Windows — which is
+/// why it is set beside `ctrl` rather than instead of it: on Windows `Ctrl+Enter` really does arrive with
+/// both, which is the trap `task-1682` recorded.
+fn input_modifiers(request: &Request) -> egui::Modifiers {
+    let command = request.switch("cmd") || request.switch("command");
+    egui::Modifiers {
+        alt: request.switch("alt"),
+        ctrl: request.switch("ctrl") || (command && !cfg!(target_os = "macos")),
+        shift: request.switch("shift"),
+        mac_cmd: command && cfg!(target_os = "macos"),
+        command: command || request.switch("ctrl"),
     }
 }
 

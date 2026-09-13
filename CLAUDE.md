@@ -3622,9 +3622,50 @@ Two things make the activation *look* necessary, and neither is a reason for it:
   `services::wake` records. Activating it recovers that, which is what made the habit look like it worked.
   The answer to that fault is the wake escalation, not the pointer.
 
-`tools/windows-input.ps1` is the Windows equivalent for keyboard and mouse input, and it has its own rule
-about never leaving a key held down. The same principle: a script that drives the real window has to leave
-the machine as it found it.
+### Nothing about Unluminous is driven with synthetic input any more
+
+`task-1914` reported the hole that was left in the rule above: *"we can't have the window take focus while
+testing ... right now im switched to a different desktop, but get switched to another desktop with
+unluminous open."*
+
+The photograph was never the problem. **Synthetic operating system input goes to whatever window is in
+front**, so a script that wanted to click something had to bring Unluminous to the front first — and on
+Windows activating a window that is on another virtual desktop switches the desktop with it. `task-1848`
+answered the *launching* half of this on macOS with `open -g` and left the *input* half unanswered
+everywhere.
+
+Three things close it, and each is a thing rather than a habit:
+
+- **`unluminous --background`** opens a window without making it the foreground window.
+  `ViewportBuilder::with_active(false)` reaches `winit`, which turns it into `SW_SHOWNOACTIVATE`, so
+  neither the focus nor the desktop moves. `tools/drive-a-window.ps1` is the sibling of
+  `drive-a-window.sh` and is how a window is started on Windows.
+- **`unluminous-cli input`** clicks, types, drags and scrolls by feeding the window `egui::Event` — the
+  same values `egui-winit` builds out of a real device — down the control channel, one step a frame from
+  `raw_input_hook`. Positions are the **window's own points**, which is what `window screenshot` writes
+  out, so a position measured off a picture is the position to send. `services::input` is the queue and
+  `tasks/task-1914-testing-without-stealing-focus-tdd.md` is the design.
+- **`tools/capture-window.ps1`** is `PrintWindow` with `PW_RENDERFULLCONTENT`, for the one thing
+  `window screenshot` cannot hold: a **browser node's page**, which is a native child the operating
+  system composites on top of the surface egui reads back. Measured on `task-1914` — the same frame comes
+  back with an empty page area from `window screenshot` and with the page in it from here.
+
+**Three things had to be measured before any of that could be believed, and all three were.** A window
+started with `--background` while the shell was elsewhere did not move the foreground window, asked of
+`GetForegroundWindow` before and after. `input click` and `input text` put `read` into the explorer's
+filter box of a window sitting behind Firefox — which the synthetic-device path could not do **even with
+the window in front**, measured three times in the same session against three different text boxes and
+not one character arrived. And a chat node's composer, which is a `TextEdit` inside a transformed
+sublayer, took the same click and the same letters.
+
+**`input` is the last resort, not the first.** A command that names the thing — `action run`, `tab open`,
+`space editor` — reaches the same code and does not depend on where anything was drawn. `input` is for
+the gestures there is no other command for: a drag, a right click on a particular row, a press in a text
+box.
+
+`tools/windows-input.ps1` stays, for driving something that is **not** Unluminous, and it keeps its own
+rule about never leaving a key held down. The same principle: a script that drives the real window has to
+leave the machine as it found it.
 
 ## Tests
 
@@ -4040,6 +4081,13 @@ trade that away to be a shade nearer a screenshot.
 - `tools/release.sh` and `tools/release.ps1` — the one command that releases, on macOS and Linux and on
   Windows: bump, build, install, tag, push, publish. Run it whenever a change is finished, without
   asking.
+- `tasks/task-1914-testing-without-stealing-focus-tdd.md` — driving the real window without taking the
+  keyboard out of whatever a person is typing into: which of the three steps was actually at fault, the
+  three ways of photographing a window that is not in front and the one already in the product, why
+  posted `WM_CHAR` was refused in favour of feeding `egui` its own events, and what was measured.
+- `tools/drive-a-window.ps1` and `tools/drive-a-window.sh` — how a window is started for driving, on
+  Windows and on macOS. Neither of them activates anything.
+- `tools/capture-window.ps1` — `PrintWindow`, for the one thing `window screenshot` cannot hold.
 - `tasks/improvements.md` — the ask that the settings window, the panes, the terminal and the menus came
   from.
 

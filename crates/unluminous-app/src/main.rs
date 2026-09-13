@@ -253,6 +253,15 @@ fn main() -> eframe::Result {
             .with_maximized(place.maximised);
     }
 
+    // **`--background` opens the window without taking the keyboard.** `winit` turns this into
+    // `SW_SHOWNOACTIVATE` on Windows, so the window appears where it was started and the foreground window
+    // does not change - which also means the virtual desktop does not switch, and that is `task-1914`'s
+    // report. It is `open -g`'s answer for the other platform, and `tools/drive-a-window.ps1` is what
+    // asks for it. See `Arguments::background`.
+    if arguments.background {
+        viewport = viewport.with_active(false);
+    }
+
     let options = eframe::NativeOptions {
         viewport: viewport
             .with_transparent(true)

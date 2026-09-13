@@ -17102,6 +17102,85 @@ fn a_file_dropped_on_the_canvas_opens_as_a_node_or_as_a_tab() {
     assert_eq!(harness.state().files.tabs_in_node(made).len(), 2, "two tabs on the one node");
 }
 
+/// Ask for input the way `unluminous-cli input` does, and feed the frames it queued.
+///
+/// **The command holds until its frames have been drawn**, and a harness has no control channel to be
+/// answered on — so what this does is what the window does: run the command, then hand each step to
+/// `RawInput` before a pass, which is `Harness::input_mut`. See `UnluminousApp::take_the_next_input_frame`
+/// for why the harness cannot use `raw_input_hook` itself.
+fn drove(harness: &mut Harness<'static, UnluminousApp>, line: &str) {
+    let ctx = harness.ctx.clone();
+    let answered = harness.state_mut().run_command_line(line, &ctx);
+    assert!(answered.is_none(), "`{line}` should hold until its frames are drawn");
+    // Bounded, because a gesture that never drained would otherwise hang the test rather than fail it.
+    for _ in 0..600 {
+        let Some(events) = harness.state_mut().take_the_next_input_frame() else { break };
+        harness.input_mut().events.extend(events);
+        harness.step();
+    }
+    // One more, so what the input did has been drawn — the same settling `Waiting::Input` does.
+    harness.step();
+}
+
+/// `input` clicks, types and drags without the window being in front.
+///
+/// `task-1914`: *"we can't have the window take focus while testing ... right now im switched to a
+/// different desktop, but get switched to another desktop with unluminous open."*
+///
+/// Synthetic operating system input goes to the **foreground** window, so a script that wanted to click
+/// something in Unluminous had to bring Unluminous to the front — and on Windows activating a window that
+/// is on another virtual desktop switches the desktop with it. What goes in instead is `egui::Event`,
+/// down the control channel, fed to `RawInput` one step a frame.
+///
+/// **The harness has no foreground window at all**, which is what makes this the right place to test it:
+/// there is nothing here that could have cheated by activating one. What is asserted is that the events
+/// reach the same places a real device's do — a press in a text box, the letters after it, a key that is
+/// not text, and where the pointer was left.
+#[test]
+fn input_clicks_and_types_without_the_window_being_in_front() {
+    let mut harness = harness("");
+    harness.run();
+    // A click at a **place**, which is the half of the window that has no other way in: the explorer's
+    // filter is an `egui::TextEdit` and it takes the keyboard from a press and from nothing else.
+    let filter = harness.get_by_label("Filter files").rect();
+    drove(&mut harness, &format!("input click {} {}", filter.center().x, filter.center().y));
+
+    drove(&mut harness, "input text read");
+    assert_eq!(harness.state().filter, "read", "the letters went into the box that was clicked");
+
+    // A key, which is not text: the box takes it and loses a letter.
+    drove(&mut harness, "input key Backspace");
+    assert_eq!(harness.state().filter, "rea");
+
+    // And the pointer is left where it was moved to, which is what makes something hover.
+    drove(&mut harness, "input move 40 300");
+    let where_it_is = harness.ctx.input(|input| input.pointer.latest_pos());
+    assert_eq!(where_it_is, Some(egui::pos2(40.0, 300.0)));
+}
+
+/// A drag sent through `input` is a drag, not a click.
+///
+/// The two are told apart by *frames*: every drag in Unluminous is settled from `Response::drag_delta`,
+/// which is the difference between two frames' pointer positions, so a press and a release in
+/// consecutive frames is a click however far apart they are. `services::input::dragged` therefore moves
+/// over frames of its own — and the thing that proves it arrived is a divider that really moved.
+#[test]
+fn a_drag_sent_through_input_moves_a_divider() {
+    let mut harness = harness("");
+    harness.run();
+    let was = harness.state().panes.explorer_width;
+    // The divider is the explorer's right hand edge — `show_the_panel_dividers` draws one there, and
+    // `components::splitter` takes a drag over it.
+    let panel = harness.state().panel_area(unluminous_app::app::dock::Panel::Explorer);
+    let (edge, middle) = (panel.right(), panel.center().y);
+    drove(
+        &mut harness,
+        &format!("input drag {edge} {middle} --to-x {} --to-y {middle} --steps 8", edge + 90.0),
+    );
+    let now = harness.state().panes.explorer_width;
+    assert!(now > was + 40.0, "the drag should have widened the explorer: {was} -> {now}");
+}
+
 /// An Agent Chat node holds a chat of its own, and two of them hold two conversations.
 ///
 /// `task-1914`: *"Agent Chat ... We want a node that is able to connect similar to our terminal with claude

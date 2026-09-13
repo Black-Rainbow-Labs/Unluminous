@@ -1008,6 +1008,14 @@ pub struct UnluminousApp {
     node_tab_strips: Vec<(crate::services::space::NodeId, Rect, file_tabs::Strip)>,
     /// A file being carried out of a list, until the frame settles where it landed. See [`FileDrag`].
     file_drag: Option<FileDrag>,
+    /// Input that was asked for down the command line and has not reached a frame yet.
+    ///
+    /// **The one way to click or type in a window that is not in front.** Synthetic operating system
+    /// input goes to the foreground window, so a script had to activate Unluminous to drive it — and on
+    /// Windows activating a window on another virtual desktop switches the desktop with it, which is what
+    /// `task-1914` reports. See `services::input` and
+    /// `tasks/task-1914-testing-without-stealing-focus-tdd.md`.
+    pub(crate) input: crate::services::input::Queue,
     /// The editing area's own menu, when it is open. Held here for the same reason the gutter's is,
     /// and it carries the colour wheel with it.
     pub text_menu: Option<text_menu::TextMenu>,
@@ -1177,6 +1185,7 @@ impl UnluminousApp {
             tab_strips: Vec::new(),
             node_tab_strips: Vec::new(),
             file_drag: None,
+            input: crate::services::input::Queue::default(),
             panel_drag: None,
             panes_area: Rect::ZERO,
             panel_rects: dock::Regions { panels: [Rect::ZERO; dock::SLOTS], editor: Rect::ZERO },
@@ -3900,6 +3909,20 @@ impl UnluminousApp {
     /// pointer cannot check that, because a node's strip is drawn into a transformed sublayer.
     pub fn node_tab_strips_were_recorded(&self) -> Vec<(crate::services::space::NodeId, Rect)> {
         self.node_tab_strips.iter().map(|(node, rect, _)| (*node, *rect)).collect()
+    }
+
+    /// The next frame's worth of queued input, for a test.
+    ///
+    /// **A harness has no `raw_input_hook`.** `egui_kittest` runs an `eframe::App` by calling `logic` and
+    /// `ui` and nothing else, so the one line in `raw_input_hook` that feeds the queue never runs there —
+    /// and a test that wanted to drive the window through `unluminous-cli input` would wait for frames
+    /// that never carried anything. This is that line, for a test to call, so what is exercised is the
+    /// queue and the shape of each gesture rather than a second copy of either.
+    ///
+    /// The events go into `Harness::input_mut().events`, which is `RawInput` before the pass — the same
+    /// place `raw_input_hook` puts them and for the same reason. See `services::input`.
+    pub fn take_the_next_input_frame(&mut self) -> Option<Vec<egui::Event>> {
+        self.input.next_frame()
     }
 
     /// Where each native browser view was asked to go last frame, in the window's own points.
@@ -11289,7 +11312,20 @@ impl eframe::App for UnluminousApp {
     /// messages. This hook runs before the pass begins, so there is no pass for a dispatched message
     /// to re-enter. It uses the placements the last frame drew, which is where the views already are,
     /// and a frame that changes them draws before the next one is reconciled.
-    fn raw_input_hook(&mut self, ctx: &egui::Context, _raw_input: &mut egui::RawInput) {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        // **Input asked for down the command line, before the pass rather than inside it.**
+        // `InputState::pointer` is derived during `begin_pass`, so an event pushed into
+        // `ctx.input_mut().events` half way through a frame reaches anything reading the event list and
+        // nothing reading the pointer — which is every widget, because they all ask `Response::clicked`.
+        // One step a frame, which is what makes a press and a release a click rather than a flicker.
+        // See `services::input`.
+        if let Some(events) = self.input.next_frame() {
+            raw_input.events.extend(events);
+        }
+        if !self.input.is_empty() {
+            // Another step is waiting and nothing else will ask for the frame it needs.
+            ctx.request_repaint();
+        }
         let on_the_canvas = self.space.live.browsers().count();
         if self.files.iter().all(|file| file.browser.is_none())
             && on_the_canvas == 0

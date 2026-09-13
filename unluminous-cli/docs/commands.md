@@ -1449,6 +1449,128 @@ Put the canvas away. Everything running on it keeps running.
 unluminous-cli space hide
 ```
 
+## input — clicking, typing and dragging in the window, without it being in front
+
+For the things there is no other command for: a drag, a right click on a row, a press in a text box. Positions are the **window's own points** with 0,0 at its top left, which is what `window screenshot` writes out, so a position measured off a picture is the position to send. Nothing here brings the window to the front or moves the person's own pointer, and each command waits for the frames it asked for, so a screenshot taken straight afterwards shows what happened. Prefer a command that names the thing to a click that finds it.
+
+### input move
+
+```
+unluminous-cli input move <x> <y>
+```
+
+Move the pointer to a place in the window and leave it there, which is what makes something hover. Positions are the window's own points with 0,0 at its top left corner - the same points `window screenshot` writes out, so a position measured off a picture is the position to use. Nothing about this needs the window to be in front: the person's own pointer does not move and the window is never activated.
+
+- `x` — Across the window, in points.
+- `y` — Down the window, in points.
+
+```sh
+unluminous-cli input move 300 220
+```
+
+### input click
+
+```
+unluminous-cli input click <x> <y> [--right] [--middle] [--twice] [--ctrl] [--shift] [--alt] [--cmd]
+```
+
+Click at a place in the window: the pointer moves there, the button goes down and comes up again, over three frames, which is what makes it a click rather than a flicker. The window does not have to be in front and is not brought to the front. Positions are the window's own points, which is what `window screenshot` writes out.
+
+- `x` — Across the window, in points.
+- `y` — Down the window, in points.
+
+- `--right` — The secondary button, which opens a context menu.
+- `--middle` — The middle button, which closes a tab.
+- `--twice` — Two clicks, which is a double click.
+- `--ctrl` — Hold control.
+- `--shift` — Hold shift.
+- `--alt` — Hold alt.
+- `--cmd` — Hold command on macOS, control on Windows - the key a menu shortcut names.
+
+```sh
+unluminous-cli input click 300 220
+unluminous-cli input click 120 96 --twice
+unluminous-cli input click 300 220 --right
+```
+
+### input drag
+
+```
+unluminous-cli input drag <x> <y> [--to-x <points>] [--to-y <points>] [--steps <count>]
+```
+
+Drag from one place in the window to another: the pointer arrives, the button goes down, it is moved in steps, and it is let go. The steps are frames of their own because that is what a drag is - every drag in Unluminous is settled from the difference between two frames.
+
+- `x` — Where the drag starts, across the window.
+- `y` — Where the drag starts, down the window.
+
+- `--to-x <points>` — Where it ends, across the window.
+- `--to-y <points>` — Where it ends, down the window.
+- `--steps <count>` — How many positions it is moved through. 20 when it is not given.
+
+```sh
+unluminous-cli input drag 660 110 --to-x 1250 --to-y 700
+```
+
+### input key
+
+```
+unluminous-cli input key <key> [--ctrl] [--shift] [--alt] [--cmd] [--times <count>]
+```
+
+Press a key and let it go, in whatever has the keyboard. The name is the one egui uses: a letter, a digit, `Enter`, `Escape`, `Tab`, `Backspace`, `Delete`, `Space`, `ArrowUp`, `F2` and the rest. A key produces no text - `input text` is what types.
+
+- `key` — The key's name.
+
+- `--ctrl` — Hold control.
+- `--shift` — Hold shift.
+- `--alt` — Hold alt.
+- `--cmd` — Hold command on macOS, control on Windows - the key a menu shortcut names.
+- `--times <count>` — Press it more than once.
+
+```sh
+unluminous-cli input key Escape
+unluminous-cli input key ArrowDown --times 3
+unluminous-cli input key s --cmd
+```
+
+### input text
+
+```
+unluminous-cli input text <text>
+```
+
+Type into whatever has the keyboard, one character a frame. Each character is sent as the key press and the text a real keyboard produces, because the editing area reads one and a text box reads both.
+
+- `text` — What to type. It is the rest of the line, so it needs no quoting. Everything after it on the line belongs to it.
+
+```sh
+unluminous-cli input text hello there
+```
+
+### input wheel
+
+```
+unluminous-cli input wheel <notches> [--across <notches>] [--ctrl] [--cmd]
+```
+
+Turn the mouse wheel where the pointer is, in notches. A negative number scrolls down the page, which is what turning the wheel towards you does. `input move` is what puts the pointer over the thing to scroll.
+
+- `notches` — How many notches, negative for down the page.
+
+- `--across <notches>` — Sideways, for a list that scrolls that way.
+- `--ctrl` — Hold control, which is what zooms.
+- `--cmd` — Hold command, which is what zooms on macOS.
+
+```sh
+unluminous-cli input wheel -3
+unluminous-cli input wheel 2 --ctrl
+```
+
+## space — the Base of Infinite Space: a canvas of terminals, web pages, folder trees and file editors, wired together
+
+If `UNLUMINOUS_SPACE_NODE` is set in your environment you are running inside a node on this canvas, and `space here` is the first thing to run: it says which node you are, which nodes you are wired to, and the command that drives each of them. **`unluminous-cli` is not on your PATH** - it lives inside the application - so run it as `"$UNLUMINOUS_CLI" --instance $UNLUMINOUS_INSTANCE <command>`, which are both set in your environment. You may act on the nodes you are wired to and no others, so every command you send carries `--from <your node>`. The Base of Infinite Space is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `space browser`, `space folder`, `space editor` and `space send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `space view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.
+
 ### space here
 
 ```

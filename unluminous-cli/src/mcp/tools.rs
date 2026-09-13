@@ -1298,12 +1298,20 @@ mod tests {
         //            shell commands working it out, which is what that ticket measured on a real
         //            `claude`.
         //
+        //   22,899   `task-1914`'s seven: the whole `input` area — a pointer and a keyboard that do not
+        //            need the window to be in front — and `space chat`, which drives an Agent Chat node's
+        //            own conversation. The ceiling moved to 23,500 afterwards. `input` is what makes a
+        //            drag, a right click on a particular row and a press in a text box reachable at all:
+        //            before it, the only way to produce one was synthetic operating system input, which
+        //            goes to the *foreground* window and therefore took the keyboard out of whatever the
+        //            person was typing into — and on Windows switched the virtual desktop with it.
+        //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
         // the areas it needs and leaves the rest out — the same catalogue at 4,491 tokens for
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
-        assert!(grouped.len() / 4 < 22_000, "grouped MCP schema exceeded budget: {} bytes", grouped.len());
+        assert!(grouped.len() / 4 < 23_500, "grouped MCP schema exceeded budget: {} bytes", grouped.len());
         for command in commands() {
             assert!(
                 grouped.contains(command.verb),

@@ -31,6 +31,7 @@ pub mod frame_trace;
 pub mod icons;
 pub mod ignore;
 pub mod imports;
+pub mod input;
 pub mod launcher;
 pub mod locators;
 pub mod login_shell;
