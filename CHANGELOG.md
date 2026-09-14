@@ -8,6 +8,10 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- The marks on the rail and the title bar, redrawn against the icons the ticket names (`task-1949`)
+
+## 0.47.0 — 2026-09-13
+
 - The page that kept the keyboard, the zoom that was a bitmap, and terminals that came back empty (`task-1945`)
 
 ## 0.46.0 — 2026-09-13
