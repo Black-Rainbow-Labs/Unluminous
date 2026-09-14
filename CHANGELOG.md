@@ -8,6 +8,10 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- The page that kept the keyboard, the zoom that was a bitmap, and terminals that came back empty (`task-1945`)
+
+## 0.46.0 — 2026-09-13
+
 - No continuous integration, by choice (`task-1928`)
 - Three things the coverage tests found, and the one I got wrong first (`task-1922`)
 
