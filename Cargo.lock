@@ -5014,6 +5014,7 @@ version = "0.48.0"
 dependencies = [
  "alacritty_terminal",
  "libc",
+ "polling",
  "unicode-width",
  "windows-sys 0.61.2",
 ]

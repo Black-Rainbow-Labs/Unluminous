@@ -1331,6 +1331,28 @@ fn terminal_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Draw
     // A note is one line and is not wrapped, so what an empty field means is a note of its own rather
     // than a longer sentence that would run off the end of the page.
     pen = note(ui, area, pen + 8.0, &format!("Leave it empty for {}.", default_shell_name()));
+
+    pen = section(ui, area, pen + 12.0, "Where a tab reopens");
+    let integration_row = row_at(area, pen);
+    changed |= checkbox(
+        ui,
+        integration_row,
+        "Ask PowerShell where it is",
+        &mut settings.shell_integration,
+    );
+    pen += 32.0;
+    pen = note(
+        ui,
+        area,
+        pen,
+        "A tab reopens in the folder its shell was in, read off the shell's own process. That answers for cmd.exe, bash and zsh and cannot answer for PowerShell: Set-Location moves PowerShell's location and never the process's current directory.",
+    );
+    pen = note(
+        ui,
+        area,
+        pen + 4.0,
+        "On, Unluminous adds one line to the prompt, after your own profile has set it up, so the shell says where it is. Off, nothing about your shell is changed. A shell that already reports its folder is followed either way.",
+    );
     drawn(area, pen, changed)
 }
 

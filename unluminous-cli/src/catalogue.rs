@@ -1975,7 +1975,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "terminal",
         verb: "list",
-        summary: "The terminal tabs, with the name of each and which one is showing.",
+        summary: "The terminal tabs: the name of each, which one is showing, and the folder each one's shell is in, which is where it would reopen.",
         arguments: NO_ARGUMENTS,
         flags: NO_FLAGS,
         examples: &["unluminous-cli terminal list --json"],

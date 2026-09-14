@@ -34,22 +34,26 @@ impl UnluminousApp {
             }
             "list" => {
                 let names = self.terminal.tabs.names();
+                // **And where each one is**, which until `task-1950` nothing could be asked at all: a tab
+                // reopens in the folder its shell was in, and whether that folder is the right one was only
+                // answerable by closing the window and reading `.unluminous/terminal-tabs.txt`. It is the one
+                // thing this feature is about, so it is the one thing that has to be readable. `None` is
+                // written as an empty string, which is what a platform that will not say answers with.
+                let folders = self.terminal_folders();
                 let rows: Vec<String> = names
                     .iter()
                     .enumerate()
                     .map(|(at, name)| {
                         format!(
-                            "{}{at:<3} {name}",
-                            if at == self.terminal.tabs.active_index() { "*" } else { " " }
+                            "{}{at:<3} {name:<24} {}",
+                            if at == self.terminal.tabs.active_index() { "*" } else { " " },
+                            folders.get(at).map(String::as_str).unwrap_or_default()
                         )
                     })
                     .collect();
-                lines(
-                    request,
-                    format!("{} terminal tabs", names.len()),
-                    rows,
-                    self.terminal_value(),
-                )
+                let mut value = self.terminal_value();
+                value["folders"] = json!(folders);
+                lines(request, format!("{} terminal tabs", names.len()), rows, value)
             }
             "select" => self.cli_terminal_select(request),
             "close" => self.cli_terminal_close(request),
@@ -273,6 +277,23 @@ impl UnluminousApp {
             rows = rows[from..].to_vec();
         }
         Some(rows.join("\n"))
+    }
+
+    /// Where each terminal tab's shell is, in the order the tabs are in.
+    ///
+    /// **The answer a tab is reopened with**, so asking this is asking what the window would write down if it
+    /// closed now. What the shell reported beats what its process says, which is the whole of `task-1950`:
+    /// see `unluminous_terminal::Session::folder`. A tab whose platform will not say answers with an empty
+    /// string rather than being left out, so the list is one entry a tab and can be indexed by tab number.
+    pub(crate) fn terminal_folders(&self) -> Vec<String> {
+        self.terminal
+            .tabs
+            .sessions()
+            .iter()
+            .map(|session| {
+                session.folder().map(|path| path.display().to_string()).unwrap_or_default()
+            })
+            .collect()
     }
 
     pub(crate) fn terminal_value(&self) -> Value {

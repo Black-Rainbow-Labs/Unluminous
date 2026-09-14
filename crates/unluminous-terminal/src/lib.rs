@@ -14,6 +14,8 @@
 //! - [`palette`] turns a terminal colour into red, green and blue.
 //! - [`paths`] takes the verbatim prefix off a Windows path, which is the one form a shell cannot start in.
 //! - [`reap`] makes sure a session's program goes when the session does, which Windows does not promise.
+//! - [`reported`] reads the sequence a shell reports its own folder with, which is the one answer
+//!   PowerShell has: `Set-Location` never moves the process's current directory.
 //! - [`replay`] turns a screen into the bytes that would draw it, so a terminal can come back showing it.
 //! - [`screen`] is the snapshot the painter reads: plain data, no locks held.
 //! - [`session`] is one terminal: a shell in a pseudoterminal, and the emulator behind it.
@@ -25,6 +27,7 @@ pub mod mouse;
 pub mod palette;
 pub mod paths;
 pub mod reap;
+pub mod reported;
 pub mod replay;
 pub mod screen;
 pub mod session;

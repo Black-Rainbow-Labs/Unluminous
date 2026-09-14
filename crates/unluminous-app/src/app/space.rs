@@ -2008,6 +2008,10 @@ impl UnluminousApp {
         )
         .1;
         let mut settings = self.space_terminal_settings_for(&found, resume, &session_wanted)?;
+        // A node with no command of its own is a shell, and a shell is asked to report where it is for the
+        // reason a tab is — and in the same order, before the screen is put in front of it. A node running
+        // `claude` has arguments and is left exactly as it was. `task-1950`.
+        self.ask_the_shell_to_report_its_folder(&mut settings);
         self.print_a_remembered_screen_first(
             crate::services::space::store::Screen::Node(node),
             &mut settings,

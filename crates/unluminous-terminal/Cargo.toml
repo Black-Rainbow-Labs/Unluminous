@@ -12,6 +12,7 @@ path = "src/lib.rs"
 
 [dependencies]
 alacritty_terminal.workspace = true
+polling.workspace = true
 unicode-width.workspace = true
 
 # `tcgetpgrp`, and nothing else: the one question that answers what program a terminal is really talking to,
@@ -33,4 +34,7 @@ windows-sys = { workspace = true, features = [
     "Wdk_System_Threading",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_Kernel",
+    # `task-1950`: what this machine calls itself, so a `file://` URL naming another machine's folder is not
+    # followed. Asked of the operating system because `COMPUTERNAME` is empty under Git Bash. See `reported`.
+    "Win32_System_SystemInformation",
 ] }

@@ -495,6 +495,11 @@ fn the_terminal_is_opened_and_put_away_from_the_command_line() {
     assert_eq!(harness.state().panes.terminal_height, 400.0);
     let listed = did(&mut harness, "terminal list");
     assert_eq!(listed["count"], serde_json::json!(1));
+    // **One folder an entry, whatever each answers**, so the list can be indexed by tab number -- `task-1950`.
+    // A detached tab has no shell to be asked about and answers with an empty string, which is also what a
+    // platform that will not say answers with. That a real shell answers with the folder somebody moved it to
+    // is `services::shell_integration`'s own live test, against a real PowerShell.
+    assert_eq!(listed["folders"].as_array().expect("a folder for every tab").len(), 1);
     did(&mut harness, "terminal close");
     assert_eq!(did(&mut harness, "terminal list")["count"], serde_json::json!(0));
 }
@@ -903,6 +908,7 @@ const SETTINGS_HELP: &[&str] = &[
     "The point size the terminal sets its grid in.",
     "What each terminal tab runs. Empty means PowerShell on Windows and $SHELL elsewhere.",
     "Whether the editing area has a column of line numbers.",
+    "Whether PowerShell is asked to report the folder it is in, so a tab reopens where you were rather than where it started. Off. PowerShell's Set-Location never moves the process's own current directory, so there is no other way to read it; turning this on adds one line to the prompt, after your own profile has set it up. A shell that already reports its folder is followed whatever this says.",
     "Whether the completion popup arrives as you type. Ctrl+Space works either way.",
     "What line breaks a file is written back with. `keep` writes it the way it was read, which is what leaves a one character edit as a one line diff. A new file gets the platform's own either way.",
     "Patterns Go to File, Find in Files, completion, Go to Definition and Find References leave out, beside the project's own .gitignore, which is read already. The explorer goes on showing everything.",

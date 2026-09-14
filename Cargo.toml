@@ -116,6 +116,11 @@ image = { version = "0.25", default-features = false, features = [
 rfd = "0.17"
 muda = "0.19"
 alacritty_terminal = "0.26"
+# The three types `alacritty_terminal::tty::EventedReadWrite` names in its own signatures, and nothing else.
+# `task-1950` puts a wrapper between `EventLoop` and the pseudoterminal so the bytes a shell writes can be read
+# for the sequence it reports its own folder with, and a wrapper cannot implement a trait without naming the
+# types in it. It is already in the tree: `alacritty_terminal` depends on it, so this adds no crate at all.
+polling = "3.8"
 unicode-width = "0.2"
 winresource = "0.1"
 windows-sys = { version = "0.61", features = [

@@ -3119,12 +3119,51 @@ time assertion tying it to `RTL_USER_PROCESS_PARAMETERS`, because `windows-sys` 
 as reserved.
 
 **⚠️ PowerShell's `Set-Location` does not move the process's own current directory**, and measured on this
-machine it does not do so even after a native command has run — so a `pwsh` tab comes back in the folder it
-was **started** in whatever was typed into it, while `cmd.exe`, `bash` and `zsh` come back where they were.
-The screen replay shows where the person was in either case. The only thing that would answer for PowerShell
-is shell integration — the prompt reporting its own directory with `OSC 7` or `OSC 9;9` — and turning that on
-means wrapping somebody's own `prompt` function, which is a change to their shell rather than to this editor.
-Do not add a prompt parser instead: a prompt is prose.
+machine it does not do so even after a native command has run — so the process is no answer for a `pwsh` tab,
+while `cmd.exe`, `bash` and `zsh` come back where they were. `task-1950` is the rest of that sentence.
+
+### What a shell says about itself beats what its process says
+
+**The one mechanism that answers for PowerShell is the shell reporting its own folder**, which is what every
+terminal with shell integration reads: `ESC ] 7 ; file://<host>/<path> ST`, which `vte.sh`, zsh and Starship
+already write, and `ESC ] 9 ; 9 ; <path> ST`, which is Windows Terminal's and which Microsoft's own PowerShell
+snippet writes. `crates/unluminous-terminal/src/reported.rs` reads both and `Session::folder` prefers what the
+shell said, falling back to the process. **Do not add a prompt parser instead: a prompt is prose.** What is
+read is a sequence the shell wrote on purpose to be read.
+
+**Reading is always on and injecting is a setting**, and the split is the whole design. A shell that already
+reports its folder is followed and one that does not is unchanged, so reading has no downside and needs no
+switch. Making PowerShell report it means adding to the prompt somebody already has, which is a change to
+their shell rather than to this editor — so `terminal.shell_integration` is **off**, with a tick box on
+`Settings -> Terminal`, and `services::shell_integration` is what it turns on.
+
+**The bytes are read between `EventLoop` and the pseudoterminal**, and there is nowhere else they could be.
+`vte`'s `osc_dispatch` has no case for either sequence and no hook to add one, and a session with a shell is
+read by `EventLoop` on a thread Unluminous's own code never touches. `EventLoop` is generic over its
+pseudoterminal, so `session::Watching` sits between the two; `type Reader = Self`, because
+`EventedReadWrite::reader` hands back a borrow and a wrapper cannot own a reader it is only lent.
+
+**Three things about the reading are refusals rather than features.** A folder on another machine is refused
+— `file://build-box/C:/jason` would otherwise reopen a tab in this machine's own `C:\jason`, so the host is
+compared against what the operating system says this machine is called, asked of `GetComputerNameExW` rather
+than of `COMPUTERNAME`, which is *empty* under Git Bash. A reported path that is not a folder here is dropped,
+checked once a prompt on the reader thread rather than once a frame on the window's, which is where
+`task-1805` says a question about the disk belongs. And a sequence that runs past `LARGEST_SEQUENCE` is
+abandoned rather than buffered, because `OSC 52` carries a whole clipboard.
+
+**What Unluminous adds to the prompt keeps the prompt that was there.** It is `pwsh -NoExit -File <script>`,
+and `-File` is processed **after** the profile — measured against a real temporary profile that set a prompt
+of its own — so the script wraps whatever the person's profile installed rather than replacing it. A prompt
+that fails is caught and the sequence is still added, because the one thing this must never do is leave
+somebody with no prompt. Only a PowerShell, and only one started with no arguments of its own: a node running
+`claude` or a run configuration was asked to run a particular thing, and a setting about a prompt does not get
+to change it. It is applied **before** `print_a_remembered_screen_first`, which rewrites the program into the
+shim that prints the screen — after it, the wrapper would be wrapping `unluminous-cli`.
+
+`cargo run -p unluminous-terminal --example folder_probe` is how any of this is measured again: it types a
+command into a real pseudoconsole and prints what the shell reported, what the process says and which of the
+two is written down. On a default `pwsh` 7.6.6 the first column is empty and the second never moves, which is
+the fault; with the script in front of it the first column follows the `cd` and the second still does not.
 
 ## Enter answers a modal, and a modal takes the keyboard
 

@@ -425,6 +425,7 @@ impl UnluminousApp {
             "terminal.font.size" => format!("{:.0}", self.settings.terminal_font_size),
             "terminal.shell" => self.settings.terminal_shell.clone(),
             "editor.line_numbers" => self.settings.line_numbers.to_string(),
+            "terminal.shell_integration" => self.settings.shell_integration.to_string(),
             "editor.indent" => self.settings.indent.name(),
             "editor.auto_indent" => self.settings.auto_indent.to_string(),
             "editor.trim" => self.settings.trim_on_save.to_string(),
@@ -550,6 +551,7 @@ impl UnluminousApp {
             // and is a better message than one made up here.
             "terminal.shell" => settings.terminal_shell = value.trim().to_owned(),
             "editor.line_numbers" => settings.line_numbers = flag()?,
+            "terminal.shell_integration" => settings.shell_integration = flag()?,
             "editor.indent" => {
                 settings.indent = crate::settings::Indent::parse(value).ok_or_else(|| {
                     format!(
@@ -1024,6 +1026,11 @@ const SETTINGS: &[SettingKey] = &[
         help: "What each terminal tab runs. Empty means PowerShell on Windows and $SHELL elsewhere.",
     },
     SettingKey {
+        name: "terminal.shell_integration",
+        accepts: "true or false",
+        help: "Whether PowerShell is asked to report the folder it is in, so a tab reopens where you were rather than where it started. Off. PowerShell's Set-Location never moves the process's own current directory, so there is no other way to read it; turning this on adds one line to the prompt, after your own profile has set it up. A shell that already reports its folder is followed whatever this says.",
+    },
+    SettingKey {
         name: "editor.line_numbers",
         accepts: "true or false",
         help: "Whether the editing area has a column of line numbers.",
@@ -1144,6 +1151,7 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "terminal.font.size" => format!("{:.0}", fresh.terminal_font_size),
         "terminal.shell" => fresh.terminal_shell.clone(),
         "editor.line_numbers" => fresh.line_numbers.to_string(),
+        "terminal.shell_integration" => fresh.shell_integration.to_string(),
         "editor.indent" => fresh.indent.name(),
         "editor.auto_indent" => fresh.auto_indent.to_string(),
         "editor.trim" => fresh.trim_on_save.to_string(),

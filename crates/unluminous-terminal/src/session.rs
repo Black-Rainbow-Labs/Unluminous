@@ -141,6 +141,80 @@ impl std::fmt::Debug for SessionSettings {
 /// function, and the caller's function is the one that knows about egui.
 pub type Waker = Arc<dyn Fn() + Send + Sync + 'static>;
 
+/// A pseudoterminal with [`crate::reported::Scanner`] reading everything on its way out of it.
+///
+/// **Why the stream is read here and not in the emulator.** `Session::pump` sees *events*, which is what the
+/// emulation could not deal with itself, and `vte`'s `osc_dispatch` has no case for `OSC 7` or `OSC 9;9` and no
+/// hook to add one — it logs them as unhandled. The bytes themselves reach nothing else in Unluminous: a session
+/// with a shell is read by `EventLoop` on a thread of its own, which is the sentence at the top of this file.
+///
+/// `EventLoop` is generic over its pseudoterminal, so this sits between the two and reads every byte on its way
+/// through. `type Reader = Self`, because `EventedReadWrite::reader` hands back a borrow and a wrapper cannot
+/// own a reader it is only lent — being the reader is what makes this safe rather than a lifetime laundered
+/// through a raw pointer. What it costs is one pass over each chunk on the reader thread, which is the state
+/// machine in [`crate::reported::Scanner`] and no allocation for a stream that reports nothing.
+struct Watching<T> {
+    inner: T,
+    scanner: crate::reported::Scanner,
+}
+
+impl<T: alacritty_terminal::tty::EventedReadWrite> std::io::Read for Watching<T> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.reader().read(buf)?;
+        self.scanner.read(&buf[..read]);
+        Ok(read)
+    }
+}
+
+impl<T: alacritty_terminal::tty::EventedReadWrite> alacritty_terminal::tty::EventedReadWrite
+    for Watching<T>
+{
+    type Reader = Self;
+    type Writer = T::Writer;
+
+    unsafe fn register(
+        &mut self,
+        poller: &Arc<polling::Poller>,
+        event: polling::Event,
+        mode: polling::PollMode,
+    ) -> std::io::Result<()> {
+        unsafe { self.inner.register(poller, event, mode) }
+    }
+
+    fn reregister(
+        &mut self,
+        poller: &Arc<polling::Poller>,
+        event: polling::Event,
+        mode: polling::PollMode,
+    ) -> std::io::Result<()> {
+        self.inner.reregister(poller, event, mode)
+    }
+
+    fn deregister(&mut self, poller: &Arc<polling::Poller>) -> std::io::Result<()> {
+        self.inner.deregister(poller)
+    }
+
+    fn reader(&mut self) -> &mut Self::Reader {
+        self
+    }
+
+    fn writer(&mut self) -> &mut Self::Writer {
+        self.inner.writer()
+    }
+}
+
+impl<T: alacritty_terminal::tty::EventedPty> alacritty_terminal::tty::EventedPty for Watching<T> {
+    fn next_child_event(&mut self) -> Option<alacritty_terminal::tty::ChildEvent> {
+        self.inner.next_child_event()
+    }
+}
+
+impl<T: OnResize> OnResize for Watching<T> {
+    fn on_resize(&mut self, size: WindowSize) {
+        self.inner.on_resize(size);
+    }
+}
+
 /// Passes the emulator's events to the window's thread, and wakes it.
 #[derive(Clone)]
 struct Proxy {
@@ -217,6 +291,13 @@ pub struct Session {
     /// That title says no more than the name of a program, which is the case `title_is_only_the_program`
     /// already exists for; it could not see it, because the name it was asked about was the shell's.
     started: String,
+    /// Where the shell has said it is, when it says so at all.
+    ///
+    /// **The half of "where the shell is" the operating system cannot answer**, which is PowerShell: measured
+    /// again on `task-1950`, `Set-Location C:\jason\dev\ai-service` leaves the process's own current
+    /// directory where it was, and running a native command after it does not move it either. See
+    /// [`crate::reported`] for the sequences this is filled in from and `Watching` for where they are read.
+    reported: crate::reported::Reported,
     /// The name a person typed for this tab, which beats both of the two above.
     ///
     /// Empty until somebody renames the tab. A name that was asked for by hand is the one thing in
@@ -315,6 +396,11 @@ impl Session {
         //
         // The identically named `tty::Options::drain_on_exit` above is **not** this one; `tty::new`
         // does not read it.
+        // **Every byte the emulator is given is read on its way there**, for the one thing the emulator does
+        // not answer: which folder the shell says it is in. See `Watching` and [`crate::reported`]. It is
+        // always on, because a shell that reports its folder is followed and one that does not is unchanged.
+        let reported = crate::reported::Reported::new();
+        let pty = Watching { inner: pty, scanner: crate::reported::Scanner::new(reported.clone()) };
         let event_loop = EventLoop::new(term.clone(), proxy, pty, true, false)?;
         let notifier = Notifier(event_loop.channel());
         event_loop.spawn();
@@ -336,6 +422,7 @@ impl Session {
             bells: 0,
             name,
             started,
+            reported,
             given: String::new(),
         })
     }
@@ -369,6 +456,8 @@ impl Session {
             bells: 0,
             name: "detached".to_owned(),
             started: String::new(),
+            // A detached session has no shell to report anything, and `feed` is the test's own way in.
+            reported: crate::reported::Reported::new(),
             given: String::new(),
         }
     }
@@ -525,7 +614,32 @@ impl Session {
     /// nothing about that reaches the pseudoterminal. `task-1945`: *"both nodes and normal terminals should
     /// be restored to exactly where they were."* See [`crate::foreground::Master::folder`] for how each
     /// platform is asked and which of them will not say.
+    /// **And the shell's own answer beats the machine's**, because it is the only one PowerShell has:
+    /// `Set-Location` moves PowerShell's location and never the process's current directory, so a `pwsh` tab
+    /// came back in the folder it was started in whatever had been typed into it. A shell that reports its
+    /// folder — with shell integration on, or because it already did — is followed; one that reports nothing
+    /// falls through to the process, which is what `cmd.exe`, `bash` and `zsh` are read by. `task-1950`.
     pub fn folder(&self) -> Option<std::path::PathBuf> {
+        if !self.running {
+            return None;
+        }
+        // No question is asked of the disk here. The reported folder was checked against it once, on the
+        // reader thread, at the moment it was reported — which is once a prompt rather than once a frame, and
+        // this is called once a frame for every tab. `task-1805` is the ticket that rule comes from.
+        self.reported.folder().or_else(|| self.master.folder())
+    }
+
+    /// The two halves of [`Self::folder`] separately, so the difference between them can be measured.
+    ///
+    /// Which of the two answered is exactly what `task-1950` is about, and it is invisible from outside
+    /// without this: `folder` prefers one and falls back to the other, so a shell reporting the right answer
+    /// and a process holding the right answer look identical. `examples/folder_probe` is what asks.
+    pub fn reported_folder(&self) -> Option<std::path::PathBuf> {
+        self.reported.folder()
+    }
+
+    /// Where the operating system says the shell process is, which PowerShell does not move. See above.
+    pub fn process_folder(&self) -> Option<std::path::PathBuf> {
         self.running.then(|| self.master.folder()).flatten()
     }
 

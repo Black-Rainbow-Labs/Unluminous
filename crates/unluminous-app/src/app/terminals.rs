@@ -74,6 +74,36 @@ impl UnluminousApp {
         self.open_a_terminal_tab_in(None, None);
     }
 
+    /// Start this shell under the script that makes PowerShell report the folder it is in, when the setting
+    /// says so.
+    ///
+    /// **One function rather than the test at each place a shell is started**, which is
+    /// `follow_the_open_file`'s rule: the next place added would be the one that forgot. Both callers ask it
+    /// *before* `print_a_remembered_screen_first`, because that rewrites the program into the shim that
+    /// prints the screen and passes the shell and its arguments along behind a separator — so a wrapper
+    /// applied after it would be wrapping `unluminous-cli`.
+    ///
+    /// Off, this writes nothing and starts nothing differently. See `services::shell_integration` for what is
+    /// written and why it is a setting at all.
+    pub(crate) fn ask_the_shell_to_report_its_folder(
+        &self,
+        settings: &mut unluminous_terminal::session::SessionSettings,
+    ) {
+        if !self.settings.shell_integration {
+            return;
+        }
+        let Some(store) = self.store.as_ref() else {
+            return;
+        };
+        // A window with no store is a test's window, which starts no shell anybody types into.
+        let Some(script) =
+            crate::services::shell_integration::write_the_script(store.folder())
+        else {
+            return;
+        };
+        crate::services::shell_integration::apply(settings, &script);
+    }
+
     /// Open one terminal tab, in `folder` when there is one, printing the screen tab `restoring` was left
     /// showing when there is one of those.
     ///
@@ -99,14 +129,18 @@ impl UnluminousApp {
         // the same call a terminal node makes.
         let shell = self.terminal.tabs.settings.shell.clone();
         let args = self.terminal.tabs.settings.args.clone();
+        let mut settings = self.terminal.tabs.settings.clone();
+        // **Before the screen is put in front of it**, because that rewrites the program into the shim. The
+        // shell and its arguments travel behind the shim's own separator, so this has to have said what they
+        // are first. `task-1950`.
+        self.ask_the_shell_to_report_its_folder(&mut settings);
         if let Some(index) = restoring {
-            let mut settings = self.terminal.tabs.settings.clone();
             self.print_a_remembered_screen_first(
                 crate::services::space::store::Screen::Tab(index),
                 &mut settings,
             );
-            self.terminal.tabs.settings = settings;
         }
+        self.terminal.tabs.settings = settings;
         let waker = self.waker();
         self.terminal.tabs.open(size, waker);
         // Put back, so the **next** tab is an ordinary one rather than one replaying somebody else's

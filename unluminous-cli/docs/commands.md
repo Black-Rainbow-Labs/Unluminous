@@ -2186,7 +2186,7 @@ unluminous-cli terminal new
 unluminous-cli terminal list
 ```
 
-The terminal tabs, with the name of each and which one is showing.
+The terminal tabs: the name of each, which one is showing, and the folder each one's shell is in, which is where it would reopen.
 
 ```sh
 unluminous-cli terminal list --json
@@ -3212,6 +3212,7 @@ unluminous-cli settings set appearance.font.size 20
 unluminous-cli settings set appearance.background.opacity 0.5
 unluminous-cli settings set editor.line_numbers false
 unluminous-cli settings set terminal.shell cmd.exe
+unluminous-cli settings set terminal.shell_integration true
 unluminous-cli settings set appearance.font.family "Courier New"
 ```
 

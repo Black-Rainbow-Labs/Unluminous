@@ -782,6 +782,20 @@ settings! {
     flag {
         /// Whether the editing area has a column of line numbers down its left.
         line_numbers = true => "editor.line_numbers";
+        /// Whether Unluminous asks PowerShell to report the folder it is in.
+        ///
+        /// **Off, and the one setting here that changes somebody's shell rather than this window.**
+        /// `task-1945` reads where a shell is off its own process, which answers for `cmd.exe`, `bash` and
+        /// `zsh` and cannot answer for PowerShell: `Set-Location` moves PowerShell's location and never the
+        /// process's current directory, so a `pwsh` tab came back in the folder it was started in whatever
+        /// had been typed into it. The only mechanism that answers is the prompt saying where it is, and
+        /// putting that in means adding to the prompt the person already has — which is theirs to decide,
+        /// so `task-1950` makes it a tick box rather than a default.
+        ///
+        /// **Reading is not this setting.** A shell that already reports its folder — `bash` with `vte.sh`,
+        /// Starship, anything with shell integration on — is followed whatever this says, because reading
+        /// the sequence costs nothing and changes nothing. See `services::shell_integration`.
+        shell_integration = false => "terminal.shell_integration";
         /// Whether a plugin that asked for the decoration renderer gets it.
         ///
         /// The soft shadows, inset shadows and gradients `services::vello_canvas` draws behind a plugin's pane.
@@ -1381,6 +1395,7 @@ mod tests {
             "terminal.font.size",
             "appearance.ui.font.size",
             "editor.line_numbers",
+            "terminal.shell_integration",
             "plugins.chrome",
             "mcp.enabled",
             "editor.auto_indent",
@@ -1441,6 +1456,7 @@ mod tests {
             opacity: 0.4,
             terminal_font_size: 14.0,
             terminal_shell: "pwsh.exe".to_owned(),
+            shell_integration: true,
             line_numbers: false,
             indent: Indent::Spaces(4),
             auto_indent: false,
