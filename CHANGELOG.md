@@ -8,6 +8,10 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- A terminal tab comes back where PowerShell was, not where it started (`task-1950`)
+
+## 0.48.0 — 2026-09-14
+
 - The marks on the rail and the title bar, redrawn against the icons the ticket names (`task-1949`)
 
 ## 0.47.0 — 2026-09-13
