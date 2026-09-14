@@ -508,6 +508,44 @@ pub struct Settled {
     pub pointed_at: Option<u64>,
 }
 
+/// What the one native view is to do about the **operating system's** keyboard focus this frame.
+///
+/// A `WebView2` or a `WKWebView` is a real child window, so the focus a person types into is the
+/// platform's rather than Unluminous's own `Focus`. Until `task-1945` only half of that was ever said:
+/// a chosen browser node called `WebView::focus`, and nothing ever called anything when it stopped
+/// being chosen — so the page kept the focus for the life of the window.
+///
+/// **Three things followed from that, and they were three of the four reports on `task-1945`.** Every
+/// key press went to the page, so a terminal node clicked afterwards could not be typed into.
+/// `egui-winit` refuses to forward `ViewportCommand::StartDrag` at all while `Window::has_focus()` is
+/// false — and `winit` sets that false on the `WM_KILLFOCUS` the window gets the moment `SetFocus`
+/// moves to the engine's child — so the title bar's drag was dropped in silence. And
+/// `ViewportCommand::BeginResize`, which is not behind that check, reached `winit`'s
+/// `handle_os_dragging`, which latches a flag that only `WM_EXITSIZEMOVE` clears; see
+/// `components::resize_edges` for what one such refusal costs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TheFocus {
+    /// Nothing to do: the view holds the focus and should, or does not and should not.
+    LeaveIt,
+    /// The page is the surface being typed into, so hand the focus to it.
+    GiveItToThePage,
+    /// The page is not that surface any more, so hand the focus back to Unluminous's own window.
+    GiveItBackToTheWindow,
+}
+
+/// Which of [`TheFocus`]'s three, from what the view holds now and what this frame asked for.
+///
+/// **Asked from a remembered flag rather than of the platform**, so the call into the window manager
+/// happens on the frame the answer changes and on no other — the same bargain `NativeView::clip` and
+/// `NativeView::visible` already make.
+pub fn the_focus(view_holds_it: bool, wanted: bool) -> TheFocus {
+    match (view_holds_it, wanted) {
+        (false, true) => TheFocus::GiveItToThePage,
+        (true, false) => TheFocus::GiveItBackToTheWindow,
+        _ => TheFocus::LeaveIt,
+    }
+}
+
 /// The one placement the native view goes to: the pane with the keyboard, else the first drawn.
 ///
 /// A second rendered tab beside the first in a split pane cannot have a view of its own — see
@@ -822,6 +860,8 @@ mod native {
         /// no call into the window manager. `wry::Rect` is not comparable, so this keeps egui's own.
         clip: Option<(egui::Rect, egui::Rect)>,
         visible: bool,
+        /// Whether the page holds the **operating system's** keyboard focus. See [`super::TheFocus`].
+        has_the_focus: bool,
     }
 
     /// The platform objects, kept behind this module so the rest of Unluminous stays portable and testable.
@@ -850,13 +890,22 @@ mod native {
         }
 
         /// Drop the view and everything it holds, which is what closing the last rendered tab means.
+        ///
+        /// **The focus is handed back before the view goes.** Windows moves a destroyed window's focus
+        /// to its parent by itself, but it does so through `WM_KILLFOCUS`/`WM_SETFOCUS` ordering that
+        /// nothing here can assert; asking `wry` is one call and it is the same call the other two
+        /// routes make. See [`super::TheFocus`].
         pub fn forget(&mut self) {
+            if let Some(view) = &mut self.view {
+                give_the_focus_back(view);
+            }
             self.view = None;
         }
 
         /// Take the view off the screen and lower its memory target, keeping it ready.
         pub fn hide(&mut self) {
             if let Some(view) = &mut self.view {
+                give_the_focus_back(view);
                 set_visible(view, false);
             }
         }
@@ -935,7 +984,13 @@ mod native {
                 })
                 .build_as_child(parent)
                 .map_err(|problem| format!("Unluminous could not start the browser: {problem}"))?;
-            self.view = Some(NativeView { webview, bounds: None, clip: None, visible: false });
+            self.view = Some(NativeView {
+                webview,
+                bounds: None,
+                clip: None,
+                visible: false,
+                has_the_focus: false,
+            });
             Ok(())
         }
 
@@ -1009,9 +1064,29 @@ mod native {
             view.clip = Some((placement.area, placement.visible));
         }
         set_visible(view, true);
-        if placement.focused {
-            let _ = view.webview.focus();
+        match super::the_focus(view.has_the_focus, placement.focused) {
+            super::TheFocus::LeaveIt => {}
+            super::TheFocus::GiveItToThePage => {
+                let _ = view.webview.focus();
+                view.has_the_focus = true;
+            }
+            super::TheFocus::GiveItBackToTheWindow => give_the_focus_back(view),
         }
+    }
+
+    /// Hand the operating system's keyboard focus back to the window `wry` built this view inside.
+    ///
+    /// `WebView::focus_parent` is `SetFocus` on the parent on Windows and `makeFirstResponder` on
+    /// macOS, and the parent is the window eframe handed to `build_as_child` — so this is Unluminous's
+    /// own window in both cases. It is asked of `wry` rather than done here because `wry` owns the
+    /// handles, and because a host that calls `SetFocus` on itself without going back through the
+    /// controller is the shape `WebView2` is documented not to restore reliably from.
+    fn give_the_focus_back(view: &mut NativeView) {
+        if !view.has_the_focus {
+            return;
+        }
+        let _ = view.webview.focus_parent();
+        view.has_the_focus = false;
     }
 
     /// Crop the native child to the part of it that may be painted, without touching its viewport.
@@ -1171,6 +1246,28 @@ mod native {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `task-1945`: a page that stops being the surface somebody types into hands the keyboard back.
+    ///
+    /// The platform half cannot be tested without a real engine, so what is asserted is the decision:
+    /// the frame a placement stops being focused is the frame the focus goes back, and no frame after
+    /// it asks again. Before this ticket there was no such frame at all — `place` had a branch for
+    /// `focused` and none for anything else — and three of `task-1945`'s four reports were that.
+    #[test]
+    fn a_page_that_loses_the_keyboard_hands_it_back_once() {
+        assert_eq!(the_focus(false, true), TheFocus::GiveItToThePage, "the page was clicked");
+        assert_eq!(the_focus(true, true), TheFocus::LeaveIt, "and it still has it the next frame");
+        assert_eq!(
+            the_focus(true, false),
+            TheFocus::GiveItBackToTheWindow,
+            "something else was clicked, so the window takes the keyboard back"
+        );
+        assert_eq!(
+            the_focus(false, false),
+            TheFocus::LeaveIt,
+            "and it is not asked for again on every frame afterwards"
+        );
+    }
 
     /// The one native view goes to the topmost placement, not the backmost.
     ///

@@ -9,6 +9,7 @@ use egui::{CornerRadius, Pos2, Rect, Sense, Vec2};
 use super::{clipped, text};
 use crate::services::agent_tasks::{clock, AgentTasks};
 use crate::services::plugin_ui::{Look, Request};
+use crate::theme::crisp::CrispPainter;
 use crate::theme::icon;
 
 // **The in-place ticket is gone.** This file used to draw a whole ticket inside the board's own rectangle —
@@ -419,7 +420,7 @@ pub(crate) fn comment_section(
                         height
                     }
                     false => {
-                        let galley = painter.layout(
+                        let galley = painter.crisp_layout(
                             comment.body.clone(),
                             egui::FontId::proportional(look.font_size - 1.0),
                             look.palette.text_control,
@@ -432,7 +433,7 @@ pub(crate) fn comment_section(
                             Pos2::new(area.min.x, pen),
                             Vec2::new(area.width(), height),
                         );
-                        painter.with_clip_rect(block).galley(
+                        painter.with_clip_rect(block).crisp_galley(
                             block.min,
                             galley,
                             look.palette.text_control,

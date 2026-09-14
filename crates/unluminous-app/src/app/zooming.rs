@@ -148,9 +148,10 @@ impl UnluminousApp {
             // pointer, in `take_the_canvas_input`.
             dock::Panel::Space => {
                 let body = self.space.body;
-                let about = body.center();
-                self.space.space.current_mut().camera.zoom_by(steps, body.min, about);
-                self.space.space.touch();
+                // **Aimed rather than set**, so the keys and the modifier wheel glide the way the plain
+                // wheel does — see `UnluminousApp::aim_the_zoom_at`. `task-1945`.
+                let wanted = self.aimed_zoom() * 1.1_f32.powi(steps);
+                self.aim_the_zoom_at(wanted, body.center());
             }
             dock::Panel::Explorer | dock::Panel::Plugin(_) => {
                 let was = self.panes.zoom_of(panel);
@@ -232,8 +233,7 @@ impl UnluminousApp {
             }
             dock::Panel::Space => {
                 let body = self.space.body;
-                self.space.space.current_mut().camera.zoom_to(1.0, body.min, body.center());
-                self.space.space.touch();
+                self.aim_the_zoom_at(1.0, body.center());
             }
             dock::Panel::Explorer | dock::Panel::Plugin(_) => {
                 let was = self.panes.zoom_of(panel);

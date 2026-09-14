@@ -29,6 +29,7 @@ use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Vec2};
 use crate::services::space::geometry::{self, Grip};
 use crate::services::space::{Camera, Kind, Node, Pipe, View, ViewId};
 use crate::services::vello_canvas::{Chrome, Fill, Lift};
+use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, icon};
 
 /// The strip along the top of the pane that holds the views.
@@ -121,7 +122,7 @@ pub fn view_bar(
             painter.rect_filled(chip, CornerRadius::same(6), color::control());
         }
         let tint = if on { color::text_strong() } else { color::text_dim() };
-        painter.text(
+        painter.crisp_text(
             chip.center(),
             Align2::CENTER_CENTER,
             &view.name,
@@ -166,7 +167,7 @@ pub fn view_bar(
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
         let said = format!("+{left_out} more");
-        ui.painter_at(area).text(
+        ui.painter_at(area).crisp_text(
             row.center(),
             Align2::CENTER_CENTER,
             &said,
@@ -216,7 +217,7 @@ fn show_the_zoom_controls(ui: &mut egui::Ui, area: Rect, zoom: f32, outcome: &mu
         ui.painter_at(area).rect_filled(reading, CornerRadius::same(6), color::control());
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    ui.painter_at(area).text(
+    ui.painter_at(area).crisp_text(
         reading.center(),
         Align2::CENTER_CENTER,
         &said,
@@ -261,7 +262,8 @@ fn dimmable_icon_button(
 
 /// How wide a view's chip is: its name with room either side, floored so a one letter name is a target.
 fn chip_width(painter: &egui::Painter, name: &str) -> f32 {
-    let galley = painter.layout_no_wrap(name.to_owned(), FontId::proportional(11.5), color::text());
+    let galley =
+        painter.crisp_layout_no_wrap(name.to_owned(), FontId::proportional(11.5), color::text());
     chip_width_for(galley.size().x)
 }
 
@@ -614,8 +616,9 @@ fn show_the_header(
         right = bigger.left() - 2.0;
     }
     let room = (right - (mark.x + 12.0)).max(10.0);
-    let galley = painter.layout(name.clone(), FontId::proportional(12.0), color::text(), room);
-    painter.galley(
+    let galley =
+        painter.crisp_layout(name.clone(), FontId::proportional(12.0), color::text(), room);
+    painter.crisp_galley(
         Pos2::new(mark.x + 12.0, header.center().y - galley.size().y / 2.0),
         galley,
         color::text(),
@@ -787,14 +790,14 @@ pub fn landing_mark(painter: &egui::Painter, area: Rect) {
 /// What an empty canvas says, so that a pane nobody has put anything on does not look broken.
 pub fn nothing_here_yet(ui: &egui::Ui, area: Rect) {
     let painter = ui.painter_at(area);
-    let galley = painter.layout(
+    let galley = painter.crisp_layout(
         "Right click to add a node.\n\nA terminal, a web browser, a folder tree or a file editor. Wire one to another to let an agent in a terminal drive it.".to_owned(),
         FontId::proportional(13.0),
         color::text_faint(),
         360.0,
     );
     let at = area.center() - galley.size() / 2.0;
-    painter.galley(at, galley, color::text_faint());
+    painter.crisp_galley(at, galley, color::text_faint());
 }
 
 /// Which node's id a widget belongs to, for the tests that read the window back.

@@ -108,6 +108,181 @@ impl Master {
             None
         }
     }
+
+    /// The folder the shell in this terminal is in **now**, when the platform will say.
+    ///
+    /// **A different question from what the shell was started in**, and that is the whole reason it exists:
+    /// `task-1945`'s *"both nodes and normal terminals should be restored to exactly where they were"*. A
+    /// person types `cd`, and nothing about that reaches the pseudoterminal - the session's own
+    /// `working_directory` is where it was spawned and stays that for ever.
+    ///
+    /// **Read off the shell process itself.** On Linux that is `/proc/<pid>/cwd`; on Windows it is the
+    /// `CurrentDirectory` in the process's own parameter block. It is the **direct child** of the
+    /// pseudoconsole rather than the deepest descendant, because `cd` is the shell's and a program running
+    /// under it has a directory of its own that is nobody's business here.
+    ///
+    /// `None` for a detached session, for a session whose shell has ended, and wherever the platform
+    /// refuses - a caller that gets `None` uses the folder it already had, which is what every one of these
+    /// did before this existed.
+    pub fn folder(&self) -> Option<std::path::PathBuf> {
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::fd::AsRawFd;
+            let fd = self.fd.as_ref()?;
+            // Safe: the descriptor is owned by this struct and is a pseudoterminal master.
+            let group = unsafe { libc::tcgetpgrp(fd.as_raw_fd()) };
+            if group <= 0 {
+                return None;
+            }
+            std::fs::read_link(format!("/proc/{group}/cwd")).ok()
+        }
+        #[cfg(target_os = "macos")]
+        {
+            // Left to the caller's own folder on macOS: `proc_pidinfo` with `PROC_PIDVNODEPATHINFO` is the
+            // way, it needs a `libproc` binding this crate does not have, and the platform the report came
+            // from is Windows. Named here rather than silently absent.
+            None
+        }
+        #[cfg(windows)]
+        {
+            folder_of(self.child?)
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+        {
+            None
+        }
+    }
+}
+
+/// The current directory of one Windows process, read out of its own parameter block.
+///
+/// There is no call that answers this - `GetCurrentDirectory` is about the caller - so the way every tool
+/// that shows it does it is the way this does: ask `NtQueryInformationProcess` where the process's `PEB` is,
+/// read the pointer to its `RTL_USER_PROCESS_PARAMETERS` out of it, and read the `CurrentDirectory` string
+/// out of that.
+///
+/// **The offset is written down because `windows-sys` stops short of it.** Its
+/// `RTL_USER_PROCESS_PARAMETERS` declares `Reserved1[16]`, `Reserved2[10]` pointers, `ImagePathName` and
+/// `CommandLine` - sixteen bytes and eighty bytes of reserved space before `ImagePathName` at ninety six.
+/// The real layout puts `CURDIR CurrentDirectory` at fifty six, inside that reserved run, and a `CURDIR`
+/// begins with the `UNICODE_STRING` this reads. The relationship between the two is checked against the
+/// struct at compile time below, so a `windows-sys` that fills the reserved space in cannot leave this
+/// reading the wrong bytes.
+///
+/// **Every failure is `None`.** A process that has gone, one this one may not read, a pointer that reads
+/// back as zero, a length that is absurd: all of them mean "the platform will not say", and the caller has
+/// somewhere sensible to fall back to.
+#[cfg(windows)]
+fn folder_of(pid: u32) -> Option<std::path::PathBuf> {
+    use windows_sys::Wdk::System::Threading::{NtQueryInformationProcess, ProcessBasicInformation};
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_BASIC_INFORMATION, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
+        RTL_USER_PROCESS_PARAMETERS,
+    };
+
+    /// Where `CurrentDirectory.DosPath` sits inside `RTL_USER_PROCESS_PARAMETERS`, in bytes.
+    const CURRENT_DIRECTORY: usize = 56;
+    // `ImagePathName` is two `UNICODE_STRING`s and a handle past the current directory: the directory's own
+    // string, the handle that goes with it in a `CURDIR`, and `DllPath`. Checked against the declaration
+    // rather than trusted, so a `windows-sys` that fills the reserved run in cannot leave this reading the
+    // wrong bytes without failing the build.
+    const _: () = assert!(
+        std::mem::offset_of!(RTL_USER_PROCESS_PARAMETERS, ImagePathName) == CURRENT_DIRECTORY + 40,
+        "the parameter block is not the layout this offset was read from"
+    );
+    /// A path longer than this is not a path, it is a pointer read wrong.
+    const LONGEST: usize = 32 * 1024;
+
+    // Safe: every call below is checked, every read is bounded by the size of what it reads into, and the
+    // handle is closed on every path out.
+    unsafe {
+        let process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid);
+        if process.is_null() {
+            return None;
+        }
+        let mut basic = PROCESS_BASIC_INFORMATION::default();
+        let status = NtQueryInformationProcess(
+            process,
+            ProcessBasicInformation,
+            (&raw mut basic).cast(),
+            size_of::<PROCESS_BASIC_INFORMATION>() as u32,
+            std::ptr::null_mut(),
+        );
+        let answer = match status < 0 || basic.PebBaseAddress.is_null() {
+            true => None,
+            false => {
+                read_the_directory(process, basic.PebBaseAddress.cast(), CURRENT_DIRECTORY, LONGEST)
+            }
+        };
+        CloseHandle(process);
+        answer
+    }
+}
+
+/// The three reads that turn a `PEB` address into a folder. See [`folder_of`].
+///
+/// Split out so that the handle above is closed on one path rather than on five, which is the shape
+/// `started_at` already uses for the same reason.
+#[cfg(windows)]
+unsafe fn read_the_directory(
+    process: windows_sys::Win32::Foundation::HANDLE,
+    peb: *const core::ffi::c_void,
+    offset: usize,
+    longest: usize,
+) -> Option<std::path::PathBuf> {
+    use std::os::windows::ffi::OsStringExt as _;
+    use windows_sys::Win32::Foundation::UNICODE_STRING;
+    use windows_sys::Win32::System::Diagnostics::Debug::ReadProcessMemory;
+    use windows_sys::Win32::System::Threading::PEB;
+
+    // Where the pointer to the parameter block sits inside a `PEB`.
+    let parameters_at = unsafe { (&raw const (*peb.cast::<PEB>()).ProcessParameters).cast() };
+    let mut parameters: *mut core::ffi::c_void = std::ptr::null_mut();
+    let read = unsafe {
+        ReadProcessMemory(
+            process,
+            parameters_at,
+            (&raw mut parameters).cast(),
+            size_of::<*mut core::ffi::c_void>(),
+            std::ptr::null_mut(),
+        )
+    };
+    if read == 0 || parameters.is_null() {
+        return None;
+    }
+    let mut directory =
+        UNICODE_STRING { Length: 0, MaximumLength: 0, Buffer: std::ptr::null_mut() };
+    let read = unsafe {
+        ReadProcessMemory(
+            process,
+            parameters.byte_add(offset),
+            (&raw mut directory).cast(),
+            size_of::<UNICODE_STRING>(),
+            std::ptr::null_mut(),
+        )
+    };
+    let length = directory.Length as usize;
+    if read == 0 || directory.Buffer.is_null() || length == 0 || length > longest {
+        return None;
+    }
+    // The letters themselves, which are sixteen bit and are not terminated.
+    let mut letters = vec![0u16; length / 2];
+    let read = unsafe {
+        ReadProcessMemory(
+            process,
+            directory.Buffer.cast(),
+            letters.as_mut_ptr().cast(),
+            length,
+            std::ptr::null_mut(),
+        )
+    };
+    if read == 0 {
+        return None;
+    }
+    let path = std::path::PathBuf::from(std::ffi::OsString::from_wide(&letters));
+    // A folder that is not there any more is not a folder to reopen in.
+    path.is_dir().then_some(path)
 }
 
 /// The program a process id is running.
@@ -438,6 +613,48 @@ mod tests {
             "ping",
             "the program under the shell, named rather than pathed"
         );
+    }
+
+    /// `task-1945`: a process's own current directory is read out of its parameter block.
+    ///
+    /// Against a real process started somewhere known, because the whole of this is a pointer walk through
+    /// another process's memory and the only thing that proves the offsets are right is a path coming back.
+    #[cfg(windows)]
+    #[test]
+    fn a_processs_own_folder_is_read_out_of_it() {
+        let elsewhere = std::env::temp_dir();
+        let mut child = std::process::Command::new("cmd.exe")
+            .args(["/c", "ping -n 20 127.0.0.1"])
+            .current_dir(&elsewhere)
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .expect("start a process somewhere known");
+        // The parameter block is filled in as the process starts, so the first read can be early.
+        let mut seen = None;
+        for _ in 0..60 {
+            seen = folder_of(child.id());
+            if seen.is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        let seen = seen.expect("the folder a process is in is read out of it");
+        // Compared through the operating system's own canonical form, because a temporary folder is very
+        // often reached through a short name or a junction and the two spellings are the same folder.
+        assert_eq!(
+            std::fs::canonicalize(&seen).ok(),
+            std::fs::canonicalize(&elsewhere).ok(),
+            "read {seen:?}, which is not {elsewhere:?}"
+        );
+    }
+
+    /// A process that is not there has no folder, rather than an answer read off nothing.
+    #[cfg(windows)]
+    #[test]
+    fn a_process_that_is_not_there_has_no_folder() {
+        assert_eq!(folder_of(0xFFFF_FFF0), None);
     }
 
     /// A process with nothing under it answers with nothing, which is what a shell at a prompt is.

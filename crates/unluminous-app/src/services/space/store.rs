@@ -396,12 +396,36 @@ fn read_a_node(values: &Values, key: &str, root: &Path) -> Option<Node> {
     Some(Node { id, at, size, title, state })
 }
 
-/// Where a terminal node's screen is kept, so it can come back showing what was on it.
+/// Which terminal a screen belongs to: a node on the canvas, or a tab in the terminal tile.
 ///
-/// **A file per node rather than a key in `space.conf`**, because a screen is kilobytes of escape sequences and
-/// `space.conf` is a settings file somebody reads and edits by hand. `task-1908`.
-pub fn screen_path(root: &Path, node: crate::services::space::NodeId) -> std::path::PathBuf {
-    project_state::folder(root).join("terminals").join(format!("{node}.bytes"))
+/// **One enum rather than two functions**, because the two are the same bytes kept the same way and
+/// `task-1945` is the ticket where the tile learnt what `task-1908` gave the canvas. A node and a tab
+/// cannot disagree about where a screen lives, because [`screen_path`] is the only place the name is
+/// decided and it takes this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Screen {
+    /// A terminal node on the Base of Infinite Space, named by its node id.
+    Node(crate::services::space::NodeId),
+    /// A terminal tab in the tile, named by where it is in the strip.
+    Tab(usize),
+}
+
+impl Screen {
+    /// The file name this screen is kept under, which is what keeps the two kinds apart in one folder.
+    fn file_name(self) -> String {
+        match self {
+            Screen::Node(node) => format!("{node}.bytes"),
+            Screen::Tab(index) => format!("tab-{index}.bytes"),
+        }
+    }
+}
+
+/// Where a terminal's screen is kept, so it can come back showing what was on it.
+///
+/// **A file per terminal rather than a key in `space.conf`**, because a screen is kilobytes of escape
+/// sequences and `space.conf` is a settings file somebody reads and edits by hand. `task-1908`.
+pub fn screen_path(root: &Path, screen: Screen) -> std::path::PathBuf {
+    project_state::folder(root).join("terminals").join(screen.file_name())
 }
 
 /// Write down what is on a terminal node's screen.
@@ -410,12 +434,8 @@ pub fn screen_path(root: &Path, node: crate::services::space::NodeId) -> std::pa
 /// `Space::is_dirty` exists so the canvas is not written sixty times a second; what somebody wants back is the
 /// last state, so it is written once. `None` removes whatever was there, which is what a node drawing its own
 /// full screen answers — see `Session::screen_to_replay`.
-pub fn save_a_screen(
-    root: &Path,
-    node: crate::services::space::NodeId,
-    bytes: Option<&[u8]>,
-) -> Result<(), String> {
-    let file = screen_path(root, node);
+pub fn save_a_screen(root: &Path, screen: Screen, bytes: Option<&[u8]>) -> Result<(), String> {
+    let file = screen_path(root, screen);
     let Some(bytes) = bytes else {
         // Removed rather than left, so a node that came back at a prompt does not replay yesterday's screen the
         // time after that.
@@ -439,8 +459,8 @@ pub fn save_a_screen(
 ///
 /// An empty file answers `None` and is removed, so a node whose screen was written down as nothing does not
 /// start a shim to print nothing.
-pub fn a_screen_to_print(root: &Path, node: crate::services::space::NodeId) -> Option<PathBuf> {
-    let file = screen_path(root, node);
+pub fn a_screen_to_print(root: &Path, screen: Screen) -> Option<PathBuf> {
+    let file = screen_path(root, screen);
     let worth_it = std::fs::metadata(&file).map(|about| about.len() > 0).unwrap_or(false);
     if !worth_it {
         let _ = std::fs::remove_file(&file);
@@ -454,8 +474,8 @@ pub fn a_screen_to_print(root: &Path, node: crate::services::space::NodeId) -> O
 /// **What keeps `task-1908`'s rule true now that the reading has moved**: a canvas that failed to come back
 /// must not replay a week-old screen for ever. The shim deletes the file once it has printed it, and this is
 /// the other way a file stops existing — a node started with nothing to restore.
-pub fn forget_a_screen(root: &Path, node: crate::services::space::NodeId) {
-    let _ = std::fs::remove_file(screen_path(root, node));
+pub fn forget_a_screen(root: &Path, screen: Screen) {
+    let _ = std::fs::remove_file(screen_path(root, screen));
 }
 
 #[cfg(test)]

@@ -28,4 +28,9 @@ windows-sys = { workspace = true, features = [
     # `task-1912`: a ConPTY has no foreground process group, so what a terminal node is running is read by
     # walking the process tree below the child the pseudoconsole was given. See `foreground`.
     "Win32_System_Diagnostics_ToolHelp",
+    # `task-1945`: where the shell in a terminal has got to, read out of its own parameter block, so
+    # a tab and a node come back in the folder somebody `cd`'d to rather than the one they started in.
+    "Wdk_System_Threading",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Kernel",
 ] }

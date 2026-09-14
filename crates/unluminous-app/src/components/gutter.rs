@@ -51,6 +51,7 @@ use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Vec2};
 use unluminous_core::Layout;
 
 use crate::components::controls::mix;
+use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, icon};
 
 /// The empty strip between the numbers and the text.
@@ -699,8 +700,8 @@ fn draw_number(
 ) {
     let tint = if current { color::text_control() } else { color::text_faint() };
     let galley =
-        ui.painter().layout_no_wrap(number.to_string(), egui::FontId::monospace(size), tint);
-    ui.painter().galley(
+        ui.painter().crisp_layout_no_wrap(number.to_string(), egui::FontId::monospace(size), tint);
+    ui.painter().crisp_galley(
         Pos2::new(
             column.right() - NUMBER_MARGIN - galley.size().x,
             band.center() - galley.size().y / 2.0,
@@ -748,11 +749,13 @@ fn draw_blame(
     // The cell is the whole row — it is a background and has to meet the cell above it — but its
     // words are centred on the letters beside them, like every other mark in the gutter.
     let font = egui::FontId::proportional(size);
-    let date = ui.painter().layout_no_wrap(entry.date.clone(), font.clone(), color::text_strong());
+    let date =
+        ui.painter().crisp_layout_no_wrap(entry.date.clone(), font.clone(), color::text_strong());
     let y = band.center() - date.size().y / 2.0;
-    ui.painter().galley(Pos2::new(cell.left() + 6.0, y), date.clone(), color::text_strong());
-    let author = ui.painter().layout_no_wrap(entry.author.clone(), font, color::text_strong());
-    ui.painter().galley(
+    ui.painter().crisp_galley(Pos2::new(cell.left() + 6.0, y), date.clone(), color::text_strong());
+    let author =
+        ui.painter().crisp_layout_no_wrap(entry.author.clone(), font, color::text_strong());
+    ui.painter().crisp_galley(
         Pos2::new(cell.left() + 12.0 + date.size().x, y),
         author,
         color::text_strong(),

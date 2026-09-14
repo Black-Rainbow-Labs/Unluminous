@@ -47,29 +47,109 @@ impl UnluminousApp {
         if self.terminals_to_restore.is_empty() {
             return;
         }
-        let names = std::mem::take(&mut self.terminals_to_restore);
-        for _ in 0..names.len() {
-            self.new_terminal_tab();
+        let remembered = std::mem::take(&mut self.terminals_to_restore);
+        for (index, terminal) in remembered.iter().enumerate() {
+            // **In the folder it was in, showing what was on it** - `task-1945`. A tab used to come back
+            // as a fresh shell in the project's root with an empty screen, because a count and a name were
+            // the only things this window had ever written down about one. Both are the canvas's own
+            // mechanisms, said about a tab: `RememberedTerminal::folder` is where the shell had got to, and
+            // `Screen::Tab` is the same file a node's screen lives in.
+            let folder = match terminal.folder.trim().is_empty() {
+                true => None,
+                false => Some(std::path::PathBuf::from(&terminal.folder)),
+            };
+            self.open_a_terminal_tab_in(folder, Some(index));
         }
         // A name somebody typed is the one thing about a terminal that survives its shell, so it is
         // put back. A blank leaves the tab named after whatever program it is running, which is what
         // `Session::rename` already means by an empty name.
-        for (index, name) in names.iter().enumerate() {
-            if !name.is_empty() {
-                self.terminal.tabs.rename(index, name);
+        for (index, terminal) in remembered.iter().enumerate() {
+            if !terminal.name.is_empty() {
+                self.terminal.tabs.rename(index, &terminal.name);
             }
         }
     }
 
     pub fn new_terminal_tab(&mut self) {
+        self.open_a_terminal_tab_in(None, None);
+    }
+
+    /// Open one terminal tab, in `folder` when there is one, printing the screen tab `restoring` was left
+    /// showing when there is one of those.
+    ///
+    /// **One function rather than two**, because a restored tab and a fresh one differ in exactly those two
+    /// things and everything else about opening a terminal - the grid size, the shell, the waker - is the
+    /// same. `task-1945`.
+    fn open_a_terminal_tab_in(
+        &mut self,
+        folder: Option<std::path::PathBuf>,
+        restoring: Option<usize>,
+    ) {
         // Both measurements from the rectangle the tile really has, since `task-1697`: a terminal
         // docked to the right is as tall as the body and as narrow as its column, and eighty columns
         // is not a guess that survives being moved.
         let size = self.terminal_grid_size();
+        let folder =
+            folder.filter(|path| path.is_dir()).unwrap_or_else(|| self.tree.root().to_path_buf());
         self.terminal.tabs.settings.shell = self.settings.shell();
-        self.terminal.tabs.settings.working_directory = Some(self.tree.root().to_path_buf());
+        self.terminal.tabs.settings.working_directory = Some(folder);
+        // **The shell is started underneath the program that prints the screen**, which is the only thing
+        // that works: a screen written into the emulator from outside is erased by the console host on the
+        // first write and comes back corrupt if it is put back later. `task-1912` measured it, and this is
+        // the same call a terminal node makes.
+        let shell = self.terminal.tabs.settings.shell.clone();
+        let args = self.terminal.tabs.settings.args.clone();
+        if let Some(index) = restoring {
+            let mut settings = self.terminal.tabs.settings.clone();
+            self.print_a_remembered_screen_first(
+                crate::services::space::store::Screen::Tab(index),
+                &mut settings,
+            );
+            self.terminal.tabs.settings = settings;
+        }
         let waker = self.waker();
         self.terminal.tabs.open(size, waker);
+        // Put back, so the **next** tab is an ordinary one rather than one replaying somebody else's
+        // screen: the settings are one value shared by every tab in the strip.
+        self.terminal.tabs.settings.shell = shell;
+        self.terminal.tabs.settings.args = args;
+        self.terminal.tabs.settings.name = None;
+    }
+
+    /// Write down what every terminal tab is showing, so each can come back showing it.
+    ///
+    /// **Called when the window closes and at no other time**, which is `write_the_screens_down`'s own rule
+    /// about the canvas's terminals and is the same rule for the same reason: a screen changes on every
+    /// keystroke and what somebody wants back is the last one. `task-1945`.
+    pub fn write_the_tab_screens_down(&mut self) {
+        if !self.remembers_this_project() {
+            return;
+        }
+        let root = self.tree.root().to_path_buf();
+        let screens: Vec<Option<Vec<u8>>> = self
+            .terminal
+            .tabs
+            .sessions()
+            .iter()
+            .map(unluminous_terminal::Session::screen_to_replay)
+            .collect();
+        for (index, bytes) in screens.iter().enumerate() {
+            // The window is closing, so there is nowhere to report a failure that anybody would read. What
+            // is lost is a screen coming back, which is not worth failing an exit over.
+            let _ = crate::services::space::store::save_a_screen(
+                &root,
+                crate::services::space::store::Screen::Tab(index),
+                bytes.as_deref(),
+            );
+        }
+        // A strip that is shorter than it was leaves the screens of the tabs that have gone behind it, and
+        // a tab opened into that slot tomorrow would replay a conversation that was never its own.
+        for index in screens.len()..screens.len() + 16 {
+            crate::services::space::store::forget_a_screen(
+                &root,
+                crate::services::space::store::Screen::Tab(index),
+            );
+        }
     }
 
     /// A terminal with no shell behind it, which is what the tests and the screenshot tests use so that what

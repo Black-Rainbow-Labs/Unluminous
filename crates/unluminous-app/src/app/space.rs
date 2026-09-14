@@ -141,6 +141,11 @@ pub struct SpaceState {
     /// What a command with no place of its own puts a node at — `space add` with no `--x` — and what
     /// the keyboard's zoom is centred on. Read back from the drawing rather than worked out twice.
     pub body: Rect,
+    /// A zoom that is still moving: where it is going, and the screen point it is about.
+    ///
+    /// **Here rather than on `Camera`**, because `Camera` is what `space.conf` holds and what a test
+    /// compares: a canvas reopened tomorrow is at a zoom, not on its way to one. `task-1945`.
+    pub glide: Option<(f32, Pos2)>,
 }
 
 impl Default for SpaceState {
@@ -160,6 +165,7 @@ impl Default for SpaceState {
             write_failed_at: None,
             asked_what_is_running: None,
             body: Rect::ZERO,
+            glide: None,
         }
     }
 }
@@ -232,6 +238,7 @@ impl UnluminousApp {
             header: crate::theme::color::explorer(),
             chrome: &chrome,
         };
+        self.settle_the_zoom(ui, body);
         let mut body_ui = ui.new_child(egui::UiBuilder::new().max_rect(body));
         body_ui.set_clip_rect(body);
         space_view::ground(&body_ui, body, &self.space.space.current().camera, look);
@@ -300,10 +307,59 @@ impl UnluminousApp {
             if steps.abs() > 0.5 {
                 if let Some(at) = ui.ctx().pointer_latest_pos() {
                     let notches = (steps / 50.0).clamp(-3.0, 3.0);
-                    let wanted = self.space.space.current().camera.zoom * 1.1_f32.powf(notches);
-                    self.space.space.zoom_at(wanted, body.min, at);
+                    // **Off where the camera is going rather than off where it is**, so turning the wheel
+                    // twice quickly is two notches rather than one and a half: the second notch used to be
+                    // taken off a zoom the first had already reached, which made a fast scroll travel less
+                    // than a slow one. `task-1945`.
+                    let from = self.aimed_zoom();
+                    self.aim_the_zoom_at(from * 1.1_f32.powf(notches), at);
                 }
             }
+        }
+    }
+
+    /// Where the camera's zoom is going: the glide's destination, or the zoom itself when it is still.
+    pub(crate) fn aimed_zoom(&self) -> f32 {
+        match self.space.glide {
+            Some((wanted, _)) => wanted,
+            None => self.space.space.current().camera.zoom,
+        }
+    }
+
+    /// Send the camera's zoom towards `wanted`, about the screen point `about`.
+    ///
+    /// **The point it is about is remembered with it**, because the pointer moves during a glide and the
+    /// rule `zoom_to` keeps — the point under the pointer stays under the pointer — has to hold against the
+    /// point the gesture started on rather than against wherever the pointer has got to since.
+    pub(crate) fn aim_the_zoom_at(&mut self, wanted: f32, about: Pos2) {
+        let wanted = wanted
+            .clamp(crate::services::space::node::MIN_ZOOM, crate::services::space::node::MAX_ZOOM);
+        if (wanted - self.space.space.current().camera.zoom).abs() < 0.0005 {
+            self.space.glide = None;
+            return;
+        }
+        self.space.glide = Some((wanted, about));
+    }
+
+    /// Put the zoom where it is by now, and ask for another frame while it is still moving.
+    ///
+    /// **The camera is written down on the way**, because a window closed mid-glide should come back where
+    /// it looked rather than where it was going; `Space::touch` is what marks the canvas as needing writing
+    /// and it is asked for once at the end rather than on every frame of the glide.
+    fn settle_the_zoom(&mut self, ui: &egui::Ui, body: Rect) {
+        let Some((wanted, about)) = self.space.glide else {
+            return;
+        };
+        let seconds = ui.input(|input| input.stable_dt).clamp(0.0, 0.1);
+        let now = self.space.space.current().camera.zoom;
+        let next = crate::services::space::Camera::glide(now, wanted, seconds);
+        self.space.space.current_mut().camera.zoom_to(next, body.min, about);
+        match next == wanted {
+            true => {
+                self.space.glide = None;
+                self.space.space.touch();
+            }
+            false => ui.ctx().request_repaint(),
         }
     }
 
@@ -365,6 +421,33 @@ impl UnluminousApp {
         // **The modifier wheel goes to that node**, before `zoom_over_a_panel` at the end of
         // `show_the_space` can give it to the camera. `task-1905`.
         self.zoom_over_a_node(body_ui, under_the_pointer);
+        // **And a press anywhere inside a node chooses it**, whichever widget inside the node takes the
+        // click. `task-1945`: *"if I click a terminal node, etc, the node should be given focus."*
+        //
+        // Until this, a node became the chosen one from its header, its grips, and whatever its own body
+        // happened to report — a terminal's grid and a folder's rows did, a board's cards and a chat's
+        // transcript did not. So clicking a card on an Agent Tasks node left the keyboard wherever it
+        // was, which on a canvas holding a browser node meant it stayed on the page: the page holds the
+        // **operating system's** focus, and only Unluminous's own choice moving off that node hands it
+        // back. See `services::browser::TheFocus`.
+        //
+        // Asked of `under_the_pointer`, which is worked out above from the drawing order and already
+        // knows which of a stack of nodes is on top, rather than of a widget added under each node — a
+        // widget cannot see a press a widget drawn over it consumed, and that is exactly the case this
+        // is for.
+        let pressed = body_ui
+            .input(|input| input.pointer.button_pressed(egui::PointerButton::Primary))
+            && pointer.is_some();
+        if let (true, Some(node)) = (pressed, under_the_pointer) {
+            if self.space.chosen() != Some(node) || !matches!(self.focus, Focus::Space) {
+                self.space.space.choose(Some(node));
+                self.space.space.raise(node);
+                self.take_the_keyboard_for_the_space();
+            }
+        }
+        // Read again, because the press above may have changed it and the loop below decides which layer
+        // is moved to the top and which node draws its ring from this answer.
+        let chosen = self.space.chosen();
         let parent = body_ui.layer_id();
         let mut menu: Option<(Pos2, NodeId)> = None;
         for node in nodes {
@@ -389,6 +472,18 @@ impl UnluminousApp {
             node_ui.set_clip_rect(clip);
             let focused = Some(node.id) == chosen && matches!(self.focus, Focus::Space);
             let has_the_pointer = under_the_pointer == Some(node.id);
+            // **Both text engines are told what this node is composited at, around the whole of it.**
+            // `services::text_renderer` draws the editor's and the terminal's glyphs and `theme::crisp`
+            // covers the words `egui` lays out — the node's own title, a folder node's rows, a browser
+            // node's toolbar, a chat and the board. Until `task-1945` only the first was set, and only
+            // around the body, so the node's header was a magnified bitmap even on an editor node.
+            //
+            // **Set and put back rather than held by a guard**, because the calls between them take
+            // `&mut self`. Putting it back is the part that matters: left on, the canvas's zoom would
+            // rasterise the glyphs of whatever is drawn after this node.
+            let was_egui = crate::theme::crisp::composite_at(camera.zoom);
+            let was_own = self.renderer.crispness();
+            self.renderer.composite_at(camera.zoom);
             self.show_a_node_body(&mut node_ui, &node, parts.body, focused, has_the_pointer);
             let framing = space_view::Framing {
                 chosen: Some(node.id) == chosen,
@@ -400,6 +495,8 @@ impl UnluminousApp {
                 fallback_title: &self.name_of_a_node(&node),
             };
             let outcome = space_view::frame(&mut node_ui, &node, framing, look);
+            self.renderer.restore_compositing(was_own);
+            crate::theme::crisp::restore(was_egui);
             if let Some(at) = outcome.menu {
                 menu = Some((at, node.id));
             }
@@ -577,21 +674,10 @@ impl UnluminousApp {
         if body.width() < 2.0 || body.height() < 2.0 {
             return;
         }
-        // **A node's glyphs are rasterised at the size they are composited at.** The layer this is drawn into
-        // carries the camera as a `TSTransform`, and `epaint` applies that to the finished shape — so a glyph
-        // rasterised at the layout's own size and then scaled is a magnified bitmap, which is `task-1907`'s
-        // *"the text in the nodes looks pixelated when I zoom in"*. Unluminous's own atlas rasterises at any size
-        // it is asked for, so it is asked for the seen one and the quad is divided back; the layout is
-        // untouched, which is what keeps a zoom a matrix rather than a relayout. See
-        // `services::text_renderer::Crispness`.
-        //
-        // **Set and put back around the call rather than held by a guard**, because a guard borrows the
-        // renderer for the whole scope and every one of these takes `&mut self`. Putting it back is the part
-        // that matters: left on, the canvas's zoom would rasterise the glyphs of whatever pane is drawn after
-        // this node, which reads as the whole window being at the wrong size.
-        let zoom = self.space.space.current().camera.zoom;
-        let was = self.renderer.crispness();
-        self.renderer.composite_at(zoom);
+        // **A node's glyphs are rasterised at the size they are composited at**, which the caller has
+        // already said — see the note in `show_the_space_nodes`, which sets both text engines around the
+        // body *and* the frame. It used to be set here, around the body alone, so a node's own header was
+        // still a magnified bitmap. `task-1907`, and `task-1945` for the half it left out.
         match node.kind() {
             Kind::Terminal => self.show_a_terminal_node(ui, node, body, focused),
             Kind::Browser => self.show_a_browser_node(ui, node, body, focused),
@@ -600,7 +686,6 @@ impl UnluminousApp {
             Kind::Chat => self.show_a_chat_node(ui, node, body, focused),
             Kind::Tasks => self.show_a_tasks_node(ui, node, body, focused),
         }
-        self.renderer.restore_compositing(was);
     }
 
     /// A terminal node: `components::terminal_panel::grid`, which is what the terminal tile and the
@@ -1859,16 +1944,16 @@ impl UnluminousApp {
     ///
     /// A project Unluminous is not remembering — a test's window — restores nothing, which is the rule the
     /// whole of `project_state` keeps.
-    fn print_a_remembered_screen_first(
+    pub(crate) fn print_a_remembered_screen_first(
         &self,
-        node: NodeId,
+        screen: crate::services::space::store::Screen,
         settings: &mut unluminous_terminal::session::SessionSettings,
     ) {
         if !self.remembers_this_project() {
             return;
         }
         let root = self.tree.root();
-        let Some(file) = crate::services::space::store::a_screen_to_print(root, node) else {
+        let Some(file) = crate::services::space::store::a_screen_to_print(root, screen) else {
             return;
         };
         // **`unluminous-cli`, which is installed beside this program and is a console program.** Both halves
@@ -1881,7 +1966,7 @@ impl UnluminousApp {
         ));
         let restore = unluminous_cli::restore::Restore { file, shim };
         if !unluminous_cli::restore::is_worth_trying(&restore) {
-            crate::services::space::store::forget_a_screen(root, node);
+            crate::services::space::store::forget_a_screen(root, screen);
             return;
         }
         // The shell the node would have started, kept as the tab's name: what is spawned is the program that
@@ -1923,7 +2008,10 @@ impl UnluminousApp {
         )
         .1;
         let mut settings = self.space_terminal_settings_for(&found, resume, &session_wanted)?;
-        self.print_a_remembered_screen_first(node, &mut settings);
+        self.print_a_remembered_screen_first(
+            crate::services::space::store::Screen::Node(node),
+            &mut settings,
+        );
         let parts = space_view::parts_of(&found);
         let font = space_view::font_size_of(&found, self.settings.terminal_font_size);
         let cell = self.renderer.cell_metrics(font);
@@ -2624,9 +2712,11 @@ impl UnluminousApp {
                 .live
                 .terminal(node)
                 .and_then(unluminous_terminal::Session::screen_to_replay);
-            if let Err(problem) =
-                crate::services::space::store::save_a_screen(&root, node, bytes.as_deref())
-            {
+            if let Err(problem) = crate::services::space::store::save_a_screen(
+                &root,
+                crate::services::space::store::Screen::Node(node),
+                bytes.as_deref(),
+            ) {
                 // The window is closing, so there is nowhere to report this that anybody would read. What is
                 // lost is a screen coming back, which is not worth failing an exit over.
                 let _ = problem;
@@ -3006,16 +3096,15 @@ impl UnluminousApp {
         // `step_the_zoom_of` already makes for the keys. `task-1905`.
         if outcome.zoom != 0 {
             let body = self.space.body;
-            self.space.space.current_mut().camera.zoom_by(outcome.zoom, body.min, body.center());
-            self.space.space.touch();
+            let wanted = self.aimed_zoom() * 1.1_f32.powi(outcome.zoom);
+            self.aim_the_zoom_at(wanted, body.center());
         }
         if outcome.manage {
             self.run_a_space_action(SpaceAction::Manage);
         }
         if outcome.reset_zoom {
             let body = self.space.body;
-            self.space.space.current_mut().camera.zoom_to(1.0, body.min, body.center());
-            self.space.space.touch();
+            self.aim_the_zoom_at(1.0, body.center());
         }
     }
 
@@ -3824,6 +3913,11 @@ impl UnluminousApp {
             camera.zoom_to(zoom, body.min, body.min);
             camera.at = at;
         }
+        // **A command sets the camera outright**, glide and all: `space camera --zoom 2` answers 2.00 on
+        // the frame it lands, because a script that had to wait out an animation to read back what it just
+        // set is a script with a race in it. The glide is the pointer's, the wheel's and the keys'.
+        // `task-1945`.
+        self.space.glide = None;
         self.space.space.touch();
         let camera = self.space.space.current().camera;
         ok(

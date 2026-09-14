@@ -16,6 +16,7 @@ use egui::{Pos2, Rect, Sense, Vec2};
 
 use crate::services::picture::Picture;
 use crate::theme::color;
+use crate::theme::crisp::CrispPainter;
 
 /// What the picture area asks the window to do.
 #[derive(Debug, Default)]
@@ -98,13 +99,13 @@ pub fn show(ui: &mut egui::Ui, area: Rect, picture: &mut Picture, name: &str) ->
 /// A line in the middle of the area, for a picture that will not decode or has not been uploaded yet.
 fn say(ui: &egui::Ui, area: Rect, text: &str) {
     let painter = ui.painter_at(area);
-    let galley = painter.layout(
+    let galley = painter.crisp_layout(
         text.to_owned(),
         egui::FontId::proportional(12.5),
         color::text_dim(),
         area.width() - 64.0,
     );
-    painter.galley(
+    painter.crisp_galley(
         Pos2::new(area.center().x - galley.size().x / 2.0, area.center().y - galley.size().y / 2.0),
         galley,
         color::text_dim(),

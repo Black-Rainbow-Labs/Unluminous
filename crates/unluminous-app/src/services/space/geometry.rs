@@ -8,6 +8,12 @@ use egui::{Pos2, Rect, Vec2};
 
 use super::node::{Camera, MAX_ZOOM, MIN_ZOOM};
 
+/// How long a zoom takes to cover the distance to where it is going, in seconds.
+///
+/// Short enough that the canvas answers the wheel at once and long enough that a notch reads as a move
+/// rather than as a jump. `task-1945`.
+pub const ZOOM_GLIDE: f32 = 0.12;
+
 impl Camera {
     /// Where a world point is drawn, inside a pane whose top left corner is `origin`.
     pub fn to_screen(&self, origin: Pos2, world: Pos2) -> Pos2 {
@@ -39,6 +45,42 @@ impl Camera {
         let under = self.to_world(origin, pointer);
         self.zoom = wanted.clamp(MIN_ZOOM, MAX_ZOOM);
         self.at = under - (pointer - origin) / self.zoom;
+    }
+
+    /// One frame of a zoom that is still moving towards `wanted`.
+    ///
+    /// **Geometric rather than linear**, so a glide from 1.0 to 1.1 and one from 2.0 to 2.2 take the same
+    /// time: what a person sees as "a step of zoom" is the ratio between the two, not the difference.
+    /// `task-1945`: *"Zooming in and out of Base of Infinite space is chunky/not smooth."* One notch of a
+    /// mouse wheel is fifty units of scroll, so the camera used to jump the whole 10% on the frame the
+    /// notch arrived and sit there. There is something between the two zooms now.
+    ///
+    /// **It ends rather than approaching for ever.** A geometric ease never quite arrives, so within half a
+    /// percent it is the answer — which is well inside the quarter-step ladder the glyph atlas is asked
+    /// for, so a glide settles onto one raster size and stays there.
+    pub fn glide(now: f32, wanted: f32, seconds: f32) -> f32 {
+        if now <= 0.0 || wanted <= 0.0 {
+            return wanted;
+        }
+        let ratio = wanted / now;
+        if (ratio - 1.0).abs() < 0.005 {
+            return wanted;
+        }
+        // **A frame with no time in it finishes the glide rather than repeating it.** A geometric ease of
+        // zero is the identity, so a context whose `stable_dt` is zero would ask for another frame, get
+        // the same answer and ask again — an idle window drawing for ever, which is the one thing
+        // `app::frame`'s note about an idle window costing nothing forbids.
+        if seconds <= 0.0 {
+            return wanted;
+        }
+        // `seconds` is clamped by the caller to a sane frame time; a window that was not drawn for a
+        // second must not glide a second's worth in one step.
+        let step = (seconds / ZOOM_GLIDE).clamp(0.0, 1.0);
+        let next = now * ratio.powf(step);
+        match (ratio - 1.0).abs() < 0.005 {
+            true => wanted,
+            false => next,
+        }
     }
 
     /// One notch of the wheel, or one press of the zoom keys.
@@ -289,6 +331,60 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// `task-1945`: a wheel notch is something the camera moves through rather than jumps to.
+    ///
+    /// One notch of a mouse wheel is fifty units of scroll, so the camera took the whole 10% on the frame
+    /// the notch arrived and sat there. Geometric, so a step from 1.0 to 1.1 and one from 2.0 to 2.2 take
+    /// the same time: what a person reads as a step of zoom is the ratio between the two.
+    #[test]
+    fn a_zoom_glides_to_where_it_is_going_rather_than_jumping_there() {
+        // One frame at sixty a second is a fraction of the way, not all of it and not none of it.
+        let one_frame = Camera::glide(1.0, 1.1, 1.0 / 60.0);
+        assert!(one_frame > 1.0 && one_frame < 1.1, "one frame of a notch: {one_frame}");
+
+        // And it arrives, rather than approaching for ever.
+        let mut zoom = 1.0_f32;
+        let mut frames = 0;
+        while zoom != 1.1 && frames < 240 {
+            zoom = Camera::glide(zoom, 1.1, 1.0 / 60.0);
+            frames += 1;
+        }
+        assert_eq!(zoom, 1.1, "it finished, in {frames} frames");
+        assert!(
+            frames as f32 / 60.0 <= ZOOM_GLIDE * 3.0,
+            "and it took about as long as it says it does: {frames} frames"
+        );
+
+        // The same ratio takes the same time wherever on the ladder it starts, which is what makes it
+        // geometric rather than linear.
+        let low = {
+            let (mut zoom, mut frames) = (1.0_f32, 0);
+            while zoom != 1.1 && frames < 240 {
+                zoom = Camera::glide(zoom, 1.1, 1.0 / 60.0);
+                frames += 1;
+            }
+            frames
+        };
+        let high = {
+            let (mut zoom, mut frames) = (2.0_f32, 0);
+            while zoom != 2.2 && frames < 240 {
+                zoom = Camera::glide(zoom, 2.2, 1.0 / 60.0);
+                frames += 1;
+            }
+            frames
+        };
+        assert_eq!(
+            low, high,
+            "the same ratio took a different number of frames at a different zoom"
+        );
+
+        // A window that was not drawn for a second does not glide a second's worth in one step.
+        let huge = Camera::glide(1.0, 2.5, 10.0);
+        assert!(huge <= 2.5, "a long frame is clamped rather than overshooting: {huge}");
+        // And a frame with no time in it finishes, rather than asking for another frame for ever.
+        assert_eq!(Camera::glide(1.0, 2.5, 0.0), 2.5);
     }
 
     #[test]

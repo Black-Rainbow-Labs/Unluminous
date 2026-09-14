@@ -976,6 +976,16 @@ impl UnluminousApp {
             "pid": std::process::id(),
             "port": self.control.as_ref().map(|server| server.port()),
             "project": self.tree.root().to_string_lossy(),
+            // **`focused` is the operating system's answer, not Unluminous's own.**
+            // `status --section keyboard` says which surface *inside* the window Unluminous gave the
+            // keys to; this says whether the window is the one the platform is sending keys to at all.
+            // The two are different questions and `task-1945` was the second one: a browser node's page
+            // is a native child window, and while it holds the focus every key press goes to the page,
+            // `egui-winit` drops `StartDrag` so the title bar cannot move the window, and
+            // `BeginResize` is a request the window manager throws away. Until this field there was no
+            // way to ask that from outside the window — it had to be found by trying to drag it.
+            "focused": ctx.input(|input| input.viewport().focused),
+            "maximised": ctx.input(|input| input.viewport().maximized),
             "window": { "width": screen.width(), "height": screen.height() },
             "tabs": self.tabs_value(),
             "activeTab": self.files.active_index(),
@@ -1067,7 +1077,7 @@ const STATUS_SECTIONS: &[(&str, &[&str])] = &[
     ("modal", &["modal"]),
     ("settings", &["settings"]),
     ("git", &["git"]),
-    ("window", &["window", "version", "buildDate", "pid", "port"]),
+    ("window", &["window", "version", "buildDate", "pid", "port", "focused", "maximised"]),
     ("project", &["project"]),
     ("message", &["message"]),
 ];

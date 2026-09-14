@@ -694,6 +694,35 @@ fn status_answers_for_the_section_that_was_asked_for() {
     assert_eq!(refused(&mut harness, "status --section purple"), "usage");
 }
 
+/// `task-1945`: the window says whether the **operating system** is sending it the keys.
+///
+/// `status --section keyboard` says which surface inside the window Unluminous gave the keys to, and
+/// that is a different question from whether the window is being sent any. A browser node's page is a
+/// native child window; while it holds the focus every key press goes to the page, the title bar
+/// cannot move the window because `egui-winit` drops `StartDrag`, and a resize is a request the window
+/// manager throws away. Until this field there was no way to ask that from outside the window.
+#[test]
+fn the_window_says_whether_the_operating_system_is_sending_it_the_keys() {
+    let mut harness = harness_in(&sample_folder());
+    let window = did(&mut harness, "status --section window");
+    assert!(window.get("focused").is_some(), "the window section carries the focus");
+    assert!(window.get("maximised").is_some(), "and whether the window is maximised");
+
+    let ids: Vec<egui::ViewportId> = harness.input().viewports.keys().copied().collect();
+    for id in ids {
+        if let Some(viewport) = harness.input_mut().viewports.get_mut(&id) {
+            viewport.focused = Some(false);
+        }
+    }
+    harness.run();
+    let window = did(&mut harness, "status --section window");
+    assert_eq!(
+        window["focused"],
+        serde_json::json!(false),
+        "and it says so when something else has taken the keyboard"
+    );
+}
+
 /// A fold command that changed something answers with the summary, and the region list comes
 /// along only when it is asked for.
 #[test]

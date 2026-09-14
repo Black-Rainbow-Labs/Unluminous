@@ -24,6 +24,7 @@ use crate::components::controls;
 use crate::components::file_tabs;
 use crate::components::splitter;
 use crate::services::text_renderer::TextRenderer;
+use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, icon};
 
 /// How tall the strip holding the tabs is.
@@ -136,12 +137,12 @@ fn show_header(
     // `components::dock` for why it has to be this way round.
     outcome.grab = crate::components::dock::handle(ui, area, crate::app::dock::Panel::Terminal);
     let painter = ui.painter_at(area);
-    let heading = painter.layout_no_wrap(
+    let heading = painter.crisp_layout_no_wrap(
         "Terminal".to_owned(),
         egui::FontId::proportional(12.0),
         color::text_dim(),
     );
-    painter.galley(
+    painter.crisp_galley(
         Pos2::new(area.left() + 16.0, area.center().y - heading.size().y / 2.0),
         heading.clone(),
         color::text_dim(),
@@ -240,7 +241,7 @@ fn draw_tab(
     hit: &mut TabHit,
 ) -> Rect {
     let painter = ui.painter_at(area);
-    let label = painter.layout_no_wrap(
+    let label = painter.crisp_layout_no_wrap(
         name.to_owned(),
         egui::FontId::proportional(12.0),
         if active { color::text_strong() } else { color::text_control() },
@@ -281,7 +282,7 @@ fn draw_tab(
             egui::StrokeKind::Inside,
         );
     }
-    painter.galley(
+    painter.crisp_galley(
         Pos2::new(tab.left() + 10.0, tab.center().y - label.size().y / 2.0),
         label,
         color::text_control(),
@@ -408,12 +409,12 @@ pub(crate) fn grid(
 
     let Some(session) = session else {
         let painter = ui.painter_at(area);
-        let galley = painter.layout_no_wrap(
+        let galley = painter.crisp_layout_no_wrap(
             empty.to_owned(),
             egui::FontId::proportional(12.0),
             color::text_faint(),
         );
-        painter.galley(
+        painter.crisp_galley(
             Pos2::new(area.left() + PADDING_X + 4.0, area.top() + PADDING_Y + 6.0),
             galley,
             color::text_faint(),
@@ -665,7 +666,7 @@ fn paint(ui: &egui::Ui, draw: ScreenPaint<'_>) {
     if screen.scrollback > 0 {
         let text = format!("{} lines back", screen.scrollback);
         let galley =
-            painter.layout_no_wrap(text, egui::FontId::proportional(11.0), color::text_dim());
+            painter.crisp_layout_no_wrap(text, egui::FontId::proportional(11.0), color::text_dim());
         let at =
             Pos2::new(ui.max_rect().right() - 12.0 - galley.size().x, ui.max_rect().top() + 6.0);
         painter.rect_filled(
@@ -673,7 +674,7 @@ fn paint(ui: &egui::Ui, draw: ScreenPaint<'_>) {
             CornerRadius::same(4),
             color::menu(),
         );
-        painter.galley(at, galley, color::text_dim());
+        painter.crisp_galley(at, galley, color::text_dim());
     }
 }
 

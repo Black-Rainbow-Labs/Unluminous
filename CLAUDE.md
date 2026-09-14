@@ -2970,6 +2970,131 @@ strip it is dropped on and nothing outside `tab_strip` could know better where i
 as they are on the screen now including the one being carried, which is what `OpenFiles::drag_tab`
 already means by a position.
 
+## A page holds the operating system's keyboard until something takes it back
+
+`task-1945` reported three things and they are one line of code. `services/browser.rs` called
+`WebView::focus` when a browser node was the chosen one and had **no branch for when it stopped being
+chosen**, so once a page had the focus it kept it for the life of the window.
+
+Measured on the built window with `GetGUIThreadInfo`, which is what found it:
+
+| step | the window's `hwndFocus` |
+|---|---|
+| started, nothing chosen | none |
+| the browser node chosen | `Chrome_WidgetWin_1`, the WebView2 child |
+| a terminal node chosen | `Chrome_WidgetWin_1`, still |
+
+Every key press went to the page, which is *"it's hard to give focus to other nodes so I can type"*.
+`egui-winit` refuses to forward `ViewportCommand::StartDrag` at all while `Window::has_focus()` is false —
+and `winit` sets that false on the `WM_KILLFOCUS` the window gets the moment `SetFocus` moves to the
+engine's child — so the title bar's drag was dropped in silence before `winit` was reached, which is *"nor
+can I drag the window around"*. And it was *"limited to certain projects"* because only a project with a
+browser node on its canvas ever creates the view, and closing the canvas fixed it because Windows hands a
+hidden window's focus back to its parent.
+
+**`services::browser::the_focus` is the decision and `focus_parent` is the act.** `wry`'s `focus_parent` is
+`SetFocus` on the window `wry` was built inside on Windows and `makeFirstResponder` on macOS, so it is asked
+of `wry` rather than done by hand — a host that calls `SetFocus` on itself without going back through the
+controller is the shape `WebView2` is documented not to restore reliably from. It is called the frame a
+placement stops being focused, and when the view is hidden or dropped.
+
+**And a press anywhere inside a node chooses that node**, whichever widget inside it takes the click. A node
+used to become the chosen one from its header, its grips, and whatever its body happened to report — a
+terminal's grid and a folder's rows did, a board's cards and a chat's transcript did not — so clicking a card
+left the keyboard where it was, and on a canvas with a browser node that meant on the page. It is asked of
+the answer `show_the_space_nodes` already works out about which node is under the pointer, because a widget
+cannot see a press a widget drawn over it consumed.
+
+**Two things are asked rather than assumed now, and both are new answers to old questions.**
+`status --section window` carries `focused` and `maximised`, which is the operating system's answer about the
+**window** where `--section keyboard` is Unluminous's own answer about the surface inside it. And
+`show_the_resize_grips` sends no `BeginResize` while the window does not have the focus, for the same reason
+it adds no grips at all while the window is maximised: `components::resize_edges` records what one refused
+request costs, and a request the window manager throws away latches a flag in `winit` that only
+`WM_EXITSIZEMOVE` clears.
+
+## A glyph is rasterised at the size it is seen at, in both text engines
+
+`task-1907` made Unluminous's own atlas ask for the composited size — `services::text_renderer::Crispness` —
+and stopped two steps short of the whole answer. `task-1945` is those two steps.
+
+**It refused to go below 1.0.** `Crispness::at` ended in `max(1.0)`, so a canvas zoomed **out** rasterised
+its glyphs at the layout's own size and let the transform shrink them through a nearest filter. The camera
+this was reported from is at 0.61 and the Agent Tasks cards there were a grey mush. Rounding up still holds
+below one — 0.61 asks for 0.75 — so the transform is still only ever shrinking, and the ladder is ten quarter
+steps across the whole camera range rather than seven.
+
+**And it never covered the text `egui` lays out**, which is the node's own title, a folder node's rows, a
+browser node's toolbar, the chat pane and the whole board. `theme::crisp` is the same trick for `egui`'s
+atlas: lay the words out at `size × scale`, then scale the finished shape by `1 / scale` about where it was
+asked to be drawn. `epaint`'s `TextShape::transform` multiplies the glyph quads and leaves the texture
+coordinates alone, which is what makes both halves of that true.
+
+**Nothing it does ever moves anything.** A caller measures with `crisp::Text::size`, which divides back, and
+draws with `crisp::galley`, which divides back — so the only thing a scale other than one changes is which
+entry of the atlas the glyphs come from. At a scale of one it is the identity, which is why the change could
+be made at a hundred call sites at once and 478 of the 483 accepted pictures did not move. The five that did
+are all canvases at a zoom.
+
+**The scale is ambient, the way the theme is**, and set once around a node in `show_the_space_nodes` — around
+the frame as well as the body, which is what the `task-1907` version got wrong: it was set inside
+`show_a_node_body`, so a node's own header was a magnified bitmap even on an editor node. Both engines are
+set and put back together there, so they cannot disagree.
+
+**Where it stops.** Text inside an `egui::TextEdit` — a folder node's filter box, a browser node's address
+bar, the board's search box — is still composited rather than rasterised at the zoom. A `TextEdit`'s galley
+is what positions its caret and settles its selection, so it cannot be laid out at a size other than the one
+the box is drawn at without breaking the one thing about a node that has been reported broken more than
+anything else, which is typing into it.
+
+## A zoom glides, and a command sets it outright
+
+One notch of a mouse wheel is fifty units of scroll, so the camera took the whole 10% on the frame the notch
+arrived and sat there: `task-1945`'s *"chunky/not smooth"*. `Camera::glide` is one frame of the way there and
+`SpaceState::glide` is where it is going and the screen point it is about.
+
+**Geometric rather than linear**, so a step from 1.0 to 1.1 and one from 2.0 to 2.2 take the same time: what
+a person reads as a step of zoom is the ratio. **The point it is about is remembered with it**, because the
+pointer moves during a glide and `zoom_to`'s rule has to hold against where the gesture started. **A frame
+with no time in it finishes the glide**, so a context whose `stable_dt` is zero cannot ask for another frame
+for ever. And **`space camera --zoom` sets both at once**, because a script that had to wait out an animation
+to read back what it just set is a script with a race in it.
+
+`SpaceState` holds it rather than `Camera`, because `Camera` is what `space.conf` writes and what a test
+compares: a canvas reopened tomorrow is at a zoom, not on its way to one.
+
+## A terminal tab comes back in its folder showing what was on it
+
+`task-1908` gave the canvas's terminals a screen and `task-1912` made it survive the Windows console host.
+`task-1945` gives the tile's the same thing: *"both nodes and normal terminals should be restored to exactly
+where they were."*
+
+**Everything is the mechanism the canvas already had, said about a tab.** `store::Screen` is `Node(id)` or
+`Tab(index)` and `screen_path` is the one place a file name is decided, so the two cannot disagree about
+where a screen lives; `write_the_tab_screens_down` is `write_the_screens_down` for the strip and is called
+beside it from `on_exit`; and a restored tab is started under `unluminous-cli --replay-screen` by the same
+`print_a_remembered_screen_first` a node uses. A strip that is shorter than it was **forgets** the screens
+behind it, so a tab opened into that slot tomorrow does not replay a conversation that was never its own.
+
+**`RememberedTerminal` is the name and the folder**, written to `terminal-tabs.txt` as a numbered block. A
+file with no `=` in it is the one-name-a-line file every build before this wrote, so a project last opened by
+an older build keeps its names.
+
+**The folder is where the shell had got to, not where it was started.** `Session::folder` reads the current
+directory off the shell process itself: `/proc/<pid>/cwd` on Linux, and on Windows the `CurrentDirectory` in
+the process's own parameter block, reached through `NtQueryInformationProcess` and two
+`ReadProcessMemory` calls. The offset of that field is written down in `foreground::folder_of` with a compile
+time assertion tying it to `RTL_USER_PROCESS_PARAMETERS`, because `windows-sys` declares the run it sits in
+as reserved.
+
+**⚠️ PowerShell's `Set-Location` does not move the process's own current directory**, and measured on this
+machine it does not do so even after a native command has run — so a `pwsh` tab comes back in the folder it
+was **started** in whatever was typed into it, while `cmd.exe`, `bash` and `zsh` come back where they were.
+The screen replay shows where the person was in either case. The only thing that would answer for PowerShell
+is shell integration — the prompt reporting its own directory with `OSC 7` or `OSC 9;9` — and turning that on
+means wrapping somebody's own `prompt` function, which is a change to their shell rather than to this editor.
+Do not add a prompt parser instead: a prompt is prose.
+
 ## Enter answers a modal, and a modal takes the keyboard
 
 **`components::modal::footer` is where that is decided**, so a dialog written later gets it without

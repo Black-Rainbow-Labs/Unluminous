@@ -8,6 +8,7 @@
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::app::actions::{Action, Entry};
+use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, icon, size};
 
 /// The rectangle the `TextEdit` inside one of Unluminous's fields is given.
@@ -302,7 +303,7 @@ pub fn chip(
     pad: Vec2,
 ) -> f32 {
     let galley =
-        painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(font_size), tint);
+        painter.crisp_layout_no_wrap(text.to_owned(), egui::FontId::proportional(font_size), tint);
     let top_left = Pos2::new(
         if left { at.x } else { at.x - galley.size().x - pad.x },
         at.y - galley.size().y / 2.0 - pad.y / 2.0,
@@ -317,7 +318,11 @@ pub fn chip(
             painter.rect_filled(chip, radius, colour);
         }
     }
-    painter.galley(Pos2::new(chip.min.x + pad.x / 2.0, at.y - galley.size().y / 2.0), galley, tint);
+    painter.crisp_galley(
+        Pos2::new(chip.min.x + pad.x / 2.0, at.y - galley.size().y / 2.0),
+        galley,
+        tint,
+    );
     chip.width()
 }
 
@@ -338,9 +343,10 @@ pub fn centred_line(
     size: f32,
     tint: Color32,
 ) {
-    let galley = painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(size), tint);
+    let galley =
+        painter.crisp_layout_no_wrap(text.to_owned(), egui::FontId::proportional(size), tint);
     let at = Pos2::new(area.center().x - galley.size().x / 2.0, y);
-    painter.galley(at, galley, tint);
+    painter.crisp_galley(at, galley, tint);
 }
 
 /// A button showing the current value, which opens a list when clicked.
@@ -391,12 +397,12 @@ pub fn dropdown_over<T>(
         draw(painter, Pos2::new(text_left + 4.0, area.center().y), color::text_dim());
         text_left += 16.0;
     }
-    let galley = painter.layout_no_wrap(
+    let galley = painter.crisp_layout_no_wrap(
         value.to_owned(),
         egui::FontId::proportional(12.5),
         color::text_control(),
     );
-    painter.galley(
+    painter.crisp_galley(
         Pos2::new(text_left, area.center().y - galley.size().y / 2.0),
         galley,
         color::text_control(),
@@ -536,8 +542,13 @@ pub fn labelled_flyout_with_icon<T>(
         }
         None => area.left() + 9.0,
     };
-    let galley = painter.layout_no_wrap(label.to_owned(), egui::FontId::proportional(12.5), tint);
-    painter.galley(Pos2::new(words_from, area.center().y - galley.size().y / 2.0), galley, tint);
+    let galley =
+        painter.crisp_layout_no_wrap(label.to_owned(), egui::FontId::proportional(12.5), tint);
+    painter.crisp_galley(
+        Pos2::new(words_from, area.center().y - galley.size().y / 2.0),
+        galley,
+        tint,
+    );
     icon::chevron_down(painter, Pos2::new(area.right() - 10.0, area.center().y), color::text_dim());
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), open, name)
@@ -621,8 +632,9 @@ pub fn choice_button_over(
         );
     }
     let tint = if active { color::text_strong() } else { color::text_control() };
-    let galley = painter.layout_no_wrap(label.to_owned(), egui::FontId::proportional(12.5), tint);
-    painter.galley(area.center() - galley.size() / 2.0, galley, tint);
+    let galley =
+        painter.crisp_layout_no_wrap(label.to_owned(), egui::FontId::proportional(12.5), tint);
+    painter.crisp_galley(area.center() - galley.size() / 2.0, galley, tint);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), active, announced)
     });
@@ -631,12 +643,12 @@ pub fn choice_button_over(
 
 /// A heading beside a row of controls in a flyout, naming what the row is for.
 pub fn row_label(painter: &egui::Painter, at: Pos2, name: &str) {
-    let galley = painter.layout_no_wrap(
+    let galley = painter.crisp_layout_no_wrap(
         name.to_owned(),
         egui::FontId::proportional(11.5),
         color::text_dim(),
     );
-    painter.galley(Pos2::new(at.x, at.y - galley.size().y / 2.0), galley, color::text_dim());
+    painter.crisp_galley(Pos2::new(at.x, at.y - galley.size().y / 2.0), galley, color::text_dim());
 }
 
 /// The rows of one menu, whether it hangs from the bar or from a right click.
@@ -747,15 +759,20 @@ pub fn menu_row(
         // Unluminous draws.
         icon::tick(painter, Pos2::new(left + 6.0, rect.center().y), color::accent());
     }
-    let label = painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), tint);
-    painter.galley(Pos2::new(left + 18.0, rect.center().y - label.size().y / 2.0), label, tint);
+    let label =
+        painter.crisp_layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), tint);
+    painter.crisp_galley(
+        Pos2::new(left + 18.0, rect.center().y - label.size().y / 2.0),
+        label,
+        tint,
+    );
     if !shortcut.is_empty() {
-        let keys = painter.layout_no_wrap(
+        let keys = painter.crisp_layout_no_wrap(
             shortcut.to_owned(),
             egui::FontId::proportional(11.5),
             color::text_faint(),
         );
-        painter.galley(
+        painter.crisp_galley(
             Pos2::new(rect.right() - 8.0 - keys.size().x, rect.center().y - keys.size().y / 2.0),
             keys,
             color::text_faint(),
@@ -776,12 +793,12 @@ pub fn menu_heading(ui: &mut egui::Ui, name: &str, indent: f32) {
     // no name cannot be tested, and a heading is what a submenu's title is drawn as here.
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, name));
     let painter = ui.painter();
-    let label = painter.layout_no_wrap(
+    let label = painter.crisp_layout_no_wrap(
         name.to_owned(),
         egui::FontId::proportional(11.0),
         color::text_dim(),
     );
-    painter.galley(
+    painter.crisp_galley(
         Pos2::new(rect.left() + 8.0 + indent, rect.center().y - label.size().y / 2.0),
         label,
         color::text_dim(),
@@ -814,8 +831,9 @@ pub fn bar_button(ui: &mut egui::Ui, area: Rect, name: &str, strong: bool) -> eg
     }
     let tint = if strong { color::text_strong() } else { color::text_control() };
     let painter = ui.painter();
-    let label = painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), tint);
-    painter.galley(
+    let label =
+        painter.crisp_layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), tint);
+    painter.crisp_galley(
         Pos2::new(area.center().x - label.size().x / 2.0, area.center().y - label.size().y / 2.0),
         label,
         tint,

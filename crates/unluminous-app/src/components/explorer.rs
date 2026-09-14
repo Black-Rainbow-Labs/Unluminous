@@ -67,6 +67,7 @@ use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::services::file_kind::Refusal;
 use crate::services::file_tree::FileTree;
+use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, file_marker, icon, size};
 
 /// What a row shows besides its name: the colour git wants it in, and the icon its plugin gives it.
@@ -287,18 +288,19 @@ pub fn show(
         // together, and `controls::truncate_chars` counts one character at a time.
         let available = area.width() - view.at(16.0) - view.at(46.0);
         let mut heading = spaced.trim_end().to_owned();
-        let mut galley = painter.layout_no_wrap(heading.clone(), font.clone(), color::text_dim());
+        let mut galley =
+            painter.crisp_layout_no_wrap(heading.clone(), font.clone(), color::text_dim());
         while galley.size().x > available && heading.chars().count() > 1 {
             // Two characters at a time, because each letter of the name was followed by a space.
             heading.pop();
             heading.pop();
-            galley = painter.layout_no_wrap(
+            galley = painter.crisp_layout_no_wrap(
                 format!("{}\u{2026}", heading.trim_end()),
                 font.clone(),
                 color::text_dim(),
             );
         }
-        painter.galley(
+        painter.crisp_galley(
             Pos2::new(area.left() + view.at(16.0), heading_y - galley.size().y / 2.0),
             galley,
             color::text_dim(),
@@ -624,12 +626,12 @@ pub fn show(
     if view.unsaved {
         text = format!("{text}  \u{00B7}  1 unsaved");
     }
-    let galley = painter.layout_no_wrap(
+    let galley = painter.crisp_layout_no_wrap(
         text.clone(),
         egui::FontId::proportional(view.at(10.5)),
         color::text_dim(),
     );
-    painter.galley(
+    painter.crisp_galley(
         Pos2::new(footer.left() + view.at(16.0), footer.center().y - galley.size().y / 2.0),
         galley,
         color::text_dim(),
@@ -682,7 +684,7 @@ fn carried_name(ui: &egui::Ui, area: Rect, source: &Path, at: Pos2, welcome: boo
         source.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
     let painter = ui.painter_at(area.expand(4.0));
     let tint = if welcome { color::text_strong() } else { color::text_faint() };
-    let galley = painter.layout_no_wrap(name, egui::FontId::proportional(12.0), tint);
+    let galley = painter.crisp_layout_no_wrap(name, egui::FontId::proportional(12.0), tint);
     let box_rect =
         Rect::from_min_size(at + Vec2::new(12.0, 6.0), galley.size() + Vec2::new(12.0, 6.0));
     painter.rect(
@@ -692,7 +694,7 @@ fn carried_name(ui: &egui::Ui, area: Rect, source: &Path, at: Pos2, welcome: boo
         Stroke::new(1.0, if welcome { color::accent() } else { color::control_border() }),
         egui::StrokeKind::Inside,
     );
-    painter.galley(box_rect.min + Vec2::new(6.0, 3.0), galley, tint);
+    painter.crisp_galley(box_rect.min + Vec2::new(6.0, 3.0), galley, tint);
 }
 
 /// What happened to one row, before the caller knows which path it was.
@@ -865,12 +867,12 @@ fn folder_row(
             view.zoom,
         );
     }
-    let galley = ui.painter().layout_no_wrap(
+    let galley = ui.painter().crisp_layout_no_wrap(
         name.to_owned(),
         egui::FontId::proportional(view.at(12.5)),
         color::text_control(),
     );
-    ui.painter().galley(
+    ui.painter().crisp_galley(
         Pos2::new(name_column(x, view, mark, true), row.center().y - galley.size().y / 2.0),
         galley,
         color::text_control(),
@@ -965,9 +967,12 @@ fn file_row(
     } else {
         color::text_faint().gamma_multiply(0.7)
     };
-    let galley =
-        ui.painter().layout_no_wrap(name.clone(), egui::FontId::proportional(view.at(12.5)), tint);
-    ui.painter().galley(
+    let galley = ui.painter().crisp_layout_no_wrap(
+        name.clone(),
+        egui::FontId::proportional(view.at(12.5)),
+        tint,
+    );
+    ui.painter().crisp_galley(
         Pos2::new(name_column(x, view, mark, false), row.center().y - galley.size().y / 2.0),
         galley,
         tint,

@@ -11,6 +11,7 @@ use unluminous_core::{
 
 use crate::services::text_renderer::TextRenderer;
 use crate::theme::color;
+use crate::theme::crisp::CrispPainter;
 
 /// Space between the text and the edge of the editing area.
 pub const PADDING: f32 = 16.0;
@@ -551,12 +552,12 @@ fn paint_inline_values(
         if x > right - 24.0 {
             continue;
         }
-        let galley = painter.layout_no_wrap(
+        let galley = painter.crisp_layout_no_wrap(
             values[at].1.clone(),
             egui::FontId::monospace(INLINE_SIZE),
             crate::theme::color::inline_value(),
         );
-        painter.galley(
+        painter.crisp_galley(
             Pos2::new(x, text_origin.y + line.y + (line.height - galley.size().y) / 2.0),
             galley,
             crate::theme::color::inline_value(),

@@ -41,6 +41,7 @@ use std::cell::RefCell;
 
 use egui::{Color32, CornerRadius, Stroke, Vec2};
 
+pub mod crisp;
 pub mod icon;
 
 /// Generate the palette from one list.

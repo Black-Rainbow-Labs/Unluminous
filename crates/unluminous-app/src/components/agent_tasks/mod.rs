@@ -25,6 +25,7 @@ use egui::{Pos2, Rect, Vec2};
 
 use crate::services::agent_tasks::{AgentTasks, View};
 use crate::services::plugin_ui::{Look, Request};
+use crate::theme::crisp::CrispPainter;
 
 /// How tall the strip holding the sprint's name, the search box and `+ Add Task` is.
 ///
@@ -440,14 +441,14 @@ fn view_switch(
         break_anywhere: false,
         overflow_character: Some('\u{2026}'),
     };
-    let heading = painter.layout_job(job);
-    painter.galley(
+    let heading = painter.crisp_layout_job(job);
+    painter.crisp_galley(
         Pos2::new(area.min.x, area.center().y - heading.size().y / 2.0),
         heading.clone(),
         look.palette.text_strong,
     );
     let mut pen = area.min.x + heading.size().x + 10.0;
-    let count = painter.layout_no_wrap(
+    let count = painter.crisp_layout_no_wrap(
         match listing {
             true => String::new(),
             false => format!("\u{b7} {}", card::plural(board.board().total() as i64, "task")),
@@ -456,7 +457,7 @@ fn view_switch(
         look.palette.text_dim,
     );
     if pen + count.size().x < add.min.x - 12.0 {
-        painter.galley(
+        painter.crisp_galley(
             Pos2::new(pen, area.center().y - count.size().y / 2.0),
             count.clone(),
             look.palette.text_dim,
@@ -516,14 +517,14 @@ fn view_switch(
 
     // What the board last said, under the heading, where there is always room for it.
     if !board.message().is_empty() {
-        let said = painter.layout_no_wrap(
+        let said = painter.crisp_layout_no_wrap(
             board.message().to_owned(),
             egui::FontId::proportional(look.font_size - 1.5),
             look.palette.text_dim,
         );
         let at = Pos2::new(area.min.x, area.max.y - said.size().y);
         if at.x + said.size().x < search.min.x {
-            painter.galley(at, said, look.palette.text_dim);
+            painter.crisp_galley(at, said, look.palette.text_dim);
         }
     }
 
@@ -633,8 +634,12 @@ pub(crate) fn primary_button(
         break_anywhere: false,
         overflow_character: Some('\u{2026}'),
     };
-    let galley = ui.painter().layout_job(job);
-    ui.painter().galley(area.center() - galley.size() / 2.0, galley, look.palette.text_strong);
+    let galley = ui.painter().crisp_layout_job(job);
+    ui.painter().crisp_galley(
+        area.center() - galley.size() / 2.0,
+        galley,
+        look.palette.text_strong,
+    );
     response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
     });
@@ -675,12 +680,12 @@ pub(crate) fn chooser_button(
             egui::StrokeKind::Inside,
         );
     }
-    let galley = ui.painter().layout_no_wrap(
+    let galley = ui.painter().crisp_layout_no_wrap(
         label.to_owned(),
         egui::FontId::proportional(look.font_size - 2.0),
         look.palette.text_control,
     );
-    ui.painter().galley(
+    ui.painter().crisp_galley(
         Pos2::new(area.min.x + 14.0, area.center().y - galley.size().y / 2.0),
         galley,
         look.palette.text_control,
@@ -756,9 +761,10 @@ pub(crate) fn text(
     size: f32,
     tint: egui::Color32,
 ) -> f32 {
-    let galley = painter.layout_no_wrap(said.to_owned(), egui::FontId::proportional(size), tint);
+    let galley =
+        painter.crisp_layout_no_wrap(said.to_owned(), egui::FontId::proportional(size), tint);
     let width = galley.size().x;
-    painter.galley(at, galley, tint);
+    painter.crisp_galley(at, galley, tint);
     width
 }
 
@@ -965,7 +971,7 @@ pub(crate) fn clipped_in(
         Some((at, _)) => &said[..at],
         None => said,
     };
-    let mut galley = painter.layout(short.to_owned(), font.clone(), tint, width);
+    let mut galley = painter.crisp_layout(short.to_owned(), font.clone(), tint, width);
     let room = size * 1.35 * lines.max(1) as f32;
     if galley.size().y > room {
         // Trimmed a character at a time from the end, which is at most a handful of steps from the slice above.
@@ -976,14 +982,15 @@ pub(crate) fn clipped_in(
                 None => break,
             };
             fits = &said[..cut];
-            let tried = painter.layout(format!("{}…", fits.trim_end()), font.clone(), tint, width);
+            let tried =
+                painter.crisp_layout(format!("{}…", fits.trim_end()), font.clone(), tint, width);
             if tried.size().y <= room {
                 galley = tried;
                 break;
             }
         }
     }
-    painter.galley(at, galley, tint);
+    painter.crisp_galley(at, galley, tint);
 }
 
 #[cfg(test)]

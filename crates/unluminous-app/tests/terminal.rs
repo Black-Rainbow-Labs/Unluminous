@@ -95,6 +95,70 @@ fn the_terminal_draws_a_program_that_takes_over_the_screen() {
 }
 
 #[test]
+fn a_terminal_tab_comes_back_in_its_folder_showing_what_was_on_it() {
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-tab-replay");
+    let inside = folder.join("chapters");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().restore_project();
+    harness.run();
+
+    // A detached tab, so what is drawn and what is written down do not depend on a shell answering.
+    harness.state_mut().new_detached_terminal_tab(10, 60);
+    feed(&mut harness, b"$ ls\r\ntotal 48\r\nsrc  tests  Cargo.toml\r\n$ ");
+    harness.run();
+
+    // What the window would write on its way out.
+    harness.state_mut().write_the_tab_screens_down();
+    let saved = unluminous_app::services::space::store::screen_path(
+        &folder,
+        unluminous_app::services::space::store::Screen::Tab(0),
+    );
+    assert!(saved.is_file(), "the tab's screen was written down at {}", saved.display());
+    assert!(
+        String::from_utf8_lossy(&std::fs::read(&saved).expect("the screen reads back"))
+            .contains("Cargo.toml"),
+        "and it holds what was on the screen"
+    );
+
+    // And that there is a screen for the tab to be started with, which is the same shim a node uses: a
+    // screen written into the emulator from outside is erased by the console host, `task-1912`.
+    let printing = unluminous_app::services::space::store::a_screen_to_print(
+        &folder,
+        unluminous_app::services::space::store::Screen::Tab(0),
+    )
+    .expect("there is a screen to print");
+    assert_eq!(printing, saved);
+
+    // The folder half: what a project remembers about a tab, and what it opens the tab in.
+    let mut state = unluminous_app::services::project_state::load(&folder);
+    state.terminal_visible = true;
+    state.terminal_tabs = 1;
+    state.terminals = vec![unluminous_app::services::project_state::RememberedTerminal {
+        name: "build".to_owned(),
+        folder: inside.to_string_lossy().into_owned(),
+    }];
+    unluminous_app::services::project_state::save(&folder, &state);
+
+    let mut second = harness_in(&folder);
+    second.state_mut().restore_project();
+    second.run();
+    second.state_mut().start_the_restored_terminals();
+    second.run();
+    assert_eq!(second.state().terminal.tabs.count(), 1, "the tab came back");
+    assert_eq!(
+        second.state().terminal.tabs.at(0).and_then(unluminous_terminal::Session::given_name),
+        Some("build"),
+        "with the name somebody typed"
+    );
+    assert_eq!(
+        second.state().terminal.tabs.settings.working_directory.as_deref(),
+        Some(inside.as_path()),
+        "and opened in the folder its shell was in rather than the project's root"
+    );
+}
+
+/// A second tab is added, and the new one is the one showing.
+#[test]
 fn a_second_terminal_tab_is_added_and_shown_in_front() {
     let mut harness = with_terminal("", 10, 60);
     feed(&mut harness, b"the first tab");

@@ -30,6 +30,7 @@ use crate::components::controls;
 use crate::services::agent_chat::{AgentChat, Parts};
 use crate::services::plugin_ui::{Look, Request};
 use crate::services::vello_canvas::{Fill, Lift};
+use crate::theme::crisp::CrispPainter;
 use crate::theme::icon;
 
 /// A colour moved towards black, which is the far end of a button's own gradient.
@@ -204,7 +205,7 @@ fn header(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> 
     // **Laid out without wrapping and then clipped**, because a conversation named after a long first
     // sentence has to lose its end rather than gain a second line: a wrapped name drew over the chip
     // beside it and over the first message under it.
-    let galley = painter.layout_no_wrap(
+    let galley = painter.crisp_layout_no_wrap(
         name.to_owned(),
         egui::FontId::proportional(look.font_size * 0.82),
         look.palette.text_strong,
@@ -215,7 +216,11 @@ fn header(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> 
             Pos2::new(pen, area.top()),
             Vec2::new(room, area.height()),
         ))
-        .galley(Pos2::new(pen, middle - look.font_size * 0.55), galley, look.palette.text_strong);
+        .crisp_galley(
+            Pos2::new(pen, middle - look.font_size * 0.55),
+            galley,
+            look.palette.text_strong,
+        );
     pen += cut + 10.0 * scale;
 
     // The endpoint's own chip, which is `ChatHeader.module.css`'s datasource chip: a pressed well in
@@ -253,7 +258,7 @@ fn header(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> 
                 .layout_no_wrap(words.clone(), egui::FontId::monospace(look.font_size * 0.62), tint)
                 .size()
                 .x;
-            painter.text(
+            painter.crisp_text(
                 Pos2::new(chip.center().x - width / 2.0, chip.center().y - look.font_size * 0.4),
                 egui::Align2::LEFT_TOP,
                 words,
@@ -605,7 +610,7 @@ fn provider_list(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Re
                 painter.rect_filled(rect.shrink(2.0), CornerRadius::same(10), ground);
             }
         }
-        painter.text(
+        painter.crisp_text(
             Pos2::new(rect.left() + 10.0 * scale, rect.top() + 6.0 * scale),
             egui::Align2::LEFT_TOP,
             &provider.name,
@@ -623,7 +628,7 @@ fn provider_list(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Re
                 (format!("{} · {}", provider.model, provider.wire.name()), look.palette.text_dim)
             }
         };
-        painter.with_clip_rect(rect).text(
+        painter.with_clip_rect(rect).crisp_text(
             Pos2::new(rect.left() + 10.0 * scale, rect.top() + 6.0 * scale + look.font_size),
             egui::Align2::LEFT_TOP,
             said,

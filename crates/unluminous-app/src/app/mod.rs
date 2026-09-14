@@ -818,7 +818,7 @@ pub struct UnluminousApp {
     /// One entry per tab, holding the name a person gave it or an empty string. See
     /// [`UnluminousApp::start_the_restored_terminals`] for why they are not started with the rest of
     /// the project.
-    terminals_to_restore: Vec<String>,
+    terminals_to_restore: Vec<project_state::RememberedTerminal>,
     /// How many frames this window has drawn.
     ///
     /// Only one thing reads it, and it needs to: eframe keeps the window hidden until it has
@@ -1551,7 +1551,7 @@ impl UnluminousApp {
             // starting a shell is the one thing this function does that the first frame does not
             // need, and it was a fifth of the time before the window appeared.
             self.terminals_to_restore = (0..state.terminal_tabs)
-                .map(|index| state.terminal_tab_names.get(index).cloned().unwrap_or_default())
+                .map(|index| state.terminals.get(index).cloned().unwrap_or_default())
                 .collect();
         }
         // The canvases this project was left with - `task-1904`. Read here rather than at startup,
@@ -1637,6 +1637,24 @@ impl UnluminousApp {
                 .sessions()
                 .iter()
                 .map(|session| session.given_name().unwrap_or_default().to_owned())
+                .collect(),
+            // **And where each tab's shell had got to** - `task-1945`. `Session::folder` reads the
+            // current directory off the shell process itself rather than answering with the one it was
+            // spawned in, because a person types `cd` and nothing about that reaches the pseudoterminal.
+            // A platform that will not say answers `None` and the tab reopens in the project's own root,
+            // which is what every tab did before this.
+            terminals: self
+                .terminal
+                .tabs
+                .sessions()
+                .iter()
+                .map(|session| project_state::RememberedTerminal {
+                    name: session.given_name().unwrap_or_default().to_owned(),
+                    folder: session
+                        .folder()
+                        .map(|path| path.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                })
                 .collect(),
             run_visible: self.was_showing(dock::Panel::Run, self.run.visible),
             run_selected: self.run_selected.clone().unwrap_or_default(),
@@ -2020,8 +2038,9 @@ impl eframe::App for UnluminousApp {
         // answer for and why the other two are left out.
         self.note_the_live_state_into_the_nodes(space::Reading::OnTheWayOut);
         // **Before the sessions are killed**, because a screen is read out of a live terminal and a killed one
-        // has nothing to read. `task-1908`.
+        // has nothing to read. `task-1908` for the canvas's terminals, `task-1945` for the tile's.
         self.write_the_screens_down();
+        self.write_the_tab_screens_down();
         self.run.kill_everything();
         // Every program a node started, killed rather than dropped - `Live::forget`'s own note, and
         // `task-1769`'s 119 orphaned shells.

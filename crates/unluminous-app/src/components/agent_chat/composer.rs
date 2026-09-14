@@ -26,6 +26,7 @@ use super::Act;
 use crate::services::agent_chat::Parts;
 use crate::services::plugin_ui::Look;
 use crate::services::vello_canvas::{Fill, Lift};
+use crate::theme::crisp::CrispPainter;
 use crate::theme::icon;
 
 /// One button in the tool pill: its name, its icon, whether it is switched on, the accent it wears
@@ -291,9 +292,9 @@ fn used(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) {
         look.palette.text_faint,
     );
     let font = egui::FontId::monospace(look.font_size * 0.68);
-    let galley = painter.layout(said, font, tint, area.width());
+    let galley = painter.crisp_layout(said, font, tint, area.width());
     let at = Pos2::new(area.center().x - galley.size().x.min(area.width()) / 2.0, area.top());
-    painter.galley(at, galley, tint);
+    painter.crisp_galley(at, galley, tint);
 }
 
 /// A number a person reads: `18k` rather than `18342`.

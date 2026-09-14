@@ -262,10 +262,69 @@ fn a_file_editor_node_is_a_tab_that_lives_on_the_node() {
     assert!(!harness.state().files.is_empty(), "the window always has a tab to type into");
 }
 
+/// Run frames until the camera has arrived where a gesture sent it.
+///
+/// `task-1945`: a wheel notch, a zoom button and the zoom keys **glide** now rather than jumping, so a
+/// test that reads the camera straight after pressing one reads it on its way. `Harness::run` stops after
+/// four frames and a glide is about seven, so the frames are asked for by hand.
+fn let_the_zoom_settle(harness: &mut Harness<'static, UnluminousApp>) {
+    // The first frame is the one the press is read on, so it is always taken: `Harness::run` would
+    // panic here instead, because a glide asks for another frame and it gives up after four.
+    harness.step();
+    for _ in 0..120 {
+        if harness.state().space.glide.is_none() {
+            return;
+        }
+        harness.step();
+    }
+    panic!("the zoom never arrived");
+}
+
 /// Where a world point is drawn, for a test that has to press one.
 fn on_the_canvas(harness: &Harness<'static, UnluminousApp>, world: egui::Pos2) -> egui::Pos2 {
     let body = harness.state().space.body;
     harness.state().space.space.current().camera.to_screen(body.min, world)
+}
+
+/// `task-1945`: *"if I click a terminal node, etc, the node should be given focus."*
+///
+/// A node used to become the chosen one from its header, its grips, and whatever its own body
+/// happened to report. A board's cards and a chat's transcript reported nothing, so clicking one left
+/// the keyboard wherever it was - and on a canvas with a browser node on it that means the page keeps
+/// the **operating system's** keyboard focus, because only Unluminous's own choice moving off that
+/// node hands it back. See `services::browser::TheFocus`.
+#[test]
+fn a_press_anywhere_in_a_node_chooses_it() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let board = did(&mut harness, "space add tasks --x 40 --y 40 --width 700 --height 480")["node"]
+        .as_u64()
+        .expect("a node id");
+    let chat = did(&mut harness, "space add chat --x 820 --y 40 --width 420 --height 420")["node"]
+        .as_u64()
+        .expect("a node id");
+    did(&mut harness, &format!("space focus {chat}"));
+    harness.run();
+    assert_eq!(harness.state().space.space.chosen(), Some(chat));
+
+    // Well inside the board's own body, where one of its lanes is drawn - not on the header, not on a
+    // grip, and not on anything the board reports a choice from.
+    let inside = on_the_canvas(&harness, egui::pos2(300.0, 300.0));
+    drove(&mut harness, &format!("input click {} {}", inside.x, inside.y));
+    assert_eq!(
+        harness.state().space.space.chosen(),
+        Some(board),
+        "a press inside the board chose the board"
+    );
+
+    // And back the other way, into the chat node's transcript.
+    let inside = on_the_canvas(&harness, egui::pos2(1000.0, 300.0));
+    drove(&mut harness, &format!("input click {} {}", inside.x, inside.y));
+    assert_eq!(
+        harness.state().space.space.chosen(),
+        Some(chat),
+        "and a press inside the chat node chose that one"
+    );
 }
 
 /// Dragging a node's header moves the node, and nothing else on the canvas moves with it.
@@ -1197,12 +1256,12 @@ fn the_zoom_buttons_step_the_camera_and_the_reading_resets_it() {
     assert_eq!(was, 1.0);
 
     harness.get_by_label("Zoom in").click();
-    harness.run();
+    let_the_zoom_settle(&mut harness);
     let bigger = harness.state().space.space.current().camera.zoom;
     assert!(bigger > was, "zoom in should have zoomed in, it is at {bigger}");
 
     harness.get_by_label("Zoom out").click();
-    harness.run();
+    let_the_zoom_settle(&mut harness);
     let back = harness.state().space.space.current().camera.zoom;
     assert!((back - was).abs() < 0.001, "one notch each way is where it started, it is at {back}");
 
@@ -1211,8 +1270,47 @@ fn the_zoom_buttons_step_the_camera_and_the_reading_resets_it() {
     did(&mut harness, "space camera --zoom 2");
     harness.run();
     harness.get_by_label_contains("Reset zoom").click();
-    harness.run();
+    let_the_zoom_settle(&mut harness);
     assert_eq!(harness.state().space.space.current().camera.zoom, 1.0);
+}
+
+/// `task-1945`: the wheel moves the camera through the notch rather than jumping it.
+///
+/// *"Zooming in and out of Base of Infinite space is chunky/not smooth."* One notch of a mouse wheel is
+/// fifty units of scroll, so the camera used to take the whole 10% on the frame the notch arrived and sit
+/// there. What is asserted is the thing that was missing: a frame in between.
+#[test]
+fn a_wheel_notch_glides_the_camera_rather_than_jumping_it() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    did(&mut harness, "space camera --zoom 1");
+    harness.run();
+    let body = harness.state().space.body;
+    let middle = body.center();
+
+    drove(&mut harness, &format!("input move {} {}", middle.x, middle.y));
+    drove(&mut harness, "input wheel 1");
+    let heading = harness.state().space.glide.map(|(wanted, _)| wanted).expect("a glide started");
+    assert!(heading > 1.0, "the wheel aimed the camera in: {heading}");
+
+    // The frame the notch landed on is **between** the two zooms, which is the whole of the report.
+    let part_way = harness.state().space.space.current().camera.zoom;
+    assert!(
+        part_way > 1.0 && part_way < heading,
+        "the camera was part of the way there rather than at either end: {part_way}"
+    );
+
+    let_the_zoom_settle(&mut harness);
+    let arrived = harness.state().space.space.current().camera.zoom;
+    assert!((arrived - heading).abs() < 0.001, "and it arrived: {arrived} against {heading}");
+    assert!(harness.state().space.glide.is_none(), "and stopped asking for frames");
+
+    // A command sets it outright, because a script that had to wait out an animation to read back what
+    // it just set is a script with a race in it.
+    let answer = did(&mut harness, "space camera --zoom 2");
+    assert_eq!(answer["zoom"], serde_json::json!(2.0));
+    assert_eq!(harness.state().space.space.current().camera.zoom, 2.0);
+    assert!(harness.state().space.glide.is_none());
 }
 
 /// A picture of the two buttons and the reading, at 100% and at the bottom of the ladder.
@@ -2786,15 +2884,21 @@ fn a_terminal_node_comes_back_showing_what_was_on_it() {
 
     // What the window would write on its way out.
     harness.state_mut().write_the_screens_down();
-    let saved = unluminous_app::services::space::store::screen_path(&folder, node);
+    let saved = unluminous_app::services::space::store::screen_path(
+        &folder,
+        unluminous_app::services::space::store::Screen::Node(node),
+    );
     assert!(saved.is_file(), "the screen was written down at {}", saved.display());
 
     // And what the node is started with when it opens again. `task-1912`: what is replayed is not written into
     // the terminal from outside — the console host erases that on Windows — but printed by a program inside the
     // node's own console, so what a test can hold is the command line that program is given and the bytes it
     // will print.
-    let printing = unluminous_app::services::space::store::a_screen_to_print(&folder, node)
-        .expect("there is a screen to print");
+    let printing = unluminous_app::services::space::store::a_screen_to_print(
+        &folder,
+        unluminous_app::services::space::store::Screen::Node(node),
+    )
+    .expect("there is a screen to print");
     assert_eq!(printing, saved, "and it is the file that was written down");
     let restore = unluminous_cli::restore::Restore {
         file: printing.clone(),
@@ -2841,12 +2945,22 @@ fn a_screen_nobody_printed_is_not_kept_for_ever() {
     harness.run();
     harness.state_mut().write_the_screens_down();
 
-    let saved = unluminous_app::services::space::store::screen_path(&folder, node);
+    let saved = unluminous_app::services::space::store::screen_path(
+        &folder,
+        unluminous_app::services::space::store::Screen::Node(node),
+    );
     assert!(saved.is_file(), "a screen was written down");
-    unluminous_app::services::space::store::forget_a_screen(&folder, node);
+    unluminous_app::services::space::store::forget_a_screen(
+        &folder,
+        unluminous_app::services::space::store::Screen::Node(node),
+    );
     assert!(!saved.exists(), "and a node starting without it takes it away");
     assert!(
-        unluminous_app::services::space::store::a_screen_to_print(&folder, node).is_none(),
+        unluminous_app::services::space::store::a_screen_to_print(
+            &folder,
+            unluminous_app::services::space::store::Screen::Node(node)
+        )
+        .is_none(),
         "so there is nothing to print"
     );
 

@@ -15,6 +15,7 @@ use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 use unluminous_core::mermaid::scene::{Anchor, Dash, Item, Paint, Point, Scene};
 
 use crate::theme::color;
+use crate::theme::crisp::CrispPainter;
 
 /// How far in or out one notch of a zoom gesture takes a diagram.
 const ZOOM_STEP: f32 = 1.12;
@@ -182,14 +183,14 @@ pub fn paint(ui: &egui::Ui, scene: &Scene, origin: Pos2, scale: f32) {
                     },
                 );
                 let colour = colour_of(style.color);
-                let galley = painter.layout_no_wrap(text.clone(), font, colour);
+                let galley = painter.crisp_layout_no_wrap(text.clone(), font, colour);
                 let left = match anchor {
                     Anchor::Start => 0.0,
                     Anchor::Middle => galley.size().x / 2.0,
                     Anchor::End => galley.size().x,
                 };
                 let position = at(origin_of_text);
-                painter.galley(Pos2::new(position.x - left, position.y), galley, colour);
+                painter.crisp_galley(Pos2::new(position.x - left, position.y), galley, colour);
             }
         }
     }
@@ -305,13 +306,13 @@ fn write(
     colour: Color32,
     size: f32,
 ) -> f32 {
-    let galley = painter.layout(
+    let galley = painter.crisp_layout(
         words.to_owned(),
         egui::FontId::proportional(size),
         colour,
         (panel.width() - 24.0).max(20.0),
     );
     let height = galley.size().y;
-    painter.galley(Pos2::new(panel.left() + 12.0, y), galley, colour);
+    painter.crisp_galley(Pos2::new(panel.left() + 12.0, y), galley, colour);
     height + 2.0
 }

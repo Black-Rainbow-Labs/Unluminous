@@ -31,6 +31,7 @@ use super::Act;
 use crate::services::agent_chat::PaneState;
 use crate::services::plugin_ui::Look;
 use crate::services::vello_canvas::{Fill, Lift};
+use crate::theme::crisp::CrispPainter;
 use crate::theme::icon;
 
 /// A bubble's own padding, from `.messageWrapper`.
@@ -389,7 +390,7 @@ fn thinking(
         open,
         look.palette.text_faint,
     );
-    painter.text(
+    painter.crisp_text(
         Pos2::new(head.left() + 16.0 * scale, head.center().y - look.font_size * 0.4),
         egui::Align2::LEFT_TOP,
         "Thinking",
@@ -474,7 +475,7 @@ fn picture(
             Err(_) => {
                 // A picture that will not decode shows what it was called, which is the alt text rule
                 // the Markdown preview already keeps.
-                painter_in(ui, rect).text(
+                painter_in(ui, rect).crisp_text(
                     rect.min,
                     egui::Align2::LEFT_TOP,
                     format!("{name} ({media}) could not be drawn"),
@@ -598,7 +599,7 @@ fn tool_block(
         )
         .size()
         .x;
-    painter.text(
+    painter.crisp_text(
         Pos2::new(pen, head.center().y - look.font_size * 0.42),
         egui::Align2::LEFT_TOP,
         &tool.name,
@@ -610,7 +611,7 @@ fn tool_block(
         Some(took) => format!("{:.2}s", took as f32 / 1000.0),
         None => "running".to_owned(),
     };
-    painter.text(
+    painter.crisp_text(
         Pos2::new(pen, head.center().y - look.font_size * 0.36),
         egui::Align2::LEFT_TOP,
         said,

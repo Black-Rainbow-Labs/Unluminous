@@ -31,6 +31,7 @@
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::components::controls;
+use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, icon};
 
 /// How tall the strip is. The same as the terminal tile's header, so the two horizontal strips in
@@ -126,7 +127,7 @@ impl Strip {
 
 /// How wide one tab is. Measured rather than guessed, because a name can be any length.
 fn tab_width(ui: &egui::Ui, tab: &TabView) -> f32 {
-    let galley = ui.painter().layout_no_wrap(
+    let galley = ui.painter().crisp_layout_no_wrap(
         tab.name.clone(),
         egui::FontId::proportional(12.0),
         color::text_control(),
@@ -299,8 +300,9 @@ fn draw_tab(
     // A transient tab is drawn faintly rather than in italic: egui has no italic face for the
     // family Unluminous installs, and a fake slant is worse than a change of weight.
     let tint = if tab.transient { tint.gamma_multiply(0.75) } else { tint };
-    let galley = painter.layout_no_wrap(tab.name.clone(), egui::FontId::proportional(12.0), tint);
-    painter.galley(
+    let galley =
+        painter.crisp_layout_no_wrap(tab.name.clone(), egui::FontId::proportional(12.0), tint);
+    painter.crisp_galley(
         Pos2::new(rect.left() + PADDING + 16.0, rect.center().y - galley.size().y / 2.0),
         galley,
         tint,

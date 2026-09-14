@@ -145,9 +145,23 @@ pub struct Crispness {
 /// **The atlas is one texture that is cleared and started again when it fills**, so a distinct raster size on
 /// every frame of a pinch would clear it repeatedly and cost far more than the blur it was fixing. Quarter
 /// steps are the granularity the glyph key already has — see `GlyphKey::quarter_points` — so the whole camera
-/// range from 0.25 to 2.5 asks for **seven** sizes rather than an unbounded number, and a pinch settles onto
+/// range from 0.25 to 2.5 asks for **ten** sizes rather than an unbounded number, and a pinch settles onto
 /// one of them.
 const RASTER_STEPS: f32 = 4.0;
+
+/// The smallest scale a glyph is rasterised at, which is the camera's own smallest zoom.
+///
+/// See `services::space::node::MIN_ZOOM`. Kept as a number here rather than imported, because what it
+/// bounds is the atlas rather than the camera: a scale below this would ask for a glyph of a couple of
+/// pixels, and the two would have to be changed together anyway.
+const SMALLEST_RASTER: f32 = 0.25;
+
+/// The largest, which is the camera's own largest zoom rounded up to a quarter step.
+///
+/// Here for the same reason as [`SMALLEST_RASTER`]: it is what bounds the ladder, and a caller that
+/// asked for a bigger scale than the camera can reach would otherwise put an unbounded number of sizes
+/// into the atlas.
+const MAX_RASTER: f32 = 2.5;
 
 impl Crispness {
     /// Text composited at the size it is laid out at, which is everything outside the canvas.
@@ -164,15 +178,31 @@ impl Crispness {
         // transform only ever scales it *down*, which resamples and is what every renderer does. Rounding down
         // magnifies, which is the fault this type exists to fix.
         //
-        // Never below 1.0 for the same reason read the other way: a canvas zoomed out draws its glyphs at their
-        // own size and lets the transform shrink them.
+        // **And it goes below 1.0, which `task-1907` stopped it doing.** That version ended in `max(1.0)`, so a
+        // canvas zoomed *out* rasterised its glyphs at their layout size and let the transform shrink them —
+        // a 12.5 point glyph rasterised at 12.5 and composited at 0.61 is a bitmap resampled down through a
+        // nearest filter, which is what made the cards on an Agent Tasks node unreadable at the zoom
+        // `task-1945` was reported from. Rounding up still holds below one: 0.61 asks for 0.75, which is
+        // still *more* pixels than the glyph is composited into, so the transform is still only ever
+        // shrinking. The floor is the camera's own smallest zoom, so the ladder is ten sizes rather than
+        // seven and still bounded.
         let snapped = (scale * RASTER_STEPS).ceil() / RASTER_STEPS;
-        Self { scale: snapped.max(1.0) }
+        Self { scale: snapped.clamp(SMALLEST_RASTER, MAX_RASTER) }
     }
 
     /// Whether this is the ordinary case, where nothing has to be divided back.
     pub fn is_exact(self) -> bool {
         self.scale == 1.0
+    }
+
+    /// The quantised scale itself, for the other text engine.
+    ///
+    /// `theme::crisp` does the same thing for the text `egui` lays out — a node's title, a folder node's
+    /// rows, a chat and the whole Agent Tasks board all go through `egui`'s own atlas rather than this
+    /// one — and it asks this type for the number so the two ladders cannot disagree about which sizes
+    /// a pinch puts into an atlas. `task-1945`.
+    pub fn scale(self) -> f32 {
+        self.scale
     }
 
     /// The size to rasterise a glyph at, for text laid out at `points`.
@@ -1016,7 +1046,7 @@ mod crispness_tests {
         while zoom <= 2.5 {
             let scale = Crispness::at(zoom).raster_size(16.0) / 16.0;
             assert!(
-                scale >= zoom.min(2.5) - 0.001 || zoom < 1.0,
+                scale >= zoom.min(2.5) - 0.001,
                 "at a camera of {zoom} the glyph was rasterised at {scale} of its layout size"
             );
             zoom *= 1.1;
@@ -1025,14 +1055,37 @@ mod crispness_tests {
         assert!(Crispness::at(1.1).raster_size(16.0) >= 16.0 * 1.1);
     }
 
-    /// Rasterising smaller than the layout and magnifying back up is the fault, so it is never done.
+    /// A canvas zoomed **out** rasterises its glyphs small, which is what `task-1907` stopped short of.
     ///
-    /// A canvas zoomed **out** draws its glyphs at their own size and lets the transform shrink them, which
-    /// resamples downwards and is what every renderer does.
+    /// That ticket ended `Crispness::at` in `max(1.0)`, so a zoomed-out canvas rasterised at the layout's own
+    /// size and let the transform shrink it — a 16 point glyph rasterised at 16 and composited into 9.8
+    /// points, resampled down through a nearest filter. `task-1945` was reported from a camera at 0.61 and
+    /// the Agent Tasks cards there were unreadable.
+    ///
+    /// Rounding up still holds below one, which is what keeps the rule above true: 0.61 asks for 0.75, so the
+    /// glyph still has more pixels than it is composited into and the transform is still only shrinking.
     #[test]
-    fn a_canvas_zoomed_out_still_rasterises_at_the_layouts_own_size() {
-        assert!(Crispness::at(0.5).is_exact());
-        assert!(Crispness::at(0.25).is_exact());
+    fn a_canvas_zoomed_out_rasterises_its_glyphs_at_the_size_they_are_seen_at() {
+        assert!(!Crispness::at(0.61).is_exact(), "0.61 is not the layout's own size");
+        assert_eq!(
+            Crispness::at(0.61).raster_size(16.0),
+            12.0,
+            "16 x 0.75, the quarter step above 0.61"
+        );
+        assert_eq!(Crispness::at(0.5).raster_size(16.0), 8.0);
+        assert_eq!(Crispness::at(0.25).raster_size(16.0), 4.0);
+        // Never below the camera's own floor, however small a scale a caller asks for.
+        assert_eq!(Crispness::at(0.01).raster_size(16.0), 16.0 * SMALLEST_RASTER);
+        // And a glyph rasterised small is put back at its layout size, so nothing about the layout moves.
+        let small = Crispness::at(0.5);
+        let glyph = AtlasGlyph {
+            uv: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(0.1, 0.1)),
+            size: egui::vec2(4.0, 8.0),
+            offset: egui::vec2(1.0, -6.0),
+        };
+        let drawn = small.drawn(glyph);
+        assert_eq!(drawn.size, egui::vec2(8.0, 16.0), "divided back by the scale it was asked for");
+        assert_eq!(drawn.offset, egui::vec2(2.0, -12.0));
     }
 
     /// A glyph is snapped to a whole pixel rather than to a whole point.

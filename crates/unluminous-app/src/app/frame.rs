@@ -1591,7 +1591,18 @@ impl UnluminousApp {
         // manager will refuse ever being sent. `components::resize_edges` records what one of those
         // costs: it wedges every later move and resize as well.
         let maximized = ui.ctx().input(|input| input.viewport().maximized.unwrap_or(false));
-        if let Some(direction) = resize_edges::show(ui, full, maximized) {
+        let direction = resize_edges::show(ui, full, maximized);
+        // **And nothing is asked for while something else holds the keyboard**, which is the same rule
+        // read against the other case the window manager throws a request away in. `egui-winit` already
+        // refuses to forward `StartDrag` unless `Window::has_focus()`, and `winit` answers that with
+        // `is_active && is_focused` — so a native child that has taken `SetFocus`, which is what a
+        // browser node's page does, makes it false. `BeginResize` is **not** behind that check upstream,
+        // so it reaches `handle_os_dragging`, which latches a flag that only `WM_EXITSIZEMOVE` clears
+        // and returns early from every later move and resize for the life of the process. `task-1945`.
+        //
+        // `unwrap_or(true)` because a platform that never reports the focus must not lose its grips.
+        let focused = ui.ctx().input(|input| input.viewport().focused.unwrap_or(true));
+        if let Some(direction) = direction.filter(|_| focused) {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::BeginResize(direction));
         }
     }

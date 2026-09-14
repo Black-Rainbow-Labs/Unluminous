@@ -8,6 +8,7 @@ use super::{card, text};
 use crate::services::agent_tasks::model::Status;
 use crate::services::agent_tasks::{board as arithmetic, AgentTasks};
 use crate::services::plugin_ui::{Look, Request};
+use crate::theme::crisp::CrispPainter;
 
 /// How wide a lane is when there is room, how narrow it is squeezed to before the board starts
 /// scrolling instead, and the gap between two.
@@ -499,12 +500,12 @@ pub fn show(
                         );
                     }
                 }
-                let said = ui.painter().layout_no_wrap(
+                let said = ui.painter().crisp_layout_no_wrap(
                     "Nothing here".to_owned(),
                     egui::FontId::proportional(look.font_size - 1.0),
                     look.palette.text_faint,
                 );
-                ui.painter().galley(
+                ui.painter().crisp_galley(
                     empty.center() - said.size() / 2.0,
                     said,
                     look.palette.text_faint,
@@ -639,7 +640,7 @@ fn header(ui: &mut egui::Ui, look: &Look<'_>, lane: Rect, status: Status, count:
         look.font_size - 3.0,
         look.palette.text_dim,
     );
-    let said = painter.layout_no_wrap(
+    let said = painter.crisp_layout_no_wrap(
         count.to_string(),
         egui::FontId::proportional(look.font_size - 2.5),
         look.palette.text_dim,
@@ -668,7 +669,7 @@ fn header(ui: &mut egui::Ui, look: &Look<'_>, lane: Rect, status: Status, count:
             );
         }
     }
-    painter.galley(
+    painter.crisp_galley(
         Pos2::new(chip.center().x - said.size().x / 2.0, middle - said.size().y / 2.0),
         said,
         look.palette.text_dim,

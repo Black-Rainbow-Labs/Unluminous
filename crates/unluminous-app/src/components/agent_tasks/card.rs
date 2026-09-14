@@ -11,6 +11,7 @@ use crate::services::agent_tasks::board;
 use crate::services::agent_tasks::model::{Board, Priority, Task};
 use crate::services::plugin_ui::Look;
 use crate::services::vello_canvas::{Fill, Lift};
+use crate::theme::crisp::CrispPainter;
 use crate::theme::icon;
 
 /// How tall a card is at the default font size, and the gap between two.
@@ -165,7 +166,7 @@ pub fn show(
         let colour = crate::services::plugins::colour(&epic.color)
             .map(|colour| Color32::from_rgb(colour.r, colour.g, colour.b))
             .unwrap_or(look.palette.control_border);
-        let galley = painter.layout_no_wrap(
+        let galley = painter.crisp_layout_no_wrap(
             epic.name.clone(),
             egui::FontId::proportional(look.font_size - 3.0),
             look.palette.text_strong,
@@ -176,7 +177,7 @@ pub fn show(
         );
         if at.max.x < right {
             painter.rect_filled(at, CornerRadius::same(3), colour);
-            painter.galley(
+            painter.crisp_galley(
                 Pos2::new(at.min.x + 5.0, at.center().y - galley.size().y / 2.0),
                 galley,
                 look.palette.text_strong,
@@ -240,7 +241,7 @@ pub fn show(
     // Each piece is drawn only if the whole of it fits before the controls. The key first, because a card that
     // can show only one thing should show which ticket it is.
     let room_for = |painter: &egui::Painter, pen: &mut f32, said: &str, tint: Color32| {
-        let galley = painter.layout_no_wrap(
+        let galley = painter.crisp_layout_no_wrap(
             said.to_owned(),
             egui::FontId::proportional(look.font_size - 2.0),
             tint,
@@ -248,7 +249,7 @@ pub fn show(
         if *pen + galley.size().x > stop {
             return false;
         }
-        painter.galley(Pos2::new(*pen, footer), galley.clone(), tint);
+        painter.crisp_galley(Pos2::new(*pen, footer), galley.clone(), tint);
         *pen += galley.size().x;
         true
     };
@@ -266,7 +267,7 @@ pub fn show(
                    gap: f32,
                    said: &str,
                    tint: Color32| {
-        let galley = painter.layout_no_wrap(
+        let galley = painter.crisp_layout_no_wrap(
             said.to_owned(),
             egui::FontId::proportional(look.font_size - 2.0),
             tint,
@@ -275,7 +276,7 @@ pub fn show(
             return;
         }
         mark(painter, Pos2::new(*pen + gap * 0.4, footer + 6.0 * scale), tint);
-        painter.galley(Pos2::new(*pen + gap, footer), galley.clone(), tint);
+        painter.crisp_galley(Pos2::new(*pen + gap, footer), galley.clone(), tint);
         *pen += gap + galley.size().x + 12.0 * scale;
     };
     // Both counts, with the marks the reference draws beside them. The comment count was a bare number,
@@ -396,12 +397,12 @@ fn agent_badge(painter: &egui::Painter, area: Rect, task: &Task, look: &Look<'_>
         crate::services::agent_tasks::model::Assignee::Codex => "X",
         crate::services::agent_tasks::model::Assignee::Human => "JM",
     };
-    let galley = painter.layout_no_wrap(
+    let galley = painter.crisp_layout_no_wrap(
         initials.to_owned(),
         egui::FontId::proportional(look.font_size - 3.0),
         look.palette.text_strong,
     );
-    painter.galley(area.center() - galley.size() / 2.0, galley, look.palette.text_strong);
+    painter.crisp_galley(area.center() - galley.size() / 2.0, galley, look.palette.text_strong);
 }
 
 /// `1 comment`, `2 comments`. One function, because three places on the board count things and a board

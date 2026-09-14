@@ -43,6 +43,7 @@ use crate::services::agent_tasks::model::{Priority, Sprint, SprintStatus, Status
 use crate::services::agent_tasks::{AgentTasks, Group, View, SWATCHES};
 use crate::services::plugin_ui::{Look, Request};
 use crate::services::vello_canvas::{Fill, Lift};
+use crate::theme::crisp::CrispPainter;
 use crate::theme::icon;
 
 /// One row of a listing, and the gap between two.
@@ -521,7 +522,7 @@ fn group_heading(
     }
 
     // The name, set bold, which is `.sprint-group__name`.
-    let name = painter.layout_no_wrap(
+    let name = painter.crisp_layout_no_wrap(
         group.name().to_owned(),
         egui::FontId::new(
             look.font_size + 1.0,
@@ -531,7 +532,7 @@ fn group_heading(
     );
     let widest = (area.width() * 0.45).max(40.0);
     if name.size().x <= widest {
-        painter.galley(
+        painter.crisp_galley(
             Pos2::new(pen, middle - name.size().y / 2.0),
             name.clone(),
             look.palette.text_strong,
@@ -683,7 +684,7 @@ fn quiet_button_named(
         true => crate::theme::color::close(),
         false => look.palette.text_control,
     };
-    let galley = ui.painter().layout_no_wrap(
+    let galley = ui.painter().crisp_layout_no_wrap(
         label.to_owned(),
         egui::FontId::proportional(look.font_size - 2.0),
         tint,
@@ -700,7 +701,7 @@ fn quiet_button_named(
             crate::theme::color::hover_wash().gamma_multiply(16.0 / 255.0),
         );
     }
-    ui.painter().galley(
+    ui.painter().crisp_galley(
         Pos2::new(area.center().x - galley.size().x / 2.0, middle - galley.size().y / 2.0),
         galley,
         tint,
@@ -765,12 +766,16 @@ fn row(
     let middle = area.center().y;
     let mut pen = area.min.x + 12.0 * scale;
     // The key, in the code face, which is what makes a column of them line up.
-    let key = painter.layout_no_wrap(
+    let key = painter.crisp_layout_no_wrap(
         task.key.clone(),
         egui::FontId::monospace(look.font_size - 2.0),
         look.palette.text_dim,
     );
-    painter.galley(Pos2::new(pen, middle - key.size().y / 2.0), key.clone(), look.palette.text_dim);
+    painter.crisp_galley(
+        Pos2::new(pen, middle - key.size().y / 2.0),
+        key.clone(),
+        look.palette.text_dim,
+    );
     pen += key.size().x + 10.0 * scale;
     // The priority, as the chevron a card already uses: up for high, down for low, nothing for medium.
     if task.priority != Priority::Medium {
@@ -832,12 +837,12 @@ fn lane_chip(painter: &egui::Painter, look: &Look<'_>, at: Pos2, status: Status)
         Status::InProgress => look.palette.modified,
         Status::AgentDone => look.palette.added,
     };
-    let galley = painter.layout_no_wrap(
+    let galley = painter.crisp_layout_no_wrap(
         status.label().to_owned(),
         egui::FontId::proportional(look.font_size - 3.0),
         tint,
     );
-    painter.galley(
+    painter.crisp_galley(
         Pos2::new(at.x - galley.size().x, at.y - galley.size().y / 2.0),
         galley.clone(),
         tint,
@@ -878,12 +883,12 @@ fn avatar(painter: &egui::Painter, look: &Look<'_>, at: Pos2, task: &Task) -> f3
     };
     painter.circle_filled(Pos2::new(at.x - radius, at.y), radius, ground);
     let letter = task.assignee.name().chars().next().unwrap_or('?').to_uppercase().to_string();
-    let galley = painter.layout_no_wrap(
+    let galley = painter.crisp_layout_no_wrap(
         letter,
         egui::FontId::proportional(look.font_size - 4.0),
         look.palette.text_strong,
     );
-    painter.galley(
+    painter.crisp_galley(
         Pos2::new(at.x - radius - galley.size().x / 2.0, at.y - galley.size().y / 2.0),
         galley,
         look.palette.text_strong,
@@ -920,7 +925,7 @@ fn carried_name(ui: &egui::Ui, look: &Look<'_>, area: Rect, name: &str, at: Pos2
         true => look.palette.text_strong,
         false => look.palette.text_faint,
     };
-    let galley = painter.layout_no_wrap(
+    let galley = painter.crisp_layout_no_wrap(
         name.to_owned(),
         egui::FontId::monospace(look.font_size - 2.0),
         tint,
@@ -940,7 +945,7 @@ fn carried_name(ui: &egui::Ui, look: &Look<'_>, area: Rect, name: &str, at: Pos2
         ),
         egui::StrokeKind::Inside,
     );
-    painter.galley(box_rect.min + Vec2::new(7.0, 4.0), galley, tint);
+    painter.crisp_galley(box_rect.min + Vec2::new(7.0, 4.0), galley, tint);
 }
 
 /// The strip above the Backlog view's groups: `+ New sprint`, or the box that names one.
@@ -1272,12 +1277,12 @@ fn epic_card(ui: &mut egui::Ui, look: &Look<'_>, card: EpicCard<'_>, pressed: &m
             painter.rect_filled(mark, CornerRadius::same((8.0 * scale) as u8), tint);
         }
     }
-    let count_said = painter.layout_no_wrap(
+    let count_said = painter.crisp_layout_no_wrap(
         count.to_string(),
         egui::FontId::monospace(look.font_size - 1.0),
         look.palette.text_dim,
     );
-    painter.galley(
+    painter.crisp_galley(
         Pos2::new(
             area.max.x - inset - count_said.size().x,
             mark.center().y - count_said.size().y / 2.0,

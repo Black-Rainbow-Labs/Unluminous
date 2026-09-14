@@ -1515,6 +1515,86 @@ fn a_maximised_window_offers_no_resize_grips() {
     }
 }
 
+/// `task-1945`: a window whose keyboard focus is somewhere else asks for no resize either.
+///
+/// A browser node's page is a native child window, and while it holds the operating system's focus
+/// `winit`'s `Window::has_focus()` is false. `egui-winit` already refuses to forward `StartDrag` in
+/// that state; `BeginResize` is not behind the same check upstream, so it reaches
+/// `handle_os_dragging`, which latches a flag that only `WM_EXITSIZEMOVE` clears — and after that the
+/// window can be neither resized nor moved for the life of the process. So the grips are still there
+/// and still drawn, and the request is simply not sent.
+#[test]
+fn a_window_whose_keyboard_is_elsewhere_asks_for_no_resize() {
+    let mut focused = harness("");
+    let top = focused.get_by_label("Resize window: top").rect().center();
+
+    let asked = |harness: &mut Harness<'static, UnluminousApp>, focused: Option<bool>| {
+        let ids: Vec<egui::ViewportId> = harness.input().viewports.keys().copied().collect();
+        for id in ids {
+            if let Some(viewport) = harness.input_mut().viewports.get_mut(&id) {
+                viewport.focused = focused;
+            }
+        }
+        harness.run();
+        let mut seen = Vec::new();
+        let modifiers = egui::Modifiers::default();
+        harness.input_mut().events.push(egui::Event::PointerMoved(top));
+        harness.step();
+        seen.extend(window_commands_including_resize(harness));
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos: top,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers,
+        });
+        harness.step();
+        seen.extend(window_commands_including_resize(harness));
+        for step in 1..=4 {
+            let at = top + egui::vec2(0.0, 30.0 * step as f32);
+            harness.input_mut().events.push(egui::Event::PointerMoved(at));
+            harness.step();
+            seen.extend(window_commands_including_resize(harness));
+        }
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos: top + egui::vec2(0.0, 120.0),
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers,
+        });
+        harness.step();
+        seen
+    };
+
+    assert!(
+        asked(&mut focused, Some(true)).iter().any(|command| command.contains("BeginResize")),
+        "a focused window resizes from its top edge"
+    );
+    let mut second = harness("");
+    assert!(
+        asked(&mut second, Some(false)).is_empty(),
+        "a window whose keyboard is on a native child asks the window manager for nothing"
+    );
+    assert!(
+        second.query_by_label("Resize window: top").is_some(),
+        "and the grip is still there, because the window can still be resized once it has the keyboard"
+    );
+}
+
+/// The commands a frame sent that move or resize the window, including `BeginResize`.
+///
+/// `window_commands` below deliberately leaves `BeginResize` out — it is about the three buttons and
+/// the keyboard walking onto them. This one is about the grips.
+fn window_commands_including_resize(harness: &Harness<'static, UnluminousApp>) -> Vec<String> {
+    harness
+        .output()
+        .viewport_output
+        .values()
+        .flat_map(|viewport| viewport.commands.iter())
+        .map(|command| format!("{command:?}"))
+        .filter(|text| text.contains("BeginResize") || text.contains("StartDrag"))
+        .collect()
+}
+
 /// `New -> Folder`, which the explorer had no way to do at all.
 #[test]
 fn the_explorer_can_make_a_folder() {

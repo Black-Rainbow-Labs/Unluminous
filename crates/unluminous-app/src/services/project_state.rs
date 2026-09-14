@@ -66,6 +66,26 @@ const PLUGIN_TABS_FILE: &str = "plugin-tabs.txt";
 /// is not going to fix, and a list that grows without limit is a file that grows without limit.
 const OPEN_LIMIT: usize = 60;
 
+/// What one terminal tab was doing, so it can come back doing it — `task-1945`.
+///
+/// The same four things a canvas terminal node has recorded since `task-1912`, said about a tab: where the
+/// shell was, what was running in it, which conversation an agent was on, and the name a person gave it.
+/// The screen is not here — it is kilobytes of escape sequences and lives in a file of its own, beside the
+/// nodes' own, which is `services::space::store::save_a_screen`'s rule about the same bytes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RememberedTerminal {
+    /// The name a person typed, empty for a tab that was never renamed.
+    pub name: String,
+    /// The folder the shell was in when the window closed, relative to the project when it is inside it.
+    ///
+    /// **Where the shell had got to, not where it was started**, which is the difference between "my
+    /// terminal came back" and "my terminal came back where I left it": a person types `cd` and the
+    /// pseudoterminal knows nothing about it. `unluminous_terminal::Session::folder` reads it off the shell
+    /// process itself and answers `None` where the platform will not say, in which case this is empty and
+    /// the tab opens in the project's own root as it always did.
+    pub folder: String,
+}
+
 /// What was left open in one project.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ProjectState {
@@ -126,9 +146,20 @@ pub struct ProjectState {
     /// The names somebody gave those tabs, in order, empty for a tab that was never renamed.
     ///
     /// A name a person typed is the one thing about a terminal that survives its shell — `task-1682`
-    /// made it a value of its own for exactly that reason — so it is the one thing worth writing
-    /// down beside the count.
+    /// made it a value of its own for exactly that reason.
+    ///
+    /// **Kept beside [`Self::terminals`] rather than folded into it**, because a file written before
+    /// `task-1945` holds only these and reads as a list of names; the loader fills the richer list in
+    /// from them when that is all there is, so a project opened by an older build keeps its tab names.
     pub terminal_tab_names: Vec<String>,
+    /// What each terminal tab was doing, in order — `task-1945`.
+    ///
+    /// *"I'm still not getting terminal state restored when I quit then re-open a project. both nodes
+    /// and normal terminals should be restored to exactly where they were."* A terminal **node** has come
+    /// back in its folder, running its program, showing its screen since `task-1912`; a terminal **tab**
+    /// came back as a bare shell in the project's root with an empty screen, because the only things this
+    /// module had ever held about one were a count and a name.
+    pub terminals: Vec<RememberedTerminal>,
     /// True when the run tile was the one showing at the bottom of the window.
     ///
     /// The runs themselves are deliberately not remembered, for the reason the terminals are not:
@@ -222,9 +253,13 @@ pub fn load(root: &Path) -> ProjectState {
     state.plugin_tabs =
         read_names(&std::fs::read_to_string(folder.join(PLUGIN_TABS_FILE)).unwrap_or_default());
     state.plugin_tabs.truncate(OPEN_LIMIT);
+    state.terminals = read_terminals(
+        root,
+        &std::fs::read_to_string(folder.join(TERMINAL_TABS_FILE)).unwrap_or_default(),
+    );
+    state.terminals.resize(state.terminal_tabs, RememberedTerminal::default());
     state.terminal_tab_names =
-        read_names(&std::fs::read_to_string(folder.join(TERMINAL_TABS_FILE)).unwrap_or_default());
-    state.terminal_tab_names.resize(state.terminal_tabs, String::new());
+        state.terminals.iter().map(|terminal| terminal.name.clone()).collect();
     state.window = read_window(&values);
     state.open_files = read_paths(root, &folder.join(OPEN_FILES_FILE));
     state.open_files.truncate(OPEN_LIMIT);
@@ -317,8 +352,9 @@ pub fn save(root: &Path, state: &ProjectState) {
     // Only written once somebody has named a tab, so a project whose terminals are all called after
     // their programs is left with no file at all — the rule `run.selected` already keeps about a
     // value nobody has chosen.
-    if state.terminal_tab_names.iter().any(|name| !name.trim().is_empty()) {
-        write(&folder.join(TERMINAL_TABS_FILE), &names_text(&state.terminal_tab_names));
+    let terminals = terminals_to_write(state);
+    if terminals.iter().any(|terminal| terminal != &RememberedTerminal::default()) {
+        write(&folder.join(TERMINAL_TABS_FILE), &terminals_text(root, &terminals));
     }
     // Only written once a plugin tab has been open, for the same reason: a project that has never had one is
     // left with no file at all rather than an empty one.
@@ -361,6 +397,101 @@ fn names_text(names: &[String]) -> String {
 /// Read that list back, keeping the blanks: a tab with no name of its own still counts.
 fn read_names(text: &str) -> Vec<String> {
     text.lines().map(|line| line.trim().to_owned()).collect()
+}
+
+/// What to write for each tab, which is [`ProjectState::terminals`] with the names list filled in.
+///
+/// **The two lists are reconciled here rather than at each caller**, because the only thing that ever
+/// writes a `ProjectState` by hand is a test, and a test that set the names and not the richer list would
+/// otherwise silently write no names at all.
+fn terminals_to_write(state: &ProjectState) -> Vec<RememberedTerminal> {
+    let mut terminals = state.terminals.clone();
+    terminals.resize(state.terminal_tabs.max(state.terminals.len()), RememberedTerminal::default());
+    for (index, name) in state.terminal_tab_names.iter().enumerate() {
+        if let Some(terminal) = terminals.get_mut(index) {
+            if terminal.name.is_empty() {
+                terminal.name = name.clone();
+            }
+        }
+    }
+    terminals
+}
+
+/// The terminal tabs, as the numbered key and value list `space.conf` writes a canvas with.
+///
+/// **A block a tab rather than a name a line**, which is what this file held before `task-1945`. A name is
+/// still the one value a person types, so it keeps a line of its own that cannot need escaping — the rest
+/// are a path, a command line and an identifier.
+fn terminals_text(root: &Path, terminals: &[RememberedTerminal]) -> String {
+    let mut values = Values::new();
+    for (index, terminal) in terminals.iter().enumerate() {
+        values.set(&format!("terminal.{index}.name"), terminal.name.clone());
+        values.set(&format!("terminal.{index}.folder"), relative_text(root, &terminal.folder));
+    }
+    values.to_text_headed("Unluminous: what each terminal tab in this project was doing.")
+}
+
+/// Read that back, and read a file written before `task-1945` as the list of names it was.
+///
+/// **A file with no `=` in it is the old one**, which is the cheapest question that cannot be wrong: every
+/// line of the new file is `terminal.N.key = value` and a name a person typed is one line of prose. A
+/// project last opened by an older build therefore keeps its tab names and gains empty folders and
+/// commands, which is exactly what that build knew about them.
+fn read_terminals(root: &Path, text: &str) -> Vec<RememberedTerminal> {
+    let old_style = !text.lines().any(|line| {
+        let line = line.trim();
+        !line.is_empty() && !line.starts_with('#') && line.contains('=')
+    });
+    if old_style {
+        return read_names(text)
+            .into_iter()
+            .map(|name| RememberedTerminal { name, ..RememberedTerminal::default() })
+            .collect();
+    }
+    let values = Values::parse(text);
+    let mut terminals = Vec::new();
+    for index in 0..OPEN_LIMIT {
+        let at = |key: &str| {
+            values.text(&format!("terminal.{index}.{key}")).unwrap_or_default().to_owned()
+        };
+        let name = at("name");
+        let folder = at("folder");
+        let empty = name.is_empty() && folder.is_empty();
+        // A missing block ends the list rather than leaving a hole in it, which is the rule
+        // `space::store` keeps about a numbered list: the numbers are written by this file and are
+        // contiguous, so the first gap is the end.
+        if empty && values.text(&format!("terminal.{index}.name")).is_none() {
+            break;
+        }
+        let folder = match folder.is_empty() {
+            true => String::new(),
+            false => absolute_text(root, &folder),
+        };
+        terminals.push(RememberedTerminal { name, folder });
+    }
+    terminals
+}
+
+/// A folder written the way every other path in this module is: relative when it is inside the project.
+fn relative_text(root: &Path, folder: &str) -> String {
+    if folder.is_empty() {
+        return String::new();
+    }
+    let path = PathBuf::from(folder);
+    match path.strip_prefix(root) {
+        Ok(inside) if !inside.as_os_str().is_empty() => inside.to_string_lossy().into_owned(),
+        Ok(_) => ".".to_owned(),
+        Err(_) => folder.to_owned(),
+    }
+}
+
+/// And read back: a relative one is inside the project, an absolute one is wherever it says.
+fn absolute_text(root: &Path, folder: &str) -> String {
+    let path = PathBuf::from(folder);
+    match path.is_absolute() {
+        true => folder.to_owned(),
+        false => root.join(path).to_string_lossy().into_owned(),
+    }
 }
 
 /// The same as [`read_fractions`], without the rule that throws away anything that is not positive.
@@ -537,6 +668,13 @@ mod tests {
             terminal_visible: true,
             terminal_tabs: 2,
             terminal_tab_names: vec!["build".to_owned(), String::new()],
+            terminals: vec![
+                RememberedTerminal {
+                    name: "build".to_owned(),
+                    folder: root.join("chapters").to_string_lossy().into_owned(),
+                },
+                RememberedTerminal::default(),
+            ],
             run_visible: false,
             run_selected: "Dev server".to_owned(),
             window: Some(WindowPlace {
@@ -612,6 +750,74 @@ mod tests {
             vec!["build".to_owned(), String::new(), "server".to_owned()],
             "a tab nobody named stays blank rather than being given a neighbour's name"
         );
+    }
+
+    /// `task-1945`: a terminal tab comes back in the folder its shell was in.
+    ///
+    /// *"both nodes and normal terminals should be restored to exactly where they were."* Until this ticket
+    /// a tab's folder was not written down at all, so every tab reopened in the project's own root however
+    /// far somebody had `cd`'d.
+    #[test]
+    fn a_terminal_tab_comes_back_in_the_folder_its_shell_was_in() {
+        let root = project("unluminous-project-state-terminal-folders");
+        let inside = root.join("chapters");
+        let state = ProjectState {
+            terminal_visible: true,
+            terminal_tabs: 2,
+            terminals: vec![
+                RememberedTerminal {
+                    name: String::new(),
+                    folder: inside.to_string_lossy().into_owned(),
+                },
+                RememberedTerminal {
+                    name: "build".to_owned(),
+                    folder: "C:/somewhere/else".to_owned(),
+                },
+            ],
+            ..ProjectState::new()
+        };
+        save(&root, &state);
+        let read = load(&root);
+        assert_eq!(read.terminals.len(), 2);
+        assert_eq!(
+            std::path::PathBuf::from(&read.terminals[0].folder),
+            inside,
+            "a folder inside the project is written relative and read back absolute"
+        );
+        assert_eq!(
+            read.terminals[1].folder, "C:/somewhere/else",
+            "and one outside it is kept in full"
+        );
+        assert_eq!(read.terminals[1].name, "build");
+        assert_eq!(read.terminal_tab_names, vec![String::new(), "build".to_owned()]);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// A project written before `task-1945` reads as the list of names it was.
+    ///
+    /// The file held one name a line and nothing else, and a project last opened by an older build must not
+    /// lose the names somebody typed just because the file grew a format.
+    #[test]
+    fn a_project_written_by_an_older_build_keeps_its_terminal_names() {
+        let root = project("unluminous-project-state-terminal-old-file");
+        let folder = root.join(FOLDER);
+        std::fs::create_dir_all(&folder).expect("the state folder");
+        std::fs::write(folder.join(TERMINAL_TABS_FILE), "build\n\nserver\n").expect("the old file");
+        let mut values = Values::new();
+        values.set("terminal.visible", "true");
+        values.set("terminal.tabs", "3");
+        std::fs::write(folder.join(WORKSPACE_FILE), values.to_text()).expect("the workspace file");
+
+        let read = load(&root);
+        assert_eq!(
+            read.terminal_tab_names,
+            vec!["build".to_owned(), String::new(), "server".to_owned()]
+        );
+        assert!(
+            read.terminals.iter().all(|terminal| terminal.folder.is_empty()),
+            "an older build knew no folders, so every tab opens where it always did"
+        );
+        std::fs::remove_dir_all(&root).ok();
     }
 
     /// A project whose terminals are all named after their programs writes no file at all, which is

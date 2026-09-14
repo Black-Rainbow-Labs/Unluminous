@@ -34,6 +34,7 @@
 use egui::{Align2, CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::services::browser::{BrowserCommand, BrowserPlacement, BrowserTab};
+use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, size};
 
 const TOOLBAR_HEIGHT: f32 = 38.0;
@@ -153,7 +154,7 @@ pub fn show(
     // the host to point its one view at nothing.
     let Some(tab) = toolbar.tab else {
         ui.painter().rect_filled(browser, CornerRadius::ZERO, color::editor());
-        ui.painter().text(
+        ui.painter().crisp_text(
             browser.center(),
             Align2::CENTER_CENTER,
             "Type an address above to open a page.",
@@ -168,7 +169,7 @@ pub fn show(
     // nothing to draw here. It says so rather than showing an empty rectangle.
     if !showing {
         ui.painter().rect_filled(browser, CornerRadius::ZERO, color::editor());
-        ui.painter().text(
+        ui.painter().crisp_text(
             browser.center(),
             Align2::CENTER_CENTER,
             "This page is showing in the other pane.",
@@ -285,7 +286,7 @@ fn address_field(
         *toolbar.typed = toolbar.address().to_owned();
     }
     if toolbar.loading() {
-        ui.painter().with_clip_rect(field).text(
+        ui.painter().with_clip_rect(field).crisp_text(
             Pos2::new(field.right() - 6.0, field.center().y),
             Align2::RIGHT_CENTER,
             "Loading",
@@ -313,7 +314,7 @@ fn draw_button(
     };
     ui.painter().rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), fill);
     let text = if button.enabled { color::text_control() } else { color::text_faint() };
-    ui.painter().text(
+    ui.painter().crisp_text(
         area.center(),
         Align2::CENTER_CENTER,
         button.glyph,

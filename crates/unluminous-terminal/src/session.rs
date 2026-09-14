@@ -519,6 +519,16 @@ impl Session {
         self.running.then(|| self.master.foreground()).flatten()
     }
 
+    /// The folder the shell in this terminal is in **now**, when the platform will say.
+    ///
+    /// **Not [`SessionSettings::working_directory`]**, which is where it was started: a person types `cd` and
+    /// nothing about that reaches the pseudoterminal. `task-1945`: *"both nodes and normal terminals should
+    /// be restored to exactly where they were."* See [`crate::foreground::Master::folder`] for how each
+    /// platform is asked and which of them will not say.
+    pub fn folder(&self) -> Option<std::path::PathBuf> {
+        self.running.then(|| self.master.folder()).flatten()
+    }
+
     /// What the program asked to be put on the clipboard, taken out so it is only handed over once.
     pub fn take_clipboard(&mut self) -> Option<String> {
         self.clipboard.take()
