@@ -24,7 +24,23 @@
 //! **Nothing here is a picture, and that is the style guide's rule rather than a preference.** Each of
 //! these is drawn in three colours depending on its state and at any zoom, and a bitmap is one colour at
 //! one size. `design/icons.md` records how the `material` set's design sheet was generated with Krea 2
-//! and what was measured off it.
+//! and what was measured off it, and — since `task-1949` redrew ten of these against named icons from
+//! Circum, Lucide, Tabler, Ionicons, the VS Code codicons, Line Awesome and Font Awesome — where each
+//! of those came from and the three places the drawing here deliberately differs from its reference.
+//!
+//! ## A mark is judged at two sizes, and there is a test for the first one
+//!
+//! `crates/unluminous-app/tests/icons.rs` draws every mark on one sheet at eight pixels a point, one
+//! sheet per set, accepted like every other picture in this repository. **Add a mark here and add it to
+//! that sheet**, because until `task-1949` built it there was no way to look at an icon at all: a mark
+//! is twelve points across, so in a picture of the whole window it is a dozen pixels and a change to it
+//! is a smudge moving, and four of these were redrawn at once without one of the 483 accepted pictures
+//! failing.
+//!
+//! And the sheet is not the last word. It is eight times life size, which answers whether a stroke
+//! meets a stroke and says nothing about whether anybody can tell what the mark is. [`debug_run`] was
+//! drawn first as a beetle and a play triangle of equal weight — plainly two shapes on the sheet, and a
+//! smudge in a photograph of the real title bar.
 
 use egui::{Color32, CornerRadius, Pos2, Rect, Stroke};
 
@@ -344,26 +360,52 @@ pub fn branch(painter: &egui::Painter, centre: Pos2, color: Color32) {
     }
 }
 
-/// The same branch at the set's weight: heavier strokes with round caps and larger discs.
+/// Three commits, a stem, and a branch that **curves** away from the one it left.
+///
+/// `task-1949` names Ionicons' `IoIosGitBranch`, and the one thing that separates it from what
+/// Unluminous drew is the curve: the fork used to be a polyline with a corner in it, which reads as a
+/// pipe elbow. A branch in every history graph anybody has looked at is a curve leaving a line and
+/// settling parallel to it, so this is a cubic sampled into a polyline — `egui` has no curve
+/// primitive worth the name at this size, and eighteen points round a Bezier are a curve.
 ///
 /// The design sheet's own attempt at this one was the weakest thing on it — it came back as an X with
-/// four dots, which says nothing about git — so this keeps the shape Unluminous already had and only takes the
-/// weight and the caps from the sheet. That is what a design reference is for: the parts of it that are
-/// better are copied and the parts that are not are not.
+/// four dots, which says nothing about git — so the weight and the disc size are the sheet's and the
+/// shape is the reference's. That is what a design reference is for: the parts of it that are better
+/// are copied and the parts that are not are not.
 fn material_branch(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let at = |x: f32, y: f32| Pos2::new(centre.x + x, centre.y + y);
     let stroke = Stroke::new(1.6, color);
-    // Three commits and the line between them, which is what a branch is: a stem with one at each end,
-    // and a third off to the side that the stem forks to. The fork is a polyline with a corner in it
-    // rather than a diagonal, so at ten points across it reads as a branch and not as a letter.
-    painter.line_segment([at(-4.4, -3.2), at(-4.4, 3.2)], stroke);
+    // The stem, with a commit at each end of it.
+    painter.line_segment([at(-3.3, -5.2), at(-3.3, 5.2)], stroke);
+    // The branch: down out of the commit off to the side, then round into the stem. It stops short of
+    // the bottom commit rather than touching it, which is what the reference does and what keeps the
+    // two discs from reading as one shape.
     painter.add(egui::Shape::line(
-        vec![at(-4.4, 1.6), at(0.6, 1.6), at(4.4, -2.2), at(4.4, -3.0)],
+        cubic(at(3.3, -1.3), at(3.3, 1.3), at(0.6, 2.6), at(-3.3, 2.6)),
         stroke,
     ));
-    for dot in [at(-4.4, -5.0), at(-4.4, 5.0), at(4.4, -5.0)] {
-        painter.circle_filled(dot, 2.2, color);
+    for dot in [at(-3.3, -5.2), at(-3.3, 5.2), at(3.3, -3.1)] {
+        painter.circle_filled(dot, 1.9, color);
     }
+}
+
+/// A cubic Bezier sampled into the polyline `egui` will actually draw.
+///
+/// Sixteen segments, which is what `database` and `color_wheel` already use to stand in for a circle:
+/// at the ten or twelve points an icon occupies, the difference between this and a real curve is
+/// smaller than a pixel.
+fn cubic(from: Pos2, first: Pos2, second: Pos2, to: Pos2) -> Vec<Pos2> {
+    (0..=16)
+        .map(|step| {
+            let t = step as f32 / 16.0;
+            let n = 1.0 - t;
+            let (a, b, c, d) = (n * n * n, 3.0 * n * n * t, 3.0 * n * t * t, t * t * t);
+            Pos2::new(
+                a * from.x + b * first.x + c * second.x + d * to.x,
+                a * from.y + b * first.y + c * second.y + d * to.y,
+            )
+        })
+        .collect()
 }
 
 /// The branch Unluminous shipped with.
@@ -514,16 +556,49 @@ pub fn font(painter: &egui::Painter, centre: Pos2, color: Color32) {
     );
 }
 
-/// A folder with a tab on it, for the button that shows and hides the file explorer.
+/// A folder with a raised back, for the button that shows and hides the file explorer.
 ///
-/// Drawn from four strokes rather than filled, so it reads at the same weight as the branch and the
-/// terminal beside it in the activity bar. The tab across the top left is what tells a folder from a
-/// plain rectangle at ten points across.
+/// Both sets draw it as an outline rather than a fill, so it reads at the same weight as the branch
+/// and the terminal beside it in the rail. What tells a folder from a plain rectangle at ten points
+/// across is that its back stands above its front.
 pub fn folder(painter: &egui::Painter, centre: Pos2, color: Color32) {
     match super::icons() {
         IconSet::Classic => classic_folder(painter, centre, color),
-        IconSet::Material => material_folder(painter, centre, false, color, 1.0),
+        IconSet::Material => outlined_folder(painter, centre, color),
     }
+}
+
+/// The folder `task-1949` asks for, after Circum's `CiFolderOn`: one thin outline, deeply rounded,
+/// whose back rises above the front across the left two fifths.
+///
+/// **The explorer's own marks are deliberately not this one**, which breaks the rule
+/// [`material_folder`] was written under — one drawing behind both, so the two cannot drift apart.
+/// They are two different jobs at two different sizes. This is a single mark twenty four points wide
+/// on a rail, where a thin outline reads as a folder; the explorer draws one on *every folder row*,
+/// at thirteen points, and a column of thin outlines down a file tree is texture rather than
+/// information. The filled mark is also what carries `color::folder` against `color::folder_open`,
+/// which is the whole of Atom Material Icons' idea and is what makes the path down to the file you
+/// are reading visible without reading a name. So the rail takes the ticket's shape and the tree
+/// keeps the one that works in a list.
+fn outlined_folder(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let at = |x: f32, y: f32| Pos2::new(centre.x + x, centre.y + y);
+    // Clockwise from the top of the back. The shoulder between the back and the front is a short
+    // slope rather than a step, which is what stops the mark reading as two rectangles.
+    painter.add(egui::Shape::closed_line(
+        vec![
+            at(-4.6, -4.6),
+            at(-1.4, -4.6),
+            at(0.2, -2.4),
+            at(4.6, -2.4),
+            at(5.6, -1.4),
+            at(5.6, 3.6),
+            at(4.6, 4.6),
+            at(-4.6, 4.6),
+            at(-5.6, 3.6),
+            at(-5.6, -3.6),
+        ],
+        Stroke::new(1.3, color),
+    ));
 }
 
 /// The outlined folder Unluminous shipped with.
@@ -555,33 +630,45 @@ pub fn editing_area(painter: &egui::Painter, centre: Pos2, color: Color32) {
     }
 }
 
-/// Two filled slabs side by side, which is what the editing area **is**.
+/// A page with its top right corner folded over, which is what `task-1949` asks this button to be.
 ///
-/// The design sheet drew it this way and it is a better mark than the one it replaces: Unluminous's editing
-/// area is a row of panes, so two panes with a gap between them says what the button does, where a panel
-/// with a tab on it says "a document" and could as easily have meant the explorer.
+/// It was two filled slabs — a row of panes, which is what the editing area *is* — and `task-1949`
+/// calls the button "the file icon" and names Circum's `CiFileOn` for it. That is the more useful
+/// answer: a person reads the rail as a column of *things*, and the thing this button opens is the
+/// file in front of them. Two slabs said "a layout", which is a shape nobody was looking for.
+///
+/// Circum's whole character is a thin stroke and a generous corner, so the corners are cut back by a
+/// point and a tenth rather than mitred. The fold is the one part that has to be drawn rather than
+/// implied: a rectangle with one corner sliced off is a rectangle with a corner sliced off, and it is
+/// the short L inside the cut that makes it a sheet of paper.
 ///
 /// Nothing here is knocked out of a fill. An icon has one colour and is drawn over four different
 /// grounds — the rail, the rail's own chosen pill, a menu row and a flyout — so a shape painted in "the
 /// background" would be right in one place and wrong in the other three.
 fn material_editing_area(painter: &egui::Painter, centre: Pos2, color: Color32) {
-    let round = CornerRadius::same(2);
-    painter.rect_filled(
-        Rect::from_min_max(
-            Pos2::new(centre.x - 6.0, centre.y - 4.5),
-            Pos2::new(centre.x - 0.9, centre.y + 4.5),
-        ),
-        round,
-        color,
-    );
-    painter.rect_filled(
-        Rect::from_min_max(
-            Pos2::new(centre.x + 0.9, centre.y - 4.5),
-            Pos2::new(centre.x + 6.0, centre.y + 4.5),
-        ),
-        round,
-        color,
-    );
+    let at = |x: f32, y: f32| Pos2::new(centre.x + x, centre.y + y);
+    let stroke = Stroke::new(1.3, color);
+    // The sheet, clockwise from the top left, with the fold's diagonal standing in for the top right
+    // corner. The corners are chamfered rather than arced: at eleven points a one point cut and a one
+    // point arc are the same handful of pixels, and a chamfer is four numbers rather than a curve.
+    painter.add(egui::Shape::closed_line(
+        vec![
+            at(-3.1, -5.5),
+            at(0.8, -5.5),
+            at(4.2, -2.1),
+            at(4.2, 4.4),
+            at(3.1, 5.5),
+            at(-3.1, 5.5),
+            at(-4.2, 4.4),
+            at(-4.2, -4.4),
+        ],
+        stroke,
+    ));
+    // The fold: down the inside of the cut, round a corner, and out to where the diagonal lands.
+    painter.add(egui::Shape::line(
+        vec![at(0.8, -5.5), at(0.8, -2.7), at(1.4, -2.1), at(4.2, -2.1)],
+        stroke,
+    ));
 }
 
 /// The outlined panel Unluminous shipped with.
@@ -602,7 +689,8 @@ fn classic_editing_area(painter: &egui::Painter, centre: Pos2, color: Color32) {
     painter.line_segment([Pos2::new(left, bottom), Pos2::new(right, bottom)], stroke);
 }
 
-/// A prompt: a chevron and an underscore, for the button that shows and hides the terminal.
+/// A prompt: a chevron and a line waiting to be typed on, for the button that shows and hides the
+/// terminal. The `material` set puts a square round it and the `classic` set does not.
 pub fn terminal(painter: &egui::Painter, centre: Pos2, color: Color32) {
     match super::icons() {
         IconSet::Classic => classic_terminal(painter, centre, color),
@@ -610,32 +698,32 @@ pub fn terminal(painter: &egui::Painter, centre: Pos2, color: Color32) {
     }
 }
 
-/// A window with a filled title bar and a chevron inside it, which is the design sheet's shape.
+/// A square with a prompt and a line waiting to be typed on, which is Lucide's `LuSquareTerminal`.
 ///
-/// The body is stroked at 1.6 and the bar and the chevron are filled, so the mark carries the set's
-/// weight without any part of it being painted in the ground — see [`material_editing_area`].
+/// `task-1949` names it, and the change from the drawing it replaces is that the **title bar is gone**.
+/// That bar was a filled strip across the top, and filled is what made it read as a window belonging to
+/// the operating system rather than as a console: a terminal is a square you type into, and Lucide,
+/// the reference editor and every icon set that has one draw exactly that.
+///
+/// The square is a true square rather than the wide box it was, so the chevron and the line inside it
+/// have the room the reference gives them — the prompt sits high and left and the line beside and below
+/// it, which is where a shell puts them.
 fn material_terminal(painter: &egui::Painter, centre: Pos2, color: Color32) {
-    let body = Rect::from_center_size(centre, egui::Vec2::new(12.0, 10.0));
+    let at = |x: f32, y: f32| Pos2::new(centre.x + x, centre.y + y);
+    let stroke = Stroke::new(1.5, color);
     painter.rect_stroke(
-        body,
+        Rect::from_center_size(centre, egui::Vec2::splat(11.0)),
         CornerRadius::same(2),
-        Stroke::new(1.6, color),
-        egui::StrokeKind::Inside,
-    );
-    painter.rect_filled(
-        Rect::from_min_max(body.min, Pos2::new(body.right(), body.top() + 2.6)),
-        CornerRadius { nw: 2, ne: 2, sw: 0, se: 0 },
-        color,
+        stroke,
+        egui::StrokeKind::Middle,
     );
     // The prompt, pointing the way a shell's does.
     painter.add(egui::Shape::line(
-        vec![
-            Pos2::new(body.left() + 3.0, body.top() + 5.0),
-            Pos2::new(body.left() + 5.6, body.top() + 7.0),
-            Pos2::new(body.left() + 3.0, body.top() + 9.0),
-        ],
-        Stroke::new(1.6, color),
+        vec![at(-3.1, -3.1), at(-1.8, -1.8), at(-3.1, -0.5)],
+        stroke,
     ));
+    // The line waiting to be typed on.
+    painter.line_segment([at(-0.6, 1.0), at(2.4, 1.0)], stroke);
 }
 
 /// The prompt Unluminous shipped with.
@@ -810,21 +898,66 @@ pub fn run(painter: &egui::Painter, centre: Pos2, color: Color32) {
 }
 
 /// The same triangle at a fraction of its usual size.
+///
+/// `task-1949` names Font Awesome's `FaPlay`, and what that asks for is **proportion and corners**. The
+/// triangle Unluminous drew was 7.8 points across and 10.4 tall — half again as tall as it was wide, which
+/// is a spearhead. Font Awesome's is very slightly wider than it is tall, and every corner is rounded.
+/// Both matter at this size: a play button is a shape people recognise before they read it, and the one
+/// that is recognised is squat and soft rather than narrow and sharp.
+///
+/// It is **centred on its mass**, not on its bounding box, which is the same correction the drawing it
+/// replaces made by hand: the third of the width a triangle's centroid sits back from its base is
+/// exactly what makes a play button look centred in a square button.
 pub fn run_scaled(painter: &egui::Painter, centre: Pos2, color: Color32, scale: f32) {
-    let width = 4.6 * scale;
-    let height = 5.2 * scale;
-    // Nudged right by a fraction of the width, because a triangle looks off-centre when its
-    // bounding box is centred: the eye reads the middle of the mass, not of the box.
-    let x = centre.x - width / 3.0;
+    let back = centre.x - 3.2 * scale;
+    let tip = centre.x + 6.4 * scale;
+    let half = 4.5 * scale;
     painter.add(egui::Shape::convex_polygon(
-        vec![
-            Pos2::new(x, centre.y - height),
-            Pos2::new(x, centre.y + height),
-            Pos2::new(x + width * 1.7, centre.y),
-        ],
+        rounded_corners(
+            &[
+                Pos2::new(back, centre.y - half),
+                Pos2::new(tip, centre.y),
+                Pos2::new(back, centre.y + half),
+            ],
+            1.3 * scale,
+        ),
         color,
         Stroke::NONE,
     ));
+}
+
+/// A polygon with each corner cut back by `radius` and replaced with three points round the turn.
+///
+/// `egui` fills a polygon from its points, so a rounded corner has to *be* points. Three of them at a
+/// corner is enough: at the ten points an icon occupies, a cut this small is two or three pixels, and
+/// nobody has ever counted the segments in one.
+fn rounded_corners(points: &[Pos2], radius: f32) -> Vec<Pos2> {
+    let mut out = Vec::with_capacity(points.len() * 4);
+    for (index, corner) in points.iter().enumerate() {
+        let before = points[(index + points.len() - 1) % points.len()];
+        let after = points[(index + 1) % points.len()];
+        // How far back along each edge the cut starts, never more than a third of that edge or two
+        // corners on a short edge would cross each other and turn the shape inside out.
+        let step = |to: Pos2| {
+            let (dx, dy) = (to.x - corner.x, to.y - corner.y);
+            let length = (dx * dx + dy * dy).sqrt().max(0.001);
+            let cut = radius.min(length / 3.0);
+            Pos2::new(corner.x + dx / length * cut, corner.y + dy / length * cut)
+        };
+        let (from, to) = (step(before), step(after));
+        out.push(from);
+        // Two points pulled a third of the way back towards the corner, which is a quadratic Bezier
+        // over the turn in all but name.
+        for t in [0.33_f32, 0.67] {
+            let n = 1.0 - t;
+            out.push(Pos2::new(
+                n * n * from.x + 2.0 * n * t * corner.x + t * t * to.x,
+                n * n * from.y + 2.0 * n * t * corner.y + t * t * to.y,
+            ));
+        }
+        out.push(to);
+    }
+    out
 }
 
 /// A filled square: stop.
@@ -939,33 +1072,83 @@ pub fn bug(painter: &egui::Painter, centre: Pos2, color: Color32) {
     }
 }
 
-/// The same insect with a filled body, which is how the design sheet drew it.
+/// A beetle with a head, a solid shell and six legs that fan, which is Line Awesome's `LiaBugSolid`.
 ///
-/// Filled bodies and stroked limbs is the set's own rule — a folder, a title bar and a bug's shell are
-/// mass, and a leg, an antenna and a prompt are lines.
+/// `task-1949` names it, and two things separate it from the drawing it replaces. It has a **head**, so
+/// the mark has a direction and reads as an animal rather than as a capsule with hairs on it. And its
+/// legs **fan** — the front pair angled up, the middle pair straight out, the back pair angled down —
+/// where Unluminous's three pairs all leaned the same way, which is what an insect looks like when it has
+/// been knocked over.
+///
+/// Filled bodies and stroked limbs is the set's own rule: a shell is mass and a leg is a line.
 fn material_bug(painter: &egui::Painter, centre: Pos2, color: Color32) {
-    let stroke = Stroke::new(1.5, color);
-    let body = Rect::from_center_size(centre, egui::Vec2::new(8.4, 10.0));
-    painter.rect_filled(body, CornerRadius::same(4), color);
-    for step in 0..3 {
-        let y = body.top() + 2.5 + step as f32 * 2.75;
-        painter.line_segment(
-            [Pos2::new(body.left(), y), Pos2::new(body.left() - 3.0, y - 1.0)],
-            stroke,
-        );
-        painter.line_segment(
-            [Pos2::new(body.right(), y), Pos2::new(body.right() + 3.0, y - 1.0)],
-            stroke,
-        );
+    bug_at(painter, centre, color, 1.0);
+}
+
+/// The same beetle, `scale` times as large, so [`debug_run`] can put a small one beside a play triangle.
+///
+/// **The stroke has a floor and the legs do not shrink with everything else.** A leg drawn at
+/// six tenths of a point is a grey smear, so a small beetle keeps a stroke a person can see and loses
+/// length instead — which is the trade a mark at six points has to make, and is why the small one is
+/// not simply the large one multiplied.
+fn bug_at(painter: &egui::Painter, centre: Pos2, color: Color32, scale: f32) {
+    let at = |x: f32, y: f32| Pos2::new(centre.x + x * scale, centre.y + y * scale);
+    let stroke = Stroke::new((1.4 * scale).max(1.0), color);
+    painter.circle_filled(at(0.0, -4.4), 1.9 * scale, color);
+    painter.rect_filled(
+        Rect::from_min_max(at(-3.2, -3.4), at(3.2, 5.8)),
+        CornerRadius::same(((3.2 * scale) as u8).max(1)),
+        color,
+    );
+    // Three pairs, fanning: up at the front, out in the middle, down at the back. Shallow and short,
+    // because long legs at a wide fan are six rays round a disc and read as a sun rather than as an
+    // animal. The shell has to stay the largest thing in the mark.
+    let reach = 2.0_f32.max(2.0 * scale);
+    for (y, rise) in [(-1.8_f32, -1.1_f32), (0.8, 0.0), (3.4, 1.1)] {
+        painter.line_segment([at(-3.2, y), at(-3.2, y) + egui::vec2(-reach, rise * scale)], stroke);
+        painter.line_segment([at(3.2, y), at(3.2, y) + egui::vec2(reach, rise * scale)], stroke);
     }
-    painter.line_segment(
-        [Pos2::new(centre.x - 1.5, body.top() + 0.6), Pos2::new(centre.x - 3.6, body.top() - 3.0)],
-        stroke,
-    );
-    painter.line_segment(
-        [Pos2::new(centre.x + 1.5, body.top() + 0.6), Pos2::new(centre.x + 3.6, body.top() - 3.0)],
-        stroke,
-    );
+    // Two antennae off the head, left off a small one: at three points long they are a pair of dots
+    // above the mark rather than a pair of antennae on it.
+    if scale > 0.7 {
+        painter.line_segment([at(-1.2, -5.7), at(-2.6, -6.9)], stroke);
+        painter.line_segment([at(1.2, -5.7), at(2.6, -6.9)], stroke);
+    }
+}
+
+/// A beetle with a play triangle beside it: start this, under a debugger.
+///
+/// `task-1949` asks for VS Code's `VscDebugAlt` on the title bar's Debug button, and it is a genuinely
+/// better mark than the plain bug that was there. The pair of buttons at the top right is **Run** and
+/// **Debug the same configuration**, and drawing the first as a play triangle and the second as an
+/// insect says they are two unrelated things. A play triangle with a bug on it says what the button
+/// does: the same start, watched.
+///
+/// The plain [`bug`] stays where it belongs — the rail's Debug tile button and the exception
+/// breakpoints flyout, which are about the debugger itself rather than about starting it.
+pub fn debug_run(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    // **The beetle is the mark and the triangle is a badge on it**, which is not the reference's own
+    // balance and is the one thing about it that had to change. VS Code draws a large play *outline*
+    // with a bug across its lower left, and that works at the sixteen pixels VS Code draws it at. This
+    // button is twenty four points and the mark inside it is twelve, which on an ordinary display is
+    // fourteen pixels — and two shapes of equal weight at fourteen pixels is a smudge. It was drawn
+    // that way first and photographed in the real window, and neither half could be made out.
+    //
+    // So one shape carries the mark and the other says what kind of start it is. The beetle carries it
+    // because it is the half that is *different* from the Run button beside it.
+    bug_at(painter, Pos2::new(centre.x - 2.6, centre.y + 1.4), color, 0.85);
+    painter.add(egui::Shape::convex_polygon(
+        rounded_corners(
+            &[
+                Pos2::new(centre.x + 2.9, centre.y - 7.6),
+                Pos2::new(centre.x + 8.2, centre.y - 4.6),
+                Pos2::new(centre.x + 2.9, centre.y - 1.6),
+            ],
+            0.9,
+        ),
+        color,
+        Stroke::NONE,
+    ));
 }
 
 /// The outlined insect Unluminous shipped with.
@@ -1165,24 +1348,46 @@ pub fn chat(painter: &egui::Painter, centre: Pos2, color: Color32) {
     }
 }
 
-/// A filled bubble with a tail, and no words in it.
+/// A speech bubble with a bot's antenna on top of it and two eyes inside it.
 ///
-/// The lines of words go with the outline: inside a filled bubble they would have to be painted in the
-/// ground, which is the one thing this set does not do. What is left is the silhouette, which is what the
-/// design sheet drew and what reads at ten points.
+/// `task-1949` names Lucide's `LuBotMessageSquare`, and it is a better mark than the filled bubble it
+/// replaces for a reason the pane itself gives: what is on the other end of this pane is a **program**,
+/// not a person, and a plain bubble is what every messaging application in the world draws. The antenna
+/// and the eyes are what say which.
+///
+/// It is an outline, where the rest of this set fills. That is not a drift: the eyes have to be *inside*
+/// the bubble, and inside a filled bubble they would have to be painted in the ground — the one thing
+/// this set does not do, because an icon has one colour and is drawn over four different grounds. A
+/// filled bot with no eyes is a filled bubble.
+///
+/// **Lucide's two ears are left off.** They are one point of stroke hanging a point clear of the bubble
+/// on each side, which at the twelve physical pixels this occupies on an ordinary display is a speck
+/// beside the mark rather than a part of it.
 fn material_chat(painter: &egui::Painter, centre: Pos2, color: Color32) {
-    let bubble =
-        Rect::from_center_size(Pos2::new(centre.x, centre.y - 1.0), egui::Vec2::new(13.0, 10.0));
-    painter.rect_filled(bubble, CornerRadius::same(3), color);
-    painter.add(egui::Shape::convex_polygon(
+    let at = |x: f32, y: f32| Pos2::new(centre.x + x, centre.y + y);
+    let stroke = Stroke::new(1.4, color);
+    // The bubble, clockwise from the top left, with the tail hanging off the bottom left corner the way
+    // Lucide's does: the tail's own left side *is* the bubble's left edge carried on downwards.
+    painter.add(egui::Shape::closed_line(
         vec![
-            Pos2::new(centre.x - 4.6, bubble.max.y - 1.0),
-            Pos2::new(centre.x - 1.2, bubble.max.y - 1.0),
-            Pos2::new(centre.x - 4.0, bubble.max.y + 3.4),
+            at(-3.7, -3.2),
+            at(3.7, -3.2),
+            at(5.0, -2.0),
+            at(5.0, 3.0),
+            at(3.7, 4.3),
+            at(-2.0, 4.3),
+            at(-5.0, 5.9),
+            at(-5.0, -2.0),
         ],
-        color,
-        Stroke::NONE,
+        stroke,
     ));
+    // The antenna: a stem off the top with a nub turned to the left, which is the reference's own shape
+    // and is what stops it reading as an aerial on a car.
+    painter.add(egui::Shape::line(vec![at(0.0, -3.2), at(0.0, -5.7), at(-2.5, -5.7)], stroke));
+    // Two eyes.
+    for x in [-1.9_f32, 1.9] {
+        painter.line_segment([at(x, -0.4), at(x, 1.3)], stroke);
+    }
 }
 
 /// The outlined bubble Unluminous shipped with.
@@ -1227,30 +1432,44 @@ pub fn board(painter: &egui::Painter, centre: Pos2, color: Color32) {
     }
 }
 
-/// Three columns under a header bar, which is what a board looks like on the design sheet.
+/// A clipboard with a list on it, which is what the board actually holds.
 ///
-/// The bar is what tells it from a bar chart, and it is the one thing the Unluminous drawing is missing: four
-/// columns of different heights with nothing over them is a chart, and a chart is not what the button
-/// opens.
+/// `task-1949` names Lucide's `LuClipboardList`. It replaces three columns under a bar, and the reason
+/// it is better is the same reason that drawing carried a paragraph of its own defending itself: three
+/// columns of different heights is a **chart**, and every note explaining that the bar across the top is
+/// what stops it being one is a note about a mark that does not read. A clipboard needs no such note,
+/// and what is on this board is a list of tickets rather than four lanes of anything.
+///
+/// The body is open across the top where the clip sits, which is the reference's own construction: the
+/// clip is a second shape drawn over the gap, so the two never double their strokes.
 fn material_board(painter: &egui::Painter, centre: Pos2, color: Color32) {
-    let half = 5.5;
-    painter.rect_filled(
-        Rect::from_min_max(
-            Pos2::new(centre.x - half, centre.y - half),
-            Pos2::new(centre.x + half, centre.y - 3.2),
-        ),
-        CornerRadius { nw: 2, ne: 2, sw: 0, se: 0 },
-        color,
+    let at = |x: f32, y: f32| Pos2::new(centre.x + x, centre.y + y);
+    let stroke = Stroke::new(1.4, color);
+    painter.add(egui::Shape::line(
+        vec![
+            at(-2.3, -4.4),
+            at(-3.6, -4.4),
+            at(-4.6, -3.4),
+            at(-4.6, 4.6),
+            at(-3.6, 5.6),
+            at(3.6, 5.6),
+            at(4.6, 4.6),
+            at(4.6, -3.4),
+            at(3.6, -4.4),
+            at(2.3, -4.4),
+        ],
+        stroke,
+    ));
+    painter.rect_stroke(
+        Rect::from_min_max(at(-2.3, -5.9), at(2.3, -3.4)),
+        CornerRadius::same(1),
+        stroke,
+        egui::StrokeKind::Middle,
     );
-    let column = 2.8;
-    for (index, share) in [1.0_f32, 0.6, 0.82].into_iter().enumerate() {
-        let x = centre.x - half + index as f32 * (column + 1.2);
-        let height = (half + 3.2) * share;
-        painter.rect_filled(
-            Rect::from_min_size(Pos2::new(x, centre.y - 2.2), egui::Vec2::new(column, height)),
-            CornerRadius::same(1),
-            color,
-        );
+    // Two rows, each a bullet and the line it belongs to.
+    for y in [-0.8_f32, 2.3] {
+        painter.circle_filled(at(-2.5, y), 0.8, color);
+        painter.line_segment([at(-0.7, y), at(3.0, y)], Stroke::new(1.3, color));
     }
 }
 
@@ -1278,39 +1497,43 @@ fn classic_board(painter: &egui::Painter, centre: Pos2, color: Color32) {
 /// drawn icon takes the tint it is given, so it follows the rail's three states and the window's
 /// colours rather than carrying a colour of its own. Three bands, because two read as a coin and four
 /// as a stack of plates at sixteen points.
+///
+/// `task-1949` names Tabler's `TbDatabase`, and what that changes is how the sides are drawn. Unluminous
+/// drew a smile at each level and then two straight lines down the outside, so the outline had corners
+/// in it where a cylinder has none. Tabler draws each level as **one** path — down the left, round the
+/// bottom, back up the right — so the side and the curve are the same stroke and meet the way they do
+/// on a drum.
 pub fn database(painter: &egui::Painter, centre: Pos2, color: Color32) {
-    let half_width = 5.5;
-    let top = centre.y - 6.0;
-    let bottom = centre.y + 4.5;
-    // The top ellipse, drawn as a squashed circle: `egui` has no ellipse, so it is a short polyline
-    // round one, which at this size is indistinguishable and takes the tint.
-    for band in 0..3 {
-        let y = top + band as f32 * 4.0;
-        let points: Vec<Pos2> = (0..=16)
+    let half_width = 5.2;
+    let squash = 1.95;
+    let stroke = Stroke::new(1.3, color);
+    let top = centre.y - 3.9;
+    // Half an ellipse, from the left of it to the right, bulging by `squash` in the direction given.
+    let half = |y: f32, downwards: bool| -> Vec<Pos2> {
+        let sign = if downwards { 1.0 } else { -1.0 };
+        (0..=16)
             .map(|step| {
                 let angle = std::f32::consts::PI * step as f32 / 16.0;
-                Pos2::new(centre.x - half_width * angle.cos(), y + 1.9 * angle.sin())
+                Pos2::new(
+                    centre.x - half_width * angle.cos(),
+                    y + sign * squash * angle.sin(),
+                )
             })
-            .collect();
-        painter.add(egui::Shape::line(points, Stroke::new(1.3, color)));
-    }
-    // The closing curve of the top, so the first band reads as an ellipse rather than a smile.
-    let over: Vec<Pos2> = (0..=16)
-        .map(|step| {
-            let angle = std::f32::consts::PI * step as f32 / 16.0;
-            Pos2::new(centre.x + half_width * angle.cos(), top - 1.9 * angle.sin())
-        })
-        .collect();
-    painter.add(egui::Shape::line(over, Stroke::new(1.3, color)));
-    // The two sides.
-    for side in [-1.0_f32, 1.0] {
-        painter.line_segment(
-            [
-                Pos2::new(centre.x + side * half_width, top),
-                Pos2::new(centre.x + side * half_width, bottom - 2.0),
-            ],
-            Stroke::new(1.3, color),
-        );
+            .collect()
+    };
+    // The top, drawn whole, because it is the face of the drum rather than the edge of one.
+    let mut lid = half(top, true);
+    lid.extend(half(top, false).into_iter().rev());
+    painter.add(egui::Shape::closed_line(lid, stroke));
+    // Two more levels under it. Each is one stroke: down the left side, round the bottom and up the
+    // right, so the sides are part of the curve rather than two lines laid against it.
+    for level in 0..2 {
+        let from = top + level as f32 * 3.9;
+        let to = from + 3.9;
+        let mut wall = vec![Pos2::new(centre.x - half_width, from)];
+        wall.extend(half(to, true));
+        wall.push(Pos2::new(centre.x + half_width, from));
+        painter.add(egui::Shape::line(wall, stroke));
     }
 }
 

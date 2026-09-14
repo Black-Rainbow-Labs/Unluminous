@@ -317,6 +317,10 @@ fn pane(values: &Values) -> Result<Option<PaneContribution>, String> {
         id,
         icon,
         group,
+        // A pane that says nothing is a tile when its button is in the bottom group, which is what
+        // `pane.group` alone used to decide — see [`PaneContribution::tile`] for why the two keys
+        // came apart and why the default has to be exactly this.
+        tile: values.flag("pane.tile").unwrap_or(group == RailGroup::Bottom),
         side,
         width: measurement(values, "pane.width", 320.0)?,
         height: measurement(values, "pane.height", 260.0)?,
@@ -475,7 +479,7 @@ const KNOWN_KEYS: &[(&str, &[&str])] = &[
     ("run.", &["file", "project"]),
     ("debug.", &["adapter"]),
     ("ui.", &["provider", "chrome"]),
-    ("pane.", &["id", "label", "icon", "side", "group", "width", "height", "applies"]),
+    ("pane.", &["id", "label", "icon", "side", "group", "tile", "width", "height", "applies"]),
     ("tab.", &["id", "label", "icon"]),
     ("settings.", &["page", "icon"]),
 ];
@@ -873,6 +877,57 @@ mod tests {
         assert!(!plugin.claims(Path::new("thing")));
     }
 
+    /// `pane.tile` says whether a pane may share a strip, and `pane.group` says where its button is.
+    ///
+    /// They were one key until `task-1949`, which is why the default here matters more than a default
+    /// usually does: every manifest written before the split says nothing, and every one of them has to
+    /// go on meaning exactly what it meant. The Agent-Tasks board is the case that forced the split —
+    /// its button belongs at the top of the rail and the board still may not be given half the bottom
+    /// strip — so it is the case tested.
+    #[test]
+    fn a_pane_is_a_tile_when_its_button_is_at_the_bottom_and_when_it_says_so_at_the_top() {
+        let head = "plugin.id = a
+plugin.kind = ui
+ui.provider = agent-tasks
+pane.id = b
+";
+        let read = |manifest: &str| {
+            parse(&Values::parse(manifest), false)
+                .expect("a ui manifest")
+                .contributions
+                .pane
+                .expect("a pane")
+        };
+        assert!(
+            read(&format!("{head}pane.group = bottom")).tile,
+            "a manifest written before the split still means what it meant"
+        );
+        assert!(!read(&format!("{head}pane.group = top")).tile, "and so does a top one");
+        // And either default can be said out loud, which is the whole point of the key: the board puts
+        // its button at the top and keeps the strip to itself.
+        assert!(read(&format!("{head}pane.group = top
+pane.tile = yes")).tile);
+        assert!(!read(&format!("{head}pane.group = bottom
+pane.tile = no")).tile);
+    }
+
+    /// The board's own manifest is what `task-1949` changed, so it is what is checked.
+    #[test]
+    fn the_agent_tasks_button_is_in_the_top_group_and_the_board_is_still_a_tile() {
+        let manifest = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/agent-tasks/plugin.conf"),
+        )
+        .expect("the bundled Agent-Tasks manifest");
+        let pane = parse(&Values::parse(&manifest), true)
+            .expect("the Agent-Tasks manifest")
+            .contributions
+            .pane
+            .expect("a pane");
+        assert_eq!(pane.group, RailGroup::Top, "its button goes under Agent-Chat's");
+        assert!(pane.tile, "and the board still keeps the bottom strip to itself");
+        assert_eq!(pane.side, crate::app::dock::Side::Bottom, "where it still docks");
+    }
+
     #[test]
     fn a_ui_plugin_reads_all_five_contributions_and_needs_no_file_type() {
         let plugin = parse(&Values::parse(&ui_manifest()), false).expect("a ui manifest");
@@ -886,6 +941,7 @@ mod tests {
         assert_eq!(pane.id, "board");
         assert_eq!(pane.label, "Board", "the label falls back to plugin.name");
         assert_eq!(pane.group, RailGroup::Top, "top is the default");
+        assert!(!pane.tile, "and a pane in the top group is not a tile unless it says so");
         assert_eq!(pane.side, crate::app::dock::Side::Right);
         assert_eq!(pane.width, 420.0);
         assert_eq!(pane.height, 260.0, "the terminal's height is the default for a strip");

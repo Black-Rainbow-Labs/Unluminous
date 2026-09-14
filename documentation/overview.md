@@ -26,8 +26,14 @@ Two things changed in every picture at once:
   and one that names the nine token colours also colours code. `Themes Bundle 1` ships five. Every
   colour in every picture below is `unluminous/dark`, which is still the default and still what a
   fresh window comes up in — but it is now one of six rather than the only one.
-- **The icon set.** The rail and the explorer's folder arrow are drawn in `classic` in these
-  captures, and `material` is what a window comes up in now.
+- **The icon set, twice over.** The rail and the explorer's folder arrow are drawn in `classic` in
+  these captures, and `material` is what a window comes up in now — and `task-1949` then redrew ten of
+  the `material` marks against named icons from Circum, Lucide, Tabler, Ionicons, the VS Code codicons,
+  Line Awesome and Font Awesome. So every button in the rail, the git branch in the status bar and the
+  Run and Debug pair on the title bar are a different drawing from the one in these pictures.
+  `crates/unluminous-app/tests/snapshots/*/icons_material.png` is what they look like now.
+- **Where the Agent-Tasks button is.** `task-1949` moved it to the top group of the rail, under
+  Agent-Chat's. The board still docks along the bottom.
 
 And these came after, so they are in none of them:
 

@@ -348,6 +348,13 @@ one colour is how a window, a title bar and a prompt are told apart instead.
 
 An icon is drawn inside about a 10 point square around its centre, at a 1.3 to 1.6 point stroke.
 
+**And a new mark is looked at twice, at two sizes.** `crates/unluminous-app/tests/icons.rs` draws every
+mark on one sheet at eight pixels a point, one sheet per set, accepted like every other picture here —
+add a mark and add it to that sheet. Then photograph it in the real built window, because eight times
+life size answers whether a stroke meets a stroke and says nothing about whether anybody can tell what
+the mark is. `task-1949` drew a beetle and a play triangle of equal weight into one mark, which was
+plainly two shapes on the sheet and came out of the real title bar as a smudge.
+
 **A letter shaped icon is drawn too**, and `theme::icon::font` — the `F` on the title bar's text
 options button — is the one there is. It is three strokes, not the letter `F` set in a font and not
 a picture. A picture cannot be tinted, and every icon in Unluminous is tinted where it is used: `TEXT_DIM`

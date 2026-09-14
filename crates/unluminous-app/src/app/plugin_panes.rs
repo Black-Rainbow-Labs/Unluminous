@@ -1306,6 +1306,7 @@ mod tests {
                 label: id.to_owned(),
                 icon: "board".to_owned(),
                 group: RailGroup::Bottom,
+                tile: true,
                 side: dock::Side::Right,
                 width: 300.0,
                 height: 300.0,

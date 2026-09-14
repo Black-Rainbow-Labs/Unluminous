@@ -186,8 +186,11 @@ pub fn show(ui: &mut egui::Ui, area: Rect, state: &WidgetState) -> Option<Action
             None => "Add a run configuration to debug",
         };
         // Tinted on the same rule as the play triangle beside it — the colour means "this starts
-        // something", so the pair reads as a pair.
-        if square_button(ui, debug, name, icon::bug, state.selected.is_some()) {
+        // something", so the pair reads as a pair. And since `task-1949` the *mark* says so too: it is
+        // a play triangle with a bug on it rather than a bare insect, so the two buttons read as one
+        // start and the same start watched. The bare insect stays on the rail's Debug tile button,
+        // which is about the debugger rather than about starting anything.
+        if square_button(ui, debug, name, icon::debug_run, state.selected.is_some()) {
             chosen = Some(match state.selected {
                 Some(_) => Action::Debug(DebugAction::Start(None)),
                 None => Action::Run(RunAction::Edit),

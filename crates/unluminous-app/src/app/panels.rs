@@ -160,18 +160,15 @@ impl UnluminousApp {
         }
     }
 
-    /// Which contributed panes their manifests put in the rail's bottom group, in slot order.
+    /// Which contributed panes their manifests said are tiles, in slot order.
     ///
-    /// The bottom group is what the rail calls the things with a character grid in them, and a pane in a strip
-    /// with a grid in it is a tile: two of those stacked are two half sized grids, which is the rule that
-    /// exists about a strip rather than about three particular panels.
+    /// A tile is a pane that may not share a strip: two of them in one are two half sized things, which is
+    /// the rule that exists about a strip rather than about three particular panels. It used to be read off
+    /// `pane.group`, and `task-1949` separated the two — see [`crate::services::plugins::PaneContribution::tile`]
+    /// for why a board whose button belongs at the top is still a thing that wants a strip to itself.
     pub(crate) fn plugin_panes_that_are_tiles(&self) -> Vec<bool> {
         (0..self.plugin_ui.pane_count())
-            .map(|slot| {
-                self.plugin_ui
-                    .pane(slot)
-                    .is_some_and(|pane| pane.group == crate::services::plugins::RailGroup::Bottom)
-            })
+            .map(|slot| self.plugin_ui.pane(slot).is_some_and(|pane| pane.tile))
             .collect()
     }
 

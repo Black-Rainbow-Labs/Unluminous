@@ -99,6 +99,22 @@ pub struct PaneContribution {
     /// Which drawn icon goes in the rail, from [`PANE_ICONS`].
     pub icon: String,
     pub group: RailGroup,
+    /// Whether the pane is a **tile**: one of the things that may not share a strip with another,
+    /// so showing it puts away whatever else is on that side and whatever else is shown there puts
+    /// it away.
+    ///
+    /// `pane.group` used to answer this as well, and `task-1949` is where the two questions came
+    /// apart. They were only ever the same question by coincidence: the rail's bottom group holds
+    /// the things with a character grid in them, and a thing with a character grid in it is exactly
+    /// a thing that must not be given half a strip. The Agent-Tasks board is neither — it is a board
+    /// that wants the width of the window — and when its *button* was asked to move up under
+    /// Agent-Chat's, moving `pane.group` would have taken the strip rule with it and left the board
+    /// and the terminal sharing the bottom edge half and half.
+    ///
+    /// So `pane.group` says where the button goes, which is what its name says, and this says what
+    /// the pane is. It defaults to `group == Bottom`, so every manifest written before the two were
+    /// separated means exactly what it meant.
+    pub tile: bool,
     /// The side it docks to the first time it is shown.
     pub side: crate::app::dock::Side,
     /// The two measurements every panel carries, because one number cannot be both: a width for when

@@ -956,6 +956,37 @@ nothing having moved. On top of that `theme::IconSet` has two members: `classic`
 default, because the ticket asked for the defaults to be *improved* rather than merely to become
 choosable. `design/icons.md` records how the material set was designed against two Krea 2 sheets, and
 which mark on them was rejected.
+
+### `task-1949` redrew ten marks, and the reason none of them could be checked before is a rule now
+
+The ticket names a published icon for each mark it wants — Circum's file and folder, Ionicons' git
+branch, Tabler's database, Lucide's bot bubble, clipboard and square terminal, VS Code's `debug-alt`,
+Line Awesome's beetle, Font Awesome's play. **Each reference was fetched as its own SVG and converted
+into points**, because a mark drawn from a recollection of what `LuBotMessageSquare` looks like is a
+drawing of something else wearing the right name. `design/icons.md` has the table of where each came
+from and the three places the drawing deliberately differs from its reference.
+
+**`crates/unluminous-app/tests/icons.rs` is the thing that was missing**: every mark on one sheet at
+eight pixels a point, one sheet per set, accepted like any other picture. Until it existed there was
+no way to look at an icon at all — a mark is twelve points across, so in a picture of the whole window
+it is a dozen pixels and a change to it is a smudge moving, and a folder, a bubble, a clipboard and a
+beetle were all redrawn at once without one of the 483 accepted pictures failing. Add a mark, add it
+to that sheet.
+
+**And the sheet is not the last word, which it also had to learn.** It is eight times life size. The
+first `debug_run` was a play triangle and a beetle of equal weight, which is VS Code's own balance and
+is fine at eight times; photographed off the real title bar at the fourteen pixels a person sees, it
+was a smudge with no half of it legible. So one shape carries that mark and the other is a badge on
+it. **A mark is judged at both sizes or it is not judged.**
+
+**`pane.group` and `pane.tile` are two questions now.** The ticket asks for the Agent-Tasks button to
+sit under Agent-Chat's, and one manifest key was answering both "which half of the rail is the button
+in" and "may this pane share a strip". They were only the same question by coincidence — the rail's
+bottom group holds the things with a character grid in them, and a thing with a character grid in it
+is exactly a thing that must not be given half a strip. The board is neither, so moving `pane.group`
+alone would have left it and the terminal each drawn half the width of the window. `pane.tile`
+defaults to `group == bottom`, so every manifest written before this means what it meant.
+
 ## A database is spoken to by hand, and a row is only editable if it can be addressed
 
 `task-1777` asks for "a plugin with ui that allows us to see dbs, write queries, update rows, etc

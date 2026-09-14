@@ -284,7 +284,8 @@ Six keys, and five of them have a default so that a manifest asking for a pane w
 | `pane.id` | The name the command line and the settings file call this pane. Lower case, one word. | Required when any `pane.` key is present. |
 | `pane.label` | What a person reads in the rail's tooltip and on the pane's header. | `plugin.name`. |
 | `pane.icon` | Which drawn icon goes in the rail, checked against `theme::icon`. | The plugin's own `icon.png`. |
-| `pane.group` | `top` or `bottom`. The rail's two groups say what a panel is: the top group holds lists and the bottom holds tiles with a character grid in them. | `top`. |
+| `pane.group` | `top` or `bottom`, which half of the rail the pane's button is in. | `top`. |
+| `pane.tile` | Whether the pane is a **tile**: one of the things that may not share a strip, so showing it puts away whatever else is on that side. `pane.group` answered this too until `task-1949`, and the two came apart when the Agent-Tasks board was asked to put its button at the top while still keeping the bottom strip to itself. | `yes` when `pane.group` is `bottom`, so a manifest written before the split means what it meant. |
 | `pane.side` | `left`, `right`, `top` or `bottom`, the side the pane is docked to the first time it is shown. | `right`. |
 | `pane.width` and `pane.height` | The two measurements a panel carries, because one number cannot be both. A width for when it is a column at the side and a height for when it is in a strip. | 320 and 260, which are the explorer's width and the terminal's height. |
 | `pane.applies` | `always` or `in_project`, checked against the conditions Unluminous has. | `always`. |
