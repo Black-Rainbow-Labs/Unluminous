@@ -8,6 +8,10 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- The toolchain pin stops describing a CI that is not there (`task-1968`)
+
+## 0.49.0 — 2026-09-14
+
 - A terminal tab comes back where PowerShell was, not where it started (`task-1950`)
 
 ## 0.48.0 — 2026-09-14
