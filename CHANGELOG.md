@@ -8,6 +8,10 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- A second review of Unluminous, and the plan that acts on it (`task-1984`)
+
+## 0.49.1 — 2026-09-16
+
 - The toolchain pin stops describing a CI that is not there (`task-1968`)
 
 ## 0.49.0 — 2026-09-14
