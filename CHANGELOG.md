@@ -15,6 +15,14 @@ bumps the release script makes are left out, because they are the boundaries rat
 - Every span shares one family name, and the memory diagnostic reports what the undo history holds (`task-1984`)
 - The caret walks a window round itself rather than the whole line, so one arrow key on a minified file is 0.002 ms (`task-1984`)
 - The README is a front door, and the pictures are of this version (`task-1994`)
+- 0.50.0's entries were still sitting under Unreleased (`task-1994`)
+- The README of a text editor now has a picture in it (`task-1994`)
+- Seven of the eight crates may not mention a window, not six (`task-1994`)
+- The catalogue is 214 commands across 23 areas, and 213 of them are tools (`task-1994`)
+- Replace All reads every style in one walk and writes every colour in one call, and a deletion touches only the spans it reaches (`task-1984`)
+- A keystroke fingerprints the paragraphs the document says it touched rather than every paragraph in the file (`task-1984`)
+- The test count is the one cargo prints today, and the per-layer ones are gone (`task-1994`)
+- The token list is spliced in place and the straddling token is found by binary search, so the tokeniser costs 0.31 ms a keystroke at 2 MB (`task-1984`)
 
 ## 0.50.0 — 2026-09-18
 
