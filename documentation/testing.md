@@ -119,10 +119,23 @@ Each is the answer to a test failing for a reason that was not a fault in Unlumi
 - **A fixture two tests share is written once**, behind a `OnceLock`, or one test reads a file another
   has truncated a moment ago and not yet filled in. A fixture only one test uses may be written each
   time — the name is what keeps them apart.
-- **A loop that waits pumps rather than runs to quiet.** Running to quiet gives the window four steps
-  to settle and panics otherwise, which is right for a settled window and wrong while git or an image
-  is still being worked on. Running out of steps inside one attempt is not a failure; running out of
-  attempts is, and the loop says so.
+- **Nothing runs to quiet, anywhere.** Running to quiet gives the window four steps to settle and
+  **panics** otherwise, which is right for a settled window and wrong the moment anything is still
+  being worked on. It was advice and it is a mechanism now: every one of the 1,023 places a window
+  test draws a frame calls one helper that asks the window to run again while it keeps wanting to be
+  drawn, and then returns quietly. The test's own assertion is what reports a window that never
+  settled, which names what was expected rather than a step count from inside a helper.
+
+  Three binaries failed on the four-step budget in one day and not one was a fault in Unluminous: a
+  zoom after a pointer move, a click that starts decoding an image, and a view change that lays out a
+  Mermaid diagram. All three passed when run alone. The sweep was the whole file rather than the three
+  known places, because a list of the call sites that matter today is wrong tomorrow.
+
+**The window tests are run in debug.** The release profile is link-time optimised, so a change to
+`unluminous-core` relinks every window test binary and the run takes about forty minutes rather than
+four — and then leaves the machine loaded enough to produce failures of the kind above. The pictures
+go through the graphics card either way, and the release gate does not ask for release-mode window
+tests. Run them as the command below prints them, with no `--release`.
 
 **The screenshot tests pin the rasteriser's SIMD level.** The CPU rasteriser picks the widest one the
 processor has and does not promise two levels are bit-identical, so every place a test builds a window
