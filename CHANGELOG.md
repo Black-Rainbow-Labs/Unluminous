@@ -8,6 +8,16 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- The backstop is derived, the tool's timeout reaches every area, and three tools that could never succeed (`task-1984`)
+- The drawing thread never waits on a network, a database, a process or a keychain (`task-1984`)
+- A frame costs what changed, and an idle one is half what it was (`task-1984`)
+- The export marker is read once as the file is walked rather than re-read from the start of every declaration (`task-1984`)
+- Every span shares one family name, and the memory diagnostic reports what the undo history holds (`task-1984`)
+- The caret walks a window round itself rather than the whole line, so one arrow key on a minified file is 0.002 ms (`task-1984`)
+- The README is a front door, and the pictures are of this version (`task-1994`)
+
+## 0.50.0 — 2026-09-18
+
 - The release gate checks what it used to check, and the window suite leaves a receipt (`task-1984`)
 - One cargo fmt pass, with nothing else in it (`task-1984`)
 - The window suite receipt does not ask about the nightly's own binary (`task-1984`)
