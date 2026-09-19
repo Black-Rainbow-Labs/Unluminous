@@ -6,9 +6,14 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.53.1 — 2026-09-19
 
 - A release publishes both sites, because the parent page reads the manifest the product page publishes (`task-1993`)
+- The changelog entry for the release publishing both sites (`task-1993`)
+- Unluminous.app is built, signed and notarised on the Windows machine (`task-1995`)
+- The Developer ID reaches the macOS build without a Mac to export it (`task-1996`)
+- Sign with a sealed key and a certificate, not only with a .p12 (`task-1995`)
+- A pane toggle opens that pane alone, and every node scrolls (`task-2003`)
 
 ## 0.53.0 — 2026-09-19
 
