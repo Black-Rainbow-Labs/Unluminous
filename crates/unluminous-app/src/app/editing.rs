@@ -24,6 +24,23 @@ use crate::app::{
     ZoomClaim,
 };
 
+/// What an editing area's components are handed, read before any of them is drawn.
+///
+/// `task-1984` §3.6. One value rather than five locals, so `UnluminousApp::what_the_editor_draws_from`
+/// can be a function rather than the first fifty lines of `UnluminousApp::show_editor`.
+struct EditorReadings {
+    /// Which paragraphs could fold, and which of them are folded.
+    fold_marks: Vec<(usize, bool)>,
+    /// What the gutter draws for each breakpoint, which is what the adapter said about it.
+    breakpoint_marks: Vec<(usize, gutter::BreakpointMark)>,
+    /// The paragraph the program is stopped on.
+    execution_point: Option<usize>,
+    /// The values to paint at the ends of the lines that bind them.
+    inline_values: Vec<(usize, String)>,
+    /// Every match of the Find bar but the current one, which is drawn as the selection.
+    find_matches: Vec<std::ops::Range<usize>>,
+}
+
 impl UnluminousApp {
     /// Mark the selected passage in the file that is showing.
     ///
@@ -819,30 +836,28 @@ impl UnluminousApp {
         editor_view::SymbolPointer { word: hover.map(|hover| hover.word) }
     }
 
-    pub(crate) fn show_editor(&mut self, ui: &mut egui::Ui, area: Rect, focused: bool) -> bool {
-        // What this file could fold and what of it is folded, read before anything is drawn: the
-        // cache wants `&mut self` and every component here is handed what it draws.
-        let index = self.files.active_index();
+    /// Everything an editing area's components are handed, read before any of them is drawn.
+    ///
+    /// **`task-1984` §3.6.** `show_editor` was 369 lines and its first fifty were this: five separate
+    /// readings, each with the same reason written out beside it — the cache or the search wants
+    /// `&mut self`, and every component below is handed what it draws rather than being given the
+    /// window. Said once here instead of five times there.
+    ///
+    /// The order is the order it was in, because these read each other's caches; and it is all before
+    /// the first `ui.interact`, because **egui hands a pointer to the last widget that asked for the
+    /// point**, so anything moved across that line is a behaviour change.
+    fn what_the_editor_draws_from(&mut self, index: usize, focused: bool) -> EditorReadings {
+        // What this file could fold and what of it is folded.
         let fold_marks: Vec<(usize, bool)> = self.fold_marks(index).to_vec();
-        // Set by an arrow in the gutter or a badge in the text, and acted on at the end of the
-        // frame — a fold changes the layout, and changing it half way through drawing this pane
-        // would leave the rest of the frame drawing from a layout that no longer matches.
-        let mut folded: Option<usize> = None;
-        // What the gutter draws for each breakpoint, read here for the reason the folds are: it asks
-        // the session what the adapter said, and a component is handed what it draws.
+        // What the gutter draws for each breakpoint: it asks the session what the adapter said.
         let breakpoint_marks = self.breakpoint_marks(index);
         // The line the program is stopped on, and the values to paint at the ends of the lines that
-        // bind them. Both worked out before anything is drawn, for the same reason again.
+        // bind them.
         let execution_point = self.execution_paragraph(self.files.at(index).path());
         let inline_values = self.inline_values(index);
-        // Set by a click in the gutter's breakpoint column, and acted on at the end of the frame for
-        // the reason a fold is: changing the document half way through drawing this pane would leave
-        // the rest of the frame drawing from a layout that no longer matches.
-        let mut toggled_breakpoint: Option<usize> = None;
-        // Where the Find bar's matches are, worked out before anything is drawn for the same reason
-        // once more: `Find::refresh` wants `&mut self` and every component here is handed what it
-        // draws. Empty when the bar is shut or this pane does not have the keyboard, so a split view
-        // paints the bands in the pane being searched and not in the other one. `task-1804`.
+        // Where the Find bar's matches are. Empty when the bar is shut or this pane does not have the
+        // keyboard, so a split view paints the bands in the pane being searched and not in the other
+        // one. `task-1804`.
         let find_matches: Vec<std::ops::Range<usize>> = match (focused, self.find.as_mut()) {
             (true, Some(_)) => {
                 let text = self.files.at(index).document.text().to_string();
@@ -863,6 +878,30 @@ impl UnluminousApp {
             }
             _ => Vec::new(),
         };
+        EditorReadings {
+            fold_marks,
+            breakpoint_marks,
+            execution_point,
+            inline_values,
+            find_matches,
+        }
+    }
+
+    pub(crate) fn show_editor(&mut self, ui: &mut egui::Ui, area: Rect, focused: bool) -> bool {
+        let index = self.files.active_index();
+        let EditorReadings {
+            fold_marks,
+            breakpoint_marks,
+            execution_point,
+            inline_values,
+            find_matches,
+        } = self.what_the_editor_draws_from(index, focused);
+        // Set by an arrow in the gutter or a badge in the text, and by a click in the gutter's
+        // breakpoint column, and both acted on at the **end** of the frame: a fold and a breakpoint
+        // each change the layout, and changing it half way through drawing this pane would leave the
+        // rest of the frame drawing from a layout that no longer matches.
+        let mut folded: Option<usize> = None;
+        let mut toggled_breakpoint: Option<usize> = None;
         // The gutter takes the left of the editing area, and the text starts after it. With no
         // gutter the text keeps the padding it always had, so putting the numbers away leaves the
         // window looking exactly as it did before there were any.
@@ -933,24 +972,7 @@ impl UnluminousApp {
         // — sees the scroll position the zoom asked for rather than the one it was left at.
         self.keep_the_place_through_a_zoom(view_height);
 
-        // The bar down the right hand edge, taken hold of here rather than at the end of the frame:
-        // the editing area asks for drags over the whole of its rectangle and egui hands a point to
-        // the last widget that asked for it, so a bar added after the text is a bar that can be
-        // dragged. It is drawn at the end, once the wheel and the caret have had their say. See
-        // `components::scrollbar`.
-        let was = self.files.active().scroll;
-        // Named after the file rather than after the half, because two panes each have one and two
-        // controls must not share a name — the same reason the gutter's blame cells and a diagram
-        // carry the file's name. Two panes cannot be showing one file, so the name is unique.
-        let bar_name = self.files.active().name();
-        let bar = scrollbar::Bar::new(area, was, self.layout().height, view_height);
-        let grab = match &bar {
-            Some(bar) => scrollbar::grab(ui, bar, &bar_name),
-            None => scrollbar::Grab::default(),
-        };
-        if let Some(to) = grab.scroll {
-            self.files.active_mut().scroll = to;
-        }
+        let (was, bar_name, grab) = self.take_hold_of_the_scrollbar(ui, area, view_height);
 
         let scroll = self.files.active().scroll;
         let origin = Pos2::new(area.left() + padding, area.top() + size::EDITOR_PADDING_Y - scroll);
@@ -970,107 +992,19 @@ impl UnluminousApp {
             // A hand rather than the writing bar, which is what says the word is a link.
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
-        let formatting = file_kind::formatting_applies(self.files.active().path());
-
-        // Taken apart by field, because the input handlers want the document mutably while the
-        // layout they measure against is borrowed at the same time, and a method on `self` would
-        // borrow the whole window. Both now live on the same tab, and the two are separate fields of
-        // it, which is a borrow the compiler allows through one reference.
-        // Whether a character reached the document this frame, which is the one thing the automatic
-        // trigger fires on. Read before the input is handled, because handling it is what consumes
-        // the events. A paste, an undo and a command line edit are all deliberately not typing.
-        let typed = has_keyboard
-            && ui.input(|input| {
-                input.events.iter().any(|event| {
-                    matches!(event, egui::Event::Text(text) if !text.chars().any(char::is_control))
-                })
-            });
-        // Read before the tab is borrowed, because both come off the settings and the borrow below
-        // takes the whole window otherwise. `task-1922` WP4.
-        let typing = editor_view::Typing {
-            indent: self.indent_text(),
-            auto_indent: self.settings.auto_indent,
-        };
-        let file = self.files.active_mut();
-        let laid = &file.cached.layout;
-        let document = &mut file.document;
-        let pointer = editor_view::handle_pointer(&response, document, laid, origin, &symbol);
-        let pointer_changed = pointer.changed;
-        let outcome =
-            editor_view::handle_input(ui, document, laid, has_keyboard, formatting, &typing);
-        // The window decides what a jump means, which is the rule every component follows.
-        if let Some(offset) = pointer.jump {
-            self.focus = Focus::Editor;
-            self.go_to_definition(offset);
+        let taken = self.take_the_editors_input(
+            ui,
+            &response,
+            origin,
+            &symbol,
+            EditorInput { has_keyboard, focused, text_width },
+        );
+        if taken.jumped {
             return true;
         }
-        if let Some(text) = outcome.copy {
-            ui.ctx().copy_text(text);
-        }
-        if outcome.changed {
-            // Typing into a file you were only glancing at plainly means you meant to open it, so
-            // the transient tab stops being one a single click will take away.
-            let active = self.files.active_index();
-            self.files.make_permanent(active);
-        }
-        if outcome.changed || pointer_changed {
-            self.refresh_layout(text_width);
-        }
 
-        // Open, refilter or close the completion popup, now that the letter just typed is in the
-        // file. Only the pane with the keyboard, because there is one popup and it belongs to
-        // whichever pane is being typed into.
-        if focused {
-            self.keep_the_completion_fresh(typed);
-        }
-
-        // A right click opens the editing area's own menu. Inside a selection it leaves the
-        // selection alone — a menu that opened with nothing selected would be a menu with nothing
-        // to mark in it, which is the whole point of it — and anywhere else it puts the caret there
-        // first, which is what every editor does.
-        if response.secondary_clicked() {
-            if let Some(at) = response.interact_pointer_pos() {
-                let local = at - origin;
-                let offset = self.layout().offset_at(local.x, local.y);
-                let selection = self.document().selection().range();
-                if !selection.contains(&offset) {
-                    self.document_mut().apply(Command::PlaceCaret { offset, extend: false });
-                }
-                self.text_menu = Some(text_menu::TextMenu::new(at, offset));
-                self.focus = Focus::Editor;
-            }
-        }
-
-        // A pinch, or the wheel with the zoom modifier held, changes the size of the text that is
-        // being worked on: either the pointer is demonstrably over this pane, or this is the pane
-        // with the keyboard and no pane has the pointer.
-        //
-        // Neither of those is `response.hovered()`, and it took measuring the real window to find
-        // out why it must not be. A two notch gesture produced thirty eight frames, eleven of them
-        // carrying a zoom — and on every one of those eleven `hovered()` was false and
-        // `pointer.hover_pos()` was `None`, because egui reports no pointer at all on a frame whose
-        // only input is a wheel event. Gating on either alone threw the whole gesture away and the
-        // text never moved, which is exactly what the first version of this did. So the last place
-        // the pointer was seen is asked for as well, which is what `latest_pos` is, and it is what
-        // says which pane a gesture with no pointer on this frame is still about.
-        let pointer = ui
-            .input(|input| input.pointer.hover_pos().or_else(|| input.pointer.latest_pos()))
-            .filter(|at| area.contains(*at));
-        if self.zoom != ZoomClaim::Taken {
-            match pointer {
-                // Over this pane, so the gesture is this pane's, about the text it is over.
-                Some(at) => {
-                    self.zoom = ZoomClaim::Taken;
-                    let top = area.top() + size::EDITOR_PADDING_Y;
-                    self.zoom_the_text(ui, (at.y - top).max(0.0));
-                }
-                // Not over this pane. The pane with the keyboard takes it at the end of the frame
-                // if no pane turns out to have the pointer, keeping the top of its view still,
-                // because there is then no point on the screen for the gesture to be about.
-                None if has_keyboard => self.zoom = ZoomClaim::OfferedToTheKeyboard,
-                None => {}
-            }
-        }
+        self.open_the_text_menu_on_a_right_click(&response, origin);
+        self.claim_a_zoom_over_the_editor(ui, area, has_keyboard);
 
         let wheel = ui.input(|input| input.smooth_scroll_delta.y);
         let mut scroll = self.files.active().scroll;
@@ -1080,7 +1014,7 @@ impl UnluminousApp {
         if wheel != 0.0 && response.contains_pointer() {
             scroll -= wheel;
         }
-        if outcome.scroll_to_caret || (self.reveal_caret && focused) {
+        if taken.scroll_to_caret || (self.reveal_caret && focused) {
             let caret = self.layout().caret_at(self.document().selection().head);
             if caret.y < scroll {
                 scroll = caret.y;
@@ -1111,35 +1045,248 @@ impl UnluminousApp {
             self.remember_where_the_completion_hangs(origin, area);
         }
 
-        // The gutter is drawn from the same origin as the text, so a number cannot drift away from
-        // the line it belongs to.
         if gutter_width > 0.0 {
-            let outcome = gutter::show(
-                ui,
-                gutter_rect,
-                &self.gutter(&fold_marks, &breakpoint_marks),
-                self.layout(),
-                origin.y,
-                self.document().text().byte_to_line(self.document().selection().head),
-                &match self.files.focus() {
-                    crate::app::files::Home::Pane(pane) => format!("pane {pane}"),
-                    crate::app::files::Home::Node(node) => format!("node {node}"),
-                },
-            );
-            if let Some(at) = outcome.context_menu {
-                self.gutter_menu = Some(at);
-                // Which row it was over, so the menu's breakpoint entries are about the line under
-                // the pointer rather than about the caret — the rule the text menu already follows.
-                self.gutter_menu_line = outcome.menu_paragraph;
-            }
-            if let Some(line) = outcome.toggle_fold {
-                folded = Some(line);
-            }
-            if let Some(line) = outcome.toggle_breakpoint {
-                toggled_breakpoint = Some(line);
-            }
+            let outcome =
+                self.show_the_gutter(ui, gutter_rect, origin.y, &fold_marks, &breakpoint_marks);
+            folded = outcome.toggle_fold.or(folded);
+            toggled_breakpoint = outcome.toggle_breakpoint.or(toggled_breakpoint);
         }
 
+        if let Some(line) = self.paint_the_editor(
+            ui,
+            area,
+            focused,
+            origin,
+            EditorPainting {
+                has_keyboard,
+                underline: symbol.word.clone(),
+                execution_point,
+                inline_values: &inline_values,
+                find_matches: &find_matches,
+                bracket_pair,
+                fold_marks: &fold_marks,
+                scroll,
+                was,
+                view_height,
+                bar_name: &bar_name,
+                bar_active: grab.active,
+            },
+        ) {
+            folded = Some(line);
+        }
+        if let Some(line) = folded {
+            self.toggle_fold_at_line(line);
+        }
+        if let Some(line) = toggled_breakpoint {
+            self.toggle_breakpoint_at_line(line);
+        }
+        took_the_keyboard
+    }
+
+    /// Hand the frame's pointer and keys to the document. `true` when the pane jumped somewhere.
+    ///
+    /// **`task-1984` §3.6, out of `show_editor`.** A jump answers `true` because it opens another
+    /// file, which leaves everything below this — the layout, the origin, the painter — describing
+    /// the file that was showing a moment ago.
+    fn take_the_editors_input(
+        &mut self,
+        ui: &mut egui::Ui,
+        response: &egui::Response,
+        origin: Pos2,
+        symbol: &editor_view::SymbolPointer,
+        input: EditorInput,
+    ) -> EditorTyped {
+        let EditorInput { has_keyboard, focused, text_width } = input;
+        let formatting = file_kind::formatting_applies(self.files.active().path());
+        // Whether a character reached the document this frame, which is the one thing the automatic
+        // trigger fires on. Read before the input is handled, because handling it is what consumes
+        // the events. A paste, an undo and a command line edit are all deliberately not typing.
+        let typed = has_keyboard
+            && ui.input(|input| {
+                input.events.iter().any(|event| {
+                    matches!(event, egui::Event::Text(text) if !text.chars().any(char::is_control))
+                })
+            });
+        // Read before the tab is borrowed, because both come off the settings and the borrow below
+        // takes the whole window otherwise. `task-1922` WP4.
+        let typing = editor_view::Typing {
+            indent: self.indent_text(),
+            auto_indent: self.settings.auto_indent,
+        };
+        // Taken apart by field, because the input handlers want the document mutably while the
+        // layout they measure against is borrowed at the same time, and a method on `self` would
+        // borrow the whole window. Both live on the same tab, and the two are separate fields of it,
+        // which is a borrow the compiler allows through one reference.
+        let file = self.files.active_mut();
+        let laid = &file.cached.layout;
+        let document = &mut file.document;
+        let pointer = editor_view::handle_pointer(response, document, laid, origin, symbol);
+        let pointer_changed = pointer.changed;
+        let outcome =
+            editor_view::handle_input(ui, document, laid, has_keyboard, formatting, &typing);
+        // The window decides what a jump means, which is the rule every component follows.
+        if let Some(offset) = pointer.jump {
+            self.focus = Focus::Editor;
+            self.go_to_definition(offset);
+            return EditorTyped { jumped: true, scroll_to_caret: false };
+        }
+        let scroll_to_caret = outcome.scroll_to_caret;
+        if let Some(text) = outcome.copy {
+            ui.ctx().copy_text(text);
+        }
+        if outcome.changed {
+            // Typing into a file you were only glancing at plainly means you meant to open it, so
+            // the transient tab stops being one a single click will take away.
+            let active = self.files.active_index();
+            self.files.make_permanent(active);
+        }
+        if outcome.changed || pointer_changed {
+            self.refresh_layout(text_width);
+        }
+        // Open, refilter or close the completion popup, now that the letter just typed is in the
+        // file. Only the pane with the keyboard, because there is one popup and it belongs to
+        // whichever pane is being typed into.
+        if focused {
+            self.keep_the_completion_fresh(typed);
+        }
+        EditorTyped { jumped: false, scroll_to_caret }
+    }
+
+    /// Let the bar down the right hand edge be dragged, and answer with where the frame opened.
+    ///
+    /// **Taken hold of here rather than at the end of the frame**: the editing area asks for drags
+    /// over the whole of its rectangle and egui hands a point to the last widget that asked for it,
+    /// so a bar added after the text is a bar that can be dragged. It is *drawn* at the end, once the
+    /// wheel and the caret have had their say — see `components::scrollbar` and
+    /// [`Self::paint_the_editor`]. `task-1984` §3.6, out of `show_editor`.
+    fn take_hold_of_the_scrollbar(
+        &mut self,
+        ui: &mut egui::Ui,
+        area: Rect,
+        view_height: f32,
+    ) -> (f32, String, scrollbar::Grab) {
+        let was = self.files.active().scroll;
+        // Named after the file rather than after the half, because two panes each have one and two
+        // controls must not share a name — the same reason the gutter's blame cells and a diagram
+        // carry the file's name. Two panes cannot be showing one file, so the name is unique.
+        let bar_name = self.files.active().name();
+        let bar = scrollbar::Bar::new(area, was, self.layout().height, view_height);
+        let grab = match &bar {
+            Some(bar) => scrollbar::grab(ui, bar, &bar_name),
+            None => scrollbar::Grab::default(),
+        };
+        if let Some(to) = grab.scroll {
+            self.files.active_mut().scroll = to;
+        }
+        (was, bar_name, grab)
+    }
+
+    /// Draw the column of line numbers, fold arrows and breakpoint dots.
+    ///
+    /// **Drawn from the same origin as the text**, so a number cannot drift away from the line it
+    /// belongs to. `task-1984` §3.6, out of `show_editor`.
+    fn show_the_gutter(
+        &mut self,
+        ui: &mut egui::Ui,
+        gutter_rect: Rect,
+        origin_y: f32,
+        fold_marks: &[(usize, bool)],
+        breakpoint_marks: &[(usize, gutter::BreakpointMark)],
+    ) -> gutter::GutterOutcome {
+        let caret_line = self.document().text().byte_to_line(self.document().selection().head);
+        let home = match self.files.focus() {
+            crate::app::files::Home::Pane(pane) => format!("pane {pane}"),
+            crate::app::files::Home::Node(node) => format!("node {node}"),
+        };
+        let outcome = gutter::show(
+            ui,
+            gutter_rect,
+            &self.gutter(fold_marks, breakpoint_marks),
+            self.layout(),
+            origin_y,
+            caret_line,
+            &home,
+        );
+        if let Some(at) = outcome.context_menu {
+            self.gutter_menu = Some(at);
+            // Which row it was over, so the menu's breakpoint entries are about the line under the
+            // pointer rather than about the caret — the rule the text menu already follows.
+            self.gutter_menu_line = outcome.menu_paragraph;
+        }
+        outcome
+    }
+
+    /// A right click opens the editing area's own menu.
+    ///
+    /// Inside a selection it leaves the selection alone — a menu that opened with nothing selected
+    /// would be a menu with nothing to mark in it, which is the whole point of it — and anywhere else
+    /// it puts the caret there first, which is what every editor does.
+    fn open_the_text_menu_on_a_right_click(&mut self, response: &egui::Response, origin: Pos2) {
+        if !response.secondary_clicked() {
+            return;
+        }
+        let Some(at) = response.interact_pointer_pos() else { return };
+        let local = at - origin;
+        let offset = self.layout().offset_at(local.x, local.y);
+        let selection = self.document().selection().range();
+        if !selection.contains(&offset) {
+            self.document_mut().apply(Command::PlaceCaret { offset, extend: false });
+        }
+        self.text_menu = Some(text_menu::TextMenu::new(at, offset));
+        self.focus = Focus::Editor;
+    }
+
+    /// Decide whether a pinch, or the wheel with the zoom modifier held, is this pane's.
+    ///
+    /// Either the pointer is demonstrably over this pane, or this is the pane with the keyboard and
+    /// no pane has the pointer.
+    ///
+    /// Neither of those is `response.hovered()`, and it took measuring the real window to find out
+    /// why it must not be. A two notch gesture produced thirty eight frames, eleven of them carrying
+    /// a zoom — and on every one of those eleven `hovered()` was false and `pointer.hover_pos()` was
+    /// `None`, because egui reports no pointer at all on a frame whose only input is a wheel event.
+    /// Gating on either alone threw the whole gesture away and the text never moved, which is exactly
+    /// what the first version of this did. So the last place the pointer was seen is asked for as
+    /// well, which is what `latest_pos` is, and it is what says which pane a gesture with no pointer
+    /// on this frame is still about.
+    fn claim_a_zoom_over_the_editor(&mut self, ui: &egui::Ui, area: Rect, has_keyboard: bool) {
+        if self.zoom == ZoomClaim::Taken {
+            return;
+        }
+        let pointer = ui
+            .input(|input| input.pointer.hover_pos().or_else(|| input.pointer.latest_pos()))
+            .filter(|at| area.contains(*at));
+        match pointer {
+            // Over this pane, so the gesture is this pane's, about the text it is over.
+            Some(at) => {
+                self.zoom = ZoomClaim::Taken;
+                let top = area.top() + size::EDITOR_PADDING_Y;
+                self.zoom_the_text(ui, (at.y - top).max(0.0));
+            }
+            // Not over this pane. The pane with the keyboard takes it at the end of the frame if no
+            // pane turns out to have the pointer, keeping the top of its view still, because there is
+            // then no point on the screen for the gesture to be about.
+            None if has_keyboard => self.zoom = ZoomClaim::OfferedToTheKeyboard,
+            None => {}
+        }
+    }
+
+    /// Draw the text, and everything that goes over it. Answers with a fold badge that was pressed.
+    ///
+    /// **`task-1984` §3.6.** The last phase of [`Self::show_editor`], which was 369 lines. Everything
+    /// here is drawn **after** the editing area asked for its rectangle, and every comment in it says
+    /// why: egui hands a point to the last widget that asked for it, so the Find bar, the fold badges
+    /// and the scrollbar all have to come after the text or they could not be clicked. A line moved
+    /// out of this function and back into the one above it is a behaviour change.
+    fn paint_the_editor(
+        &mut self,
+        ui: &mut egui::Ui,
+        area: Rect,
+        focused: bool,
+        origin: Pos2,
+        painting: EditorPainting<'_>,
+    ) -> Option<usize> {
+        let mut folded = None;
         let mut painter_ui = ui.new_child(egui::UiBuilder::new().max_rect(area));
         painter_ui.set_clip_rect(ui.painter().clip_rect().intersect(area));
         editor_view::paint(
@@ -1151,12 +1298,12 @@ impl UnluminousApp {
             editor_view::PaintStyle {
                 selection: color::text_selection(),
                 caret: color::accent(),
-                show_caret: has_keyboard,
-                underline: symbol.word.clone(),
-                execution_point,
-                inline_values: &inline_values,
-                find_matches: &find_matches,
-                bracket_pair,
+                show_caret: painting.has_keyboard,
+                underline: painting.underline,
+                execution_point: painting.execution_point,
+                inline_values: painting.inline_values,
+                find_matches: painting.find_matches,
+                bracket_pair: painting.bracket_pair,
             },
         );
         // The Find bar, over the text at the top right. After the editing area for the reason the
@@ -1170,22 +1317,80 @@ impl UnluminousApp {
         // hands a point to the last widget that asked for it and the editing area asks for all of
         // its rectangle, which is the same ordering the scrollbar and the pane dividers follow.
         let visible = editor_view::visible_lines(&painter_ui, self.layout(), origin);
-        if let Some(line) =
-            editor_view::fold_badges(&mut painter_ui, self.layout(), origin, &fold_marks, visible)
-        {
+        if let Some(line) = editor_view::fold_badges(
+            &mut painter_ui,
+            self.layout(),
+            origin,
+            painting.fold_marks,
+            visible,
+        ) {
             folded = Some(line);
         }
         // Drawn last, at the position the frame settled on rather than the one it opened with, or
         // the thumb is a frame behind the writing — which on a fast scroll can be seen.
-        if let Some(bar) = scrollbar::Bar::new(area, scroll, self.layout().height, view_height) {
-            scrollbar::paint(ui, &bar, &bar_name, grab.active || (scroll - was).abs() > 0.01);
+        let height = self.layout().height;
+        if let Some(bar) = scrollbar::Bar::new(area, painting.scroll, height, painting.view_height)
+        {
+            let moved = (painting.scroll - painting.was).abs() > 0.01;
+            scrollbar::paint(ui, &bar, painting.bar_name, painting.bar_active || moved);
         }
-        if let Some(line) = folded {
-            self.toggle_fold_at_line(line);
-        }
-        if let Some(line) = toggled_breakpoint {
-            self.toggle_breakpoint_at_line(line);
-        }
-        took_the_keyboard
+        folded
     }
+}
+
+/// What [`UnluminousApp::paint_the_editor`] draws over the text, gathered so the call is readable.
+///
+/// `task-1984` §3.6. A dozen values that the frame has already settled on by the time anything is
+/// painted; one value rather than a dozen arguments, which is the shape `editor_view::PaintStyle`
+/// beside it already has.
+/// The three things [`UnluminousApp::take_the_editors_input`] needs beside the pointer and the keys.
+///
+/// `task-1984` §3.6. Whether this pane draws a caret, whether it is the focused one, and how wide the
+/// text is — one value rather than three `bool` and `f32` arguments in a row, which is the kind of
+/// call site a reader cannot check.
+/// What handing the frame's input to the document left behind.
+///
+/// `task-1984` §3.6. Two answers the rest of the frame needs: whether the pane jumped somewhere,
+/// which makes everything below it describe a file that is no longer showing, and whether the caret
+/// has to be brought into view.
+#[derive(Debug, Clone, Copy)]
+struct EditorTyped {
+    jumped: bool,
+    scroll_to_caret: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EditorInput {
+    /// Whether keys reach the document, which is whether this pane has the keyboard.
+    has_keyboard: bool,
+    /// Whether this is the pane the window considers current, which the popup and the Find bar follow.
+    focused: bool,
+    /// How wide the text is laid out, which an edit has to lay out again against.
+    text_width: f32,
+}
+
+struct EditorPainting<'a> {
+    /// Whether a caret is drawn, which is whether this pane has the keyboard.
+    has_keyboard: bool,
+    /// The word under the pointer with the modifier held, drawn underlined.
+    underline: Option<std::ops::Range<usize>>,
+    /// The paragraph the program is stopped on.
+    execution_point: Option<usize>,
+    /// The values to paint at the ends of the lines that bind them.
+    inline_values: &'a [(usize, String)],
+    /// Every match of the Find bar but the current one.
+    find_matches: &'a [std::ops::Range<usize>],
+    /// The brackets either side of the caret.
+    bracket_pair: Option<(usize, usize)>,
+    /// Which paragraphs could fold, and which of them are folded.
+    fold_marks: &'a [(usize, bool)],
+    /// Where the frame settled, and where it opened, which is what says the bar is moving.
+    scroll: f32,
+    was: f32,
+    /// How tall the text area is, which is what the thumb's size is a share of.
+    view_height: f32,
+    /// The tab's name, which is the scrollbar's name in the accessibility tree.
+    bar_name: &'a str,
+    /// Whether the bar is being used, which is what it fades in for.
+    bar_active: bool,
 }

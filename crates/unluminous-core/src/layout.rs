@@ -737,6 +737,13 @@ struct LayoutInputs<'a, 'b> {
 }
 
 /// Lay one paragraph out, appending its lines to `work`, and give back its fingerprint.
+///
+/// **Four phases, and each is a function below** (`task-1984` §3.6, which found this at 197 lines with
+/// its own comments already naming them). Read the paragraph and fingerprint it; flatten it into
+/// clusters; break the clusters into lines that fit; place each line. They are separate because each
+/// is a different kind of arithmetic — one about bytes, one about fonts, one about widths, one about
+/// alignment — and because the middle two are where a layout fault lives and are worth reading on
+/// their own.
 fn lay_out_paragraph<'a>(
     paragraph: usize,
     inputs: &LayoutInputs<'a, '_>,
@@ -757,23 +764,7 @@ fn lay_out_paragraph<'a>(
         return mark;
     }
 
-    // Flatten the paragraph into clusters, each carrying the index of the run it came from.
-    buffers.clusters.clear();
-    for (run_index, (run_bytes, style)) in buffers.runs.iter().enumerate() {
-        let local = (run_bytes.start - bytes.start)..(run_bytes.end - bytes.start);
-        let run_text = &buffers.source[local];
-        for (offset, cluster) in run_text.grapheme_indices(true) {
-            let start = run_bytes.start + offset;
-            buffers.clusters.push((
-                run_index,
-                PlacedCluster::new(
-                    cluster,
-                    start..start + cluster.len(),
-                    metrics.advance(cluster, style),
-                ),
-            ));
-        }
-    }
+    flatten_into_clusters(&bytes, metrics, buffers);
 
     let empty_style = match buffers.runs.first() {
         Some((_, style)) => retained_style(&mut buffers.styles, style),
@@ -802,8 +793,57 @@ fn lay_out_paragraph<'a>(
         return mark;
     }
 
-    // Break the clusters into lines that fit the width, preferring to break after a space.
     let mut breaks = std::mem::take(&mut buffers.breaks);
+    break_into_lines(&mut breaks, buffers, width);
+
+    let break_count = breaks.len();
+    for (index, span) in breaks.iter().enumerate() {
+        place_one_line(
+            span.clone(),
+            index + 1 == break_count,
+            &bytes,
+            paragraph,
+            paragraph_style,
+            &empty_style,
+            metrics,
+            width,
+            buffers,
+            work,
+        );
+    }
+    buffers.breaks = breaks;
+    mark
+}
+
+/// Flatten a paragraph's runs into clusters, each carrying the index of the run it came from.
+///
+/// The first of [`lay_out_paragraph`]'s four phases. It is the one that asks the fonts how wide each
+/// grapheme is, which is the expensive part of laying anything out.
+fn flatten_into_clusters(bytes: &Range<usize>, metrics: &dyn FontMetrics, buffers: &mut Buffers) {
+    buffers.clusters.clear();
+    for (run_index, (run_bytes, style)) in buffers.runs.iter().enumerate() {
+        let local = (run_bytes.start - bytes.start)..(run_bytes.end - bytes.start);
+        let run_text = &buffers.source[local];
+        for (offset, cluster) in run_text.grapheme_indices(true) {
+            let start = run_bytes.start + offset;
+            buffers.clusters.push((
+                run_index,
+                PlacedCluster::new(
+                    cluster,
+                    start..start + cluster.len(),
+                    metrics.advance(cluster, style),
+                ),
+            ));
+        }
+    }
+}
+
+/// Break the clusters into lines that fit `width`, preferring to break after a space.
+///
+/// The second of [`lay_out_paragraph`]'s four phases, and the one that decides where the text wraps.
+/// `breaks` is handed in and cleared rather than returned, because it is a buffer reused for every
+/// paragraph in the document.
+fn break_into_lines(breaks: &mut Vec<Range<usize>>, buffers: &Buffers, width: f32) {
     breaks.clear();
     let mut line_start = 0;
     let mut pen = 0.0_f32;
@@ -830,109 +870,119 @@ fn lay_out_paragraph<'a>(
         }
     }
     breaks.push(line_start..buffers.clusters.len());
+}
 
-    let break_count = breaks.len();
-    for (index, span) in breaks.iter().enumerate() {
-        let last_in_paragraph = index + 1 == break_count;
-        let slice = &mut buffers.clusters[span.clone()];
+/// Place one line's clusters, group them into runs, and append the line to `work`.
+///
+/// The last of [`lay_out_paragraph`]'s four phases, and the only one that knows about alignment.
+#[allow(clippy::too_many_arguments)]
+fn place_one_line<'a>(
+    span: Range<usize>,
+    last_in_paragraph: bool,
+    bytes: &Range<usize>,
+    paragraph: usize,
+    paragraph_style: ParagraphStyle,
+    empty_style: &Arc<CharStyle>,
+    metrics: &dyn FontMetrics,
+    width: f32,
+    buffers: &mut Buffers<'a>,
+    work: &mut Work,
+) {
+    let slice = &mut buffers.clusters[span];
 
-        // Trailing spaces do not count towards the width used for alignment, because a centred line
-        // should look centred on its visible text.
-        let visible =
-            slice.iter().rposition(|(_, c)| !is_blank(c)).map(|last| last + 1).unwrap_or(0);
-        let visible_width: f32 = slice[..visible].iter().map(|(_, c)| c.advance).sum();
+    // Trailing spaces do not count towards the width used for alignment, because a centred line
+    // should look centred on its visible text.
+    let visible = slice.iter().rposition(|(_, c)| !is_blank(c)).map(|last| last + 1).unwrap_or(0);
+    let visible_width: f32 = slice[..visible].iter().map(|(_, c)| c.advance).sum();
 
-        let mut extra_per_gap = 0.0;
-        let offset = match paragraph_style.align {
-            Align::Left => 0.0,
-            Align::Center => ((width - visible_width) / 2.0).max(0.0),
-            Align::Right => (width - visible_width).max(0.0),
-            Align::Justify => {
-                // The last line of a paragraph is left aligned. Stretching a short last line to the
-                // full width looks broken, so no typesetter does it.
-                if !last_in_paragraph {
-                    let gaps = slice[..visible].iter().filter(|(_, c)| is_blank(c)).count();
-                    if gaps > 0 {
-                        extra_per_gap = ((width - visible_width) / gaps as f32).max(0.0);
-                    }
+    let mut extra_per_gap = 0.0;
+    let offset = match paragraph_style.align {
+        Align::Left => 0.0,
+        Align::Center => ((width - visible_width) / 2.0).max(0.0),
+        Align::Right => (width - visible_width).max(0.0),
+        Align::Justify => {
+            // The last line of a paragraph is left aligned. Stretching a short last line to the
+            // full width looks broken, so no typesetter does it.
+            if !last_in_paragraph {
+                let gaps = slice[..visible].iter().filter(|(_, c)| is_blank(c)).count();
+                if gaps > 0 {
+                    extra_per_gap = ((width - visible_width) / gaps as f32).max(0.0);
                 }
-                0.0
             }
-        };
-
-        // Place the clusters, grouping neighbouring clusters that share a run into one PlacedRun.
-        let mut placed_runs: Vec<PlacedRun> = Vec::new();
-        let mut placed_clusters: Vec<PlacedCluster> = Vec::with_capacity(slice.len());
-        let mut pen = offset;
-        for (run_index, cluster) in slice.iter_mut() {
-            cluster.x = pen;
-            if is_blank(cluster) {
-                cluster.advance += extra_per_gap;
-            }
-            pen += cluster.advance;
-            let style = buffers.runs[*run_index].1;
-            // Compared by looking at the style rather than by cloning it first. Cloning allocated a
-            // family name for every cluster in the document purely to throw it away again.
-            let same_run = placed_runs.last().is_some_and(|last| last.style.as_ref() == style);
-            if same_run {
-                placed_clusters.push(cluster.clone());
-                placed_runs.last_mut().expect("checked").clusters.end += 1;
-            } else {
-                let start =
-                    u32::try_from(placed_clusters.len()).expect("a line's clusters fit in 32 bits");
-                placed_clusters.push(cluster.clone());
-                placed_runs.push(PlacedRun {
-                    style: retained_style(&mut buffers.styles, style),
-                    clusters: start..start + 1,
-                });
-            }
+            0.0
         }
+    };
 
-        // The line is as tall as the tallest style in it. The descent is collected alongside the
-        // ascent rather than being taken from `natural`, because `natural` also carries the line gap
-        // and the leading, and the caret is drawn to the glyphs rather than to the line.
-        let mut ascent = 0.0_f32;
-        let mut descent = 0.0_f32;
-        let mut natural = 0.0_f32;
-        for run in &placed_runs {
-            let line_metrics = metrics.line_metrics(&run.style);
-            ascent = ascent.max(line_metrics.ascent);
-            descent = descent.max(line_metrics.descent);
-            natural = natural.max(line_metrics.height());
+    // Place the clusters, grouping neighbouring clusters that share a run into one PlacedRun.
+    let mut placed_runs: Vec<PlacedRun> = Vec::new();
+    let mut placed_clusters: Vec<PlacedCluster> = Vec::with_capacity(slice.len());
+    let mut pen = offset;
+    for (run_index, cluster) in slice.iter_mut() {
+        cluster.x = pen;
+        if is_blank(cluster) {
+            cluster.advance += extra_per_gap;
         }
-        if placed_runs.is_empty() {
-            let line_metrics = metrics.line_metrics(&empty_style);
-            ascent = line_metrics.ascent;
-            descent = line_metrics.descent;
-            natural = line_metrics.height();
+        pen += cluster.advance;
+        let style = buffers.runs[*run_index].1;
+        // Compared by looking at the style rather than by cloning it first. Cloning allocated a
+        // family name for every cluster in the document purely to throw it away again.
+        let same_run = placed_runs.last().is_some_and(|last| last.style.as_ref() == style);
+        if same_run {
+            placed_clusters.push(cluster.clone());
+            placed_runs.last_mut().expect("checked").clusters.end += 1;
+        } else {
+            let start =
+                u32::try_from(placed_clusters.len()).expect("a line's clusters fit in 32 bits");
+            placed_clusters.push(cluster.clone());
+            placed_runs.push(PlacedRun {
+                style: retained_style(&mut buffers.styles, style),
+                clusters: start..start + 1,
+            });
         }
-        // A paragraph may ask to be at least so tall, which is how the Markdown preview leaves room
-        // for a picture. It is a floor and never a ceiling: a line of large letters is as tall as its
-        // letters whatever it asked for.
-        let height = (natural * paragraph_style.line_spacing).max(paragraph_style.min_height);
-
-        let start = slice.first().map(|(_, c)| c.start as usize).unwrap_or(bytes.start);
-        let end = slice.last().map(|(_, c)| c.end as usize).unwrap_or(bytes.start);
-
-        work.lines.push(PlacedLine {
-            y: work.y,
-            height,
-            // Extra line spacing is added below the text rather than above it, so single and double
-            // spaced paragraphs start at the same place.
-            baseline: ascent,
-            ascent,
-            descent,
-            bytes: start..end,
-            paragraph,
-            last_in_paragraph,
-            runs: placed_runs,
-            clusters: placed_clusters,
-            empty_style: empty_style.clone(),
-        });
-        work.y += height;
     }
-    buffers.breaks = breaks;
-    mark
+
+    // The line is as tall as the tallest style in it. The descent is collected alongside the
+    // ascent rather than being taken from `natural`, because `natural` also carries the line gap
+    // and the leading, and the caret is drawn to the glyphs rather than to the line.
+    let mut ascent = 0.0_f32;
+    let mut descent = 0.0_f32;
+    let mut natural = 0.0_f32;
+    for run in &placed_runs {
+        let line_metrics = metrics.line_metrics(&run.style);
+        ascent = ascent.max(line_metrics.ascent);
+        descent = descent.max(line_metrics.descent);
+        natural = natural.max(line_metrics.height());
+    }
+    if placed_runs.is_empty() {
+        let line_metrics = metrics.line_metrics(empty_style);
+        ascent = line_metrics.ascent;
+        descent = line_metrics.descent;
+        natural = line_metrics.height();
+    }
+    // A paragraph may ask to be at least so tall, which is how the Markdown preview leaves room
+    // for a picture. It is a floor and never a ceiling: a line of large letters is as tall as its
+    // letters whatever it asked for.
+    let height = (natural * paragraph_style.line_spacing).max(paragraph_style.min_height);
+
+    let start = slice.first().map(|(_, c)| c.start as usize).unwrap_or(bytes.start);
+    let end = slice.last().map(|(_, c)| c.end as usize).unwrap_or(bytes.start);
+
+    work.lines.push(PlacedLine {
+        y: work.y,
+        height,
+        // Extra line spacing is added below the text rather than above it, so single and double
+        // spaced paragraphs start at the same place.
+        baseline: ascent,
+        ascent,
+        descent,
+        bytes: start..end,
+        paragraph,
+        last_in_paragraph,
+        runs: placed_runs,
+        clusters: placed_clusters,
+        empty_style: empty_style.clone(),
+    });
+    work.y += height;
 }
 
 /// True when a cluster is whitespace, which is where a line may be broken.
