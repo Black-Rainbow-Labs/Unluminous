@@ -37,6 +37,14 @@ pub struct Reader {
     /// Bytes rather than a `String`, because a read can end in the middle of a character and a
     /// `String` cannot hold half of one.
     buffer: Vec<u8>,
+    /// How far into the buffer a blank line has already been looked for.
+    ///
+    /// **`task-1984` P10.** [`Self::next_boundary`] searched from byte zero every time it was asked,
+    /// and it is asked once per read -- so a long answer arriving in small chunks, which is what a
+    /// model streaming word by word is, rescanned everything it had already said on every chunk.
+    /// Bytes only ever arrive at the end, so what has been looked at once never has to be looked at
+    /// again; the last three are, in case a `\r\n\r\n` straddles the join.
+    searched_to: usize,
 }
 
 impl Reader {
@@ -54,6 +62,9 @@ impl Reader {
         self.buffer.extend_from_slice(bytes);
         let mut events = Vec::new();
         while let Some(end) = self.next_boundary() {
+            // What is left has never been searched, so the next event is looked for from its first
+            // byte.
+            self.searched_to = 0;
             let block = self.buffer.drain(..end.taken).collect::<Vec<u8>>();
             let text = String::from_utf8_lossy(&block[..end.length]).into_owned();
             if let Some(event) = parse(&text) {
@@ -70,6 +81,7 @@ impl Reader {
     /// blank line — and a reader that dropped the last event would lose the one that says the answer
     /// is finished.
     pub fn finish(&mut self) -> Option<Event> {
+        self.searched_to = 0;
         let left = std::mem::take(&mut self.buffer);
         let text = String::from_utf8_lossy(&left).into_owned();
         parse(&text)
@@ -79,8 +91,10 @@ impl Reader {
     ///
     /// A blank line ends an event, and a blank line is `\n\n` or `\r\n\r\n`. Both are looked for
     /// because both are sent: OpenAI's own servers use `\n\n` and several proxies re-wrap to CRLF.
-    fn next_boundary(&self) -> Option<Boundary> {
-        let mut at = 0;
+    fn next_boundary(&mut self) -> Option<Boundary> {
+        // From a little before where the last search stopped, because the longest blank line is four
+        // bytes and one of them may already have arrived.
+        let mut at = self.searched_to.saturating_sub(3);
         while at + 1 < self.buffer.len() {
             // **Two line endings of any spelling**, which is what the specification means by a blank
             // line: a newline, a carriage return and newline, and a lone carriage return are all one,
@@ -94,6 +108,7 @@ impl Reader {
             }
             at += 1;
         }
+        self.searched_to = self.buffer.len();
         None
     }
 }
@@ -241,5 +256,49 @@ mod tests {
         // are part of the payload, and a token really can be "  indented".
         let stream = b"data:  two spaces\n\n";
         assert_eq!(read_in_chunks(stream, 2)[0].data, " two spaces");
+    }
+}
+
+#[cfg(test)]
+mod resumed {
+    use super::*;
+
+    /// A long answer arriving one byte at a time is read the same as one arriving whole.
+    ///
+    /// **`task-1984` P10.** [`Reader::next_boundary`] searched from byte zero every time it was asked,
+    /// and it is asked once per read -- so a model streaming a word at a time made the reader rescan
+    /// everything it had already said on every chunk, which is quadratic in the answer. Where the
+    /// search stopped is remembered now, and what this has to hold is that the answer did not change:
+    /// the same bytes, split every possible way, produce the same events.
+    #[test]
+    fn an_event_torn_at_every_byte_is_still_one_event() {
+        let stream = b"data: {\"one\": 1}\n\ndata: {\"two\": 2}\n\n";
+        let whole = Reader::new().feed(stream);
+        assert_eq!(whole.len(), 2, "the fixture is two events");
+        for at in 1..stream.len() {
+            let mut reader = Reader::new();
+            let mut events = reader.feed(&stream[..at]);
+            events.extend(reader.feed(&stream[at..]));
+            assert_eq!(events.len(), whole.len(), "torn at {at} of {}", stream.len());
+            for (one, other) in events.iter().zip(&whole) {
+                assert_eq!(one.data, other.data, "torn at {at}");
+            }
+        }
+    }
+
+    /// And a boundary that straddles two reads is still found.
+    ///
+    /// `task-1984` P10. The search resumes a little before where it stopped, because the longest
+    /// blank line is four bytes and one of them may already have arrived. This is the case that would
+    /// break if it resumed exactly where it stopped.
+    #[test]
+    fn a_blank_line_split_across_two_reads_is_found() {
+        let mut reader = Reader::new();
+        // The first read ends **inside** the blank line, so the search stops with the carriage
+        // return already in the buffer and has to come back to it.
+        assert!(reader.feed(b"data: hello\r").is_empty(), "half a line ending is not an event");
+        let events = reader.feed(b"\n\r\n");
+        assert_eq!(events.len(), 1, "the rest of the blank line completes it");
+        assert_eq!(events[0].data, "hello");
     }
 }

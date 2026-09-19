@@ -79,6 +79,14 @@ pub fn encode(value: &serde_json::Value) -> Vec<u8> {
 #[derive(Debug, Default)]
 pub struct Decoder {
     buffer: VecDeque<u8>,
+    /// How far into the buffer the separator has already been looked for.
+    ///
+    /// **`task-1984` P2.** [`Self::take_one`] searched from byte zero every time it was asked, and
+    /// it is asked once per read -- so an adapter writing a large body in many small reads rescanned
+    /// everything it had already sent on each one, which is quadratic in the frame. A frame's bytes
+    /// only ever arrive at the end, so what has been looked at once never has to be looked at again;
+    /// what is left is the last few bytes, in case the separator straddles the join.
+    searched_to: usize,
 }
 
 impl Decoder {
@@ -106,9 +114,34 @@ impl Decoder {
         Ok(messages)
     }
 
+    /// How many bytes are held with no separator anywhere in them.
+    ///
+    /// **`task-1984` P2.** [`LIMIT`] bounded the **body** a `Content-Length` asked for and nothing
+    /// bounded what is held before a `Content-Length` has been seen at all -- so an adapter printing
+    /// a stack trace, a crash dump or a build log to the channel grew this buffer until the
+    /// allocator gave up, which ends the process. `unluminous-chat`'s `sse::LARGEST_EVENT` is the
+    /// same wall for the same reason.
+    fn unframed(&self) -> usize {
+        match self.searched_to {
+            0 => 0,
+            _ => self.buffer.len(),
+        }
+    }
+
     /// One frame, if a whole one is there.
     fn take_one(&mut self) -> Result<Option<serde_json::Value>, FrameError> {
-        let Some(separator) = find(&self.buffer, SEPARATOR) else {
+        // From a little before where the last search stopped, so a separator split across two reads
+        // is still found. Nothing before that can have become a separator: bytes only arrive at the
+        // end.
+        let from = self.searched_to.saturating_sub(SEPARATOR.len() - 1);
+        let Some(separator) = find(&self.buffer, SEPARATOR, from) else {
+            self.searched_to = self.buffer.len();
+            if self.unframed() > LIMIT {
+                return Err(FrameError::NoLength(format!(
+                    "{} bytes with no header separator in them",
+                    self.buffer.len()
+                )));
+            }
             return Ok(None);
         };
         let headers: String =
@@ -122,6 +155,8 @@ impl Decoder {
         }
         self.buffer.drain(..start);
         let body: Vec<u8> = self.buffer.drain(..length).collect();
+        // What is left has never been searched, so the next frame is looked for from its first byte.
+        self.searched_to = 0;
         let text =
             String::from_utf8(body).map_err(|problem| FrameError::BadBody(problem.to_string()))?;
         let value = serde_json::from_str(&text)
@@ -157,11 +192,11 @@ fn content_length(headers: &str) -> Result<usize, FrameError> {
 ///
 /// A walk rather than anything cleverer: the needle is four bytes and the headers are a few dozen,
 /// so the whole search is over before a smarter algorithm would have finished setting up.
-fn find(haystack: &VecDeque<u8>, needle: &[u8]) -> Option<usize> {
+fn find(haystack: &VecDeque<u8>, needle: &[u8], from: usize) -> Option<usize> {
     if haystack.len() < needle.len() {
         return None;
     }
-    (0..=haystack.len() - needle.len())
+    (from..=haystack.len() - needle.len())
         .find(|at| needle.iter().enumerate().all(|(step, byte)| haystack[at + step] == *byte))
 }
 
@@ -323,5 +358,78 @@ mod tests {
         let mut decoder = Decoder::new();
         let read = decoder.feed(&bytes).expect("its own frames");
         assert_eq!(read, values);
+    }
+}
+
+#[cfg(test)]
+mod bounded {
+    use super::*;
+
+    /// An adapter that writes and writes without ever framing anything is stopped.
+    ///
+    /// **`task-1984` P2.** [`LIMIT`] bounded the **body** a `Content-Length` asked for, and nothing at
+    /// all bounded what was held before a `Content-Length` had been seen -- so an adapter printing a
+    /// stack trace, a crash dump or a build log onto the protocol channel grew this buffer until the
+    /// allocator gave up, which ends the process rather than the session. The client already turns a
+    /// `FrameError` into `Reply::Broken`, which is the session ending with a sentence in it, and that
+    /// is the right answer to an adapter writing rubbish.
+    #[test]
+    fn an_adapter_that_never_frames_anything_is_refused_rather_than_held_for_ever() {
+        let mut decoder = Decoder::new();
+        let block = vec![b'x'; 1024 * 1024];
+        let mut held = 0usize;
+        let refusal = loop {
+            match decoder.feed(&block) {
+                // Under the limit it is held, because the rest of the frame may still be coming.
+                Ok(answered) => {
+                    assert!(answered.is_empty(), "nothing was framed, because nothing is whole");
+                    held += 1;
+                    assert!(held < 64, "it held {held} MB with no separator and did not refuse");
+                }
+                Err(problem) => break problem,
+            }
+        };
+        assert!(held >= 16, "it refused after only {held} MB, which a real frame could reach");
+        assert!(
+            matches!(refusal, FrameError::NoLength(_)),
+            "and the refusal says what was wrong: {refusal:?}"
+        );
+    }
+
+    /// A frame split at every byte boundary still comes out as one message, however the reads fall.
+    ///
+    /// `task-1984` P2 made the separator search start from where the last one stopped, which is the
+    /// one thing that could be got wrong here: a separator that arrives across two reads is the case
+    /// the resumed search has to still find.
+    #[test]
+    fn a_frame_torn_at_every_byte_is_still_one_message() {
+        let whole = encode(&serde_json::json!({ "seq": 1, "type": "request" }));
+        for at in 1..whole.len() {
+            let mut decoder = Decoder::new();
+            let first = decoder.feed(&whole[..at]).expect("the first part");
+            let second = decoder.feed(&whole[at..]).expect("the rest");
+            let all: Vec<serde_json::Value> = first.into_iter().chain(second).collect();
+            assert_eq!(all.len(), 1, "torn at {at} of {}", whole.len());
+            assert_eq!(all[0]["seq"], 1);
+            assert_eq!(decoder.pending(), 0, "and nothing is left over, torn at {at}");
+        }
+    }
+
+    /// A second frame in the same buffer is found from its own first byte.
+    ///
+    /// `task-1984` P2. Where the search resumes is reset when a frame is taken, because what is left
+    /// has never been looked at. Getting that wrong would leave every message after the first unread
+    /// until another byte arrived.
+    #[test]
+    fn three_frames_in_one_read_are_three_messages() {
+        let mut bytes = Vec::new();
+        for seq in 1..=3 {
+            bytes.extend_from_slice(&encode(&serde_json::json!({ "seq": seq })));
+        }
+        let mut decoder = Decoder::new();
+        let answered = decoder.feed(&bytes).expect("three frames");
+        assert_eq!(answered.len(), 3);
+        assert_eq!(answered[2]["seq"], 3);
+        assert_eq!(decoder.pending(), 0);
     }
 }

@@ -98,6 +98,14 @@ pub struct Field {
 #[derive(Debug, Default)]
 pub struct Frames {
     held: Vec<u8>,
+    /// How much of `held` has already been read off the front.
+    ///
+    /// **`task-1984` P10.** Every message used to end with `held.drain(..whole)`, which moves
+    /// everything behind it down -- so one read carrying a thousand `DataRow` messages moved the
+    /// remainder a thousand times, which is quadratic in the read. A cursor moves nothing, and what
+    /// has been read is thrown away in one go once it is worth doing, which is what [`Self::tidy`]
+    /// decides.
+    read: usize,
 }
 
 impl Frames {
@@ -107,12 +115,28 @@ impl Frames {
 
     /// Add what just arrived.
     pub fn feed(&mut self, bytes: &[u8]) {
+        self.tidy();
         self.held.extend_from_slice(bytes);
     }
 
     /// How much is waiting to be framed, which is what the size guard is measured against.
     pub fn held(&self) -> usize {
-        self.held.len()
+        self.held.len() - self.read
+    }
+
+    /// Drop what has been read, when there is enough of it to be worth moving the rest.
+    ///
+    /// `task-1984` P10. Called from [`Self::feed`] rather than from [`Self::next_message`], because
+    /// a read is where more room is wanted and a message is where moving would be the cost being
+    /// avoided. Half, so the work of moving the remainder is paid at most once per doubling.
+    fn tidy(&mut self) {
+        if self.read == 0 {
+            return;
+        }
+        if self.read * 2 >= self.held.len() {
+            self.held.drain(..self.read);
+            self.read = 0;
+        }
     }
 
     /// The next whole message, or `None` while one is still arriving.
@@ -121,12 +145,12 @@ impl Frames {
     /// [`LARGEST_FRAME`] — which is a different thing from an `ErrorResponse`, and the two must not be
     /// confused: one is the server saying no, the other is the connection being unusable.
     pub fn next_message(&mut self) -> Result<Option<Message>, Failure> {
-        if self.held.len() < 5 {
+        let held = &self.held[self.read..];
+        if held.len() < 5 {
             return Ok(None);
         }
-        let tag = self.held[0];
-        let length =
-            u32::from_be_bytes([self.held[1], self.held[2], self.held[3], self.held[4]]) as usize;
+        let tag = held[0];
+        let length = u32::from_be_bytes([held[1], held[2], held[3], held[4]]) as usize;
         if length < 4 {
             return Err(Failure::said(format!(
                 "the server sent a frame whose length is {length}, and a frame is at least four bytes."
@@ -139,11 +163,11 @@ impl Frames {
         }
         // The length counts itself but not the tag.
         let whole = 1 + length;
-        if self.held.len() < whole {
+        if held.len() < whole {
             return Ok(None);
         }
-        let body = self.held[5..whole].to_vec();
-        self.held.drain(..whole);
+        let body = held[5..whole].to_vec();
+        self.read += whole;
         Ok(Some(read(tag, &body)?))
     }
 }
@@ -561,5 +585,66 @@ mod tests {
             u32::from_be_bytes([startup[0], startup[1], startup[2], startup[3]]) as usize,
             startup.len()
         );
+    }
+}
+
+#[cfg(test)]
+mod cursored {
+    use super::*;
+
+    /// One byte of a frame at a time, which is what a torn read is.
+    fn framed(bytes: &[u8]) -> Vec<Message> {
+        let mut frames = Frames::new();
+        let mut out = Vec::new();
+        for byte in bytes {
+            frames.feed(&[*byte]);
+            while let Some(message) = frames.next_message().expect("a readable stream") {
+                out.push(message);
+            }
+        }
+        out
+    }
+
+    /// Many messages in one read are read without the remainder being moved for each of them.
+    ///
+    /// **`task-1984` P10.** Every message ended with `held.drain(..whole)`, which moves everything
+    /// behind it down -- so one read carrying a thousand `DataRow` messages moved the remainder a
+    /// thousand times, and a large result set paid for itself twice over. A cursor moves nothing, and
+    /// what has been read is dropped in one go when there is enough of it to be worth the move.
+    ///
+    /// What the cursor could get wrong is the bookkeeping, so that is what is asserted: the same
+    /// bytes read in one go and read one byte at a time give the same messages, and nothing is left
+    /// behind either way.
+    #[test]
+    fn a_read_holding_many_messages_gives_the_same_answer_as_reading_them_one_byte_at_a_time() {
+        let mut bytes = Vec::new();
+        for _ in 0..500 {
+            // `ReadyForQuery`, which is a tag, a length and one byte of body.
+            bytes.extend_from_slice(&[b'Z', 0, 0, 0, 5, b'I']);
+        }
+        let mut frames = Frames::new();
+        frames.feed(&bytes);
+        let mut all_at_once = Vec::new();
+        while let Some(message) = frames.next_message().expect("a readable stream") {
+            all_at_once.push(message);
+        }
+        assert_eq!(all_at_once.len(), 500);
+        assert_eq!(frames.held(), 0, "nothing is left waiting");
+        assert_eq!(framed(&bytes).len(), 500, "and one byte at a time gives the same count");
+    }
+
+    /// What is waiting to be framed is what has not been read, not what the buffer happens to hold.
+    ///
+    /// `task-1984` P10 and §3.6: `Frames::held`'s own comment said it was the size guard and it had no
+    /// caller at all. It is the cursor's answer now, so a guard written against it would be asking
+    /// about the right number.
+    #[test]
+    fn what_is_held_is_what_has_not_been_read_yet() {
+        let mut frames = Frames::new();
+        frames.feed(&[b'Z', 0, 0, 0, 5, b'I', b'Z', 0, 0, 0, 5]);
+        assert_eq!(frames.held(), 11, "eleven bytes in, nothing read");
+        frames.next_message().expect("readable").expect("the first is whole");
+        assert_eq!(frames.held(), 5, "six taken, five of a second frame waiting");
+        assert!(frames.next_message().expect("readable").is_none(), "the second is not whole");
     }
 }
