@@ -1224,7 +1224,7 @@ unluminous-cli editor navigate-forward
 
 ## update — whether a newer Unluminous has been released
 
-One request to the GitHub releases page, made only when this is run or when a person asks in the window. Unluminous sends nothing at startup unless the `update.check` setting says to, and this reports the version rather than installing anything.
+One request to unluminous.com, which is where the installer is, and to the public GitHub releases only if the site does not answer. Made only when this is run or when a person asks in the window: Unluminous sends nothing at startup unless the `update.check` setting says to, and this reports the version rather than installing anything.
 
 ### update check
 
@@ -1232,7 +1232,7 @@ One request to the GitHub releases page, made only when this is run or when a pe
 unluminous-cli update check [--timeout <milliseconds>]
 ```
 
-Whether a newer Unluminous has been released, and what this one is. One request to the GitHub releases page, made only when this is run or when a person asks in the window - Unluminous sends nothing at startup unless the update.check setting says to. It reports the version and never installs anything.
+Whether a newer Unluminous has been released, and what this one is. One request to unluminous.com, falling back to the public GitHub releases when the site does not answer, made only when this is run or when a person asks in the window - Unluminous sends nothing at startup unless the update.check setting says to. It reports the version and never installs anything.
 
 - `--timeout <milliseconds>` — How long to wait for the answer. 15000 by default.
 
@@ -2087,7 +2087,7 @@ Press a key and let it go, in whatever has the keyboard. The name is the one egu
 - `--shift` — Hold shift.
 - `--alt` — Hold alt.
 - `--cmd` — Hold command on macOS, control on Windows - the key a menu shortcut names.
-- `--times <count>` — Press it more than once.
+- `--times <count>` — Press it more than once, up to 200.
 
 ```sh
 unluminous-cli input key Escape
@@ -3212,7 +3212,6 @@ unluminous-cli settings set appearance.font.size 20
 unluminous-cli settings set appearance.background.opacity 0.5
 unluminous-cli settings set editor.line_numbers false
 unluminous-cli settings set terminal.shell cmd.exe
-unluminous-cli settings set terminal.shell_integration true
 unluminous-cli settings set appearance.font.family "Courier New"
 ```
 

@@ -23,11 +23,41 @@
 //!
 //! ## What it asks, and what it does not
 //!
-//! One `GET` to `https://api.github.com/repos/jasonmcaffee/unluminous/releases/latest`, unauthenticated,
-//! with no query, no header identifying this machine beyond the `user-agent` GitHub requires, and no
-//! body. It sends **nothing about the person or the project**: not which files are open, not which
-//! version is installed — the comparison is made here, on what came back, so the server is never told
-//! what to compare against.
+//! One `GET`, unauthenticated, with no query, no header identifying this machine beyond the
+//! `user-agent` GitHub requires, and no body. It sends **nothing about the person or the project**:
+//! not which files are open, not which version is installed — the comparison is made here, on what
+//! came back, so the server is never told what to compare against.
+//!
+//! ## Where it asks, and why that took a ticket
+//!
+//! `task-1993`: every address in this file named `jasonmcaffee/unluminous`, which is **private**.
+//! Measured with no credential, both the API endpoint and the releases page answered **404**, so for
+//! everybody who installed Unluminous from unluminous.com — which is everybody but Jason — the check
+//! could not once have succeeded, and `update.check = start` invited a person to switch on a request
+//! that was going to fail on every launch. The comment above about this being *"the largest single
+//! gap between 'we shipped a fix' and 'someone has the fix'"* was true and the code left the gap
+//! total.
+//!
+//! Jason's answer on that ticket was **unluminous.com first, GitHub as the fallback**, and
+//! unluminous.com is where the bytes actually are: the site hosts the installer itself and its
+//! Install section already prints the version, the size and the SHA-256. So it publishes a manifest
+//! at `/releases/latest.json`, written from the same values the page prints by the site's own
+//! `scripts/write-release-manifest.mjs`, and that is the first thing asked.
+//!
+//! The fallback is `Black-Rainbow-Labs/Unluminous`, which is the **public** repository the source
+//! was opened under on `task-1989`, and never the private one again. `tools/release.ps1` creates the
+//! release on both, so the fallback is a real answer rather than a URL that happens to resolve.
+//!
+//! **The two shapes are read by one reader.** The manifest calls its fields `version`, `url` and
+//! `notes`; GitHub calls the same three `tag_name`, `html_url` and `body`. [`read`] takes either
+//! spelling, which is six lines and leaves nothing to drift — where two readers would be two places
+//! to get a release wrong, and only one of them would be exercised on any given day.
+//!
+//! **A source that fails moves to the next; a source that answers is the answer.** Only
+//! [`Answer::Failed`] falls through: *"this is the newest there is"* is an answer, and asking the
+//! fallback after it would be asking a second opinion about a question already settled. When every
+//! source fails, the refusal names each host and what it said, because *which* of them was down is
+//! the whole of what somebody can act on.
 //!
 //! ## The transport is the chat pane's
 //!
@@ -40,12 +70,16 @@
 
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-/// Where the releases are.
-const RELEASES: &str = "https://api.github.com/repos/jasonmcaffee/unluminous/releases/latest";
-/// Where a person goes to get one.
-pub const RELEASES_PAGE: &str = "https://github.com/jasonmcaffee/unluminous/releases";
+/// The manifest unluminous.com publishes, which is where the installer a person downloads is.
+const SITE: &str = "https://unluminous.com/releases/latest.json";
+/// The public repository, asked when the site does not answer. Never the private one: it is 404.
+const GITHUB: &str = "https://api.github.com/repos/Black-Rainbow-Labs/Unluminous/releases/latest";
+/// Where a check asks, in order. The first that answers with a version is the answer.
+pub const SOURCES: [&str; 2] = [SITE, GITHUB];
+/// Where a person goes to get one. The Install section of the site, which holds the installer.
+pub const RELEASES_PAGE: &str = "https://unluminous.com/#install";
 /// GitHub refuses a request with no `user-agent` outright, so it names the program and nothing else.
 const AGENT: &str = "Unluminous";
 /// How long the whole thing is given. It is a background question and a slow answer is no answer.
@@ -88,7 +122,17 @@ impl Answer {
                 crate::build_info::VERSION,
                 RELEASES_PAGE
             ),
-            Answer::Current(version) => format!("Unluminous {version} is the newest there is."),
+            // A source can be behind the window asking it: the site is published a step after the
+            // release, so for the minutes in between somebody can be running something later than
+            // anything published. "0.52.0 is the newest there is" to a person on 0.53.0 is a wrong
+            // sentence with a true-sounding shape, so that case says what is actually the case.
+            Answer::Current(version) => match version == crate::build_info::VERSION {
+                true => format!("Unluminous {version} is the newest there is."),
+                false => format!(
+                    "This is Unluminous {}, which is later than the newest published, {version}.",
+                    crate::build_info::VERSION
+                ),
+            },
             Answer::Failed(problem) => format!("Could not check for a newer Unluminous: {problem}"),
         }
     }
@@ -118,11 +162,11 @@ impl Check {
     /// documentation gave was not the number the code used.
     pub fn start_for(timeout: Duration, wake: Arc<dyn Fn() + Send + Sync>) -> Self {
         let (sender, answers) = std::sync::mpsc::channel();
-        let url = releases_endpoint();
+        let urls = releases_endpoints();
         std::thread::Builder::new()
             .name("unluminous-update-check".to_owned())
             .spawn(move || {
-                let answer = ask_within(&url, timeout);
+                let answer = ask_each(&urls, timeout);
                 // The window may have gone; a send to a closed channel is the ordinary end of this
                 // thread rather than something to report.
                 let _ = sender.send(answer);
@@ -162,20 +206,79 @@ impl Check {
     }
 }
 
-/// Where a check asks, which is GitHub unless something in the environment says otherwise.
+/// Where a check asks, which is [`SOURCES`] unless something in the environment says otherwise.
 ///
 /// `UNLUMINOUS_RELEASES` is a test seam of the shape `UNLUMINOUS_HOME`, `UNLUMINOUS_INSTANCES` and
-/// `UNLUMINOUS_CLI_BIN` already are: a scripted server on loopback stands in for GitHub, so
+/// `UNLUMINOUS_CLI_BIN` already are: a scripted server on loopback stands in for the real ones, so
 /// `update check` can be driven to a real success in the suite rather than sitting on
 /// `CANNOT_BE_MADE_TO_SUCCEED` for ever (`task-1984` L1). Nothing in a released Unluminous sets it,
-/// so the address a person's window asks is unchanged.
-fn releases_endpoint() -> String {
-    std::env::var("UNLUMINOUS_RELEASES").unwrap_or_else(|_| RELEASES.to_owned())
+/// so the addresses a person's window asks are unchanged.
+///
+/// It is a **comma-separated list** rather than one address (`task-1993`), so a test can drive the
+/// ordering the real thing has — a first source that fails and a second that answers — rather than
+/// only the single-source case. One address is still one address, which is what every test written
+/// before that ticket passes.
+fn releases_endpoints() -> Vec<String> {
+    match std::env::var("UNLUMINOUS_RELEASES") {
+        Ok(named) => sources_from(&named),
+        Err(_) => SOURCES.iter().map(|&url| url.to_owned()).collect(),
+    }
 }
 
-/// Ask the real releases endpoint. Runs on the worker thread.
+/// The addresses a comma-separated list names, with the blanks and the spacing taken out.
+fn sources_from(named: &str) -> Vec<String> {
+    named
+        .split(',')
+        .map(str::trim)
+        .filter(|address| !address.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The host an address names, which is what a refusal calls the source that would not answer.
+///
+/// Derived rather than written beside each address, so the test seam's loopback ports name
+/// themselves too and there is no second list to keep in step with [`SOURCES`].
+fn host_of(url: &str) -> &str {
+    let after_scheme = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
+    after_scheme.split(['/', '?']).next().unwrap_or(after_scheme)
+}
+
+/// Ask the real releases endpoints, in order. Runs on the worker thread.
 pub fn ask() -> Answer {
-    ask_at(&releases_endpoint())
+    ask_each(&releases_endpoints(), TIMEOUT)
+}
+
+/// Ask each address in turn, and answer with the first that answers.
+///
+/// **Only a failure falls through.** `Current` and `Newer` are answers, and asking the next source
+/// after one of them would be asking a second opinion about a settled question — and would get a
+/// different one whenever the site had been deployed and the GitHub release had not, or the other
+/// way round.
+///
+/// **The budget is shared out rather than handed to each in turn**, so the whole check still fits
+/// inside the wait the caller chose: with two sources and fifteen seconds the first gets seven and a
+/// half, and whatever it leaves is the second's. A first source that hangs for the whole timeout
+/// would otherwise mean the fallback was never asked at all, which is the one case it exists for.
+pub fn ask_each(urls: &[String], timeout: Duration) -> Answer {
+    let deadline = Instant::now() + timeout;
+    let mut refusals: Vec<String> = Vec::new();
+    for (index, url) in urls.iter().enumerate() {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let share = left / (urls.len() - index) as u32;
+        if share.is_zero() {
+            refusals.push(format!("{}: the wait ran out before it could be asked", host_of(url)));
+            continue;
+        }
+        match ask_within(url, share) {
+            Answer::Failed(problem) => refusals.push(format!("{}: {problem}", host_of(url))),
+            answered => return answered,
+        }
+    }
+    match refusals.is_empty() {
+        true => Answer::Failed("there is nowhere to ask".to_owned()),
+        false => Answer::Failed(refusals.join("; ")),
+    }
 }
 
 /// The same against any address, so a test can point it at a server on loopback.
@@ -199,7 +302,10 @@ pub fn ask_within(url: &str, timeout: Duration) -> Answer {
     let sent = agent
         .get(url)
         .header("user-agent", AGENT)
-        .header("accept", "application/vnd.github+json")
+        // Both sources answer JSON and both accept this: GitHub prefers `application/vnd.github+json`
+        // and was measured answering 200 to this one, and unluminous.com serves a static file to
+        // whatever asks. One header for both rather than a rule about which host is being asked.
+        .header("accept", "application/json")
         .call();
     let mut reply = match sent {
         Ok(reply) => reply,
@@ -209,11 +315,13 @@ pub fn ask_within(url: &str, timeout: Duration) -> Answer {
     let body = reply.body_mut().read_to_string().unwrap_or_default();
     if status != 200 {
         // GitHub's own words, cut short: its `message` is a sentence and the rest of the object is
-        // documentation links nobody reads out of a status bar.
+        // documentation links nobody reads out of a status bar. A site answering with its 404 page
+        // has no message in it, so what is left to say is the number. `ask_each` puts the host in
+        // front of whichever of the two this is.
         let said = serde_json::from_str::<serde_json::Value>(&body)
             .ok()
             .and_then(|value| value.get("message")?.as_str().map(str::to_owned))
-            .unwrap_or_else(|| format!("the releases page answered {status}"));
+            .unwrap_or_else(|| format!("answered {status}"));
         return Answer::Failed(said);
     }
     match read(&body) {
@@ -221,29 +329,34 @@ pub fn ask_within(url: &str, timeout: Duration) -> Answer {
             true => Answer::Newer(release),
             false => Answer::Current(release.version),
         },
-        None => Answer::Failed(
-            "the releases page answered something this version cannot read".to_owned(),
-        ),
+        None => Answer::Failed("answered something this version cannot read".to_owned()),
     }
 }
 
-/// One release out of what GitHub sent.
+/// One release out of what a source sent, in either of the two shapes there are.
+///
+/// unluminous.com's manifest says `version`, `url` and `notes`; GitHub's `releases/latest` says
+/// `tag_name`, `html_url` and `body` for the same three things. Reading both here is what makes the
+/// fallback free: `ask_each` does not know or care which source answered it, and there is no second
+/// reader to be wrong in a way only one day's outage would ever show.
 ///
 /// Pure, so every shape it has to survive is a test with no socket behind it.
 pub fn read(body: &str) -> Option<Release> {
     let value: serde_json::Value = serde_json::from_str(body).ok()?;
-    let tag = value.get("tag_name")?.as_str()?.trim();
-    let version = tag.trim_start_matches('v').trim().to_owned();
+    let said = |keys: [&str; 2]| -> Option<&str> {
+        keys.into_iter().find_map(|key| value.get(key)?.as_str())
+    };
+    // The `v` comes off whichever name the version arrived under: the manifest writes it without one
+    // and a git tag carries one, and a person comparing them should not have to know that.
+    let version = said(["version", "tag_name"])?.trim().trim_start_matches('v').trim().to_owned();
     if version.is_empty() {
         return None;
     }
-    let url =
-        value.get("html_url").and_then(|url| url.as_str()).unwrap_or(RELEASES_PAGE).to_owned();
-    // The first line of the notes, which is what `release.ps1` writes as the summary. The rest is the
-    // download instructions, which somebody reading a status bar does not need.
-    let notes = value
-        .get("body")
-        .and_then(|body| body.as_str())
+    let url = said(["url", "html_url"]).unwrap_or(RELEASES_PAGE).to_owned();
+    // The first line of the notes, which is what `release.ps1` writes as the summary and what the
+    // manifest carries whole. The rest of a GitHub body is the download instructions, which somebody
+    // reading a status bar does not need.
+    let notes = said(["notes", "body"])
         .unwrap_or_default()
         .lines()
         .map(str::trim)
@@ -309,16 +422,158 @@ mod tests {
     fn a_release_is_read_out_of_what_github_sends() {
         let body = r#"{
             "tag_name": "v0.35.0",
-            "html_url": "https://github.com/jasonmcaffee/unluminous/releases/tag/v0.35.0",
+            "html_url": "https://github.com/Black-Rainbow-Labs/Unluminous/releases/tag/v0.35.0",
             "body": "\n\nFind and Replace, and the keystroke at 2 MB\n\nWindows: download the setup below."
         }"#;
         let release = read(body).expect("it reads");
         assert_eq!(release.version, "0.35.0", "the v comes off");
-        assert_eq!(release.url, "https://github.com/jasonmcaffee/unluminous/releases/tag/v0.35.0");
+        assert_eq!(
+            release.url,
+            "https://github.com/Black-Rainbow-Labs/Unluminous/releases/tag/v0.35.0"
+        );
         assert_eq!(
             release.notes, "Find and Replace, and the keystroke at 2 MB",
             "the first line that says something, not the download instructions"
         );
+    }
+
+    /// The other shape: what unluminous.com's own manifest calls the same three things.
+    ///
+    /// `task-1993`. The site is asked first and GitHub only when it does not answer, so if these two
+    /// needed two readers the one that mattered on any given day would be whichever had not been
+    /// exercised.
+    #[test]
+    fn a_release_is_read_out_of_what_the_site_sends() {
+        let body = r#"{
+            "product": "Unluminous",
+            "version": "0.52.0",
+            "url": "https://unluminous.com/#install",
+            "notes": "The backdrop records how it was made",
+            "installer": "https://unluminous.com/downloads/UnluminousSetup-0.52.0-x64.exe",
+            "installerBytes": 12846768,
+            "installerSha256": "68150e72ed969ad3"
+        }"#;
+        let release = read(body).expect("it reads");
+        assert_eq!(release.version, "0.52.0");
+        assert_eq!(release.url, "https://unluminous.com/#install");
+        assert_eq!(release.notes, "The backdrop records how it was made");
+    }
+
+    /// A manifest whose version carries a `v` reads the same as one that does not.
+    #[test]
+    fn the_v_comes_off_whichever_name_the_version_arrived_under() {
+        assert_eq!(read(r#"{"version": "v1.2.3"}"#).expect("it reads").version, "1.2.3");
+        assert_eq!(read(r#"{"tag_name": "1.2.3"}"#).expect("it reads").version, "1.2.3");
+    }
+
+    /// A source behind the window asking it does not get to call its version the newest there is.
+    ///
+    /// The site is published a step after the release, so for the minutes in between somebody is
+    /// running something later than anything published — and a window that then said "0.52.0 is the
+    /// newest there is" to a person on 0.53.0 would be stating a falsehood in the shape of an answer.
+    #[test]
+    fn a_source_behind_this_window_is_not_called_the_newest_there_is() {
+        let behind = Answer::Current("0.1.0".to_owned()).sentence();
+        assert!(behind.contains(crate::build_info::VERSION), "{behind}");
+        assert!(!behind.contains("0.1.0 is the newest there is"), "{behind}");
+        let level = Answer::Current(crate::build_info::VERSION.to_owned()).sentence();
+        assert!(level.ends_with("is the newest there is."), "{level}");
+    }
+
+    #[test]
+    fn a_host_is_read_out_of_an_address() {
+        assert_eq!(host_of(SITE), "unluminous.com");
+        assert_eq!(host_of(GITHUB), "api.github.com");
+        assert_eq!(host_of("http://127.0.0.1:52341/releases/latest"), "127.0.0.1:52341");
+    }
+
+    /// The whole reason there are two: the first one is down and the answer still arrives.
+    #[test]
+    fn a_source_that_fails_falls_through_to_the_next_one() {
+        let newer = r#"{"version": "999.0.0", "notes": "from the second source"}"#;
+        let sources = vec!["http://127.0.0.1:1/releases".to_owned(), scripted(200, newer)];
+        match ask_each(&sources, TIMEOUT) {
+            Answer::Newer(release) => {
+                assert_eq!(release.version, "999.0.0");
+                assert_eq!(release.notes, "from the second source");
+            }
+            other => panic!("expected the second source to answer, got {other:?}"),
+        }
+    }
+
+    /// And the reason only a *failure* falls through: "this is the newest" is an answer.
+    ///
+    /// A fallback asked after it would be asking a second opinion about a settled question, and
+    /// would give a different one for as long as the site was deployed and the GitHub release was
+    /// not.
+    #[test]
+    fn a_source_that_says_this_is_the_newest_is_not_asked_again_elsewhere() {
+        let current = format!(r#"{{"version": "{}"}}"#, crate::build_info::VERSION);
+        let later = r#"{"version": "999.0.0"}"#;
+        let sources = vec![scripted(200, &current), scripted(200, later)];
+        match ask_each(&sources, TIMEOUT) {
+            Answer::Current(version) => assert_eq!(version, crate::build_info::VERSION),
+            other => panic!("the first answer should have stood, got {other:?}"),
+        }
+    }
+
+    /// Every source failing names each host and what it said, because which one was down is the
+    /// whole of what somebody can act on.
+    #[test]
+    fn every_source_failing_names_each_one() {
+        let sources = vec![
+            "http://127.0.0.1:1/releases".to_owned(),
+            scripted(403, r#"{"message":"rate limited"}"#),
+        ];
+        match ask_each(&sources, TIMEOUT) {
+            Answer::Failed(said) => {
+                assert!(said.contains("127.0.0.1:1"), "{said}");
+                assert!(said.contains("rate limited"), "{said}");
+                assert!(said.contains(';'), "both are reported, not just the last: {said}");
+            }
+            other => panic!("expected a failure, got {other:?}"),
+        }
+    }
+
+    /// The addresses a released Unluminous asks, and the order it asks them in.
+    ///
+    /// Pinned because the fault this file was rewritten for was an address: both constants named a
+    /// private repository, which answers 404 to everybody who is not its owner, so the check could
+    /// not once have succeeded for a person who installed Unluminous from the site.
+    #[test]
+    fn the_addresses_asked_are_public_ones_and_the_site_is_asked_first() {
+        assert_eq!(SOURCES[0], SITE);
+        assert_eq!(SOURCES[1], GITHUB);
+        for address in [SITE, GITHUB, RELEASES_PAGE] {
+            assert!(
+                !address.contains("jasonmcaffee"),
+                "{address} names the private repository, which is 404 anonymously"
+            );
+        }
+        assert!(RELEASES_PAGE.starts_with("https://unluminous.com/"));
+    }
+
+    /// A list in `UNLUMINOUS_RELEASES` is the ordering a test drives; one address is still one.
+    ///
+    /// The variable itself is not set here: it is process-wide and these tests run in parallel, so
+    /// what is asserted is the reading rather than the environment.
+    #[test]
+    fn the_environment_may_name_one_source_or_several() {
+        assert_eq!(sources_from("http://a/x"), vec!["http://a/x".to_owned()]);
+        assert_eq!(
+            sources_from(" http://a/x , http://b/y "),
+            vec!["http://a/x".to_owned(), "http://b/y".to_owned()]
+        );
+        assert_eq!(sources_from(" , "), Vec::<String>::new(), "nothing named is nowhere to ask");
+    }
+
+    /// With nothing named, a check asks [`SOURCES`] — which is what a released Unluminous does.
+    #[test]
+    fn nothing_in_the_environment_means_the_real_sources() {
+        if std::env::var("UNLUMINOUS_RELEASES").is_ok() {
+            return;
+        }
+        assert_eq!(releases_endpoints(), SOURCES.to_vec());
     }
 
     #[test]

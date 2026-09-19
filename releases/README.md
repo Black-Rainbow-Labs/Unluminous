@@ -1,8 +1,9 @@
 # Releases
 
-**The downloads live on the GitHub releases page**, one release per version:
-<https://github.com/jasonmcaffee/unluminous/releases>. This folder is where the file is staged on its way
-there.
+**The download a person gets is on <https://unluminous.com/#install>**, which hosts the installer itself.
+The same file is attached to a release on both repositories: <https://github.com/Black-Rainbow-Labs/Unluminous/releases>,
+which is public and is what `update check` falls back to, and the private one where releases are cut.
+This folder is where the file is staged on its way to all three, and `unluminous-site` copies it from here.
 
 ```
 releases/

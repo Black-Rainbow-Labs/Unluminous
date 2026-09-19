@@ -912,7 +912,7 @@ const SETTINGS_HELP: &[&str] = &[
     "Whether the completion popup arrives as you type. Ctrl+Space works either way.",
     "What line breaks a file is written back with. `keep` writes it the way it was read, which is what leaves a one character edit as a one line diff. A new file gets the platform's own either way.",
     "Patterns Go to File, Find in Files, completion, Go to Definition and Find References leave out, beside the project's own .gitignore, which is read already. The explorer goes on showing everything.",
-    "Whether Unluminous asks the releases page for a newer version when it opens. Off, and it asks nothing until somebody presses Check for Updates or runs `update check`. It never installs anything either way.",
+    "Whether Unluminous asks unluminous.com for a newer version when it opens, falling back to the public GitHub releases when the site does not answer. Off, and it asks nothing until somebody presses Check for Updates or runs `update check`. It never installs anything either way.",
     "Whether resting the pointer on a name while the program is stopped shows its value. Show Value on the Debug menu works either way.",
     "Whether a plugin that asked for it draws depth: the soft shadows, gradients and pressed edges behind its own pane. Off, it draws flat.",
     "Whether this Unluminous serves MCP over HTTP. An agent that launches the server itself needs neither this nor a port.",

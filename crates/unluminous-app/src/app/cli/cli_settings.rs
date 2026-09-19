@@ -1059,7 +1059,7 @@ const SETTINGS: &[SettingKey] = &[
     },
     SettingKey {
         name: "update.check",
-        help: "Whether Unluminous asks the releases page for a newer version when it opens. Off, and it asks nothing until somebody presses Check for Updates or runs `update check`. It never installs anything either way.",
+        help: "Whether Unluminous asks unluminous.com for a newer version when it opens, falling back to the public GitHub releases when the site does not answer. Off, and it asks nothing until somebody presses Check for Updates or runs `update check`. It never installs anything either way.",
     },
     SettingKey {
         name: "editor.exclude",

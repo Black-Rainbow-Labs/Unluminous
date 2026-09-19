@@ -26,7 +26,10 @@
 #   4. Copies the image into releases/.
 #   5. Commits Cargo.toml and Cargo.lock on their own as `Unluminous <version>`, tags `v<version>`, and
 #      pushes the branch and the tag.
-#   6. Creates the GitHub release with the image attached.
+#   6. Creates the GitHub release with the image attached, on BOTH repositories: the private one where
+#      releases are cut, and the public Black-Rainbow-Labs one, whose history it publishes first with
+#      tools/publish-open-source.mjs. It does NOT publish unluminous.com, which is built on the
+#      Windows machine; it says what to run there.
 #
 # The task's own code is expected to be committed already: the version bump is a commit of its own so
 # that the history stays greppable by ticket.
@@ -56,6 +59,9 @@ repo="$(cd "$here/.." && pwd)"
 manifest="$repo/Cargo.toml"
 releases="$repo/releases"
 slug="jasonmcaffee/unluminous"
+# The public repository the source was opened under on task-1989, and what `update check` falls back
+# to when unluminous.com does not answer. It gets the same release as the private one.
+public_slug="Black-Rainbow-Labs/Unluminous"
 
 part=patch
 version=""
@@ -78,7 +84,7 @@ while [ "$#" -gt 0 ]; do
         --skip-notarize) skip_notarize=1 ;;
         --skip-tests) skip_tests=1 ;;
         --dry-run|--whatif) dry_run=1 ;;
-        -h|--help) sed -n '3,49p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '3,53p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
     shift
@@ -141,7 +147,8 @@ if [ "$dry_run" = 1 ]; then
     echo "  2. installer/macos/build.sh$([ "$skip_install" = 1 ] || echo ' --install')$([ "$skip_notarize" = 1 ] || echo ' --notarize')"
     echo "  3. $image"
     echo "  4. commit \"Unluminous $next\", tag v$next, push $branch"
-    [ "$skip_publish" = 1 ] || echo "  5. a GitHub release v$next with the image attached"
+    [ "$skip_publish" = 1 ] || echo "  5. a GitHub release v$next with the image attached, on $slug"
+    [ "$skip_publish" = 1 ] || echo "  6. node tools/publish-open-source.mjs --push, then the same release on $public_slug"
     exit 0
 fi
 
@@ -262,6 +269,15 @@ if [ "$skip_publish" != 1 ]; then
         exit 1
     fi
     echo "GitHub: authenticated as $who, and $slug is visible to it"
+
+    # The public repository is checked here for the same reason the token is: one that cannot write a
+    # release there would otherwise be found out after the tag had been pushed. Public, so a read of
+    # it says nothing about write access -- the permissions the token itself is granted do.
+    can_push="$(curl -sS -H "Authorization: Bearer $token" -H 'Accept: application/vnd.github+json' \
+        "https://api.github.com/repos/$public_slug" \
+        | sed -nE 's/.*"push"[[:space:]]*:[[:space:]]*(true|false).*/\1/p' | head -1)"
+    [ "$can_push" = "true" ] || die "The GitHub credential cannot write to $public_slug, so its release would fail after the tag was pushed."
+    echo "GitHub: $public_slug is writable by it"
 fi
 
 step "Setting the version to $next"
@@ -326,21 +342,45 @@ python3 - "$next" "$body" > "$payload" <<'PY'
 import json, sys
 print(json.dumps({"tag_name": "v" + sys.argv[1], "name": "Unluminous " + sys.argv[1], "body": sys.argv[2]}))
 PY
-created="$(curl -sS -X POST \
-    -H "Authorization: Bearer $token" -H 'Accept: application/vnd.github+json' \
-    -d "@$payload" "https://api.github.com/repos/$slug/releases")"
-upload="$(echo "$created" | sed -nE 's/.*"upload_url"[[:space:]]*:[[:space:]]*"([^"{]+).*/\1/p' | head -1)"
-if [ -z "$upload" ]; then
-    echo "$created" | head -20
-    die "The tag v$next was pushed but the release was not created. The answer from GitHub is above."
-fi
 
-curl -sS -X POST \
-    -H "Authorization: Bearer $token" -H 'Accept: application/vnd.github+json' \
-    -H 'Content-Type: application/octet-stream' \
-    --data-binary "@$image" "$upload?name=unluminous-$next.dmg" > /dev/null
+# One release on one repository, with the image attached, printing the page it made. Two repositories
+# get the same release, so this is a function rather than the second copy of four curl lines.
+publish_release() {
+    local where="$1" created upload page
+    created="$(curl -sS -X POST \
+        -H "Authorization: Bearer $token" -H 'Accept: application/vnd.github+json' \
+        -d "@$payload" "https://api.github.com/repos/$where/releases")"
+    upload="$(echo "$created" | sed -nE 's/.*"upload_url"[[:space:]]*:[[:space:]]*"([^"{]+).*/\1/p' | head -1)"
+    if [ -z "$upload" ]; then
+        echo "$created" | head -20
+        die "The tag v$next was pushed but the release on $where was not created. The answer from GitHub is above."
+    fi
+    curl -sS -X POST \
+        -H "Authorization: Bearer $token" -H 'Accept: application/vnd.github+json' \
+        -H 'Content-Type: application/octet-stream' \
+        --data-binary "@$image" "$upload?name=unluminous-$next.dmg" > /dev/null
+    echo "$created" | sed -nE 's/.*"html_url"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -1
+}
 
-page="$(echo "$created" | sed -nE 's/.*"html_url"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -1)"
+page="$(publish_release "$slug")"
+
+# **The public repository is the one anybody else can see, so it gets the same release** (`task-1993`).
+# `update check` asks unluminous.com and falls back here, and it must never fall back to the private
+# repository again: that one answers 404 to everybody who is not its owner, which is what made the
+# check impossible to succeed at for every person who installed Unluminous from the site.
+step "Publishing the source and the release on $public_slug"
+node "$repo/tools/publish-open-source.mjs" --push \
+    || die "The release v$next exists on $slug but the public source was not pushed. Run: node tools/publish-open-source.mjs --push"
+public_page="$(publish_release "$public_slug")"
+
 echo
 echo "Unluminous $next is released: $page"
+echo "Public source and release:   $public_page"
 [ "$skip_install" = 1 ] || echo "Installed at /Applications/Unluminous.app"
+echo
+# **The site is not published from here, and saying so is the point.** `unluminous-site` hosts the
+# Windows installer and the manifest `update check` reads, and both are built on the Windows machine;
+# `tools/release.ps1` runs `scripts/publish.ps1` there. Until that has happened the site, and so every
+# window's update check, answers with the version before this one.
+echo "unluminous.com is NOT published by this script. On the Windows machine, run:"
+echo "  pwsh C:/jason/dev/unluminous-site/scripts/publish.ps1 -Version $next"

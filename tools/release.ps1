@@ -22,7 +22,17 @@
     4. Copies the installer into releases\.
     5. Commits Cargo.toml and Cargo.lock on their own as `Unluminous <version>`, tags `v<version>`, and
        pushes the branch and the tag.
-    6. Creates the GitHub release with the installer attached.
+    6. Creates the GitHub release with the installer attached, on BOTH repositories: the private one
+       where releases are cut, and the public Black-Rainbow-Labs one, whose history it publishes
+       first with tools/publish-open-source.mjs.
+    7. Publishes unluminous.com: the new installer, the page that prints its size and hash, and the
+       manifest at /releases/latest.json that the update check asks before it asks anything else.
+
+  Steps 6 and 7 are both there because of `task-1993`, which found that every address the update
+  check knew named the private repository and therefore answered 404 to everybody but Jason. The
+  check asks unluminous.com now and falls back to the public repository, so a release that reached
+  neither of them is a release nobody is told about -- and a site left behind by a release is worse
+  than one that never answered, because it answers with the version before this one.
 
   The task's own code is expected to be committed already: the version bump is a commit of its own so
   that the history stays greppable by ticket.
@@ -43,7 +53,12 @@
   machine that is not the one Unluminous is used on.
 
 .PARAMETER SkipPublish
-  Do everything up to and including the tag, and stop before touching GitHub.
+  Do everything up to and including the tag, and stop before touching GitHub or the site.
+
+.PARAMETER SkipSite
+  Publish the releases but leave unluminous.com alone. The site then says the version before this
+  one, and so does `update check` for everybody, so use this only when the site is being published
+  by hand straight afterwards.
 
 .PARAMETER WhatIf
   Say what would happen and change nothing.
@@ -60,6 +75,7 @@ param(
     [string] $Notes,
     [switch] $SkipInstall,
     [switch] $SkipPublish,
+    [switch] $SkipSite,
     [switch] $WhatIf,
     # Skip the suite. For a release whose tests were just run by hand; the gate exists because
     # `task-1922` found every release so far had been made with nothing checking the build at all.
@@ -72,6 +88,14 @@ $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Repo = (Resolve-Path (Join-Path $Here '..')).Path
 $Manifest = Join-Path $Repo 'Cargo.toml'
 $ReleasesDir = Join-Path $Repo 'releases'
+# The public repository the source was opened under on `task-1989`, and what `update check` falls
+# back to when unluminous.com does not answer. Never the private one: it is 404 to everybody else.
+$PublicRepository = 'Black-Rainbow-Labs/Unluminous'
+# unluminous.com's checkout, which carries its own publish script. A machine without it releases
+# everything else and says so.
+$SiteRepo = $env:UNLUMINOUS_SITE_REPO
+if (-not $SiteRepo) { $SiteRepo = 'C:/jason/dev/unluminous-site' }
+$SitePublish = Join-Path $SiteRepo 'scripts/publish.ps1'
 
 function Write-Step([string] $Message) {
     Write-Host ''
@@ -286,7 +310,11 @@ if ($WhatIf) {
     Write-Host "  2. installer\windows\build.ps1$(if (-not $SkipInstall) { ' -Install' })"
     Write-Host "  3. releases\UnluminousSetup-$next-x64.exe"
     Write-Host "  4. commit `"Unluminous $next`", tag v$next, push $branch"
-    if (-not $SkipPublish) { Write-Host "  5. gh release create v$next with the installer attached" }
+    if (-not $SkipPublish) {
+        Write-Host "  5. gh release create v$next with the installer attached, on jasonmcaffee/unluminous"
+        Write-Host "  6. node tools\publish-open-source.mjs --push, then the same release on $PublicRepository"
+        if (-not $SkipSite) { Write-Host "  7. pwsh $SitePublish -Version $next" }
+    }
     return
 }
 
@@ -357,6 +385,18 @@ if (-not $SkipPublish) {
     $env:GH_TOKEN = $token
     Invoke-Checked 'gh auth status' { & $gh auth status 2>&1 | Out-Null }
     Write-Host "GitHub CLI: $gh (authenticated)"
+    # The public repository is checked here for the same reason the token is: a credential that
+    # cannot reach it would otherwise be found out after the tag had been pushed.
+    Invoke-Checked "gh can reach $PublicRepository" {
+        & $gh repo view $PublicRepository --json name 2>&1 | Out-Null
+    }
+    Write-Host "Public repository: $PublicRepository (reachable)"
+    if (-not $SkipSite) {
+        if (-not (Test-Path $SitePublish)) {
+            throw "No site checkout at $SiteRepo. Set UNLUMINOUS_SITE_REPO, or pass -SkipSite and publish the site by hand."
+        }
+        Write-Host "Site: $SiteRepo"
+    }
 }
 
 Write-Step "Setting the version to $next"
@@ -420,8 +460,44 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $url = (& $gh release view "v$next" --repo jasonmcaffee/unluminous --json url --jq .url).Trim()
+
+# **The public repository is the one anybody else can see, so it gets the same release.**
+# `tools/publish-open-source.mjs` is a pure function of the history — the same commits give the same
+# hashes every time — so this is an ordinary push that appends the new commits and the new tag, and
+# the release is then created against that tag.
+Write-Step "Publishing the source and the release on $PublicRepository"
+& node (Join-Path $Repo 'tools\publish-open-source.mjs') --push
+if ($LASTEXITCODE -ne 0) {
+    throw "The release v$next exists on the private repository but the public source was not pushed. Run: node tools\publish-open-source.mjs --push"
+}
+& $gh release create "v$next" $kept --repo $PublicRepository --title "Unluminous $next" --notes $body
+if ($LASTEXITCODE -ne 0) {
+    throw "The public source was pushed but its release was not created. Run: gh release create v$next `"$kept`" --repo $PublicRepository --title `"Unluminous $next`""
+}
+$publicUrl = (& $gh release view "v$next" --repo $PublicRepository --json url --jq .url).Trim()
+
+# **And the site last**, because it is the one step that can fail on somebody else's toolchain and
+# both releases above are published by the time it runs. It is still a hard failure: a site a release
+# did not reach answers `update check` with the version before this one, which is worse than not
+# answering at all, and the message says exactly what to run again.
+if (-not $SkipSite) {
+    Write-Step 'Publishing unluminous.com'
+    & pwsh -NoProfile -File $SitePublish -Version $next
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unluminous $next is released but unluminous.com still serves the version before it, so update check will too. Run: pwsh $SitePublish -Version $next"
+    }
+} else {
+    Write-Host ''
+    Write-Host 'unluminous.com was not published, so update check still answers with the version before this one.' -ForegroundColor Yellow
+    Write-Host "Run: pwsh $SitePublish -Version $next" -ForegroundColor Yellow
+}
+
 Write-Host ''
 Write-Host "Unluminous $next is released: $url" -ForegroundColor Green
+Write-Host "Public source and release:   $publicUrl" -ForegroundColor Green
+if (-not $SkipSite) {
+    Write-Host 'Download and update check:   https://unluminous.com/#install' -ForegroundColor Green
+}
 if (-not $SkipInstall) {
     Write-Host "Installed at $(Join-Path $env:LOCALAPPDATA 'Programs\Unluminous\unluminous.exe')" -ForegroundColor Green
 }

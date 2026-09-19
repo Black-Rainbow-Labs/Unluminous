@@ -13,7 +13,9 @@
 
 #define AppName        "Unluminous"
 #define AppPublisher   "Jason McAffee"
-#define AppUrl         "https://github.com/jasonmcaffee/unluminous"
+; The address in Add or Remove Programs, which is a link a person actually follows. It was the
+; private repository until task-1993, which answers 404 to everybody who is not its owner.
+#define AppUrl         "https://unluminous.com"
 #define ExeName        "unluminous.exe"
 ; The command line, installed beside the editor. `unluminous-cli` looks for `unluminous` next to itself, so
 ; being in the same folder is what makes `unluminous-cli launch` work with nothing configured, and the
