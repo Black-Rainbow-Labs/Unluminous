@@ -4,7 +4,7 @@
 cargo test
 ```
 
-**3,263 tests** across 36 binaries, in four layers, and a change should leave all four green.
+**3,424 tests** across 36 binaries, in four layers, and a change should leave all four green.
 **They run on the machine that makes the change, and nowhere else.** There is no continuous
 integration here, by choice: the release scripts run the suite before they will tag anything, so a
 release cannot be made from a checkout whose tests do not pass, and that is the gate.
@@ -16,8 +16,8 @@ that reads as three restore-a-project tests failing for no reason either checkou
 
 ## 1. The crates with no window
 
-**1,481 tests**, with no window, no graphics card and no fonts. That is not a side effect of how
-they were written — it is what the dependency direction buys, and it is why most of Unluminous can be
+Unit tests, with no window, no graphics card and no fonts. That is not a side effect of how they
+were written — it is what the dependency direction buys, and it is why most of Unluminous can be
 tested at all.
 
 | Crate | What is covered |
@@ -45,9 +45,9 @@ pseudoterminal, the reader thread and the writing work together.
 
 ## 2. The window's own logic
 
-**1,248 tests** in `unluminous-app` itself: the file explorer and its filter, what counts as a text
-file or a picture, the settings file, the project's own state, the plugins and their manifests, the
-menus and their shortcuts, the panels and where they dock, the panes and the tabs in them, real font
+`unluminous-app`'s own unit tests: the file explorer and its filter, what counts as a text file or a
+picture, the settings file, the project's own state, the plugins and their manifests, the menus and
+their shortcuts, the panels and where they dock, the panes and the tabs in them, real font
 measurement and glyph packing.
 
 One of them is a rule rather than a behaviour: **nothing that ships names the tool Unluminous was
@@ -60,9 +60,8 @@ alone.
 
 ## 3. The whole window, rendered
 
-**651 tests across fourteen binaries** under `crates/unluminous-app/tests/`, each building the
-entire application, feeding it real events, rendering it through the graphics card and writing a PNG
-for every test.
+**Fourteen binaries** under `crates/unluminous-app/tests/`, each building the entire application,
+feeding it real events, rendering it through the graphics card and writing a PNG for every test.
 
 | | |
 |---|---|
