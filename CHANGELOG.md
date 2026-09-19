@@ -6,7 +6,7 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.52.0 — 2026-09-19
 
 - The backdrop records how it was made, the way every plugin icon does (`task-1994`)
 - A test waits for the window rather than panicking when four frames were not enough, at all 1,023 places it waits (`task-1984`)
@@ -14,6 +14,28 @@ bumps the release script makes are left out, because they are the boundaries rat
 - A screen cut to a limit encodes each row once, and what the terminal costs a frame is measured rather than assumed (`task-1984`)
 - A Codex item reports the part that is new without copying the part that is not (`task-1984`)
 - One stem draws at most two thousand names from the project index, which puts the keystroke back under its budget (`task-1984`)
+- The release gates ask about this commit rather than about an ancestor of it (`task-1984`)
+- Three module comments say what the code does rather than what it nearly does (`task-1984`)
+- The two tool shapes are compared by a ratio a test holds rather than by three numbers that went stale twice (`task-1984`)
+- The last of the comments that said the opposite of the code, including two scroll bars that were never the scrollbar (`task-1984`)
+- A range is declared once, and the clamp, the word list and the sentence a person reads all come from it (`task-1984`)
+- Laying a paragraph out is its four phases, and an editing area is what it reads, what it takes and what it draws (`task-1984`)
+- Three dispatchers are a verb a function, the way every plugin dispatch already was (`task-1984`)
+- The canvas keeps its command line half in app/cli beside the other thirteen, a verb a function (`task-1984`)
+- The board keeps its configuration and its terminals in files of their own (`task-1984`)
+- The commands answered without a window are answered once, and the client only prints them (`task-1984`)
+- The three structures an edit moves each move by their own rule, and the tokeniser is fuzzed with several edits at once over multi byte text (`task-1984`)
+- The two files with no tests in them have tests: a ticket driven end to end, and every sentence a database dialog puts in front of somebody (`task-1984`)
+- The six queries the database tree is built from are replayed against the scripted server (`task-1984`)
+- A picture accepted on one platform and not the other is named on every run, on either (`task-1984`)
+- Three more agent study scenarios, for the board, the themes and a chat node on the canvas (`task-1984`)
+- The ground behind every text box is a named control rather than a node with nothing on it (`task-1984`)
+- The rule about not running to quiet is a mechanism now, and the window tests are run in debug (`task-1984`)
+- Cargo fmt over the two files the splits left it owing (`task-1984`)
+- An area tool refused with no command names the commands it has, which the agent study measured at 545 refusals in 408 seconds (`task-1984`)
+- Every branch of an area tool's schema requires its own command, because a converter builds one alternative per branch and every one of them accepted the empty call (`task-1984`)
+- The rule that a oneOf branch states its own requirement, and what the study measured its absence costing (`task-1984`)
+- An area tool's schema has no root oneOf, because a client drops the parameter object along with the combinator it cannot express and the model is then told the tool takes nothing (`task-1984`)
 
 ## 0.51.0 — 2026-09-19
 
