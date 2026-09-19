@@ -3883,6 +3883,25 @@ decides which — the catalogue already knows, because it is the list the client
 never lower it. `mcp::driver::timeout_for` and `unluminous-cli`'s own `client_timeout` read the same rule
 from the same place, because two answers to one flag would be one too many.
 
+**Every branch of an area tool's schema states what it requires, though the schema says it once
+already.** A tool's `oneOf` has one branch a verb, and a branch that only says `command` is `const
+"list"` constrains `command` only where `command` is present — so each branch on its own accepts a
+call with **no command at all**, and the top level `required` is the only thing rejecting it. That is
+enough for a validator, which reads the whole schema, and not enough for a model, which is decoding
+against a grammar somebody compiled from it: a converter that builds one alternative per branch never
+reads the top level, and every alternative it built permitted the empty object.
+
+`task-1984` measured it rather than reasoning about it. The agent study watched a local model asked to
+make a ticket on the board send `unluminous_plugins` an empty call **895 times in 901 seconds**, hit
+the harness's turn limit, compact its own context and send nine more — **904 calls, 904 errors, not one
+successful call in the scenario** — against a refusal that named all ten of its commands, which it had
+understood well enough to write into its own notes a line earlier. Naming the commands in the refusal
+was the first fix and was necessary; it was not sufficient, because the fault was never that the model
+did not know which command to send. The second fix costs **1,485 tokens of the default preamble, 5.5%**,
+which is the worst value for money in `tools.rs`'s budget log and is paid because a tool that cannot be
+called at all is worth more than 5.5%. `no_branch_of_an_area_tool_accepts_a_call_with_no_command` is
+what keeps it.
+
 **The server holds no session, and that is deliberate.** MCP `2025-06-18` has an `initialize`
 handshake and an optional session id; `2026-07-28` deleted both. A server that never *requires*
 `initialize`, issues no session id and echoes back whatever version the client named answers both with
