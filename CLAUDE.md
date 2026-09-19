@@ -3883,24 +3883,32 @@ decides which — the catalogue already knows, because it is the list the client
 never lower it. `mcp::driver::timeout_for` and `unluminous-cli`'s own `client_timeout` read the same rule
 from the same place, because two answers to one flag would be one too many.
 
-**Every branch of an area tool's schema states what it requires, though the schema says it once
-already.** A tool's `oneOf` has one branch a verb, and a branch that only says `command` is `const
-"list"` constrains `command` only where `command` is present — so each branch on its own accepts a
-call with **no command at all**, and the top level `required` is the only thing rejecting it. That is
-enough for a validator, which reads the whole schema, and not enough for a model, which is decoding
-against a grammar somebody compiled from it: a converter that builds one alternative per branch never
-reads the top level, and every alternative it built permitted the empty object.
+**A tool schema has no `oneOf`, `anyOf` or `allOf` at its root, and that is the difference between a
+tool a model can call and one it cannot.** A client turns this schema into its provider's own tool
+format before a model ever sees it, and a converter that cannot express a root level combinator
+commonly drops the parameter object along with it — so the model is told the tool takes nothing, sends
+`{}`, is refused, and sends `{}` again, because nothing it has been shown says there is anything else
+to send.
 
-`task-1984` measured it rather than reasoning about it. The agent study watched a local model asked to
-make a ticket on the board send `unluminous_plugins` an empty call **895 times in 901 seconds**, hit
-the harness's turn limit, compact its own context and send nine more — **904 calls, 904 errors, not one
-successful call in the scenario** — against a refusal that named all ten of its commands, which it had
-understood well enough to write into its own notes a line earlier. Naming the commands in the refusal
-was the first fix and was necessary; it was not sufficient, because the fault was never that the model
-did not know which command to send. The second fix costs **1,485 tokens of the default preamble, 5.5%**,
-which is the worst value for money in `tools.rs`'s budget log and is paid because a tool that cannot be
-called at all is worth more than 5.5%. `no_branch_of_an_area_tool_accepts_a_call_with_no_command` is
-what keeps it.
+`task-1922` WP2 put one `oneOf` branch a verb there so that a verb's own required arguments were
+machine readable and not only written in the description. It is a good idea and it cost the whole
+grouped surface, which is the default one. `task-1984` measured it on one scenario against a real
+client: **1,146 calls and 1,145 refusals with the `oneOf`, against 3 calls and 1 refusal without it** —
+and without it the model sent `{"command":"set","arguments":{"theme":"themes-bundle-1/monokai-pro"}}`
+and the task was done. Taking it out also gave back **3,268 tokens, 12%** of the default preamble.
+
+**Two wrong answers were committed before that one**, and they are worth knowing because both looked
+right and both had passing tests. The refusal said how *many* commands a tool had rather than *which* —
+a real fault, fixed, and it moved 545 refusals to 1,145. Then each `oneOf` branch turned out to
+constrain `command` only where `command` was present, so every branch accepted `{}` on its own — also
+real, also fixed, and it moved 904 errors to 540. What separated the diagnosis from the guesses was
+splitting the calls by *which tool* they went to: in the same sessions the client's own `glob` and
+`bash` were receiving full arguments while every Unluminous tool received `{}`, so the model could
+plainly emit arguments and was not emitting them here.
+
+`no_tool_schema_combines_at_its_root` is the cheap guard. The real one is running `tools/agent-study`
+against a real client, because what a converter does with a schema cannot be seen from inside
+`unluminous-cli`.
 
 **The server holds no session, and that is deliberate.** MCP `2025-06-18` has an `initialize`
 handshake and an optional session id; `2026-07-28` deleted both. A server that never *requires*
