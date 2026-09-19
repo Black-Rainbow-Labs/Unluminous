@@ -124,6 +124,36 @@ fn main() {
     println!("  files read         {read:8}");
     println!("  references         {hits:8}");
 
+    // ------------------------------------------------- a file with an export and no line break
+    //
+    // `task-1984` C1: after an `export` or a `pub` with no line break behind it, the reading used to
+    // be quadratic -- the slice from the keyword to the current token was re-read once per token, so
+    // it grew to the whole file. `export default { … }` written on one line is exactly that, and so
+    // is a bundle whose `export{}` names no declaration. This is that shape at three sizes; the time
+    // should roughly double as the input doubles rather than quadruple.
+    println!("\nA one-line export, which is where C1 lived");
+    let javascript = unluminous_core::Grammar {
+        export_keyword: Some("export".to_owned()),
+        keywords: vec!["export".to_owned(), "default".to_owned(), "const".to_owned()],
+        definers: vec![("const".to_owned(), unluminous_core::SymbolKind::Variable)],
+        ..unluminous_core::Grammar::default()
+    };
+    for pairs in [1_000usize, 4_000, 18_000] {
+        let mut source = String::from("export default {");
+        for at in 0..pairs {
+            source.push_str(&format!("key{at}:{at},"));
+        }
+        source.push_str("}\n");
+        let began = Instant::now();
+        let read = unluminous_core::symbols::FileSymbols::read(&source, &javascript);
+        let took = began.elapsed().as_secs_f64() * 1000.0;
+        println!(
+            "  {:>7} bytes    {took:8.1} ms   {} definitions",
+            source.len(),
+            read.definitions().len()
+        );
+    }
+
     // ---------------------------------------------------------------- what it all comes to
     println!("\nWhat a person waits for");
     println!("  opening a project  {build:8.1} ms  on the thread, with the window drawing");

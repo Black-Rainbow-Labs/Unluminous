@@ -187,6 +187,17 @@ impl Index {
             let Ok(bytes) = std::fs::read(path) else {
                 continue;
             };
+            // **A file too large to colour is too large to index** (`task-1984` C1). The open tab has
+            // had this guard since `task-1666` -- `UnluminousApp::COLOUR_LIMIT` is where the
+            // tokeniser stops being run over a file -- and the walk had none at all, so a two megabyte
+            // bundle in `dist/` was read on every index build. `task-1659` decided not to leave `dist`,
+            // `build` and `out` out of the walk, on the grounds that a search that silently missed a
+            // real file is worse than one offering a few too many; this is the other half of that
+            // decision, and it is the same number the tab uses so a file is indexed exactly when it
+            // would have been coloured.
+            if bytes.len() > crate::app::UnluminousApp::COLOUR_LIMIT {
+                continue;
+            }
             let Ok(text) = String::from_utf8(bytes) else {
                 continue;
             };

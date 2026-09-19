@@ -225,9 +225,29 @@ impl FileSymbols {
         // it belongs to can be marked with it. A language that named none says nothing is hidden,
         // and the three variables below are then never read at all.
         let marks = grammar.export_keyword.is_some();
-        // Where the export keyword last was. Not advanced as the walk goes: what is asked of it is
-        // always "what is written between it and here", which is one look at the text.
-        let mut exported: Option<usize> = None;
+        // Whether an export keyword is still in force, and where the walk has read the gap up to.
+        //
+        // **The gap is read once rather than once per token** (`task-1984` C1). This used to keep the
+        // byte just after the export keyword and re-read the whole slice from there to the current
+        // token on every token, on the grounds that "what is asked of it is always 'what is written
+        // between it and here', which is one look at the text" -- true of one token and quadratic
+        // over a file. On a line with no line break in it the slice grows to the whole file, and
+        // `contains('\n')` plus two `matches().count()` are run over it once per token: measured at
+        // 8.6 ms for 24 KB, 161 ms for 102 KB and **2,954 ms for 458 KB**, where the same content
+        // with line breaks in it is 6.6 ms. `export default { … }` written on one line is exactly
+        // that, and so is a bundle whose `export{}` names no declaration -- and
+        // `app/symbols.rs` reads the open tab once per text revision, so it was seconds a keystroke.
+        //
+        // The two facts the slice was being re-read for are how many braces are open and whether
+        // there has been a line break, and both are running totals. What is read now is the gap
+        // between the **previous** token and this one, which is short, and the answers are the same.
+        let mut exported = false;
+        // Where the gap has been read up to: the end of the export keyword, then the end of each
+        // token as the walk passes it.
+        let mut read_up_to = 0usize;
+        // How many `{` are open since the export keyword, which is what tells `export { a, b }` from
+        // `export default function`.
+        let mut depth = 0i32;
         // Inside `export { a, b }` — a list of the names this file exports without declaring them
         // in the same breath.
         let mut listing = false;
@@ -246,17 +266,20 @@ impl FileSymbols {
             // declaration as well. An unclosed `{` between the two means this is `export { a, b }`
             // — a list of names rather than a declaration — and a definer keyword cannot be in the
             // way, because recording the definition it made is what clears the marker.
-            if let Some(after) = exported {
-                let gap = (after <= range.start).then(|| &text[after..range.start]);
-                match gap.filter(|gap| !gap.contains('\n')) {
-                    Some(gap) => {
-                        listing = gap.matches('{').count() > gap.matches('}').count();
-                    }
-                    None => {
-                        exported = None;
-                        listing = false;
-                    }
+            if exported {
+                // Only what has not been read yet, which is why this is one pass over the file
+                // rather than one pass per token. See the note beside `exported`.
+                let gap = text.get(read_up_to.min(range.start)..range.start).unwrap_or_default();
+                if gap.contains('\n') {
+                    exported = false;
+                    listing = false;
+                    depth = 0;
+                } else {
+                    depth += gap.matches('{').count() as i32;
+                    depth -= gap.matches('}').count() as i32;
+                    listing = depth > 0;
                 }
+                read_up_to = read_up_to.max(range.start);
             }
             match token {
                 Token::Comment => read.quiet.push((range, Role::Comment)),
@@ -265,7 +288,9 @@ impl FileSymbols {
                 // keyword the language did not name is stepped over: `let mut count` is a `count`.
                 Token::Keyword => {
                     if marks && grammar.export_keyword.as_deref() == Some(&text[range.clone()]) {
-                        exported = Some(range.end);
+                        exported = true;
+                        read_up_to = range.end;
+                        depth = 0;
                         listing = false;
                     }
                     if let Some(kind) = grammar.definer(&text[range.clone()]) {
@@ -293,11 +318,11 @@ impl FileSymbols {
                                     name_range: range,
                                     kind,
                                     confidence: Confidence::Sure,
-                                    exported: !marks || (exported.is_some() && !listing),
+                                    exported: !marks || (exported && !listing),
                                 });
                                 // The marker belongs to the declaration it was in front of and to
                                 // nothing after it.
-                                exported = None;
+                                exported = false;
                                 listing = false;
                                 return;
                             }
@@ -310,9 +335,9 @@ impl FileSymbols {
                                 name_range: range,
                                 kind: SymbolKind::Function,
                                 confidence: Confidence::Likely,
-                                exported: !marks || (exported.is_some() && !listing),
+                                exported: !marks || (exported && !listing),
                             });
-                            exported = None;
+                            exported = false;
                             listing = false;
                         }
                     } else {
