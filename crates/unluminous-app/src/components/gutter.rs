@@ -425,6 +425,10 @@ fn width_at(ui: &egui::Ui, gutter: &Gutter, lines: usize, font_size: f32) -> f32
 /// `top` is where the first line of the layout sits on screen, which is the same origin the text is
 /// painted from, so the numbers cannot drift away from the lines they belong to. `caret_line` is the
 /// paragraph the caret is in, which is drawn brighter.
+/// `where_it_is` says which editing area this gutter belongs to -- `pane 0`, `node 3`. It is part of
+/// the control's name because two panes, or a pane and a File Editor node, are on the screen at once
+/// and **two controls must not share a name** (`task-1984` S8): the style guide forbids it and the
+/// screenshot tests find controls by it.
 pub fn show(
     ui: &mut egui::Ui,
     area: Rect,
@@ -432,13 +436,15 @@ pub fn show(
     layout: &Layout,
     top: f32,
     caret_line: usize,
+    where_it_is: &str,
 ) -> GutterOutcome {
     let mut outcome = GutterOutcome::default();
     if !gutter.showing() {
         return outcome;
     }
     let response = ui.interact(area, ui.id().with("gutter"), Sense::click());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Gutter"));
+    let name = format!("Gutter in {where_it_is}");
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, name.clone()));
     if response.secondary_clicked() {
         outcome.context_menu = response.interact_pointer_pos().or_else(|| response.hover_pos());
     }

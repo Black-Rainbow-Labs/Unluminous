@@ -1104,6 +1104,10 @@ impl UnluminousApp {
                 self.layout(),
                 origin.y,
                 self.document().text().byte_to_line(self.document().selection().head),
+                &match self.files.focus() {
+                    crate::app::files::Home::Pane(pane) => format!("pane {pane}"),
+                    crate::app::files::Home::Node(node) => format!("node {node}"),
+                },
             );
             if let Some(at) = outcome.context_menu {
                 self.gutter_menu = Some(at);

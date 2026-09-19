@@ -254,6 +254,13 @@ enum Awaiting {
     Nothing,
 }
 
+/// How many outstanding requests are remembered at once.
+///
+/// The list is walked rather than indexed because it holds a handful at the very most -- the window
+/// only asks for what is on the screen -- and this is the bound that keeps that true. See
+/// `Session::ask_marked`.
+const AWAITING_LIMIT: usize = 64;
+
 /// The client side of one debug session.
 pub struct Session {
     state: State,
@@ -324,6 +331,9 @@ impl Session {
     }
 
     /// True while the adapter has been asked something it has not answered.
+    ///
+    /// Bounded by [`AWAITING_LIMIT`], so one request an adapter never answers cannot make this true
+    /// for the life of the session.
     pub fn is_waiting(&self) -> bool {
         !self.awaiting.is_empty()
     }
@@ -876,6 +886,14 @@ impl Session {
         let seq = self.take_seq();
         let frame = request.to_value(seq);
         if awaiting != Awaiting::Nothing {
+            // **Bounded, because it only ever shrank on a matching response** (`task-1984` P15). An
+            // adapter that never answers one request -- and CodeLLDB ending a session on a watch
+            // expression it could not resolve is a real one -- left that entry in for the life of
+            // the session, so `is_waiting()` was true for ever and the list grew. The oldest goes,
+            // because a request from hundreds of round trips ago is one nothing is going to answer.
+            if self.awaiting.len() >= AWAITING_LIMIT {
+                self.awaiting.remove(0);
+            }
             self.awaiting.push((seq, awaiting));
         }
         if reading {

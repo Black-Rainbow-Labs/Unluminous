@@ -663,7 +663,14 @@ impl LocalResourceStore {
     /// Resolve and canonicalize the URL path, returning nothing for every escape and miss.
     #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     fn safe_path(&self, id: u64, uri: &str) -> Option<PathBuf> {
-        let root = self.0.lock().ok()?.get(&id)?.root.clone();
+        // Recovered rather than given up on, which is `register`'s own note three screens up and is
+        // the half of `task-1922` B15 this file was missing (`task-1984` S12). A poisoned lock here
+        // meant every later request for a local page answered nothing, so a panic anywhere in the
+        // process silently stopped the browser serving -- and what is behind the lock is a map of
+        // tab ids to folders, which a panic cannot leave half updated in a way that matters.
+        let roots = self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let root = roots.get(&id)?.root.clone();
+        drop(roots);
         let url = Url::parse(uri).ok()?;
         let mut relative = PathBuf::new();
         for encoded in url.path().split('/').filter(|part| !part.is_empty()) {
@@ -684,7 +691,8 @@ impl LocalResourceStore {
     #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     fn record(&self, id: u64, path: &Path) {
         let Some(stamp) = ResourceStamp::of(path) else { return };
-        let Ok(mut roots) = self.0.lock() else { return };
+        // Recovered rather than given up on -- `safe_path`'s own note.
+        let mut roots = self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(root) = roots.get_mut(&id) {
             root.resources.insert(path.to_path_buf(), stamp);
         }
@@ -692,7 +700,8 @@ impl LocalResourceStore {
 
     /// Return each tab whose loaded resource set changed, updating its stamps once.
     fn changed_tabs(&self) -> Vec<u64> {
-        let Ok(mut roots) = self.0.lock() else { return Vec::new() };
+        // Recovered rather than given up on -- `safe_path`'s own note.
+        let mut roots = self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut changed = Vec::new();
         for (id, root) in roots.iter_mut() {
             let moved = root.resources.iter_mut().any(|(path, before)| {

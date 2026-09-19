@@ -119,7 +119,8 @@ fn pages(explorer: &DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>, strip:
         if crate::components::controls::icon_button(
             ui,
             cross,
-            &format!("Close {title}"),
+            // Prefixed for `no_two_controls_share_a_name`'s reason -- see `agent_tasks::mod`.
+            &format!("Close source {title}"),
             crate::theme::icon::cross,
         ) {
             acts.push(Act::ClosePage(page.id));

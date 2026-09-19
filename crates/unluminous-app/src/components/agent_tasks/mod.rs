@@ -106,7 +106,10 @@ pub fn pane_header(
     outcome.closed = crate::components::controls::icon_button(
         ui,
         cross,
-        &format!("Close {label}"),
+        // **Prefixed**, because a board tab and an editor tab can be on the screen at the same time
+        // and `Close <name>` would be two controls with one name -- which the style guide forbids and
+        // which the screenshot tests find controls by (`task-1984` S8).
+        &format!("Close board {label}"),
         crate::theme::icon::cross,
     );
     outcome

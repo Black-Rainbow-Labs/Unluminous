@@ -150,7 +150,7 @@ impl References {
             searching: true,
             capped: false,
             asked: None,
-            searcher: Some(Searcher::start(wake)),
+            searcher: Searcher::start(wake),
             preview: None,
             follow: false,
             followed: None,

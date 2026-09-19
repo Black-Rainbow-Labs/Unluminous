@@ -586,7 +586,9 @@ fn show_the_header(
     let mut right = header.right() - 6.0;
     let close =
         Rect::from_center_size(Pos2::new(right - 9.0, header.center().y), Vec2::splat(18.0));
-    if crate::components::controls::icon_button(ui, close, &format!("Close {name}"), icon::cross) {
+    // Prefixed for `no_two_controls_share_a_name`'s reason -- see `file_tabs::show`.
+    if crate::components::controls::icon_button(ui, close, &format!("Close node {name}"), icon::cross)
+    {
         outcome.closed = true;
     }
     right = close.left() - 2.0;

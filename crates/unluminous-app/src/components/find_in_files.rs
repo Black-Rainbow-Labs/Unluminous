@@ -60,7 +60,9 @@ pub struct FindInFiles {
     capped: bool,
     /// The question the running search is answering, so a new one is asked only when it changes.
     asked: Option<Query>,
-    searcher: Searcher,
+    /// `None` when the thread could not be started, which answers nothing rather than ending the
+    /// window -- `text_search::Searcher::start`'s own note.
+    searcher: Option<Searcher>,
     preview: Option<Preview>,
     /// Set when the choice moved, so the list and the preview scroll to it.
     follow: bool,
@@ -112,7 +114,9 @@ impl FindInFiles {
             words: false,
         };
         if self.asked.as_ref() != Some(&wanted) {
-            self.searcher.send(files.to_vec(), wanted.clone());
+            if let Some(searcher) = self.searcher.as_mut() {
+                searcher.send(files.to_vec(), wanted.clone());
+            }
             self.asked = Some(wanted);
             self.hits.clear();
             self.files = 0;
@@ -121,7 +125,8 @@ impl FindInFiles {
             self.searching = true;
             self.preview = None;
         }
-        for reply in self.searcher.poll() {
+        let Some(searcher) = self.searcher.as_mut() else { return };
+        for reply in searcher.poll() {
             self.hits.extend(reply.hits);
             self.files = reply.files;
             self.capped |= reply.capped;

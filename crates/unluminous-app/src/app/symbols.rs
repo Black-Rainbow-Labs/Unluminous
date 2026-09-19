@@ -179,8 +179,18 @@ impl UnluminousApp {
         let grammars = Arc::new(self.plugins.grammars().clone());
         let list = self.tree.all_files().to_vec();
         if matches!(self.symbol_index, SymbolIndexState::NotStarted) {
+            // A thread that could not be started leaves the index not started, so the next question
+            // tries again and nothing else in the window notices -- which is what `Indexer::start`
+            // answering `None` is for (`task-1984` S6).
+            let Some(indexer) = Indexer::start(waker) else {
+                self.message = Some(
+                    "Unluminous could not start the thread that reads the project's definitions, so \n                     Go to Definition has nothing to answer with."
+                        .to_owned(),
+                );
+                return;
+            };
             self.symbol_index = SymbolIndexState::Reading {
-                indexer: Box::new(Indexer::start(waker)),
+                indexer: Box::new(indexer),
                 asked: asked.clone(),
                 stale: false,
             };

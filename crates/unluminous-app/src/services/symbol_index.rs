@@ -256,7 +256,11 @@ struct Reply {
 
 impl Indexer {
     /// Start the thread. `wake` is called when there is a new index to draw with.
-    pub fn start(wake: Arc<dyn Fn() + Send + Sync>) -> Self {
+    /// **Answers `None` when the thread could not be started** (`task-1984` S6). `task-1922` B6
+    /// named five spawns that `expect`; git's and the debug adapter's were fixed and this was not.
+    /// Under thread pressure the window died rather than one feature saying it cannot answer, and
+    /// what it takes away here is Go to Definition rather than the editor.
+    pub fn start(wake: Arc<dyn Fn() + Send + Sync>) -> Option<Self> {
         let (requests, incoming) = std::sync::mpsc::channel::<Request>();
         let (outgoing, replies) = std::sync::mpsc::channel::<Reply>();
         let newest = Arc::new(AtomicU64::new(0));
@@ -275,8 +279,8 @@ impl Indexer {
                     }
                 }
             })
-            .expect("a thread to read the project's definitions on");
-        Self { requests, replies, newest, generation: 0, answered: 0, index: Index::default() }
+            .ok()?;
+        Some(Self { requests, replies, newest, generation: 0, answered: 0, index: Index::default() })
     }
 
     /// Read the project again, abandoning whatever was being read.
@@ -437,7 +441,7 @@ mod tests {
     fn the_thread_answers_the_newest_question_and_abandons_the_ones_before_it() {
         let (folder, files) = a_project("unluminous-symbol-index-thread");
         let grammars = Arc::new(grammars());
-        let mut indexer = Indexer::start(Arc::new(|| {}));
+        let mut indexer = Indexer::start(Arc::new(|| {})).expect("a thread to index on");
         assert!(!indexer.is_building(), "nothing has been asked yet");
         indexer.rebuild(Vec::new(), Arc::clone(&grammars));
         let generation = indexer.rebuild(files, grammars);

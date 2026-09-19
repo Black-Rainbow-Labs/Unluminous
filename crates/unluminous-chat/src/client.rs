@@ -169,7 +169,7 @@ impl Client {
         // for as long as it takes to put it in a header, which is `Provider::key`'s own rule.
         let headers = provider.headers(environment);
         let wire = provider.wire;
-        std::thread::Builder::new()
+        let started = std::thread::Builder::new()
             .name(format!("unluminous-chat {generation}"))
             .spawn(move || {
                 let say = |reply: Reply| {
@@ -190,9 +190,24 @@ impl Client {
                     true
                 };
                 run(&url, &headers, wire, &body, stream, &stopping, &say);
-            })
-            .expect("a thread for a chat request");
+            });
+        // **A thread that could not be started is a turn that failed**, not a window that ends
+        // (`task-1984` P7). `task-1922` B6 named five spawns that `expect`; git's and the debug
+        // adapter's were fixed and the two here were not. `Reply::Failed` is exactly what an agent
+        // that could not be started already answers with, so the pane says so and the conversation
+        // goes on.
+        if started.is_err() {
+            self.fail(generation, "Unluminous could not start a thread for this turn.");
+        }
         generation
+    }
+
+    /// Say that a turn is over before it began, on the same channel every other failure arrives on.
+    fn fail(&self, generation: u64, why: &str) {
+        let _ = self.to.send(Arrived { generation, reply: Reply::Failed(why.to_owned()) });
+        if let Some(wake) = &self.wake {
+            wake();
+        }
     }
 
     /// Run a command-line agent for one turn and stream what it says back. Answers the generation.
@@ -213,7 +228,7 @@ impl Client {
         let to = self.to.clone();
         let wake = self.wake.clone();
         let provider = provider.clone();
-        std::thread::Builder::new()
+        let started = std::thread::Builder::new()
             .name(format!("unluminous-chat agent {generation}"))
             .spawn(move || {
                 let say = |reply: Reply| {
@@ -238,8 +253,11 @@ impl Client {
                     true
                 };
                 crate::agent::run(&provider, &ask, &stopping, &running, generation, &say);
-            })
-            .expect("a thread for a chat turn");
+            });
+        // As `send` above: a thread that could not be started is a turn that failed.
+        if started.is_err() {
+            self.fail(generation, "Unluminous could not start a thread for this turn.");
+        }
         generation
     }
 

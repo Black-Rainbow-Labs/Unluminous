@@ -286,7 +286,7 @@ fn dragging_a_terminal_tab_and_the_command_line_are_the_same_rearrangement() {
 fn closing_the_last_terminal_tab_puts_the_tile_away() {
     let mut harness = with_terminal("", 8, 60);
     assert!(harness.state().terminal.visible);
-    harness.get_by_label_contains("Close detached").click();
+    harness.get_by_label_contains("Close terminal detached").click();
     harness.run();
     assert_eq!(harness.state().terminal.tabs.count(), 0);
     assert!(!harness.state().terminal.visible, "with no terminals there is nothing to show");

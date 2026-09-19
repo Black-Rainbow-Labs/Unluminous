@@ -2270,7 +2270,7 @@ fn a_tab_can_be_closed_and_the_last_one_leaves_an_untitled_document() {
     harness.state_mut().open_path_permanently(&folder.join("readme.md")).expect("the file opens");
     harness.state_mut().open_path_permanently(&folder.join("notes.txt")).expect("the file opens");
     harness.run();
-    harness.get_by_label("Close notes.txt").click();
+    harness.get_by_label("Close tab notes.txt").click();
     harness.run();
     assert_eq!(harness.state().files.len(), 1);
     assert_eq!(harness.state().files.active().name(), "readme.md");
@@ -4942,4 +4942,72 @@ fn every_action_changes_the_window_or_says_why_it_cannot() {
         CANNOT_BE_DRIVEN.len()
     );
     assert!(faults.is_empty(), "{} faults:\n  {}", faults.len(), faults.join("\n  "));
+}
+
+// -------------------------------------------------------------------------------------- task-1984
+//
+// Two controls must not share a name.
+
+/// Every named control in one frame has a name no other control in that frame has.
+///
+/// **`task-1984` S8.** `design/style-guide.md` has required a name on every control since
+/// `task-1655` and forbidden two controls sharing one — the Settings window's button says `Done`
+/// rather than `Close` because the window already has a `Close` button — and the 483 screenshot
+/// tests find controls *by that name*. Six close buttons were all `Close <name>`: editor tabs, run
+/// tabs, terminal tabs, canvas nodes, the board's tabs and the database's. An editor tab and a File
+/// Editor node on the same file are on the screen at the same time, so a test closing a file by name
+/// closed whichever egui happened to walk first. They carry what they close now — `Close tab`,
+/// `Close run`, `Close terminal`, `Close node`, `Close board`, `Close source`.
+///
+/// The window this is asked of has as much showing at once as one can: the editing area with two
+/// files, the canvas with a File Editor node on one of them, the terminal tile, and the board.
+#[test]
+fn no_two_controls_share_a_name() {
+    use egui_kittest::kittest::NodeT as _;
+
+    let folder = fixture(
+        "unluminous-1984-one-name-each",
+        &[("first.md", "# First\n"), ("second.md", "# Second\n")],
+    );
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open first.md --permanent");
+    did(&mut harness, "tab open second.md --permanent");
+    // The same file again, on the canvas, which is the pair S8 is about.
+    did(&mut harness, "space show");
+    let node =
+        did(&mut harness, "space add editor --x 40 --y 40")["node"].as_u64().expect("a node");
+    // The same file the editing area is showing, which is exactly the pair S8 is about: a tab and a
+    // node whose close buttons were both `Close first.md`.
+    did(&mut harness, &format!("space editor {node} first.md"));
+    did(&mut harness, "terminal show");
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    harness.run();
+
+    let mut counted: std::collections::BTreeMap<String, usize> = Default::default();
+    for node in harness.root().children_recursive() {
+        let node = node.accesskit_node();
+        // A `Role::Label` keeps its words in `value` rather than in `label`, which is egui's own
+        // mapping and the reason `widget_info` never uses that role for a control.
+        if format!("{:?}", node.role()) == "Label" {
+            continue;
+        }
+        let Some(label) = node.label() else { continue };
+        if label.trim().is_empty() {
+            continue;
+        }
+        *counted.entry(label).or_default() += 1;
+    }
+    assert!(counted.len() > 20, "only {} named controls, which is not a window", counted.len());
+
+    let shared: Vec<String> = counted
+        .iter()
+        .filter(|(_, count)| **count > 1)
+        .map(|(name, count)| format!("{name} ({count} of them)"))
+        .collect();
+    assert!(
+        shared.is_empty(),
+        "two controls with one name is what the style guide forbids and what the screenshot tests \
+         find controls by:\n{}",
+        shared.join("\n")
+    );
 }

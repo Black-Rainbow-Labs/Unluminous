@@ -148,6 +148,15 @@ impl Exchange {
         if let Some(error) = field_of(server_final, 'e') {
             return Err(Failure::said(format!("the server refused the password: {error}")));
         }
+        // **Nothing to compare against is a refusal** (`task-1984` P11). `server_signature` is empty
+        // until `respond` has run, and an empty signature equals an empty signature, so a server
+        // that sent `v=` with nothing after it would have been believed. `Session::connect` always
+        // calls `respond` first so nothing reaches this, and it is one line to close.
+        if self.server_signature.is_empty() {
+            return Err(Failure::said(
+                "the server's final SCRAM message arrived before the client's proof was sent, so \n                 there is nothing to check it against.",
+            ));
+        }
         let signature = field_of(server_final, 'v').ok_or_else(|| {
             Failure::said("the server's final SCRAM message carries no signature.")
         })?;

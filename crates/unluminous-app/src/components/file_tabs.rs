@@ -316,7 +316,11 @@ fn draw_tab(
     if tab.modified && !response.hovered() {
         painter.circle_filled(shut.center(), 3.5, color::unsaved());
     } else {
-        let shut_name = format!("Close {}", tab.name);
+        // **`Close tab <name>` rather than `Close <name>`** (`task-1984` S8): an editor tab and a File
+        // Editor node on the same file are on the screen together, and two controls with one name is
+        // what the style guide forbids and what the screenshot tests find controls by -- a test
+        // closing a file by name closed whichever egui walked first.
+        let shut_name = format!("Close tab {}", tab.name);
         let shut_response = ui
             .interact(shut, ui.id().with(("file-tab-close", at.pane, index)), Sense::click())
             .on_hover_text(&shut_name);

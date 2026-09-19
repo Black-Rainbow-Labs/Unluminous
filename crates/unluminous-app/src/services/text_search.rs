@@ -132,7 +132,12 @@ struct Request {
 
 impl Searcher {
     /// Start the thread. `wake` is called when there is something new to draw.
-    pub fn start(wake: Arc<dyn Fn() + Send + Sync>) -> Self {
+    ///
+    /// **Answers `None` when the thread could not be started** (`task-1984` P7), for
+    /// `symbol_index::Indexer::start`'s own reason: under thread pressure a searching modal that
+    /// cannot answer is a modal that says so, and a window that ends is a window that took the
+    /// unsaved tabs with it.
+    pub fn start(wake: Arc<dyn Fn() + Send + Sync>) -> Option<Self> {
         let (requests, incoming) = std::sync::mpsc::channel::<Request>();
         let (outgoing, replies) = std::sync::mpsc::channel::<Reply>();
         let newest = Arc::new(AtomicU64::new(0));
@@ -145,8 +150,8 @@ impl Searcher {
                     run(request, &theirs, &outgoing, &wake);
                 }
             })
-            .expect("a thread to search on");
-        Self { requests, replies, newest, generation: 0 }
+            .ok()?;
+        Some(Self { requests, replies, newest, generation: 0 })
     }
 
     /// Ask a new question, which abandons whatever was being answered.
@@ -613,7 +618,7 @@ mod tests {
         std::fs::write(folder.join("b.txt"), "beta\ngamma\n").expect("write b.txt");
         let files = vec![folder.join("a.txt"), folder.join("b.txt")];
 
-        let mut searcher = Searcher::start(Arc::new(|| {}));
+        let mut searcher = Searcher::start(Arc::new(|| {})).expect("a thread to search on");
         searcher.send(files.clone(), query("alpha"));
         let generation = searcher.send(files, query("beta"));
 

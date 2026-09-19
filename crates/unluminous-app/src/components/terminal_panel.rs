@@ -291,10 +291,11 @@ fn draw_tab(
         Rect::from_center_size(Pos2::new(tab.right() - 12.0, tab.center().y), Vec2::splat(16.0));
     let shut_response = ui
         .interact(shut, ui.id().with(("terminal-close", index)), Sense::click())
-        .on_hover_text(format!("Close {name}"));
+        .on_hover_text(format!("Close terminal {name}"));
     icon::cross(&painter, shut.center(), color::text_dim());
     shut_response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Close {name}"))
+        // Prefixed for `no_two_controls_share_a_name`'s reason -- see `file_tabs::show`.
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Close terminal {name}"))
     });
     response.widget_info(|| {
         egui::WidgetInfo::selected(
