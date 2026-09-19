@@ -291,9 +291,11 @@ echo "Kept $image"
 
 step "Committing and tagging v$next"
 # Written from the history rather than kept by hand, so it cannot fall behind. See the same step in
-# tools/release.ps1, and tools/changelog.mjs for why it is one script rather than two.
+# tools/release.ps1, and tools/changelog.mjs for why it is one script rather than two -- and for why
+# it is told which version it is cutting rather than left to read the tags, which do not yet hold this
+# one.
 step "Writing CHANGELOG.md"
-node "$repo/tools/changelog.mjs"
+node "$repo/tools/changelog.mjs" --release "$next"
 
 git add -- Cargo.toml Cargo.lock CHANGELOG.md
 git commit -m "Unluminous $next" > /dev/null

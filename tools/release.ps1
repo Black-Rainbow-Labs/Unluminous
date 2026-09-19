@@ -380,8 +380,15 @@ Write-Host "Kept $kept"
 # 201 commits and 34 minor versions with no record of what changed that a person could read. It runs
 # before the commit so the changelog for this release is in the release's own commit -- the entries
 # for the work are already in the history, and the version this makes is the boundary they sit under.
+#
+# **And it is told which version it is cutting** (`task-1984`). Without that, the tag does not exist
+# yet at this point, so the script cannot see the version it is about to make and writes everything it
+# holds under `## Unreleased` -- and the tag made three lines below then leaves the file stale from
+# that instant. 0.50.0 and 0.51.0 were both cut that way, and `--check` reported each of them one
+# release late, because what it compares is the released history and a version only joins that when it
+# is tagged.
 Write-Step 'Writing CHANGELOG.md'
-& node (Join-Path $Repo 'tools\changelog.mjs')
+& node (Join-Path $Repo 'tools\changelog.mjs') --release $next
 if ($LASTEXITCODE -ne 0) { throw 'tools/changelog.mjs failed.' }
 
 Write-Step "Committing and tagging v$next"

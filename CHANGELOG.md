@@ -8,6 +8,15 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- The backdrop records how it was made, the way every plugin icon does (`task-1994`)
+- A test waits for the window rather than panicking when four frames were not enough, at all 1,023 places it waits (`task-1984`)
+- Three framing buffers search from where the last search stopped, and the adapter one refuses a frame that never comes (`task-1984`)
+- A screen cut to a limit encodes each row once, and what the terminal costs a frame is measured rather than assumed (`task-1984`)
+- A Codex item reports the part that is new without copying the part that is not (`task-1984`)
+- One stem draws at most two thousand names from the project index, which puts the keystroke back under its budget (`task-1984`)
+
+## 0.51.0 — 2026-09-19
+
 - The backstop is derived, the tool's timeout reaches every area, and three tools that could never succeed (`task-1984`)
 - The drawing thread never waits on a network, a database, a process or a keychain (`task-1984`)
 - A frame costs what changed, and an idle one is half what it was (`task-1984`)

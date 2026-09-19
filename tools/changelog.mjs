@@ -22,9 +22,23 @@
 // both platforms have here, and one reading of the history is better than two that have to agree.
 //
 // Usage:
-//   node tools/changelog.mjs             writes CHANGELOG.md
-//   node tools/changelog.mjs --check     exits 1 if the file's released sections are stale
-//   node tools/changelog.mjs --stdout    prints it instead of writing it
+//   node tools/changelog.mjs                   writes CHANGELOG.md
+//   node tools/changelog.mjs --release 0.51.0  the same, with HEAD written up as that version
+//   node tools/changelog.mjs --check           exits 1 if the file's released sections are stale
+//   node tools/changelog.mjs --stdout          prints it instead of writing it
+//
+// ## Why `--release` exists
+//
+// **`task-1984` WP5.** A release script writes the changelog **before** it tags, so that the file is
+// in the release's own commit -- and at that moment the version being released has no tag, so
+// `releases()` cannot see it and everything it holds is written under `## Unreleased`. The tag is
+// then made and the file is stale from that instant: 0.50.0 was cut and its section never existed,
+// and `--check` reported it one release later, because what it compares is the released history and
+// 0.50.0 only became released history after the tag.
+//
+// So a release says which version it is cutting, and HEAD is written up under that heading with
+// today's date. What `--check` compares afterwards is the same text, because the tag it then reads
+// points at the commit this was run against.
 
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -75,6 +89,18 @@ function work(from, to) {
     })
 }
 
+/** The version being released, when a release script said so, or nothing. */
+function releasing() {
+  const at = process.argv.indexOf('--release')
+  if (at === -1) return null
+  const version = process.argv[at + 1]
+  if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
+    console.error('--release wants a version, as in: node tools/changelog.mjs --release 0.51.0')
+    process.exit(2)
+  }
+  return version
+}
+
 /** The whole document. */
 function changelog() {
   const out = [
@@ -88,8 +114,19 @@ function changelog() {
     '',
   ]
   const tags = releases()
+  const cutting = releasing()
   const unreleased = work(tags[0]?.tag, 'HEAD')
-  if (unreleased.length > 0) {
+  if (cutting) {
+    // HEAD is about to become `v<cutting>`, so what is between the last tag and here is that
+    // version's section rather than `Unreleased`. Dated today, which is the date the tag will carry.
+    out.push(`## ${cutting} — ${new Date().toISOString().slice(0, 10)}`, '')
+    if (unreleased.length === 0) {
+      out.push('- No ticketed work; a rebuild of the version before it.', '')
+    } else {
+      for (const entry of unreleased) out.push(`- ${entry.said} (\`${entry.ticket}\`)`)
+      out.push('')
+    }
+  } else if (unreleased.length > 0) {
     out.push('## Unreleased', '')
     for (const entry of unreleased) out.push(`- ${entry.said} (\`${entry.ticket}\`)`)
     out.push('')
