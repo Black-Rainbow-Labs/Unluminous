@@ -74,8 +74,9 @@ is how "everything is reachable" quietly stops being true.
 | `--areas editor,git`, grouped | 7 | **6,218** |
 | `--areas editor`, grouped | 6 | 5,439 |
 
-213 commands would be 213 tool definitions in an agent's context on every conversation, for more than
-twice what 28 area tools cost — and those 28 still carry every command's usage line and summary.
+Offered one a command, the catalogue is 213 tool definitions in an agent's context on every
+conversation, which is every command but the one that is held back. That costs more than twice what
+28 area tools cost, and those 28 still carry every command's usage line and summary.
 `unluminous-cli mcp tools --count` prints both figures against the catalogue as it is now, so the
 choice is never made against a number in a comment. `mcp.tools = every` is there for a client that
 permits tools by name and would rather pay.

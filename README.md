@@ -25,7 +25,7 @@ wallpaper rather than a shade somebody chose.*
 
 |  |  |  |
 |---|---|---|
-| **213 commands, 24 areas** | everything the menus, the keyboard and the mouse can ask for, `--json` on every one | [The command line](documentation/command-line.md) |
+| **214 commands, 23 areas** | everything the menus, the keyboard and the mouse can ask for, `--json` on every one | [The command line](documentation/command-line.md) |
 | **28 MCP tools, 27,011 tokens** | one tool an area rather than one a command, measured against 58,579 for the other shape | [For AI agents](documentation/for-ai-agents.md) |
 | **Eight crates, and only one may mention a window** | which is why most of Unluminous is tested with no window, no graphics card and no fonts | [Architecture](documentation/architecture.md) |
 | **16 plugins, and nothing in one is executed** | twelve languages, three panes, five themes. A plugin is a folder, so installing one is copying it | [How plugins work](documentation/plugins.md) |
@@ -81,7 +81,7 @@ unluminous-cli terminal read --wait-for "test result"     # wait for it, and rea
 unluminous-cli window screenshot shot.png                 # a real picture of the window
 ```
 
-213 commands across 24 areas, and `--json` makes every answer machine-readable.
+214 commands across 23 areas, and `--json` makes every answer machine-readable.
 [The command line](documentation/command-line.md) is how it works, down to the socket;
 [`unluminous-cli/docs/commands.md`](unluminous-cli/docs/commands.md) is the reference, written to be
 handed to an AI agent whole.

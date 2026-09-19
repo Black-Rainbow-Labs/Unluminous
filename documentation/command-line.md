@@ -12,7 +12,7 @@ unluminous-cli terminal read --wait-for "test result"     # wait for it, and rea
 unluminous-cli window screenshot shot.png                 # a real picture of the window
 ```
 
-**213 commands across 24 areas**, and `--json` makes every answer machine-readable.
+**214 commands across 23 areas**, and `--json` makes every answer machine-readable.
 `unluminous-cli/docs/commands.md` is the reference, written to be handed to an AI agent whole;
 `unluminous-cli commands --json` is the same thing as data.
 
