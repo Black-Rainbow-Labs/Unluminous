@@ -6,7 +6,7 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.53.0 — 2026-09-19
 
 - The update check asks unluminous.com and falls back to the public repository, because every address it knew was a private one that answers 404 (`task-1993`)
 
