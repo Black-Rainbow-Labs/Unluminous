@@ -316,6 +316,24 @@ fn grouped_schema(commands: &[&'static Command], verbs: Vec<Value>) -> Value {
     // nothing further -- because `oneOf` has to cover every word `command`'s `enum` allows, or a
     // call naming an uncovered verb would fail every branch and the schema would call a real
     // command invalid.
+    //
+    // **Every branch states that it needs a `command`, though the schema says so once already**
+    // (`task-1984` T14). A `properties` object constrains a key only where that key is *present*,
+    // so a branch saying `command` is `const "list"` is a branch that accepts `{}` -- and the only
+    // thing rejecting the empty call was the top level `required`. That is enough for a validator,
+    // which reads the whole schema, and not enough for a model, which is decoding against a grammar
+    // somebody compiled from it: a converter that builds one alternative per `oneOf` branch never
+    // reads the top level at all, and every alternative it built permitted `{}`.
+    //
+    // Measured rather than reasoned about. The agent study watched a local model asked to make a
+    // ticket on the board call `unluminous_plugins` with `{}` **895 times in 14 minutes** -- against
+    // a refusal that named all ten of its commands, which it had understood well enough to write
+    // them into its own notes a line earlier. Naming the commands was necessary and was not
+    // sufficient, because the fault was never that it did not know which command to send.
+    //
+    // A verb that has a required argument also requires `arguments` itself, which is the same
+    // sentence one level down: the object carrying a required value cannot be the object that is
+    // missing.
     let one_of: Vec<Value> = commands
         .iter()
         .zip(&verbs)
@@ -327,13 +345,17 @@ fn grouped_schema(commands: &[&'static Command], verbs: Vec<Value>) -> Value {
                 .map(|argument| json!(offered_as(argument.name)))
                 .collect();
             if required.is_empty() {
-                json!({ "properties": { "command": { "const": verb } } })
+                json!({
+                    "properties": { "command": { "const": verb } },
+                    "required": ["command"],
+                })
             } else {
                 json!({
                     "properties": {
                         "command": { "const": verb },
                         "arguments": { "required": required },
                     },
+                    "required": ["command", "arguments"],
                 })
             }
         })
@@ -833,6 +855,43 @@ mod tests {
     /// the same empty call **545 times in 408 seconds** before giving up and shelling out to
     /// `unluminous-cli` instead. A refusal that names nothing is a refusal an agent cannot act on,
     /// which is `task-1804` §4.2's finding one key along.
+    /// **No single branch of an area tool's schema describes a call with no command.** `task-1984` T14.
+    ///
+    /// The whole schema always rejected `{}`, through its top level `required`. This asserts the
+    /// stronger thing a model needs, which is that **each `oneOf` branch rejects it on its own** --
+    /// because a schema-to-grammar converter compiles one alternative per branch and never reads the
+    /// top level, so a branch that merely says what `command` would have to be *if present* is an
+    /// alternative that permits the empty object.
+    ///
+    /// The agent study is what asked for this: a local model sent `unluminous_plugins` an empty call
+    /// **895 times in 14 minutes**, against a refusal naming all ten of its commands.
+    #[test]
+    fn no_branch_of_an_area_tool_accepts_a_call_with_no_command() {
+        for tool in tools(Shape::Grouped) {
+            let Target::Area(_) = tool.target else { continue };
+            let branches = tool.schema["oneOf"].as_array().expect("oneOf");
+            assert!(!branches.is_empty(), "{} has no branches", tool.name);
+            for branch in branches {
+                let required = branch["required"].as_array().unwrap_or_else(|| {
+                    panic!("a branch of {} requires nothing at all: {branch}", tool.name)
+                });
+                assert!(
+                    required.iter().any(|name| name == "command"),
+                    "a branch of {} does not require a command: {branch}",
+                    tool.name
+                );
+                // And a branch naming a required argument requires the object that carries it.
+                if branch["properties"]["arguments"]["required"].is_array() {
+                    assert!(
+                        required.iter().any(|name| name == "arguments"),
+                        "a branch of {} needs an argument but not the object holding it: {branch}",
+                        tool.name
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn an_area_tool_refused_without_a_command_says_which_commands_it_has() {
         for tool in tools(Shape::Grouped) {
@@ -1562,6 +1621,24 @@ mod tests {
         //            character longer than `string` and `number` is the same length, so the ceiling
         //            did not move. It is recorded because a reader comparing the number above
         //            against `mcp tools --count` should find the two agree.
+        //   28,396   `task-1984` T14 making every `oneOf` branch require its own `command`. **1,485
+        //            tokens, 5.5%, and by some way the worst value for money in this list** -- it
+        //            buys one keyword the schema already stated once. Ceiling moved to 29,000.
+        //
+        //            It is paid because the study measured what the keyword's absence costs. A
+        //            branch saying `command` is `const "list"` constrains `command` only where
+        //            `command` is present, so every branch accepted `{}` and the top level
+        //            `required` was the only thing rejecting it. That is enough for a validator and
+        //            not for a model: a converter turning this into a decoding grammar builds one
+        //            alternative per branch, and every alternative it built allowed the empty
+        //            object. A local model asked to make a ticket on the board sent
+        //            `unluminous_plugins` `{}` **895 times in 14 minutes** and then compacted its
+        //            own context, against a refusal that named all ten commands -- which it had
+        //            understood, because it wrote them into its notes a line earlier.
+        //
+        //            Nothing was shortened to pay for it, so the 1,485 is the whole cost and is
+        //            stated rather than netted off. `mcp serve --areas` remains the lever for an
+        //            agent that does not need all of it.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
@@ -1569,7 +1646,7 @@ mod tests {
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
         assert!(
-            grouped.len() / 4 < 27_500,
+            grouped.len() / 4 < 29_000,
             "grouped MCP schema exceeded budget: {} bytes",
             grouped.len()
         );
