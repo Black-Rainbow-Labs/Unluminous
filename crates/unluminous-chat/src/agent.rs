@@ -788,18 +788,30 @@ impl Decoder {
     /// the front of what was sent — a revision, a shorter value, a reused id — the two have nothing
     /// to do with each other and the whole of the new one is sent rather than a slice out of its
     /// middle. It cannot land inside a character either, because the split is at a prefix boundary.
+    /// **Nothing is copied but the part being reported** (`task-1984` P17). This used to clone the
+    /// whole already-sent text to compare against, and then clone the whole new snapshot to record --
+    /// and Codex sends a snapshot per update, so an answer of a hundred kilobytes arriving in a
+    /// thousand updates copied about a hundred megabytes to report a hundred kilobytes. What is kept
+    /// is grown in place instead, so a long answer costs one buffer that doubles rather than a
+    /// thousand buffers thrown away.
     fn rest_of(&mut self, id: &str, text: &str) -> Option<String> {
-        let already = self
-            .sent
-            .iter()
-            .find(|(one, _)| one == id)
-            .map(|(_, said)| said.clone())
-            .unwrap_or_default();
-        let rest = match text.strip_prefix(already.as_str()) {
-            Some(rest) => rest.to_owned(),
-            None => text.to_owned(),
+        let at = self.sent.iter().position(|(one, _)| one == id);
+        let carries_on = at.is_some_and(|at| text.starts_with(self.sent[at].1.as_str()));
+        let from = match carries_on {
+            true => self.sent[at.expect("carries_on needs one")].1.len(),
+            false => 0,
         };
-        self.remember(id, text.to_owned());
+        let rest = text[from..].to_owned();
+        match at {
+            Some(at) => {
+                let said = &mut self.sent[at].1;
+                if !carries_on {
+                    said.clear();
+                }
+                said.push_str(&rest);
+            }
+            None => self.sent.push((id.to_owned(), rest.clone())),
+        }
         match rest.is_empty() {
             true => None,
             false => Some(rest),
@@ -1282,5 +1294,73 @@ mod tests {
             out.extend(decoder.line(line));
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod only_the_new_part {
+    use super::*;
+
+    /// Codex sends a snapshot per update, and only what is new reaches the pane.
+    ///
+    /// **`task-1984` P17.** `rest_of` cloned the whole already-sent text to compare against and then
+    /// cloned the whole new snapshot to record -- so an answer of a hundred kilobytes arriving in a
+    /// thousand updates copied about a hundred megabytes to report a hundred kilobytes. What is kept
+    /// is grown in place now, and what has to stay true is the answer: each update reports the part
+    /// that is new and nothing else, and an update that says the same thing twice reports nothing.
+    #[test]
+    fn each_update_reports_the_part_that_is_new_and_nothing_else() {
+        let mut decoder = Decoder::new(Wire::CodexCli);
+        let mut so_far = String::new();
+        for word in ["A model ", "writing ", "one word ", "at a time."] {
+            so_far.push_str(word);
+            assert_eq!(decoder.rest_of("item-1", &so_far).as_deref(), Some(word));
+        }
+        assert_eq!(
+            decoder.rest_of("item-1", &so_far),
+            None,
+            "the same snapshot twice says nothing"
+        );
+        // A second item is its own conversation, and the first is not disturbed by it.
+        assert_eq!(decoder.rest_of("item-2", "elsewhere").as_deref(), Some("elsewhere"));
+        so_far.push_str(" And more.");
+        assert_eq!(decoder.rest_of("item-1", &so_far).as_deref(), Some(" And more."));
+    }
+
+    /// A snapshot that is not a continuation of the last one is sent whole.
+    ///
+    /// `task-1984` P17 kept the rule the comment above `rest_of` already stated and that the
+    /// rewrite could have lost: the already-sent text is compared as a **prefix**, not as a length.
+    /// A revision, a shorter value or a reused id has nothing to do with what was sent, so the whole
+    /// of the new one goes out rather than a slice out of its middle -- which could otherwise land
+    /// inside a character.
+    #[test]
+    fn a_snapshot_that_does_not_carry_on_from_the_last_is_sent_whole() {
+        let mut decoder = Decoder::new(Wire::CodexCli);
+        assert_eq!(
+            decoder.rest_of("item", "the first answer").as_deref(),
+            Some("the first answer")
+        );
+        // Shorter, and not a prefix of what was sent.
+        assert_eq!(decoder.rest_of("item", "a revision").as_deref(), Some("a revision"));
+        // And carrying on from the revision works from there rather than from what came before it.
+        assert_eq!(decoder.rest_of("item", "a revision, longer").as_deref(), Some(", longer"));
+    }
+
+    /// Multi byte text is never split in the middle of a character.
+    ///
+    /// `task-1984` P17. The split is at a prefix boundary, which is a character boundary by
+    /// construction — but the rewrite slices by a length it works out itself, so this is the thing
+    /// that would panic if the arithmetic were wrong.
+    #[test]
+    fn a_snapshot_of_multi_byte_text_is_never_split_inside_a_character() {
+        let mut decoder = Decoder::new(Wire::CodexCli);
+        let whole = "\u{4f60}\u{597d}\u{1f600} a mix of widths";
+        let mut so_far = String::new();
+        for character in whole.chars() {
+            so_far.push(character);
+            let rest = decoder.rest_of("item", &so_far).expect("one character is new");
+            assert_eq!(rest, character.to_string(), "after {so_far:?}");
+        }
     }
 }
