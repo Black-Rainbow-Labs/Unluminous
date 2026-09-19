@@ -85,6 +85,7 @@ mod cli_panel;
 mod cli_plugins;
 mod cli_run;
 mod cli_settings;
+mod cli_space;
 mod cli_tab;
 mod cli_terminal;
 mod cli_window;
