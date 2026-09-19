@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- MacOS is part of a release, not a flag, and the release says what it reached (`task-1995`)
+- A divider takes room from whatever is between the sides, and a page gives the keyboard back (`task-2004`)
+
 ## 0.53.1 — 2026-09-19
 
 - A release publishes both sites, because the parent page reads the manifest the product page publishes (`task-1993`)
