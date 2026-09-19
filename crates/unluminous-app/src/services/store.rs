@@ -911,11 +911,18 @@ theme.comment = #6272A4
         let folder = temporary("unluminous-1984-atomic");
         std::fs::create_dir_all(&folder).expect("the folder");
         let file = folder.join("source.rs");
-        std::fs::write(&file, "pub fn one() {}
-").expect("write it first");
+        std::fs::write(
+            &file,
+            "pub fn one() {}
+",
+        )
+        .expect("write it first");
 
         let nowhere = folder.join("not-a-folder").join("source.rs");
-        assert!(write_a_source_file(&nowhere, b"anything").is_err(), "there is no folder to write in");
+        assert!(
+            write_a_source_file(&nowhere, b"anything").is_err(),
+            "there is no folder to write in"
+        );
 
         assert_eq!(
             std::fs::read_to_string(&file).expect("read it back"),
@@ -943,10 +950,17 @@ theme.comment = #6272A4
         let folder = temporary("unluminous-1984-private");
         std::fs::create_dir_all(&folder).expect("the folder");
         let file = folder.join("instance.conf");
-        write_atomically_private(&file, b"token = secret
-").expect("write it");
-        assert_eq!(std::fs::read_to_string(&file).expect("read it back"), "token = secret
-");
+        write_atomically_private(
+            &file,
+            b"token = secret
+",
+        )
+        .expect("write it");
+        assert_eq!(
+            std::fs::read_to_string(&file).expect("read it back"),
+            "token = secret
+"
+        );
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt as _;
@@ -995,7 +1009,8 @@ theme.comment = #6272A4
         let mut unaccounted = Vec::new();
         for path in &files {
             let Ok(source) = std::fs::read_to_string(path) else { continue };
-            let relative = path.strip_prefix(&root).unwrap_or(path).to_string_lossy().replace('\\', "/");
+            let relative =
+                path.strip_prefix(&root).unwrap_or(path).to_string_lossy().replace('\\', "/");
             if ALLOWED.iter().any(|(name, _)| relative.ends_with(name)) {
                 continue;
             }

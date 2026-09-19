@@ -593,7 +593,11 @@ fn end_of_options_precedes_every_caller_supplied_argument() {
     // the one option every subcommand has.
     let typed = "--version";
 
-    let calls: Vec<(&str, Box<dyn Fn() -> unluminous_git::command::Outcome>)> = vec![
+    // One row of the table: what the function is called, and a call of it with `typed` in the place
+    // a caller's value goes.
+    type Row<'a> = (&'a str, Box<dyn Fn() -> unluminous_git::command::Outcome + 'a>);
+
+    let calls: Vec<Row> = vec![
         ("add", Box::new(|| ops::add(&root, &[typed]))),
         ("unstage", Box::new(|| ops::unstage(&root, &[typed]))),
         ("rollback", Box::new(|| ops::rollback(&root, &[typed]))),
@@ -638,8 +642,11 @@ fn end_of_options_precedes_every_caller_supplied_argument() {
     let mut read_as_an_option = Vec::new();
     for (name, call) in calls {
         let outcome = call();
-        let said = format!("{}
-{}", outcome.stdout, outcome.stderr);
+        let said = format!(
+            "{}
+{}",
+            outcome.stdout, outcome.stderr
+        );
         if said.contains("unknown option") || said.contains("unknown switch") {
             read_as_an_option.push(format!(
                 "{name}: git answered `{}`",

@@ -719,9 +719,7 @@ fn password(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, Strin
     let mut words = rest.split_whitespace();
     let name = words
         .next()
-        .ok_or_else(|| {
-            "password takes a data source and `keychain <entry>` or `none`.".to_owned()
-        })?
+        .ok_or_else(|| "password takes a data source and `keychain <entry>` or `none`.".to_owned())?
         .to_owned();
     let secret = match words.next() {
         Some("set") => {

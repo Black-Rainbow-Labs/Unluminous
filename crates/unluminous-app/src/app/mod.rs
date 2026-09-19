@@ -337,7 +337,7 @@ pub enum Focus {
 /// filling the window — that is how a second double click restores — so a variant for it would lose the
 /// arrangement `Filling` is holding. `settling_the_maximise` is a re-entrancy guard, and what it really
 /// guards is written down beside it.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum Maximise {
     /// Nothing is filling the window.
     No,
@@ -346,8 +346,19 @@ enum Maximise {
         /// The pane that is showing. `None` means the editing area, which is not a panel.
         pane: Option<dock::Panel>,
         /// What was showing before, in `dock::Panel::index` order, and whether the editing area was.
+        ///
+        /// **The plugin slots in here are not read back** -- see `plugin_panes` below. A slot number
+        /// is not a name, and which plugin is in which slot changes when one is switched on or off.
         editor: bool,
         panels: [bool; dock::SLOTS],
+        /// Which contributed panes were showing, **by their keys** (`task-1984` A15).
+        ///
+        /// A plugin's pane is remembered by its `plugin/pane` key rather than by its slot number,
+        /// because switching a plugin on or off while a pane is maximised renumbers the slots: the
+        /// restore then put back whichever plugin had moved into the slot the remembered one used to
+        /// be in, which is a different pane. A key survives that, and a plugin that has gone by the
+        /// time the window is restored simply does not come back, which is what it should do.
+        plugin_panes: Vec<String>,
         /// And who had the keyboard, because putting a panel back **takes** it: `show_the_terminal_tile`
         /// hands the keys to the terminal whenever it is shown, which is right when somebody presses the
         /// terminal's own button and wrong when a restore happens to bring it back. Without this, maximising

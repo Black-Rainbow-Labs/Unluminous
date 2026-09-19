@@ -691,7 +691,10 @@ fn unrename(arguments: &mut Map<String, Value>) {
     for (real, offered) in RENAMED_IN_A_GROUPED_CALL {
         if arguments.contains_key(real) {
             // The caller used the real name and got away with it, which happens when the outer key
-            // was not in its way. Believed as it stands.
+            // was not in its way. Believed as it stands -- and the alias goes with it, because a call
+            // carrying both `command` and `verb` was otherwise refused for the schema's **own** key,
+            // which is the one key an agent cannot be blamed for sending (`task-1984` L14).
+            arguments.remove(offered);
             continue;
         }
         if let Some(value) = arguments.remove(offered) {

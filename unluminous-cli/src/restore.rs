@@ -79,7 +79,14 @@ pub fn is_worth_trying(restore: &Restore) -> bool {
 /// one — the switch with no file, or no program after the separator — also answers `None`, so a mistyped
 /// command line opens a window rather than half-starting a shell.
 pub fn asked_for(words: &[String]) -> Option<(PathBuf, String, Vec<String>)> {
-    let switch = words.iter().position(|word| word == SWITCH)?;
+    // **The first word, not anywhere on the line** (`task-1984` L12). Unluminous builds this command
+    // line itself and always puts the switch first, so nothing that works stops working -- and a
+    // project or a file whose name happens to be `--replay-screen` no longer turns an ordinary start
+    // into a shim that prints a file and becomes a shell.
+    let switch = match words.first() {
+        Some(first) if first == SWITCH => 0,
+        _ => return None,
+    };
     let file = words.get(switch + 1)?;
     let then = words.iter().skip(switch + 2).position(|word| word == THEN)? + switch + 2;
     let program = words.get(then + 1)?;

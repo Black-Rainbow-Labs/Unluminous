@@ -227,7 +227,7 @@ mod tests {
             document.paragraphs(),
             &metrics,
             600.0,
-            &crate::folding::Hidden::of([hidden..5]),
+            &crate::folding::Hidden::of(std::iter::once(hidden..5)),
         );
 
         assert!(folded.paragraph_band(hidden).is_none(), "the fold is what makes it have no band");

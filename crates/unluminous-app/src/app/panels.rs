@@ -117,6 +117,17 @@ impl UnluminousApp {
         self.panels_showing()[panel.index()]
     }
 
+    /// The keys of the contributed panes that are showing.
+    ///
+    /// By key rather than by slot, because a slot number is not a name: switching a plugin on or off
+    /// renumbers them. See `Maximise::Filling::plugin_panes`.
+    pub fn showing_plugin_panes(&self) -> Vec<String> {
+        (0..self.plugin_ui.pane_count())
+            .filter(|slot| self.plugin_ui.is_visible(*slot))
+            .filter_map(|slot| self.plugin_ui.pane_key(slot))
+            .collect()
+    }
+
     /// Whether any panel at all is showing, which is what makes hiding the editing area safe.
     ///
     /// `task-28`: hiding the editing area with nothing else on the screen would leave a window holding the rail
@@ -223,10 +234,21 @@ impl UnluminousApp {
     fn settle_the_maximise(&mut self, pane: Option<dock::Panel>) {
         match std::mem::replace(&mut self.maximised, Maximise::No) {
             // The same one again: put everything back where it was.
-            Maximise::Filling { pane: was, editor, panels, focus } if was == pane => {
+            Maximise::Filling { pane: was, editor, panels, plugin_panes, focus } if was == pane => {
                 self.editor_visible = editor;
                 for panel in dock::Panel::all(self.plugin_ui.pane_count()) {
-                    self.show_a_panel(panel, panels[panel.index()]);
+                    // **A contributed pane is put back by its key** (`task-1984` A15), because a
+                    // plugin switched on or off while this was maximised renumbers the slots and the
+                    // remembered slot then names a different pane. A plugin that has gone does not
+                    // come back, which is what it should do.
+                    let showing = match panel {
+                        dock::Panel::Plugin(slot) => self
+                            .plugin_ui
+                            .pane_key(slot as usize)
+                            .is_some_and(|key| plugin_panes.contains(&key)),
+                        _ => panels[panel.index()],
+                    };
+                    self.show_a_panel(panel, showing);
                 }
                 // With nothing showing at all — which a window can be left in only by putting the last
                 // panel away while the editing area was hidden — the editing area comes back, which is the
@@ -241,15 +263,22 @@ impl UnluminousApp {
             }
             // A different one, or none: this pane fills the window and the memory is kept.
             was => {
-                let (editor, panels, focus) = match was {
-                    Maximise::Filling { editor, panels, focus, .. } => (editor, panels, focus),
-                    Maximise::No => (self.editor_visible, self.panels_showing(), self.focus),
+                let (editor, panels, plugin_panes, focus) = match was {
+                    Maximise::Filling { editor, panels, plugin_panes, focus, .. } => {
+                        (editor, panels, plugin_panes, focus)
+                    }
+                    Maximise::No => (
+                        self.editor_visible,
+                        self.panels_showing(),
+                        self.showing_plugin_panes(),
+                        self.focus,
+                    ),
                 };
                 for panel in dock::Panel::all(self.plugin_ui.pane_count()) {
                     self.show_a_panel(panel, pane == Some(panel));
                 }
                 self.editor_visible = pane.is_none();
-                self.maximised = Maximise::Filling { pane, editor, panels, focus };
+                self.maximised = Maximise::Filling { pane, editor, panels, plugin_panes, focus };
             }
         }
     }

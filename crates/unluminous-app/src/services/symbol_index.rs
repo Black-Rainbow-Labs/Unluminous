@@ -280,7 +280,14 @@ impl Indexer {
                 }
             })
             .ok()?;
-        Some(Self { requests, replies, newest, generation: 0, answered: 0, index: Index::default() })
+        Some(Self {
+            requests,
+            replies,
+            newest,
+            generation: 0,
+            answered: 0,
+            index: Index::default(),
+        })
     }
 
     /// Read the project again, abandoning whatever was being read.

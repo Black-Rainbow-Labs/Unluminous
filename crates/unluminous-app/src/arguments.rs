@@ -191,12 +191,10 @@ fn value_after(
     match rest.next() {
         // A value that is itself a switch is a value somebody forgot. Taking it would swallow the
         // switch as well, which is two things going wrong for one mistake.
-        Some(value) if value.starts_with('-') && value.len() > 1 => {
-            Err(Start::Refuse(format!(
-                "unluminous: {switch} wants {wanted} after it, and {value} is another switch. \
+        Some(value) if value.starts_with('-') && value.len() > 1 => Err(Start::Refuse(format!(
+            "unluminous: {switch} wants {wanted} after it, and {value} is another switch. \
                  `unluminous --help` lists them."
-            )))
-        }
+        ))),
         Some(value) => Ok(value),
         None => Err(Start::Refuse(format!(
             "unluminous: {switch} wants {wanted} after it, and there is nothing after it. \
@@ -207,9 +205,7 @@ fn value_after(
 
 /// A value a switch could not read, said as a sentence with what it takes instead.
 fn refuse(switch: &str, value: &str, wanted: &str) -> Start {
-    Start::Refuse(format!(
-        "unluminous: {value} is not a value {switch} takes. It takes {wanted}."
-    ))
+    Start::Refuse(format!("unluminous: {value} is not a value {switch} takes. It takes {wanted}."))
 }
 
 /// What `--version` says: the same two facts the About box shows, from the same two constants.

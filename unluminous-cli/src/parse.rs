@@ -397,8 +397,14 @@ fn take_global(words: &[String], at: &mut usize, global: &mut Global) -> Result<
 }
 
 /// `--name=value` split into its two halves, or `--name` with nothing after it.
+///
+/// **One or two dashes, not any number** (`task-1984` L13). `trim_start_matches` took every leading
+/// dash there was, so `---permanent` was read as `permanent` and accepted while `--LINE` was refused
+/// -- two spellings nobody typed on purpose, treated in opposite ways. A third dash is a typo, and a
+/// typo is what this file already refuses: "a mistyped flag quietly treated as text is a command that
+/// did the wrong thing without saying so".
 fn split_flag(word: &str) -> (&str, Option<&str>) {
-    let body = word.trim_start_matches('-');
+    let body = word.strip_prefix("--").or_else(|| word.strip_prefix('-')).unwrap_or(word);
     match body.split_once('=') {
         Some((name, value)) => (name, Some(value)),
         None => (body, None),

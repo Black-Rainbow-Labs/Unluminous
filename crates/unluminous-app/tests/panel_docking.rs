@@ -903,3 +903,45 @@ fn hiding_the_explorer_from_the_command_line_leaves_something_to_look_at() {
         "and the editing area came back rather than the window being left empty"
     );
 }
+
+/// Switching a plugin off while a pane is maximised does not put the wrong pane back.
+///
+/// `task-1984` A15. `Maximise::Filling` remembered which panes were showing as an array indexed by
+/// `dock::Panel::index`, and a contributed pane's index is its **slot** — which is renumbered
+/// whenever a plugin is switched on or off. So a restore put back whichever plugin had moved into
+/// the slot the remembered one used to be in, which is a different pane.
+#[test]
+fn a_plugin_switched_off_while_a_pane_is_maximised_does_not_restore_the_wrong_one() {
+    let mut harness = harness("# a file\n");
+    // **The second pane showing and the first not**, which is what makes the slot numbers say the
+    // wrong thing once the first plugin goes: the pane that was showing moves into a slot whose
+    // remembered answer was `false`, so it does not come back.
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    let showing_before = harness.state().showing_plugin_panes();
+    assert_eq!(showing_before.len(), 1, "one contributed pane is showing: {showing_before:?}");
+    let keys = harness.state().plugin_ui.pane_keys();
+    assert!(
+        keys.iter().position(|key| key.starts_with("agent-chat/"))
+            < keys.iter().position(|key| key.starts_with("agent-tasks/")),
+        "agent-chat is in an earlier slot, which is what renumbers the other one: {keys:?}"
+    );
+
+    did(&mut harness, "explorer show");
+    choose(&mut harness, Action::ToggleMaximisedPane);
+    assert!(harness.state().maximised_pane().is_some(), "something fills the window");
+
+    // A plugin switched off while it is maximised, which is what renumbers the slots.
+    did(&mut harness, "plugins disable agent-chat");
+    harness.run();
+
+    choose(&mut harness, Action::ToggleMaximisedPane);
+    let showing_after = harness.state().showing_plugin_panes();
+    assert!(
+        !showing_after.iter().any(|key| key.starts_with("agent-chat/")),
+        "the pane whose plugin is off does not come back: {showing_after:?}"
+    );
+    assert!(
+        showing_after.iter().any(|key| key.starts_with("agent-tasks/")),
+        "and the one that was showing and is still installed does: {showing_after:?}"
+    );
+}

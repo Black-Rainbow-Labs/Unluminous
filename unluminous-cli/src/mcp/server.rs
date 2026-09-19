@@ -203,8 +203,12 @@ impl<D: Driver> Server<D> {
         // been refused runs -- but a caller that meant them has to find out, or this becomes the
         // fault `task-1794` was filed about wearing a different hat. `task-1804` §4.2.
         if !ignored.is_empty() {
+            // `\n\n` rather than `\\n\\n`, and one backslash at the end of the line rather than two
+            // (`task-1984` L5). Written with the escapes doubled, an agent read a literal `\n\n` and
+            // then a stray backslash followed by seventeen spaces, in the one sentence that exists to
+            // tell it something went slightly wrong.
             said.push_str(&format!(
-                "\\n\\nIgnored {}: {} of `{}`, not of `{}`. The tool's schema lists every command's \\
+                "\n\nIgnored {}: {} of `{}`, not of `{}`. The tool's schema lists every command's \
                  keys together, which is why they were offered.",
                 ignored.join(", "),
                 if ignored.len() == 1 { "it is a key" } else { "they are keys" },

@@ -283,9 +283,7 @@ unsafe fn read_the_directory(
     if read == 0 || directory.Buffer.is_null() {
         return None;
     }
-    let Some(characters) = characters_to_read(directory.Length as usize, longest) else {
-        return None;
-    };
+    let characters = characters_to_read(directory.Length as usize, longest)?;
     let length = characters * 2;
     // The letters themselves, which are sixteen bit and are not terminated.
     let mut letters = vec![0u16; characters];

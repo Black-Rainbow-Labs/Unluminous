@@ -403,7 +403,10 @@ mod not_a_number {
         }
         let arguments: Map<String, Value> =
             json!({ "x": "10.5", "y": -3 }).as_object().expect("an object").clone();
-        assert!(wrong_numbers(command, &arguments).is_empty(), "and an ordinary number still is one");
+        assert!(
+            wrong_numbers(command, &arguments).is_empty(),
+            "and an ordinary number still is one"
+        );
     }
 }
 

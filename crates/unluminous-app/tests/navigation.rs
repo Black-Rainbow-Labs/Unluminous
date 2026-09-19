@@ -2157,10 +2157,9 @@ fn a_source_file_write_that_fails_leaves_the_file_as_it_was() {
     // `editor rename` is answered on a later frame -- it reads the project on a thread -- so the
     // reply is not what this is about. What is asserted is what is in the file afterwards.
     let ctx = harness.ctx.clone();
-    let _ = harness.state_mut().run_command_line(
-        "editor rename draw_the_lot --name draw_everything --json",
-        &ctx,
-    );
+    let _ = harness
+        .state_mut()
+        .run_command_line("editor rename draw_the_lot --name draw_everything --json", &ctx);
     for _ in 0..60 {
         pump(&mut harness);
         std::thread::sleep(std::time::Duration::from_millis(25));

@@ -358,7 +358,11 @@ pub fn refuse_a_browser(request: &Incoming) -> Option<String> {
 
 /// True of `http://127.0.0.1:1234`, `http://localhost`, and nothing else.
 fn is_loopback_origin(origin: &str) -> bool {
-    let origin = origin.trim();
+    // **A scheme and a host are not case sensitive** and RFC 6454 says an origin is compared with
+    // both of them lowercased, so `HTTP://LOCALHOST` is the same origin as `http://localhost`
+    // (`task-1984` L21). Compared as written, a browser that sent either spelling was refused with a
+    // sentence about web pages -- a refusal about something that is not true of it.
+    let origin = origin.trim().to_ascii_lowercase();
     let Some(host) = origin.strip_prefix("http://").or_else(|| origin.strip_prefix("https://"))
     else {
         // `null`, `file://`, and anything else that is not an http origin at all.
