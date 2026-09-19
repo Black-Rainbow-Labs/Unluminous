@@ -133,5 +133,21 @@
 {"id":"s29-palette","area":"action","name":"Find a command by roughly what it is called",
  "after":{"settings":["settings","list"]},
  "expect":"Uses `action find` to look the entry up by its wording and then `action run` on the name it was given, rather than guessing an action name until one is accepted or reaching for its own shell. The first run of this measured a model trying `toggle-line-numbers`, `line-numbers` and `show-line-numbers` in turn.",
- "prompts":["I want to turn the line numbers off but I do not know what the command is called. Find it and run it, and tell me what it is called so I know for next time."]}
+ "prompts":["I want to turn the line numbers off but I do not know what the command is called. Find it and run it, and tell me what it is called so I know for next time."]},
+
+{"id":"s30-board","area":"plugins","name":"Make a ticket on the board and move it",
+ "expect":"Uses `plugins run agent-tasks` to open the board and drive it, rather than reading the SQLite file behind it or shelling out. The board is a plugin, so the verbs are its own; `plugins show agent-tasks` is what lists them, and a model that guesses `task new` or `board add` has not looked.",
+ "prompts":["Open the Agent-Tasks board in Unluminous and make me a ticket called 'check the gutter alignment'.",
+            "Move it to In Progress and add a todo on it saying 'measure it at 144 points'."]},
+
+{"id":"s31-theme","area":"theme","name":"Change the theme and change it back",
+ "after":{"settings":["settings","get","appearance.theme"]},
+ "expect":"Uses `theme list` to find what is installed and `theme set` to choose one, rather than writing `appearance.theme` into the settings file or guessing a theme's key. A theme is named by its key or by the name on the screen and both are accepted, so the model does not have to know which it has; what it must not do is invent one.",
+ "prompts":["What themes do I have, and what am I using?",
+            "Put me in Monokai Pro, then tell me how to get back to what I had."]},
+
+{"id":"s32-chat-node","area":"space","name":"A chat node on the canvas, driven as itself",
+ "expect":"Uses `space add chat` and then `space chat <node> …` rather than the panel's own `plugins run agent-chat`, which would drive whichever conversation the panel is on rather than this node's. Two views of one conversation is the thing the node exists not to be.",
+ "prompts":["Open the Base of Infinite Space and put an agent chat node on it.",
+            "Which conversation is that node on, and what providers could it use? Answer about that node rather than about the chat panel."]}
 ]
