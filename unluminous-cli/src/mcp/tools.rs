@@ -622,22 +622,33 @@ pub fn resolve_in(
             Ok(Call { command, arguments, instance, ignored: Vec::new() })
         }
         Target::Area(area) => {
+            // **Both refusals name the commands** (`task-1984` T14). The one below always did; this
+            // one said only how many there were, and the agent study measured what that costs: a
+            // local model asked to change the theme called `unluminous_theme` with no arguments and
+            // was told it *needs a command*, without being told what one is — and it sent the same
+            // empty call **545 times in 408 seconds** before giving up and shelling out to
+            // `unluminous-cli` instead. `task-1804` §4.2 measured the same shape one key along, where
+            // a refusal that did not name the keys cost the whole `database` area, and the answer
+            // there was the same: say what it takes.
+            let verbs = || {
+                catalogue::in_area(area)
+                    .iter()
+                    .filter(|command| offered(command))
+                    .map(|command| command.verb)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
             let Some(verb) = given.get("command").and_then(Value::as_str) else {
                 return Err(Unresolved(format!(
-                    "`{name}` needs a `command`: which of the {} commands to run.",
-                    catalogue::in_area(area).len()
+                    "`{name}` needs a `command`, which is one of: {}.",
+                    verbs()
                 )));
             };
             let wanted = if area.is_empty() { verb.to_owned() } else { format!("{area}.{verb}") };
             let Some(command) = catalogue::find(&wanted).filter(|command| offered(command)) else {
                 return Err(Unresolved(format!(
                     "`{verb}` is not one of {name}'s commands. They are: {}.",
-                    catalogue::in_area(area)
-                        .iter()
-                        .filter(|command| offered(command))
-                        .map(|command| command.verb)
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                    verbs()
                 )));
             };
             let mut arguments = match given.get("arguments") {
@@ -812,6 +823,32 @@ mod tests {
             tools(Shape::Grouped).len(),
             tools(Shape::Every).len()
         );
+    }
+
+    /// **Every refusal an area tool can give names the commands it has.** `task-1984` T14.
+    ///
+    /// Measured rather than reasoned about: the agent study watched a local model ask to change the
+    /// theme, call `unluminous_theme` with no arguments, be told it *needs a `command`: which of the
+    /// 3 commands to run* — a sentence that says how many there are and not what they are — and send
+    /// the same empty call **545 times in 408 seconds** before giving up and shelling out to
+    /// `unluminous-cli` instead. A refusal that names nothing is a refusal an agent cannot act on,
+    /// which is `task-1804` §4.2's finding one key along.
+    #[test]
+    fn an_area_tool_refused_without_a_command_says_which_commands_it_has() {
+        for tool in tools(Shape::Grouped) {
+            let Target::Area(area) = tool.target else { continue };
+            let refusal =
+                resolve(Shape::Grouped, &tool.name, &Map::new()).expect_err("no command was given");
+            for command in catalogue::in_area(area).iter().filter(|command| offered(command)) {
+                assert!(
+                    refusal.0.contains(command.verb),
+                    "{}'s refusal does not name {}: {}",
+                    tool.name,
+                    command.verb,
+                    refusal.0
+                );
+            }
+        }
     }
 
     #[test]
