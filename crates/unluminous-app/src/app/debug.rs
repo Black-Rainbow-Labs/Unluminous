@@ -864,35 +864,8 @@ impl DebugState {
     /// One thing that happened, put where the window will draw it.
     fn absorb(&mut self, event: Event) {
         match event {
-            Event::Ready => {
-                // The filters the adapter offers with a default of on are on, which is what every
-                // client does and what "break on uncaught exception" being the sensible default
-                // means. Unluminous holds no list of its own.
-                self.filters = self
-                    .session
-                    .capabilities()
-                    .exception_filters
-                    .iter()
-                    .filter(|filter| filter.default)
-                    .map(|filter| filter.filter.clone())
-                    .collect();
-            }
-            Event::Running => {
-                // Every `variablesReference` died the moment the program was told to go on. What was
-                // *open* is kept, which is what stops a step re-collapsing the structure being
-                // watched.
-                self.fetched.clear();
-                self.scopes.clear();
-                self.rows.clear();
-                self.frames.clear();
-                self.frame = None;
-                // The tooltip is about a moment and the moment has passed — and every reference in
-                // it died with the resume. The reference editor dismisses its own on a step for the same reason.
-                self.hover = None;
-                for watch in &mut self.watches {
-                    watch.result = None;
-                }
-            }
+            Event::Ready => self.note_which_exceptions_break(),
+            Event::Running => self.forget_what_the_pause_held(),
             Event::Stopped(stopped) => {
                 self.stops += 1;
                 self.message = Some(match stopped.description.as_deref() {
@@ -906,25 +879,7 @@ impl DebugState {
                 self.frames = frames;
                 self.ask_the_watches();
             }
-            Event::Scopes { frame, scopes } => {
-                if self.frame != Some(frame) {
-                    return;
-                }
-                self.reads += 1;
-                // The first scope that is not expensive is **open**, which is what the pane opens
-                // showing and is the one the session fetched unprompted. Registers — which lldb
-                // marks expensive — waits to be asked for, and so does a second Locals-like group.
-                // Only when nothing has been opened by hand yet: a person who closed Locals and
-                // stepped has closed it, and re-opening it under them would be the fault
-                // `keep_the_caret_visible` avoids in the other direction.
-                if self.opened.is_empty() {
-                    if let Some(first) = scopes.iter().find(|scope| !scope.expensive) {
-                        self.opened.insert(first.name.clone());
-                    }
-                }
-                self.scopes = scopes;
-                self.rebuild_rows();
-            }
+            Event::Scopes { frame, scopes } => self.note_the_scopes(frame, scopes),
             Event::Variables { reference, variables } => {
                 self.reads += 1;
                 self.fetched.insert(reference, variables);
@@ -932,76 +887,11 @@ impl DebugState {
                 self.rebuild_hover_rows();
             }
             Event::Breakpoints { path, answered } => {
-                // Normalised the way `set_breakpoints` normalises what it sends, so the two maps
-                // `verified` reads together are keyed the same way. The adapter echoes back whatever
-                // spelling its debug information holds, which is why `same_file` exists at all; this
-                // closes the half of that Unluminous controls, and a case difference is still the
-                // adapter's own and still answered there.
-                let path = unluminous_terminal::paths::native(&unluminous_terminal::paths::plain(
-                    Path::new(&path),
-                ));
-                // **An answer with a different number of entries than were sent is not an answer
-                // about them**, and taking it would throw away the ids the real answer carried —
-                // which is what a later `breakpoint` event uses to say one has bound.
-                //
-                // js-debug sends `initialized` **twice** on a child session, so the breakpoints go
-                // out twice, and it answers the second `setBreakpoints` for a file with an empty
-                // list. Measured on `task-1692`, where the effect was a breakpoint that stopped the
-                // program and was still drawn hollow.
-                let expected = self.sent.get(&path).map(Vec::len).unwrap_or_default();
-                if answered.len() != expected && self.answered.contains_key(&path) {
-                    return;
-                }
-                self.answered.insert(path, answered);
+                self.note_what_the_adapter_bound(path, answered)
             }
-            Event::BreakpointChanged(changed) => {
-                // A breakpoint that bound after the fact — a library that has just loaded. Matched
-                // by the adapter's own id, which is the only thing that identifies it across files.
-                let Some(id) = changed.id else {
-                    return;
-                };
-                for answered in self.answered.values_mut() {
-                    for known in answered.iter_mut() {
-                        if known.id == Some(id) {
-                            *known = changed.clone();
-                        }
-                    }
-                }
-            }
-            Event::Output { kind, text } => {
-                // The debuggee's output goes to the run tile when the adapter asked for one. What is
-                // kept here is what an adapter that did not ask sends, plus the adapter's own
-                // console — which is worth reading either way.
-                if self.runs_in_terminal() && kind != OutputKind::Console {
-                    return;
-                }
-                for line in text.split_inclusive('\n') {
-                    match self.output.last_mut() {
-                        Some(last) if !last.ends_with('\n') => last.push_str(line),
-                        _ => self.output.push(line.to_owned()),
-                    }
-                }
-                let over = self.output.len().saturating_sub(OUTPUT_LIMIT);
-                self.output.drain(..over);
-            }
-            Event::Evaluated { id, result } => {
-                // The tooltip first, because it is the one whose question is replaced rather than
-                // kept: an answer whose id is nobody's is an answer to a hover the pointer has
-                // already left, and it lands nowhere.
-                if self.hover.as_ref().is_some_and(|hover| hover.id == id) {
-                    self.take_the_hover_answer(result);
-                    return;
-                }
-                if let Some(watch) = self.watches.iter_mut().find(|watch| watch.id == id) {
-                    watch.result = Some(result);
-                    return;
-                }
-                if let Some((asked, _, answer)) = self.evaluated.as_mut() {
-                    if *asked == id {
-                        *answer = Some(result);
-                    }
-                }
-            }
+            Event::BreakpointChanged(changed) => self.note_a_breakpoint_that_moved(changed),
+            Event::Output { kind, text } => self.note_what_was_printed(kind, text),
+            Event::Evaluated { id, result } => self.note_an_answer(id, result),
             Event::VariableSet { reference, name, result } => match result {
                 Ok(answered) => {
                     // What the row shows is the value **as the debugger now sees it** rather than
@@ -1049,23 +939,7 @@ impl DebugState {
             Event::Failed { command, message } => {
                 self.message = Some(format!("{command}: {message}"));
             }
-            Event::Ended { code } => {
-                self.frames.clear();
-                self.scopes.clear();
-                self.rows.clear();
-                self.fetched.clear();
-                self.frame = None;
-                self.hover = None;
-                for watch in &mut self.watches {
-                    watch.result = None;
-                }
-                self.message = Some(match code {
-                    Some(0) | None => format!("{} finished", self.configuration.name),
-                    Some(code) => {
-                        format!("{} ended with exit code {code}", self.configuration.name)
-                    }
-                });
-            }
+            Event::Ended { code } => self.note_that_it_ended(code),
             // Answered by the window, which owns the run tile. `take_replies` hands it up rather
             // than letting it reach here.
             Event::RunInTerminal { .. } => {}
@@ -1294,6 +1168,158 @@ impl DebugState {
             }
         }
         values
+    }
+
+    /// `Event::Ready`. Split out of [`Self::absorb`] by `task-1984` §3.6.
+    fn note_which_exceptions_break(&mut self) {
+        // The filters the adapter offers with a default of on are on, which is what every
+        // client does and what "break on uncaught exception" being the sensible default
+        // means. Unluminous holds no list of its own.
+        self.filters = self
+            .session
+            .capabilities()
+            .exception_filters
+            .iter()
+            .filter(|filter| filter.default)
+            .map(|filter| filter.filter.clone())
+            .collect();
+    }
+
+    /// `Event::Running`. Split out of [`Self::absorb`] by `task-1984` §3.6.
+    fn forget_what_the_pause_held(&mut self) {
+        // Every `variablesReference` died the moment the program was told to go on. What was
+        // *open* is kept, which is what stops a step re-collapsing the structure being
+        // watched.
+        self.fetched.clear();
+        self.scopes.clear();
+        self.rows.clear();
+        self.frames.clear();
+        self.frame = None;
+        // The tooltip is about a moment and the moment has passed — and every reference in
+        // it died with the resume. The reference editor dismisses its own on a step for the same reason.
+        self.hover = None;
+        for watch in &mut self.watches {
+            watch.result = None;
+        }
+    }
+
+    /// `Event::Scopes { frame, scopes }`. Split out of [`Self::absorb`] by `task-1984` §3.6.
+    fn note_the_scopes(&mut self, frame: i64, scopes: Vec<Scope>) {
+        if self.frame != Some(frame) {
+            return;
+        }
+        self.reads += 1;
+        // The first scope that is not expensive is **open**, which is what the pane opens
+        // showing and is the one the session fetched unprompted. Registers — which lldb
+        // marks expensive — waits to be asked for, and so does a second Locals-like group.
+        // Only when nothing has been opened by hand yet: a person who closed Locals and
+        // stepped has closed it, and re-opening it under them would be the fault
+        // `keep_the_caret_visible` avoids in the other direction.
+        if self.opened.is_empty() {
+            if let Some(first) = scopes.iter().find(|scope| !scope.expensive) {
+                self.opened.insert(first.name.clone());
+            }
+        }
+        self.scopes = scopes;
+        self.rebuild_rows();
+    }
+
+    /// `Event::Breakpoints { path, answered }`. Split out of [`Self::absorb`] by `task-1984` §3.6.
+    fn note_what_the_adapter_bound(&mut self, path: String, answered: Vec<VerifiedBreakpoint>) {
+        // Normalised the way `set_breakpoints` normalises what it sends, so the two maps
+        // `verified` reads together are keyed the same way. The adapter echoes back whatever
+        // spelling its debug information holds, which is why `same_file` exists at all; this
+        // closes the half of that Unluminous controls, and a case difference is still the
+        // adapter's own and still answered there.
+        let path = unluminous_terminal::paths::native(&unluminous_terminal::paths::plain(
+            Path::new(&path),
+        ));
+        // **An answer with a different number of entries than were sent is not an answer
+        // about them**, and taking it would throw away the ids the real answer carried —
+        // which is what a later `breakpoint` event uses to say one has bound.
+        //
+        // js-debug sends `initialized` **twice** on a child session, so the breakpoints go
+        // out twice, and it answers the second `setBreakpoints` for a file with an empty
+        // list. Measured on `task-1692`, where the effect was a breakpoint that stopped the
+        // program and was still drawn hollow.
+        let expected = self.sent.get(&path).map(Vec::len).unwrap_or_default();
+        if answered.len() != expected && self.answered.contains_key(&path) {
+            return;
+        }
+        self.answered.insert(path, answered);
+    }
+
+    /// `Event::BreakpointChanged(changed)`. Split out of [`Self::absorb`] by `task-1984` §3.6.
+    fn note_a_breakpoint_that_moved(&mut self, changed: VerifiedBreakpoint) {
+        // A breakpoint that bound after the fact — a library that has just loaded. Matched
+        // by the adapter's own id, which is the only thing that identifies it across files.
+        let Some(id) = changed.id else {
+            return;
+        };
+        for answered in self.answered.values_mut() {
+            for known in answered.iter_mut() {
+                if known.id == Some(id) {
+                    *known = changed.clone();
+                }
+            }
+        }
+    }
+
+    /// `Event::Output { kind, text }`. Split out of [`Self::absorb`] by `task-1984` §3.6.
+    fn note_what_was_printed(&mut self, kind: OutputKind, text: String) {
+        // The debuggee's output goes to the run tile when the adapter asked for one. What is
+        // kept here is what an adapter that did not ask sends, plus the adapter's own
+        // console — which is worth reading either way.
+        if self.runs_in_terminal() && kind != OutputKind::Console {
+            return;
+        }
+        for line in text.split_inclusive('\n') {
+            match self.output.last_mut() {
+                Some(last) if !last.ends_with('\n') => last.push_str(line),
+                _ => self.output.push(line.to_owned()),
+            }
+        }
+        let over = self.output.len().saturating_sub(OUTPUT_LIMIT);
+        self.output.drain(..over);
+    }
+
+    /// `Event::Evaluated { id, result }`. Split out of [`Self::absorb`] by `task-1984` §3.6.
+    fn note_an_answer(&mut self, id: u64, result: Result<Variable, String>) {
+        // The tooltip first, because it is the one whose question is replaced rather than
+        // kept: an answer whose id is nobody's is an answer to a hover the pointer has
+        // already left, and it lands nowhere.
+        if self.hover.as_ref().is_some_and(|hover| hover.id == id) {
+            self.take_the_hover_answer(result);
+            return;
+        }
+        if let Some(watch) = self.watches.iter_mut().find(|watch| watch.id == id) {
+            watch.result = Some(result);
+            return;
+        }
+        if let Some((asked, _, answer)) = self.evaluated.as_mut() {
+            if *asked == id {
+                *answer = Some(result);
+            }
+        }
+    }
+
+    /// `Event::Ended { code }`. Split out of [`Self::absorb`] by `task-1984` §3.6.
+    fn note_that_it_ended(&mut self, code: Option<i32>) {
+        self.frames.clear();
+        self.scopes.clear();
+        self.rows.clear();
+        self.fetched.clear();
+        self.frame = None;
+        self.hover = None;
+        for watch in &mut self.watches {
+            watch.result = None;
+        }
+        self.message = Some(match code {
+            Some(0) | None => format!("{} finished", self.configuration.name),
+            Some(code) => {
+                format!("{} ended with exit code {code}", self.configuration.name)
+            }
+        });
     }
 }
 

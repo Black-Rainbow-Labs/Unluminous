@@ -10,51 +10,7 @@ use super::*;
 impl UnluminousApp {
     pub(crate) fn cli_plugins(&mut self, request: &Request, verb: &str) -> Outcome {
         match verb {
-            "list" => {
-                let rows: Vec<String> = self
-                    .plugins
-                    .all()
-                    .iter()
-                    .map(|plugin| {
-                        format!(
-                            "{}{:<14}{:<10}{}",
-                            if plugin.enabled { "*" } else { " " },
-                            plugin.id,
-                            plugin.version,
-                            plugin.name
-                        )
-                    })
-                    .collect();
-                let value: Vec<Value> = self
-                    .plugins
-                    .all()
-                    .iter()
-                    .map(|plugin| {
-                        json!({
-                            "id": plugin.id,
-                            "name": plugin.name,
-                            "version": plugin.version,
-                            "vendor": plugin.vendor,
-                            "enabled": plugin.enabled,
-                            "bundled": plugin.bundled,
-                            "extensions": plugin.extensions,
-                            "kind": plugin.kind.name(),
-                            "provider": plugin.contributions.provider,
-                            "contributes": contributes(plugin),
-                        })
-                    })
-                    .collect();
-                lines(
-                    request,
-                    format!(
-                        "{} plugins, {} switched on",
-                        self.plugins.all().len(),
-                        self.plugins.enabled_count()
-                    ),
-                    rows,
-                    json!({ "plugins": value }),
-                )
-            }
+            "list" => self.cli_plugins_list(request),
             "install" => match request.text("id") {
                 Some(id) if self.plugins.get(&id).is_some() => {
                     self.install_plugin(&id);
@@ -69,271 +25,321 @@ impl UnluminousApp {
                 }
                 None => no(request, code::USAGE, "Say which plugin."),
             },
-            "enable" | "disable" => {
-                let Some(id) = request.text("id") else {
-                    return no(request, code::USAGE, "Say which plugin.");
-                };
-                if self.plugins.get(&id).is_none() {
-                    return no(
-                        request,
-                        code::NOT_FOUND,
-                        format!("There is no plugin called {id}."),
-                    );
-                }
-                let on = verb == "enable";
-                // Through the window's own way in, so switching a plugin off from the command line
-                // and switching it off in the Plugins page are the same thing.
-                self.set_plugin_enabled(&id, on);
-                ok(
-                    request,
-                    format!("{id} is switched {}", if on { "on" } else { "off" }),
-                    json!({ "id": id, "enabled": on }),
-                )
-            }
-            "show" => {
-                let Some(id) = request.text("id") else {
-                    return no(request, code::USAGE, "Say which plugin.");
-                };
-                let Some(plugin) = self.plugins.get(&id).cloned() else {
-                    return no(
-                        request,
-                        code::NOT_FOUND,
-                        format!("There is no plugin called {id}."),
-                    );
-                };
-                // Asked of the provider rather than of a list here, so what is printed is what the plugin
-                // will actually answer. **Built rather than opened**: `commands` is a question about the
-                // code, and opening Agent-Tasks creates a folder and a database file. A read only command
-                // that made a database would be a read only command that changed the machine, and it would
-                // also break the promise that a provider is opened when its pane, tab or page is first
-                // shown.
-                let commands: Vec<Value> = plugin
-                    .contributions
-                    .provider
-                    .as_deref()
-                    .and_then(crate::services::plugin_ui::provider)
-                    .map(|built| {
-                        built
-                            .commands()
-                            .into_iter()
-                            .map(|(name, summary)| json!({"command": name, "summary": summary}))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let mut rows = vec![
-                    format!("{:<14}{}", "id", plugin.id),
-                    format!("{:<14}{}", "name", plugin.name),
-                    format!("{:<14}{}", "kind", plugin.kind.name()),
-                    format!("{:<14}{}", "version", plugin.version),
-                    format!("{:<14}{}", "vendor", plugin.vendor),
-                    format!("{:<14}{}", "enabled", plugin.enabled),
-                    format!("{:<14}{}", "contributes", contributes(&plugin).join(", ")),
-                ];
-                if let Some(problem) = self.plugin_ui.problem_with(&plugin.id) {
-                    rows.push(format!("{:<14}{problem}", "problem"));
-                }
-                for command in &commands {
-                    rows.push(format!(
-                        "  {:<14}{}",
-                        command["command"].as_str().unwrap_or_default(),
-                        command["summary"].as_str().unwrap_or_default()
-                    ));
-                }
-                lines(
-                    request,
-                    format!("{} \u{2014} {}", plugin.id, plugin.description),
-                    rows,
-                    json!({
-                        "id": plugin.id,
-                        "name": plugin.name,
-                        "kind": plugin.kind.name(),
-                        "version": plugin.version,
-                        "vendor": plugin.vendor,
-                        "description": plugin.description,
-                        "limitations": plugin.limitations,
-                        "enabled": plugin.enabled,
-                        "bundled": plugin.bundled,
-                        "extensions": plugin.extensions,
-                        "provider": plugin.contributions.provider,
-                        "contributes": contributes(&plugin),
-                        "commands": commands,
-                        "problem": self.plugin_ui.problem_with(&plugin.id),
-                    }),
-                )
-            }
-            "reload" => {
-                let problems = self.reload_the_plugins();
-                let said = match problems.is_empty() {
-                    true => format!("{} plugins read again", self.plugins.all().len()),
-                    false => format!(
-                        "{} plugins read again, {} refused",
-                        self.plugins.all().len(),
-                        problems.len()
-                    ),
-                };
-                lines(
-                    request,
-                    said,
-                    problems.clone(),
-                    json!({ "plugins": self.plugins.all().len(), "refused": problems }),
-                )
-            }
-            "pane" => {
-                let Some(pane) = request.text("pane") else {
-                    return no(request, code::USAGE, "Say which pane, as <plugin id>/<pane id>.");
-                };
-                let Some(slot) = self.plugin_ui.slot_of(&pane) else {
-                    return no(
-                        request,
-                        code::NOT_FOUND,
-                        format!("There is no {pane} pane. `plugins list` says what each plugin contributes."),
-                    );
-                };
-                let panel = dock::Panel::Plugin(slot as u8);
-                if let Some(named) = request.text("side") {
-                    let Some(side) = dock::Side::from_name(named.trim()) else {
-                        return no(
-                            request,
-                            code::USAGE,
-                            format!("{named} is not a side. Say left, right, top or bottom."),
-                        );
-                    };
-                    self.panes.dock.dock(panel, side, None);
-                    self.unsaved_settings = true;
-                }
-                if request.switch("show") {
-                    self.show_the_plugin_pane(&pane, true);
-                } else if request.switch("hide") {
-                    self.show_the_plugin_pane(&pane, false);
-                }
-                if let Some(problem) =
-                    self.plugin_ui.problem_with(&self.plugin_ui.plugin_of(slot).unwrap_or_default())
-                {
-                    return no(request, code::FAILED, problem.to_owned());
-                }
-                // **Switched on is not the same as on the screen**, and answering with the first
-                // while meaning the second is what `task-1794` reports: the pane painted nothing at
-                // all — no ground, no divider, no composer, no rail highlight — while this said it
-                // was showing on the right, and no question an agent could ask reported the
-                // difference. So the reply is the two together, and asking for a pane that cannot be
-                // drawn is a **refusal** rather than a success about nothing. The cause that was
-                // found is fixed; this is what makes the next one say so instead of being silent.
-                if !self.plugin_pane_is_reachable(slot) {
-                    return no(
-                        request,
-                        code::FAILED,
-                        format!(
-                            "{pane} is switched on but the window has no room laid out for it, so it \
-                             would draw nothing. `panel reset` puts the panels back."
-                        ),
-                    );
-                }
-                let showing = self.plugin_pane_is_showing(slot);
-                ok(
-                    request,
-                    format!(
-                        "{pane} is {} on the {}",
-                        if showing { "showing" } else { "put away" },
-                        self.panes.dock.side_of(panel).name()
-                    ),
-                    json!({
-                        "pane": pane,
-                        "showing": showing,
-                        "side": self.panes.dock.side_of(panel).name(),
-                    }),
-                )
-            }
-            "tab" => {
-                let Some(tab) = request.text("tab") else {
-                    return no(request, code::USAGE, "Say which tab, as <plugin id>/<tab id>.");
-                };
-                if self.plugin_ui.surfaces().tab(&tab).is_none() {
-                    return no(request, code::NOT_FOUND, format!("There is no {tab} tab."));
-                }
-                if request.switch("close") {
-                    if let Some(index) = self.files.index_of_plugin_tab(&tab) {
-                        self.close_tab(index);
-                    }
-                    return ok(
-                        request,
-                        format!("{tab} is closed"),
-                        json!({"tab": tab, "open": false}),
-                    );
-                }
-                self.open_the_plugin_tab(&tab);
-                let open = self.files.index_of_plugin_tab(&tab).is_some();
-                match open {
-                    true => {
-                        ok(request, format!("{tab} is open"), json!({"tab": tab, "open": true}))
-                    }
-                    false => no(
-                        request,
-                        code::FAILED,
-                        self.message
-                            .clone()
-                            .unwrap_or_else(|| format!("{tab} could not be opened")),
-                    ),
-                }
-            }
-            "run" => {
-                let Some(id) = request.text("id") else {
-                    return no(request, code::USAGE, "Say which plugin.");
-                };
-                let Some(command) = request.text("command") else {
-                    return no(
-                        request,
-                        code::USAGE,
-                        "Say which command. `plugins show` lists them.",
-                    );
-                };
-                // **Split on spaces only, and do not collapse runs of them.** `split_whitespace` threw
-                // away every newline and every repeated space before the plugin saw them, and the
-                // provider's own `rest` closure joins the words back with single spaces — so a comment
-                // holding a markdown document arrived as one line. Markdown block structure is line
-                // based, so a heading swallowed the whole body, and no list, table, fence or quote could
-                // survive. An agent asked to post one found it and said so on the ticket rather than
-                // being able to do it.
-                //
-                // A run of n spaces becomes n-1 empty words here and n spaces again when `rest` rejoins
-                // them, so indentation is exact rather than nearly right — which is what a nested list
-                // needs. Newlines and tabs are inside the words and are not touched at all. The ends are
-                // trimmed of spaces so a line with a trailing one does not produce an empty argument,
-                // and newlines at the ends are kept because they are the caller's text.
-                let arguments: Vec<String> =
-                    request.text("arguments").map(plugin_arguments).unwrap_or_default();
-                match self.run_plugin_command(&id, &command, &arguments) {
-                    Ok(answer) => {
-                        let said = match answer.message.is_empty() {
-                            true => format!("{id} {command}"),
-                            false => answer.message.clone(),
-                        };
-                        ok(request, said, answer.value)
-                    }
-                    Err(problem) => no(request, code::FAILED, problem),
-                }
-            }
-            "view" => {
-                let Some(id) = request.text("id") else {
-                    return no(request, code::USAGE, "Say which plugin.");
-                };
-                let Some(provider) = self.plugin_ui.surfaces().provider_of(&id) else {
-                    return no(
-                        request,
-                        code::NOT_FOUND,
-                        format!("{id} is not a plugin that draws, or it is switched off."),
-                    );
-                };
-                // Opened rather than refused when it has not been looked at yet, because "what is on the
-                // board" is a fair question to ask of a board nobody has opened in this window.
-                if let Err(problem) = self.plugin_ui.opened(&id, &provider) {
-                    return no(request, code::FAILED, problem);
-                }
-                match self.plugin_ui.view_of(&id) {
-                    Some(value) => ok(request, id.to_string(), value),
-                    None => no(request, code::FAILED, format!("{id} has nothing to show.")),
-                }
-            }
+            "enable" | "disable" => self.cli_plugins_enable(request, verb),
+            "show" => self.cli_plugins_show(request),
+            "reload" => self.cli_plugins_reload(request),
+            "pane" => self.cli_plugins_pane(request),
+            "tab" => self.cli_plugins_tab(request),
+            "run" => self.cli_plugins_run(request),
+            "view" => self.cli_plugins_view(request),
             _ => unknown(request),
+        }
+    }
+
+    /// `list`. Split out of [`Self::cli_plugins`] by `task-1984` §3.6.
+    fn cli_plugins_list(&mut self, request: &Request) -> Outcome {
+        let rows: Vec<String> = self
+            .plugins
+            .all()
+            .iter()
+            .map(|plugin| {
+                format!(
+                    "{}{:<14}{:<10}{}",
+                    if plugin.enabled { "*" } else { " " },
+                    plugin.id,
+                    plugin.version,
+                    plugin.name
+                )
+            })
+            .collect();
+        let value: Vec<Value> = self
+            .plugins
+            .all()
+            .iter()
+            .map(|plugin| {
+                json!({
+                    "id": plugin.id,
+                    "name": plugin.name,
+                    "version": plugin.version,
+                    "vendor": plugin.vendor,
+                    "enabled": plugin.enabled,
+                    "bundled": plugin.bundled,
+                    "extensions": plugin.extensions,
+                    "kind": plugin.kind.name(),
+                    "provider": plugin.contributions.provider,
+                    "contributes": contributes(plugin),
+                })
+            })
+            .collect();
+        lines(
+            request,
+            format!(
+                "{} plugins, {} switched on",
+                self.plugins.all().len(),
+                self.plugins.enabled_count()
+            ),
+            rows,
+            json!({ "plugins": value }),
+        )
+    }
+
+    /// `enable` and `disable`. Split out of [`Self::cli_plugins`] by `task-1984` §3.6.
+    fn cli_plugins_enable(&mut self, request: &Request, verb: &str) -> Outcome {
+        let Some(id) = request.text("id") else {
+            return no(request, code::USAGE, "Say which plugin.");
+        };
+        if self.plugins.get(&id).is_none() {
+            return no(request, code::NOT_FOUND, format!("There is no plugin called {id}."));
+        }
+        let on = verb == "enable";
+        // Through the window's own way in, so switching a plugin off from the command line
+        // and switching it off in the Plugins page are the same thing.
+        self.set_plugin_enabled(&id, on);
+        ok(
+            request,
+            format!("{id} is switched {}", if on { "on" } else { "off" }),
+            json!({ "id": id, "enabled": on }),
+        )
+    }
+
+    /// `show`. Split out of [`Self::cli_plugins`] by `task-1984` §3.6.
+    fn cli_plugins_show(&mut self, request: &Request) -> Outcome {
+        let Some(id) = request.text("id") else {
+            return no(request, code::USAGE, "Say which plugin.");
+        };
+        let Some(plugin) = self.plugins.get(&id).cloned() else {
+            return no(request, code::NOT_FOUND, format!("There is no plugin called {id}."));
+        };
+        // Asked of the provider rather than of a list here, so what is printed is what the plugin
+        // will actually answer. **Built rather than opened**: `commands` is a question about the
+        // code, and opening Agent-Tasks creates a folder and a database file. A read only command
+        // that made a database would be a read only command that changed the machine, and it would
+        // also break the promise that a provider is opened when its pane, tab or page is first
+        // shown.
+        let commands: Vec<Value> = plugin
+            .contributions
+            .provider
+            .as_deref()
+            .and_then(crate::services::plugin_ui::provider)
+            .map(|built| {
+                built
+                    .commands()
+                    .into_iter()
+                    .map(|(name, summary)| json!({"command": name, "summary": summary}))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut rows = vec![
+            format!("{:<14}{}", "id", plugin.id),
+            format!("{:<14}{}", "name", plugin.name),
+            format!("{:<14}{}", "kind", plugin.kind.name()),
+            format!("{:<14}{}", "version", plugin.version),
+            format!("{:<14}{}", "vendor", plugin.vendor),
+            format!("{:<14}{}", "enabled", plugin.enabled),
+            format!("{:<14}{}", "contributes", contributes(&plugin).join(", ")),
+        ];
+        if let Some(problem) = self.plugin_ui.problem_with(&plugin.id) {
+            rows.push(format!("{:<14}{problem}", "problem"));
+        }
+        for command in &commands {
+            rows.push(format!(
+                "  {:<14}{}",
+                command["command"].as_str().unwrap_or_default(),
+                command["summary"].as_str().unwrap_or_default()
+            ));
+        }
+        lines(
+            request,
+            format!("{} \u{2014} {}", plugin.id, plugin.description),
+            rows,
+            json!({
+                "id": plugin.id,
+                "name": plugin.name,
+                "kind": plugin.kind.name(),
+                "version": plugin.version,
+                "vendor": plugin.vendor,
+                "description": plugin.description,
+                "limitations": plugin.limitations,
+                "enabled": plugin.enabled,
+                "bundled": plugin.bundled,
+                "extensions": plugin.extensions,
+                "provider": plugin.contributions.provider,
+                "contributes": contributes(&plugin),
+                "commands": commands,
+                "problem": self.plugin_ui.problem_with(&plugin.id),
+            }),
+        )
+    }
+
+    /// `reload`. Split out of [`Self::cli_plugins`] by `task-1984` §3.6.
+    fn cli_plugins_reload(&mut self, request: &Request) -> Outcome {
+        let problems = self.reload_the_plugins();
+        let said = match problems.is_empty() {
+            true => format!("{} plugins read again", self.plugins.all().len()),
+            false => format!(
+                "{} plugins read again, {} refused",
+                self.plugins.all().len(),
+                problems.len()
+            ),
+        };
+        lines(
+            request,
+            said,
+            problems.clone(),
+            json!({ "plugins": self.plugins.all().len(), "refused": problems }),
+        )
+    }
+
+    /// `pane`. Split out of [`Self::cli_plugins`] by `task-1984` §3.6.
+    fn cli_plugins_pane(&mut self, request: &Request) -> Outcome {
+        let Some(pane) = request.text("pane") else {
+            return no(request, code::USAGE, "Say which pane, as <plugin id>/<pane id>.");
+        };
+        let Some(slot) = self.plugin_ui.slot_of(&pane) else {
+            return no(
+                request,
+                code::NOT_FOUND,
+                format!(
+                    "There is no {pane} pane. `plugins list` says what each plugin contributes."
+                ),
+            );
+        };
+        let panel = dock::Panel::Plugin(slot as u8);
+        if let Some(named) = request.text("side") {
+            let Some(side) = dock::Side::from_name(named.trim()) else {
+                return no(
+                    request,
+                    code::USAGE,
+                    format!("{named} is not a side. Say left, right, top or bottom."),
+                );
+            };
+            self.panes.dock.dock(panel, side, None);
+            self.unsaved_settings = true;
+        }
+        if request.switch("show") {
+            self.show_the_plugin_pane(&pane, true);
+        } else if request.switch("hide") {
+            self.show_the_plugin_pane(&pane, false);
+        }
+        if let Some(problem) =
+            self.plugin_ui.problem_with(&self.plugin_ui.plugin_of(slot).unwrap_or_default())
+        {
+            return no(request, code::FAILED, problem.to_owned());
+        }
+        // **Switched on is not the same as on the screen**, and answering with the first
+        // while meaning the second is what `task-1794` reports: the pane painted nothing at
+        // all — no ground, no divider, no composer, no rail highlight — while this said it
+        // was showing on the right, and no question an agent could ask reported the
+        // difference. So the reply is the two together, and asking for a pane that cannot be
+        // drawn is a **refusal** rather than a success about nothing. The cause that was
+        // found is fixed; this is what makes the next one say so instead of being silent.
+        if !self.plugin_pane_is_reachable(slot) {
+            return no(
+                request,
+                code::FAILED,
+                format!(
+                    "{pane} is switched on but the window has no room laid out for it, so it \
+                     would draw nothing. `panel reset` puts the panels back."
+                ),
+            );
+        }
+        let showing = self.plugin_pane_is_showing(slot);
+        ok(
+            request,
+            format!(
+                "{pane} is {} on the {}",
+                if showing { "showing" } else { "put away" },
+                self.panes.dock.side_of(panel).name()
+            ),
+            json!({
+                "pane": pane,
+                "showing": showing,
+                "side": self.panes.dock.side_of(panel).name(),
+            }),
+        )
+    }
+
+    /// `tab`. Split out of [`Self::cli_plugins`] by `task-1984` §3.6.
+    fn cli_plugins_tab(&mut self, request: &Request) -> Outcome {
+        let Some(tab) = request.text("tab") else {
+            return no(request, code::USAGE, "Say which tab, as <plugin id>/<tab id>.");
+        };
+        if self.plugin_ui.surfaces().tab(&tab).is_none() {
+            return no(request, code::NOT_FOUND, format!("There is no {tab} tab."));
+        }
+        if request.switch("close") {
+            if let Some(index) = self.files.index_of_plugin_tab(&tab) {
+                self.close_tab(index);
+            }
+            return ok(request, format!("{tab} is closed"), json!({"tab": tab, "open": false}));
+        }
+        self.open_the_plugin_tab(&tab);
+        let open = self.files.index_of_plugin_tab(&tab).is_some();
+        match open {
+            true => ok(request, format!("{tab} is open"), json!({"tab": tab, "open": true})),
+            false => no(
+                request,
+                code::FAILED,
+                self.message.clone().unwrap_or_else(|| format!("{tab} could not be opened")),
+            ),
+        }
+    }
+
+    /// `run`. Split out of [`Self::cli_plugins`] by `task-1984` §3.6.
+    fn cli_plugins_run(&mut self, request: &Request) -> Outcome {
+        let Some(id) = request.text("id") else {
+            return no(request, code::USAGE, "Say which plugin.");
+        };
+        let Some(command) = request.text("command") else {
+            return no(request, code::USAGE, "Say which command. `plugins show` lists them.");
+        };
+        // **Split on spaces only, and do not collapse runs of them.** `split_whitespace` threw
+        // away every newline and every repeated space before the plugin saw them, and the
+        // provider's own `rest` closure joins the words back with single spaces — so a comment
+        // holding a markdown document arrived as one line. Markdown block structure is line
+        // based, so a heading swallowed the whole body, and no list, table, fence or quote could
+        // survive. An agent asked to post one found it and said so on the ticket rather than
+        // being able to do it.
+        //
+        // A run of n spaces becomes n-1 empty words here and n spaces again when `rest` rejoins
+        // them, so indentation is exact rather than nearly right — which is what a nested list
+        // needs. Newlines and tabs are inside the words and are not touched at all. The ends are
+        // trimmed of spaces so a line with a trailing one does not produce an empty argument,
+        // and newlines at the ends are kept because they are the caller's text.
+        let arguments: Vec<String> =
+            request.text("arguments").map(plugin_arguments).unwrap_or_default();
+        match self.run_plugin_command(&id, &command, &arguments) {
+            Ok(answer) => {
+                let said = match answer.message.is_empty() {
+                    true => format!("{id} {command}"),
+                    false => answer.message.clone(),
+                };
+                ok(request, said, answer.value)
+            }
+            Err(problem) => no(request, code::FAILED, problem),
+        }
+    }
+
+    /// `view`. Split out of [`Self::cli_plugins`] by `task-1984` §3.6.
+    fn cli_plugins_view(&mut self, request: &Request) -> Outcome {
+        let Some(id) = request.text("id") else {
+            return no(request, code::USAGE, "Say which plugin.");
+        };
+        let Some(provider) = self.plugin_ui.surfaces().provider_of(&id) else {
+            return no(
+                request,
+                code::NOT_FOUND,
+                format!("{id} is not a plugin that draws, or it is switched off."),
+            );
+        };
+        // Opened rather than refused when it has not been looked at yet, because "what is on the
+        // board" is a fair question to ask of a board nobody has opened in this window.
+        if let Err(problem) = self.plugin_ui.opened(&id, &provider) {
+            return no(request, code::FAILED, problem);
+        }
+        match self.plugin_ui.view_of(&id) {
+            Some(value) => ok(request, id.to_string(), value),
+            None => no(request, code::FAILED, format!("{id} has nothing to show.")),
         }
     }
 }
