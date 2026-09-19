@@ -25,12 +25,19 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const receipts = path.join(repo, '_agent_output', 'window-suite');
 const testsDir = path.join(repo, 'crates', 'unluminous-app', 'tests');
 
+// The one binary a receipt is not asked of, and why. `agent_board`'s six tests are every one of them
+// `#[ignore]`d -- they start a real agent, take minutes and cost tokens -- so `cargo test --test '*'`
+// never runs any of them and the binary never builds a window. `tools/nightly.ps1` is their scheduled
+// run. Asking for a receipt here would make every release wait on a nightly.
+const NOT_IN_A_PLAIN_RUN = new Set(['agent_board']);
+
 /** Every window test binary, read from the folder rather than written down twice. */
 function expectedBinaries() {
   return fs
     .readdirSync(testsDir)
     .filter((name) => name.endsWith('.rs'))
     .map((name) => name.slice(0, -3))
+    .filter((name) => !NOT_IN_A_PLAIN_RUN.has(name))
     .sort();
 }
 
