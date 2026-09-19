@@ -625,14 +625,11 @@ impl UnluminousApp {
     fn a_view_entry(&mut self, action: Action) {
         match action {
             Action::SetViewMode(mode) => self.set_view_mode(mode),
+            // Both of the rules this used to state -- leave a maximise, and never leave the window
+            // with nothing in it -- are in `show_a_panel` now, where `unluminous-cli explorer show`
+            // and the two drop targets reach them as well (`task-1984` A9).
             Action::ToggleExplorer => {
-                self.leave_the_maximised_pane();
-                self.explorer_visible = !self.explorer_visible;
-                // Hiding the last panel while the editing area is hidden would leave a window with nothing in
-                // it, so the editing area comes back instead. The other half of this rule is in `ToggleEditor`.
-                if !self.editor_visible && !self.anything_is_showing_in_the_panes() {
-                    self.editor_visible = true;
-                }
+                self.show_a_panel(dock::Panel::Explorer, !self.explorer_visible)
             }
             // The pane holding the keyboard, or the editing area when it is the one holding it. Which is
             // the same question the zoom keys ask, and it is asked in one place. `task-1771`.

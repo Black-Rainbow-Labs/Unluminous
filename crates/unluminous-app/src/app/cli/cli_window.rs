@@ -90,8 +90,24 @@ impl UnluminousApp {
                         ),
                     );
                 };
-                let times = request.number("times").unwrap_or(1.0).max(1.0) as usize;
-                input::pressed(key, modifiers, times)
+                // Refused rather than clamped, so the caller is told (`task-1984` S1). It was a
+                // saturating float cast into an unbounded loop: `--times 1e18` allocated until the
+                // process died and `--times 100000` was fifty five minutes of a window that answered
+                // nothing, with no way to cancel it.
+                let times = request.number("times").unwrap_or(1.0);
+                if !times.is_finite() || times < 1.0 || times > input::REPEATS as f64 {
+                    return no(
+                        request,
+                        code::USAGE,
+                        format!(
+                            "--times takes a whole number from 1 to {}. Each repetition is two \
+                             frames, so more than that is a window that answers nothing for \
+                             minutes with no way to stop it.",
+                            input::REPEATS
+                        ),
+                    );
+                }
+                input::pressed(key, modifiers, times as usize)
             }
             "text" => {
                 let Some(text) = request.text("text") else {
@@ -99,6 +115,22 @@ impl UnluminousApp {
                 };
                 if text.is_empty() {
                     return no(request, code::USAGE, "Say what to type.");
+                }
+                // Each character is two frames, so a thousand of them is already half a minute of a
+                // window doing nothing else (`task-1984` L9). Refused rather than cut short, because
+                // a caller told it typed something it did not type is worse than one told to send it
+                // in two commands.
+                if text.chars().count() > input::LONGEST_TEXT {
+                    return no(
+                        request,
+                        code::USAGE,
+                        format!(
+                            "--text takes at most {} characters, and that is {}. Each character is \
+                             two frames. Send it in several commands.",
+                            input::LONGEST_TEXT,
+                            text.chars().count()
+                        ),
+                    );
                 }
                 input::typed(&text)
             }
@@ -122,7 +154,17 @@ impl UnluminousApp {
             steps.extend(input::let_go());
         }
         let frames = steps.len() as u64;
-        self.input.push(steps);
+        if !self.input.push(steps) {
+            return no(
+                request,
+                code::REFUSED,
+                format!(
+                    "There are already {} steps waiting to be fed to the window, which is as far \
+                     behind as it is allowed to get. Wait for them and send this again.",
+                    input::LIMIT
+                ),
+            );
+        }
         Outcome::Hold(Waiting::Input {
             target: self.input.fed() + frames,
             // One frame after the last step, so what the input did has been drawn before the caller is

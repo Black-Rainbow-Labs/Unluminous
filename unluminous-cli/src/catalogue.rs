@@ -365,9 +365,12 @@ pub fn wrong_numbers(command: &Command, arguments: &Map<String, Value>) -> Vec<(
             Some(Kind::Whole) | Some(Kind::Number) => {}
             _ => continue,
         }
+        // **`is_finite` as well as `is_ok`** (`task-1984` L10). `f64::parse` accepts `nan`, `inf`
+        // and `-inf`, so `input move nan nan` fed a NaN pointer position to egui: nothing is
+        // hovered, nothing is clicked, and nothing anywhere says why.
         let readable = match value {
-            Value::Number(number) => number.as_f64().is_some(),
-            Value::String(text) => text.trim().parse::<f64>().is_ok(),
+            Value::Number(number) => number.as_f64().is_some_and(f64::is_finite),
+            Value::String(text) => text.trim().parse::<f64>().is_ok_and(f64::is_finite),
             Value::Null => true,
             _ => false,
         };
@@ -376,6 +379,32 @@ pub fn wrong_numbers(command: &Command, arguments: &Map<String, Value>) -> Vec<(
         }
     }
     out
+}
+
+#[cfg(test)]
+mod not_a_number {
+    use super::*;
+    use serde_json::json;
+
+    /// `nan` and `inf` are refused, because `f64::parse` accepts them.
+    ///
+    /// `task-1984` L10: `input move nan nan` fed a NaN pointer position to egui, so nothing was
+    /// hovered, nothing was clicked, and nothing anywhere said why.
+    #[test]
+    fn a_number_that_is_not_finite_is_not_a_number() {
+        let command = find("input move").expect("input move is in the catalogue");
+        for written in ["nan", "NaN", "inf", "-inf", "infinity"] {
+            let arguments: Map<String, Value> =
+                json!({ "x": written, "y": "10" }).as_object().expect("an object").clone();
+            assert!(
+                !wrong_numbers(command, &arguments).is_empty(),
+                "{written} is not a position anything can be drawn at"
+            );
+        }
+        let arguments: Map<String, Value> =
+            json!({ "x": "10.5", "y": -3 }).as_object().expect("an object").clone();
+        assert!(wrong_numbers(command, &arguments).is_empty(), "and an ordinary number still is one");
+    }
 }
 
 /// What a refusal quotes back, which is the value as the caller wrote it rather than as JSON.
@@ -1904,7 +1933,7 @@ pub const COMMANDS: &[Command] = &[
             switch("shift", "Hold shift."),
             switch("alt", "Hold alt."),
             switch("cmd", "Hold command on macOS, control on Windows - the key a menu shortcut names."),
-            whole_option("times", "count", "Press it more than once."),
+            whole_option("times", "count", "Press it more than once, up to 200."),
         ],
         examples: &[
             "unluminous-cli input key Escape",

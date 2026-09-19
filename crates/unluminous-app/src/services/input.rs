@@ -92,10 +92,39 @@ pub struct Queue {
     held: egui::Modifiers,
 }
 
+/// How many times one key press may be repeated.
+///
+/// **`task-1984` S1.** `input key --times` was a saturating float cast into an unbounded loop, so
+/// `--times 1e18` allocated two steps a repetition until the process died and `--times 100000` was
+/// fifty five minutes of a window that answered nothing, with no way to cancel it. Two hundred is
+/// what `input drag --steps` already clamps to, and it is more presses than any gesture needs.
+pub const REPEATS: usize = 200;
+
+/// How many characters one `input text` may carry.
+///
+/// Each character is two steps and therefore two frames, so a thousand of them is already half a
+/// minute of a window doing nothing else. A caller with more to type sends it in several commands,
+/// which is also the only shape in which anything can be asserted between them.
+pub const LONGEST_TEXT: usize = 1_000;
+
+/// How many steps may be waiting to be fed.
+///
+/// One frame each, so this is how far behind the window may be. Several commands in flight add up,
+/// which is why the limit is on the queue as well as on each command.
+pub const LIMIT: usize = 10_000;
+
 impl Queue {
     /// Add a gesture. Each [`Step`] is one frame.
-    pub fn push(&mut self, steps: Vec<Step>) {
+    ///
+    /// Answers false and adds nothing when the queue is already at [`LIMIT`], so the caller is told
+    /// rather than the gesture being half fed -- which is `cli_window`'s own rule about an argument
+    /// that is too large, and is what every other over large argument in the catalogue does.
+    pub fn push(&mut self, steps: Vec<Step>) -> bool {
+        if self.steps.len() + steps.len() > LIMIT {
+            return false;
+        }
         self.steps.extend(steps);
+        true
     }
 
     /// Whether anything is waiting to be fed to a frame.
@@ -233,7 +262,7 @@ pub fn dragged(
 /// reading `key_pressed` expects: both in one frame is a key that was never down.
 pub fn pressed(key: egui::Key, modifiers: egui::Modifiers, times: usize) -> Vec<Step> {
     let mut steps = Vec::new();
-    for _ in 0..times.max(1) {
+    for _ in 0..times.clamp(1, REPEATS) {
         steps.push(Step::of(egui::Event::Key {
             key,
             physical_key: Some(key),
@@ -474,5 +503,35 @@ mod tests {
         assert!(queue.next_frame().is_some());
         assert_eq!(queue.fed(), 1);
         assert!(queue.is_empty());
+    }
+
+    // ------------------------------------------------------------------------------- task-1984
+
+    /// One key press cannot be repeated until the process dies.
+    ///
+    /// `task-1984` S1: `input key --times` was a saturating float cast into an unbounded loop, so
+    /// `--times 1e18` allocated two steps a repetition until there was no memory left.
+    #[test]
+    fn a_key_is_repeated_at_most_two_hundred_times() {
+        let many = pressed(egui::Key::A, egui::Modifiers::NONE, usize::MAX);
+        assert_eq!(many.len(), REPEATS * 2, "a press and a release each");
+        let one = pressed(egui::Key::A, egui::Modifiers::NONE, 0);
+        assert_eq!(one.len(), 2, "and none at all still means once");
+    }
+
+    /// The queue refuses rather than growing without end.
+    ///
+    /// Several commands in flight add up, which is why the limit is on the queue as well as on each
+    /// command. A refusal rather than a truncation, so the caller is told: a gesture half fed is a
+    /// window in a state nothing asked for.
+    #[test]
+    fn the_queue_refuses_what_would_take_it_past_its_limit() {
+        let mut queue = Queue::default();
+        let one_frame = || vec![Step::of(egui::Event::PointerMoved(egui::pos2(1.0, 1.0)))];
+        for _ in 0..LIMIT {
+            assert!(queue.push(one_frame()), "up to the limit is taken");
+        }
+        assert!(!queue.push(one_frame()), "and the one past it is refused");
+        assert_eq!(queue.steps.len(), LIMIT, "with nothing added");
     }
 }

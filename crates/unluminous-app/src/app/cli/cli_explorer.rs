@@ -6,12 +6,17 @@ use super::*;
 impl UnluminousApp {
     pub(crate) fn cli_explorer(&mut self, request: &Request, verb: &str) -> Outcome {
         match verb {
+            // **Through `show_a_panel`, which is where the two rules live** (`task-1984` A9). Writing
+            // `explorer_visible` here left a pane maximised beside a showing explorer, which is a
+            // state no pointer can produce, and `explorer hide` with the editing area already hidden
+            // left a window with nothing in it. `terminal` and `space` have always gone this way.
             "show" | "hide" | "toggle" => {
-                self.explorer_visible = match verb {
+                let wanted = match verb {
                     "show" => true,
                     "hide" => false,
                     _ => !self.explorer_visible,
                 };
+                self.show_a_panel(crate::app::dock::Panel::Explorer, wanted);
                 ok(
                     request,
                     if self.explorer_visible {

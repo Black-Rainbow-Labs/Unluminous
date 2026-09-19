@@ -299,6 +299,17 @@ impl UnluminousApp {
     }
 
     pub(crate) fn show_a_panel(&mut self, panel: dock::Panel, showing: bool) {
+        // **The two rules that used to be written out at each caller.** `task-1984` A9 found what that
+        // cost: `unluminous-cli explorer show` and `hide` wrote `explorer_visible` directly, so
+        // showing the explorer while a pane was maximised left a state no pointer can produce, and
+        // hiding it with the editing area already hidden left a window with nothing in it. They live
+        // here now, where the fourth caller cannot forget them.
+        //
+        // Both are skipped while a maximise is being settled, because that is the one caller putting
+        // panels away on purpose: `settle_the_maximise` walks every panel and then puts the rules
+        // back itself. `leave_the_maximised_pane` already asks the same question and is left asking
+        // it, so the two cannot disagree.
+        self.leave_the_maximised_pane();
         match panel {
             dock::Panel::Explorer => self.explorer_visible = showing,
             dock::Panel::Terminal => self.show_the_terminal_tile(showing),
@@ -322,6 +333,15 @@ impl UnluminousApp {
                     self.show_the_plugin_pane(&key, showing);
                 }
             }
+        }
+        // Putting the last panel away while the editing area is hidden would leave a window with
+        // nothing in it at all, so the editing area comes back instead. The other half of this rule
+        // is in `Action::ToggleEditor`, which is about the editing area rather than about a panel.
+        if !self.settling_the_maximise
+            && !self.editor_visible
+            && !self.anything_is_showing_in_the_panes()
+        {
+            self.editor_visible = true;
         }
     }
 

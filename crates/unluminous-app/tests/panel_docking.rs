@@ -853,3 +853,53 @@ fn two_panels_on_one_axis_always_add_up_to_the_room() {
         );
     }
 }
+
+// -------------------------------------------------------------------------------------- task-1984
+//
+// The two rules a panel is shown and hidden by, reached from the command line.
+
+/// `unluminous-cli explorer show` leaves a maximised pane, and `hide` never empties the window.
+///
+/// `task-1984` A9. `explorer show`, `hide` and `toggle` wrote `explorer_visible` directly, where
+/// `Action::ToggleExplorer` left the maximise and kept something showing and `terminal` and `space`
+/// have always gone through `show_a_panel`. So `explorer show` while a pane was maximised left a
+/// state no pointer can produce — the window says one pane fills it, and two are drawn — and
+/// `explorer hide` with the editing area already hidden left a body with nothing in it. Both rules
+/// live in `show_a_panel` now, where the fourth caller cannot forget them.
+#[test]
+fn showing_the_explorer_from_the_command_line_leaves_a_maximised_pane() {
+    use unluminous_app::app::dock::Panel;
+
+    let mut harness = harness("# a file\n");
+    did(&mut harness, "terminal show");
+    choose(&mut harness, Action::ToggleMaximisedPane);
+    assert_eq!(
+        harness.state().maximised_pane(),
+        Some(Some(Panel::Terminal)),
+        "the terminal fills the window"
+    );
+
+    did(&mut harness, "explorer show");
+    assert_eq!(
+        harness.state().maximised_pane(),
+        None,
+        "and asking for the explorer put the arrangement back rather than drawing two panes over one"
+    );
+    assert!(harness.state().explorer_visible, "with the explorer showing, which is what was asked");
+}
+
+/// `unluminous-cli explorer hide` never leaves the window with nothing in it.
+#[test]
+fn hiding_the_explorer_from_the_command_line_leaves_something_to_look_at() {
+    let mut harness = harness("# a file\n");
+    did(&mut harness, "explorer show");
+    choose(&mut harness, Action::ToggleEditor);
+    assert!(!harness.state().editor_visible, "the editing area is away, the explorer is not");
+
+    did(&mut harness, "explorer hide");
+    assert!(!harness.state().explorer_visible, "the explorer went, which is what was asked");
+    assert!(
+        harness.state().editor_visible,
+        "and the editing area came back rather than the window being left empty"
+    );
+}

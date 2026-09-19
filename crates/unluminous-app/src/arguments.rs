@@ -105,27 +105,55 @@ pub fn read(arguments: impl IntoIterator<Item = String>, control_setting: Option
     while let Some(argument) = rest.next() {
         match argument.as_str() {
             "--opacity" => {
-                settings.opacity = rest.next().and_then(|value| value.parse::<f32>().ok());
+                let value = match value_after(&mut rest, "--opacity", "a number from 0.05 to 1.0") {
+                    Ok(value) => value,
+                    Err(refusal) => return refusal,
+                };
+                settings.opacity = match value.parse::<f32>() {
+                    Ok(number) if number.is_finite() && (0.05..=1.0).contains(&number) => {
+                        Some(number)
+                    }
+                    _ => {
+                        return refuse("--opacity", &value, "a number from 0.05 to 1.0");
+                    }
+                };
             }
             "--view" => {
-                settings.view = rest.next().and_then(|value| match value.as_str() {
+                let value = match value_after(&mut rest, "--view", "raw, side or preview") {
+                    Ok(value) => value,
+                    Err(refusal) => return refusal,
+                };
+                settings.view = match value.as_str() {
                     "raw" => Some(ViewMode::Raw),
                     "side" | "side-by-side" => Some(ViewMode::SideBySide),
                     "preview" => Some(ViewMode::Preview),
-                    _ => None,
-                });
+                    _ => return refuse("--view", &value, "raw, side or preview"),
+                };
             }
             "--menu-bar" => {
-                settings.menu_bar = rest.next().and_then(|value| match value.as_str() {
+                let wanted = "native for the screen's own bar, in-window for the title bar";
+                let value = match value_after(&mut rest, "--menu-bar", wanted) {
+                    Ok(value) => value,
+                    Err(refusal) => return refusal,
+                };
+                settings.menu_bar = match value.as_str() {
                     "native" | "screen" => Some(MenuPlacement::Native),
                     "in-window" | "window" => Some(MenuPlacement::InWindow),
-                    _ => None,
-                });
+                    _ => return refuse("--menu-bar", &value, wanted),
+                };
             }
             "--terminal" => settings.terminal = true,
             "--control" => {
-                settings.control =
-                    !matches!(rest.next().unwrap_or_default().trim(), "off" | "no" | "0" | "false");
+                let wanted = "on or off";
+                let value = match value_after(&mut rest, "--control", wanted) {
+                    Ok(value) => value,
+                    Err(refusal) => return refusal,
+                };
+                settings.control = match value.trim() {
+                    "off" | "no" | "0" | "false" => false,
+                    "on" | "yes" | "1" | "true" => true,
+                    _ => return refuse("--control", &value, wanted),
+                };
             }
             "--background" | "--no-activate" => settings.background = true,
             "--print-menus" => settings.print_menus = true,
@@ -145,6 +173,43 @@ pub fn read(arguments: impl IntoIterator<Item = String>, control_setting: Option
         }
     }
     Start::Window(settings)
+}
+
+/// The value after a switch, refusing a missing one and one that is plainly another switch.
+///
+/// **`task-1984` A11.** `--opacity`, `--view`, `--menu-bar` and `--control` took the next argument
+/// whatever it was and turned a value they could not read into `None` in silence, so
+/// `unluminous --opacity /home/jason/project` ate the project path and opened the current folder
+/// with no message -- while this module's own comment three screens up says a value nobody can read
+/// is refused. An unknown switch has been refused with a sentence since this file was written; a
+/// known switch with an unreadable value is the same fault and gets the same answer.
+fn value_after(
+    rest: &mut impl Iterator<Item = String>,
+    switch: &str,
+    wanted: &str,
+) -> Result<String, Start> {
+    match rest.next() {
+        // A value that is itself a switch is a value somebody forgot. Taking it would swallow the
+        // switch as well, which is two things going wrong for one mistake.
+        Some(value) if value.starts_with('-') && value.len() > 1 => {
+            Err(Start::Refuse(format!(
+                "unluminous: {switch} wants {wanted} after it, and {value} is another switch. \
+                 `unluminous --help` lists them."
+            )))
+        }
+        Some(value) => Ok(value),
+        None => Err(Start::Refuse(format!(
+            "unluminous: {switch} wants {wanted} after it, and there is nothing after it. \
+             `unluminous --help` lists the switches there are."
+        ))),
+    }
+}
+
+/// A value a switch could not read, said as a sentence with what it takes instead.
+fn refuse(switch: &str, value: &str, wanted: &str) -> Start {
+    Start::Refuse(format!(
+        "unluminous: {value} is not a value {switch} takes. It takes {wanted}."
+    ))
 }
 
 /// What `--version` says: the same two facts the About box shows, from the same two constants.
@@ -285,5 +350,75 @@ mod tests {
     fn a_refusal_wins_over_the_rest_of_the_line() {
         assert!(matches!(read_line(&["--wat", "/a/project"]), Start::Refuse(_)));
         assert!(matches!(read_line(&["/a/project", "--wat"]), Start::Refuse(_)));
+    }
+
+    // ------------------------------------------------------------------------------- task-1984
+
+    /// A switch whose value cannot be read is refused rather than dropped.
+    ///
+    /// `task-1984` A11. The four switches that take a value consumed the next argument whatever it
+    /// was and turned one they could not read into `None` in silence, so
+    /// `unluminous --opacity /home/jason/project` ate the path and opened the current folder with
+    /// no message. This module's own comment already said a value nobody can read is refused.
+    #[test]
+    fn a_value_a_switch_cannot_read_is_refused() {
+        for (switch, value) in [
+            ("--opacity", "banana"),
+            ("--opacity", "9"),
+            ("--opacity", "0"),
+            ("--opacity", "nan"),
+            ("--view", "sideways"),
+            ("--menu-bar", "floating"),
+            ("--control", "maybe"),
+        ] {
+            let Start::Refuse(said) = read_line(&[switch, value]) else {
+                panic!("{switch} {value} has to be refused rather than quietly dropped");
+            };
+            assert!(said.contains(value), "the refusal quotes what was typed: {said:?}");
+            assert!(said.contains(switch), "and which switch it was: {said:?}");
+        }
+    }
+
+    /// A path after a switch that wanted a value is not eaten.
+    ///
+    /// The reported shape: the path is what a person cares about and it is what went missing.
+    #[test]
+    fn a_switch_with_no_value_does_not_eat_the_project() {
+        for switch in ["--opacity", "--view", "--menu-bar", "--control"] {
+            let Start::Refuse(said) = read_line(&[switch, "/home/jason/project"]) else {
+                panic!("{switch} /home/jason/project opened the current folder instead");
+            };
+            assert!(said.contains(switch), "the refusal names the switch: {said:?}");
+            let Start::Refuse(missing) = read_line(&[switch]) else {
+                panic!("{switch} with nothing after it has to be refused");
+            };
+            assert!(
+                missing.contains("nothing after it"),
+                "and says there was nothing there: {missing:?}"
+            );
+        }
+    }
+
+    /// The values the four switches do take still work.
+    #[test]
+    fn the_values_the_switches_take_are_still_read() {
+        let Start::Window(settings) = read_line(&[
+            "--opacity",
+            "0.5",
+            "--view",
+            "preview",
+            "--menu-bar",
+            "in-window",
+            "--control",
+            "off",
+            "/a/project",
+        ]) else {
+            panic!("every one of those is a value its switch takes");
+        };
+        assert_eq!(settings.opacity, Some(0.5));
+        assert_eq!(settings.view, Some(ViewMode::Preview));
+        assert_eq!(settings.menu_bar, Some(MenuPlacement::InWindow));
+        assert!(!settings.control);
+        assert_eq!(settings.path, Some(PathBuf::from("/a/project")));
     }
 }

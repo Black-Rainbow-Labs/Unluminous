@@ -46,7 +46,7 @@ pub const LIST: &[(&str, &str)] = &[
     ("pending", "The pending changes, and the statements they will become."),
     ("revert", "Throw the pending changes away."),
     ("submit", "Write them, as one transaction."),
-    ("password", "`<source> set <secret>` writes one into this machine's own credential store; `<source> keychain <entry>` points at an entry already there; `<source> none` forgets it. Nothing is ever written to a file but the *name* of the entry."),
+    ("password", "`<source> keychain <entry>` points at an entry in this machine's own credential store; `<source> none` forgets it. **There is no way to give a password here**: it would be in a shell history, a process list and an agent's transcript. Type it into the New Data Source dialog, which writes it to the credential store. Nothing is ever written to a file but the *name* of the entry."),
     ("read-only", "`on` or `off` for a data source. Off by default. It asks the *server* for a session that cannot write, and there is no control for it in the window."),
     ("new-table", "Make a table. `<schema.name> <column>:<type>[:pk][:notnull] …`, or just a name to open the dialog."),
     ("drop-table", "Drop a table, by `schema.name`."),
@@ -702,33 +702,34 @@ fn pending(explorer: &mut DatabaseExplorer) -> Result<Answer, String> {
     )))
 }
 
-/// `password <source> env <VARIABLE>`, `keychain <entry>`, or `none`.
+/// `password <source> keychain <entry>` or `none`.
 ///
 /// **The place, never the value.** There is deliberately no way to give Unluminous a password on the
 /// command line: it would be in a shell history, in a process list and in whatever log the caller
 /// keeps, which is three copies of a secret Unluminous has gone to some trouble never to write down once.
 /// A password typed into the New Data Source dialog lives in the process and nowhere else.
+///
+/// **`set <secret>` was that way and is gone** (`task-1984` S4). It sat three lines under the
+/// paragraph above saying it did not exist, and every command in the catalogue is also an MCP tool,
+/// so a model asked to configure a data source put the plaintext in its own transcript -- a fourth
+/// copy, in the one place nobody thinks to look. Agent-Tasks answers the same question the other way
+/// and offers no such command at all. What a person does instead is type it into the dialog, which
+/// writes it to the machine's credential store and holds it nowhere.
 fn password(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, String> {
     let mut words = rest.split_whitespace();
     let name = words
         .next()
         .ok_or_else(|| {
-            "password takes a data source and `set <secret>`, `keychain <entry>` or `none`."
-                .to_owned()
+            "password takes a data source and `keychain <entry>` or `none`.".to_owned()
         })?
         .to_owned();
     let secret = match words.next() {
-        // **The one form that carries the secret itself**, and it carries it into the machine's own
-        // credential store rather than into anything Unluminous writes. The value is the rest of the line,
-        // so a password with a space in it is one argument.
         Some("set") => {
-            let value = words.collect::<Vec<&str>>().join(" ");
-            if value.is_empty() {
-                return Err("`set` takes the password.".to_owned());
-            }
-            let entry = crate::services::database::keychain_entry_for(&name);
-            crate::services::agent_tasks::keychain::write(&entry, &value)?;
-            Secret::Keychain(entry)
+            return Err("There is no way to give Unluminous a password on the command line: it \
+                 would be in a shell history, a process list and an agent's own transcript. Type \
+                 it into the New Data Source dialog, which writes it to this machine's credential \
+                 store, and name that entry here with `keychain <entry>`."
+                .to_owned())
         }
         Some("keychain") => {
             let entry =
@@ -751,13 +752,11 @@ fn password(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, Strin
         }
         Some(other) => {
             return Err(format!(
-                "`{other}` is not somewhere a password lives. Unluminous knows `set <secret>`, \
-                 `keychain <entry>` and `none`."
+                "`{other}` is not somewhere a password lives. Unluminous knows `keychain <entry>` \
+                 and `none`."
             ))
         }
-        None => {
-            return Err("password takes `set <secret>`, `keychain <entry>` or `none`.".to_owned())
-        }
+        None => return Err("password takes `keychain <entry>` or `none`.".to_owned()),
     };
     let described = secret.describe();
     let source = explorer
