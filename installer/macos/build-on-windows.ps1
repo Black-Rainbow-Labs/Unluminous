@@ -309,6 +309,28 @@ function New-AppBundle {
     return $app
 }
 
+function Unprotect-Secret {
+    <#
+    .SYNOPSIS
+        Reads a file sealed with DPAPI under this Windows account.
+
+    .DESCRIPTION
+        `ConvertFrom-SecureString` is what wrote it, and it encrypts under one
+        Windows account, so the file on disk is worthless on another machine or
+        to another user and there is no key of its own to keep somewhere else.
+        Seal one with:
+
+            "text" | ConvertTo-SecureString -AsPlainText -Force |
+                ConvertFrom-SecureString | Set-Content -NoNewline <path>
+
+    .PARAMETER Path
+        The sealed file.
+    #>
+    param([string] $Path)
+    $secure = Get-Content -Path $Path -Raw | ConvertTo-SecureString
+    return [System.Net.NetworkCredential]::new('', $secure).Password
+}
+
 function New-SigningSession {
     <#
     .SYNOPSIS
@@ -341,8 +363,25 @@ function New-SigningSession {
         return [pscustomobject]@{ Arguments = @('--pem-file', $pem); Scratch = @($pem); Kind = 'self-signed' }
     }
 
+    # The certificate signing request route: a private key sealed with DPAPI and the .cer Apple
+    # issued from its request. This is what a machine that has never had a Mac ends up with, because
+    # inillucent's packaging/macos/new-apple-csr.ps1 writes the key here and the certificate comes
+    # from a browser. A .p12 exported from a Mac's keychain is the other route and is tried after it.
+    if ($env:CODESIGN_KEY_SEALED -and $env:CODESIGN_CERT) {
+        foreach ($needed in $env:CODESIGN_KEY_SEALED, $env:CODESIGN_CERT) {
+            if (-not (Test-Path -LiteralPath $needed)) { throw "$needed is not there" }
+        }
+        $keyFile = Join-Path $scratch "key-$stamp.pem"
+        Set-Content -Path $keyFile -Value (Unprotect-Secret -Path $env:CODESIGN_KEY_SEALED) -NoNewline
+        return [pscustomobject]@{
+            Arguments = @('--pem-file', $keyFile, '--certificate-der-file', $env:CODESIGN_CERT)
+            Scratch   = @($keyFile)
+            Kind      = 'Developer ID'
+        }
+    }
+
     if (-not $env:CODESIGN_P12) {
-        throw 'CODESIGN_P12 is not set. It names a .p12 holding the Developer ID Application identity, exported from a Mac''s Keychain Access. installer/macos/notarize.env is where it belongs. Or pass -SelfSigned to prove the pipeline.'
+        throw 'Neither CODESIGN_KEY_SEALED with CODESIGN_CERT nor CODESIGN_P12 is set, so there is no Developer ID identity to sign with. installer/macos/notarize.env is where they belong, and installer/README.md says where each comes from. Or pass -SelfSigned to prove the pipeline.'
     }
     if (-not (Test-Path -LiteralPath $env:CODESIGN_P12)) { throw "CODESIGN_P12 points at $($env:CODESIGN_P12), which is not there" }
 
@@ -506,15 +545,26 @@ function Get-NotaryKeyFile {
         is written to the RAM disk for the length of the submission rather than
         kept: it carries the private key.
     #>
+    $scratch = if (Test-Path -LiteralPath 'R:\') { 'R:\unluminous-release' } else { Join-Path $env:TEMP 'unluminous-release' }
+    New-Item -ItemType Directory -Force -Path $scratch | Out-Null
+
+    # NOTARY_KEY_SEALED is the whole encoded key, sealed. It is preferred over the three values
+    # below because the .p8 those name is an ECDSA private key sitting in the clear, and there is no
+    # reason for it to be: rcodesign wants the three folded into one file anyway.
+    if ($env:NOTARY_KEY_SEALED) {
+        if (-not (Test-Path -LiteralPath $env:NOTARY_KEY_SEALED)) { throw "$($env:NOTARY_KEY_SEALED) is not there" }
+        $sealedFile = Join-Path $scratch ('notary-' + [guid]::NewGuid().ToString('N') + '.json')
+        Set-Content -Path $sealedFile -Value (Unprotect-Secret -Path $env:NOTARY_KEY_SEALED) -NoNewline
+        return $sealedFile
+    }
+
     foreach ($needed in 'NOTARY_KEY', 'NOTARY_KEY_ID', 'NOTARY_ISSUER') {
         if (-not (Get-Item "env:$needed" -ErrorAction SilentlyContinue)) {
-            throw "$needed is not set. installer/macos/notarize.env.example says where each of the three comes from."
+            throw "$needed is not set, and neither is NOTARY_KEY_SEALED. installer/macos/notarize.env.example says where each comes from."
         }
     }
     if (-not (Test-Path -LiteralPath $env:NOTARY_KEY)) { throw "NOTARY_KEY points at $($env:NOTARY_KEY), which is not there" }
 
-    $scratch = if (Test-Path -LiteralPath 'R:\') { 'R:\unluminous-release' } else { Join-Path $env:TEMP 'unluminous-release' }
-    New-Item -ItemType Directory -Force -Path $scratch | Out-Null
     $file = Join-Path $scratch ('notary-' + [guid]::NewGuid().ToString('N') + '.json')
     Invoke-Rcodesign -Quiet -Arguments @(
         'encode-app-store-connect-api-key', '-o', $file,
