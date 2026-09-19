@@ -71,7 +71,7 @@ desktop on the day.
 | `tools/documentation/capture.ps1` | the pictures, one block of `unluminous-cli` commands each, and the compositing |
 | `tools/documentation/fixture.ps1` | the project every picture is taken of |
 | `tools/documentation/library-db.mjs` | the SQLite database the Database plugin's nine pictures are of |
-| `tools/documentation/backdrop.jpg` | the thing behind the window |
+| `tools/documentation/backdrop.jpg` | the thing behind the window, and `backdrop.md` is how it was made |
 
 `tools/documentation/check-links.mjs` is beside them and is not part of taking a picture: it resolves
 every relative link and every backticked path in this folder, in `README.md`, in `CONTRIBUTING.md`,
@@ -103,7 +103,9 @@ whose licence nobody can name.
 It has to earn its place rather than be a gradient. What the gallery exists to show is that the colour
 in the editing area is the thing behind the window, and that only reads when the thing behind has real
 variation in it — light, colour and structure that visibly continues underneath the window and out
-past its edge.
+past its edge. `tools/documentation/backdrop.md` has the prompt, the endpoint and the two commands,
+so it can be made again without guessing — the same thing every bundled plugin's `icon.md` records
+about its own mark.
 
 ## Four things that went wrong the first time it ran, and what each one is now
 
