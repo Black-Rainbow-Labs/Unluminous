@@ -330,7 +330,21 @@ pub fn show(
                 dragged = Some(task.id);
             }
         }
-        // How much of the lane is out of sight, as the same thin bar the board's own sideways scroll draws.
+        // How much of the lane is out of sight.
+        //
+        // **Hand painted, and `task-1984` §3.6 asked why** — the answer is that
+        // `components::scrollbar` is a control rather than a mark: it reserves `GRAB` points of the
+        // width it is given, takes the pointer, carries a name into the accessibility tree and fades
+        // between two palette colours as it is used. A lane is a hundred points wide with cards in
+        // it, and giving each of four lanes a real scrollbar would take a tenth of every lane's width
+        // for a bar nobody drags, and put four more controls in the tree. What this draws is two
+        // points of `divider` saying *there is more below*, which is the same thing the card counts
+        // in the lane heading say and is not a control at all.
+        //
+        // The comment here used to say it was the bar the board's sideways scroll draws, and the
+        // comment there used to say that one was `components::scrollbar`. Neither was true. If the
+        // board ever wants real scrollbars, what it needs first is a horizontal form of `Bar`, which
+        // it has not got.
         if content > room {
             let track = Rect::from_min_max(
                 Pos2::new(lane_area.max.x - 4.0, cards_area.min.y),
@@ -545,7 +559,11 @@ pub fn show(
     if content > room {
         // Five points, not two. It is the only thing on the board that says the lanes go on past the edge —
         // a fourth lane cut off by the pane with a two-point hairline under it reads as clipped rather than
-        // as reachable — and it is the same bar `components::scrollbar` draws down the editing area.
+        // as reachable.
+        //
+        // **Not `components::scrollbar`**, which `task-1984` §3.6 found this comment claiming: that
+        // one is vertical and has no horizontal form, so a bar along the bottom of anything cannot be
+        // it. See the lane's own bar above for why neither is a control.
         let track = Rect::from_min_max(
             Pos2::new(area.min.x + PAD, area.max.y - 7.0),
             Pos2::new(area.max.x - PAD, area.max.y - 2.0),

@@ -331,7 +331,9 @@ pub fn layout_with(
 /// The answer is the same as [`layout`] gives, exactly. The kept lines carry their own heights, and
 /// their vertical positions are added up again in the same order rather than shifted by a difference,
 /// so not even the last bit of a float can drift.
-/// `relayout_agrees_with_layout_after_every_shape_of_edit` is what holds that.
+/// `relayout_agrees_with_layout_after_every_shape_of_edit` and
+/// `relayout_agrees_with_layout_after_hundreds_of_random_edits` are what hold that, and
+/// `relayouting_with_a_hint_agrees_with_relayouting_without_one` holds it for the hinted reading.
 ///
 /// The previous layout is **taken** rather than borrowed, so that the lines that did not change are
 /// moved into the answer instead of being copied into it. Copying them would mean copying every run
@@ -629,9 +631,21 @@ fn fingerprint_of<'a>(
 
 /// The fingerprint of a paragraph whose text and runs have already been read.
 ///
-/// One definition, called both from the pass [`relayout`] makes over the whole document before it
-/// decides anything and from [`lay_out_paragraph`] as it goes, so the two cannot come to different
-/// answers about whether a paragraph changed.
+/// One definition, called both from the pass [`relayout_touching`] makes over the whole document when
+/// it has not been told where the edit was, and from [`lay_out_paragraph`] as it goes, so the two
+/// cannot come to different answers about whether a paragraph changed.
+///
+/// **It covers everything [`lay_out_paragraph`] reads about the paragraph, and nothing about the
+/// machine** (`task-1984` §3.6, which found this claiming the first half without the second). The
+/// text, the runs and their positions relative to the paragraph, the paragraph style and whether it
+/// is hidden are all here; the [`FontMetrics`] are not, and cannot be — a `&dyn FontMetrics` has no
+/// identity to hash and the fonts on a machine are not a value.
+///
+/// That is safe because a layout built with different metrics is never built on: [`relayout`]
+/// rebuilds from nothing when the **width** differs, and every path that changes the font goes
+/// through `UnluminousApp::set_the_font_everywhere`, which marks every tab's layout stale. What
+/// would break it is a renderer whose answers changed underneath a window at one width with no tab
+/// touched, which is a thing that has never happened and would be a fault in the renderer.
 fn fingerprint(
     source: &str,
     bytes: &Range<usize>,

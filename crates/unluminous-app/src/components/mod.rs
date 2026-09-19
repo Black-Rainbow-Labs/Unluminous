@@ -15,12 +15,12 @@
 //! A pane a plugin contributes is not an exception. It returns an outcome and `app` acts on it, which
 //! is the rule above with a provider in the middle.
 
-// The Agent-Tasks board, which is the first plugin that draws. Nothing in it decides anything: the
-// lanes, the drag and the search are `services::agent_tasks`.
-// The Agent-Chat pane: the panel, the conversation, the composer and its Settings page.
 pub mod about_dialog;
 pub mod activity_bar;
+/// The Agent-Chat pane: the panel, the conversation, the composer and its Settings page.
 pub mod agent_chat;
+/// The Agent-Tasks board, which is the first plugin that draws. Nothing in it decides anything: the
+/// lanes, the drag and the search are `services::agent_tasks`.
 pub mod agent_tasks;
 pub mod branch_widget;
 pub mod browser_view;
@@ -63,9 +63,9 @@ pub mod splitter;
 pub mod status_bar;
 pub mod terminal_panel;
 pub mod text_menu;
-// Dismissible notices over the bottom right of the window: what a plugin sends when somebody has to
-// see it, rather than the status bar's running commentary.
 pub mod text_tools;
 pub mod title_bar;
+/// Dismissible notices over the bottom right of the window: what a plugin sends when somebody has to
+/// see it, rather than the status bar's running commentary.
 pub mod toast;
 pub mod value_tooltip;

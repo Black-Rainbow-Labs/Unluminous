@@ -183,6 +183,13 @@ fn opened_as_a_bundle(current_directory: &Path, program: Option<&Path>) -> bool 
     inside_macos && inside_contents && inside_a_bundle
 }
 
+/// Which folder an Unluminous started with no path on its command line opens.
+///
+/// **Narrow on purpose**, and `task-1670` records why: the current directory is the honest answer
+/// when somebody typed `unluminous` in a terminal, and no answer at all from a desktop shortcut,
+/// where it is only wherever the shortcut points. So the last project is reopened **only** when the
+/// current directory is the folder `unluminous` itself lives in, which is what
+/// [`started_from_the_desktop`] decides. `unluminous` typed in a folder has to open that folder.
 pub fn starting_folder(
     current_directory: &Path,
     program: Option<&Path>,

@@ -52,8 +52,6 @@ use crate::services::browser::BrowserTab;
 impl UnluminousApp {
     /// Draw the whole window. Split out from the `eframe::App` implementation so the screenshot tests can
     /// drive it without a real window.
-    /// Draw the whole window. Split out from the `eframe::App` implementation so the screenshot tests can
-    /// drive it without a real window.
     ///
     /// A frame is a list of phases and this is the list. Each is a method below, named for what it
     /// does, and each is called exactly where its statements used to be: **egui hands a pointer to the
