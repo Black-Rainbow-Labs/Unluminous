@@ -90,55 +90,55 @@ pub fn bytes_of(screen: &Screen) -> Vec<u8> {
 ///
 /// **From the top**, because what somebody wants back is the end: the last command and its output. A screen that
 /// will not fit at all answers with its last row, which is the prompt.
+/// **One pass** (`task-1984` P6). This used to copy the whole screen and re-encode every row of it
+/// once per row dropped -- so a screen that was twice the limit re-encoded half the terminal's
+/// scrollback, and the shape was quadratic in the rows. It is on the one path a delay cannot be
+/// hidden behind a frame, because it runs when a window closes, once per terminal.
+///
+/// A row's bytes do not depend on which rows are in front of it, so each is encoded once and then
+/// counted backwards from the last: the answer is the longest run ending at the last row that fits.
 pub fn bytes_within(screen: &Screen, limit: usize) -> Vec<u8> {
-    let whole = bytes_of(screen);
-    if whole.len() <= limit {
-        return whole;
-    }
-    // Walk the first row off at a time. A screen is at most `SCROLLBACK` rows and this happens once, when a
-    // window closes, so a loop is the honest shape — a binary search over row counts would be the same answer
-    // reached less legibly.
-    for first in 1..screen.rows {
-        let bytes = bytes_of(&without_the_first_rows(screen, first));
-        if bytes.len() <= limit {
-            return bytes;
+    let last = last_row_with_anything(screen);
+    let rows: Vec<Vec<u8>> = (0..=last)
+        .map(|row| {
+            let mut out = Vec::new();
+            write_a_row(screen, row, &mut out);
+            out
+        })
+        .collect();
+
+    // What every answer carries whatever rows are in it: the reset in front, and the reset and the
+    // newline behind. See `bytes_of`, which this has to agree with byte for byte.
+    const OPENING: &[u8] = b"\x1b[0m";
+    const CLOSING: &[u8] = b"\x1b[0m\r\n";
+    const BETWEEN: &[u8] = b"\r\n";
+    let mut total = OPENING.len() + CLOSING.len();
+    let mut first = last + 1;
+    for row in (0..=last).rev() {
+        let extra = rows[row].len() + BETWEEN.len() * usize::from(first <= last);
+        if total + extra > limit {
+            break;
         }
+        total += extra;
+        first = row;
     }
-    // Even one row is too long, which takes a row of several thousand wide characters. The last row alone, cut
-    // to the limit on a **character** boundary so what is written is at least valid text.
-    let last = bytes_of(&without_the_first_rows(screen, screen.rows.saturating_sub(1)));
-    match last.len() <= limit {
-        true => last,
+
+    let mut out = Vec::with_capacity(total);
+    out.extend_from_slice(OPENING);
+    // Nothing at all fits, which takes a row of several thousand wide characters. What comes back is
+    // an empty screen rather than half a row, because half an escape sequence is not a shorter
+    // sequence -- it is text the emulator prints.
+    for (step, row) in rows.iter().enumerate().skip(first) {
+        if step > first {
+            out.extend_from_slice(BETWEEN);
+        }
+        out.extend_from_slice(row);
+    }
+    out.extend_from_slice(CLOSING);
+    match out.len() <= limit {
+        true => out,
         false => Vec::new(),
     }
-}
-
-/// A copy of `screen` with its first `count` rows dropped and blank rows added at the bottom.
-///
-/// The rows keep their order and their styles; what changes is which of them there are. The cursor comes with
-/// them where it can, and is dropped when it was in a row that has gone — `bytes_of` ends with a newline rather
-/// than a cursor move, so nothing depends on it.
-fn without_the_first_rows(screen: &Screen, count: usize) -> Screen {
-    let count = count.min(screen.rows);
-    // **The background for both**, so a blank cell is one `is_plain_blank` recognises and `bytes_of` trims. The
-    // foreground of a blank is never drawn — there is nothing in it — and taking the first cell's colour would
-    // make the default depend on which row happened to be first, which is arbitrary even where it does not show.
-    let mut out = Screen::empty(screen.rows, screen.columns, screen.background, screen.background);
-    out.title = screen.title.clone();
-    for row in count..screen.rows {
-        for column in 0..screen.columns {
-            if let (Some(from), Some(to)) = (
-                screen.cell(row, column).cloned(),
-                out.cells.get_mut((row - count) * screen.columns + column),
-            ) {
-                *to = from;
-            }
-        }
-    }
-    out.cursor = screen.cursor.as_ref().and_then(|cursor| {
-        (cursor.row >= count).then(|| crate::screen::Cursor { row: cursor.row - count, ..*cursor })
-    });
-    out
 }
 
 /// The last row that has anything in it, so trailing blank rows are not written down.
@@ -516,10 +516,10 @@ mod tests {
 
     /// Dropping rows does not recolour the rows that are left.
     ///
-    /// `without_the_first_rows` builds its replacement with `Screen::empty`, which needs a foreground for the
-    /// blank cells — and the first cell's colour is an arbitrary thing to use for that. What has to be true is
-    /// that the cells actually *copied* keep their own colours, and that the blanks below them are blanks: the
-    /// default only shows through where nothing was copied, and `bytes_of` trims those rows anyway.
+    /// The rows that are kept are encoded one at a time and joined, so nothing about a row that is
+    /// still there depends on how many were dropped in front of it. What has to be true is that a kept
+    /// row keeps its own colours — which is the thing a copy of the whole screen used to be able to get
+    /// wrong, and which `task-1984` P6 took the copy out of.
     #[test]
     fn dropping_rows_does_not_recolour_what_is_left() {
         let mut session = Session::detached(Size::new(6, 20));
@@ -579,5 +579,62 @@ mod tests {
         // And it still comes back.
         let now = fed(&bytes).snapshot();
         assert_eq!(now.cell(0, 0).expect("a cell").character, '$');
+    }
+
+    /// A screen cut to a limit is the end of it, whole rows, and never more than was asked for.
+    ///
+    /// **`task-1984` P6.** [`bytes_within`] copied the whole screen and re-encoded every row of it once
+    /// per row it dropped, so a screen twice the limit re-encoded half the terminal's scrollback and
+    /// the shape was quadratic in the rows. It runs when a window closes, once per terminal, which is
+    /// the one path here that a frame cannot hide.
+    ///
+    /// It encodes each row once now and counts backwards from the last. What has to stay true is what
+    /// it always promised: **the end**, because the end is what somebody wants back; **whole rows**,
+    /// because half an escape sequence is text the emulator prints rather than a shorter sequence; and
+    /// **within the limit**, because the limit is what the file it is written to is bounded by.
+    #[test]
+    fn a_screen_cut_to_a_limit_is_its_last_rows_and_fits() {
+        let mut session = Session::detached(Size::new(12, 40));
+        for row in 0..10 {
+            session.feed(format!("\x1b[3{}mrow {row} of the screen\r\n", row % 8).as_bytes());
+        }
+        let screen = session.snapshot();
+        let whole = bytes_of(&screen);
+        assert!(whole.len() > 200, "the fixture is worth cutting: {} bytes", whole.len());
+
+        // Every limit from nothing to the whole of it, which is the only way to be sure the counting
+        // backwards never spends a byte it did not have.
+        for limit in 0..=whole.len() {
+            let cut = bytes_within(&screen, limit);
+            assert!(cut.len() <= limit, "at a limit of {limit} it wrote {} bytes", cut.len());
+            let text = fed(&cut).snapshot().text();
+            if text.trim().is_empty() {
+                // Not even one row fits, which is an empty screen rather than half a row: half an
+                // escape sequence is text the emulator prints rather than a shorter sequence.
+                continue;
+            }
+            // The last row is in whatever came back, and the first row is the first thing to go.
+            assert!(text.contains("row 9"), "at a limit of {limit}: {text:?}");
+            if cut.len() < whole.len() {
+                assert!(!text.contains("row 0"), "at a limit of {limit} the top is gone: {text:?}");
+            }
+            // And no half-written escape sequence reached the emulator as text.
+            assert!(!text.contains("\x1b"), "at a limit of {limit}: {text:?}");
+        }
+    }
+
+    /// The whole screen fits, and what comes back is byte for byte what `bytes_of` writes.
+    ///
+    /// `task-1984` P6. The rewrite assembles the stream from its pieces rather than calling
+    /// `bytes_of`, so the two have to agree exactly or a restored screen would differ depending on
+    /// which function wrote it.
+    #[test]
+    fn a_screen_that_fits_is_exactly_what_bytes_of_writes() {
+        let mut session = Session::detached(Size::new(8, 30));
+        session.feed(b"\x1b[35mfirst\r\nsecond\r\n\x1b[0mthird\r\n");
+        let screen = session.snapshot();
+        let whole = bytes_of(&screen);
+        assert_eq!(bytes_within(&screen, whole.len()), whole, "at exactly its own length");
+        assert_eq!(bytes_within(&screen, whole.len() * 4), whole, "and with room to spare");
     }
 }
