@@ -123,7 +123,7 @@ pub fn render(
 ) -> Rendered {
     let of = |color: egui::Color32| unluminous_core::Color::rgb(color.r(), color.g(), color.b());
     let base = unluminous_core::CharStyle {
-        family: family.to_owned(),
+        family: family.into(),
         size,
         color: of(colors.text),
         ..unluminous_core::CharStyle::default()
@@ -132,7 +132,10 @@ pub fn render(
     // How many characters of the code font fit across the width, which is the one measurement a table takes.
     // Everything else about a table is integer arithmetic over characters inside `unluminous_core`.
     let code = unluminous_core::CharStyle {
-        family: mono.clone().unwrap_or_else(|| base.family.clone()),
+        family: mono
+            .as_deref()
+            .map(Into::into)
+            .unwrap_or_else(|| std::sync::Arc::clone(&base.family)),
         size: base.size * 0.95,
         ..unluminous_core::CharStyle::default()
     };

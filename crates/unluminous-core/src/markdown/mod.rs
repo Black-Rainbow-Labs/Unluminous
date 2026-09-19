@@ -321,8 +321,11 @@ impl<'a> Writer<'a> {
     }
 
     /// The monospaced family, or the ordinary one on a system with none.
-    fn mono(&self) -> String {
-        self.options.mono.clone().unwrap_or_else(|| self.options.base.family.clone())
+    fn mono(&self) -> std::sync::Arc<str> {
+        match &self.options.mono {
+            Some(named) => named.as_str().into(),
+            None => std::sync::Arc::clone(&self.options.base.family),
+        }
     }
 
     /// The style code is set in: the monospaced family and the code colour.

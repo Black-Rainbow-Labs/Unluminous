@@ -235,7 +235,7 @@ fn a_fence_keeps_its_spacing_and_is_set_in_the_code_font() {
     let preview = preview("```\nfn main() {\n    println!();\n}\n```");
     let text = preview.text.to_string();
     assert!(text.contains("    println!();"), "the indent survives: {text:?}");
-    assert_eq!(style_of(&preview, "fn main").family, "Courier");
+    assert_eq!(&*style_of(&preview, "fn main").family, "Courier");
     assert_eq!(style_of(&preview, "fn main").color, PreviewColors::default().code);
 }
 
@@ -329,7 +329,7 @@ fn a_table_is_drawn_in_a_box_and_the_pipes_are_gone() {
 #[test]
 fn a_table_is_set_in_the_code_font_so_its_columns_line_up() {
     let preview = preview("| a | b |\n| --- | --- |\n| 1 | 2 |");
-    assert_eq!(style_of(&preview, "a").family, "Courier");
+    assert_eq!(&*style_of(&preview, "a").family, "Courier");
     // The rules are quiet and the data is not, so the grid recedes.
     assert_eq!(style_of(&preview, "\u{250C}").color, PreviewColors::default().quiet);
     assert_eq!(style_of(&preview, "1").color, PreviewColors::default().text);

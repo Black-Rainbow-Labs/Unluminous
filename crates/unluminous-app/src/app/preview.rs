@@ -117,7 +117,7 @@ impl UnluminousApp {
             return;
         }
         let base = unluminous_core::CharStyle {
-            family: self.settings.font_family.clone(),
+            family: self.settings.font_family.as_str().into(),
             size: self.document().active_style().size,
             color: unluminous_core::Color::rgb(
                 color::text().r(),
@@ -156,7 +156,10 @@ impl UnluminousApp {
         let mut preview = {
             let highlighter = PluginHighlighter { plugins: &self.plugins };
             let code = unluminous_core::CharStyle {
-                family: mono.clone().unwrap_or_else(|| base.family.clone()),
+                family: mono
+                    .as_deref()
+                    .map(Into::into)
+                    .unwrap_or_else(|| std::sync::Arc::clone(&base.family)),
                 size: base.size * 0.95,
                 ..unluminous_core::CharStyle::default()
             };
@@ -306,7 +309,7 @@ impl UnluminousApp {
     /// showed and what no assertion about the scene could have caught.
     pub(crate) fn diagram_style(&self) -> unluminous_core::CharStyle {
         unluminous_core::CharStyle {
-            family: self.renderer.default_family(),
+            family: self.renderer.default_family().as_str().into(),
             size: self.document().active_style().size * 0.9,
             ..unluminous_core::CharStyle::default()
         }

@@ -610,7 +610,7 @@ fn choosing_a_family_in_the_settings_leaves_bold_and_colour_alone() {
     harness.run();
 
     let style = harness.state().document().chars().style_at(7);
-    assert_eq!(style.family, other, "the word is in the new family");
+    assert_eq!(&*style.family, other, "the word is in the new family");
     assert!(style.bold, "and still bold");
     harness.snapshot(shot("settings_font_applied"));
 }

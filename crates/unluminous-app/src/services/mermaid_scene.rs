@@ -114,7 +114,7 @@ impl MermaidScenes {
     ) -> Laid {
         let key = Key {
             source: source.to_owned(),
-            family: base.family.clone(),
+            family: base.family.to_string(),
             size: (base.size * 10.0).round().max(0.0) as u32,
         };
         self.clock += 1;

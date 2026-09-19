@@ -86,7 +86,7 @@ struct FaceKey {
 
 impl FaceKey {
     fn of(style: &CharStyle) -> Self {
-        Self { family: style.family.clone(), bold: style.bold, italic: style.italic }
+        Self { family: style.family.to_string(), bold: style.bold, italic: style.italic }
     }
 
     /// Whether this is the key a style would build, without building it.
@@ -96,7 +96,7 @@ impl FaceKey {
     /// 167 ns a call, times a hundred and sixteen thousand. The memo in [`TextRenderer`] compares
     /// with this instead.
     fn is(&self, style: &CharStyle) -> bool {
-        self.bold == style.bold && self.italic == style.italic && self.family == style.family
+        self.bold == style.bold && self.italic == style.italic && self.family == *style.family
     }
 }
 
@@ -661,7 +661,11 @@ impl TextRenderer {
     /// own size.
     pub fn terminal_style(&self, size: f32, bold: bool, italic: bool) -> CharStyle {
         CharStyle {
-            family: self.monospaced_family().unwrap_or_else(|| self.default_family()),
+            family: self
+                .monospaced_family()
+                .unwrap_or_else(|| self.default_family())
+                .as_str()
+                .into(),
             size,
             bold,
             italic,
@@ -782,7 +786,8 @@ mod tests {
     #[test]
     fn a_wider_letter_advances_further_than_a_narrow_one() {
         let renderer = TextRenderer::new();
-        let style = CharStyle { family: renderer.default_family(), ..CharStyle::default() };
+        let style =
+            CharStyle { family: renderer.default_family().as_str().into(), ..CharStyle::default() };
         let narrow = renderer.advance("i", &style);
         let wide = renderer.advance("W", &style);
         assert!(wide > narrow, "W ({wide}) should be wider than i ({narrow})");
@@ -791,8 +796,11 @@ mod tests {
     #[test]
     fn a_bigger_font_size_advances_further_and_stands_taller() {
         let renderer = TextRenderer::new();
-        let small =
-            CharStyle { family: renderer.default_family(), size: 12.0, ..CharStyle::default() };
+        let small = CharStyle {
+            family: renderer.default_family().as_str().into(),
+            size: 12.0,
+            ..CharStyle::default()
+        };
         let large = CharStyle { size: 36.0, ..small.clone() };
         assert!(renderer.advance("m", &large) > renderer.advance("m", &small));
         assert!(renderer.line_metrics(&large).height() > renderer.line_metrics(&small).height());
@@ -801,7 +809,8 @@ mod tests {
     #[test]
     fn bold_text_is_at_least_as_wide_as_regular_text() {
         let renderer = TextRenderer::new();
-        let regular = CharStyle { family: renderer.default_family(), ..CharStyle::default() };
+        let regular =
+            CharStyle { family: renderer.default_family().as_str().into(), ..CharStyle::default() };
         let bold = CharStyle { bold: true, ..regular.clone() };
         assert!(renderer.advance("mmmm", &bold) >= renderer.advance("mmmm", &regular));
     }
@@ -809,7 +818,7 @@ mod tests {
     #[test]
     fn an_unknown_family_still_measures_and_still_draws() {
         let renderer = TextRenderer::new();
-        let style = CharStyle { family: "No Such Font At All".to_owned(), ..CharStyle::default() };
+        let style = CharStyle { family: "No Such Font At All".into(), ..CharStyle::default() };
         assert!(renderer.advance("a", &style) > 0.0, "a missing family must not stop layout");
         assert!(renderer.line_metrics(&style).height() > 0.0);
         assert!(renderer.glyph('a', &style).is_some(), "it should fall back to a family we have");
@@ -860,7 +869,8 @@ mod tests {
     #[test]
     fn glyphs_are_rasterised_once_and_then_reused() {
         let renderer = TextRenderer::new();
-        let style = CharStyle { family: renderer.default_family(), ..CharStyle::default() };
+        let style =
+            CharStyle { family: renderer.default_family().as_str().into(), ..CharStyle::default() };
         let first = renderer.glyph('A', &style).expect("A should rasterise");
         let second = renderer.glyph('A', &style).expect("A should still be there");
         assert_eq!(renderer.atlas.borrow().entries.len(), 1, "asked twice, stored once");
@@ -871,8 +881,11 @@ mod tests {
     #[test]
     fn the_same_letter_at_two_sizes_is_two_entries() {
         let renderer = TextRenderer::new();
-        let small =
-            CharStyle { family: renderer.default_family(), size: 12.0, ..CharStyle::default() };
+        let small = CharStyle {
+            family: renderer.default_family().as_str().into(),
+            size: 12.0,
+            ..CharStyle::default()
+        };
         let large = CharStyle { size: 40.0, ..small.clone() };
         let small_glyph = renderer.glyph('B', &small).expect("rasterise at 12");
         let large_glyph = renderer.glyph('B', &large).expect("rasterise at 40");
@@ -944,7 +957,8 @@ mod tests {
     #[test]
     fn a_space_has_width_but_nothing_to_draw() {
         let renderer = TextRenderer::new();
-        let style = CharStyle { family: renderer.default_family(), ..CharStyle::default() };
+        let style =
+            CharStyle { family: renderer.default_family().as_str().into(), ..CharStyle::default() };
         assert!(renderer.advance(" ", &style) > 0.0, "a space advances the pen");
         assert!(renderer.glyph(' ', &style).is_none(), "a space has no pixels");
     }
@@ -952,7 +966,8 @@ mod tests {
     #[test]
     fn the_atlas_never_overlaps_two_glyphs() {
         let renderer = TextRenderer::new();
-        let style = CharStyle { family: renderer.default_family(), ..CharStyle::default() };
+        let style =
+            CharStyle { family: renderer.default_family().as_str().into(), ..CharStyle::default() };
         for character in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".chars() {
             renderer.glyph(character, &style);
         }

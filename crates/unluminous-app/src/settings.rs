@@ -961,7 +961,7 @@ impl Settings {
     /// The change to hand to `Document::set_base_style` so the document is shown in this font.
     pub fn as_style_change(&self) -> unluminous_core::StyleChange {
         unluminous_core::StyleChange {
-            family: (!self.font_family.is_empty()).then(|| self.font_family.clone()),
+            family: (!self.font_family.is_empty()).then(|| self.font_family.as_str().into()),
             size: Some(self.font_size),
             ..unluminous_core::StyleChange::default()
         }

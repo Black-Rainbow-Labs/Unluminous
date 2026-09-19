@@ -37,7 +37,15 @@ impl Color {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CharStyle {
     /// A font family name as the operating system knows it, for example `Helvetica`.
-    pub family: String,
+    ///
+    /// **An `Arc<str>` rather than a `String`** (`task-1984` C4). Nearly every span in a coloured
+    /// file shares one family -- the editor's font is one setting for the whole window -- and a
+    /// `CharStyle` is cloned once per span every time the span list is. A 2 MB file colours into
+    /// about 234,000 spans, so every undo snapshot was 234,000 heap allocations of the same word:
+    /// 15.5 MB and 9.7 ms per Backspace, and 4 GB for a full 256 step history. `task-1804` removed
+    /// exactly this cost from `set_many` and it lived on in `snapshot`. A reference count bump costs
+    /// nothing and the family is never edited in place, only replaced.
+    pub family: std::sync::Arc<str>,
     /// Size in points.
     pub size: f32,
     pub bold: bool,
@@ -50,7 +58,7 @@ pub struct CharStyle {
 impl Default for CharStyle {
     fn default() -> Self {
         Self {
-            family: "Helvetica".to_owned(),
+            family: "Helvetica".into(),
             size: 16.0,
             bold: false,
             italic: false,
@@ -66,7 +74,7 @@ impl Default for CharStyle {
 /// the bold and italic already in it.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct StyleChange {
-    pub family: Option<String>,
+    pub family: Option<std::sync::Arc<str>>,
     pub size: Option<f32>,
     pub bold: Option<bool>,
     pub italic: Option<bool>,
@@ -76,8 +84,8 @@ pub struct StyleChange {
 }
 
 impl StyleChange {
-    pub fn family(name: impl Into<String>) -> Self {
-        Self { family: Some(name.into()), ..Self::default() }
+    pub fn family(name: impl AsRef<str>) -> Self {
+        Self { family: Some(name.as_ref().into()), ..Self::default() }
     }
 
     pub fn size(size: f32) -> Self {
@@ -165,6 +173,22 @@ impl StyleSpans {
 
     /// The formatting at a byte offset. An offset on the boundary between two spans reports the
     /// earlier one, so that typing at the end of a bold word stays bold.
+    /// What one undo snapshot's copy of this span list weighs, in bytes.
+    ///
+    /// `task-1984` C4, for `examples/layout_memory`, which since `task-1813` reports what a window is
+    /// holding and said nothing at all about the undo history -- where a document coloured into
+    /// 234,000 spans was 15.5 MB a step. `Span` is private, so this is the one place that number can
+    /// be worked out, and it is a size rather than a sample so it is the same on every machine.
+    ///
+    /// **The family is not counted per span** and that is what C4 changed: `CharStyle::family` was a
+    /// `String`, one heap copy of the same word per span, and is an `Arc<str>` shared by all of them.
+    pub fn accounted_bytes(&self) -> usize {
+        self.spans.capacity() * Self::SPAN_BYTES
+    }
+
+    /// What one span weighs, for the diagnostic above. `Span` is private and this is the one way out.
+    pub const SPAN_BYTES: usize = std::mem::size_of::<Span>();
+
     pub fn style_at(&self, offset: usize) -> &CharStyle {
         let mut acc = 0;
         for span in &self.spans {

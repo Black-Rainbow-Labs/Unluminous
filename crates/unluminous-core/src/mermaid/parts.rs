@@ -401,7 +401,7 @@ pub fn measure_box(
 /// The text style for a diagram's ordinary label text.
 pub fn text_style(options: &Options, scale: f32, bold: bool, colour: Color) -> TextStyle {
     TextStyle {
-        family: options.base.family.clone(),
+        family: options.base.family.to_string(),
         size: options.base.size * scale,
         bold,
         italic: false,
