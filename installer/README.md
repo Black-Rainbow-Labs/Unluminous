@@ -142,6 +142,23 @@ account, so the file is worthless on another machine. The notary credentials are
 `NOTARY_KEY`, `NOTARY_KEY_ID` and `NOTARY_ISSUER`, folded into the one JSON file rcodesign wants on
 the RAM disk for the length of the submission.
 
+**A `.p12` without a Mac to export one from.** `C:/jason/dev/inillucent/packaging/macos/new-apple-csr.ps1`
+obtains a Developer ID from a browser, and leaves it as a private key sealed with DPAPI beside the
+`.cer` Apple issued. That is the same identity in a different container, and
+`installer/macos/import-developer-id.ps1` converts it:
+
+```powershell
+pwsh installer\macos\import-developer-id.ps1
+```
+
+It writes `%LOCALAPPDATA%\unluminous\apple\developer-id-application.p12`, seals a random password
+beside it, and prints the two `notarize.env` lines. The `.p12` goes outside the repository because
+`.gitignore` covers `notarize.env` and `*.p8` and matches no `.p12`, and a Developer ID private key
+committed to a public repository cannot be taken back. It tells openssl to use the older PKCS#12
+algorithms: openssl 3 defaults to AES-256-CBC, which rcodesign rejects with `incorrect password given
+when decrypting PFX data` — a message about the password, not the cipher, so the obvious next move is
+to retype a password that was never wrong.
+
 **It writes a `.zip`, not a `.dmg`.** A disk image holds an HFS+ filesystem and writing one needs
 `hdiutil`; rcodesign signs a disk image but does not create one. Apple's notary accepts a zipped
 bundle as well, and the ticket is stapled to the **application** inside it rather than to the zip, so
