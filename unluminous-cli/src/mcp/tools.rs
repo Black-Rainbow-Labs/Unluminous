@@ -8,19 +8,21 @@
 //!
 //! ## Two shapes, and why there is a choice at all
 //!
-//! There are two hundred and eight commands as of `task-1922` WP2 — up from a hundred and
-//! thirty-six when this table was first written, `task-28`'s Agent-Tasks plugin and `task-1904`'s
-//! Base of Infinite Space having each added an area's worth of `plugins` and `space` verbs since. A
-//! tool definition costs an agent context on every conversation the server is connected to, before
-//! it reads a word of the question, so the two shapes were generated from the real catalogue and
-//! measured rather than guessed at:
+//! The catalogue grows with every ticket — it was a hundred and thirty-six commands when this table
+//! was first written, and `task-28`'s Agent-Tasks plugin and `task-1904`'s Base of Infinite Space
+//! have each added an area's worth of verbs since. A tool definition costs an agent context on every
+//! conversation the server is connected to, before it reads a word of the question, so the two shapes
+//! were generated from the real catalogue and measured rather than guessed at.
 //!
-//! | Shape | Tools | Bytes of JSON | Tokens (≈ bytes ÷ 4) |
-//! |---|---|---|---|
-//! | [`Shape::Every`] — one tool a command | 207 | 226,772 | ~56,693 |
-//! | [`Shape::Grouped`] — one tool an area | 28 | 105,525 | ~26,381 |
+//! **The figures are not written down here** (`task-1984` §3.6). They were, three times, and all
+//! three were stale within two tickets — twice over since `task-1922`, and each time by enough that
+//! a reader doing arithmetic on them would have got a different answer from the one the code gives.
+//! `unluminous-cli mcp tools --count` prints both shapes against the catalogue as it is now, and
+//! `the_grouped_shape_is_worth_the_choice_it_is_the_default_for` holds the only thing about them that
+//! is a fact rather than a measurement: **one tool an area is a small fraction of the context of one
+//! tool a command, and it names every command Unluminous has**.
 //!
-//! A little over twice the context, which is what makes `Grouped` the default. It is not a smaller
+//! That ratio is what makes `Grouped` the default. It is not a smaller
 //! description of Unluminous: every command is still there, with its usage line and its summary, in the
 //! area tool's description — which is `docs/commands.md`, the document a local model scored 100%
 //! from, cut into twenty-four pieces and put where the agent is already looking.
@@ -38,10 +40,10 @@ use crate::catalogue::{self, Command};
 /// How many tools the catalogue is cut into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Shape {
-    /// One tool an area, with the area's verbs as an `enum`. Twenty-eight tools.
+    /// One tool an area, with the area's verbs as an `enum`. One tool per area of the catalogue.
     #[default]
     Grouped,
-    /// One tool a command. Two hundred and seven tools, and per-tool permissions.
+    /// One tool a command, and per-tool permissions.
     Every,
 }
 
@@ -780,6 +782,31 @@ fn sibling_keys(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_grouped_shape_is_worth_the_choice_it_is_the_default_for() {
+        // **`task-1984` §3.6.** This module's own comment carried the two shapes' tool counts, byte
+        // counts and token counts, and all three were stale twice over within three tickets — the
+        // catalogue grows with nearly every one. What is written down now is the thing that is a
+        // fact rather than a measurement, and this is it: the grouped shape is a fraction of the
+        // context of the every-command shape, and it still names every command.
+        //
+        // A ratio rather than a figure, so it stays true as the catalogue grows. If one tool an area
+        // ever stopped being a clear saving, the default would be the wrong default and this would
+        // be the thing to say so.
+        let grouped = serde_json::to_string(&as_json_in(Shape::Grouped, &crate::mcp::tools::Areas::all())).expect("serialises").len();
+        let every = serde_json::to_string(&as_json_in(Shape::Every, &crate::mcp::tools::Areas::all())).expect("serialises").len();
+        assert!(
+            grouped * 2 < every,
+            "grouped is {grouped} bytes against every's {every}, which is not a saving worth a default"
+        );
+        assert!(
+            tools(Shape::Grouped).len() * 4 < tools(Shape::Every).len(),
+            "one tool an area is {} tools against {} — the areas have stopped grouping anything",
+            tools(Shape::Grouped).len(),
+            tools(Shape::Every).len()
+        );
+    }
 
     #[test]
     fn every_command_is_offered_as_a_tool_in_both_shapes() {

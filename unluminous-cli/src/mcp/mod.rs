@@ -16,9 +16,11 @@
 //! drifting; a hand-written tool set would be exactly the third copy the rule exists to prevent. A
 //! test fails the day a command is added without a tool.
 //!
-//! **Fourteen tools by default, not ninety-seven** — [`tools`] again, with the measurement that
-//! decided it. One tool an area costs an agent roughly a third of the context one tool a command
-//! does, and still names every command Unluminous has.
+//! **One tool an area by default, not one a command** — [`tools`] again, with the measurement that
+//! decided it. The grouped shape costs an agent a fraction of the context the every-command shape
+//! does and still names every command Unluminous has. The figures are deliberately not written down
+//! here: they were, and they were stale twice over within three tickets. `unluminous-cli mcp tools
+//! --count` prints both against the catalogue as it is now.
 //!
 //! **It is stateless** — [`server`]. `2025-06-18` is what clients speak today; `2026-07-28` deleted
 //! the handshake and the session. A server that never requires `initialize` and issues no session
