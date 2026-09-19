@@ -145,7 +145,12 @@ fn locally(command: &'static Command, arguments: &Map<String, Value>) -> Option<
 pub const ANSWERED_LOCALLY: [&str; 6] =
     ["version", "commands", "instances", "launch", "mcp.tools", "mcp.config"];
 
-fn answered(command: &'static Command, arguments: &Map<String, Value>) -> Option<Reply> {
+/// The answer to one of [`ANSWERED_LOCALLY`], or `None` for a command that needs a window.
+///
+/// **Public because `main.rs` asks it too** (`task-1984` §3.6). The client had its own reading of the
+/// same six commands and the two had already drifted; this is the one place they are answered, and
+/// what `main.rs` keeps is how a person is shown the answer.
+pub fn answered(command: &'static Command, arguments: &Map<String, Value>) -> Option<Reply> {
     match command.wire().as_str() {
         "version" => Some(Reply::done(
             "version",

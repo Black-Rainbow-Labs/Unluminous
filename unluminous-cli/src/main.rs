@@ -150,20 +150,33 @@ fn explain(command: &'static Command, typed: &Typed) -> i32 {
 }
 
 /// The commands the client answers on its own, with no Unluminous involved.
+///
+/// **The answer comes from one place and only the printing is here** (`task-1984` §3.6). This file
+/// and `mcp::driver::answered` each held their own reading of the same six commands, and the two had
+/// already drifted — which is the exact fault the catalogue exists to prevent one layer up, where one
+/// list is what the client parses against and the window dispatches on.
+///
+/// So `answered` decides, and what is left here is how a **person** is shown it: a table of running
+/// windows rather than a JSON array, the help text rather than the structure behind it. An agent gets
+/// the same answer as data, because it is the same answer.
+///
+/// The three that are not here are the three that are not answers: `launch` starts a process,
+/// `mcp serve` does not return, and `mcp install` writes somebody's configuration file.
 fn locally(command: &'static Command, typed: &Typed) -> i32 {
     match command.wire().as_str() {
         "version" => version(&typed.global),
         "commands" => {
-            let only = typed.arguments.get("name").and_then(Value::as_str);
-            if let Some(name) = only {
-                if unluminous_cli::catalogue::find(name).is_none() {
-                    complain(&format!("There is no command called `{name}`."), &typed.global);
-                    return USAGE;
-                }
+            let Some(reply) = mcp::driver::answered(command, &typed.arguments) else {
+                unreachable!("`commands` is in ANSWERED_LOCALLY");
+            };
+            if !reply.ok {
+                complain(&reply.message, &typed.global);
+                return USAGE;
             }
             if typed.global.json {
-                say(&help::as_json(only));
+                say(&reply.result);
             } else {
+                let only = typed.arguments.get("name").and_then(Value::as_str);
                 match only.and_then(unluminous_cli::catalogue::find) {
                     Some(command) => print!("{}", help::for_command(command)),
                     None => print!("{}", help::overall()),
@@ -172,22 +185,23 @@ fn locally(command: &'static Command, typed: &Typed) -> i32 {
             OK
         }
         "instances" => {
-            let running = client::running();
-            let value = json!({
-                "count": running.len(),
-                "instances": running.iter().map(describe).collect::<Vec<Value>>(),
-            });
+            let Some(reply) = mcp::driver::answered(command, &typed.arguments) else {
+                unreachable!("`instances` is in ANSWERED_LOCALLY");
+            };
             if typed.global.json {
-                say(&value);
-            } else if running.is_empty() {
+                say(&reply.result);
+                return OK;
+            }
+            let running = reply.result["instances"].as_array().cloned().unwrap_or_default();
+            if running.is_empty() {
                 println!("No Unluminous is running.");
             } else {
                 for instance in &running {
                     println!(
                         "pid {:<8} port {:<6} {}",
-                        instance.pid,
-                        instance.port,
-                        instance.folder.display()
+                        instance["pid"],
+                        instance["port"],
+                        instance["folder"].as_str().unwrap_or_default()
                     );
                 }
             }
