@@ -1069,6 +1069,7 @@ Each stands on its own, and states any fact it needs rather than pointing at ano
 | `documentation/README.md` | What re-taking either gallery needs, and why the scripts that took the first one have to move into `tools/` before it happens. |
 | `design/style-guide.md` | How a control in Unluminous is built: the closed palette, the row heights, the one shape a modal has, and the plain name every control carries. Read it before drawing anything new. |
 | `CLAUDE.md` | The conventions the code already follows, written for whoever changes it next. |
+| `AGENTS.md` | The same thing for an agent that is not Claude Code: what `CLAUDE.md` is, what `CONTRIBUTING.md` is, and the four contracts a test enforces. `GEMINI.md` points at it. |
 | `unluminous-cli/docs/commands.md` | The command line reference, written to be handed to an AI agent whole. |
 | `unluminous-cli/docs/protocol.md` | The socket underneath it, for a client in another language. |
 | `unluminous-cli/docs/mcp.md` | The MCP server: installing it into an agent, the two tool shapes and what each costs, and what a local port does and does not defend against. |
