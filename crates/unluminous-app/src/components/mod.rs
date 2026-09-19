@@ -1,8 +1,19 @@
 //! The pieces of the window, one file each.
 //!
 //! Every component is a function that takes a `Ui` and the rectangle it is to fill, draws itself, and
-//! returns what the user did in it. None of them changes the document or the window's state directly, so
-//! the state changes in one place, `app`, and two components cannot disagree about what happened.
+//! returns what the user did in it. **None of them changes the document**, so the state changes in one
+//! place, `app`, and two components cannot disagree about what happened.
+//!
+//! There are two exceptions and both are about the *settings* rather than about the document, which is
+//! the line `task-1984` drew when it found this paragraph claiming more than the code does.
+//! `settings_dialog` and `mcp_page` are handed `&mut Settings` and write it, because a settings page
+//! whose every control had to be routed back through `app` would be a hundred outcomes carrying one
+//! value each, and the page is the one place in the window where what is drawn *is* the state. They
+//! write the value and nothing else: saving it to disk, putting a font into effect and telling the
+//! plugins are all still `app`'s, which is why `UnluminousApp::set_the_font_everywhere` exists.
+//!
+//! A pane a plugin contributes is not an exception. It returns an outcome and `app` acts on it, which
+//! is the rule above with a provider in the middle.
 
 // The Agent-Tasks board, which is the first plugin that draws. Nothing in it decides anything: the
 // lanes, the drag and the search are `services::agent_tasks`.

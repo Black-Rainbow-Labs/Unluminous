@@ -4,17 +4,26 @@
 //! diagram Unluminous draws, and that a diagram type added later inherit the list rather than have to
 //! remember it. So the list is one function, and every renderer's tests run their scene through it.
 //!
-//! The four are deliberately about the *picture* rather than about the parse. A parser test says the
-//! right nodes were read; these say the drawing of them can actually be looked at:
+//! They are deliberately about the *picture* rather than about the parse. A parser test says the
+//! right nodes were read; these say the drawing of them can actually be looked at.
+//!
+//! **[`properties`] is three of them**, and they are the three that are true of any scene whatever it
+//! draws:
 //!
 //! 1. Nothing is placed outside the scene's own size, so nothing is clipped away.
-//! 2. No two node rectangles overlap, so no box is drawn on top of another.
-//! 3. Every number in the scene is finite, so one piece of bad arithmetic cannot quietly poison the
+//! 2. Every number in the scene is finite, so one piece of bad arithmetic cannot quietly poison the
 //!    size and blank the whole diagram.
-//! 4. Every label the source contained is somewhere in the scene.
+//! 3. Every label the source contained is somewhere in the scene.
 //!
-//! The fifth, which is about the module rather than about one diagram, is that laying the same
-//! source out twice gives exactly the same scene. Everything else here rests on it: without it the
+//! **Overlap is the fourth and it is per type**, which `task-1984` found this list claiming
+//! otherwise. It is [`no_two_rectangles_overlap`], asked for by the types that have a notion of a
+//! node box at all: a pie chart's slices overlap the circle they are in by construction, a Gantt bar
+//! overlaps its row, and a sequence diagram's messages cross its lifelines, so a shared assertion
+//! would have to be switched off by more types than switched it on. [`boxes_nest_or_miss`] is the
+//! same question where a box may legitimately be inside another, which is a subgraph.
+//!
+//! The last, which is about the module rather than about one diagram, is that laying the same source
+//! out twice gives exactly the same scene. Everything else here rests on it: without it the
 //! screenshot tests are noise.
 
 use super::scene::{Item, Point, Rect, Scene};

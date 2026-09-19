@@ -22,8 +22,15 @@
 //!
 //! Not "identical to `mermaid.js`" — the curves are polylines, the fonts are Unluminous's and the colours
 //! are Unluminous's. **Correct and readable**: the right nodes, the right edges in the right direction,
-//! the right labels, nothing overlapping, and nothing running off the edge. Those last two are
-//! asserted for every diagram type by one shared function, so a type added later inherits the list.
+//! the right labels, nothing overlapping, and nothing running off the edge.
+//!
+//! **Three of those are asserted for every diagram type and the fourth is not**, which `task-1984`
+//! found this paragraph claiming otherwise. `check::properties` runs the three that are true of any
+//! scene whatever it draws: nothing outside the scene, every number finite, every label present.
+//! Overlap is `check::no_overlapping_nodes`, asked for by the types that have a notion of a node box
+//! at all — a pie chart's slices overlap the circle they are in by construction and a Gantt bar
+//! overlaps its row, so a shared assertion would have to be switched off by more types than it was
+//! switched on by. A type added later inherits the three and decides about the fourth.
 //!
 //! ## Nothing is fetched, and nothing is run
 //!
