@@ -7,6 +7,9 @@ section covering the part you are changing, and nothing else, and you will not h
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) is the short version: why a feature is three things, how to run
 each of the four test layers, which crate a change goes in, and the house style.
+[`documentation/README.md`](documentation/README.md) is what Unluminous *does*, in a reading order —
+[Architecture](documentation/architecture.md), [How plugins work](documentation/plugins.md) and
+[Tests](documentation/testing.md) are the three pages worth having open while changing it.
 
 Two things to know before you start.
 

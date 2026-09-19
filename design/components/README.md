@@ -8,7 +8,7 @@ These are **intent**. `crates/unluminous-app/tests/snapshots` is a different thi
 confused with it: those are accepted test output, and a change that alters the rendering fails
 against them. Change one of these when the design changes; accept one of those when the drawing does.
 
-Each was captured from the real window through `crates/unluminous-app/tests/screenshots.rs`, on Windows,
+Each was captured from the real window through the tests under `crates/unluminous-app/tests`, on Windows,
 at 1180 x 740. They were all retaken for `task-1658`, which moved the text options into the title
 bar, added the rail down the far left and gave the window its own resize grips: every one of them
 shows a different window from the one it showed before. The last three were added by `task-1663` and

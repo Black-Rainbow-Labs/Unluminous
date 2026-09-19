@@ -1,72 +1,72 @@
-# Taking the pictures again
+# Unluminous documentation
 
-`documentation/overview.md` is twenty-four captures of Unluminous 0.1.0 and
-`documentation/database.md` is nine of the Database plugin after `task-1777`. This file is what
-taking either of them again needs, written down here because the last time it was written down it was
-in a task's own scratch folder and went with it.
+The documentation in this repository. **[unluminous.com](https://unluminous.com)** is what Unluminous
+looks like, what it does, and where the installer is; start there if you are deciding whether to use
+it rather than looking something up.
 
-`task-1804` §6 called the overview gallery stale — *"a gallery that shows the wrong icon set and the
-wrong colours is worse than none on a download page"* — and the pass it asked for is done in words:
-`overview.md` now says which version each picture is, what changed after it, and what has no picture
-at all. **The pictures themselves were not re-taken, and this is why.**
+Every page here is written to be read on its own. Nothing is left implicit because an earlier page
+said it.
 
-## What a capture actually is
+**The order below is a reading order**, for somebody who has just opened the repository: what it is,
+then how to run it, then what is in the window, then what it does with text and with code, then the
+three panes it carries, then how it is built.
 
-Not a render. `crates/unluminous-app/tests/screenshots.rs` builds the same window offscreen and writes
-a PNG for each of its tests, and those images are the right ones for checking that a control moved or
-a colour changed. They cannot show what this gallery is *for*: Unluminous's background is translucent,
-and a picture with no desktop behind it cannot show that the colour in the editing area is the
-wallpaper rather than a shade somebody chose.
+## Start here
 
-So a capture is a photograph of the screen, with the window sat over a real desktop and the crop taken
-48 pixels wider than the window on every side.
+| | page | what it answers |
+|---|---|---|
+| 1 | [What it is](what-it-is.md) | what Unluminous is, who it is for, and the case for it against the editor you already use |
+| 2 | [What it looks like](overview.md) | thirty-seven captures of the running window, over a real desktop |
+| 3 | [Getting started](getting-started.md) | install it, run it, the switches, windows and projects, where the settings live |
+| 4 | [The window](the-window.md) | every part of it named, the panels and how they move, the nine menus, every Settings page |
 
-## What that needs, and none of it is optional
+## Using it
 
-- **A 3840 by 2160 screen**, with the window at 1800 by 1160. Every existing picture is that size, and
-  a gallery half of which is a quarter of the resolution of the other half reads as a mistake.
-- **A clear desktop with a picture on it.** Every other window out of the way first — the two diagram
-  captures had a step for exactly this, because what shows through has to be the wallpaper rather than
-  whatever happened to be open behind it.
-- **A person looking at the result.** This is the same rule the screenshot tests keep — *"look at the
-  images… nothing should be accepted without opening it"* — and it applies more here, because there
-  is no baseline to compare against and the only thing that says a capture is good is somebody
-  deciding it is.
+| | page | what it answers |
+|---|---|---|
+| 5 | [Editing](editing.md) | text, formatting, files, encodings, find and replace, highlights, folding, Markdown and diagrams |
+| 6 | [Writing code in it](writing-code.md) | line numbers, tabs, completion, definitions and references and rename, git, running, the debugger |
+| 7 | [The terminal](the-terminal.md) | the tile, the tabs, which shell, what the emulator handles, and how a tab comes back |
+| 8 | [The Base of Infinite Space](the-canvas.md) | the canvas: six kinds of node, what a connection grants, and how it is driven |
+| 9 | [The agent panes](agent-panes.md) | Agent-Chat and Agent-Tasks: what runs, what a key is, and what a model may call |
+| | [The Database plugin in pictures](database.md) | the tree, a grid, a console, a pending change, and adding a data source |
 
-The session that wrote this had a 1024 by 768 remote desktop with browsers and terminals on it. Taking
-twenty-four pictures there would have replaced a stale gallery with a worse one, so it was left, said
-plainly, and handed on.
+## Driving it
 
-## Before re-shooting, move the scripts
+| | page | what it answers |
+|---|---|---|
+| 10 | [For AI agents](for-ai-agents.md) | the contract, the three mechanisms that enforce it, what an agent is given and what it costs, and what a study found an agent actually does |
+| 11 | [The command line](command-line.md) | the 213 commands, the channel underneath them, and the MCP server on top |
+| | [`unluminous-cli/docs/commands.md`](../unluminous-cli/docs/commands.md) | the reference, written to be handed to an AI agent whole |
+| | [`unluminous-cli/docs/protocol.md`](../unluminous-cli/docs/protocol.md) | the socket underneath it, for a client in another language |
+| | [`unluminous-cli/docs/mcp.md`](../unluminous-cli/docs/mcp.md) | installing the MCP server into an agent, the two tool shapes, and what a local port does and does not defend against |
 
-They are in `_agent_output/task-1658-screenshots/`, which is gitignored, so they are on one machine
-and in no checkout. That is the reason the gallery went stale, and re-shooting without fixing it just
-resets the clock.
+## Working on it
 
-They cannot be committed as they stand. They press keys with `keybd_event` directly, and `CLAUDE.md`
-now says **`tools/windows-input.ps1` is the one way a script sends keyboard or mouse input** — because
-a run that stops between a key going down and its coming up leaves that key held for the rest of the
-session, with nothing on the screen to say so and the physical keyboard unable to clear it. That rule
-was written after a run left the left Windows key down, on which every letter becomes a shortcut.
+| | page | what it answers |
+|---|---|---|
+| 12 | [Architecture](architecture.md) | eight crates, inside the editor, inside the window, what one frame does, the seams, the threads, where state lives, and what it all costs |
+| 13 | [How plugins work](plugins.md) | why a plugin is data, the manifest key by key, where they come from, what the tokeniser does with a grammar, and writing one |
+| 14 | [Tests](testing.md) | the four layers, the three rules the rendered tests keep, and what the release scripts check |
+| | [Not included](not-included.md) | everything deliberately absent, with the reason for each |
+| | [Taking the pictures](taking-the-pictures.md) | how the gallery is made, in one command, without taking the keyboard |
+| | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | why a feature is three things, how to run each test layer, which crate a change goes in, and the house style |
+| | [`../CLAUDE.md`](../CLAUDE.md) | the conventions the code already follows, for whoever changes it next |
+| | [`../AGENTS.md`](../AGENTS.md) | the same front door for an agent that is not Claude Code |
 
-So the order is: put them through `tools/windows-input.ps1`, move them to `tools/documentation/`,
-then take the pictures.
+## Elsewhere in the repository
 
-## What the scripts do that is worth keeping
+| | |
+|---|---|
+| [`design/style-guide.md`](../design/style-guide.md) | how a control in Unluminous is built: the closed palette, the row heights, the one shape a modal has, and the plain name every control carries. **Read it before drawing anything new.** |
+| [`design/accessibility.md`](../design/accessibility.md) | what the accessibility tree does and does not do, every contrast ratio measured against WCAG 2.2, and the plain answer about 1.0 |
+| [`design/icons.md`](../design/icons.md) | how the `material` icon set was designed, which published mark each one was drawn from, and the one the reference sheet got wrong |
+| [`installer/README.md`](../installer/README.md) | how to build an installer, on either platform |
+| [`CHANGELOG.md`](../CHANGELOG.md) | what changed in each release, written from the ticket-prefixed commits so it cannot fall behind |
+| [`tools/agent-study/README.md`](../tools/agent-study/README.md) | the harness that watches an agent drive a real window, and the one number it reports |
+| [`unluminous-cli/agent-assessment/`](../unluminous-cli/agent-assessment/) | how well a local model does with the command reference, measured against a live window |
+| `tasks/` | the design documents: what was chosen, what was rejected and why, one per feature |
 
-Two things, and both are the difference between a picture of the product and a picture of one
-person's machine:
-
-- **The project is a fixture built under the temporary folder**, not `sample/`. `sample/` lives inside
-  Unluminous's own repository, so opening it where it lies makes the status bar say how many files
-  happened to be uncommitted that day. A copy with three commits of its own says `main`, which is what
-  a reader with a fresh checkout sees.
-- **The window is given a settings folder of its own**, through its own `APPDATA`. Without it the
-  pictures carry whatever font size, opacity and explorer width the person running them has set — and
-  taking them would leave the fixture's project state in their real settings.
-
-## And what has no picture at all
-
-The browser tab (`task-1756`), the Agent-Chat pane (`task-1767`) and the Agent-Tasks board
-(`task-1765`) are the three newest surfaces in the product and none of them is in either gallery. They
-are the first three to take.
+`design/` holds **intent** — the image a component is compared against, changed only when the design
+changes. `crates/unluminous-app/tests/snapshots` holds **accepted output** — a change that alters the
+rendering fails against it, and nothing is accepted without somebody opening the image.

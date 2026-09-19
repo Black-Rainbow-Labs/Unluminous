@@ -1,395 +1,363 @@
 # What Unluminous looks like
 
-Twenty-two captures of Unluminous running on Windows, taken from the real window rather than rendered
-offscreen, and cropped with a margin of desktop left round the edge. The margin is there on purpose:
-Unluminous's background is translucent, and a picture cropped tight to the window cannot show that the
-green in it is the desktop rather than a shade someone chose.
+Thirty-seven captures of **Unluminous 0.50.0** running on Windows, taken on 2026-09-18 from the real
+window rather than rendered offscreen, and cropped with a margin of desktop left round the edge.
 
-They were taken from **`unluminous 0.1.0`**, after `task-1658`, on a 3840 by 2160 screen with the
-window at 1800 by 1160. Nothing in them is a mock up; every one is a photograph of the program
-working.
+The margin is there on purpose. Unluminous's background is translucent, and a picture cropped tight to
+the window cannot show that the colour in the editing area is the thing behind it rather than a shade
+somebody chose. Nothing here is a mock up; every picture is the program working, driven into each
+state by `unluminous-cli` and photographed through it.
+[Taking the pictures](taking-the-pictures.md) is how they are taken again, in one command.
 
-`README.md` says what Unluminous is and how to run it. This file is the same ground covered in
-pictures.
+The project in them is a fixture built for the purpose: a small retrieval library called Aurora, with
+three commits by three authors, a branch, an uncommitted change and an untracked file, and a file in
+each of several languages.
 
-## What these pictures are, and what they are behind
-
-**They are 0.1.0.** The product has had thirty-four minor versions since, and this page is honest
-about the gap rather than quiet about it: what is in a picture is what 0.1.0 looked like, and the
-list below is what has changed. `task-1804` §6 asked for this pass, and the part of it that is words
-is done — what is not done is a re-shoot, and `documentation/README.md` beside this file says exactly
-what one needs and why it was not done in the session that wrote this.
-
-Two things changed in every picture at once:
-
-- **Themes**, added by `task-1776`. A theme says what every colour in Unluminous's own palette means,
-  and one that names the nine token colours also colours code. `Themes Bundle 1` ships five. Every
-  colour in every picture below is `unluminous/dark`, which is still the default and still what a
-  fresh window comes up in — but it is now one of six rather than the only one.
-- **The icon set, twice over.** The rail and the explorer's folder arrow are drawn in `classic` in
-  these captures, and `material` is what a window comes up in now — and `task-1949` then redrew ten of
-  the `material` marks against named icons from Circum, Lucide, Tabler, Ionicons, the VS Code codicons,
-  Line Awesome and Font Awesome. So every button in the rail, the git branch in the status bar and the
-  Run and Debug pair on the title bar are a different drawing from the one in these pictures.
-  `crates/unluminous-app/tests/snapshots/*/icons_material.png` is what they look like now.
-- **Where the Agent-Tasks button is.** `task-1949` moved it to the top group of the rail, under
-  Agent-Chat's. The board still docks along the bottom.
-
-And these came after, so they are in none of them:
-
-| | Added by |
-|---|---|
-| `Go to File` and `Find in Files` | `task-1659` |
-| **Find and Replace in the open file**, on `Ctrl/Cmd+F` and `Ctrl/Cmd+H`, and the `Find` menu they live on | `task-1804` |
-| Pictures drawn in the Markdown preview rather than shown as their alt text | `task-1659` |
-| Tables drawn as tables, fenced code coloured by its language, a preview that can be selected and copied | `task-1685` |
-| Folding, breakpoints and the gutter's marks | `task-1686`, `task-1687` |
-| The debugger: stepping, stack frames, value tooltips and inline values | `task-1688` |
-| Split panes, and the explorer following the tab | `task-1664` |
-| Go to Definition, Find References and Rename Symbol | `task-1675` |
-| Auto-complete, and completing an import | `task-1678`, `task-1680` |
-| Panels docked to any edge, and dragged between them | `task-1697` |
-| A **browser** tab, on WebView2 and WKWebView | `task-1756` |
-| The **Agent-Tasks** board, drawn with depth | `task-1765` |
-| The **Agent-Chat** pane | `task-1767` |
-| The **Database** plugin | `task-1777` |
-
-The Database plugin has a gallery of its own, and it is current:
-[`documentation/database.md`](database.md), nine captures taken the same way after `task-1777`. The
-browser tab, the chat pane and the board have none, which is the largest hole in this page.
+`README.md` says what Unluminous is. This page is the same ground covered in pictures.
 
 ---
 
 ## The window
 
-A title bar Unluminous draws itself, holding the menus at the left, the project's name after them, and the
-text options and the three Markdown view modes at the right beside the window buttons. Down the far
-left a thin rail with a button for each pane. Then the file explorer with its filter box, a tab for
-each open file, the line numbers, the editing area, and a status bar naming the file, its kind, the
-caret's position, the branch and the font.
+A title bar Unluminous draws itself, holding the menus at the left, the project's name and its branch
+after them, and the text options, the three Markdown view modes, the run widget and the window buttons
+at the right. Down the far left a thin rail with a button for each pane. Then the file explorer with
+its filter box, a tab for each open file, the line numbers, the editing area, and a status bar naming
+the file, its kind, its line endings, the caret's position, the branch and the font.
 
 The desktop is visible through the rail, the explorer, the editing area and the status bar, and every
 piece of text on top of it is solid. That is the whole character of the product, and it is the first
 thing to look at in any of these pictures.
 
-![Unluminous open on a Markdown file, the desktop showing through the window](images/01-unluminous-window.jpg)
+![Unluminous open on a Markdown file in the side by side view, the desktop showing through the window](images/01-unluminous-window.jpg)
 
 ## The desktop shows through, and how far is a setting
 
 `Settings -> Appearance -> Background` is one slider from 5 per cent to 100. At the bottom of its
-range the window is nearly all desktop and the text still reads; at the top it is a solid dark
-editor and only the margin round the window gives the wallpaper away. Text is painted at full
-opacity at every setting, so turning the background down never makes the document harder to read.
+range the window is nearly all desktop and the text still reads; at the top it is a solid dark editor
+and only the margin round the window gives the wallpaper away. Text is painted at full opacity at
+every setting, so turning the background down never makes the document harder to read.
 
 It works on both platforms, but Windows takes three separate things to get there that macOS does not
-need. All three are in `services/windows_transparency.rs`, and section 9.2 of
-`tasks/unluminous-technical-design-document.md` records how each was measured.
+need, all of them in `services/windows_transparency.rs`.
+[Architecture](architecture.md#the-window-lets-the-desktop-through) says what each one is.
 
 ![The same window at 15 per cent background opacity](images/10-opacity-low.jpg)
 
-![The same window at 100 per cent, where only the margin shows the desktop](images/11-opacity-full.jpg)
+![The same window at 100 per cent, where only the margin round it shows the desktop](images/11-opacity-full.jpg)
 
 ## The rail, and the window's own edges
 
-Down the far left is a button for each pane: the explorer, git, and the terminal at the bottom left.
-It is 36 points wide, narrower than the reference editor's, because it holds three buttons rather than a dozen.
-A button whose pane is open is drawn as the same filled pill every list in Unluminous uses for its chosen
-row, so the rail says at a glance what is showing. Resting on one names it.
+Down the far left is a button for each pane: the explorer and git at the top, and at the bottom the
+things with a character grid in them. A button whose pane is showing is drawn as the same filled pill
+every list in Unluminous uses for its chosen row, so the rail says at a glance what is open. Resting on
+one names it.
 
-The rail is the only way a pane is put away and brought back. There used to be a small button
-floating over the editing area when the explorer was hidden, and it is gone: the rail is in the same
-place whether a pane is showing or not, which is the point of having one.
+The rail is the only way a pane is put away and brought back, because it is in the same place whether
+a pane is showing or not, so it is always where you left it. Below, the explorer has been put away and
+the terminal brought up, both from the rail.
 
-Below, the explorer has been put away and the terminal brought up, both from the rail.
-
-![The rail with the explorer hidden and the terminal open](images/21-activity-bar.jpg)
+![The rail with the explorer hidden and the terminal open on git status](images/21-activity-bar.jpg)
 
 The window is dragged by its title bar and resized by any of its four edges or four corners. Unluminous
 draws those grips itself, invisibly, because the window is created with no operating system frame —
 rounded corners and a translucent background need the decorations turned off — and a window with no
 frame has no resize grip of its own.
 
+## The file explorer
+
+Folders expand in place rather than into a second list. The filter box at the top narrows the tree as
+it is typed into. Each row carries the icon of the plugin that claims the file, and is tinted by what
+git thinks of it: the untracked `scratch.txt` is one colour and the modified `version.ts` another.
+The row of the file that is showing is filled; the row the keyboard is on carries a quieter fill and,
+while the explorer holds the keyboard, an accent ring.
+
+The divider at its right edge is dragged to make it wider, and a double click puts it back.
+
+![The explorer widened by dragging its edge, with two folders expanded](images/17-explorer.jpg)
+
+Right clicking a row opens the menu for that row: `New`, cut, copy, copy path, paste, rename, delete,
+show in Explorer, reload from disk, and a `Git` submenu aimed at that file. Right clicking the empty
+space below the rows, or the project's name at the top, opens the same menu for the project folder
+with the entries about a particular file dimmed.
+
+![The right click menu on a file in the explorer](images/05-explorer-menu.jpg)
+
+## Markdown, three ways
+
+The source, the source and its preview side by side, or the preview filling the pane —
+`Ctrl+1`, `Ctrl+2` and `Ctrl+3`, and the three buttons at the right of the title bar.
+
+The preview is not a second renderer. `markdown::render` reads the source and produces the same three
+things a document holds, so the ordinary layout and the ordinary painter draw it. Which is why the
+text in it can be selected and copied, and why scrolling either half of the side by side view scrolls
+the other — through the text rather than through the height, since a heading is one line of source and
+half again as tall on the page.
+
+![The Markdown source and its preview side by side](images/02-markdown-side-by-side.jpg)
+
+![The preview on its own, with a table and a drawn diagram in it](images/26-mermaid-in-markdown.jpg)
+
+A table is set in the code font and drawn in a box of rules, because the columns are made to line up
+by padding the cells rather than by measuring them — so the whole table is ordinary text, and what
+lands on the clipboard is a table a person can paste anywhere.
+
+![The preview of a shorter document](images/03-markdown-preview.jpg)
+
+## Mermaid diagrams are drawn, not shown as code
+
+A `.mmd` file gets the same three view modes a Markdown file has, and a ` ```mermaid ` block inside a
+Markdown document is drawn in its preview rather than shown as code. Twenty of Mermaid's thirty
+diagram types are drawn; the other ten are named rather than mis-drawn.
+
+None of it runs `mermaid.js`. `unluminous_core::mermaid` reads the diagram and hands back rectangles,
+circles, polygons, lines and text at absolute positions, and the window draws those — so the pictures
+are not pixel identical to `mermaid.js` output, and the bar they are held to is correct and readable.
+Nothing is fetched and nothing in a diagram is run.
+
+![A flowchart drawn from a .mmd file, with the desktop showing through it](images/25-mermaid-diagram.jpg)
+
 ## The text options are behind one button, in the title bar
 
 Bold, italic, underline and strikethrough, five colours, four alignments and three line spacings, all
-behind the `F` at the right of the title bar, next to the window buttons. The panel is four named
-rows with a rule between what applies to the selected text and what applies to the paragraph it is
-in. It stays open until the pointer goes elsewhere, so a colour and an alignment are two clicks
-rather than two visits.
+behind the `F` at the right of the title bar. The panel is four named rows with a rule between what
+applies to the selected text and what applies to the paragraph it is in. It stays open until the
+pointer goes elsewhere, so a colour and an alignment are two clicks rather than two visits.
 
-They used to sit in a strip of their own, forty four points tall, between the title bar and the tabs.
-The strip was drawn for a `.md` file and not for a `.rs` one, which is the right rule and the wrong
-place for it: every time the tab changed, the tabs, the explorer and the whole editing area moved up
-or down by forty four points. In the title bar the room is already there whether the tools are in it
-or not.
+They used to sit in a strip of their own between the title bar and the tabs. The strip was drawn for a
+`.md` file and not for a `.rs` one, which is the right rule in the wrong place: every time the tab
+changed, the tabs, the explorer and the whole editing area moved up or down by forty-four points. In
+the title bar the room is there whether the tools are in it or not.
 
-![The text options panel open under its F button](images/19-text-options.jpg)
+![The text options panel open under its F button, with three lines selected](images/19-text-options.jpg)
 
-Below, the third line has been made bold and red from that panel, the heading under it centred and
-the line after it italic. The dot on the tab, against the file in the explorer and in the status bar
-is how Unluminous says there are changes that have not been saved.
+Below, the heading has been centred and coloured and the paragraph under it made bold, all from that
+panel. The dot on the tab, against the file in the explorer and in the status bar is how Unluminous says
+there are changes that have not been saved.
 
-![A document with bold, colour, italic and a centred heading applied from the panel](images/16-formatting.jpg)
+![A document with a centred coloured heading, a bold paragraph and a coloured list](images/16-formatting.jpg)
 
-## Nothing is shown that does not apply to the file
+## Nothing is drawn that cannot apply to the file
 
 The `F` button is drawn for prose — a `.md` file, a `.txt` file, a document that has not been saved
 anywhere yet. Unluminous saves plain text and carries no formatting to disk, so for a `.rs` or a `.json`
 file every one of those controls is a decoration that lasts until the file is reopened, and the three
-view modes offer the Markdown parser's reading of a file that was never Markdown. So a source file
-gets neither, and the right hand end of the title bar is simply empty — which is the next picture but
-one.
+view modes would offer the Markdown parser's reading of a file that was never Markdown. So a source
+file gets neither, and the right hand end of the title bar is simply empty.
 
-The two questions are asked separately. A `.txt` file is prose, so it keeps the `F` button; it is not
-Markdown, so it loses the view modes.
-
-## Markdown, three ways
-
-The three buttons beside the `F` switch between the raw source, the source and the preview side by
-side, and the preview on its own. The parser is ours and it draws nothing: it reads the source and
-produces the same rope, character spans and paragraph settings any other document holds, so the
-preview is laid out and painted by the ordinary engine. Nothing in the window knows how to render
-Markdown.
-
-The preview is read only, because what it shows is worked out from the source beside it.
-
-![The Markdown source and its preview side by side](images/02-markdown-side-by-side.jpg)
-
-![The preview on its own](images/03-markdown-preview.jpg)
-
-## Mermaid diagrams are drawn, not shown as code
-
-A `.mmd` file gets the same three view modes a Markdown file has, named after what it actually is:
-`Raw Mermaid`, `Side by side` and `Mermaid diagram`. There is no `F` beside them, because a diagram
-is not prose and nothing behind that button means anything in one.
-
-The picture is Unluminous's own drawing. Nothing runs `mermaid.js` — `tasks/unluminous-mermaid-plugin-tdd.md`
-weighs the three ways of doing that and says why none of them belongs in a text editor — so a
-diagram is rectangles, circles, polygons, lines and text worked out by `unluminous_core::mermaid` and
-painted by the same painter that draws everything else. Which is why the leaves are still visible
-through it: a diagram is drawn into the window rather than pasted over it.
-
-Twenty diagram types are drawn. Ten more are **named** rather than drawn, in a panel saying which
-type it is above the source, and a diagram that will not parse says which line went wrong and shows
-that line — both of which are more use than an empty pane.
-
-![A flowchart drawn from a .mmd file, with the desktop showing through](images/25-mermaid-diagram.jpg)
-
-A fence whose language is `mermaid`, inside a Markdown document, is drawn in that document's
-preview, in the room its paragraph reserved. A fence in any other language is still shown as code.
-
-![A Markdown document whose preview draws the diagrams in it](images/26-mermaid-in-markdown.jpg)
+Absent rather than dimmed, and the two mean different things. Dimmed is a control that could be used
+in a moment — undo with nothing yet to undo, the Git menu outside a repository. Absent is a control
+that can never apply to this file.
 
 ## Writing code in it
 
-Line numbers down the left, a tab for each open file, syntax colouring from a plugin — and no text
-options in the title bar, because there is nothing in them that means anything for a Rust file. Unluminous
-wraps, so a paragraph that runs over several rows on screen carries one number against its first row
-and nothing against its continuations, which is what a line number means everywhere else.
+Line numbers down the left, a tab for each open file with the icon of the plugin that claims it, and
+syntax colouring from that plugin. Sixteen plugins ship: twelve languages, three panes and a bundle of
+five themes. Each language plugin is a folder holding a `plugin.conf` and an icon, and **nothing in
+one is executed**, so installing one is copying a folder.
 
-A single click in the explorer opens a file in the tab a single click reuses, drawn faintly to say
-so; a double click opens it in a tab of its own. The tab that is showing carries an accent line
-along its bottom edge.
+A single click in the explorer opens a file in the tab a single click reuses, drawn faintly to say so;
+a double click opens it in a tab of its own, and so does typing into a tab you were only glancing at.
 
-The colouring comes from the Rust plugin. A colour scheme colours the tokens and not the editing
-area, so a coloured file still lets the desktop through — which is why the leaves are still visible
-behind the code.
+![Five files open in tabs, with line numbers, folding arrows and syntax colouring](images/04-code.jpg)
 
-![Four files open in tabs, with line numbers, syntax colouring and no text options](images/04-code.jpg)
+Type two letters of a word and a list of the names it could become appears under the caret, with
+`Ctrl+Space` asking for it by hand. Everything it offers was already in memory: this file's
+definitions and its distinct words, the other open tabs' definitions, the project's symbol index, and
+the language's own keywords, builtins and types. No new thread, no new index, no watcher.
 
-## The font is one setting for the whole window
+![The completion popup under the caret, offering four names](images/23-completion.jpg)
 
-`Settings -> Appearance -> Font` sets the family and the size the editor shows text in, the way
-The reference editor has one editor font. A change reaches every file that is open, not only the one showing,
-and the preview with them. Setting it is not an edit: it pushes nothing onto the undo history and
-does not mark any file as changed, because what Unluminous saves is plain text and carries no formatting.
+A block that spans lines can be collapsed from the arrow beside its line number, and the line numbers
+stay correct because what is hidden is the paragraph rather than a second document being laid out.
 
-The size is on the keyboard as well — command or control with plus and minus, and `Reset Font Size`
-to put it back — and on a trackpad pinch, or the wheel with the same modifier held, over the editing
-area. All of them change that one setting, so whichever is used the size is still there next time
-Unluminous starts. `+` and `=` are one key on nearly every layout, so either does it, with or without
-shift, and so does the keypad's `+`.
+![A struct and a loop collapsed, with the badge that says so](images/38-folding.jpg)
 
-![The settings window on the Appearance page](images/08-settings-appearance.jpg)
+Right click a tab and choose `Split Right`, or use `View -> Split`, and the editing area is cut into
+panes side by side, each with its own tabs, its own scroll position, its own view mode and its own
+gutter. A tab is dragged along its own strip to reorder it and into another pane to move it there.
+
+![The editing area split into two panes, each with its own tabs](images/35-split-view.jpg)
+
+## Themes
+
+A theme says what every colour in Unluminous's own palette means, and one that names the nine token
+colours also colours code, in every language at once. `Themes Bundle 1` ships five, every number in
+them read out of the plugin jars of the reference editor they come from: Islands Dracula Colorful, Material
+Palenight, Material Deep Ocean, Monokai Pro and One Dark. Below is Islands Dracula Colorful.
+
+A colour scheme colours the tokens and not the editing area, so a themed file still lets the desktop
+through.
+
+![The same file in the Islands Dracula Colorful theme](images/33-themes.jpg)
 
 ## A picture opens in a tab
 
-`.png`, `.jpg`, `.gif`, `.bmp`, `.ico`, `.webp` and `.tiff` open in a tab that shows them. A picture
-is scaled to fit the editing area to begin with, because a photograph four thousand pixels across
-shown from its top left corner would be a viewer you have to zoom out of before it shows anything;
-one smaller than the area is left at its own size rather than blown up. The status bar says how big
-it is and how far it is zoomed.
-
-Command or control with plus and minus zooms it, and so do the wheel with that modifier held and a
-pinch on the trackpad — the same keys and the same gestures that size the editor's text, aimed at
-whatever the tab is holding. Dragging moves it, and a double click puts it back to filling the area.
-A picture cannot be edited, so `Save` says so and writes nothing.
+`.png`, `.jpg`, `.gif`, `.bmp`, `.ico`, `.webp` and `.tiff`. It is scaled to fit the editing area to
+begin with, zoomed with the keyboard, the wheel or a pinch, dragged about with the mouse, and put back
+to filling the area with a double click. The status bar says how large it is and at what percentage it
+is being shown.
 
 ![A photograph open in a tab, scaled to fit the editing area](images/22-picture.jpg)
 
-## The file explorer
+## The menus
 
-Folders expand in place rather than replacing the list, so where a file sits stays visible. Each row
-carries an icon for its kind, and files git knows something about are tinted by what it thinks of
-them. The footer counts the files and how many of them can be opened. The filter box above the list
-matches file names anywhere in the tree, not only the rows that happen to be showing.
+`Unluminous`, `File`, `Edit`, `Code`, `Find`, `View`, `Run`, `Git` and `Plugins`. On macOS they are in
+the bar along the top of the screen; on Windows they are drawn at the left of Unluminous's own title
+bar, and the three window buttons move to the right hand end. Both bars are built from one list, so
+they hold the same entries with the same shortcuts.
 
-The divider between the explorer and the editing area is dragged to resize it, and a double click on
-the divider puts it back to its usual width. The split between the Markdown source and its preview
-and the height of the terminal work the same way, through the same code, and where each was left is
-written to the settings file so it is the same next time Unluminous starts.
-
-![The explorer widened by dragging its edge, with its folders expanded](images/17-explorer.jpg)
-
-Right clicking a row opens a menu aimed at that row: a `New` submenu, cut, copy, copy path and
-paste, rename, show the file in Explorer, reload it from disk, and a `Git` section that acts on that
-file alone. Cut and paste go through Unluminous's own clipboard rather than the operating system's, and
-pasting onto a name that is already taken adds a number rather than overwriting what is there.
-
-![The right click menu on a file in the explorer](images/05-explorer-menu.jpg)
-
-## The menus, and a project is a window
-
-`Unluminous`, `File`, `Edit`, `Find`, `View`, `Run` and `Git`, and one more for each plugin that
-contributes one — `Agent-Chat`, `Agent-Tasks` and `Database` all do. The pictures below are from
-0.1.0 and show five of them: `Run` arrived with the run configurations, and `Find` with
-`task-1804`, which took Find, Replace, Find in Files and the three symbol entries out of an Edit menu
-that had run off the bottom of a short window. On macOS they are in the bar along the top of the screen,
-where macOS puts menus; on Windows they are drawn at the left of Unluminous's own title bar and the three
-window buttons move to the right hand end, where Windows puts them. Both bars are built from one
-list, so they hold the same entries with the same shortcuts, and adding an entry adds it to both.
-
-The `File` menu opens another window, opens a file or a folder, and lists the folders that have been
-open before. **Opening a folder opens it in a window of its own**, the way `Recent Projects` does and
-the way the reference editor works, so the project you were in stays where it was. Each window is its own
-process, so several Unluminous windows can run at once on different projects and share nothing but the settings
-file.
-
-What each project had open — its tabs, which of them was showing, which folders in the explorer were
-opened out, whether the terminal was up and how many tabs it had — is written into a `.unluminous` folder
-beside the project, and put back when the project is opened again. It sits with the code rather than
-in the settings folder, so copying the project copies its state.
+`Code` and `Plugins` appear when they have something to offer: `Code` for a file whose language can
+answer a question about a definition, and `Plugins` when a plugin has contributed a menu.
 
 ![The File menu, with the recent projects listed in it](images/18-file-menu.jpg)
 
-The `View` menu holds the three Markdown modes, the explorer, the line numbers, the editor's font
-size, the file tabs and the terminal — and, since these pictures, the panes each plugin contributes,
-splitting the editing area, and filling the window with one pane. The three modes are dimmed for a
-file there is nothing to preview of, which is the same question the buttons in the title bar are
-drawn from.
-
 ![The View menu open](images/20-view-menu.jpg)
-
-The `Git` menu is the whole of git: commit, add, diff, compare with a revision, history, blame,
-rollback, push, pull, fetch, merge, rebase, branches, tags, reset, stash, remotes and clone. It is
-dimmed when the folder is not in a repository, and it grows `Continue` and `Abort` while a merge or
-a rebase has stopped on a conflict.
 
 ![The Git menu open](images/06-git-menu.jpg)
 
+## Finding things
+
+`Ctrl+Shift+A` opens `Find Action`, which searches every menu entry by name and runs the one that is
+chosen. A dimmed row is shown dimmed and refused with the reason, because somebody looking for `Redo`
+wants to be told there is nothing to redo rather than told there is no such command.
+
+![The command palette, narrowed to the folding commands](images/31-command-palette.jpg)
+
+`Ctrl+Shift+O` opens `Go to File`, which narrows the project's files as a name is typed. The letters
+are matched in order rather than as a substring, so `mdrs` finds `markdown.rs`, and a match in the
+name outranks one in the folders above it.
+
+![Go to File, narrowed by two letters](images/37-go-to-file.jpg)
+
+`Ctrl+Shift+F` opens `Find in Files`, which searches every file's text as you type, on a thread so
+the window never stops drawing. Choosing a result shows the whole of the file it is in underneath the
+results with the matching line picked out. `Replace` beside the box replaces across everything it
+found — through the same modal, because a replacement across a project is a change somebody should see
+the size of first.
+
+![Find in Files, with seven matches and the chosen one shown in its file](images/32-find-in-files.jpg)
+
 ## The terminal
 
-A tile along the bottom of the window with a tab for each shell, opened from the bottom of the rail,
-with control and backtick, or from the `View` menu. Each tab runs the shell in the folder the
-explorer is showing, and is named after the title the program set. It handles colour including 24 bit
-colour, bold, italic, underline, inverse and dim, wide characters, the alternate screen a full screen
-program draws on, ten thousand lines of scrollback, selecting with the mouse, and mouse reporting for
-a program that asked for it.
+A tile along the bottom of the window with tabs, opened with `Ctrl` and backtick or from the `View`
+menu. Each tab runs a shell in the folder the explorer is showing — `$SHELL` on macOS, and on Windows
+`pwsh.exe` when it is installed and `powershell.exe` otherwise, because `COMSPEC` names the interpreter
+that runs a batch file rather than the shell a person actually uses.
+
+It handles colour including 24 bit colour, bold, italic, underline, strikethrough, inverse and dim,
+wide characters, the alternate screen a full screen program draws on, ten thousand lines of scrollback,
+selecting with the mouse, and mouse reporting for a program that asked for it. A tab is named after the
+title the program set, so a tab running `claude` says so, and a tab can be renamed to something else.
 
 ![Two terminal tabs, with coloured git output in the second](images/07-terminal.jpg)
 
 ## Git
 
-Unluminous runs the `git` program rather than binding a library. What matters is that the machine's own
-git is already configured — a credential helper, an ssh agent, signing, hooks, an identity for this
-repository in particular — and a push from Unluminous has to be the same push you get in a terminal.
-Every command runs on a thread, one at a time, so the window never stops drawing to wait for one and
-two commands cannot fight over `index.lock`. When something goes wrong, what the status bar shows is
-git's own message, because a rejected push and a merge conflict explain themselves better than
-anything Unluminous could say about them.
+Unluminous runs the `git` program rather than a library, so a push from Unluminous is the same push you
+get in your terminal — the same credential helper, the same ssh agent, the same hooks, the same
+signing. When something goes wrong it shows **git's own message**, because a rejected push and a merge
+conflict explain themselves better than anything Unluminous could say about them.
 
-`Commit...` opens a panel with a changes tree, a tick box a file, the repository's row carrying its
-branch, an `Unversioned Files` group, `Amend`, the counts, the message box with the last twenty
-messages behind a button, and `COMMIT` and `COMMIT AND PUSH...`. Ticking a file stages it at once,
-so Unluminous's idea of what is staged and git's cannot disagree while the panel is open. The rail's git
-button opens the same panel and shuts it again.
+`Commit...` opens a panel with a changes tree, a tick box per file, an `Unversioned Files` group,
+`Amend`, the counts, and the message box with the last twenty messages behind a button. Ticking a file
+stages it at once, so Unluminous's idea of what is staged and git's cannot disagree while the panel is
+open.
 
-![The commit panel, with a changed file and two untracked ones](images/15-git-commit.jpg)
+![The commit panel, with a changed file and an untracked one](images/15-git-commit.jpg)
 
-`Show History` lists the commits, each with its hash, its message, its author and its date, and marks
-the commit `HEAD` is sitting on. With a file open it is that file's history; with none, the
-repository's.
-
-![The history of the repository, three commits by three authors](images/13-git-history.jpg)
-
-`Show Diff` shows git's own diff for the file against the version git has. The stripe in the gutter
-beside the changed line in the editor behind it is the same information in the margin: a change bar
-against each line that differs from the committed version.
+![The history of a file, three commits by three authors](images/13-git-history.jpg)
 
 ![The diff for a file that has an uncommitted line](images/14-git-diff.jpg)
 
-`Annotate with Git Blame` puts a column beside the line numbers with the date and author of the
-commit each line came from, coloured by age: the oldest commit in the file green, the newest pink,
-and everything between interpolated by rank. It is the fastest way to see that a file is three
-authors' work and which part is new.
+Annotating a file with blame puts a column down the left holding the date and the author of the commit
+each line last changed in, coloured by age so the old parts of a file and the new ones are told apart
+at a glance.
 
-![A file annotated with git blame](images/12-git-blame.jpg)
+![A file annotated with git blame, three authors in three colours](images/12-git-blame.jpg)
+
+## Running and debugging
+
+A run configuration is a named command line, a folder and some environment variables — one kind, not a
+template per language. Pressing the play button at the right of the title bar starts it in a tile along
+the bottom, which is a real terminal with the program in it, so its colours and its interactivity are
+its own and stopping it is killing a process Unluminous owns.
+
+![A program run from the widget in the title bar, with its output in the run tile](images/39-run.jpg)
+
+Pressing the bug beside it starts the same configuration **under a debugger**. Unluminous speaks the
+Debug Adapter Protocol, so one client drives every language's debugger: Rust and native code through
+`lldb-dap` or CodeLLDB, JavaScript and TypeScript through Microsoft's js-debug. Which debugger a
+language uses is one line in its plugin, and **nothing is fetched** — pressing Debug with no adapter
+installed is one sentence saying what was looked for and the command that installs it.
+
+Below, a `node` program is stopped on a breakpoint. The line is marked, the call stack and the
+variables are in the debug tile, and each local's value is painted at the end of the line that names
+it — which is the client's own work, because the protocol has no request for it.
+
+![A program stopped on a breakpoint, with the call stack, the variables and the inline values](images/30-debugger.jpg)
+
+## The Base of Infinite Space
+
+A fifth panel holding an infinite canvas, and six kinds of node that can live on it: a terminal, a web
+page, a folder tree, a file editor, an agent chat and the task board. Nodes are wired to each other,
+and a connection is what lets an agent running in a terminal node act on the node it is wired to.
+
+The zoom costs a matrix rather than a relayout — each node draws into a layer of its own carrying the
+camera — so a terminal keeps its cell count and an editor keeps its line breaks while the canvas is
+scaled.
+
+Below, four nodes: an agent's terminal wired to a file editor, a folder tree and the task board. What
+the terminal has printed is `unluminous-cli space list`, which is the canvas reading itself back —
+four nodes, their sizes, and which three the first one is connected to.
+
+![Four nodes on the canvas, wired together, with the terminal printing the canvas back](images/27-base-of-infinite-space.jpg)
+
+## The agent panes
+
+**Agent-Chat** is a chat pane beside your work that runs the `claude` or `codex` command line already
+installed on this machine. Unluminous holds no key at all: the agent holds its own credentials, brings
+its own tools and its own permission model, and is started in the folder this window has open, so it
+finds that project's `CLAUDE.md` or `AGENTS.md` and the answer is about the code in front of you
+without a word of it being uploaded by Unluminous. A row can be pointed at an address instead, and five
+wire shapes are read into the same values.
+
+The answer below came from a real `claude`. The counts under it are the tokens the server really
+reported; there is no context meter, because a URL and a model name say nothing about a context length
+and a bar there would be a fraction of a number nobody measured.
+
+![The Agent-Chat pane, mid-conversation with a real agent](images/28-agent-chat.jpg)
+
+**Agent-Tasks** is a board whose tickets are worked by an agent in a terminal Unluminous owns: four
+lanes, cards with todos and comments, a terminal for each ticket, and a session resumed by the agent's
+own conversation id rather than by a process that outlives the editor.
+
+![The Agent-Tasks board, five tickets across four lanes](images/29-agent-tasks.jpg)
+
+There is a third pane, the **Database** explorer, and it has a page of its own:
+[the Database plugin in pictures](database.md).
 
 ## Settings
 
-`Edit -> Settings`, `Unluminous -> Settings`, or control and comma, opens a modal laid out like
-The reference editor's: the pages down the left under their headings, and the chosen page on the right. Changes
-take effect as they are made, and are written to two plain text files that can be read and edited by
-hand — `%APPDATA%\Unluminous` on Windows and `~/Library/Application Support/Unluminous` on macOS. What belongs
-to a *project* rather than to a person is not kept there; it is in the project's own `.unluminous` folder.
+`Edit -> Settings`, `Unluminous -> Settings`, or command and comma. The pages are down the left under
+their headings and the chosen page is on the right, and the window is one size for every page with the
+page scrolling inside it.
 
-`Plugins` is the marketplace and what is installed. A plugin is a folder holding a `plugin.conf` and
-an icon, in the same `name = value` format the settings file uses, and it describes a language: its
-extensions, its keywords, what a comment and a string look like, and a colour per kind of token.
-**Nothing in one is executed**, so installing one is copying a folder. Four ship with Unluminous —
-CSS, JavaScript, TypeScript and Rust — and each page says plainly what its colouring does not
-handle.
+`Appearance` holds the font the editor draws a document in, the font the window's own text is drawn in,
+the background opacity, and whether a plugin's pane is drawn with depth.
+
+![The settings window on the Appearance page](images/08-settings-appearance.jpg)
+
+`Plugins` is the marketplace and the list of what is installed. Switching one off takes effect at once:
+the files it claims lose their colours and their icon on the next frame. `Install` writes a bundled
+plugin's folder out where it can be edited by hand, and then reads it back from disk — which is what
+proves the loader works on real files rather than only on what was baked into the binary.
 
 ![The settings window on the Plugins page](images/09-settings-plugins.jpg)
 
----
+`Tools -> MCP` is how Unluminous is given to an AI agent: a button that writes it into Claude Code's or
+Codex's own configuration, the block to paste into anything else, and a tick box for serving the same
+thing over HTTP on a port. The button needs no port and is what should be preferred; the port is off
+until it is turned on.
 
-## How these were taken
-
-They are captures of the screen, not renders. `crates/unluminous-app/tests/screenshots.rs` builds the
-same window offscreen and writes a PNG for each of its tests, and those images are the right ones for
-checking that a control moved or a colour changed; they cannot show that the operating system
-honoured the window's transparency, because there is no desktop behind them.
-
-So each of these was taken by starting the real `unluminous.exe`, putting the window at a fixed
-rectangle, driving it with real mouse clicks and key presses, and copying the screen. The crop is the
-window's rectangle grown by 48 pixels on every side, which is the margin of desktop you can see.
-
-**The scripts that did it are not in this repository**, and that is the reason the gallery went stale
-rather than an excuse for it. They live in `_agent_output/task-1658-screenshots/`, which is
-gitignored — `build-fixture.ps1`, `unluminous-capture.ps1` and the seven `stage-*.ps1` files, plus
-`_agent_output/task-1660-mermaid/capture-diagram.ps1` for the two diagram pictures. They exist on one
-machine, they are not in any checkout, and a page whose recipe only one computer has is a page nobody
-else can bring up to date.
-
-They also predate `task-1762`, which is the other half of why they cannot simply be committed as they
-stand: they press keys with `keybd_event` directly, and `CLAUDE.md` now says that
-**`tools/windows-input.ps1` is the one way a script sends keyboard or mouse input**, because a run
-that stops between a key going down and coming up leaves that key held for the rest of the session
-with nothing on the screen to say so. Moving them into `tools/` means putting them through that file
-first.
-
-[`documentation/README.md`](README.md) is what a re-shoot needs, written down where the next person
-will look for it.
-
-Two things those scripts do that matter. The project in the pictures is a fixture built under the
-temporary folder rather than a real one, because `sample/` lives inside Unluminous's own repository, so
-opening it where it lies makes the status bar say how many files happened to be uncommitted that
-day; a copy with three commits of its own says `main`, which is what a reader with a fresh checkout
-sees. And the window is given a settings folder of its own, through its own `APPDATA`, so the
-pictures carry a fixed font size, opacity and explorer width rather than whatever the person running
-them happens to have set — and taking them leaves nothing in anybody's real settings.
-
-They are JPEGs rather than PNGs. Most of what is in each picture is a photograph showing through a
-translucent window, which PNG stores badly: the same captures are several times the size as PNG at
-no visible difference in the text at full size.
+![The settings window on the MCP page](images/36-settings-mcp.jpg)
