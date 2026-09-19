@@ -35,7 +35,7 @@ fn the_explorer_opens_out_the_folders_above_the_file_that_is_showing_and_scrolls
         .state_mut()
         .open_path_permanently(&folder.join("chapters/appendix/tables.txt"))
         .expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.active().name(), "tables.txt");
     let open = harness.state().tree.expanded_folders();
     assert!(open.contains(&folder.join("chapters")), "chapters should be open, and {open:?} is");
@@ -58,23 +58,23 @@ fn a_folder_shut_by_hand_is_not_opened_again_until_the_tab_changes() {
         .state_mut()
         .open_path_permanently(&folder.join("chapters/one.md"))
         .expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().tree.expanded_folders().contains(&folder.join("chapters")));
     harness.state_mut().tree.toggle(&folder.join("chapters"));
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     assert!(
         !harness.state().tree.expanded_folders().contains(&folder.join("chapters")),
         "the folder should have stayed shut"
     );
     // Showing a different file and then this one again is a change, so it is revealed again.
     harness.state_mut().open_path_permanently(&folder.join("readme.md")).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     harness
         .state_mut()
         .open_path_permanently(&folder.join("chapters/one.md"))
         .expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     assert!(
         harness.state().tree.expanded_folders().contains(&folder.join("chapters")),
         "asking for the file again opens the folder again"
@@ -87,7 +87,7 @@ fn splitting_a_tab_puts_two_files_side_by_side() {
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&folder.join("readme.md")).expect("the file opens");
     harness.state_mut().open_path_permanently(&folder.join("program.rs")).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.pane_count(), 1);
 
     choose(&mut harness, Action::SplitRight);
@@ -107,7 +107,7 @@ fn three_panes_each_show_a_file_of_their_own() {
     for name in ["readme.md", "notes.txt", "program.rs"] {
         harness.state_mut().open_path_permanently(&folder.join(name)).expect("the file opens");
     }
-    harness.run();
+    steady(&mut harness);
     choose(&mut harness, Action::SplitRight);
     // The second split is on the pane that still holds two tabs, which is the one on the left.
     harness.state_mut().files.focus_pane(0);
@@ -125,11 +125,11 @@ fn a_tabs_own_menu_offers_the_splits() {
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&folder.join("readme.md")).expect("the file opens");
     harness.state_mut().open_path_permanently(&folder.join("program.rs")).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     // Opened through the window's own state, as the gutter's menu is, because the harness cannot
     // press the right mouse button.
     harness.state_mut().tab_menu = Some((egui::pos2(360.0, 96.0), 0));
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Split Right");
     harness.get_by_label("Unsplit All");
     harness.snapshot(shot("tab_menu"));
@@ -144,13 +144,13 @@ fn only_the_pane_with_the_keyboard_takes_what_is_typed() {
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&folder.join("readme.md")).expect("the file opens");
     harness.state_mut().open_path_permanently(&folder.join("notes.txt")).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     choose(&mut harness, Action::SplitRight);
     let left = harness.state().files.tabs_in(0)[0];
     let before = harness.state().files.at(left).document.text().to_string();
 
     harness.input_mut().events.push(egui::Event::Text("typed".to_owned()));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().files.at(left).document.text().to_string(),
         before,
@@ -170,12 +170,12 @@ fn each_pane_lays_its_own_file_out_at_its_own_width() {
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&folder.join("readme.md")).expect("the file opens");
     harness.state_mut().open_path_permanently(&folder.join("program.rs")).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     choose(&mut harness, Action::SplitRight);
     // Two panes of unequal width, so one cache could not be right for both.
     harness.state_mut().files.set_pane_width(0, 0.3);
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     let left = harness.state().files.tabs_in(0)[0];
     let right = harness.state().files.tabs_in(1)[0];
     let narrow = harness.state().files.at(left).cached.laid_out_width;
@@ -190,7 +190,7 @@ fn unsplitting_brings_every_tab_back_into_one_pane() {
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&folder.join("readme.md")).expect("the file opens");
     harness.state_mut().open_path_permanently(&folder.join("notes.txt")).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     choose(&mut harness, Action::SplitRight);
     assert_eq!(harness.state().files.pane_count(), 2);
     choose(&mut harness, Action::UnsplitAll);
@@ -229,7 +229,7 @@ fn the_command_line_scrolls_the_explorer_to_the_file_that_is_showing() {
     // Shut the folders again and put the explorer away, so the command has something to do.
     harness.state_mut().tree.toggle(&folder.join("chapters"));
     harness.state_mut().explorer_visible = false;
-    harness.run();
+    steady(&mut harness);
 
     did(&mut harness, "explorer select-open-file");
     assert!(harness.state().explorer_visible, "it shows the explorer if it was put away");
@@ -256,17 +256,17 @@ fn a_split_project_opens_split_again() {
             .state_mut()
             .open_path_permanently(&folder.join("program.rs"))
             .expect("the file opens");
-        harness.run();
+        steady(&mut harness);
         let ctx = harness.ctx.clone();
         harness.state_mut().run_action(Action::SplitRight, &ctx);
         // Written on the frame after the change, as every other piece of project state is.
-        harness.run();
-        harness.run();
+        steady(&mut harness);
+        steady(&mut harness);
         assert_eq!(harness.state().files.pane_count(), 2);
     }
     let mut second = harness_in(&folder);
     second.state_mut().restore_project();
-    second.run();
+    steady(&mut second);
     assert_eq!(second.state().files.pane_count(), 2, "the split should have come back");
     assert_eq!(second.state().files.tabs_in(0).len(), 1);
     assert_eq!(second.state().files.tabs_in(1).len(), 1);
@@ -302,7 +302,7 @@ fn code_harness(open: &str) -> Harness<'static, UnluminousApp> {
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    harness.run();
+    steady(&mut harness);
     harness
 }
 
@@ -311,7 +311,7 @@ fn caret_on(harness: &mut Harness<'static, UnluminousApp>, needle: &str, into: u
     let text = harness.state().document().text().to_string();
     let at = text.find(needle).unwrap_or_else(|| panic!("{needle} is not in this file")) + into;
     harness.state_mut().command(Command::PlaceCaret { offset: at, extend: false });
-    harness.run();
+    steady(harness);
     at
 }
 
@@ -329,7 +329,7 @@ fn settle_the_references(harness: &mut Harness<'static, UnluminousApp>) {
         std::thread::sleep(std::time::Duration::from_millis(10));
         harness.step();
     }
-    harness.run();
+    steady(harness);
 }
 
 /// What the references modal found, as `name:line · role` for each row.
@@ -363,7 +363,7 @@ fn go_to_definition_jumps_to_the_definition_and_selects_its_name() {
     let ctx = harness.ctx.clone();
     caret_on(&mut harness, "layout.draw()", "layout.".len() + 1);
     harness.state_mut().run_action(Action::GoToDefinition, &ctx);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.active().name(), "layout.rs");
     assert_eq!(harness.state().document().selected_text(), "draw");
 }
@@ -450,8 +450,8 @@ fn choosing_a_file_heading_shows_that_files_first_reference() {
     harness.state_mut().run_action(Action::FindReferences, &ctx);
     settle_the_references(&mut harness);
     harness.get_by_label(&references_heading("caret.rs")).click();
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     let (path, line) =
         harness.state().references.as_ref().expect("the modal").scrolled_to().expect("somewhere");
     assert_eq!(path.file_name().unwrap(), "caret.rs");
@@ -487,12 +487,12 @@ fn the_find_bar_counts_the_matches_and_marks_every_one_of_them() {
     let mut harness = code_harness("layout.rs");
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::Find, &ctx);
-    harness.run();
+    steady(&mut harness);
     let find = harness.state().find.as_ref().expect("the bar is open");
     assert!(!find.replacing, "Ctrl+F opens it without the Replace row");
 
     harness.state_mut().find.as_mut().expect("the bar").needle = "draw".to_owned();
-    harness.run();
+    steady(&mut harness);
     let find = harness.state().find.as_ref().expect("the bar");
     assert!(find.count() > 1, "layout.rs holds several of them: {}", find.count());
     assert_eq!(find.index(), Some(1), "the bar starts on the first");
@@ -505,13 +505,13 @@ fn the_find_bar_counts_the_matches_and_marks_every_one_of_them() {
     // Escape leave the caret on it and Ctrl+C copy it.
     let total = harness.state().find.as_ref().expect("the bar").count();
     harness.state_mut().run_action(Action::FindNext, &ctx);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().find.as_ref().expect("the bar").index(), Some(2));
     assert_eq!(harness.state().document().selected_text().to_lowercase(), "draw");
     for _ in 1..total {
         harness.state_mut().run_action(Action::FindNext, &ctx);
     }
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().find.as_ref().expect("the bar").index(),
         Some(1),
@@ -521,7 +521,7 @@ fn the_find_bar_counts_the_matches_and_marks_every_one_of_them() {
     // And Escape puts it away, leaving the caret where it stopped.
     let stopped = harness.state().document().selection().start();
     harness.key_press(egui::Key::Escape);
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().find.is_none());
     assert_eq!(harness.state().document().selection().start(), stopped);
 }
@@ -536,7 +536,7 @@ fn replace_all_changes_every_match_and_one_undo_puts_them_back() {
     let ctx = harness.ctx.clone();
     let before = harness.state().document().text().to_string();
     harness.state_mut().run_action(Action::Replace, &ctx);
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().find.as_ref().expect("the bar").replacing, "Ctrl+H opens the row");
 
     {
@@ -544,7 +544,7 @@ fn replace_all_changes_every_match_and_one_undo_puts_them_back() {
         find.needle = "draw".to_owned();
         find.replacement = "paint".to_owned();
     }
-    harness.run();
+    steady(&mut harness);
     let total = harness.state().find.as_ref().expect("the bar").count();
     assert!(total > 1, "there are several to replace: {total}");
     harness.get_by_label("Replace with");
@@ -552,7 +552,7 @@ fn replace_all_changes_every_match_and_one_undo_puts_them_back() {
 
     // Through the button, because that is what a person presses.
     harness.get_by_label("Replace all").click();
-    harness.run();
+    steady(&mut harness);
     let after = harness.state().document().text().to_string();
     assert_ne!(after, before);
     assert_eq!(
@@ -563,7 +563,7 @@ fn replace_all_changes_every_match_and_one_undo_puts_them_back() {
 
     // One undo, not `total` of them.
     harness.state_mut().command(unluminous_core::Command::Undo);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().document().text().to_string(),
         before,
@@ -646,7 +646,7 @@ fn the_rename_modal_is_the_preview_and_the_ticks_are_the_change_set() {
 
     // A name this language could not hold is refused, with the reason in the footer.
     harness.state_mut().references.as_mut().expect("the modal").new_name = "match".to_owned();
-    harness.run();
+    steady(&mut harness);
     let refusal =
         harness.state().references.as_ref().expect("the modal").refusal.clone().expect("a refusal");
     assert!(refusal.contains("keyword"), "{refusal}");
@@ -654,7 +654,7 @@ fn the_rename_modal_is_the_preview_and_the_ticks_are_the_change_set() {
     // And a collision is a warning rather than a refusal, because the mechanism cannot know whether
     // it shadows — that is semantic — so it says what it does know.
     harness.state_mut().references.as_mut().expect("the modal").new_name = "new".to_owned();
-    harness.run();
+    steady(&mut harness);
     let modal = harness.state().references.as_ref().expect("the modal");
     assert!(modal.refusal.is_none(), "a collision does not stop it");
     assert!(
@@ -688,7 +688,7 @@ fn a_file_whose_language_says_nothing_has_none_of_the_three_entries() {
     let mut harness = code_harness("layout.rs");
     let state = harness.state().menu_state();
     assert!(state.definitions_apply && state.symbols_apply);
-    harness.run();
+    steady(&mut harness);
 }
 
 /// Where on the screen a byte of the file that is showing is drawn.
@@ -718,7 +718,7 @@ fn hover_over(harness: &mut Harness<'static, UnluminousApp>, offset: usize, modi
     let held = if modifier { Modifiers::COMMAND } else { Modifiers::NONE };
     harness.input_mut().events.push(egui::Event::ModifiersChanged(held));
     harness.input_mut().events.push(egui::Event::PointerMoved(at));
-    harness.run();
+    steady(harness);
 }
 
 #[test]
@@ -760,7 +760,7 @@ fn modifier_click(harness: &mut Harness<'static, UnluminousApp>, offset: usize) 
     let at = point_of(harness, offset);
     harness.input_mut().events.push(egui::Event::ModifiersChanged(Modifiers::COMMAND));
     harness.input_mut().events.push(egui::Event::PointerMoved(at));
-    harness.run();
+    steady(harness);
     for pressed in [true, false] {
         harness.input_mut().events.push(egui::Event::PointerButton {
             pos: at,
@@ -769,7 +769,7 @@ fn modifier_click(harness: &mut Harness<'static, UnluminousApp>, offset: usize) 
             modifiers: Modifiers::COMMAND,
         });
     }
-    harness.run();
+    steady(harness);
 }
 
 #[test]
@@ -791,7 +791,7 @@ fn a_modifier_click_on_a_word_goes_to_its_definition_and_an_ordinary_one_places_
             modifiers: Modifiers::NONE,
         });
     }
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.active().name(), "caret.rs", "nothing was opened");
     assert!(
         harness.state().document().selection().is_empty(),
@@ -876,7 +876,7 @@ fn import_harness() -> Harness<'static, UnluminousApp> {
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    harness.run();
+    steady(&mut harness);
     harness
 }
 
@@ -905,7 +905,7 @@ fn a_name_typed_between_the_braces_offers_what_that_module_exports() {
     harness.state_mut().command(Command::PlaceCaret { offset: caret, extend: false });
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::CompleteWord, &ctx);
-    harness.run();
+    steady(&mut harness);
     let offered = completions(&harness);
     assert_eq!(
         offered,
@@ -991,7 +991,7 @@ fn completion_harness(open: &str) -> Harness<'static, UnluminousApp> {
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    harness.run();
+    steady(&mut harness);
     harness
 }
 
@@ -1000,7 +1000,7 @@ fn completion_harness(open: &str) -> Harness<'static, UnluminousApp> {
 fn type_letters(harness: &mut Harness<'static, UnluminousApp>, text: &str) {
     for letter in text.chars() {
         harness.input_mut().events.push(egui::Event::Text(letter.to_string()));
-        harness.run();
+        steady(harness);
     }
 }
 
@@ -1046,7 +1046,7 @@ fn typing_a_word_offers_the_names_it_could_become() {
     let text = harness.state().document().text().to_string();
     let blank = text.find("\nconst DRAW_LIMIT").expect("the blank line above the constant");
     harness.state_mut().command(Command::PlaceCaret { offset: blank, extend: false });
-    harness.run();
+    steady(&mut harness);
 
     type_letters(&mut harness, "d");
     assert!(harness.state().completion().is_none(), "one character is noise, not an offer");
@@ -1090,7 +1090,7 @@ fn the_list_flips_above_the_caret_at_the_bottom_of_the_pane() {
     let mut harness = completion_harness("layout.rs");
     let end = harness.state().document().text().len_bytes();
     harness.state_mut().command(Command::PlaceCaret { offset: end, extend: false });
-    harness.run();
+    steady(&mut harness);
     type_letters(&mut harness, "dra");
     assert!(harness.state().completion().is_some(), "{:?}", completions(&harness));
     let anchor = harness.state().completion_anchor().expect("the popup was drawn");
@@ -1113,12 +1113,12 @@ fn walking_past_the_eighth_row_scrolls_the_list() {
     let text = harness.state().document().text().to_string();
     let blank = text.find("\nconst DRAW_LIMIT").expect("the blank line");
     harness.state_mut().command(Command::PlaceCaret { offset: blank, extend: false });
-    harness.run();
+    steady(&mut harness);
     type_letters(&mut harness, "dra");
     assert!(completions(&harness).len() > 8, "{:?}", completions(&harness));
     for _ in 0..9 {
         harness.key_press(egui::Key::ArrowDown);
-        harness.run();
+        steady(&mut harness);
     }
     let state = harness.state().completion().expect("open");
     assert_eq!(state.chosen, 9, "the tenth row, and no further: the ends are clamped");
@@ -1140,10 +1140,10 @@ fn clicking_a_row_takes_it_and_the_click_never_reaches_the_document() {
     let text = harness.state().document().text().to_string();
     let blank = text.find("\nconst DRAW_LIMIT").expect("the blank line");
     harness.state_mut().command(Command::PlaceCaret { offset: blank, extend: false });
-    harness.run();
+    steady(&mut harness);
     type_letters(&mut harness, "dra");
     harness.get_by_label("Completion draw_gutter").click();
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().completion().is_none(), "taking a row closes the list");
     let after = harness.state().document().text().to_string();
     assert!(after.contains("draw_gutter\nconst DRAW_LIMIT"), "{after:?}");
@@ -1161,17 +1161,17 @@ fn tab_takes_the_best_row_and_the_editing_area_never_sees_the_key() {
     let text = harness.state().document().text().to_string();
     let blank = text.find("\nconst DRAW_LIMIT").expect("the blank line");
     harness.state_mut().command(Command::PlaceCaret { offset: blank, extend: false });
-    harness.run();
+    steady(&mut harness);
     type_letters(&mut harness, "dra");
     harness.key_press(egui::Key::Tab);
-    harness.run();
+    steady(&mut harness);
     let after = harness.state().document().text().to_string();
     assert!(after.contains("draw\nconst DRAW_LIMIT"), "{after:?}");
     assert!(!after.contains('\t'), "no tab was typed into the file");
     assert!(harness.state().completion().is_none());
     // And with the list shut, `Tab` means what it always meant.
     harness.key_press(egui::Key::Tab);
-    harness.run();
+    steady(&mut harness);
     assert!(
         harness.state().document().text().to_string().contains("draw\t"),
         "{:?}",
@@ -1188,12 +1188,12 @@ fn a_split_view_has_one_list_at_most_and_it_is_in_the_pane_with_the_keyboard() {
     harness.state_mut().open_path_permanently(&folder.join("layout.rs")).expect("the file opens");
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::SplitRight, &ctx);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.pane_count(), 2);
     let text = harness.state().document().text().to_string();
     let blank = text.find("\nconst DRAW_LIMIT").expect("the blank line");
     harness.state_mut().command(Command::PlaceCaret { offset: blank, extend: false });
-    harness.run();
+    steady(&mut harness);
     type_letters(&mut harness, "dra");
     assert!(harness.state().completion().is_some(), "{:?}", completions(&harness));
     let anchor = harness.state().completion_anchor().expect("the popup was drawn");
@@ -1235,7 +1235,7 @@ fn nothing_is_offered_in_a_file_no_plugin_claims() {
         })
         .collect();
     assert!(names.contains(&"Complete Word".to_owned()), "{names:?}");
-    harness.run();
+    steady(&mut harness);
 }
 
 #[test]
@@ -1246,7 +1246,7 @@ fn the_editor_page_holds_the_gutter_and_the_suggestions() {
     let mut harness = harness("");
     open_settings(&mut harness);
     harness.get_by_label("Editor").click();
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Show line numbers");
     harness.get_by_label("Suggest completions as you type");
     assert!(harness.state().settings.suggestions.is_automatic(), "on in a fresh Unluminous");
@@ -1254,7 +1254,7 @@ fn the_editor_page_holds_the_gutter_and_the_suggestions() {
 
     // And the box really is the setting: clicking it puts the popup back to being asked for.
     harness.get_by_label("Suggest completions as you type").click();
-    harness.run();
+    steady(&mut harness);
     assert!(!harness.state().settings.suggestions.is_automatic());
 }
 
@@ -1267,7 +1267,7 @@ fn enter_presses_the_button_that_does_the_thing() {
     open_about(&mut harness);
     assert!(harness.state().about.is_some());
     harness.key_press(egui::Key::Enter);
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().about.is_none(), "Enter should have pressed Done");
 }
 
@@ -1283,7 +1283,7 @@ fn enter_answers_a_question_that_has_no_field_in_it_and_reaches_nothing_behind_i
     );
     assert!(harness.state().confirmation.is_some(), "the question is asked");
     harness.key_press(egui::Key::Enter);
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().confirmation.is_none(), "Enter answered it");
     assert!(!folder.join("readme.md").exists(), "and the file has gone");
 }
@@ -1298,14 +1298,14 @@ fn a_modal_takes_the_keyboard_from_the_editing_area_and_the_explorer() {
     did(&mut harness, &format!("tab open {}", folder.join("app/main.ts").display()));
     let before = harness.state().document().text().to_string();
     harness.state_mut().command(unluminous_core::Command::PlaceCaret { offset: 0, extend: false });
-    harness.run();
+    steady(&mut harness);
 
     did(
         &mut harness,
         &format!("action run delete-path --path {}", folder.join("readme.md").display()),
     );
     harness.key_press(egui::Key::Enter);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().document().text().to_string(),
         before,
@@ -1323,7 +1323,7 @@ fn a_modal_takes_the_keyboard_from_the_editing_area_and_the_explorer() {
         &format!("action run delete-path --path {}", folder.join("app/main.ts").display()),
     );
     harness.input_mut().events.push(egui::Event::Text("typed".to_owned()));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().document().text().to_string(), before);
     did(&mut harness, "modal cancel");
 }
@@ -1377,7 +1377,7 @@ fn confirming_the_question_takes_the_file_off_the_disk_and_closes_its_tab() {
         &format!("action run delete-path --path {}", folder.join("readme.md").display()),
     );
     did(&mut harness, "modal accept");
-    harness.run();
+    steady(&mut harness);
     assert!(!folder.join("readme.md").exists(), "the file has gone");
     assert!(
         !harness.state().files.paths().contains(&folder.join("readme.md")),
@@ -1394,7 +1394,7 @@ fn cancelling_the_question_leaves_the_file_exactly_where_it_was() {
         &format!("action run delete-path --path {}", folder.join("readme.md").display()),
     );
     did(&mut harness, "modal cancel");
-    harness.run();
+    steady(&mut harness);
     assert!(folder.join("readme.md").is_file());
     assert!(harness.state().confirmation.is_none());
 }
@@ -1407,9 +1407,9 @@ fn delete_means_the_file_in_the_explorer_and_the_letter_in_the_editor() {
 
     // With the editing area holding the keyboard, `Delete` is what it has always been.
     harness.state_mut().command(unluminous_core::Command::PlaceCaret { offset: 0, extend: false });
-    harness.run();
+    steady(&mut harness);
     harness.key_press(egui::Key::Delete);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().document().text().to_string(),
         " Notes\n",
@@ -1420,7 +1420,7 @@ fn delete_means_the_file_in_the_explorer_and_the_letter_in_the_editor() {
     // With the explorer holding it, the same key is about the file.
     did(&mut harness, &format!("explorer select {}", folder.join("readme.md").display()));
     harness.key_press(egui::Key::Delete);
-    harness.run();
+    steady(&mut harness);
     let question = harness.state().confirmation.clone().expect("the question is asked instead");
     assert!(question.note.contains("readme.md"));
 }
@@ -1436,21 +1436,21 @@ fn the_arrow_keys_walk_the_selection_and_a_letter_hands_the_keyboard_back() {
         rows.iter().position(|row| *row == folder.join("app")).expect("the app folder is a row");
 
     harness.key_press(egui::Key::ArrowDown);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().selected.as_deref(),
         Some(rows[at + 1].as_path()),
         "Down moves to the next row that is showing"
     );
     harness.key_press(egui::Key::ArrowUp);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().selected.as_deref(), Some(folder.join("app").as_path()));
 
     // A letter belongs to the editor, so it hands the keyboard over and the letter lands in the
     // document. Without this, clicking a file in the tree and then typing would swallow the word.
     let before = harness.state().document().text().to_string();
     harness.input_mut().events.push(egui::Event::Text("x".to_owned()));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().focus, unluminous_app::app::Focus::Editor);
     assert_eq!(
         harness.state().document().text().to_string(),
@@ -1467,9 +1467,9 @@ fn closing_a_tab_that_was_edited_writes_it_and_an_untitled_one_is_not_written() 
     // closed as it always was and says so, rather than putting `untitled.md` in somebody's project
     // because they shut a scratch buffer.
     harness.input_mut().events.push(egui::Event::Text("scratch".to_owned()));
-    harness.run();
+    steady(&mut harness);
     did(&mut harness, "tab close");
-    harness.run();
+    steady(&mut harness);
     assert!(
         harness.state().message.clone().unwrap_or_default().contains("without saving"),
         "it says what it did: {:?}",
@@ -1479,13 +1479,13 @@ fn closing_a_tab_that_was_edited_writes_it_and_an_untitled_one_is_not_written() 
 
     did(&mut harness, &format!("tab open {}", folder.join("readme.md").display()));
     harness.state_mut().command(unluminous_core::Command::PlaceCaret { offset: 0, extend: false });
-    harness.run();
+    steady(&mut harness);
     harness.input_mut().events.push(egui::Event::Text("Hello ".to_owned()));
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().document().is_modified(), "it has changes that are not on the disk");
 
     did(&mut harness, "tab close");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         std::fs::read_to_string(folder.join("readme.md")).expect("read it back"),
         "Hello # Notes\n",
@@ -1499,11 +1499,11 @@ fn discarding_is_how_a_script_closes_a_tab_without_writing_it() {
     let mut harness = harness_in(&folder);
     did(&mut harness, &format!("tab open {}", folder.join("readme.md").display()));
     harness.state_mut().command(unluminous_core::Command::PlaceCaret { offset: 0, extend: false });
-    harness.run();
+    steady(&mut harness);
     harness.input_mut().events.push(egui::Event::Text("Hello ".to_owned()));
-    harness.run();
+    steady(&mut harness);
     did(&mut harness, "tab close --discard");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         std::fs::read_to_string(folder.join("readme.md")).expect("read it back"),
         "# Notes\n",
@@ -1527,7 +1527,7 @@ fn moving_a_file_rewrites_a_closed_importer_and_leaves_an_open_one_modified() {
         ),
     );
     assert_eq!(result["applied"], serde_json::json!(true));
-    harness.run();
+    steady(&mut harness);
 
     assert!(folder.join("draw/layout.ts").is_file(), "the file moved");
     assert!(!folder.join("app/layout.ts").exists());
@@ -1636,7 +1636,7 @@ fn renaming_a_file_takes_the_code_that_names_it_with_it() {
     );
     did(&mut harness, "modal type page.ts");
     did(&mut harness, "modal accept");
-    harness.run();
+    steady(&mut harness);
     assert!(folder.join("app/page.ts").is_file(), "the file was renamed");
     assert_eq!(
         std::fs::read_to_string(folder.join("app/other.ts")).expect("read the importer"),
@@ -1651,11 +1651,11 @@ fn dragging_a_row_onto_a_folder_moves_it_and_rewrites_what_named_it() {
     let mut harness = harness_in(&folder);
     // The folders have to be open for their rows to be there to aim at.
     did(&mut harness, &format!("explorer expand {}", folder.join("app").display()));
-    harness.run();
+    steady(&mut harness);
     let from = row_middle(&mut harness, "layout.ts");
     let to = row_middle(&mut harness, "draw");
     drag(&mut harness, from, to);
-    harness.run();
+    steady(&mut harness);
     assert!(folder.join("draw/layout.ts").is_file(), "it landed in the folder it was dropped on");
     assert_eq!(
         std::fs::read_to_string(folder.join("app/other.ts")).expect("read the importer"),
@@ -1668,11 +1668,11 @@ fn a_row_dropped_where_it_already_is_does_nothing_at_all() {
     let folder = scratch_folder("no-op-drag");
     let mut harness = harness_in(&folder);
     did(&mut harness, &format!("explorer expand {}", folder.join("app").display()));
-    harness.run();
+    steady(&mut harness);
     let from = row_middle(&mut harness, "layout.ts");
     let to = row_middle(&mut harness, "main.ts");
     drag(&mut harness, from, to);
-    harness.run();
+    steady(&mut harness);
     assert!(folder.join("app/layout.ts").is_file(), "it is where it was");
     assert_eq!(
         std::fs::read_to_string(folder.join("app/other.ts")).expect("read the importer"),
@@ -1701,8 +1701,8 @@ fn a_function_can_be_collapsed_from_the_gutter_and_the_line_numbers_stay_right()
     assert!(before.contains(&5), "the body of `add` is on the page to start with");
 
     harness.get_by_label("Collapse block at line 3").click();
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
 
     let after = laid_out_paragraphs(&harness);
     assert!(after.contains(&2), "the line the function starts on is still there");
@@ -1723,15 +1723,15 @@ fn a_function_can_be_collapsed_from_the_gutter_and_the_line_numbers_stay_right()
 fn the_badge_on_a_collapsed_block_expands_it_again() {
     let mut harness = folding_harness("badge");
     harness.get_by_label("Collapse block at line 3").click();
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     assert!(!laid_out_paragraphs(&harness).contains(&5));
     // Two rows now say `Expand block at line 3`: the arrow in the gutter and the badge in the text.
     // The badge is the one a person reaches for first, so it has to be the affordance it looks like.
     assert_eq!(harness.get_all_by_label("Expand block at line 3").count(), 2);
     harness.get_all_by_label("Expand block at line 3").last().expect("the badge").click();
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     assert!(laid_out_paragraphs(&harness).contains(&5), "the body came back");
 }
 
@@ -1741,16 +1741,16 @@ fn collapse_all_then_expand_all_puts_the_file_back_exactly_as_it_was() {
     let before = laid_out_paragraphs(&harness);
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::Fold(FoldAction::All), &ctx);
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     let collapsed = laid_out_paragraphs(&harness);
     assert!(collapsed.len() < before.len(), "collapsing everything hides lines");
     assert!(collapsed.contains(&2) && collapsed.contains(&10), "every head line is still there");
     harness.snapshot(shot("folding_all_collapsed"));
 
     harness.state_mut().run_action(Action::Fold(FoldAction::None_), &ctx);
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     assert_eq!(laid_out_paragraphs(&harness), before, "show all again gives back what was there");
 }
 
@@ -1764,12 +1764,12 @@ fn collapse_all_but_highlighted_leaves_the_marked_passage_showing() {
         .state_mut()
         .document_mut()
         .highlight(start..end, unluminous_core::Rgba::new(0xC9, 0xA2, 0x27, 0x66));
-    harness.run();
+    steady(&mut harness);
 
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::Fold(FoldAction::Others), &ctx);
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
 
     let showing = laid_out_paragraphs(&harness);
     assert!(showing.contains(&4), "the marked line is showing");
@@ -1785,8 +1785,8 @@ fn a_caret_put_inside_a_collapsed_block_expands_it() {
     // jump into one — go to definition, a search hit, `editor caret --line` — opens it first.
     let mut harness = folding_harness("reveal");
     harness.get_by_label("Collapse block at line 3").click();
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     assert!(!laid_out_paragraphs(&harness).contains(&5));
 
     let offset = harness.state().document().text().line_to_byte(5);
@@ -1795,8 +1795,8 @@ fn a_caret_put_inside_a_collapsed_block_expands_it() {
         .document_mut()
         .apply(unluminous_core::Command::PlaceCaret { offset, extend: false });
     harness.state_mut().reveal_the_caret_from_a_fold();
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     assert!(laid_out_paragraphs(&harness).contains(&5), "the block opened for the caret");
 }
 
@@ -1810,11 +1810,11 @@ fn collapsing_the_block_the_caret_is_in_moves_the_caret_to_its_head() {
         .state_mut()
         .document_mut()
         .apply(unluminous_core::Command::PlaceCaret { offset, extend: false });
-    harness.run();
+    steady(&mut harness);
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::Fold(FoldAction::All), &ctx);
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     let caret = harness.state().document().selection().head;
     let line = harness.state().document().text().byte_to_line(caret);
     assert_eq!(line, 2, "the caret came out onto the line the function starts on");
@@ -1836,8 +1836,8 @@ fn collapsing_recursively_hides_the_block_and_everything_inside_it() {
         .apply(unluminous_core::Command::PlaceCaret { offset, extend: false });
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::Fold(FoldAction::CollapseRecursively), &ctx);
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
 
     let after = laid_out_paragraphs(&harness);
     assert!(after.contains(&2), "the line `add` starts on is still there");
@@ -1856,8 +1856,8 @@ fn collapsing_recursively_hides_the_block_and_everything_inside_it() {
 fn a_fold_stays_on_its_block_when_a_line_is_typed_above_it() {
     let mut harness = folding_harness("edited");
     harness.get_by_label("Collapse block at line 3").click();
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     // A line typed at the very top of the file, which moves every byte below it.
     harness
         .state_mut()
@@ -1867,8 +1867,8 @@ fn a_fold_stays_on_its_block_when_a_line_is_typed_above_it() {
         .state_mut()
         .document_mut()
         .apply(unluminous_core::Command::Insert("// a new line\n".to_owned()));
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     // The same function, now one line further down, and still collapsed: the arrow and the badge.
     assert_eq!(harness.get_all_by_label("Expand block at line 4").count(), 2);
     let showing = laid_out_paragraphs(&harness);
@@ -1881,7 +1881,7 @@ fn a_picture_has_no_folding_entries_at_all() {
     // Unluminous's rule for a control that can never apply: absent, not dimmed.
     let mut harness = harness("");
     harness.get_by_label_contains("picture.png").click();
-    harness.run();
+    steady(&mut harness);
     let state = harness.state().menu_state();
     assert!(!state.folding_applies);
     assert!(unluminous_app::app::actions::folding_menu(&state).is_empty());
@@ -1971,12 +1971,12 @@ fn go_to_line_takes_a_line_or_a_line_and_a_column() {
     let mut typed = prompt;
     typed.value = "3".to_owned();
     harness.state_mut().run_prompt_for_test(typed.clone());
-    harness.run();
+    steady(&mut harness);
     assert_eq!(did(&mut harness, "editor caret")["line"], 3);
 
     typed.value = "4:3".to_owned();
     harness.state_mut().run_prompt_for_test(typed.clone());
-    harness.run();
+    steady(&mut harness);
     let at = did(&mut harness, "editor caret");
     assert_eq!(at["line"], 4);
     assert_eq!(at["column"], 3);
@@ -1985,13 +1985,13 @@ fn go_to_line_takes_a_line_or_a_line_and_a_column() {
     // what somebody typing 9999 means.
     typed.value = "9999".to_owned();
     harness.state_mut().run_prompt_for_test(typed.clone());
-    harness.run();
+    steady(&mut harness);
     assert_eq!(did(&mut harness, "editor caret")["line"], 6);
 
     // And something that is not a line number says so in the status bar rather than moving.
     typed.value = "banana".to_owned();
     harness.state_mut().run_prompt_for_test(typed);
-    harness.run();
+    steady(&mut harness);
     let said = harness.state().message.clone().unwrap_or_default();
     assert!(said.contains("banana"), "the refusal quotes what was typed: {said}");
 }
@@ -2005,7 +2005,7 @@ fn alt_and_an_arrow_moves_the_line_without_moving_the_caret_off_it() {
     did(&mut harness, "tab open main.rs --permanent");
     did(&mut harness, "editor caret --line 2 --column 1");
     harness.state_mut().focus = unluminous_app::app::Focus::Editor;
-    harness.run();
+    steady(&mut harness);
 
     harness.event(egui::Event::Key {
         key: egui::Key::ArrowUp,
@@ -2014,7 +2014,7 @@ fn alt_and_an_arrow_moves_the_line_without_moving_the_caret_off_it() {
         repeat: false,
         modifiers: Modifiers { alt: true, ..Modifiers::NONE },
     });
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().document().text().to_string(), "two\none\nthree\n");
     assert_eq!(
         did(&mut harness, "editor caret")["line"],
@@ -2054,7 +2054,7 @@ fn closing_the_window_writes_every_modified_tab() {
 
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::CloseWindow, &ctx);
-    harness.run();
+    steady(&mut harness);
 
     // Every one of them, not only the tab with the keyboard: a person with three edited tabs
     // pressing the cross means all three, and there is no dialog here to ask them which.
@@ -2095,7 +2095,7 @@ fn a_tab_whose_save_failed_stays_open() {
     let before = harness.state().files.len();
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::CloseTab, &ctx);
-    harness.run();
+    steady(&mut harness);
 
     assert_eq!(harness.state().files.len(), before, "the tab is still there");
     assert!(
@@ -2114,7 +2114,7 @@ fn a_tab_whose_save_failed_stays_open() {
 
     // And the window does not close either, for the same reason.
     harness.state_mut().run_action(Action::CloseWindow, &ctx);
-    harness.run();
+    steady(&mut harness);
     assert!(!harness.state().closing, "the window stays while a tab could not be written");
 
     let mut permissions = std::fs::metadata(&file).expect("the file").permissions();

@@ -109,6 +109,7 @@ fn draw_the_sheet(set: IconSet, name: &str) {
             draw(&painter, centre, color::icon());
         }
     });
+    // An `egui` harness with no `UnluminousApp` behind it, which `common::steady` is typed for.
     harness.run();
     harness.snapshot(shot(name).as_str());
 }

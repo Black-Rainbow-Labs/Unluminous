@@ -119,17 +119,17 @@ fn drag_through(
 ) {
     let modifiers = Modifiers::default();
     harness.input_mut().events.push(egui::Event::PointerMoved(from));
-    harness.run();
+    steady(harness);
     harness.input_mut().events.push(egui::Event::PointerButton {
         pos: from,
         button: egui::PointerButton::Primary,
         pressed: true,
         modifiers,
     });
-    harness.run();
+    steady(harness);
     for at in path {
         harness.input_mut().events.push(egui::Event::PointerMoved(*at));
-        harness.run();
+        steady(harness);
     }
     harness.input_mut().events.push(egui::Event::PointerButton {
         pos: *path.last().unwrap_or(&from),
@@ -137,7 +137,7 @@ fn drag_through(
         pressed: false,
         modifiers,
     });
-    harness.run();
+    steady(harness);
 }
 
 /// A folder holding one long source file, for the `task-1666` performance tests.
@@ -163,10 +163,10 @@ fn dragging_a_selection_lays_nothing_out_again_and_colours_nothing_again() {
     let folder = a_folder_with_a_long_source_file("drag-selection");
     let mut harness = harness_in(&folder);
     did(&mut harness, "tab open long.rs --permanent");
-    harness.run();
+    steady(&mut harness);
     // The file is coloured on the frame after it is opened, so let that happen before anything is
     // measured; otherwise the first drag frame would be charged with work the opening owed.
-    harness.run();
+    steady(&mut harness);
 
     let laid_out = harness.state().files.active().cached.laid_out_revision;
     let coloured = harness.state().files.active().coloured_revision;
@@ -184,7 +184,7 @@ fn dragging_a_selection_lays_nothing_out_again_and_colours_nothing_again() {
             area.left_top() + vec2(220.0, 260.0),
         ],
     );
-    harness.run();
+    steady(&mut harness);
 
     assert!(
         !harness.state().document().selection().is_empty(),
@@ -219,8 +219,8 @@ fn typing_a_letter_lays_out_the_line_it_was_typed_into_and_leaves_the_rest_alone
     let folder = a_folder_with_a_long_source_file("typing");
     let mut harness = harness_in(&folder);
     did(&mut harness, "tab open long.rs --permanent");
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
 
     let before: Vec<f32> = harness.state().layout().lines.iter().map(|line| line.y).collect();
     let count = before.len();
@@ -229,9 +229,9 @@ fn typing_a_letter_lays_out_the_line_it_was_typed_into_and_leaves_the_rest_alone
     // Into the middle of the file, so there is plenty above it and plenty below it.
     let middle = harness.state().document().text().len_bytes() / 2;
     harness.state_mut().command(Command::PlaceCaret { offset: middle, extend: false });
-    harness.run();
+    steady(&mut harness);
     harness.state_mut().command(Command::Insert("X".to_owned()));
-    harness.run();
+    steady(&mut harness);
 
     let after: Vec<f32> = harness.state().layout().lines.iter().map(|line| line.y).collect();
     assert_eq!(after.len(), count, "a letter typed into a line adds no lines");
@@ -487,7 +487,7 @@ fn the_terminal_is_opened_and_put_away_from_the_command_line() {
     // something a test can know, which is the rule the terminal's own screenshot tests keep. What is
     // under test is that the commands reach the panel.
     harness.state_mut().new_detached_terminal_tab(6, 40);
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().terminal.visible);
     did(&mut harness, "terminal hide");
     assert!(!harness.state().terminal.visible);
@@ -516,7 +516,7 @@ fn the_command_line_speaks_to_a_terminal_tab_that_is_not_showing() {
     let mut harness = harness_in(&sample_folder());
     harness.state_mut().new_detached_terminal_tab(8, 60);
     harness.state_mut().new_detached_terminal_tab(8, 60);
-    harness.run();
+    steady(&mut harness);
     // Each tab gets content of its own, reached by number, and the second is the one showing.
     harness
         .state_mut()
@@ -532,7 +532,7 @@ fn the_command_line_speaks_to_a_terminal_tab_that_is_not_showing() {
         .at_mut(1)
         .expect("the second tab")
         .feed(b"the second shell is here\r\n");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().terminal.tabs.active_index(),
         1,
@@ -602,7 +602,7 @@ fn the_tab_flag_wins_over_the_positional_when_both_are_given() {
     for _ in 0..3 {
         harness.state_mut().new_detached_terminal_tab(8, 60);
     }
-    harness.run();
+    steady(&mut harness);
     // Three tabs, the third showing. `select 0 --tab 1` names the first tab with the positional and
     // the second with the flag, and it is the second that is shown.
     did(&mut harness, "terminal select 0 --tab 1");
@@ -719,7 +719,7 @@ fn the_window_says_whether_the_operating_system_is_sending_it_the_keys() {
             viewport.focused = Some(false);
         }
     }
-    harness.run();
+    steady(&mut harness);
     let window = did(&mut harness, "status --section window");
     assert_eq!(
         window["focused"],
@@ -970,7 +970,7 @@ fn over_the_wire(
         .state_mut()
         .run_cli_for_test(&request, &ctx)
         .unwrap_or_else(|| panic!("`{command}` was not answered on the frame it was asked"));
-    harness.run();
+    steady(harness);
     reply
 }
 
@@ -1077,7 +1077,7 @@ fn a_file_changed_outside_unluminous_is_read_again_before_it_is_answered_about()
 
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&path).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     let first = over_the_wire(&mut harness, "editor.text", serde_json::json!({}));
     assert_eq!(first.result["text"], "first\n");
 
@@ -1118,7 +1118,7 @@ fn a_tab_with_unsaved_changes_is_not_reread_from_the_file() {
 
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&path).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     over_the_wire(&mut harness, "editor.insert", serde_json::json!({ "text": "mine " }));
     assert!(harness.state().document().is_modified(), "the tab has unsaved changes");
 
@@ -1159,7 +1159,7 @@ fn every_command_in_the_catalogue_is_one_the_window_knows() {
                 command.typed()
             );
         }
-        harness.run();
+        steady(&mut harness);
     }
 }
 
@@ -1248,10 +1248,10 @@ fn browser_tabs_open_through_the_shared_cli_and_action_paths() {
 
     // The toolbar reaches the same host the command line does: with no native view behind it in a
     // test window, `Reload` comes back as the host's own refusal rather than doing nothing.
-    harness.run();
+    steady(&mut harness);
     harness.state_mut().message = None;
     harness.get_by_label("Reload").click();
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().message.is_some(), "the toolbar button reached the browser host");
 
     // Closing a rendered tab is an ordinary tab close: it neither asks to save nor leaves its root
@@ -2078,7 +2078,7 @@ fn drive_the_terminal_and_the_runs(coverage: &mut Coverage) {
     // `new_detached_terminal_tab`'s own bargain and the terminal's screenshots' rule. `terminal new`
     // is driven once at the end, where nothing after it depends on what it printed.
     harness.state_mut().new_detached_terminal_tab(20, 60);
-    harness.run();
+    steady(&mut harness);
     c.works(&mut harness, "terminal select 0");
     c.works(&mut harness, "terminal rename build");
     c.works(&mut harness, "terminal move 0");
@@ -2148,7 +2148,7 @@ fn drive_the_canvas(coverage: &mut Coverage) {
         unluminous_app::services::space::Kind::Folder,
         egui::pos2(40.0, 300.0),
     );
-    harness.run();
+    steady(&mut harness);
     let editor = did(&mut harness, "space add editor --path src/main.rs")["node"]
         .as_u64()
         .expect("the node the command made");
@@ -2302,7 +2302,7 @@ fn drive_a_contributed_tab(coverage: &mut Coverage) {
     .expect("a manifest that contributes a tab");
     let mut harness = harness_in(&folder);
     harness.state_mut().use_store(unluminous_app::services::store::Store::at(&settings));
-    harness.run();
+    steady(&mut harness);
     coverage.works(&mut harness, "plugins tab agent-tasks/board --open");
     coverage.works(&mut harness, "plugins tab agent-tasks/board --close");
     std::fs::remove_dir_all(&folder).ok();
@@ -2403,7 +2403,7 @@ fn a_window_on_a_port(name: &str) -> (Harness<'static, UnluminousApp>, std::path
     let mut harness = harness_in(&folder);
     let ctx = harness.ctx.clone();
     harness.state_mut().open_control_channel(&ctx);
-    harness.run();
+    steady(&mut harness);
     // Asked the way anything else would ask: `mcp status` reports what is really happening rather
     // than what the settings say, and whether there is a command channel at all is one of its
     // fields.
@@ -2575,7 +2575,7 @@ fn the_mcp_server_lists_its_tools_and_calls_one_against_a_real_window() {
 
     // **Read back through the window**, which is the half a reply cannot stand in for: a tool that
     // says it opened a file and a window with that file open are two different claims.
-    harness.run();
+    steady(&mut harness);
     let open: Vec<String> = harness
         .state()
         .files

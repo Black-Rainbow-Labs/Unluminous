@@ -36,8 +36,8 @@ fn a_typescript_file_is_coloured_by_its_plugin() {
         .state_mut()
         .open_path_permanently(&folder.join("sqlClient.ts"))
         .expect("the file opens");
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     // The colours are in the document's own spans, so the test can check them without looking at
     // the picture: the `import` keyword is Dracula's pink and the comment is its blue-grey.
     let text = harness.state().document().text().to_string();
@@ -86,8 +86,8 @@ fn a_css_file_is_coloured_by_its_plugin() {
     .expect("write site.css");
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&path).expect("the file opens");
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     // Read out of the document's own spans, so the five things the plugin had to be taught are
     // checked as colours rather than only looked at.
     let text = harness.state().document().text().to_string();
@@ -141,8 +141,8 @@ fn an_html_file_is_coloured_by_its_plugin() {
     .expect("write page.html");
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&path).expect("the file opens");
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     // Read out of the document's own spans, so the things the plugin had to be taught are checked
     // as colours rather than only looked at.
     let text = harness.state().document().text().to_string();
@@ -209,8 +209,8 @@ fn the_plugins_page_lists_the_ones_that_ship_with_unluminous() {
     harness.state_mut().use_store(unluminous_app::services::store::Store::at(&store));
     harness.state_mut().settings_window.open();
     harness.state_mut().settings_window.page = unluminous_app::settings::Page::Plugins;
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     for name in ["CSS", "JavaScript", "TypeScript", "Rust", "HTML"] {
         harness.get_by_label(name);
     }
@@ -221,14 +221,14 @@ fn the_plugins_page_lists_the_ones_that_ship_with_unluminous() {
     // can be edited is `CUSTOMISE`; `UNINSTALL` is what takes that folder away again.
     assert_eq!(harness.query_all_by_label("INSTALL").count(), 0, "nothing here is uninstalled");
     harness.get_by_label("CUSTOMISE").click();
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     harness.get_by_label("UNINSTALL");
     assert_eq!(harness.query_all_by_label("CUSTOMISE").count(), 0, "it is on disk now");
 
     harness.get_by_label("UNINSTALL").click();
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     harness.get_by_label("CUSTOMISE");
     assert!(
         harness.state().plugins.all().iter().any(|plugin| plugin.id == "agent-chat"),
@@ -244,8 +244,8 @@ fn the_theme_page_lists_every_theme_with_the_colours_it_is_made_of() {
     let mut harness = harness("");
     harness.state_mut().settings_window.open();
     harness.state_mut().settings_window.page = unluminous_app::settings::Page::Theme;
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     for name in [
         "Unluminous Dark",
         "Islands Dracula Colorful",
@@ -267,8 +267,8 @@ fn a_theme_repaints_the_window_and_recolours_the_code() {
     let mut harness = harness_in(&sample_folder());
     let opened = run(&mut harness, "tab open program.rs");
     assert!(opened.ok, "{}", opened.message);
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     let before = harness.state().settings.theme.clone();
     assert!(before.is_empty(), "a window that has chosen nothing says nothing");
 
@@ -288,7 +288,7 @@ fn a_theme_repaints_the_window_and_recolours_the_code() {
 
     let reply = run(&mut harness, "theme set \"Monokai Pro\"");
     assert!(reply.ok, "{}", reply.message);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().settings.theme, "themes-bundle-1/monokai-pro");
     assert_eq!(
         unluminous_app::theme::color::editor(),
@@ -323,7 +323,7 @@ fn a_theme_is_set_by_name_and_an_unknown_one_says_what_there_is() {
     // a theme becomes one.
     let reply = run(&mut harness, "settings set appearance.theme themes-bundle-1/dracula");
     assert!(reply.ok, "{}", reply.message);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         unluminous_app::theme::color::accent(),
         egui::Color32::from_rgb(0xFF, 0x79, 0xC6),
@@ -337,7 +337,7 @@ fn a_theme_is_set_by_name_and_an_unknown_one_says_what_there_is() {
 fn an_accent_is_set_over_the_theme_and_cleared_back_to_it() {
     let mut harness = harness("");
     run(&mut harness, "theme set unluminous/dark --accent #FF79C6");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(unluminous_app::theme::color::accent(), egui::Color32::from_rgb(0xFF, 0x79, 0xC6));
     assert_eq!(
         unluminous_app::theme::color::folder_open(),
@@ -350,7 +350,7 @@ fn an_accent_is_set_over_the_theme_and_cleared_back_to_it() {
     );
 
     run(&mut harness, "theme set unluminous/dark --accent none");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(unluminous_app::theme::color::accent(), egui::Color32::from_rgb(0x48, 0x9F, 0xF8));
 
     let reply = run(&mut harness, "theme set unluminous/dark --accent puce");
@@ -364,11 +364,11 @@ fn an_accent_is_set_over_the_theme_and_cleared_back_to_it() {
 fn switching_the_themes_plugin_off_puts_the_window_back() {
     let mut harness = harness("");
     run(&mut harness, "theme set \"Material Palenight\"");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(unluminous_app::theme::color::editor(), egui::Color32::from_rgb(0x29, 0x2D, 0x3E));
 
     run(&mut harness, "plugins disable themes-bundle-1");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         unluminous_app::theme::color::editor(),
         egui::Color32::from_rgb(0x1A, 0x1F, 0x26),
@@ -377,7 +377,7 @@ fn switching_the_themes_plugin_off_puts_the_window_back() {
     // The setting is left alone, so switching the plugin back on brings the theme back with it.
     assert_eq!(harness.state().settings.theme, "themes-bundle-1/palenight");
     run(&mut harness, "plugins enable themes-bundle-1");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(unluminous_app::theme::color::editor(), egui::Color32::from_rgb(0x29, 0x2D, 0x3E));
 }
 
@@ -393,7 +393,7 @@ fn the_icon_set_follows_the_theme_and_the_setting_wins() {
     );
 
     run(&mut harness, "theme set \"One Dark\"");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         unluminous_app::theme::icons(),
         unluminous_app::theme::IconSet::Classic,
@@ -401,7 +401,7 @@ fn the_icon_set_follows_the_theme_and_the_setting_wins() {
     );
 
     run(&mut harness, "theme set \"One Dark\" --icons material");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         unluminous_app::theme::icons(),
         unluminous_app::theme::IconSet::Material,
@@ -409,7 +409,7 @@ fn the_icon_set_follows_the_theme_and_the_setting_wins() {
     );
 
     run(&mut harness, "theme set \"One Dark\" --icons follow");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         unluminous_app::theme::icons(),
         unluminous_app::theme::IconSet::Classic,
@@ -488,9 +488,9 @@ fn diagram_harness(name: &str, mode: ViewMode) -> Harness<'static, UnluminousApp
     let folder = diagram_folder();
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&folder.join(name)).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     harness.state_mut().set_view_mode(mode);
-    harness.run();
+    steady(&mut harness);
     harness
 }
 
@@ -561,7 +561,7 @@ fn the_three_view_mode_buttons_switch_a_mermaid_file_between_the_modes() {
         ("Raw Mermaid", ViewMode::Raw),
     ] {
         harness.get_by_label(name).click();
-        harness.run();
+        steady(&mut harness);
         assert_eq!(harness.state().view_mode(), expected, "clicking {name} should switch to it");
     }
 }
@@ -571,7 +571,7 @@ fn side_by_side_shows_a_mermaid_source_and_its_diagram_at_once() {
     let mut harness = diagram_harness("state.mmd", ViewMode::Raw);
     let whole = harness.state().editor_area().width();
     harness.get_by_label("Side by side").click();
-    harness.run();
+    steady(&mut harness);
     let half = harness.state().editor_area().width();
     assert!(half < whole, "the source gives up half its width: {whole} then {half}");
     assert!(
@@ -590,7 +590,7 @@ fn a_diagram_that_will_not_parse_says_which_line_rather_than_drawing_nothing() {
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&broken).expect("the file opens");
     harness.state_mut().set_view_mode(ViewMode::Preview);
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("mermaid_problem"));
 }
 
@@ -603,7 +603,7 @@ fn a_diagram_type_unluminous_does_not_draw_is_named_rather_than_left_blank() {
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&path).expect("the file opens");
     harness.state_mut().set_view_mode(ViewMode::Preview);
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("mermaid_not_drawn"));
 }
 
@@ -616,7 +616,7 @@ fn mermaid_blocks_in_a_markdown_file_are_drawn_in_its_preview() {
         .open_path_permanently(&folder.join("in-markdown.md"))
         .expect("the file opens");
     harness.state_mut().set_view_mode(ViewMode::Preview);
-    harness.run();
+    steady(&mut harness);
 
     let diagrams = harness.state().preview_diagrams();
     assert_eq!(diagrams.len(), 3, "two that draw and one that cannot");
@@ -647,12 +647,12 @@ fn switching_the_mermaid_plugin_off_withdraws_the_diagrams() {
         .open_path_permanently(&folder.join("in-markdown.md"))
         .expect("the file opens");
     harness.state_mut().set_view_mode(ViewMode::Preview);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().preview_diagrams().len(), 3);
     assert!(harness.state().mermaid_is_enabled());
 
     harness.state_mut().set_plugin_enabled("mermaid", false);
-    harness.run();
+    steady(&mut harness);
     assert!(!harness.state().mermaid_is_enabled());
     assert!(
         harness.state().preview_diagrams().is_empty(),
@@ -662,7 +662,7 @@ fn switching_the_mermaid_plugin_off_withdraws_the_diagrams() {
     // And a `.mmd` file says so rather than drawing.
     harness.state_mut().open_path_permanently(&folder.join("pie.mmd")).expect("the file opens");
     harness.state_mut().set_view_mode(ViewMode::Preview);
-    harness.run();
+    steady(&mut harness);
     assert!(
         harness.query_by_label("Diagram: pie.mmd").is_none(),
         "no diagram is drawn while the plugin is off"
@@ -681,10 +681,10 @@ fn a_diagram_is_laid_out_once_however_many_frames_it_is_drawn_for() {
         .open_path_permanently(&folder.join("flowchart.mmd"))
         .expect("the file opens");
     harness.state_mut().set_view_mode(ViewMode::Preview);
-    harness.run();
+    steady(&mut harness);
     let after_first = harness.state().mermaid_scene_count();
     for _ in 0..5 {
-        harness.run();
+        steady(&mut harness);
     }
     assert_eq!(
         harness.state().mermaid_scene_count(),
@@ -702,7 +702,7 @@ fn the_command_line_can_read_what_a_diagram_came_out_as() {
     let folder = diagram_folder();
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&folder.join("pie.mmd")).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     let answer = did(&mut harness, "editor preview");
     assert_eq!(answer["diagram"], "pie", "{answer}");
     assert!(answer["width"].as_f64().unwrap_or(0.0) > 0.0);

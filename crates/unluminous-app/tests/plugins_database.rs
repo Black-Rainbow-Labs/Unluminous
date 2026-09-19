@@ -67,7 +67,7 @@ fn a_database(name: &str) -> Harness<'static, UnluminousApp> {
     let mut harness = harness("");
     did(&mut harness, &format!("plugins run database add-source library {}", file.display()));
     did(&mut harness, "plugins pane database/explorer --show");
-    harness.run();
+    steady(&mut harness);
     harness
 }
 
@@ -102,7 +102,7 @@ fn until_the_database_settles(harness: &mut Harness<'static, UnluminousApp>) {
 fn a_press_anywhere_in_a_field_hands_it_the_keyboard() {
     let mut harness = a_database("field-focus");
     did(&mut harness, "plugins pane database/explorer --show");
-    harness.run();
+    steady(&mut harness);
     let box_rect = harness
         .get_by_role_and_label(egui::accesskit::Role::TextInput, "Filter database objects")
         .rect();
@@ -126,13 +126,13 @@ fn a_paste_into_a_plugins_field_never_reaches_the_document() {
     let mut harness = a_database("field-paste");
     did(&mut harness, "plugins pane database/explorer --show");
     harness.state_mut().document_mut().apply(Command::Insert("hello".to_owned()));
-    harness.run();
+    steady(&mut harness);
     let box_rect = harness
         .get_by_role_and_label(egui::accesskit::Role::TextInput, "Filter database objects")
         .rect();
     press_at(&mut harness, egui::Pos2::new(box_rect.left() - 6.0, box_rect.center().y));
     harness.input_mut().events.push(egui::Event::Paste("PASTED".to_owned()));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().document().text().to_string(),
         "hello",
@@ -146,15 +146,15 @@ fn a_paste_into_a_plugins_field_never_reaches_the_document() {
 fn a_path_can_be_pasted_into_the_sqlite_file_field() {
     let mut harness = a_database("field-paste-file");
     did(&mut harness, "plugins pane database/explorer --show");
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("New data source").click();
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("SQLite").click();
-    harness.run();
+    steady(&mut harness);
     let box_rect = harness.get_by_role_and_label(egui::accesskit::Role::TextInput, "File").rect();
     press_at(&mut harness, egui::Pos2::new(box_rect.left() - 4.0, box_rect.center().y));
     harness.input_mut().events.push(egui::Event::Paste("C:/tmp/pasted.db".to_owned()));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.get_by_role_and_label(egui::accesskit::Role::TextInput, "File").value(),
         Some("C:/tmp/pasted.db".to_owned())
@@ -180,7 +180,7 @@ fn press_at(harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2) {
         pressed: false,
         modifiers: Modifiers::NONE,
     });
-    harness.run();
+    steady(harness);
 }
 
 /// The ticket's shape, as data: a tree in a pane, a workspace in a tab, a menu and a Settings page.
@@ -451,7 +451,7 @@ fn the_new_data_source_dialog() {
     // The menu entry and the command are one path: `add-source` with nothing said opens the dialog,
     // and `add-source <name> <url>` adds one without it.
     did(&mut harness, "plugins run database add-source");
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("database_source_dialog").as_str());
 }
 
@@ -471,9 +471,9 @@ fn the_database_settings_page_says_where_a_password_is_and_never_what_it_is() {
         "plugins run database add-source library postgres://postgres@localhost:5432/library UNLUMINOUS_DB_LIBRARY",
     );
     did(&mut harness, "action run settings");
-    harness.run();
+    steady(&mut harness);
     harness.get_all_by_label("Database").last().expect("the Settings row").click();
-    harness.run();
+    steady(&mut harness);
     // Nothing on this page is the password, and the page says where it is instead.
     let view = did(&mut harness, "plugins view database");
     assert_eq!(view["sources"][0]["password"], "environment UNLUMINOUS_DB_LIBRARY");
@@ -513,11 +513,11 @@ fn ctrl_enter_runs_the_statement_under_the_caret() {
     assert!(harness.ctx.text_edit_focused(), "the press handed the SQL box the keyboard");
 
     harness.get_by_label("SQL").type_text("select title from album order by id");
-    harness.run();
+    steady(&mut harness);
 
     // Enter alone is a new line. Nothing runs.
     harness.key_press(egui::Key::Enter);
-    harness.run();
+    steady(&mut harness);
     assert!(
         the_open_page(&mut harness)["result"].is_null(),
         "Enter on its own must not execute — a console has to be able to hold two lines",
@@ -550,7 +550,7 @@ fn double_clicking_a_cell_edits_it_and_save_writes_it() {
     // A single click chooses the cell and opens nothing — the two gestures must not fight, because
     // choosing is what `Delete row` and `Set NULL` act on.
     harness.get_by_label("title row 1").click();
-    harness.run();
+    steady(&mut harness);
     assert!(
         the_open_page(&mut harness)["editing"].is_null(),
         "one click chooses a cell rather than opening it",
@@ -565,9 +565,9 @@ fn double_clicking_a_cell_edits_it_and_save_writes_it() {
 
     // Everything in the box is selected the frame it opens, so typing replaces rather than joins.
     harness.get_by_label("title row 1").type_text("Kind of Green");
-    harness.run();
+    steady(&mut harness);
     harness.key_press(egui::Key::Enter);
-    harness.run();
+    steady(&mut harness);
 
     // Committing records a pending change rather than sending a statement, which is the arrangement
     // that lets Preview show what is about to happen.
@@ -596,9 +596,9 @@ fn escape_puts_a_cell_back_the_way_it_was() {
     let at = harness.get_by_label("title row 1").rect().center();
     double_click_at(&mut harness, at);
     harness.get_by_label("title row 1").type_text("Thrown away");
-    harness.run();
+    steady(&mut harness);
     harness.key_press(egui::Key::Escape);
-    harness.run();
+    steady(&mut harness);
     assert!(
         did(&mut harness, "plugins run database pending").as_array().expect("none").is_empty(),
         "Escape left nothing pending",
@@ -631,7 +631,7 @@ fn a_right_click_on_a_table_offers_a_new_table() {
     assert_eq!(harness.query_all_by_label("Remove Data Source").count(), 0);
 
     harness.get_by_label("New Table…").click();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         did(&mut harness, "plugins view database")["modal"],
         "new-table",
@@ -652,7 +652,7 @@ fn the_new_table_modal_shows_the_statement_it_will_send() {
     // means by a right click on a schema — and is what `new-table main` used to read as a table
     // called `main`, composing `CREATE TABLE "main"."main"`.
     did(&mut harness, "plugins run database new-table main");
-    harness.run();
+    steady(&mut harness);
     assert!(harness.get_all_by_label("Table name").count() > 0, "the dialog is up");
     assert_eq!(
         harness.get_by_label("Table name").value(),
@@ -661,9 +661,9 @@ fn the_new_table_modal_shows_the_statement_it_will_send() {
     );
 
     harness.get_by_label("Table name").click();
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Table name").type_text("shelf");
-    harness.run();
+    steady(&mut harness);
     let sql = did(&mut harness, "plugins view database")["new_table_sql"].clone();
     let sql = sql.as_str().unwrap_or_else(|| panic!("no statement: {sql}"));
     assert!(sql.starts_with("CREATE TABLE \"main\".\"shelf\""), "{sql}");
@@ -672,7 +672,7 @@ fn the_new_table_modal_shows_the_statement_it_will_send() {
     // Every identifier is quoted, so a name that is a keyword or holds a space is a non-event, and
     // the statement follows the typing rather than being composed once when the dialog opened.
     harness.get_by_label("Table name").type_text(" of order");
-    harness.run();
+    steady(&mut harness);
     let sql = did(&mut harness, "plugins view database")["new_table_sql"].clone();
     assert!(
         sql.as_str().expect("a statement").contains("\"shelf of order\""),
@@ -681,15 +681,15 @@ fn the_new_table_modal_shows_the_statement_it_will_send() {
 
     // Empty, it refuses rather than composing a statement with a hole in it, and says why.
     did(&mut harness, "plugins run database new-table main");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         did(&mut harness, "plugins view database")["new_table_sql"]["problem"],
         "a table needs a name.",
     );
     harness.get_by_label("Table name").click();
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Table name").type_text("shelf");
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("database_new_table").as_str());
 }
 
@@ -704,11 +704,11 @@ fn creating_a_table_makes_it_and_the_tree_shows_it() {
     until_the_database_settles(&mut harness);
 
     did(&mut harness, "plugins run database new-table main");
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Table name").click();
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Table name").type_text("shelf");
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Create").click();
     until_the_database_settles(&mut harness);
 
@@ -745,15 +745,15 @@ fn add_row_puts_a_row_on_the_screen_that_can_be_typed_into() {
     assert_eq!(harness.query_all_by_label("title row 5").count(), 0, "four rows were read");
 
     harness.get_by_label("Add row").click();
-    harness.run();
+    steady(&mut harness);
     assert!(harness.get_all_by_label("title row 5").count() > 0, "the added row is on the screen");
 
     let at = harness.get_by_label("title row 5").rect().center();
     double_click_at(&mut harness, at);
     harness.get_by_label("title row 5").type_text("Sketches of Spain");
-    harness.run();
+    steady(&mut harness);
     harness.key_press(egui::Key::Enter);
-    harness.run();
+    steady(&mut harness);
 
     // One statement, and it is an INSERT carrying what was typed — not an UPDATE of a row that is
     // not there yet, which is what `Pending::set` folding a cell into its own `Change::Add` buys.
@@ -846,7 +846,7 @@ fn an_inillucent_database(name: &str) -> Harness<'static, UnluminousApp> {
     let mut harness = harness("");
     did(&mut harness, &format!("plugins run database add-source notes {}", file.display()));
     did(&mut harness, "plugins pane database/explorer --show");
-    harness.run();
+    steady(&mut harness);
     harness
 }
 
@@ -934,16 +934,16 @@ fn showing_a_tab_that_was_already_laid_out_does_not_lay_it_out_again() {
     let folder = sample_folder();
     let mut harness = harness("");
     harness.state_mut().open_path_permanently(&folder.join("readme.md")).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     let first = harness.state().files.active_index();
     harness.state_mut().open_path_permanently(&folder.join("notes.txt")).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     let laid_out = harness.state().layouts_built();
     assert!(laid_out > 0, "opening two files lays them out");
 
     // Back to the first, which is hidden and was compacted when the second displaced it.
     harness.state_mut().files.show(first);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().layouts_built(),
         laid_out,
@@ -974,9 +974,9 @@ fn showing_a_tab_that_was_already_laid_out_does_not_lay_it_out_again() {
 fn test_connection_does_not_stop_the_window_drawing() {
     let mut harness = harness("");
     did(&mut harness, "plugins pane database/explorer --show");
-    harness.run();
+    steady(&mut harness);
     did(&mut harness, "plugins run database add-source");
-    harness.run();
+    steady(&mut harness);
 
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
     let port = listener.local_addr().expect("the address").port();
@@ -994,7 +994,7 @@ fn test_connection_does_not_stop_the_window_drawing() {
     for (field, wanted) in [("Host", "127.0.0.1".to_owned()), ("Port", port.to_string())] {
         let box_at = harness.get_by_role_and_label(egui::accesskit::Role::TextInput, field);
         box_at.focus();
-        harness.run();
+        steady(&mut harness);
         harness.input_mut().events.push(egui::Event::Key {
             key: egui::Key::A,
             physical_key: None,
@@ -1002,9 +1002,9 @@ fn test_connection_does_not_stop_the_window_drawing() {
             repeat: false,
             modifiers: Modifiers::COMMAND,
         });
-        harness.run();
+        steady(&mut harness);
         harness.get_by_role_and_label(egui::accesskit::Role::TextInput, field).type_text(&wanted);
-        harness.run();
+        steady(&mut harness);
         assert_eq!(
             harness.get_by_role_and_label(egui::accesskit::Role::TextInput, field).value(),
             Some(wanted.clone()),
@@ -1014,7 +1014,7 @@ fn test_connection_does_not_stop_the_window_drawing() {
 
     let began = std::time::Instant::now();
     harness.get_by_label("Test Connection").click();
-    harness.run();
+    steady(&mut harness);
     let took = began.elapsed();
     assert!(
         took < std::time::Duration::from_secs(2),

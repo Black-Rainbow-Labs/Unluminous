@@ -100,12 +100,12 @@ fn a_terminal_tab_comes_back_in_its_folder_showing_what_was_on_it() {
     let inside = folder.join("chapters");
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
-    harness.run();
+    steady(&mut harness);
 
     // A detached tab, so what is drawn and what is written down do not depend on a shell answering.
     harness.state_mut().new_detached_terminal_tab(10, 60);
     feed(&mut harness, b"$ ls\r\ntotal 48\r\nsrc  tests  Cargo.toml\r\n$ ");
-    harness.run();
+    steady(&mut harness);
 
     // What the window would write on its way out.
     harness.state_mut().write_the_tab_screens_down();
@@ -141,9 +141,9 @@ fn a_terminal_tab_comes_back_in_its_folder_showing_what_was_on_it() {
 
     let mut second = harness_in(&folder);
     second.state_mut().restore_project();
-    second.run();
+    steady(&mut second);
     second.state_mut().start_the_restored_terminals();
-    second.run();
+    steady(&mut second);
     assert_eq!(second.state().terminal.tabs.count(), 1, "the tab came back");
     assert_eq!(
         second.state().terminal.tabs.at(0).and_then(unluminous_terminal::Session::given_name),
@@ -163,7 +163,7 @@ fn a_second_terminal_tab_is_added_and_shown_in_front() {
     let mut harness = with_terminal("", 10, 60);
     feed(&mut harness, b"the first tab");
     harness.state_mut().new_detached_terminal_tab(10, 60);
-    harness.run();
+    steady(&mut harness);
     feed(&mut harness, b"the second tab");
     assert_eq!(harness.state().terminal.tabs.count(), 2);
     assert_eq!(harness.state().terminal.tabs.active_index(), 1);
@@ -173,7 +173,7 @@ fn a_second_terminal_tab_is_added_and_shown_in_front() {
 
     // Going back to the first tab shows what was in it, so a tab keeps its own screen.
     harness.get_by_label("Terminal tab: detached").click();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().terminal.tabs.active_index(), 0);
     let screen = harness.state().terminal.tabs.active().expect("a tab").snapshot();
     assert!(screen.contains("the first tab"), "the first tab kept its screen");
@@ -183,7 +183,7 @@ fn a_second_terminal_tab_is_added_and_shown_in_front() {
 fn a_terminal_tab_is_renamed_from_its_own_menu() {
     let mut harness = with_terminal("", 8, 60);
     harness.state_mut().new_detached_terminal_tab(8, 60);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().terminal.tabs.names(), vec!["detached", "detached 2"]);
 
     // Opened through the window's own state, as the gutter's and a file tab's menus are, because
@@ -191,7 +191,7 @@ fn a_terminal_tab_is_renamed_from_its_own_menu() {
     // holds the tabs the menu is about as well as the menu.
     let at = harness.state().terminal.grid_area().left_top() + vec2(420.0, -14.0);
     harness.state_mut().terminal_menu = Some((at, 1));
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Rename...");
     harness.get_by_label("New Terminal Tab");
     harness.snapshot(shot("terminal_tab_menu"));
@@ -206,7 +206,7 @@ fn a_terminal_tab_is_renamed_from_its_own_menu() {
     let prompt = harness.state_mut().prompt.take().expect("a prompt");
     harness.state_mut().run_prompt_for_test(prompt);
     harness.state_mut().prompt = None;
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().terminal.tabs.names(), vec!["detached", "the build"]);
 
     // And the name a person typed is not taken away again by the program setting a title of its
@@ -220,10 +220,10 @@ fn a_terminal_tab_is_renamed_from_its_own_menu() {
 fn a_terminal_tab_is_dragged_along_the_strip() {
     let mut harness = with_terminal("", 8, 60);
     harness.state_mut().new_detached_terminal_tab(8, 60);
-    harness.run();
+    steady(&mut harness);
     did(&mut harness, "terminal rename --tab 0 first");
     did(&mut harness, "terminal rename --tab 1 second");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().terminal.tabs.names(), vec!["first", "second"]);
 
     // The first tab dragged past the middle of the second, which is where a drop lands after it.
@@ -232,16 +232,16 @@ fn a_terminal_tab_is_dragged_along_the_strip() {
     let to = egui::pos2(onto.right() - 2.0, onto.center().y);
     let modifiers = Modifiers::default();
     harness.input_mut().events.push(egui::Event::PointerMoved(from));
-    harness.run();
+    steady(&mut harness);
     harness.input_mut().events.push(egui::Event::PointerButton {
         pos: from,
         button: egui::PointerButton::Primary,
         pressed: true,
         modifiers,
     });
-    harness.run();
+    steady(&mut harness);
     harness.input_mut().events.push(egui::Event::PointerMoved(to));
-    harness.run();
+    steady(&mut harness);
     // Held, so the picture shows the tab outlined in the air and the accent mark saying where it
     // would land. It is the same mark the file tabs draw, from the same two functions.
     harness.snapshot(shot("terminal_tab_dragging"));
@@ -251,7 +251,7 @@ fn a_terminal_tab_is_dragged_along_the_strip() {
         pressed: false,
         modifiers,
     });
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().terminal.tabs.names(),
         vec!["second", "first"],
@@ -266,7 +266,7 @@ fn dragging_a_terminal_tab_and_the_command_line_are_the_same_rearrangement() {
     let mut harness = with_terminal("", 8, 60);
     for name in ["one", "two", "three"] {
         harness.state_mut().new_detached_terminal_tab(8, 60);
-        harness.run();
+        steady(&mut harness);
         let last = harness.state().terminal.tabs.count() - 1;
         did(&mut harness, &format!("terminal rename --tab {last} {name}"));
     }
@@ -287,7 +287,7 @@ fn closing_the_last_terminal_tab_puts_the_tile_away() {
     let mut harness = with_terminal("", 8, 60);
     assert!(harness.state().terminal.visible);
     harness.get_by_label_contains("Close terminal detached").click();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().terminal.tabs.count(), 0);
     assert!(!harness.state().terminal.visible, "with no terminals there is nothing to show");
 }
@@ -336,7 +336,7 @@ fn the_terminal_font_size_changes_the_size_of_the_grid() {
     let mut settings = harness.state().settings.clone();
     settings.terminal_font_size = 20.0;
     harness.state_mut().set_settings(settings);
-    harness.run();
+    steady(&mut harness);
     let after = harness.state().terminal.tabs.active().expect("a tab").size();
     assert!(
         after.columns < before.columns && after.rows <= before.rows,
@@ -349,12 +349,12 @@ fn the_terminal_font_size_changes_the_size_of_the_grid() {
 fn the_view_menu_shows_and_hides_the_terminal() {
     let mut harness = harness("");
     harness.state_mut().menu_placement = MenuPlacement::InWindow;
-    harness.run();
+    steady(&mut harness);
     assert!(!harness.state().terminal.visible);
 
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::ToggleTerminal, &ctx);
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().terminal.visible, "the terminal should have opened");
     assert_eq!(harness.state().terminal.tabs.count(), 1, "with a shell in it");
     assert_eq!(
@@ -364,7 +364,7 @@ fn the_view_menu_shows_and_hides_the_terminal() {
     );
 
     harness.state_mut().run_action(Action::ToggleTerminal, &ctx);
-    harness.run();
+    steady(&mut harness);
     assert!(!harness.state().terminal.visible);
     assert_eq!(
         harness.state().focus,
@@ -440,14 +440,14 @@ fn typing_in_the_terminal_reaches_the_shell_and_not_the_document() {
 fn with_run(name: &str, command: &str, rows: usize) -> Harness<'static, UnluminousApp> {
     let mut harness = harness("A document above the run tile.");
     harness.state_mut().new_detached_run(configuration(name, command), rows, 96);
-    harness.run();
+    steady(&mut harness);
     harness
 }
 
 /// Feed bytes to the run that is showing, as a program writing them would.
 fn feed_run(harness: &mut Harness<'static, UnluminousApp>, bytes: &[u8]) {
     harness.state_mut().run.active_mut().expect("a run").session.feed(bytes);
-    harness.run();
+    steady(harness);
 }
 
 #[test]
@@ -480,11 +480,11 @@ fn a_run_that_ended_keeps_its_tab_and_the_strip_says_what_it_ended_with() {
     );
     // A second run, so the picture holds a finished tab and a running one side by side.
     harness.state_mut().new_detached_run(configuration("Dev server", "node server.js"), 10, 96);
-    harness.run();
+    steady(&mut harness);
     feed_run(&mut harness, b"Listening on http://localhost:3000\r\n");
     let at = harness.state().run.index_of("cargo test").expect("the first run");
     harness.state_mut().run.end_detached(at, Some(101));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().run.at(at).expect("a run").state().label(),
         "exit code 101",
@@ -538,7 +538,7 @@ fn the_run_widget_draws_its_three_states_in_the_title_bar() {
         .run_configurations
         .add_permanent(configuration("Dev server", "node server.js --port 3000"));
     harness.state_mut().run_selected = Some("Dev server".to_owned());
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Choose a run configuration");
     harness.get_by_label("Run the selected configuration");
     results.add(harness.try_snapshot(shot("run_widget_idle")));
@@ -554,7 +554,7 @@ fn the_run_widget_draws_its_three_states_in_the_title_bar() {
     // code, which is where the eye already is.
     let at = harness.state().run.index_of("Dev server").expect("the run");
     harness.state_mut().run.end_detached(at, Some(1));
-    harness.run();
+    steady(&mut harness);
     assert!(
         harness.query_by_label("Stop the selected configuration").is_none(),
         "there is nothing left to stop"
@@ -577,7 +577,7 @@ fn the_title_bar_carries_a_run_button_and_a_debug_button_beside_it() {
         .run_configurations
         .add_permanent(configuration("Dev server", "node server.js --port 3000"));
     both.state_mut().run_selected = Some("Dev server".to_owned());
-    both.run();
+    steady(&mut both);
     both.get_by_label("Run the selected configuration");
     both.get_by_label("Debug the selected configuration");
 
@@ -587,7 +587,7 @@ fn the_title_bar_carries_a_run_button_and_a_debug_button_beside_it() {
     let mut plain = harness("");
     plain.state_mut().run_configurations.add_permanent(configuration("Format", "black app"));
     plain.state_mut().run_selected = Some("Format".to_owned());
-    plain.run();
+    steady(&mut plain);
     plain.get_by_label("Run the selected configuration");
     assert!(
         plain.query_by_label("Debug the selected configuration").is_none(),
@@ -605,7 +605,7 @@ fn the_widgets_debug_button_starts_the_chosen_configuration_under_a_debugger() {
         .run_configurations
         .add_permanent(configuration("Dev server", "node server.js"));
     pressed.state_mut().run_selected = Some("Dev server".to_owned());
-    pressed.run();
+    steady(&mut pressed);
     pressed.get_by_label("Debug the selected configuration").click();
     // The press starts a real adapter and, behind it, a real program, and their output keeps the
     // window redrawing, so the settle is a pump rather than a run — the shape `git_harness` uses for
@@ -661,7 +661,7 @@ fn the_debug_tile_says_what_is_missing_and_offers_to_install_it() {
         ),
     );
     choose(&mut harness, Action::Debug(DebugAction::ToggleTile));
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().debug_panel.visible);
     harness.get_by_label("Install");
     harness.get_by_label("Copy command");
@@ -677,7 +677,7 @@ fn with_nothing_to_run_the_widget_is_the_play_button_that_opens_the_dialog() {
     let mut harness = harness_in(&folder);
     assert!(harness.state().run_rows().is_empty(), "nothing to suggest in the sample folder");
     harness.get_by_label("Add a run configuration").click();
-    harness.run();
+    steady(&mut harness);
     assert!(
         harness.state().run_dialog.open,
         "the play button opens the dialog when nothing is chosen"
@@ -696,9 +696,9 @@ fn the_widgets_play_button_starts_the_chosen_configuration() {
         .run_configurations
         .add_permanent(configuration("Nothing", "unluminous-no-such-program-at-all"));
     harness.state_mut().run_selected = Some("Nothing".to_owned());
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Run the selected configuration").click();
-    harness.run();
+    steady(&mut harness);
     let said = harness.state().message.clone().expect("the status bar says what happened");
     assert!(
         said.contains("unluminous-no-such-program-at-all"),
@@ -730,7 +730,7 @@ fn the_flyout_lists_the_permanents_the_temporaries_and_the_suggestions() {
         .run_configurations
         .add_temporary(configuration("server.js", "node server.js"));
     harness.state_mut().run_selected = Some("Dev server".to_owned());
-    harness.run();
+    steady(&mut harness);
 
     let rows: Vec<String> = harness.state().run_rows().into_iter().map(|row| row.name).collect();
     assert_eq!(
@@ -740,7 +740,7 @@ fn the_flyout_lists_the_permanents_the_temporaries_and_the_suggestions() {
     );
 
     harness.get_by_label("Choose a run configuration").click();
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("npm run dev");
     harness.get_by_label("Edit Configurations...");
     harness.snapshot(shot("run_flyout"));
@@ -779,11 +779,11 @@ fn run_current_file_is_offered_for_a_javascript_file_and_not_for_a_rust_one() {
     let mut harness = harness_in(&folder);
 
     harness.state_mut().open_path_permanently(&folder.join("server.js")).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().run_file_template().as_deref(), Some("node {file}"));
 
     harness.state_mut().open_path_permanently(&folder.join("main.rs")).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().run_file_template(),
         None,
@@ -791,9 +791,9 @@ fn run_current_file_is_offered_for_a_javascript_file_and_not_for_a_rust_one() {
     );
 
     harness.state_mut().open_path_permanently(&folder.join("server.js")).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     harness.state_mut().set_plugin_enabled("javascript", false);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().run_file_template(), None, "and the plugin is the switch");
 }
 
@@ -879,13 +879,13 @@ fn the_run_configurations_dialog_lists_them_on_the_left_and_edits_one_on_the_rig
 
     // Add makes one with a name nothing else has, and chooses it.
     harness.get_by_label("Add").click();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().run_dialog.chosen.as_deref(), Some("Unnamed"));
     assert_eq!(harness.state().run_configurations.permanent().len(), 3);
 
     // Done shuts it.
     harness.get_by_label("Done").click();
-    harness.run();
+    steady(&mut harness);
     assert!(!harness.state().run_dialog.open);
 }
 
@@ -895,13 +895,13 @@ fn the_dialog_asks_before_removing_a_configuration_whose_program_is_still_runnin
     let mut harness = with_run("Dev server", "node server.js", 8);
     choose(&mut harness, Action::Run(RunAction::Edit));
     harness.get_by_label("Remove").click();
-    harness.run();
+    steady(&mut harness);
     let question = harness.state().confirmation.clone().expect("a question is asked");
     assert!(question.note.contains("Dev server"), "and it says what is about to be stopped");
     assert_eq!(harness.state().run_configurations.len(), 1, "nothing has gone yet");
 
     harness.state_mut().answer_the_question(question.answer);
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().run_configurations.is_empty());
     assert!(harness.state().run.is_empty(), "and its run went with it");
 }
@@ -934,7 +934,7 @@ run.selected = Dev server
 
     let mut harness = harness_in(&root);
     harness.state_mut().restore_project();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().run_configurations.permanent().len(), 1);
     let held =
         harness.state().run_configurations.find("Dev server").expect("it came back").1.clone();
@@ -954,7 +954,7 @@ run.selected = Dev server
     .expect("write the workspace");
     let mut harness = harness_in(&root);
     harness.state_mut().restore_project();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().run_selected, None);
     std::fs::remove_dir_all(&root).ok();
 }
@@ -968,13 +968,13 @@ fn a_temporary_has_a_save_button_that_keeps_it_and_a_permanent_does_not() {
         .add_temporary(configuration("server.js", "node server.js"));
     harness.state_mut().run_configurations.add_permanent(configuration("cargo run", "cargo run"));
     harness.state_mut().run_dialog.open(Some("cargo run".to_owned()));
-    harness.run();
+    steady(&mut harness);
     assert!(harness.query_by_label("Save").is_none(), "a permanent is already kept");
 
     harness.state_mut().run_dialog.chosen = Some("server.js".to_owned());
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Save").click();
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().run_configurations.temporary().is_empty());
     assert_eq!(harness.state().run_configurations.permanent().len(), 2);
 }
@@ -1084,7 +1084,7 @@ fn the_command_line_reads_what_a_run_has_written() {
     // A detached run, so what is being tested is the reading rather than a program's timing.
     let mut harness = harness("");
     harness.state_mut().new_detached_run(configuration("Dev server", "node server.js"), 10, 60);
-    harness.run();
+    steady(&mut harness);
     feed_run(&mut harness, b"Listening on http://localhost:3000\r\nGET / 200\r\nGET /a 200\r\n");
 
     let output = did(&mut harness, "run output");
@@ -1106,14 +1106,14 @@ fn the_command_line_reads_what_a_run_has_written() {
 fn the_command_line_says_whether_a_run_is_going_and_what_it_ended_with() {
     let mut harness = harness("");
     harness.state_mut().new_detached_run(configuration("cargo test", "cargo test"), 8, 60);
-    harness.run();
+    steady(&mut harness);
     let going = did(&mut harness, "run status");
     assert_eq!(going["state"], "running");
     assert_eq!(going["running"], true);
 
     let at = harness.state().run.index_of("cargo test").expect("the run");
     harness.state_mut().run.end_detached(at, Some(101));
-    harness.run();
+    steady(&mut harness);
     let ended = did(&mut harness, "run status");
     assert_eq!(ended["state"], "exit code 101");
     assert_eq!(ended["exitCode"], 101);
@@ -1130,7 +1130,7 @@ fn the_command_line_says_whether_a_run_is_going_and_what_it_ended_with() {
 fn stopping_a_run_from_the_command_line_leaves_the_tab_and_what_it_wrote() {
     let mut harness = harness("");
     harness.state_mut().new_detached_run(configuration("Dev server", "node server.js"), 8, 60);
-    harness.run();
+    steady(&mut harness);
     feed_run(&mut harness, b"Listening on http://localhost:3000\r\n");
     // The first stop is the polite one, so the run is still going.
     did_while_waiting(&mut harness, "run stop");

@@ -65,7 +65,7 @@ fn two_presses_on_a_panels_header_fill_the_window_with_it_and_two_more_put_it_ba
     use unluminous_app::app::dock::Panel;
     let mut harness = harness("");
     did(&mut harness, "terminal show");
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().explorer_visible && harness.state().editor_visible);
 
     // The explorer's heading is its own drag handle, so it is the top of the pane in the ticket's sense.
@@ -97,7 +97,7 @@ fn two_presses_on_a_panels_header_fill_the_window_with_it_and_two_more_put_it_ba
 fn two_presses_on_the_empty_part_of_the_tab_strip_fill_the_window_with_the_editing_area() {
     let mut harness = harness("");
     did(&mut harness, "terminal show");
-    harness.run();
+    steady(&mut harness);
     // The far right of the strip, which is past every tab and is therefore the part no tab wanted.
     let strip = harness.state().tab_strip_for_tests(0);
     let empty = egui::pos2(strip.right() - 12.0, strip.center().y);
@@ -117,7 +117,7 @@ fn maximising_is_not_an_arrangement_and_a_toggle_inside_it_ends_it() {
     use unluminous_app::app::dock::Panel;
     let mut harness = harness("");
     did(&mut harness, "terminal show");
-    harness.run();
+    steady(&mut harness);
     let (editor, panels) = harness.state().remembered_panels_for_tests();
     assert!(editor && panels[Panel::Explorer.index()] && panels[Panel::Terminal.index()]);
 
@@ -135,17 +135,17 @@ fn maximising_is_not_an_arrangement_and_a_toggle_inside_it_ends_it() {
     // **A toggle inside a maximise ends it.** Hiding the maximised pane used to leave a body with nothing
     // in it at all; showing a second one left two panes up with the menu still offering `Restore Pane`.
     did(&mut harness, "action run toggle-terminal");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().maximised_pane(), None, "the arrangement came back first");
     assert!(harness.state().editor_visible, "so there is something to look at");
 
     // **The tile with the keyboard is the tile that maximises.** The terminal tile and the run tile both
     // say `Focus::Terminal`, which is fine for the zoom — the three share one font size — and wrong here.
     did(&mut harness, "action run toggle-run-tile");
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().run.visible);
     did(&mut harness, "action run toggle-maximised-pane");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().maximised_pane(),
         Some(Some(Panel::Run)),
@@ -160,13 +160,13 @@ fn escape_puts_a_maximised_pane_back_and_does_nothing_when_none_is() {
     use unluminous_app::app::dock::Panel;
     let mut harness = harness("");
     did(&mut harness, "action run toggle-maximised-pane");
-    harness.run();
+    steady(&mut harness);
     // Nothing had the keyboard but the editing area, so the editing area is what filled the window.
     assert_eq!(harness.state().maximised_pane(), Some(None));
     assert!(!harness.state().explorer_visible);
 
     harness.key_press(egui::Key::Escape);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().maximised_pane(), None);
     assert!(harness.state().explorer_visible, "the explorer came back");
 
@@ -174,19 +174,19 @@ fn escape_puts_a_maximised_pane_back_and_does_nothing_when_none_is() {
     // `show_the_terminal_tile` hands them to the terminal whenever it is shown — so a restore that did not
     // remember who had them left the caret in a terminal nobody had asked for.
     did(&mut harness, "terminal show");
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("readme.md").click();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().focus, unluminous_app::app::Focus::Explorer);
     did(&mut harness, "action run toggle-maximised-pane");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().maximised_pane(),
         Some(Some(Panel::Explorer)),
         "the pane with the keys"
     );
     harness.key_press(egui::Key::Escape);
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().terminal.visible, "the terminal came back");
     assert_eq!(
         harness.state().focus,
@@ -197,10 +197,10 @@ fn escape_puts_a_maximised_pane_back_and_does_nothing_when_none_is() {
     // A second Escape with nothing maximised is nobody's business here: the explorer's own Escape goes on
     // meaning what it meant, which is that the keyboard goes back to the document.
     harness.get_by_label("readme.md").click();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().focus, unluminous_app::app::Focus::Explorer);
     harness.key_press(egui::Key::Escape);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().focus, unluminous_app::app::Focus::Editor);
     assert_eq!(harness.state().maximised_pane(), None);
 }
@@ -218,7 +218,7 @@ fn a_wheel_with_the_modifier_zooms_whichever_pane_the_pointer_is_over() {
     let mut harness = harness("");
     did(&mut harness, "plugins pane agent-chat/chat --show");
     did(&mut harness, "terminal show");
-    harness.run();
+    steady(&mut harness);
 
     let editor_font = harness.state().settings.font_size;
     let explorer = harness.state().panel_area(Panel::Explorer);
@@ -270,23 +270,23 @@ fn the_zoom_keys_are_about_whichever_pane_holds_the_keyboard() {
 
     // With the editing area holding the keys they mean what they always meant.
     did(&mut harness, "action run increase-font-size");
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().settings.font_size > editor_font);
     let editor_font = harness.state().settings.font_size;
 
     // Click a row, which is what gives the explorer the keyboard, and the same action is about the
     // explorer instead.
     harness.get_by_label("readme.md").click();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().focus, unluminous_app::app::Focus::Explorer);
     did(&mut harness, "action run increase-font-size");
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().panes.zoom_of(Panel::Explorer) > 1.0, "the explorer grew");
     assert_eq!(harness.state().settings.font_size, editor_font, "and the editor's font did not");
 
     // And `Reset Font Size` puts that pane back rather than the editor.
     did(&mut harness, "action run reset-font-size");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().panes.zoom_of(Panel::Explorer), 1.0);
     assert_eq!(harness.state().settings.font_size, editor_font);
 
@@ -295,10 +295,10 @@ fn the_zoom_keys_are_about_whichever_pane_holds_the_keyboard() {
     // has to make an exception of it. Maximising does not: that is still about the pane holding the keys,
     // and reusing one answer for both questions would have maximised the editing area from the file tree.
     harness.get_by_label_contains("picture.png").click();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().focus, unluminous_app::app::Focus::Explorer);
     did(&mut harness, "action run toggle-maximised-pane");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().maximised_pane(),
         Some(Some(Panel::Explorer)),
@@ -312,7 +312,7 @@ fn a_panels_zoom_is_set_and_read_from_the_command_line() {
     use unluminous_app::app::dock::Panel;
     let mut harness = harness("");
     did(&mut harness, "plugins pane agent-chat/chat --show");
-    harness.run();
+    steady(&mut harness);
 
     let set = did(&mut harness, "panel zoom explorer 1.35");
     assert_eq!(set["kind"], "zoom");
@@ -335,12 +335,18 @@ fn a_panels_zoom_is_set_and_read_from_the_command_line() {
 /// `egui` reports a pinch and Ctrl with the wheel as one `zoom_delta`, so this is what both look like from
 /// inside the window. The pointer is moved first because which pane a gesture belongs to is decided by
 /// where it is — see `UnluminousApp::zoom_over_a_panel`.
+///
+/// **`steady` rather than `Harness::run`** (`task-1984`). `run` gives the window four steps to go quiet
+/// and panics otherwise, and a pointer move is exactly the input that leaves it asking to be drawn again:
+/// a hover changes what is drawn, and which pane owns the gesture is re-decided. This line failed a whole
+/// workspace run and passed thirty six times out of thirty six on its own, which is what a four step
+/// budget looks like from the outside.
 fn zoom_at(harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2, larger: bool) {
     harness.input_mut().events.push(egui::Event::PointerMoved(at));
-    harness.run();
+    steady(harness);
     // Well past one step, so a single turn is worth a whole notch however the accumulator rounds.
     harness.input_mut().events.push(egui::Event::Zoom(if larger { 1.6 } else { 1.0 / 1.6 }));
-    harness.run();
+    steady(harness);
 }
 
 /// `task-1771`: "if I toggle off the file, agent chat width increases all the way to folder pane, but it
@@ -354,9 +360,9 @@ fn a_pane_is_as_wide_as_the_window_lets_it_be_once_the_editing_area_is_hidden() 
     use unluminous_app::app::dock::Panel;
     let mut harness = harness("");
     did(&mut harness, "plugins pane agent-chat/chat --show");
-    harness.run();
+    steady(&mut harness);
     did(&mut harness, "action run toggle-editor");
-    harness.run();
+    steady(&mut harness);
     assert!(!harness.state().editor_visible, "the editing area is hidden");
 
     // The chat is the right hand column, so its divider is on its left. Dragged far further left than
@@ -389,7 +395,7 @@ fn a_pane_is_as_wide_as_the_window_lets_it_be_once_the_editing_area_is_hidden() 
 fn the_split_between_the_source_and_the_preview_can_be_dragged() {
     let mut harness = harness(MARKDOWN);
     harness.get_by_label("Side by side").click();
-    harness.run();
+    steady(&mut harness);
     let source_before = harness.state().editor_area().width();
     let handle = harness.get_by_label("Resize preview").rect();
     let from = handle.center();
@@ -425,16 +431,16 @@ fn panel_handle(harness: &Harness<'static, UnluminousApp>, label: &str) -> egui:
 /// What a screenshot of the drop zones is taken of.
 fn carry(harness: &mut Harness<'static, UnluminousApp>, from: egui::Pos2, to: egui::Pos2) {
     harness.input_mut().events.push(egui::Event::PointerMoved(from));
-    harness.run();
+    steady(harness);
     harness.input_mut().events.push(egui::Event::PointerButton {
         pos: from,
         button: egui::PointerButton::Primary,
         pressed: true,
         modifiers: Modifiers::default(),
     });
-    harness.run();
+    steady(harness);
     harness.input_mut().events.push(egui::Event::PointerMoved(to));
-    harness.run();
+    steady(harness);
 }
 
 #[test]
@@ -510,7 +516,7 @@ fn the_panel_header_keeps_the_normal_cursor() {
     let mut harness = with_terminal("The terminal, and the pointer over its header.", 12, 80);
     let over = panel_handle(&harness, "Move Terminal tile");
     harness.input_mut().events.push(egui::Event::PointerMoved(over));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.ctx.output(|o| o.cursor_icon),
         egui::CursorIcon::Default,
@@ -571,7 +577,7 @@ fn a_panel_that_has_moved_is_resized_by_the_edge_that_faces_the_document() {
     use unluminous_app::app::dock::{Panel, Side};
     let mut harness = with_terminal("", 12, 80);
     harness.state_mut().dock_the_panel(Panel::Terminal, Side::Right, None);
-    harness.run();
+    steady(&mut harness);
     let before = harness.state().panes.terminal_width;
     // The divider is on its **left** now rather than along its top, because that is the edge between
     // it and the document. Its name has not changed, which is what keeps `Resize terminal` meaning
@@ -595,17 +601,17 @@ fn two_tiles_on_two_different_sides_are_both_showing_at_once() {
     use unluminous_app::app::dock::{Panel, Side};
     let mut harness = with_terminal("", 12, 80);
     harness.state_mut().dock_the_panel(Panel::Terminal, Side::Right, None);
-    harness.run();
+    steady(&mut harness);
     harness.state_mut().show_the_run_tile(true);
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().terminal.visible, "the terminal is on another side, so it stays");
     assert!(harness.state().run.visible);
 
     // And back on the same side they take turns again.
     harness.state_mut().dock_the_panel(Panel::Terminal, Side::Bottom, None);
-    harness.run();
+    steady(&mut harness);
     harness.state_mut().show_the_terminal_tile(true);
-    harness.run();
+    steady(&mut harness);
     assert!(!harness.state().run.visible, "two grids never share one strip");
 }
 
@@ -615,14 +621,14 @@ fn a_panels_own_menu_moves_it_and_reset_puts_every_panel_back() {
     let mut harness = with_terminal("", 12, 80);
     let header = harness.get_by_label("Move Terminal tile").rect();
     harness.state_mut().panel_menu = Some((header.center(), Panel::Terminal));
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Move to Right").click();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(side_of(&harness, Panel::Terminal), Side::Right);
 
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::ResetPanelLayout, &ctx);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(side_of(&harness, Panel::Terminal), Side::Bottom);
     assert_eq!(side_of(&harness, Panel::Explorer), Side::Left);
 }
@@ -635,13 +641,13 @@ fn a_panel_that_is_put_away_is_moved_from_its_button_in_the_rail() {
     let mut harness = harness("");
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::ToggleExplorer, &ctx);
-    harness.run();
+    steady(&mut harness);
     assert!(!harness.state().explorer_visible);
     let button = harness.get_by_label("Project").rect();
     harness.state_mut().panel_menu = Some((button.center(), Panel::Explorer));
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Move to Bottom").click();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(side_of(&harness, Panel::Explorer), Side::Bottom);
 }
 
@@ -769,7 +775,7 @@ fn a_bottom_strip_dragged_smaller_can_be_dragged_back_up() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     harness.state_mut().dock_the_panel(Panel::Space, Side::Bottom, None);
-    harness.run();
+    steady(&mut harness);
 
     let drawn = |harness: &Harness<'static, UnluminousApp>| {
         harness.state().panel_rect_for_tests(Panel::Space).height()
@@ -809,7 +815,7 @@ fn a_divider_under_two_panels_moves_the_pointers_distance() {
     did(&mut harness, "plugins pane agent-tasks/board --show");
     harness.state_mut().dock_the_panel(Panel::Plugin(slot), Side::Top, None);
     harness.state_mut().dock_the_panel(Panel::Space, Side::Bottom, None);
-    harness.run();
+    steady(&mut harness);
 
     let drawn = |harness: &Harness<'static, UnluminousApp>| {
         harness.state().panel_rect_for_tests(Panel::Space).height()
@@ -839,7 +845,7 @@ fn two_panels_on_one_axis_always_add_up_to_the_room() {
     harness.state_mut().dock_the_panel(Panel::Space, Side::Bottom, None);
     harness.state_mut().editor_visible = false;
     harness.state_mut().explorer_visible = false;
-    harness.run();
+    steady(&mut harness);
 
     for dy in [-90.0f32, 140.0, -200.0, 60.0] {
         let handle = harness.get_by_label("Resize space").rect();
@@ -932,7 +938,7 @@ fn a_plugin_switched_off_while_a_pane_is_maximised_does_not_restore_the_wrong_on
 
     // A plugin switched off while it is maximised, which is what renumbers the slots.
     did(&mut harness, "plugins disable agent-chat");
-    harness.run();
+    steady(&mut harness);
 
     choose(&mut harness, Action::ToggleMaximisedPane);
     let showing_after = harness.state().showing_plugin_panes();

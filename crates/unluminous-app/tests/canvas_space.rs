@@ -60,7 +60,7 @@ fn a_canvas() -> Harness<'static, UnluminousApp> {
     did(&mut harness, &format!("space connect {terminal} {explorer}"));
     did(&mut harness, &format!("space connect {terminal} {editor}"));
     did(&mut harness, "space camera --fit");
-    harness.run();
+    steady(&mut harness);
     harness
 }
 
@@ -69,7 +69,7 @@ fn a_canvas() -> Harness<'static, UnluminousApp> {
 fn an_empty_canvas_says_how_to_put_something_on_it() {
     let mut harness = harness("");
     did(&mut harness, "space show");
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("space_empty").as_str());
 }
 
@@ -107,7 +107,7 @@ fn a_terminal_node_at_the_size_a_person_works_at() {
     );
     did(&mut harness, &format!("space connect {terminal} {browser} --pipe off"));
     did(&mut harness, &format!("space focus {terminal}"));
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("space_working").as_str());
 }
 
@@ -117,7 +117,7 @@ fn a_terminal_node_at_the_size_a_person_works_at() {
 fn the_canvas_zoomed_out() {
     let mut harness = a_canvas();
     did(&mut harness, "space camera --zoom 0.4");
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("space_zoomed_out").as_str());
 }
 
@@ -127,7 +127,7 @@ fn the_add_node_modal() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     did(&mut harness, "action run space-add");
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("space_add_modal").as_str());
 }
 
@@ -140,7 +140,7 @@ fn the_add_node_modal() {
 fn the_canvas_with_its_decoration_switched_off() {
     let mut harness = a_canvas();
     did(&mut harness, "settings set plugins.chrome false");
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("space_flat").as_str());
 }
 
@@ -235,7 +235,7 @@ fn a_file_editor_node_is_a_tab_that_lives_on_the_node() {
     let made = did(&mut harness, "space add editor --x 40 --y 40");
     let node = made["node"].as_u64().expect("a node id");
     did(&mut harness, &format!("space editor {node} readme.md"));
-    harness.run();
+    steady(&mut harness);
 
     let index = harness.state().files.tab_in_node(node).expect("the tab lives on the node");
     assert_eq!(harness.state().files.at(index).path(), Some(folder.join("readme.md").as_path()));
@@ -257,7 +257,7 @@ fn a_file_editor_node_is_a_tab_that_lives_on_the_node() {
 
     // Taking the node away closes its tab, and the editing area still has one.
     did(&mut harness, &format!("space remove {node}"));
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().files.tab_in_node(node).is_none());
     assert!(!harness.state().files.is_empty(), "the window always has a tab to type into");
 }
@@ -304,7 +304,7 @@ fn a_press_anywhere_in_a_node_chooses_it() {
         .as_u64()
         .expect("a node id");
     did(&mut harness, &format!("space focus {chat}"));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().space.space.chosen(), Some(chat));
 
     // Well inside the board's own body, where one of its lanes is drawn - not on the header, not on a
@@ -334,7 +334,7 @@ fn dragging_a_nodes_header_moves_the_node() {
     did(&mut harness, "space show");
     let made = did(&mut harness, "space add folder --x 60 --y 60 --width 300 --height 240");
     let node = made["node"].as_u64().expect("a node id");
-    harness.run();
+    steady(&mut harness);
 
     let was = harness.state().space.space.current().camera;
     let from = on_the_canvas(&harness, egui::pos2(180.0, 72.0));
@@ -358,7 +358,7 @@ fn dragging_a_nodes_left_edge_moves_that_edge_and_no_other() {
     did(&mut harness, "space show");
     let made = did(&mut harness, "space add folder --x 200 --y 60 --width 300 --height 240");
     let node = made["node"].as_u64().expect("a node id");
-    harness.run();
+    steady(&mut harness);
     let was = harness.state().space.space.current().node(node).expect("it is there").rect();
 
     let from = on_the_canvas(&harness, egui::pos2(200.0, 180.0));
@@ -379,7 +379,7 @@ fn pulling_a_wire_from_one_port_to_another_connects_the_two_nodes() {
     let second = did(&mut harness, "space add folder --x 500 --y 60 --width 260 --height 200");
     let (from, to) =
         (first["node"].as_u64().expect("a node id"), second["node"].as_u64().expect("a node id"));
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().space.space.current().edges.is_empty());
 
     // Out of the first node's output port, which is the middle of its right hand edge, and into the
@@ -402,7 +402,7 @@ fn a_wire_let_go_over_nothing_is_a_drag_that_was_thought_better_of() {
     did(&mut harness, "space show");
     did(&mut harness, "space add folder --x 40 --y 60 --width 260 --height 200");
     did(&mut harness, "space add folder --x 500 --y 60 --width 260 --height 200");
-    harness.run();
+    steady(&mut harness);
 
     let out = on_the_canvas(&harness, egui::pos2(300.0, 160.0));
     drag(&mut harness, out, egui::pos2(out.x + 40.0, out.y + 160.0));
@@ -414,7 +414,7 @@ fn a_wire_let_go_over_nothing_is_a_drag_that_was_thought_better_of() {
 fn dragging_the_empty_canvas_pans_it() {
     let mut harness = harness("");
     did(&mut harness, "space show");
-    harness.run();
+    steady(&mut harness);
     let body = harness.state().space.body;
     let held = egui::pos2(body.center().x, body.center().y);
     let was = harness.state().space.space.current().camera.to_world(body.min, held);
@@ -447,7 +447,7 @@ fn a_terminal_node_is_called_after_the_command_it_runs() {
             terminal.command = "codex --search".to_owned();
         }
     });
-    harness.run();
+    steady(&mut harness);
     let found = harness.state().space.space.current().node(node).expect("it is there").clone();
     assert_eq!(harness.state().name_of_a_node(&found), "codex");
 
@@ -459,7 +459,7 @@ fn a_terminal_node_is_called_after_the_command_it_runs() {
     // And a node with no command of its own is called after the shell that is running in it.
     let shell =
         harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(700.0, 40.0));
-    harness.run();
+    steady(&mut harness);
     let found = harness.state().space.space.current().node(shell).expect("it is there").clone();
     assert!(!harness.state().name_of_a_node(&found).is_empty());
 }
@@ -478,12 +478,12 @@ fn a_tab_opened_while_a_node_has_the_keyboard_goes_to_the_editing_area() {
     let made = did(&mut harness, "space add editor --x 40 --y 40");
     let node = made["node"].as_u64().expect("a node id");
     did(&mut harness, &format!("space editor {node} readme.md"));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.focus().node(), Some(node), "the node has the keyboard");
 
     // A second file, opened the ordinary way.
     harness.state_mut().open_path_permanently(&folder.join("notes.txt")).expect("it opens");
-    harness.run();
+    steady(&mut harness);
     let opened = harness.state().files.index_of(&folder.join("notes.txt")).expect("it is open");
     assert_eq!(harness.state().files.home_of(opened).pane(), Some(0), "in the editing area");
     // And the node is still showing the file it was given.
@@ -516,7 +516,7 @@ fn every_panel_shows_with_no_editing_area() {
         egui::pos2(40.0, 30.0),
     );
     did(&mut harness, "action run toggle-editor");
-    harness.run();
+    steady(&mut harness);
 
     // Both are on the screen, which is what the arithmetic used to make impossible.
     let explorer = harness.state().panel_area(unluminous_app::app::dock::Panel::Explorer);
@@ -534,7 +534,7 @@ fn a_browser_node_draws_its_toolbar_before_it_has_a_page() {
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 30.0));
     did(&mut harness, &format!("space size {node} --width 760 --height 420"));
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("space_browser_empty").as_str());
 }
 
@@ -548,7 +548,7 @@ fn an_editor_nodes_tabs() {
     did(&mut harness, &format!("space editor {node} readme.md"));
     did(&mut harness, &format!("space editor {node} notes.txt"));
     did(&mut harness, &format!("space editor {node} program.rs"));
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("space_editor_node_tabs").as_str());
 }
 
@@ -567,7 +567,7 @@ fn a_folder_node_stops_at_the_rail() {
     did(&mut harness, &format!("space size {node} --width 320 --height 380"));
     // Left of the canvas's own left edge, so part of the node is over the rail.
     did(&mut harness, &format!("space move {node} --x -90 --y 20"));
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("space_folder_node_over_the_rail").as_str());
 }
 
@@ -584,7 +584,7 @@ fn an_editor_node_holds_more_than_one_tab() {
     let node = did(&mut harness, "space add editor --x 40 --y 40")["node"].as_u64().expect("id");
     did(&mut harness, &format!("space editor {node} readme.md"));
     did(&mut harness, &format!("space editor {node} notes.txt"));
-    harness.run();
+    steady(&mut harness);
 
     let tabs = harness.state().files.tabs_in_node(node);
     assert_eq!(tabs.len(), 2, "both files are open in the node");
@@ -594,7 +594,7 @@ fn an_editor_node_holds_more_than_one_tab() {
 
     // And asking for one that is already there shows it rather than opening it twice.
     did(&mut harness, &format!("space editor {node} readme.md"));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.tabs_in_node(node).len(), 2, "no third tab");
     let showing = harness.state().files.tab_in_node(node).expect("one is showing");
     assert_eq!(harness.state().files.at(showing).path(), Some(folder.join("readme.md").as_path()));
@@ -616,12 +616,12 @@ fn a_nodes_font_reaches_every_tab_in_it_and_leaves_with_none_of_them() {
     did(&mut harness, &format!("space size {node} --width 700 --height 380"));
     did(&mut harness, &format!("space editor {node} readme.md"));
     did(&mut harness, &format!("space editor {node} notes.txt"));
-    harness.run();
+    steady(&mut harness);
 
     // A size of the node's own, well clear of the window's.
     did(&mut harness, &format!("space zoom {node} --factor 30"));
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     let showing = harness.state().files.tab_in_node(node).expect("one is showing");
     assert_eq!(
         harness.state().files.at(showing).sized_at,
@@ -633,8 +633,8 @@ fn a_nodes_font_reaches_every_tab_in_it_and_leaves_with_none_of_them() {
     let tabs = harness.state().files.tabs_in_node(node);
     let other = tabs.iter().copied().find(|index| *index != showing).expect("a second tab");
     harness.state_mut().files.show(other);
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     assert_eq!(
         harness.state().files.at(other).sized_at,
         Some(30.0),
@@ -643,8 +643,8 @@ fn a_nodes_font_reaches_every_tab_in_it_and_leaves_with_none_of_them() {
 
     // **A tab that leaves goes back to the window's own font.**
     assert!(harness.state_mut().files.drag_tab(other, 0, 0));
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     let moved = harness
         .state()
         .files
@@ -655,8 +655,8 @@ fn a_nodes_font_reaches_every_tab_in_it_and_leaves_with_none_of_them() {
 
     // **And putting the node back to the window's size really restyles.**
     did(&mut harness, &format!("space zoom {node} --reset"));
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     let showing = harness.state().files.tab_in_node(node).expect("one is showing");
     assert_eq!(harness.state().files.at(showing).sized_at, None, "reset put it back");
 }
@@ -674,11 +674,11 @@ fn closing_a_node_closes_every_tab_on_it() {
     did(&mut harness, &format!("space editor {node} readme.md"));
     did(&mut harness, &format!("space editor {node} notes.txt"));
     did(&mut harness, &format!("space editor {node} program.rs"));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.tabs_in_node(node).len(), 3);
 
     did(&mut harness, &format!("space remove {node}"));
-    harness.run();
+    steady(&mut harness);
     assert!(
         harness.state().files.tabs_on_nodes().is_empty(),
         "every tab on the node went with it, and none was orphaned",
@@ -691,10 +691,10 @@ fn closing_a_node_closes_every_tab_on_it() {
     let other = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
     did(&mut harness, &format!("space editor {other} readme.md"));
     did(&mut harness, &format!("space editor {other} notes.txt"));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.tabs_in_node(other).len(), 2);
     did(&mut harness, "space delete-view Second");
-    harness.run();
+    steady(&mut harness);
     assert!(
         harness.state().files.tabs_on_nodes().is_empty(),
         "and deleting the view took them too"
@@ -722,13 +722,13 @@ fn a_file_editor_node_takes_the_keyboard_and_the_letters_reach_its_file() {
     did(&mut harness, &format!("space editor {node} notes.txt"));
     // Which is what a click in the node does: it chooses the node and hands the keyboard to the canvas.
     did(&mut harness, &format!("space focus {node}"));
-    harness.run();
+    steady(&mut harness);
     let index = harness.state().files.tab_in_node(node).expect("the node has the file");
     let was = harness.state().files.at(index).document.text().to_string();
 
     harness.input_mut().events.push(egui::Event::Text("Z".to_owned()));
     harness.step();
-    harness.run();
+    steady(&mut harness);
     let index = harness.state().files.tab_in_node(node).expect("the node still has the file");
     let now = harness.state().files.at(index).document.text().to_string();
     assert_ne!(now, was, "the letter reached the node's own file");
@@ -760,14 +760,14 @@ fn a_tab_dropped_on_the_empty_canvas_becomes_a_node() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     did(&mut harness, "tab open readme.md --permanent");
-    harness.run();
+    steady(&mut harness);
     let carried = harness.state().files.index_of(&folder.join("readme.md")).expect("it is open");
     assert!(harness.state().files.at(carried).home.pane().is_some(), "it starts in a pane");
     let nodes_before = harness.state().space.space.current().nodes.len();
 
     let middle = harness.state().space.body.center();
     let node = harness.state_mut().break_a_tab_out_onto_the_canvas(carried, middle);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().space.space.current().nodes.len(),
         nodes_before + 1,
@@ -804,7 +804,7 @@ fn a_file_dropped_on_the_canvas_opens_as_a_node_or_as_a_tab() {
     let folder = sample_folder();
     let mut harness = harness("");
     did(&mut harness, "space show");
-    harness.run();
+    steady(&mut harness);
     let nodes_before = harness.state().space.space.current().nodes.len();
 
     // Nothing under the pointer: a node of its own, holding the file.
@@ -813,7 +813,7 @@ fn a_file_dropped_on_the_canvas_opens_as_a_node_or_as_a_tab() {
         .state_mut()
         .drop_a_file_onto_the_canvas(&folder.join("readme.md"), middle)
         .expect("a node was made");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().space.space.current().nodes.len(), nodes_before + 1);
     let opened = harness.state().files.index_of(&folder.join("readme.md")).expect("it is open");
     assert_eq!(harness.state().files.at(opened).home, Home::Node(made));
@@ -833,7 +833,7 @@ fn a_file_dropped_on_the_canvas_opens_as_a_node_or_as_a_tab() {
         .state_mut()
         .drop_a_file_onto_the_canvas(&folder.join("notes.txt"), over.center())
         .expect("it opened");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(onto, made, "it landed on the node it was let go over");
     assert_eq!(
         harness.state().space.space.current().nodes.len(),
@@ -860,7 +860,7 @@ fn a_file_dropped_on_the_canvas_opens_as_a_node_or_as_a_tab() {
 #[test]
 fn input_clicks_and_types_without_the_window_being_in_front() {
     let mut harness = harness("");
-    harness.run();
+    steady(&mut harness);
     // A click at a **place**, which is the half of the window that has no other way in: the explorer's
     // filter is an `egui::TextEdit` and it takes the keyboard from a press and from nothing else.
     let filter = harness.get_by_label("Filter files").rect();
@@ -888,7 +888,7 @@ fn input_clicks_and_types_without_the_window_being_in_front() {
 #[test]
 fn a_drag_sent_through_input_moves_a_divider() {
     let mut harness = harness("");
-    harness.run();
+    steady(&mut harness);
     let was = harness.state().panes.explorer_width;
     // The divider is the explorer's right hand edge — `show_the_panel_dividers` draws one there, and
     // `components::splitter` takes a drag over it.
@@ -919,7 +919,7 @@ fn a_chat_node_holds_its_own_conversation_and_comes_back_on_it() {
     did(&mut harness, "space show");
     let one = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
     let two = did(&mut harness, "space add chat --x 520 --y 20")["node"].as_u64().expect("id");
-    harness.run();
+    steady(&mut harness);
 
     assert_eq!(
         harness.state().space.space.current().node(one).expect("it is there").kind(),
@@ -965,7 +965,7 @@ fn a_chat_nodes_tool_call_is_asked_from_its_own_node() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     let chat = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
-    harness.run();
+    steady(&mut harness);
 
     let asked =
         |harness: &Harness<'static, UnluminousApp>, command: &str, given: serde_json::Value| {
@@ -1008,7 +1008,7 @@ fn a_chat_node_answers_the_command_line_about_its_own_conversation() {
     let node = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
     let terminal =
         did(&mut harness, "space add terminal --x 700 --y 20")["node"].as_u64().expect("id");
-    harness.run();
+    steady(&mut harness);
 
     let state = did(&mut harness, &format!("space chat {node} state"));
     assert_eq!(state["node"], serde_json::json!(node), "the answer names the node it is about");
@@ -1022,7 +1022,7 @@ fn a_chat_node_answers_the_command_line_about_its_own_conversation() {
     let was =
         harness.state().space.live.chat(node).expect("it opened").conversation_id().to_owned();
     let made = did(&mut harness, &format!("space chat {node} new"));
-    harness.run();
+    steady(&mut harness);
     let now =
         harness.state().space.live.chat(node).expect("still there").conversation_id().to_owned();
     assert_ne!(now, was, "`new` moved it to another conversation");
@@ -1055,7 +1055,7 @@ fn a_tasks_node_draws_the_windows_own_board() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     let node = did(&mut harness, "space add tasks --x 20 --y 20")["node"].as_u64().expect("id");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().space.space.current().node(node).expect("it is there").kind(),
         Kind::Tasks
@@ -1083,7 +1083,7 @@ fn a_tab_is_dragged_between_a_node_and_a_pane() {
     did(&mut harness, &format!("space size {node} --width 700 --height 380"));
     did(&mut harness, &format!("space editor {node} readme.md"));
     did(&mut harness, &format!("space editor {node} notes.txt"));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.tabs_in_node(node).len(), 2);
 
     // **The drag is settled after every place a tab can be drawn**, which is what makes a node a real
@@ -1099,7 +1099,7 @@ fn a_tab_is_dragged_between_a_node_and_a_pane() {
     // Out into pane zero, through the one function the drag settles with.
     let carried = harness.state().files.tabs_in_node(node)[0];
     assert!(harness.state_mut().files.drag_tab(carried, 0, 0));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.tabs_in_node(node).len(), 1, "one left on the node");
     let moved =
         harness.state().files.index_of(&folder.join("readme.md")).expect("it is still open");
@@ -1107,7 +1107,7 @@ fn a_tab_is_dragged_between_a_node_and_a_pane() {
 
     // And back onto the node, which is the half that had no function at all before.
     assert!(harness.state_mut().files.drag_tab_to_node(moved, node, 0));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.tabs_in_node(node).len(), 2, "both are on the node again");
     let back = harness.state().files.index_of(&folder.join("readme.md")).expect("still open");
     assert_eq!(harness.state().files.at(back).home, Home::Node(node));
@@ -1128,17 +1128,17 @@ fn a_double_click_in_a_folder_node_opens_a_wired_editor_node() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     let tree = did(&mut harness, "space add folder --x 40 --y 40")["node"].as_u64().expect("id");
-    harness.run();
+    steady(&mut harness);
 
     // Nothing is wired, so `space folder open` — which is what the double click reaches — makes an editor
     // node beside it and wires it.
     let answer = did(&mut harness, &format!("space folder {tree} open --path readme.md"));
-    harness.run();
+    steady(&mut harness);
     // With no editor node wired the file goes to the editing area, which is the single click's own answer;
     // the double click is what makes one. So drive the node's own path.
     assert!(answer["path"].as_str().is_some());
     harness.state_mut().open_from_a_folder_node_for_a_test(tree, &folder.join("readme.md"));
-    harness.run();
+    steady(&mut harness);
 
     let made = harness
         .state()
@@ -1162,7 +1162,7 @@ fn a_double_click_in_a_folder_node_opens_a_wired_editor_node() {
 
     // A second double click joins that node's tabs rather than making another node.
     harness.state_mut().open_from_a_folder_node_for_a_test(tree, &folder.join("notes.txt"));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.tabs_in_node(made).len(), 2);
     let editors = harness
         .state()
@@ -1188,7 +1188,7 @@ fn the_modifier_wheel_over_a_node_zooms_the_node_and_not_the_camera() {
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
     did(&mut harness, &format!("space size {node} --width 500 --height 320"));
-    harness.run();
+    steady(&mut harness);
     let camera_was = harness.state().space.space.current().camera;
     let font_was =
         did(&mut harness, &format!("space font {node}"))["size"].as_f64().expect("a size");
@@ -1197,7 +1197,7 @@ fn the_modifier_wheel_over_a_node_zooms_the_node_and_not_the_camera() {
     let body = harness.state().space.body;
     let over_the_node = camera_was.to_screen(body.min, egui::pos2(200.0, 160.0));
     harness.input_mut().events.push(egui::Event::PointerMoved(over_the_node));
-    harness.run();
+    steady(&mut harness);
     harness.input_mut().events.push(egui::Event::Zoom(1.4));
     pump(&mut harness);
     pump(&mut harness);
@@ -1224,14 +1224,14 @@ fn the_modifier_wheel_over_the_empty_canvas_still_zooms_the_camera() {
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
     did(&mut harness, &format!("space size {node} --width 300 --height 200"));
-    harness.run();
+    steady(&mut harness);
     let camera_was = harness.state().space.space.current().camera;
 
     // Well clear of the node, over the ground.
     let body = harness.state().space.body;
     let empty = egui::pos2(body.right() - 60.0, body.bottom() - 60.0);
     harness.input_mut().events.push(egui::Event::PointerMoved(empty));
-    harness.run();
+    steady(&mut harness);
     harness.input_mut().events.push(egui::Event::Zoom(1.4));
     pump(&mut harness);
     pump(&mut harness);
@@ -1251,7 +1251,7 @@ fn the_zoom_buttons_step_the_camera_and_the_reading_resets_it() {
     // `a_canvas` fits everything in view, so it opens at whatever zoom that took. Put it at one, which is
     // where the reading says 100%.
     did(&mut harness, "space camera --zoom 1");
-    harness.run();
+    steady(&mut harness);
     let was = harness.state().space.space.current().camera.zoom;
     assert_eq!(was, 1.0);
 
@@ -1268,7 +1268,7 @@ fn the_zoom_buttons_step_the_camera_and_the_reading_resets_it() {
     // The reading is a button, and its name carries the number so a test reads the zoom out of the
     // accessibility tree rather than out of a picture.
     did(&mut harness, "space camera --zoom 2");
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label_contains("Reset zoom").click();
     let_the_zoom_settle(&mut harness);
     assert_eq!(harness.state().space.space.current().camera.zoom, 1.0);
@@ -1284,7 +1284,7 @@ fn a_wheel_notch_glides_the_camera_rather_than_jumping_it() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     did(&mut harness, "space camera --zoom 1");
-    harness.run();
+    steady(&mut harness);
     let body = harness.state().space.body;
     let middle = body.center();
 
@@ -1320,10 +1320,10 @@ fn a_wheel_notch_glides_the_camera_rather_than_jumping_it() {
 #[test]
 fn the_canvas_zoom_controls() {
     let mut harness = a_canvas();
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("space_zoom_controls").as_str());
     did(&mut harness, "space camera --zoom 0.25");
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("space_zoom_controls_at_the_end_of_the_ladder").as_str());
 }
 
@@ -1348,7 +1348,7 @@ fn space_here_names_every_node_it_is_wired_to_and_the_command_for_each() {
     let other =
         did(&mut harness, "space add terminal --x 700 --y 500")["node"].as_u64().expect("id");
     did(&mut harness, &format!("space connect {other} {agent}"));
-    harness.run();
+    steady(&mut harness);
 
     let answer = did(&mut harness, &format!("space here --node {agent}"));
     assert_eq!(answer["node"], agent);
@@ -1398,7 +1398,7 @@ fn a_node_agents_environment_points_at_the_command_that_orients_it() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
-    harness.run();
+    steady(&mut harness);
     let settings =
         harness.state().space_terminal_settings(node, "a-fresh-id").expect("a terminal node");
     let named = |name: &str| {
@@ -1448,14 +1448,14 @@ fn the_wheel_over_two_overlapping_folder_nodes_goes_to_the_one_on_top() {
     }
     // Nothing chosen, so what decides is the drawing order alone.
     harness.state_mut().space.space.choose(None);
-    harness.run();
+    steady(&mut harness);
 
     // A point inside both of them.
     let body = harness.state().space.body;
     let camera = harness.state().space.space.current().camera;
     let shared = camera.to_screen(body.min, egui::pos2(140.0, 160.0));
     harness.input_mut().events.push(egui::Event::PointerMoved(shared));
-    harness.run();
+    steady(&mut harness);
     harness.input_mut().events.push(egui::Event::MouseWheel {
         unit: egui::MouseWheelUnit::Point,
         delta: vec2(0.0, -240.0),
@@ -1500,7 +1500,7 @@ fn the_modifier_wheel_over_a_folder_node_zooms_it_without_also_scrolling_it() {
     let node = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(20.0, 20.0));
     did(&mut harness, &format!("space size {node} --width 320 --height 300"));
     did(&mut harness, &format!("space folder {node} root --path {}", many.display()));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().space.live.scroll_of(node), 0.0);
 
     // The wheel **with the zoom modifier**, which arrives as both a `Zoom` and a `MouseWheel`.
@@ -1508,7 +1508,7 @@ fn the_modifier_wheel_over_a_folder_node_zooms_it_without_also_scrolling_it() {
     let camera = harness.state().space.space.current().camera;
     let over = camera.to_screen(body.min, egui::pos2(120.0, 160.0));
     harness.input_mut().events.push(egui::Event::PointerMoved(over));
-    harness.run();
+    steady(&mut harness);
     // A wheel **with the zoom modifier**, which is the whole gesture: egui turns it into a zoom rather
     // than into a scroll. A positive delta is a zoom in.
     harness.input_mut().events.push(egui::Event::MouseWheel {
@@ -1548,7 +1548,7 @@ fn a_node_whose_file_has_gone_comes_back_without_it() {
     did(&mut harness, &format!("space editor {node} readme.md"));
     did(&mut harness, &format!("space editor {node} notes.txt"));
     for _ in 0..4 {
-        harness.run();
+        steady(&mut harness);
     }
     let space = harness.state().space.space.clone();
     unluminous_app::services::space::store::save(&folder, &space).expect("written");
@@ -1560,7 +1560,7 @@ fn a_node_whose_file_has_gone_comes_back_without_it() {
     let mut second = harness_in(&folder);
     second.state_mut().restore_project();
     for _ in 0..8 {
-        second.run();
+        steady(&mut second);
     }
     let open: Vec<std::path::PathBuf> = second
         .state()
@@ -1608,13 +1608,13 @@ fn switching_views_does_not_take_a_tab_off_a_node() {
     let there = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
     did(&mut harness, &format!("space editor {there} notes.txt"));
     for _ in 0..4 {
-        harness.run();
+        steady(&mut harness);
     }
 
     // Back to the first, which is where the tab used to disappear.
     did(&mut harness, "space open-view Main");
     for _ in 0..6 {
-        harness.run();
+        steady(&mut harness);
     }
     let node = harness
         .state()
@@ -1650,10 +1650,10 @@ fn the_space_manager_lists_every_canvas_and_opens_one() {
     did(&mut harness, "space new-view Rendering");
     did(&mut harness, "space new-view Notes");
     did(&mut harness, "space open-view Main");
-    harness.run();
+    steady(&mut harness);
 
     did(&mut harness, "space manage");
-    harness.run();
+    steady(&mut harness);
     // Every view is a row, found by name, and the one showing says so.
     for name in ["Main", "Rendering", "Notes"] {
         harness.get_by_label(&format!("Space: {name}"));
@@ -1663,9 +1663,9 @@ fn the_space_manager_lists_every_canvas_and_opens_one() {
     // double click, because the harness cannot synthesise one — and the arrow keys are the path a person
     // reaches for in a list they are searching anyway.
     harness.key_press(egui::Key::ArrowDown);
-    harness.run();
+    steady(&mut harness);
     harness.key_press(egui::Key::Enter);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().space.space.current().name, "Rendering");
     // And the modal is closed, because opening a space is finishing with the list.
     assert!(harness.state().space.managing.is_none());
@@ -1687,11 +1687,11 @@ fn the_space_manager() {
         egui::pos2(40.0, 30.0),
     );
     did(&mut harness, "space manage");
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("space_manager").as_str());
 
     harness.get_by_label("Find a space").type_text("no");
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("space_manager_filtered").as_str());
 }
 
@@ -1723,7 +1723,7 @@ fn an_agent_node_is_started_on_the_session_it_was_left_on() {
     let node = did(&mut harness, "space add terminal --x 40 --y 30 --command claude")["node"]
         .as_u64()
         .expect("id");
-    harness.run();
+    steady(&mut harness);
 
     let line = harness
         .state()
@@ -1766,7 +1766,7 @@ fn a_shell_node_is_given_no_session() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     let node = did(&mut harness, "space add terminal --x 40 --y 30")["node"].as_u64().expect("id");
-    harness.run();
+    steady(&mut harness);
     match &harness.state().space.space.current().node(node).expect("the node").state {
         State::Terminal(terminal) => {
             assert!(terminal.session.is_empty(), "a shell was handed a conversation id");
@@ -1814,7 +1814,7 @@ fn everything_a_node_was_left_holding_comes_back() {
     let folder_node =
         harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(700.0, 30.0));
     for _ in 0..4 {
-        harness.run();
+        steady(&mut harness);
     }
     // The folder node's scroll is read back off its own `ScrollArea` every frame, so it is set after the
     // frames for the same reason the editor's is: the sample folder has seven rows and nothing to scroll.
@@ -1894,7 +1894,7 @@ fn everything_a_node_was_left_holding_comes_back() {
         second.state().space.live.scroll_of(folder_node),
     );
     for _ in 0..8 {
-        second.run();
+        steady(&mut second);
     }
     // **And the file it wrote still names them.** This is the assertion the fault was hiding behind: the
     // window came up, wrote an empty tab list over the saved one on its first frames, and only *then* opened
@@ -1956,7 +1956,7 @@ fn what_was_done_on_a_view_is_kept_when_the_same_frame_switches_away() {
     assert_ne!(first, second);
     did(&mut harness, &format!("space open-view {first}"));
     for _ in 0..6 {
-        harness.run();
+        steady(&mut harness);
     }
 
     // The caret is moved and the view is switched **with no frame in between**, which is what one input frame
@@ -1972,7 +1972,7 @@ fn what_was_done_on_a_view_is_kept_when_the_same_frame_switches_away() {
         .apply(unluminous_core::Command::PlaceCaret { offset: 5, extend: false });
     harness.state_mut().space.space.show_view(second);
     for _ in 0..4 {
-        harness.run();
+        steady(&mut harness);
     }
 
     // And the caret it was left at is what the view it was left on records.
@@ -2014,7 +2014,7 @@ fn a_canvas_nothing_changed_is_not_written_again() {
     did(&mut harness, &format!("space editor {editor} readme.md"));
     harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(700.0, 30.0));
     for _ in 0..4 {
-        harness.run();
+        steady(&mut harness);
     }
 
     // Written down, so the canvas is clean.
@@ -2022,7 +2022,7 @@ fn a_canvas_nothing_changed_is_not_written_again() {
     assert!(!harness.state().space.space.is_dirty());
     // And a run of frames with nobody touching anything leaves it clean.
     for _ in 0..6 {
-        harness.run();
+        steady(&mut harness);
         assert!(
             !harness.state().space.space.is_dirty(),
             "an idle canvas asked to be written again, which is a file written sixty times a second",
@@ -2045,7 +2045,7 @@ fn a_folder_nodes_rows_carry_the_same_icons_the_panel_draws() {
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(20.0, 20.0));
     did(&mut harness, &format!("space size {node} --width 320 --height 380"));
-    harness.run();
+    steady(&mut harness);
 
     // The Rust plugin claims `.rs` and ships an icon, so `program.rs` has one — which is the row the report
     // names. The map is what the component is handed, so that is what is asserted: a texture cannot be read
@@ -2062,7 +2062,7 @@ fn a_folder_nodes_rows_carry_the_same_icons_the_panel_draws() {
         assert!(for_plain.icon.is_none(), "no plugin claims .txt, so there is no icon to draw");
     }
     // Beside the panel showing the same folder, which is the comparison the report makes.
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("space_folder_node_icons").as_str());
 }
 
@@ -2089,7 +2089,7 @@ fn a_folder_node_scrolls_with_the_wheel() {
     let node = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(20.0, 20.0));
     did(&mut harness, &format!("space size {node} --width 320 --height 300"));
     did(&mut harness, &format!("space folder {node} root --path {}", many.display()));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().space.live.scroll_of(node), 0.0);
     let camera_was = harness.state().space.space.current().camera;
 
@@ -2097,7 +2097,7 @@ fn a_folder_node_scrolls_with_the_wheel() {
     let body = harness.state().space.body;
     let over_the_rows = camera_was.to_screen(body.min, egui::pos2(120.0, 160.0));
     harness.input_mut().events.push(egui::Event::PointerMoved(over_the_rows));
-    harness.run();
+    steady(&mut harness);
     harness.input_mut().events.push(egui::Event::MouseWheel {
         unit: egui::MouseWheelUnit::Point,
         delta: vec2(0.0, -240.0),
@@ -2138,7 +2138,7 @@ fn an_address_typed_into_a_browser_node_is_opened() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 40.0));
-    harness.run();
+    steady(&mut harness);
 
     // The control a person uses, found by its name, given the keyboard and typed into.
     //
@@ -2149,11 +2149,11 @@ fn an_address_typed_into_a_browser_node_is_opened() {
     // needs no position. A person clicking the real field works, which the live window is where that is
     // checked.
     harness.get_by_label("Address").focus();
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Address").type_text("https://example.com/typed");
-    harness.run();
+    steady(&mut harness);
     harness.key_press(egui::Key::Enter);
-    harness.run();
+    steady(&mut harness);
 
     // The node is pointed at it, and what is in the bar is what the page is.
     let held = harness.state().space.live.browser(node);
@@ -2200,12 +2200,12 @@ fn a_half_typed_address_survives_losing_the_focus() {
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 30.0));
     harness.state_mut().new_detached_space_page(node, "https://example.com/first").expect("a tab");
-    harness.run();
+    steady(&mut harness);
 
     harness.get_by_label("Address").focus();
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Address").type_text("https://example.com/half");
-    harness.run();
+    steady(&mut harness);
     // The focus taken away, without Enter and without Escape — which is what pressing Reload, clicking
     // another node or clicking into a pane does.
     harness.ctx.memory_mut(|memory| {
@@ -2227,7 +2227,7 @@ fn a_half_typed_address_survives_losing_the_focus() {
 
     // And Escape is what puts the page's own address back.
     harness.get_by_label("Address").focus();
-    harness.run();
+    steady(&mut harness);
     harness.key_press(egui::Key::Escape);
     for _ in 0..3 {
         pump(&mut harness);
@@ -2264,7 +2264,7 @@ fn a_browser_nodes_page_is_placed_inside_the_node() {
         .state_mut()
         .new_detached_space_page(node, "https://example.com/")
         .expect("a tab with no view behind it");
-    harness.run();
+    steady(&mut harness);
 
     let body = harness.state().space.body;
     let placements = harness.state().browser_placements();
@@ -2293,7 +2293,7 @@ fn a_browser_nodes_page_is_placed_inside_the_node() {
     // the page. The pan this test used to make took 80 of the page's 520 points off the left edge, which is
     // exactly the case that is now put away.
     did(&mut harness, "space camera --x 40 --y 150");
-    harness.run();
+    steady(&mut harness);
     let panned = harness.state().browser_placements().first().copied().expect("still placed").area;
     assert_ne!(panned.min, was.min, "the page should have moved with the canvas");
     let node_now = camera_of(&harness).rect_to_screen(
@@ -2305,12 +2305,12 @@ fn a_browser_nodes_page_is_placed_inside_the_node() {
         "after a pan the page is {panned:?} and the node {node_now:?}"
     );
     did(&mut harness, "space camera --x 0 --y 0");
-    harness.run();
+    steady(&mut harness);
 
     // **And it follows the zoom**: a canvas at half the size draws a node half as wide, and a page that
     // kept its world size would hang out of it.
     did(&mut harness, "space camera --zoom 0.5");
-    harness.run();
+    steady(&mut harness);
     let smaller = harness.state().browser_placements().first().copied().expect("still placed").area;
     assert!(smaller.width() < was.width() * 0.75, "the page was {was:?} and is now {smaller:?}");
     let on_screen = camera_of(&harness).rect_to_screen(
@@ -2350,7 +2350,7 @@ fn only_one_browser_node_is_placed_however_many_there_are() {
         .new_detached_space_page(second, "https://example.com/two")
         .expect("a tab");
     assert_ne!(one, two, "two nodes, two tabs");
-    harness.run();
+    steady(&mut harness);
 
     // Both nodes drew, and each placed its own page — because with no view created yet
     // `BrowserHost::showing` answers `None` and every tab believes it is the one showing. What decides is
@@ -2427,16 +2427,16 @@ fn choosing_a_view_starts_what_is_on_it() {
     let made = did(&mut harness, "space add editor --x 40 --y 40");
     let node = made["node"].as_u64().expect("a node id");
     did(&mut harness, &format!("space editor {node} readme.md"));
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().files.tab_in_node(node).is_some());
 
     // Away to the first view, which closes the node's tab because the node is not on it.
     did(&mut harness, "space open-view Main");
-    harness.run();
+    steady(&mut harness);
 
     // And back. Without the fix the node came back empty and said so.
     did(&mut harness, "space open-view Reading");
-    harness.run();
+    steady(&mut harness);
     let index = harness.state().files.tab_in_node(node).expect("the node has its file again");
     assert_eq!(harness.state().files.at(index).path(), Some(folder.join("readme.md").as_path()));
     assert_eq!(harness.state().space.space.current().nodes[0].kind(), Kind::Editor);
@@ -2495,10 +2495,10 @@ fn a_bare_host_sent_to_a_node_that_already_has_a_page_is_given_a_scheme() {
     did(&mut harness, "space show");
     let node = did(&mut harness, "space add browser --x 40 --y 40")["node"].as_u64().expect("id");
     did(&mut harness, &format!("space browser {node} go --url https://example.com/"));
-    harness.run();
+    steady(&mut harness);
 
     did(&mut harness, &format!("space browser {node} go --url google.com"));
-    harness.run();
+    steady(&mut harness);
     let answer = did(&mut harness, &format!("space browser {node} url"));
     assert_eq!(
         answer["url"], "https://google.com/",
@@ -2521,13 +2521,13 @@ fn a_browser_node_that_is_not_rendering_still_records_where_it_was_sent() {
         did(&mut harness, "space add browser --x 700 --y 40")["node"].as_u64().expect("id");
     did(&mut harness, &format!("space browser {first} go --url https://example.com/"));
     did(&mut harness, &format!("space browser {second} go --url https://example.org/"));
-    harness.run();
+    steady(&mut harness);
 
     // The first node is the one being read now, so the second is the one that cannot be driven.
     did(&mut harness, &format!("space focus {first}"));
-    harness.run();
+    steady(&mut harness);
     did(&mut harness, &format!("space browser {second} go --url https://example.net/"));
-    harness.run();
+    steady(&mut harness);
 
     let answer = did(&mut harness, &format!("space browser {second} url"));
     assert_eq!(
@@ -2549,7 +2549,7 @@ fn a_nodes_own_record_and_its_page_agree_about_where_it_is() {
     let node = did(&mut harness, "space add browser --x 40 --y 40")["node"].as_u64().expect("id");
     did(&mut harness, &format!("space browser {node} go --url https://example.com/"));
     did(&mut harness, &format!("space browser {node} go --url example.org"));
-    harness.run();
+    steady(&mut harness);
 
     let page = did(&mut harness, &format!("space browser {node} url"))["url"].clone();
     let listed = did(&mut harness, "space list")["views"][0]["nodes"]
@@ -2576,13 +2576,13 @@ fn an_editor_node_at_its_own_size_has_a_gutter_at_that_size() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Editor, egui::pos2(40.0, 40.0));
-    harness.run();
+    steady(&mut harness);
     did(&mut harness, &format!("space editor {node} program.rs"));
-    harness.run();
+    steady(&mut harness);
 
     let narrow = harness.state().editor_area().left();
     did(&mut harness, &format!("space zoom {node} --factor 40"));
-    harness.run();
+    steady(&mut harness);
     let wide = harness.state().editor_area().left();
     assert!(wide > narrow, "the gutter grew with the node's own font: {narrow} to {wide}");
 }
@@ -2603,7 +2603,7 @@ fn a_gutter_never_takes_more_than_its_share_of_the_pane() {
     let mut harness = harness(&many);
     did(&mut harness, "settings set appearance.font.size 144");
     did(&mut harness, "panel size explorer --width 600");
-    harness.run();
+    steady(&mut harness);
 
     // The editing pane is what is left of the panes area once the explorer has taken its width, and the gutter
     // is the part of it in front of the text.
@@ -2633,7 +2633,7 @@ fn a_zoom_does_not_relayout_a_node() {
     let terminal =
         harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
     harness.state_mut().feed_a_space_terminal(terminal, b"$ cargo test\r\n");
-    harness.run();
+    steady(&mut harness);
 
     let grid = |harness: &Harness<'static, UnluminousApp>| {
         let session = harness.state().space.live.terminal(terminal).expect("its session");
@@ -2643,7 +2643,7 @@ fn a_zoom_does_not_relayout_a_node() {
 
     for zoom in ["1.5", "2.0", "0.5"] {
         did(&mut harness, &format!("space camera --zoom {zoom}"));
-        harness.run();
+        steady(&mut harness);
         assert_eq!(
             grid(&harness),
             at_one,
@@ -2661,7 +2661,7 @@ fn a_zoom_does_not_relayout_a_node() {
 fn space_zoomed_in() {
     let mut harness = a_canvas();
     did(&mut harness, "space camera --zoom 2.0");
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("space_zoomed_in").as_str());
 }
 
@@ -2684,7 +2684,7 @@ fn a_terminal_node_records_the_program_running_in_it() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
-    harness.run();
+    steady(&mut harness);
 
     let running = |harness: &Harness<'static, UnluminousApp>| match harness
         .state()
@@ -2706,7 +2706,7 @@ fn a_terminal_node_records_the_program_running_in_it() {
             terminal.running = "echo".to_owned();
         }
     });
-    harness.run();
+    steady(&mut harness);
     let reply = run(&mut harness, &format!("space restart {node} --running"));
     assert!(reply.ok, "it started: {}", reply.message);
     assert!(
@@ -2723,7 +2723,7 @@ fn a_node_that_was_not_left_running_anything_is_refused_with_a_sentence() {
     let mut harness = harness("");
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
-    harness.run();
+    steady(&mut harness);
     let reply = run(&mut harness, &format!("space restart {node} --running"));
     assert!(!reply.ok, "a node at a prompt has nothing to start again");
     assert!(reply.message.contains("not left running"), "{}", reply.message);
@@ -2757,7 +2757,7 @@ fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
         .state_mut()
         .new_detached_space_page(node, "https://example.com/")
         .expect("a tab with no view behind it");
-    harness.run();
+    steady(&mut harness);
     let whole = harness.state().browser_placements().first().copied().expect("the page is drawn");
     assert_eq!(whole.visible, whole.area, "nothing is cut while the node is inside the pane");
     let width = whole.area.width();
@@ -2768,7 +2768,7 @@ fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
     // a node at world x is drawn x points in from the canvas's left edge.
     let body = harness.state().space.body;
     did(&mut harness, &format!("space move {node} --x {} --y 20", body.width() - 180.0));
-    harness.run();
+    steady(&mut harness);
     let cut =
         harness.state().browser_placements().first().copied().expect("the page is still drawn");
     assert!(
@@ -2787,7 +2787,7 @@ fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
     // Cut to a strip, and it is still a strip of the same page rather than a page put away - which is
     // what cropping means, and what `task-1908`'s report about a page vanishing near the edge asks for.
     did(&mut harness, &format!("space move {node} --x {} --y 20", body.width() - 40.0));
-    harness.run();
+    steady(&mut harness);
     let strip =
         harness.state().browser_placements().first().copied().expect("a strip is still a page");
     assert!((strip.area.width() - width).abs() < 0.5, "still the whole page");
@@ -2795,14 +2795,14 @@ fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
 
     // Right off the canvas there is nothing on the screen to place.
     did(&mut harness, &format!("space move {node} --x {} --y 20", body.width() + 200.0));
-    harness.run();
+    steady(&mut harness);
     assert!(
         harness.state().browser_placements().is_empty(),
         "a node with nothing of it on the canvas places no page"
     );
 
     did(&mut harness, &format!("space move {node} --x 20 --y 20"));
-    harness.run();
+    steady(&mut harness);
     let back = harness.state().browser_placements().first().copied().expect("the page comes back");
     assert_eq!(back.visible, back.area, "and it is whole again");
 }
@@ -2831,7 +2831,7 @@ fn a_page_followed_to_a_new_address_is_what_the_node_comes_back_on() {
     // guard: before the nodes are running the live state is empty, and writing it would put nothing over the
     // file. A real window does this when it opens a project.
     harness.state_mut().bring_the_current_view_to_life();
-    harness.run();
+    steady(&mut harness);
 
     let recorded = |harness: &Harness<'static, UnluminousApp>| match harness
         .state()
@@ -2849,7 +2849,7 @@ fn a_page_followed_to_a_new_address_is_what_the_node_comes_back_on() {
     // A click inside the page, which is an arrival nothing asked for.
     let tab = harness.state().space.live.browser(node).expect("its tab").id;
     harness.state_mut().arrived_at_for_tests(tab, "https://example.com/an-article".to_owned());
-    harness.run();
+    steady(&mut harness);
 
     assert_eq!(
         recorded(&harness),
@@ -2873,14 +2873,14 @@ fn a_terminal_node_comes_back_showing_what_was_on_it() {
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screen-replay");
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
-    harness.run();
+    steady(&mut harness);
 
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
     harness
         .state_mut()
         .feed_a_space_terminal(node, b"$ ls\r\ntotal 48\r\nsrc  tests  Cargo.toml\r\n$ ");
-    harness.run();
+    steady(&mut harness);
 
     // What the window would write on its way out.
     harness.state_mut().write_the_screens_down();
@@ -2937,12 +2937,12 @@ fn a_screen_nobody_printed_is_not_kept_for_ever() {
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screen-forgotten");
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
-    harness.run();
+    steady(&mut harness);
 
     did(&mut harness, "space show");
     let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
     harness.state_mut().feed_a_space_terminal(node, b"$ ls\r\ntotal 48\r\n");
-    harness.run();
+    steady(&mut harness);
     harness.state_mut().write_the_screens_down();
 
     let saved = unluminous_app::services::space::store::screen_path(
@@ -3012,7 +3012,7 @@ fn a_terminal_node_takes_the_keyboard_when_it_is_clicked() {
     let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 30.0));
     // Nothing chosen, which is the state a canvas that has just been read off disk is in.
     harness.state_mut().space.space.choose(None);
-    harness.run();
+    steady(&mut harness);
 
     let body = where_a_node_is(&harness, node);
     let (x, y) = (body.center().x, body.center().y);
@@ -3057,12 +3057,12 @@ fn a_project_that_comes_back_with_a_canvas_gives_it_the_keyboard() {
             did(&mut harness, "space add terminal --x 40 --y 30")["node"].as_u64().expect("id");
         harness.state_mut().editor_visible = false;
         harness.state_mut().space.space.choose(Some(node));
-        harness.run();
+        steady(&mut harness);
     }
 
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().space.visible, "the canvas came back");
     assert!(!harness.state().editor_visible, "and the editing area is still away");
     assert_eq!(harness.state().focus, Focus::Space, "so the canvas holds the keyboard");
@@ -3089,12 +3089,12 @@ fn a_project_showing_both_leaves_the_keyboard_in_the_editing_area() {
         let mut harness = harness_in(&folder);
         harness.state_mut().restore_project();
         did(&mut harness, "space show");
-        harness.run();
+        steady(&mut harness);
     }
 
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().space.visible, "the canvas came back");
     assert!(harness.state().editor_visible, "and so did the editing area");
     assert_eq!(harness.state().focus, Focus::Editor, "which keeps the keyboard");
@@ -3121,13 +3121,13 @@ fn which_node_was_chosen_comes_back_with_the_canvas() {
         did(&mut harness, &format!("space editor {editor} readme.md"));
         // Left on the terminal, which is not the node the restore will open a file into.
         did(&mut harness, &format!("space focus {terminal}"));
-        harness.run();
+        steady(&mut harness);
         terminal
     };
 
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().space.space.chosen(),
         Some(terminal),
@@ -3161,12 +3161,12 @@ fn a_chat_node_sends_on_enter_rather_than_putting_a_new_line_in_the_draft() {
     // Small enough to be **inside the pane**, because a node's contents are clipped to it: a composer
     // hanging below the canvas is drawn nowhere and can be clicked nowhere.
     did(&mut harness, &format!("space size {node} --width 520 --height 430"));
-    harness.run();
+    steady(&mut harness);
     if let Some(chat) = harness.state_mut().space.live.chat_mut(node) {
         let _ = chat.configuration_mut().choose("claude");
         chat.configuration_mut().providers[0].command = NO_SUCH_AGENT.to_owned();
     }
-    harness.run();
+    steady(&mut harness);
 
     // A press in the composer, which is a `TextEdit` inside a transformed sublayer.
     let composer = on_the_screen(&harness, harness.get_by_label("Message").rect());
@@ -3212,7 +3212,7 @@ fn the_tasks_node_search_takes_what_is_typed_into_it() {
     let node = did(&mut harness, "space add tasks --x 10 --y 10")["node"].as_u64().expect("id");
     // Inside the pane, because a node's contents are clipped to it. See `on_the_screen`.
     did(&mut harness, &format!("space size {node} --width 860 --height 440"));
-    harness.run();
+    steady(&mut harness);
 
     // Found by its name rather than by arithmetic over the board's own measurements, which is what
     // every screenshot test here does — the node draws the window's one board, so the box is the same
@@ -3244,12 +3244,12 @@ fn the_tasks_node_search_takes_what_is_typed_into_it() {
 fn the_title_bar_can_still_be_dragged_while_a_pane_is_maximised() {
     let mut harness = harness("");
     did(&mut harness, "space show");
-    harness.run();
+    steady(&mut harness);
     let before = harness.get_by_label("Move window").rect();
     assert!(before.width() > 100.0, "the bar has a drag area to begin with: {before:?}");
 
     did(&mut harness, "action run toggle-maximised-pane");
-    harness.run();
+    steady(&mut harness);
     let after = harness.get_by_label("Move window").rect();
     assert!(
         after.width() >= before.width() - 1.0,
@@ -3288,7 +3288,7 @@ fn a_node_scrolled_off_the_canvas_draws_nothing_outside_the_pane() {
     did(&mut harness, "space show");
     let node = did(&mut harness, "space add tasks --x 10 --y 10")["node"].as_u64().expect("id");
     did(&mut harness, &format!("space size {node} --width 860 --height 440"));
-    harness.run();
+    steady(&mut harness);
 
     // The editing area above the canvas, which nothing on the canvas may reach.
     let body = harness.state().space.body;
@@ -3300,7 +3300,7 @@ fn a_node_scrolled_off_the_canvas_draws_nothing_outside_the_pane() {
 
     // The same canvas with the node dragged most of the way off the top edge.
     did(&mut harness, "space camera --y 300");
-    harness.run();
+    steady(&mut harness);
     let now = pixels_in(&mut harness, above);
     assert_eq!(quiet.len(), now.len(), "the same band both times");
     assert!(quiet == now, "a node hanging off the canvas drew something in the window above it");
@@ -3316,7 +3316,7 @@ fn a_node_scrolled_off_the_canvas_draws_nothing_outside_the_pane() {
 fn a_folder_node_draws_no_file_count_over_its_own_edge() {
     let mut harness = harness("");
     did(&mut harness, "space show");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.query_all_by_label("File count").count(),
         1,
@@ -3324,7 +3324,7 @@ fn a_folder_node_draws_no_file_count_over_its_own_edge() {
     );
 
     did(&mut harness, "space add folder --x 10 --y 10");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.query_all_by_label("File count").count(),
         1,
@@ -3345,7 +3345,7 @@ fn an_address_bar_draws_its_text_inside_its_own_box() {
     did(&mut harness, "space show");
     let node = did(&mut harness, "space add browser --x 10 --y 10")["node"].as_u64().expect("id");
     did(&mut harness, &format!("space size {node} --width 620 --height 300"));
-    harness.run();
+    steady(&mut harness);
 
     let address = harness.get_by_label("Address").rect();
     assert!(
@@ -3378,7 +3378,7 @@ fn a_chat_node_at_its_smallest_keeps_the_composer_inside_it() {
     let node = did(&mut harness, "space add chat --x 10 --y 10")["node"].as_u64().expect("id");
     let smallest = Kind::Chat.smallest();
     did(&mut harness, &format!("space size {node} --width {} --height {}", smallest.x, smallest.y));
-    harness.run();
+    steady(&mut harness);
 
     let found = harness.state().space.space.current().node(node).expect("it is there").clone();
     assert_eq!(found.size, smallest, "a node cannot be dragged below its kind's own floor");

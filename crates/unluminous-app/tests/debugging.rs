@@ -65,7 +65,7 @@ fn the_gutter_draws_an_enabled_a_disabled_an_unverified_and_a_conditional_breakp
     did(&mut harness, &format!("debug breakpoint add {} 4", path.display()));
     did(&mut harness, &format!("debug breakpoint disable {} 4", path.display()));
     did(&mut harness, &format!("debug breakpoint add {} 5", path.display()));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().document().breakpoints().len(), 4);
     // One of each, which is what the picture is of.
     let conditional: Vec<bool> = harness
@@ -82,7 +82,7 @@ fn the_gutter_draws_an_enabled_a_disabled_an_unverified_and_a_conditional_breakp
     harness
         .state_mut()
         .new_detached_debug_session("lldb", configuration("app", "target/debug/app.exe"));
-    harness.run();
+    steady(&mut harness);
     let initialize = asked_for(&mut harness, "initialize");
     feed_debug(&mut harness, answer(initialize, "initialize", capabilities()));
     feed_debug(&mut harness, Message::Initialized);
@@ -174,7 +174,7 @@ fn a_checkout_under_a_running_window_leaves_the_breakpoints_working() {
     // writes a person's files unless it says so.
     harness.state_mut().restore_project();
     harness.state_mut().open_path_permanently(&source).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     did(&mut harness, &format!("debug breakpoint add {} 3", source.display()));
     for _ in 0..8 {
         harness.step();
@@ -223,7 +223,7 @@ fn a_checkout_under_a_running_window_leaves_the_breakpoints_working() {
     harness
         .state_mut()
         .new_detached_debug_session("lldb", configuration("app", "target/debug/app.exe"));
-    harness.run();
+    steady(&mut harness);
     let initialize = asked_for(&mut harness, "initialize");
     feed_debug(&mut harness, answer(initialize, "initialize", capabilities()));
     feed_debug(&mut harness, Message::Initialized);
@@ -282,7 +282,7 @@ fn a_breakpoint_in_a_shut_file_with_windows_line_breaks_names_the_line_it_is_on(
 
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&main).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
 
     // **The breakpoint is set while `report.rs` is open, and the tab is then closed.** That is the
     // pair that comes apart, and it is what the shoot did without noticing: the offset is made by
@@ -291,11 +291,11 @@ fn a_breakpoint_in_a_shut_file_with_windows_line_breaks_names_the_line_it_is_on(
     // and hide the fault, which is why setting it on a file that was never open does not show it.
     let report = folder.join("src").join("report.rs");
     harness.state_mut().open_path_permanently(&report).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     did(&mut harness, &format!("debug breakpoint add src/report.rs {stop_at}"));
     let tab = harness.state().files.index_of(&report).expect("report.rs is open");
     harness.state_mut().close_tab(tab);
-    harness.run();
+    steady(&mut harness);
     assert!(
         harness.state().files.index_of(&report).is_none(),
         "report.rs has to be shut for the send to go through the disk"
@@ -317,7 +317,7 @@ fn a_breakpoint_in_a_shut_file_with_windows_line_breaks_names_the_line_it_is_on(
     harness
         .state_mut()
         .new_detached_debug_session("lldb", configuration("app", "target/debug/app.exe"));
-    harness.run();
+    steady(&mut harness);
     let initialize = asked_for(&mut harness, "initialize");
     feed_debug(&mut harness, answer(initialize, "initialize", capabilities()));
     feed_debug(&mut harness, Message::Initialized);
@@ -382,10 +382,10 @@ fn a_breakpoint_binds_wherever_the_editor_is_scrolled() {
             .state_mut()
             .open_path_permanently(&folder.join("src").join("main.rs"))
             .expect("the file opens");
-        harness.run();
+        steady(&mut harness);
         if open {
             harness.state_mut().open_path_permanently(&report).expect("the file opens");
-            harness.run();
+            steady(&mut harness);
         }
         did(&mut harness, "editor scroll --line 30");
         assert!(
@@ -400,7 +400,7 @@ fn a_breakpoint_binds_wherever_the_editor_is_scrolled() {
         harness
             .state_mut()
             .new_detached_debug_session("lldb", configuration("app", "target/debug/app.exe"));
-        harness.run();
+        steady(&mut harness);
         let initialize = asked_for(&mut harness, "initialize");
         feed_debug(&mut harness, answer(initialize, "initialize", capabilities()));
         feed_debug(&mut harness, Message::Initialized);
@@ -496,7 +496,7 @@ fn the_debug_tile_shows_the_frames_the_variables_and_a_watch() {
 
     // A watch, answered as a debugger would answer one.
     harness.state_mut().debug.as_mut().expect("a session").add_watch("items.len()");
-    harness.run();
+    steady(&mut harness);
     let evaluate = asked_for(&mut harness, "evaluate");
     feed_debug(
         &mut harness,
@@ -506,7 +506,7 @@ fn the_debug_tile_shows_the_frames_the_variables_and_a_watch() {
     // And a structure opened, which is the whole of the lazy model: nothing deeper was fetched
     // until this row was clicked.
     harness.state_mut().debug.as_mut().expect("a session").toggle_row("Locals/items");
-    harness.run();
+    steady(&mut harness);
     let children = asked_for(&mut harness, "variables");
     feed_debug(
         &mut harness,
@@ -579,14 +579,14 @@ fn the_value_tooltip_shows_a_structure_and_opens_it_into_its_fields() {
         .state_mut()
         .document_mut()
         .apply(unluminous_core::Command::PlaceCaret { offset: offset + 2, extend: false });
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().document().selection().head,
         offset + 2,
         "a stopped program does not take the caret back on every frame"
     );
     choose(&mut harness, Action::Debug(DebugAction::ShowValue));
-    harness.run();
+    steady(&mut harness);
 
     // The expression it read is the whole field path ending at the pointer, which is what the reference editor
     // shows the value of.
@@ -661,9 +661,9 @@ fn a_row_of_the_value_tooltip_can_be_typed_over() {
         .state_mut()
         .document_mut()
         .apply(unluminous_core::Command::PlaceCaret { offset: offset + 2, extend: false });
-    harness.run();
+    steady(&mut harness);
     choose(&mut harness, Action::Debug(DebugAction::ShowValue));
-    harness.run();
+    steady(&mut harness);
     let evaluate = asked_for(&mut harness, "evaluate");
     feed_debug(
         &mut harness,
@@ -674,7 +674,7 @@ fn a_row_of_the_value_tooltip_can_be_typed_over() {
     // `setExpression` is what changes it. The adapter offered it, so the field is drawn.
     harness.state_mut().value_tooltip.as_mut().expect("a tooltip").editing =
         Some(("attempts".to_owned(), "9".to_owned()));
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Set Value: attempts");
     harness.snapshot(shot("debug_value_tooltip_editing"));
 }
@@ -738,7 +738,7 @@ fn a_breakpoint_moves_with_the_text_and_an_edit_is_not_a_reason_to_re_send_it() 
     // A line typed at the top of the file, which moves every byte below it.
     harness.state_mut().document_mut().apply(Command::PlaceCaret { offset: 0, extend: false });
     harness.state_mut().document_mut().apply(Command::Insert("// a note\n".to_owned()));
-    harness.run();
+    steady(&mut harness);
     // The dot followed the text: the same line of the program, one further down the file.
     let listed = did(&mut harness, "debug breakpoint list");
     let rows = listed["breakpoints"].as_array().expect("the list");
@@ -775,7 +775,7 @@ fn a_file_whose_language_names_no_debugger_has_no_debug_controls_at_all() {
     // to step through and never will.
     let mut harness = harness_in(&sample_folder());
     harness.get_by_label_contains("notes.txt").click();
-    harness.run();
+    steady(&mut harness);
     let state = harness.state().menu_state();
     assert!(!state.debug_applies, "nothing claims a .txt");
     let entries = unluminous_app::app::actions::gutter_menu(&state);
@@ -980,7 +980,7 @@ fn a_real_debugger_binds_a_breakpoint_in_a_file_that_is_not_open() {
     // and it is what the ticket's own tell says: during the session `debug breakpoint list` printed
     // the one that bound as `src\main.rs` and the one that did not as `src/report.rs`.
     harness.state_mut().open_path_permanently(&main).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     let scrolled = harness
         .state_mut()
         .run_command_line("editor scroll --bottom", &ctx)
@@ -1148,7 +1148,7 @@ fn a_real_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
     harness.state_mut().settings.debug_adapters =
         vec![("lldb".to_owned(), adapter.to_string_lossy().to_string())];
     harness.state_mut().open_path_permanently(&source).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
 
     // Line 6, `let answer = total;` — after the loop, so `total` is 10 by the time it is reached.
     let set = harness
@@ -1318,7 +1318,7 @@ fn a_real_node_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
     harness.state_mut().settings.debug_adapters =
         vec![("node".to_owned(), adapter.to_string_lossy().to_string())];
     harness.state_mut().open_path_permanently(&source).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
 
     let set = harness
         .state_mut()
@@ -1452,7 +1452,7 @@ fn a_breakpoint_is_still_there_when_the_project_is_opened_again() {
         // files unless it says so, which is the rule the project state and the marks already keep.
         harness.state_mut().restore_project();
         harness.state_mut().open_path_permanently(&source).expect("the file opens");
-        harness.run();
+        steady(&mut harness);
         let set = harness
             .state_mut()
             .run_command_line(&format!("debug breakpoint add {} 3", source.display()), &ctx)
@@ -1473,7 +1473,7 @@ fn a_breakpoint_is_still_there_when_the_project_is_opened_again() {
     let mut harness = harness_in(&folder);
     let ctx = harness.ctx.clone();
     harness.state_mut().restore_project();
-    harness.run();
+    steady(&mut harness);
     let listed = harness
         .state_mut()
         .run_command_line("debug breakpoint list", &ctx)
@@ -1485,7 +1485,7 @@ fn a_breakpoint_is_still_there_when_the_project_is_opened_again() {
     // And the open document holds it, not just the store — which is the ownership rule's other half:
     // a file that is open is owned by its `Document`.
     harness.state_mut().open_path_permanently(&source).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().document().breakpoints().len(),
         1,
@@ -1507,7 +1507,7 @@ fn typing_a_getter_into_a_javascript_class_survives_every_keystroke() {
     let text = harness.state().document().text().to_string();
     let inside = text.find("{\n").expect("the brace and the line under it") + 2;
     harness.state_mut().command(Command::PlaceCaret { offset: inside, extend: false });
-    harness.run();
+    steady(&mut harness);
 
     type_and_paint(&mut harness, "get");
     let offered = completions(&harness);
@@ -1530,14 +1530,14 @@ fn accepting_a_completion_inside_a_class_survives() {
     let text = harness.state().document().text().to_string();
     let inside = text.find("{\n").expect("the brace") + 2;
     harness.state_mut().command(Command::PlaceCaret { offset: inside, extend: false });
-    harness.run();
+    steady(&mut harness);
     type_and_paint(&mut harness, "get");
     assert!(!completions(&harness).is_empty(), "the list is open");
 
     // Tab takes the whole word, which is the acceptance that also has to replace what is to the right
     // of the caret, and the one that can add an import.
     harness.key_press(egui::Key::Tab);
-    harness.run();
+    steady(&mut harness);
     harness.render().expect("paint what acceptance left behind");
     let after = harness.state().document().text().to_string();
     assert!(after.contains("get"), "something was accepted: {after:?}");
@@ -1564,7 +1564,7 @@ fn the_shapes_of_javascript_that_could_be_mis_sliced_survive_being_typed() {
     ];
     for shape in shapes {
         harness.state_mut().command(Command::SelectAll);
-        harness.run();
+        steady(&mut harness);
         type_and_paint(&mut harness, shape);
     }
 }

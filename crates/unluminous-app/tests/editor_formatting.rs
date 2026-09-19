@@ -39,9 +39,9 @@ fn a_nested_folder_opens_with_its_children_indented_under_it() {
     let mut harness = harness("");
     // Click the folder in the explorer, as a person would, rather than changing the tree directly.
     harness.get_by_label_contains("chapters").click();
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label_contains("appendix").click();
-    harness.run();
+    steady(&mut harness);
     let rows = harness.state().tree.rows().len();
     assert!(rows >= 8, "the tree should show the nested folders, it has {rows} rows");
     harness.snapshot(shot("file_tree_expanded"));
@@ -51,7 +51,7 @@ fn a_nested_folder_opens_with_its_children_indented_under_it() {
 fn clicking_a_file_in_the_explorer_opens_it_in_the_editor() {
     let mut harness = harness("");
     harness.get_by_label_contains("readme.md").click();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().document().text().to_string(),
         "# Unluminous\n",
@@ -75,12 +75,12 @@ fn typing_on_the_keyboard_puts_text_in_the_document() {
     // Real key and text events, through the same path the released binary uses.
     for text in ["Unluminous", " typed", " this."] {
         harness.input_mut().events.push(egui::Event::Text(text.to_owned()));
-        harness.run();
+        steady(&mut harness);
     }
     harness.key_press(egui::Key::Enter);
-    harness.run();
+    steady(&mut harness);
     harness.input_mut().events.push(egui::Event::Text("A second line.".to_owned()));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().document().text().to_string(),
         "Unluminous typed this.\nA second line."
@@ -92,10 +92,10 @@ fn typing_on_the_keyboard_puts_text_in_the_document() {
 fn backspace_removes_what_was_typed() {
     let mut harness = harness("");
     harness.input_mut().events.push(egui::Event::Text("abcdef".to_owned()));
-    harness.run();
+    steady(&mut harness);
     for _ in 0..3 {
         harness.key_press(egui::Key::Backspace);
-        harness.run();
+        steady(&mut harness);
     }
     assert_eq!(harness.state().document().text().to_string(), "abc");
 }
@@ -109,7 +109,7 @@ fn tab_over_a_selection_indents_the_lines_rather_than_replacing_them() {
     let mut harness = harness("one\ntwo\nthree\nfour");
     select_and(&mut harness, 0..18, &[]);
     harness.key_press(egui::Key::Tab);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().document().text().to_string(),
         "\tone\n\ttwo\n\tthree\n\tfour",
@@ -130,7 +130,7 @@ fn space_over_a_selection_indents_the_lines_with_a_space() {
     let mut harness = harness("one\ntwo\nthree");
     select_and(&mut harness, 0..13, &[]);
     harness.input_mut().events.push(egui::Event::Text(" ".to_owned()));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().document().text().to_string(),
         " one\n two\n three",
@@ -145,11 +145,11 @@ fn tab_and_space_with_no_selection_still_type_at_the_caret() {
     // person who means to type a tab or a space is not interrupted.
     let mut harness = harness("one\ntwo");
     harness.state_mut().command(Command::PlaceCaret { offset: 4, extend: false });
-    harness.run();
+    steady(&mut harness);
     harness.key_press(egui::Key::Tab);
-    harness.run();
+    steady(&mut harness);
     harness.input_mut().events.push(egui::Event::Text(" ".to_owned()));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().document().text().to_string(),
         "one\n\t two",
@@ -172,12 +172,12 @@ fn a_selection_is_highlighted_behind_part_of_a_line_only() {
 fn select_all_then_pressing_bold_makes_the_whole_document_bold() {
     let mut harness = harness("Every word here should end up bold.");
     harness.state_mut().command(Command::SelectAll);
-    harness.run();
+    steady(&mut harness);
     // Click the real button rather than sending the command, which now means opening the panel it
     // moved into first.
     open_text_options(&mut harness);
     harness.get_by_label("Bold").click();
-    harness.run();
+    steady(&mut harness);
     assert!(
         harness.state().document().chars().style_at(4).bold,
         "the toolbar button should have applied bold"
@@ -223,9 +223,9 @@ fn strikethrough_draws_a_rule_through_the_middle_word_only() {
 fn the_keyboard_shortcut_for_bold_does_the_same_as_the_button() {
     let mut harness = harness("shortcut bold");
     harness.state_mut().command(Command::SelectAll);
-    harness.run();
+    steady(&mut harness);
     harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::B);
-    harness.run();
+    steady(&mut harness);
     assert!(
         harness.state().document().chars().style_at(2).bold,
         "command plus B should turn bold on"
@@ -302,7 +302,7 @@ fn each_alignment_places_the_same_paragraph_differently() {
         let mut harness = harness(paragraph);
         harness.state_mut().command(Command::SelectAll);
         harness.state_mut().command(Command::SetAlign(align));
-        harness.run();
+        steady(&mut harness);
         assert_eq!(harness.state().document().paragraphs().get(0).align, align);
         results.add(harness.try_snapshot(shot(name)));
     }
@@ -316,7 +316,7 @@ fn alignment_actually_moves_the_text_within_the_width() {
         let mut harness = harness(paragraph);
         harness.state_mut().command(Command::SelectAll);
         harness.state_mut().command(Command::SetAlign(align));
-        harness.run();
+        steady(&mut harness);
         harness.state().layout().lines[0].left()
     };
     let left = left_edge(Align::Left);
@@ -334,14 +334,14 @@ fn double_spacing_puts_the_lines_twice_as_far_apart() {
 
     let mut single = harness(text);
     single.state_mut().command(Command::SelectAll);
-    single.run();
+    steady(&mut single);
     let single_height = single.state().layout().height;
     results.add(single.try_snapshot(shot("line_spacing_single")));
 
     let mut double = harness(text);
     double.state_mut().command(Command::SelectAll);
     double.state_mut().command(Command::SetLineSpacing(2.0));
-    double.run();
+    steady(&mut double);
     let double_height = double.state().layout().height;
     assert!(
         (double_height - single_height * 2.0).abs() < 1.0,
@@ -373,12 +373,12 @@ fn cut_and_paste_move_text_through_the_clipboard() {
     select_and(&mut harness, 0..5, &[]);
     // A cut sends the selection to the clipboard and removes it from the document.
     harness.input_mut().events.push(egui::Event::Cut);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().document().text().to_string(), " second");
     // Paste it back at the end.
     harness.state_mut().command(Command::MoveDocumentEnd { extend: false });
     harness.input_mut().events.push(egui::Event::Paste("first".to_owned()));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().document().text().to_string(), " secondfirst");
 }
 
@@ -387,7 +387,7 @@ fn copy_leaves_the_document_alone() {
     let mut harness = harness("unchanged text");
     select_and(&mut harness, 0..9, &[]);
     harness.input_mut().events.push(egui::Event::Copy);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().document().text().to_string(), "unchanged text");
 }
 
@@ -428,7 +428,7 @@ fn the_background_fades_with_the_slider_and_the_text_stays_opaque() {
         harness.state_mut().command(Command::ApplyStyle(StyleChange::color(Color::RED)));
         harness.state_mut().command(Command::MoveDocumentStart { extend: false });
         harness.state_mut().settings.opacity = opacity;
-        harness.run();
+        steady(&mut harness);
 
         assert_eq!(
             harness.state().background().a(),
@@ -500,15 +500,15 @@ fn the_background_fades_with_the_slider_and_the_text_stays_opaque() {
 fn undo_and_redo_go_back_and_forward_through_the_history() {
     let mut harness = harness("original");
     harness.input_mut().events.push(egui::Event::Text(" plus more".to_owned()));
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().document().text().to_string(), " plus moreoriginal");
 
     harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::Z);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().document().text().to_string(), "original", "command and Z undoes");
 
     harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, egui::Key::Z);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(
         harness.state().document().text().to_string(),
         " plus moreoriginal",
@@ -575,9 +575,9 @@ fn choosing_a_font_size_in_the_settings_sets_it_for_the_whole_document() {
     let undo_before = harness.state().document().can_undo();
     open_settings(&mut harness);
     harness.get_by_label("Editor font size").click();
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("24").click();
-    harness.run();
+    steady(&mut harness);
 
     assert_eq!(harness.state().settings.font_size, 24.0);
     let document = harness.state().document();
@@ -607,7 +607,7 @@ fn choosing_a_family_in_the_settings_leaves_bold_and_colour_alone() {
     let mut settings = harness.state().settings.clone();
     settings.font_family = other.clone();
     harness.state_mut().set_settings(settings);
-    harness.run();
+    steady(&mut harness);
 
     let style = harness.state().document().chars().style_at(7);
     assert_eq!(&*style.family, other, "the word is in the new family");
@@ -625,13 +625,13 @@ fn changing_the_font_reaches_every_open_tab_and_not_only_the_one_showing() {
     for name in ["readme.md", "notes.txt", "program.rs"] {
         harness.state_mut().open_path_permanently(&folder.join(name)).expect("the file opens");
     }
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.len(), 3, "one tab each, and none of them transient");
 
     let mut settings = harness.state().settings.clone();
     settings.font_size = 24.0;
     harness.state_mut().set_settings(settings);
-    harness.run();
+    steady(&mut harness);
 
     for (index, file) in harness.state().files.iter().enumerate() {
         assert_eq!(
@@ -651,14 +651,14 @@ fn the_keyboard_makes_the_text_bigger_and_smaller_and_puts_it_back() {
     assert_eq!(harness.state().settings.font_size, 16.0);
 
     harness.state_mut().run_action(Action::ChangeFontSize { larger: true }, &ctx);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().settings.font_size, 20.0, "the next size the dialog offers");
     assert_eq!(harness.state().document().chars().style_at(0).size, 20.0);
     let taller = harness.state().layout().lines[0].height;
 
     harness.state_mut().run_action(Action::ChangeFontSize { larger: false }, &ctx);
     harness.state_mut().run_action(Action::ChangeFontSize { larger: false }, &ctx);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().settings.font_size, 13.0);
     assert!(
         harness.state().layout().lines[0].height < taller,
@@ -666,7 +666,7 @@ fn the_keyboard_makes_the_text_bigger_and_smaller_and_puts_it_back() {
     );
 
     harness.state_mut().run_action(Action::ResetFontSize, &ctx);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().settings.font_size, 16.0, "back to what a new Unluminous has");
     harness.snapshot(shot("font_size_reset"));
 }
@@ -683,7 +683,7 @@ fn a_pinch_over_the_editing_area_steps_the_font_size() {
     let pinch = |harness: &mut Harness<'static, UnluminousApp>, factor: f32| {
         harness.input_mut().events.push(egui::Event::PointerMoved(middle));
         harness.input_mut().events.push(egui::Event::Zoom(factor));
-        harness.run();
+        steady(harness);
     };
 
     // Enough to ask for one size, which is the smallest gap between two of the sizes offered.
@@ -713,8 +713,8 @@ fn a_pinch_too_small_to_ask_for_a_size_is_kept_rather_than_thrown_away() {
     for _ in 0..4 {
         harness.input_mut().events.push(egui::Event::PointerMoved(middle));
         harness.input_mut().events.push(egui::Event::Zoom(1.05));
-        harness.run();
-        harness.run();
+        steady(&mut harness);
+        steady(&mut harness);
     }
     assert_eq!(harness.state().settings.font_size, 20.0, "four small pinches add up to one size");
 }
@@ -778,15 +778,15 @@ fn a_pinch_keeps_the_line_under_the_pointer_where_it_is() {
     let area = harness.state().editor_area();
     // A long way down the file, so there is room to go wrong in either direction.
     harness.state_mut().files.active_mut().scroll = 900.0;
-    harness.run();
+    steady(&mut harness);
     let at = egui::pos2(area.center().x, area.top() + area.height() * 0.6);
     let was_under_the_pointer = paragraph_under(harness.state(), at.y);
     let was_scrolled_to = harness.state().files.active().scroll;
 
     harness.input_mut().events.push(egui::Event::PointerMoved(at));
     harness.input_mut().events.push(egui::Event::Zoom(1.2));
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
 
     assert_eq!(harness.state().settings.font_size, 20.0, "the pinch should have asked for a size");
     assert_eq!(
@@ -806,8 +806,8 @@ fn a_pinch_keeps_the_line_under_the_pointer_where_it_is() {
     // carried — so asking for exactly one size back can land either side of the next step.
     harness.input_mut().events.push(egui::Event::PointerMoved(at));
     harness.input_mut().events.push(egui::Event::Zoom(1.0 / (1.2 * 1.2)));
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     let smaller = harness.state().settings.font_size;
     assert!(smaller < 20.0, "pinching out should have come back down: {smaller}");
     assert_eq!(
@@ -826,27 +826,27 @@ fn the_keyboards_zoom_keeps_the_caret_where_it_is() {
     let ctx = harness.ctx.clone();
     let offset = text.find("line 90 ").expect("the file has a ninetieth line");
     harness.state_mut().command(Command::PlaceCaret { offset, extend: false });
-    harness.run();
+    steady(&mut harness);
     // Scrolled so the caret sits well inside the view rather than at either edge of it.
     let caret = harness.state().layout().caret_at(offset).y;
     harness.state_mut().files.active_mut().scroll = caret - 200.0;
-    harness.run();
+    steady(&mut harness);
     let was = caret_below_the_top(harness.state());
     assert!((was - 200.0).abs() < 1.0, "the caret should be 200 points down the view, not {was}");
 
     harness.state_mut().run_action(Action::ChangeFontSize { larger: true }, &ctx);
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     assert_eq!(harness.state().settings.font_size, 20.0);
     let now = caret_below_the_top(harness.state());
     assert!((now - was).abs() < 3.0, "the caret should have stayed put: {was} then {now}");
 
     // Back down two sizes, and it is still where it was.
     harness.state_mut().run_action(Action::ChangeFontSize { larger: false }, &ctx);
-    harness.run();
+    steady(&mut harness);
     harness.state_mut().run_action(Action::ChangeFontSize { larger: false }, &ctx);
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     assert_eq!(harness.state().settings.font_size, 13.0);
     let smaller = caret_below_the_top(harness.state());
     assert!((smaller - was).abs() < 3.0, "and still there in a smaller font: {smaller}");
@@ -863,20 +863,20 @@ fn a_zoom_leaves_a_tab_that_was_not_showing_at_the_line_it_was_left_at() {
     let mut harness = harness_in(&folder);
     let ctx = harness.ctx.clone();
     harness.state_mut().open_path_permanently(&long).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     harness.state_mut().files.active_mut().scroll = 900.0;
-    harness.run();
+    steady(&mut harness);
     let top = harness.state().editor_area().top() + unluminous_app::theme::size::EDITOR_PADDING_Y;
     let was_at_the_top = paragraph_under(harness.state(), top);
 
     // Show a different file, change the size from there, and come back.
     harness.state_mut().open_path_permanently(&folder.join("short.txt")).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     harness.state_mut().run_action(Action::ChangeFontSize { larger: true }, &ctx);
-    harness.run();
+    steady(&mut harness);
     harness.state_mut().open_path_permanently(&long).expect("the file opens");
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     assert_eq!(harness.state().files.active().name(), "long.txt");
     assert_eq!(
         paragraph_under(harness.state(), top),
@@ -894,10 +894,10 @@ fn a_pinch_in_a_split_is_the_pointers_pane_and_steps_the_size_once() {
     let mut harness = harness_in(&folder);
     let ctx = harness.ctx.clone();
     harness.state_mut().open_path_permanently(&folder.join("long.txt")).expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     harness.state_mut().open_path_permanently(&folder.join("longer.txt")).expect("the file opens");
     harness.state_mut().run_action(Action::SplitRight, &ctx);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.pane_count(), 2, "there should be two panes");
     let showing = harness.state().files.active().name();
     assert_eq!(showing, "longer.txt", "the new pane has the keyboard");
@@ -908,7 +908,7 @@ fn a_pinch_in_a_split_is_the_pointers_pane_and_steps_the_size_once() {
         let index = harness.state().files.iter().position(|file| file.name() == name).unwrap();
         harness.state_mut().files.at_mut(index).scroll = 900.0;
     }
-    harness.run();
+    steady(&mut harness);
 
     // The pointer over the left hand pane, which is the one **without** the keyboard. The right
     // hand pane is the focused one, so its rectangle is the one the window reports, and the left
@@ -921,8 +921,8 @@ fn a_pinch_in_a_split_is_the_pointers_pane_and_steps_the_size_once() {
 
     harness.input_mut().events.push(egui::Event::PointerMoved(at));
     harness.input_mut().events.push(egui::Event::Zoom(1.2));
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
 
     assert_eq!(
         harness.state().settings.font_size,
@@ -949,9 +949,9 @@ fn a_zoom_keeps_the_markdown_previews_place_too() {
     let mut harness = harness(&text);
     let ctx = harness.ctx.clone();
     harness.state_mut().set_view_mode(ViewMode::Preview);
-    harness.run();
+    steady(&mut harness);
     harness.state_mut().files.active_mut().preview_scroll = 700.0;
-    harness.run();
+    steady(&mut harness);
     let at_the_top = |app: &UnluminousApp| {
         let scrolled = app.files.active().preview_scroll;
         app.preview_layout().offset_at(0.0, scrolled)
@@ -960,8 +960,8 @@ fn a_zoom_keeps_the_markdown_previews_place_too() {
     assert!(was > 0, "the preview should be scrolled into the page, not sitting at the top of it");
 
     harness.state_mut().run_action(Action::ChangeFontSize { larger: true }, &ctx);
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     assert_eq!(harness.state().settings.font_size, 20.0);
     assert_eq!(at_the_top(harness.state()), was, "the same words should be at the top of the page");
 }
@@ -1006,7 +1006,7 @@ fn the_caret_is_no_taller_than_the_text_it_sits_in() {
     harness.state_mut().command(Command::SelectAll);
     harness.state_mut().command(Command::SetLineSpacing(2.0));
     harness.state_mut().command(Command::MoveDocumentStart { extend: false });
-    harness.run();
+    steady(&mut harness);
     let layout = harness.state().layout();
     let line = &layout.lines[0];
     let caret = layout.caret_at(0);
@@ -1027,7 +1027,7 @@ fn the_background_setting_fades_the_window() {
     let mut settings = harness.state().settings.clone();
     settings.opacity = 0.2;
     harness.state_mut().set_settings(settings);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().background().a(), 51, "a fifth of the way up from nothing");
     harness.snapshot(shot("settings_background_faint"));
 }
@@ -1072,7 +1072,7 @@ fn a_document_taller_than_its_pane_has_a_scrollbar_that_can_be_dragged() {
 #[test]
 fn a_document_that_fits_its_pane_has_no_scrollbar() {
     let mut harness = harness("one line");
-    harness.run();
+    steady(&mut harness);
     assert!(
         harness.query_by_label("Scroll untitled").is_none(),
         "nothing to scroll, so there is nothing to draw"
@@ -1083,20 +1083,20 @@ fn a_document_that_fits_its_pane_has_no_scrollbar() {
 fn scrolling_the_source_scrolls_the_preview_with_it() {
     let mut harness = harness(&a_long_markdown());
     harness.get_by_label("Side by side").click();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().files.active().preview_scroll, 0.0);
     // The wheel over the source, which is what a person does.
     let over_the_source = harness.state().editor_area().center();
     harness.input_mut().events.push(egui::Event::PointerMoved(over_the_source));
-    harness.run();
+    steady(&mut harness);
     harness.input_mut().events.push(egui::Event::MouseWheel {
         unit: egui::MouseWheelUnit::Point,
         delta: vec2(0.0, -600.0),
         phase: egui::TouchPhase::Move,
         modifiers: Modifiers::default(),
     });
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     let source = harness.state().files.active().scroll;
     let preview = harness.state().files.active().preview_scroll;
     assert!(source > 100.0, "the source should have scrolled, it is at {source}");
@@ -1118,21 +1118,21 @@ fn scrolling_the_source_scrolls_the_preview_with_it() {
 fn scrolling_the_preview_scrolls_the_source_with_it() {
     let mut harness = harness(&a_long_markdown());
     harness.get_by_label("Side by side").click();
-    harness.run();
+    steady(&mut harness);
     // The wheel over the preview, which is the right hand half of the editing area.
     let source_area = harness.state().editor_area();
     let over_the_preview =
         egui::pos2(source_area.right() + source_area.width() / 2.0, source_area.center().y);
     harness.input_mut().events.push(egui::Event::PointerMoved(over_the_preview));
-    harness.run();
+    steady(&mut harness);
     harness.input_mut().events.push(egui::Event::MouseWheel {
         unit: egui::MouseWheelUnit::Point,
         delta: vec2(0.0, -600.0),
         phase: egui::TouchPhase::Move,
         modifiers: Modifiers::default(),
     });
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     assert!(harness.state().files.active().preview_scroll > 100.0);
     assert!(
         harness.state().files.active().scroll > 100.0,
@@ -1148,14 +1148,14 @@ fn scrolling_the_preview_scrolls_the_source_with_it() {
 fn the_two_halves_do_not_chase_each_other_when_nothing_is_touched() {
     let mut harness = harness(&a_long_markdown());
     harness.get_by_label("Side by side").click();
-    harness.run();
+    steady(&mut harness);
     harness.state_mut().files.active_mut().scroll = 900.0;
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     let settled =
         (harness.state().files.active().scroll, harness.state().files.active().preview_scroll);
     for _ in 0..30 {
-        harness.run();
+        steady(&mut harness);
     }
     let after =
         (harness.state().files.active().scroll, harness.state().files.active().preview_scroll);
@@ -1185,7 +1185,7 @@ fn open_text_menu(harness: &mut Harness<'static, UnluminousApp>, offset: usize) 
     let at = harness.state().editor_area().left_top() + vec2(120.0, 60.0);
     harness.state_mut().text_menu =
         Some(unluminous_app::components::text_menu::TextMenu::new(at, offset));
-    harness.run();
+    steady(harness);
 }
 
 #[test]
@@ -1209,7 +1209,7 @@ fn the_colour_wheel_opens_inside_the_menu_rather_than_in_a_second_popup() {
     select_phrase(&mut harness, "quick brown fox", &[]);
     open_text_menu(&mut harness, 4);
     harness.get_by_label("Choose a colour").click();
-    harness.run();
+    steady(&mut harness);
     for name in ["Highlight hue", "Highlight shade", "Highlight opacity", "Apply highlight"] {
         harness.get_by_label(name);
     }
@@ -1223,7 +1223,7 @@ fn choosing_a_colour_marks_the_selection_and_shuts_the_menu() {
     select_phrase(&mut harness, "quick brown fox", &[]);
     open_text_menu(&mut harness, 4);
     harness.get_by_label("Highlight blue").click();
-    harness.run();
+    steady(&mut harness);
     assert!(harness.state().text_menu.is_none(), "choosing a colour puts the menu away");
     let marks = harness.state().document().highlights();
     assert_eq!(marks.len(), 1);
@@ -1244,7 +1244,7 @@ fn three_passages_in_three_colours_are_drawn_behind_the_writing() {
     ] {
         select_phrase(&mut harness, phrase, &[]);
         harness.state_mut().run_action(action, &ctx);
-        harness.run();
+        steady(&mut harness);
     }
     collapse(&mut harness);
     let colours: Vec<String> =
@@ -1260,14 +1260,14 @@ fn clearing_takes_the_one_under_the_caret_and_leaves_the_others_drawn() {
     for phrase in ["quick brown fox", "black quartz", "five dozen liquor jugs"] {
         select_phrase(&mut harness, phrase, &[]);
         harness.state_mut().run_action(Action::Highlight(HighlightColor::Yellow), &ctx);
-        harness.run();
+        steady(&mut harness);
     }
     // The caret inside the second one, as a right click on it would leave it.
     let text = harness.state().document().text().to_string();
     let at = text.find("black quartz").expect("the phrase") + 3;
     harness.state_mut().command(Command::PlaceCaret { offset: at, extend: false });
     harness.state_mut().run_action(Action::ClearHighlight, &ctx);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().document().highlights().len(), 2);
     harness.snapshot(shot("highlight_cleared"));
 }
@@ -1283,7 +1283,7 @@ fn a_mark_moves_with_the_text_it_is_on() {
     // Type a whole line above it.
     harness.state_mut().command(Command::MoveDocumentStart { extend: false });
     harness.state_mut().command(Command::Insert("a new first line\n".to_owned()));
-    harness.run();
+    steady(&mut harness);
     let after = harness.state().document().highlights().iter().next().unwrap().range.clone();
     assert_eq!(after.start, before.start + "a new first line\n".len());
     let marked = harness.state().document().text().byte_slice(after.clone());
@@ -1291,7 +1291,7 @@ fn a_mark_moves_with_the_text_it_is_on() {
 
     // And undo puts it back where it was.
     harness.state_mut().command(Command::Undo);
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().document().highlights().iter().next().unwrap().range, before);
 }
 
@@ -1324,7 +1324,7 @@ fn a_right_click_inside_a_selection_leaves_the_selection_alone() {
     assert!(harness.state().text_menu.is_some());
     assert_eq!(harness.state().document().selection(), before, "the selection is untouched");
     harness.get_by_label("Highlight blue").click();
-    harness.run();
+    steady(&mut harness);
     assert_eq!(harness.state().document().highlights().len(), 1);
 }
 
@@ -1337,7 +1337,7 @@ fn the_edit_menu_holds_the_four_colours_under_a_highlight_heading() {
     harness.state_mut().menu_placement = MenuPlacement::InWindow;
     select_phrase(&mut harness, "quick brown fox", &[]);
     harness.get_by_label("Edit").click();
-    harness.run();
+    steady(&mut harness);
     for entry in ["Yellow", "Green", "Blue", "Pink", "Clear Highlight", "Clear All Highlights"] {
         harness.get_by_label(entry);
     }
@@ -1650,7 +1650,7 @@ fn press(harness: &mut Harness<'static, UnluminousApp>, key: egui::Key) {
         repeat: false,
         modifiers: Modifiers::NONE,
     });
-    harness.run();
+    steady(harness);
 }
 
 #[test]
@@ -1660,7 +1660,7 @@ fn what_the_tab_key_types_is_a_tab_until_the_indent_setting_says_otherwise() {
     did(&mut harness, "tab open main.rs --permanent");
     did(&mut harness, "editor caret --line 1 --column 4");
     harness.state_mut().focus = unluminous_app::app::Focus::Editor;
-    harness.run();
+    steady(&mut harness);
 
     press(&mut harness, egui::Key::Tab);
     assert_eq!(harness.state().document().text().to_string(), "one\t\n");
@@ -1682,7 +1682,7 @@ fn a_new_line_starts_where_the_line_it_was_started_from_starts() {
     did(&mut harness, "tab open main.rs --permanent");
     did(&mut harness, "editor caret --line 2 --column 15");
     harness.state_mut().focus = unluminous_app::app::Focus::Editor;
-    harness.run();
+    steady(&mut harness);
     press(&mut harness, egui::Key::Enter);
     let text = harness.state().document().text().to_string();
     assert!(text.contains("    let a = 1;\n    \n}"), "{text:?}");

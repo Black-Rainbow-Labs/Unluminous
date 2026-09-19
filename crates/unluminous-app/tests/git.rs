@@ -22,9 +22,9 @@ use unluminous_app::components::title_bar::MenuPlacement;
 fn the_git_menu_holds_everything_the_ask_lists() {
     let mut harness = git_harness("menu");
     harness.state_mut().menu_placement = MenuPlacement::InWindow;
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("Git").click();
-    harness.run();
+    steady(&mut harness);
     for entry in [
         "Commit...",
         "Add",
@@ -70,7 +70,7 @@ fn the_commit_panel_shows_the_changes_and_the_unversioned_files() {
     harness
         .state_mut()
         .run_action(Action::Git(unluminous_app::app::actions::GitAction::Commit), &ctx);
-    harness.run();
+    steady(&mut harness);
     // Waited for, because opening the panel asks for the recent commit messages and the status bar
     // says so while it does. Whether that message is still there when the picture is taken depends
     // on how quickly a thread answered, which is not a difference in Unluminous.
@@ -80,7 +80,7 @@ fn the_commit_panel_shows_the_changes_and_the_unversioned_files() {
     if let Some(git) = harness.state_mut().git.as_mut() {
         git.panel.message = "task-1649: the commit panel".to_owned();
     }
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("COMMIT");
     harness.get_by_label("COMMIT AND PUSH...");
     harness.snapshot(shot("git_commit_panel"));
@@ -93,7 +93,7 @@ fn the_branches_dialog_lists_the_branches() {
     harness
         .state_mut()
         .run_action(Action::Git(unluminous_app::app::actions::GitAction::Branches), &ctx);
-    harness.run();
+    steady(&mut harness);
     harness.get_by_label("main");
     harness.snapshot(shot("git_branches"));
 }
@@ -106,7 +106,7 @@ fn the_gutter_annotates_with_git_blame_and_colours_by_age() {
         .state_mut()
         .open_path_permanently(&folder.join("sqlClient.ts"))
         .expect("the file opens");
-    harness.run();
+    steady(&mut harness);
     let ctx = harness.ctx.clone();
     harness
         .state_mut()
@@ -398,7 +398,7 @@ fn switching_to_the_branch_already_on_says_so_rather_than_running_git() {
         Action::Git(unluminous_app::app::actions::GitAction::Switch("main".to_owned())),
         &ctx,
     );
-    harness.run();
+    steady(&mut harness);
     let said = harness.state().message.clone().unwrap_or_default();
     assert!(said.contains("Already on main"), "said {said:?}");
 }
@@ -429,7 +429,7 @@ fn branch_widget_in_the_title_bar() {
         pump(&mut harness);
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
-    harness.run();
+    steady(&mut harness);
     harness.snapshot(shot("branch_widget"));
 }
 

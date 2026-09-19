@@ -202,7 +202,7 @@ pub fn harness(text: &str) -> Harness<'static, UnluminousApp> {
         app.draw_deterministically();
         app
     });
-    harness.run();
+    steady(&mut harness);
     harness
 }
 
@@ -218,7 +218,7 @@ pub fn harness_in(folder: &std::path::Path) -> Harness<'static, UnluminousApp> {
         app.draw_deterministically();
         app
     });
-    harness.run();
+    steady(&mut harness);
     harness
 }
 
@@ -233,7 +233,7 @@ pub fn select_and(
     for command in commands {
         harness.state_mut().command(command.clone());
     }
-    harness.run();
+    steady(harness);
 }
 
 /// Select the first occurrence of `phrase` and run `commands` on it.
@@ -261,14 +261,14 @@ pub fn select_phrase(
 /// names did not change, so what a test asks for afterwards is what it always asked for.
 pub fn open_text_options(harness: &mut Harness<'static, UnluminousApp>) {
     harness.get_by_label("Text options").click();
-    harness.run();
+    steady(harness);
 }
 
 /// Put the caret at the start with nothing selected, so that a screenshot shows the formatting rather
 /// than a selection highlight sitting on top of it.
 pub fn collapse(harness: &mut Harness<'static, UnluminousApp>) {
     harness.state_mut().command(Command::MoveDocumentStart { extend: false });
-    harness.run();
+    steady(harness);
 }
 
 /// Where the accepted image for `name` lives on the platform the test is running on.
@@ -422,6 +422,39 @@ pub fn pump(harness: &mut Harness<'static, UnluminousApp>) {
     let _ = harness.try_run();
 }
 
+/// How many times [`steady`] asks the harness to run before giving up and letting the test speak.
+///
+/// Each try is up to `max_steps` frames, which is four, so this is up to ninety six frames of
+/// waiting. It costs nothing when the window settles on the first try, which is nearly always: a
+/// second try only happens while something is asking to be drawn again **immediately**, which is a
+/// thread that has just answered, an animation, or work still being done.
+pub const STEADY_TRIES: usize = 24;
+
+/// Draw until the window is quiet, and never fail because it was not quiet soon enough.
+///
+/// **`task-1984`, and it is three sightings rather than one.** `Harness::run` gives the window four
+/// steps to go quiet and **panics** otherwise, which is right for a settled window and wrong the
+/// moment anything is still being worked on. Three window binaries have now failed on one under
+/// load, and not one of them was a fault in Unluminous:
+///
+/// - `panel_docking`, on the frame after a pointer move, before a zoom.
+/// - `panel_docking` again, on the frame after a click that starts **decoding an image**.
+/// - `syntax_and_plugins_basic`, on the frame after a `.mmd` file is put into Preview, which is the
+///   window **laying out a Mermaid diagram**.
+///
+/// Each passed when run alone and failed in a whole workspace run on a loaded machine, which is what
+/// a four step budget looks like from the outside. So the budget is gone: this asks the harness to
+/// run again and again while it keeps wanting to be drawn, and then returns quietly. **The test's own
+/// assertion is what reports a window that never settled**, which is a better failure than a panic
+/// inside a helper — it names what was expected rather than a step count.
+pub fn steady(harness: &mut Harness<'static, UnluminousApp>) {
+    for _ in 0..STEADY_TRIES {
+        if harness.try_run().is_ok() {
+            return;
+        }
+    }
+}
+
 /// A window on a real repository, with the repository already read.
 ///
 /// The window looks for a repository on its first frame, and reading it happens on a thread, so the
@@ -437,7 +470,7 @@ pub fn git_harness(name: &str) -> Harness<'static, UnluminousApp> {
         }
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
-    harness.run();
+    steady(&mut harness);
     harness
 }
 
@@ -493,43 +526,43 @@ The last paragraph.";
 pub fn drag(harness: &mut Harness<'static, UnluminousApp>, from: egui::Pos2, to: egui::Pos2) {
     let modifiers = Modifiers::default();
     harness.input_mut().events.push(egui::Event::PointerMoved(from));
-    harness.run();
+    steady(harness);
     harness.input_mut().events.push(egui::Event::PointerButton {
         pos: from,
         button: egui::PointerButton::Primary,
         pressed: true,
         modifiers,
     });
-    harness.run();
+    steady(harness);
     harness.input_mut().events.push(egui::Event::PointerMoved(to));
-    harness.run();
+    steady(harness);
     harness.input_mut().events.push(egui::Event::PointerButton {
         pos: to,
         button: egui::PointerButton::Primary,
         pressed: false,
         modifiers,
     });
-    harness.run();
+    steady(harness);
 }
 
 /// Open the About box the way a person does: `Unluminous` in the bar, then `About Unluminous`.
 pub fn open_about(harness: &mut Harness<'static, UnluminousApp>) {
     harness.state_mut().menu_placement = MenuPlacement::InWindow;
-    harness.run();
+    steady(harness);
     harness.get_by_label("Unluminous").click();
-    harness.run();
+    steady(harness);
     harness.get_by_label("About Unluminous").click();
-    harness.run();
+    steady(harness);
 }
 
 /// Open the Settings window the way a person does on Windows: `Edit` in the bar, then `Settings`.
 pub fn open_settings(harness: &mut Harness<'static, UnluminousApp>) {
     harness.state_mut().menu_placement = MenuPlacement::InWindow;
-    harness.run();
+    steady(harness);
     harness.get_by_label("Edit").click();
-    harness.run();
+    steady(harness);
     harness.get_by_label("Settings").click();
-    harness.run();
+    steady(harness);
 }
 
 /// Press twice at `at`, which is what a double click is from inside the window.
@@ -573,13 +606,13 @@ pub fn double_click_at(harness: &mut Harness<'static, UnluminousApp>, at: egui::
 pub fn with_terminal(text: &str, rows: usize, columns: usize) -> Harness<'static, UnluminousApp> {
     let mut harness = harness(text);
     harness.state_mut().new_detached_terminal_tab(rows, columns);
-    harness.run();
+    steady(&mut harness);
     harness
 }
 
 pub fn feed(harness: &mut Harness<'static, UnluminousApp>, bytes: &[u8]) {
     harness.state_mut().terminal.tabs.active_mut().expect("a terminal tab").feed(bytes);
-    harness.run();
+    steady(harness);
 }
 
 /// Run the window until `ready` is true, or give up.
@@ -592,19 +625,27 @@ pub fn feed(harness: &mut Harness<'static, UnluminousApp>, bytes: &[u8]) {
 /// that takes 40 milliseconds on its own can take several seconds when seven of them are running
 /// together — which is what made this fail about one run in five while passing every time on its
 /// own. Waiting longer costs nothing when nothing is slow.
-#[track_caller]
 /// A few frames, without insisting that the window goes quiet.
 ///
 /// `Harness::run` gives the window four steps to settle and panics otherwise, which is right for a
 /// settled window and wrong while git is still working: the worker thread asks for a repaint whenever a
 /// command finishes, so a `run` that happens to land in the middle of one fails for a reason that is not
 /// a fault in Unluminous. This is what a step between git operations uses instead.
+///
+/// [`steady`] is the same idea without the fixed count: this draws four frames whatever the window
+/// says, and that draws until it stops asking. Both are kept, because a test that wants a known
+/// number of frames is asking a different question from one that wants a settled window.
 pub fn nudge(harness: &mut Harness<'static, UnluminousApp>) {
     for _ in 0..4 {
         pump(harness);
     }
 }
 
+// **On `settle` rather than on `nudge`** (`task-1984`). The attribute had drifted above `nudge`'s doc
+// comment, so it applied to `nudge`, which never panics -- and `settle`, which does, reported its own
+// line rather than the caller's. A test that gave up waiting therefore pointed at this file instead of
+// at the line that was waiting.
+#[track_caller]
 pub fn settle(
     harness: &mut Harness<'static, UnluminousApp>,
     what: &str,
@@ -645,7 +686,7 @@ pub fn double_click(harness: &mut Harness<'static, UnluminousApp>, label: &str) 
             });
         }
     }
-    harness.run();
+    steady(harness);
 }
 
 /// A configuration, spelled out.
@@ -788,7 +829,7 @@ pub fn right_click_at(harness: &mut Harness<'static, UnluminousApp>, at: egui::P
             modifiers: Modifiers::default(),
         });
     }
-    harness.run();
+    steady(harness);
 }
 
 // -------------------------------------------------------------------------------------- task-1664
@@ -799,7 +840,7 @@ pub fn right_click_at(harness: &mut Harness<'static, UnluminousApp>, at: egui::P
 pub fn choose(harness: &mut Harness<'static, UnluminousApp>, action: Action) {
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(action, &ctx);
-    harness.run();
+    steady(harness);
 }
 
 /// The names on offer, in the order the popup is showing them.
@@ -865,8 +906,8 @@ pub fn folding_harness(name: &str) -> Harness<'static, UnluminousApp> {
     let folder = folding_folder(name);
     let mut harness = harness_in(&folder);
     harness.get_by_label_contains("source.rs").click();
-    harness.run();
-    harness.run();
+    steady(&mut harness);
+    steady(&mut harness);
     harness
 }
 
@@ -901,7 +942,7 @@ pub fn javascript_harness() -> Harness<'static, UnluminousApp> {
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    harness.run();
+    steady(&mut harness);
     harness
 }
 
@@ -923,11 +964,11 @@ pub fn type_and_paint(harness: &mut Harness<'static, UnluminousApp>, text: &str)
         } else {
             harness.input_mut().events.push(egui::Event::Text(letter.to_string()));
         }
-        harness.run();
+        steady(harness);
         harness.render().expect("paint the frame");
         if harness.state().completion().is_some() {
             harness.key_press(egui::Key::ArrowDown);
-            harness.run();
+            steady(harness);
             harness.render().expect("paint the frame with a row chosen");
         }
     }
@@ -1105,7 +1146,7 @@ pub fn asked_for(harness: &mut Harness<'static, UnluminousApp>, command: &str) -
 /// Hand a message to the session and let the window settle.
 pub fn feed_debug(harness: &mut Harness<'static, UnluminousApp>, message: Message) {
     harness.state_mut().debug.as_mut().expect("a session").feed(message);
-    harness.run();
+    steady(harness);
 }
 
 /// Everything an ordinary adapter offers.
@@ -1134,7 +1175,7 @@ pub fn paused_harness(name: &str) -> Harness<'static, UnluminousApp> {
         .state_mut()
         .new_detached_debug_session("lldb", configuration("app", "target/debug/app.exe"));
     harness.state_mut().show_the_debug_tile(true);
-    harness.run();
+    steady(&mut harness);
 
     let initialize = asked_for(&mut harness, "initialize");
     feed_debug(&mut harness, answer(initialize, "initialize", capabilities()));
