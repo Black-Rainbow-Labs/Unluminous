@@ -198,6 +198,21 @@ pub struct CompletionAnchor {
     pub pane: egui::Rect,
 }
 
+/// How many of the project index's names one stem may draw into the candidate pool.
+///
+/// **`task-1984` C12.** `task-1677` §7 set one budget for this feature -- under 5 ms for a whole
+/// keystroke on the largest file in this repository -- and named the answer if a project ever broke
+/// it: an honest limit on the pool. This is that limit.
+///
+/// Two thousand, because a stem of two letters is where the popup opens and where the cost lives:
+/// on this repository a two letter stem matched about three thousand of the index's eleven thousand
+/// names, and scoring a candidate is about a microsecond. It is deliberately far above what a stem
+/// of three or more letters reaches, so the cut is invisible except in the one case where a person
+/// has typed almost nothing and cannot be looking for a particular name yet.
+///
+/// `cargo run --release -p unluminous-app --example completion_cost` is how this is measured again.
+pub const MOST_FROM_THE_INDEX: usize = 2_000;
+
 impl UnluminousApp {
     /// Whether auto-complete applies to the file that is showing.
     pub fn completion_applies_here(&self) -> bool {
@@ -263,9 +278,27 @@ impl UnluminousApp {
         }
 
         // The project's definitions, with the open files' paths dropped: the ownership rule.
+        //
+        // **Bounded at [`MOST_FROM_THE_INDEX`]** (`task-1984` C12). `task-1677` §7 set the budget at
+        // under 5 ms a keystroke on the largest file in this repository and said what to do if a
+        // future project broke it: *"the answer is capping the pool (an honest `LIMIT`, the
+        // references modal's pattern), not a thread"*. A future project turned out to be this one --
+        // the index held 4,445 names when that was written and holds 11,116 today, so a two letter
+        // stem gathered and scored three thousand names and one whole keystroke came to 11.3 ms.
+        //
+        // **The index is the source that is cut and the only one**, because the pool is gathered in
+        // order of how much a row is worth: this tab's definitions, this tab's words, the other tabs'
+        // definitions, then the project, then the language's own keywords. The first three are what a
+        // person is most likely to want and are small; the last is smaller still and must never be
+        // lost, because a keyword the language defines is always a right answer. What is left is the
+        // project, which is both the largest and the least certain.
         if let Some(indexer) = self.symbols_indexer() {
             let index = indexer.index();
+            let mut from_the_index = 0usize;
             for name in index.sorted_names() {
+                if from_the_index >= MOST_FROM_THE_INDEX {
+                    break;
+                }
                 if !completion::could_match(stem, name) {
                     continue;
                 }
@@ -274,6 +307,7 @@ impl UnluminousApp {
                 else {
                     continue;
                 };
+                from_the_index += 1;
                 pool.push(Candidate::described(
                     name.clone(),
                     Source::Index,
@@ -984,6 +1018,65 @@ mod tests {
         std::fs::write(folder.join("notes.md"), "# draw\nA note about drawing.\n")
             .expect("write notes.md");
         folder
+    }
+
+    /// A project with more names in it than one stem may draw from the index.
+    ///
+    /// `task-1984` C12. The names are all in a file that is never opened, so the only way any of
+    /// them can reach the pool is the project index — which is the source the cap is on.
+    fn a_project_with_many_names(name: &str, many: usize) -> PathBuf {
+        let folder = a_project(name);
+        let mut source = String::new();
+        for index in 0..many {
+            source.push_str(&format!("pub fn drawing_number_{index}() {{}}\n"));
+        }
+        std::fs::write(folder.join("many.rs"), source).expect("write many.rs");
+        folder
+    }
+
+    /// One stem never draws more than [`MOST_FROM_THE_INDEX`] names out of the project index.
+    ///
+    /// **`task-1984` C12.** `task-1677` §7 set one budget — gathering, scoring and sorting a stem
+    /// under 5 ms on the largest file in this repository — and named the answer if a project ever
+    /// broke it: *"capping the pool (an honest `LIMIT`, the references modal's pattern), not a
+    /// thread"*. A project did break it, so the pool is capped, and this is the cap holding.
+    ///
+    /// **The other half is what is *not* capped**, which matters more than the number: the pool is
+    /// gathered in order of what a row is worth, and the cap is on the project index alone. This
+    /// file's own definitions, its words, the other open tabs and the language's own keywords all
+    /// come through whole — a keyword the language defines is always a right answer, and there are
+    /// only ever a handful of them.
+    #[test]
+    fn one_stem_draws_no_more_than_the_cap_from_the_project_index() {
+        let folder =
+            a_project_with_many_names("unluminous-completion-cap", MOST_FROM_THE_INDEX * 2);
+        let mut app = UnluminousApp::new(&folder);
+        build_the_index(&mut app);
+        app.open_path_permanently(&folder.join("layout.rs")).expect("the file opens");
+        let end = app.document().text().len_bytes();
+        app.document_mut().apply(Command::PlaceCaret { offset: end, extend: false });
+
+        let pool = app.completion_candidates("dr", end);
+        let from_the_index = pool.iter().filter(|one| one.source == Source::Index).count();
+        assert!(
+            from_the_index > 0,
+            "the fixture really does reach the index, or this test is about nothing"
+        );
+        assert!(
+            from_the_index <= MOST_FROM_THE_INDEX,
+            "{from_the_index} names came from the index, past the cap of {MOST_FROM_THE_INDEX}"
+        );
+        // And this file's own `draw`, `draw_frame` and `redraw` are still there, which is the half
+        // of the rule the cap must not touch.
+        let here: Vec<&str> = pool
+            .iter()
+            .filter(|one| one.source == Source::ThisFile)
+            .map(|one| one.name.as_str())
+            .collect();
+        for named in ["draw", "draw_frame", "redraw"] {
+            assert!(here.contains(&named), "{named} is missing from {here:?}");
+        }
+        std::fs::remove_dir_all(&folder).ok();
     }
 
     /// A window on that project, its index built, with `layout.rs` open and the caret at the end.

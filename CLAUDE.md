@@ -1705,12 +1705,23 @@ this repository**, and `cargo run --release -p unluminous-app --example completi
 measured again. It was over that when first written (6.6 ms), and the fix was removing waste rather
 than capping the pool: the dedup was a linear search over the rows already kept, the alignment table
 and the candidate's characters were three allocations *per candidate*, and the sort comparator counted
-every name's characters at every comparison. 4.59 ms when that was written; **5.06 ms today, and the
-number to read is 4.42** — the file it is measured against is `tests/screenshots.rs`, which has grown
-to 271 KB, and the 5.06 is a *one* character stem, which only `Ctrl+Space` can ask for because the
-popup does not open under two. Nothing in `task-1680` moved it: the export marker it added to
-`FileSymbols::read` measures 0.000 ms, and the example prints that line so it stays measured rather
-than assumed.
+every name's characters at every comparison. 4.59 ms when that was written; **3.89 ms today**, on
+`app/space.rs`, which is 231 KB and is the largest file a language plugin claims here now.
+
+**And `task-1984` C12 capped the pool after all**, which is the one thing that passage said the fix
+had not been. The budget is about gathering, scoring and sorting a stem, and it was broken by the
+project rather than by the code: the index held 4,445 names when `task-1677` measured it and holds
+**11,116** today, so a two letter stem gathered and scored three thousand names and the worst stem
+reached **7.86 ms**. `app::completion::MOST_FROM_THE_INDEX` bounds what one stem may draw from the
+project index at two thousand names — the index only, because the pool is gathered in order of what a
+row is worth and the project is both the largest source and the least certain, while the language's
+own keywords are the smallest and are always right. That is §7's own instruction: *"the answer is
+capping the pool (an honest `LIMIT`, the references modal's pattern), not a thread"*.
+
+**The read is a separate number and §7 sets no figure for it**, which the example had been adding to
+the stem cost and holding to the stem's budget. Reading `app/space.rs` into `FileSymbols` and its
+distinct words is **3.82 ms** once a text revision, so a whole keystroke is about 7.7 ms and the part
+that is bounded is bounded. Where that number goes next is the read, not the pool.
 
 `editor.suggestions` is `automatic` or `manual`, with a tick box in `Settings -> Editor`. `manual` is
 already the off switch — `Ctrl+Space` and the menu entry work either way — which is why there is no

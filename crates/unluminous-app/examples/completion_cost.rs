@@ -1,6 +1,6 @@
 //! What one keystroke of auto-complete costs on a real project, measured on this machine.
 //!
-//! `task-1677` §7 sets one budget and one only: **gathering, scoring and sorting the candidates for
+//! `task-1677` §7 sets one budget: **gathering, scoring and sorting the candidates for
 //! a stem must cost under 5 ms on the largest file in this repository**, because that work runs on
 //! the window's thread at keystroke time — deliberately, since every source is already in memory and
 //! a worker thread here would add generation plumbing to make an instant answer arrive a frame late.
@@ -176,15 +176,21 @@ fn main() {
     }
 
     println!();
-    println!("Worst stem measured:            {worst:8.3} ms");
-    println!("Plus the read at a new revision:{read:8.3} ms");
-    println!("One whole keystroke, worst case:{:8.3} ms   (budget: under 5 ms)", worst + read);
-    if worst + read > 5.0 {
+    // **Two numbers against two budgets, because §7 sets two** (`task-1984` C12). Its first bullet
+    // is the one it calls *"the one budget the implementation must measure and honour"* and it is
+    // about **gathering, scoring and sorting a stem**: under 5 ms. Its third bullet is the read, a
+    // separate line with no figure on it, and adding the two together and holding the sum to the
+    // first bullet's number was this file reporting a budget §7 never set — which then said "over
+    // budget" and pointed at capping the pool, when the pool was not what had grown.
+    println!("Worst stem measured:            {worst:8.3} ms   (§7's budget: under 5 ms)");
+    if worst > 5.0 {
         println!(
             "  Over budget. §7 says the answer is capping the pool — an honest LIMIT, the \
-             references modal's pattern — and never a thread."
+             references modal's pattern — and never a thread. See `MOST_FROM_THE_INDEX`."
         );
     }
+    println!("The read at a new revision:     {read:8.3} ms   (§7 sets no figure for this)");
+    println!("So one whole keystroke:         {:8.3} ms", worst + read);
 }
 
 /// Read the project and wait for the thread, which is what a frame of the real window does over
