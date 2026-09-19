@@ -137,6 +137,23 @@ pub const BUILD_WAIT_MS: u64 = 600_000;
 /// A reply that says what it was waiting for is more use than one that says there was no answer.
 pub const SLACK_MS: u64 = 5_000;
 
+/// The longest any command in the catalogue waits, in milliseconds.
+///
+/// **Derived rather than written down** (`task-1984` L2). `services::control::BACKSTOP` was 120
+/// seconds with a comment saying it was longer than any command's own wait, and `BUILD_WAIT_MS` is
+/// five times that -- so `debug start --wait-for-pause` on a cold cargo build answered `timed-out`
+/// after two minutes while the window was still correctly waiting, and the answer went to a
+/// connection nobody was reading. `terminal read --wait-for … --timeout 300000` was cut at 120 the
+/// same way.
+///
+/// A `const fn` rather than a `max` over `COMMANDS`, because `Command::waits_for` is the one place
+/// that knows and `the_backstop_outlasts_every_command_that_waits` is what checks the two agree.
+pub const fn longest_wait_ms() -> u64 {
+    // `waits_for` answers with this for every command that answers at all, and it is the largest
+    // number in this file by a factor of twenty.
+    BUILD_WAIT_MS
+}
+
 impl Command {
     /// What a person types, with a space: `tab open`.
     pub fn typed(&self) -> String {

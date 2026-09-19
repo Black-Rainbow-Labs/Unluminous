@@ -126,6 +126,26 @@ impl Driver for UnluminousWindows {
 /// than a lookup, so it goes down the same road as everything else — which for a local command
 /// means it is answered by [`launched`] below.
 fn locally(command: &'static Command, arguments: &Map<String, Value>) -> Option<Reply> {
+    let answer = answered(command, arguments);
+    debug_assert!(
+        answer.is_some() == ANSWERED_LOCALLY.contains(&command.wire().as_str()),
+        "{} is in ANSWERED_LOCALLY and has no arm below, or the other way round",
+        command.typed()
+    );
+    answer
+}
+
+/// Every command this file answers, named so a test can walk the catalogue against it.
+///
+/// **`task-1984` L4.** A command declared `local: true` and offered as a tool that nothing here
+/// answers is a tool that resolves and is then refused by the window with `unknown-command` -- which
+/// is what `mcp tools`, `mcp config` and `mcp install` were. `locally` below is the arms; this is the
+/// same list in a form a test can read, and `locally`'s own `debug_assert` is what stops the two
+/// coming apart.
+pub const ANSWERED_LOCALLY: [&str; 6] =
+    ["version", "commands", "instances", "launch", "mcp.tools", "mcp.config"];
+
+fn answered(command: &'static Command, arguments: &Map<String, Value>) -> Option<Reply> {
     match command.wire().as_str() {
         "version" => Some(Reply::done(
             "version",
@@ -169,8 +189,86 @@ fn locally(command: &'static Command, arguments: &Map<String, Value>) -> Option<
             ))
         }
         "launch" => Some(launched(arguments)),
+        // **`task-1984` L4.** These two are `local: true` and were answered by neither half: not here,
+        // and not by the window, which refused them with `unknown-command`. So they resolved as tools
+        // and could never succeed. `mcp::ask` is the one reading of their arguments, shared with
+        // `main.rs`, so the agent's answer and the person's cannot come apart.
+        "mcp.tools" => Some(mcp_tools(arguments)),
+        "mcp.config" => Some(mcp_config(arguments)),
         _ => None,
     }
+}
+
+/// `mcp tools`: what an agent would be equipped with, and what it costs.
+fn mcp_tools(arguments: &Map<String, Value>) -> Reply {
+    let areas = match super::ask::areas_from(arguments) {
+        Ok(areas) => areas,
+        Err(problem) => return Reply::failed("mcp.tools", code::USAGE, problem),
+    };
+    if arguments.contains_key("count") {
+        let counted = super::ask::counted(&areas);
+        let said = counted
+            .iter()
+            .map(|shape| {
+                format!(
+                    "{}: {} tools, roughly {} tokens",
+                    shape["shape"].as_str().unwrap_or_default(),
+                    shape["tools"],
+                    shape["roughTokens"]
+                )
+            })
+            .collect::<Vec<String>>()
+            .join("; ");
+        return Reply::done(
+            "mcp.tools",
+            said,
+            serde_json::json!({ "shapes": counted, "areas": areas.names() }),
+        );
+    }
+    let shape = match super::ask::shape_from(arguments) {
+        Ok(shape) => shape,
+        Err(problem) => return Reply::failed("mcp.tools", code::USAGE, problem),
+    };
+    let tools = super::tools::as_json_in(shape, &areas);
+    Reply::done(
+        "mcp.tools",
+        format!("{} tools in the {} shape", tools.len(), shape.name()),
+        serde_json::json!({
+            "shape": shape.name(),
+            "areas": areas.names(),
+            "count": tools.len(),
+            "tools": tools,
+        }),
+    )
+}
+
+/// `mcp config`: the block a person would paste into an agent's own configuration file.
+///
+/// Read only. Writing that file is `mcp install`, which is held back from the tool list -- see
+/// `tools::offered`.
+fn mcp_config(arguments: &Map<String, Value>) -> Reply {
+    let clients =
+        match super::ask::clients_from(arguments.get("client").and_then(Value::as_str)) {
+            Ok(clients) => clients,
+            Err(problem) => return Reply::failed("mcp.config", code::USAGE, problem),
+        };
+    let wanted = match super::ask::wanted_from(arguments) {
+        Ok(wanted) => wanted,
+        Err(problem) => return Reply::failed("mcp.config", code::USAGE, problem),
+    };
+    let described = super::ask::configurations(&clients, &wanted);
+    Reply::done(
+        "mcp.config",
+        format!(
+            "The configuration for {}",
+            clients.iter().map(|client| client.title()).collect::<Vec<&str>>().join(" and ")
+        ),
+        serde_json::json!({
+            "name": wanted.name,
+            "transport": wanted.transport.name(),
+            "clients": described,
+        }),
+    )
 }
 
 /// Start another Unluminous and wait until it answers, which is what makes the next tool call safe.

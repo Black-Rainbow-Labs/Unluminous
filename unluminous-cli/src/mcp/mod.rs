@@ -42,6 +42,7 @@
 //! [`install`] writes Unluminous into Claude Code's and Codex's own configuration, which is the same
 //! thing the buttons in `Settings -> Tools -> MCP` do.
 
+pub mod ask;
 pub mod base64;
 pub mod driver;
 pub mod http;

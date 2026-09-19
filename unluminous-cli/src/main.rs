@@ -386,20 +386,7 @@ fn configuration(typed: &Typed) -> i32 {
         }
     };
     if typed.global.json {
-        let described: Vec<Value> = clients
-            .iter()
-            .map(|client| {
-                json!({
-                    "client": client.name(),
-                    "title": client.title(),
-                    "file": match client {
-                        mcp::install::Client::Claude => mcp::install::claude_file(&wanted).to_string_lossy().into_owned(),
-                        mcp::install::Client::Codex => mcp::install::codex_file().to_string_lossy().into_owned(),
-                    },
-                    "configuration": wanted.example(*client),
-                })
-            })
-            .collect();
+        let described = mcp::ask::configurations(&clients, &wanted);
         say(&json!({
             "ok": true,
             "command": "mcp.config",
@@ -443,22 +430,7 @@ fn mcp_tools(typed: &Typed) -> i32 {
         }
     };
     if typed.arguments.contains_key("count") {
-        // Both shapes, always, because the number that matters is the comparison rather than either
-        // figure on its own. Bytes divided by four is the usual rule of thumb for tokens and is
-        // called that rather than dressed up as a measurement.
-        let counted: Vec<Value> = [mcp::Shape::Grouped, mcp::Shape::Every]
-            .iter()
-            .map(|shape| {
-                let tools = mcp::tools::as_json_in(*shape, &areas);
-                let bytes = serde_json::to_string(&tools).unwrap_or_default().len();
-                json!({
-                    "shape": shape.name(),
-                    "tools": tools.len(),
-                    "bytes": bytes,
-                    "roughTokens": bytes / 4,
-                })
-            })
-            .collect();
+        let counted = mcp::ask::counted(&areas);
         if typed.global.json {
             say(&json!({
                 "ok": true,
@@ -504,81 +476,34 @@ fn mcp_tools(typed: &Typed) -> i32 {
 }
 
 /// Everything the two writing commands need, read off the command line.
+// **The readings live in `mcp::ask` now, where the MCP driver calls them too** (`task-1984` L4 and
+// §5.6). `mcp tools`, `mcp config` and `mcp install` are `local: true` and were answered here and
+// nowhere else, so an agent that called them as tools was refused by the window with
+// `unknown-command` -- three tools that resolve and can never succeed. What stays here is how a
+// person's command line *prints* an answer; what the answer is made of is shared.
+
 fn wanted_from(typed: &Typed) -> Result<mcp::install::Wanted, String> {
-    let mut wanted = mcp::install::Wanted {
-        transport: transport_from(typed)?,
-        port: port_from(typed)?,
-        ..mcp::install::Wanted::default()
-    };
-    if let Some(name) = typed.arguments.get("name").and_then(Value::as_str) {
-        let name = name.trim();
-        if name.is_empty() {
-            return Err("A server needs a name.".to_owned());
-        }
-        wanted.name = name.to_owned();
-    }
-    if let Some(scope) = typed.arguments.get("scope").and_then(Value::as_str) {
-        wanted.scope = mcp::install::Scope::parse(scope)
-            .ok_or_else(|| format!("`{scope}` is not a scope. It is `user` or `project`."))?;
-    }
-    Ok(wanted)
+    mcp::ask::wanted_from(&typed.arguments)
 }
 
 fn clients_from(named: Option<&str>) -> Result<Vec<mcp::install::Client>, String> {
-    match named.map(str::trim) {
-        None | Some("") | Some("both") | Some("all") => {
-            Ok(mcp::install::Client::ALL.to_vec())
-        }
-        Some(name) => mcp::install::Client::parse(name).map(|client| vec![client]).ok_or_else(|| {
-            format!("`{name}` is not a client Unluminous can write to. It is `claude`, `codex`, or `both`.")
-        }),
-    }
+    mcp::ask::clients_from(named)
 }
 
 fn shape_from(typed: &Typed) -> Result<mcp::Shape, String> {
-    match typed.arguments.get("tools").and_then(Value::as_str) {
-        Some(named) => mcp::Shape::parse(named)
-            .ok_or_else(|| format!("`{named}` is not a tool shape. It is `grouped` or `every`.")),
-        None => Ok(mcp::Shape::default()),
-    }
+    mcp::ask::shape_from(&typed.arguments)
 }
 
-/// Which areas the server was equipped with, or all of them.
-///
-/// `task-1804` §4.2. Refused rather than ignored when a name is not an area -- see
-/// `mcp::tools::Areas::parse` for why.
 fn areas_from(typed: &Typed) -> Result<mcp::tools::Areas, String> {
-    match typed.arguments.get("areas").and_then(Value::as_str) {
-        Some(named) => mcp::tools::Areas::parse(named),
-        None => Ok(mcp::tools::Areas::all()),
-    }
+    mcp::ask::areas_from(&typed.arguments)
 }
 
 fn transport_from(typed: &Typed) -> Result<mcp::Transport, String> {
-    match typed.arguments.get("transport").and_then(Value::as_str) {
-        Some(named) => mcp::Transport::parse(named)
-            .ok_or_else(|| format!("`{named}` is not a transport. It is `stdio` or `http`.")),
-        None => Ok(mcp::Transport::default()),
-    }
+    mcp::ask::transport_from(&typed.arguments)
 }
 
 fn port_from(typed: &Typed) -> Result<u16, String> {
-    let Some(named) = typed.arguments.get("port") else {
-        return Ok(mcp::DEFAULT_PORT);
-    };
-    let named = match named {
-        Value::Number(number) => number.to_string(),
-        Value::String(text) => text.trim().to_owned(),
-        other => other.to_string(),
-    };
-    let port: u16 = named.parse().map_err(|_| format!("`{named}` is not a port number."))?;
-    if port < mcp::MIN_PORT {
-        return Err(format!(
-            "{port} is below {}, which needs privileges and is never what was meant.",
-            mcp::MIN_PORT
-        ));
-    }
-    Ok(port)
+    mcp::ask::port_from(&typed.arguments)
 }
 
 /// Everything else: find an Unluminous, send the command, print what came back.

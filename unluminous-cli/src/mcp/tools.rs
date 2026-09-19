@@ -169,13 +169,24 @@ impl Areas {
     }
 }
 
-/// `mcp serve` starts an MCP server. Calling it from inside one would either hang the tool call for
-/// ever or fail on a port that is already held, and there is no reading of it that is useful to an
-/// agent. Everything else is offered, including `quit` and `launch`, which really are things an
-/// agent may reasonably want. One exclusion, written down here rather than spread through the
-/// generator, so a test can assert the list is exactly this long.
+/// Two commands are held back, and each says why here rather than in the generator, so a test can
+/// assert the list is exactly this long.
+///
+/// **`mcp serve`** starts an MCP server. Calling it from inside one would either hang the tool call
+/// for ever or fail on a port that is already held, and there is no reading of it that is useful to
+/// an agent.
+///
+/// **`mcp install`** rewrites the calling agent's own configuration file (`task-1984` L4). That is a
+/// side effect the agent cannot see: the file is read when the agent starts, so the change takes
+/// effect on some later run of a program the model is not in a position to reason about, and a tool
+/// that silently edits the thing that decides which tools exist is a tool of the wrong shape. It is
+/// the reason `serve` is held back, said about a file instead of a port. `mcp config` is offered and
+/// answers with exactly what `install` would write, so an agent can still say what to paste.
+///
+/// Everything else is offered, including `quit` and `launch`, which really are things an agent may
+/// reasonably want.
 pub fn offered(command: &Command) -> bool {
-    command.wire() != "mcp.serve"
+    !matches!(command.wire().as_str(), "mcp.serve" | "mcp.install")
 }
 
 /// Every command that is offered as a tool.
@@ -648,12 +659,25 @@ pub fn resolve_in(
             // it was silently dropped, so a tool call asking to fail fast waited the whole default
             // fifteen seconds. A `timeout` the caller put in `arguments` is the command's own and
             // wins, because that is the one the window reads.
-            if let Some(given_timeout) = given.get("timeout") {
-                arguments.entry("timeout".to_owned()).or_insert_with(|| given_timeout.clone());
-            }
+            // **Taken out before `sibling_keys` runs and put back afterwards** (`task-1984` L3). A
+            // `timeout` that came from the tool's own top level property is not a key of any command
+            // -- it is the call's, beside `command` and `instance` -- so in the eight areas of
+            // twenty-eight where some *sibling* verb declares a `timeout` flag and this one does not,
+            // `sibling_keys` stripped it and told the agent it had been ignored as a key of another
+            // verb. So the deadline an agent set was not used, and the sentence it read back was
+            // about a key it had taken from the tool's own schema.
+            let own_timeout = match arguments.contains_key("timeout") {
+                // A `timeout` the caller put inside `arguments` is the command's own and is left to
+                // be judged like any other key of its.
+                true => None,
+                false => given.get("timeout").cloned(),
+            };
             // The two names the tool used for itself, put back to what the command calls them.
             unrename(&mut arguments);
             let ignored = sibling_keys(area, command, &mut arguments);
+            if let Some(timeout) = own_timeout {
+                arguments.insert("timeout".to_owned(), timeout);
+            }
             Ok(Call { command, arguments, instance, ignored })
         }
     }
@@ -799,14 +823,49 @@ mod tests {
         given
     }
 
+    /// Two commands are held back and the list is exactly those two.
+    ///
+    /// `task-1984` L4 added the second. An exclusion nobody argued about is how "everything is
+    /// reachable" quietly stops being true, so the list is asserted rather than trusted, and the
+    /// reason for each is beside `offered` itself.
     #[test]
-    fn exactly_one_command_is_held_back_and_it_is_the_one_that_would_start_a_second_server() {
+    fn exactly_two_commands_are_held_back_and_each_says_why() {
         let held: Vec<String> = catalogue::COMMANDS
             .iter()
             .filter(|command| !offered(command))
             .map(|command| command.typed())
             .collect();
-        assert_eq!(held, vec!["mcp serve".to_owned()], "the exclusion list has grown");
+        assert_eq!(
+            held,
+            vec!["mcp serve".to_owned(), "mcp install".to_owned()],
+            "the exclusion list has changed"
+        );
+    }
+
+    /// Every `local: true` command an agent is offered is one the driver really answers.
+    ///
+    /// `task-1984` L4. `mcp tools`, `mcp config` and `mcp install` were declared local, offered as
+    /// tools, answered by neither half, and refused by the window with `unknown-command` -- three
+    /// tools that resolve and can never succeed. Two are answered now and the third is held back.
+    #[test]
+    fn every_local_command_that_is_offered_is_answered_without_a_window() {
+        let unanswerable: Vec<String> = catalogue::COMMANDS
+            .iter()
+            .filter(|command| command.local && offered(command))
+            .filter(|command| {
+                !crate::mcp::driver::ANSWERED_LOCALLY.contains(&command.wire().as_str())
+            })
+            .map(|command| command.typed())
+            .collect();
+        assert!(
+            unanswerable.is_empty(),
+            "these are offered as tools and can never succeed: {}",
+            unanswerable.join(", ")
+        );
+        // And nothing in that list names a command that has gone.
+        for wire in crate::mcp::driver::ANSWERED_LOCALLY {
+            assert!(catalogue::find(wire).is_some(), "ANSWERED_LOCALLY names `{wire}`, which is not a command");
+        }
     }
 
     #[test]
@@ -1062,6 +1121,41 @@ mod tests {
         )
         .expect("it resolves");
         assert_eq!(both.arguments["timeout"], json!(30000));
+    }
+
+    /// And in **every** area, not only the one it happened to be tested in.
+    ///
+    /// `task-1984` L3. A `timeout` from the tool's own top level property is not a key of any
+    /// command, and `sibling_keys` takes out the keys that belong to another verb of the area -- so
+    /// in the areas where some sibling declares a `timeout` flag and the named command does not, it
+    /// was stripped and the agent was told it had been ignored as a key of another verb. The
+    /// deadline it set was not used and the sentence it read was about a key it had taken from the
+    /// schema. The test above used `tab`, which is one of the areas where it happened to survive.
+    #[test]
+    fn an_area_tools_timeout_reaches_the_command_it_names_in_every_area() {
+        let mut lost = Vec::new();
+        for area in catalogue::areas() {
+            for command in catalogue::in_area(area) {
+                // A command that declares a `timeout` of its own is the case the test above covers.
+                if command.flag("timeout").is_some() {
+                    continue;
+                }
+                let given = json!({ "command": command.verb, "timeout": 800 });
+                let Ok(call) =
+                    resolve(Shape::Grouped, &tool_name(area, ""), given.as_object().expect("an object"))
+                else {
+                    continue;
+                };
+                if call.arguments.get("timeout") != Some(&json!(800)) {
+                    lost.push(format!("{} (ignored: {:?})", command.typed(), call.ignored));
+                }
+            }
+        }
+        assert!(
+            lost.is_empty(),
+            "the tool's own `timeout` did not reach these commands:\n{}",
+            lost.join("\n")
+        );
     }
 
     #[test]

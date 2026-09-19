@@ -73,7 +73,16 @@ use unluminous_cli::protocol::{code, Reply, Request};
 /// Longer than any command's own wait, because the command's own timeout is the one that should
 /// fire and say what it was waiting for. This is the backstop for a window that has stopped drawing
 /// altogether, and for a client too old to say how long it will wait.
-const BACKSTOP: Duration = Duration::from_secs(120);
+///
+/// **Derived rather than written down** (`task-1984` L2). It was 120 seconds with that same sentence
+/// above it while `catalogue::BUILD_WAIT_MS` was five times longer, so `debug start
+/// --wait-for-pause` on a cold cargo build answered `timed-out` after two minutes while the window
+/// was still correctly waiting, and the answer went to a connection nobody was reading.
+/// `terminal read --wait-for … --timeout 300000` was cut at 120 the same way.
+/// `the_backstop_outlasts_every_command_that_waits` is what keeps the sentence true.
+const BACKSTOP: Duration = Duration::from_millis(
+    unluminous_cli::catalogue::longest_wait_ms() + unluminous_cli::catalogue::SLACK_MS,
+);
 
 /// How often the window is woken again while a request is still on the queue.
 ///
@@ -1088,5 +1097,38 @@ mod tests {
         assert_eq!(margin_for(Duration::from_millis(15_000)), MARGIN);
         assert_eq!(margin_for(Duration::from_millis(3_000)), Duration::from_millis(300));
         assert_eq!(margin_for(Duration::from_millis(800)), Duration::from_millis(80));
+    }
+
+    // ---------------------------------------------------------------------------------- task-1984
+
+    /// The backstop outlasts every command in the catalogue that waits on purpose.
+    ///
+    /// `task-1984` L2. `BACKSTOP` was 120 seconds with a comment saying it was longer than any
+    /// command's own wait, while `BUILD_WAIT_MS` was five times that -- so once the window had taken
+    /// a request up the connection thread capped its wait at two minutes whatever the caller asked,
+    /// and `debug start --wait-for-pause` on a cold cargo build answered `timed-out` while the
+    /// window was still correctly waiting. It is derived now, and this is what keeps the sentence
+    /// above it true.
+    #[test]
+    fn the_backstop_outlasts_every_command_that_waits() {
+        let mut longest: Vec<(String, u64)> = unluminous_cli::catalogue::COMMANDS
+            .iter()
+            .filter_map(|command| command.waits_for().map(|waits| (command.typed(), waits)))
+            .collect();
+        longest.sort_by_key(|(_, waits)| *waits);
+        assert!(!longest.is_empty(), "some command in the catalogue waits on purpose");
+        for (name, waits) in &longest {
+            assert!(
+                BACKSTOP > Duration::from_millis(*waits),
+                "`{name}` waits {waits} ms and the backstop is {} ms, so the connection is cut \n                 while the window is still correctly waiting",
+                BACKSTOP.as_millis()
+            );
+        }
+        // And a caller's own `--timeout` is bounded by it too, which is the other half of the
+        // report: a caller asking for five minutes was cut at two.
+        assert!(
+            BACKSTOP >= Duration::from_millis(unluminous_cli::catalogue::BUILD_WAIT_MS),
+            "the backstop covers the longest wait the catalogue names"
+        );
     }
 }
