@@ -30,7 +30,8 @@ use unluminous_app::theme::size;
 use unluminous_app::UnluminousApp;
 use unluminous_core::Command;
 
-/// **Every accepted image on this platform is named by some test.** `task-1922`.
+/// **Every accepted image, on either platform, is named by some test.** `task-1922`, widened by
+/// `task-1984` T11.
 ///
 /// A picture nobody takes any more is a picture nobody looks at, and it stays in the repository
 /// being read as evidence of something. The review found two: `agent_tasks_pane.png` and
@@ -61,25 +62,79 @@ fn every_accepted_image_is_named_by_a_test() {
         })
     };
 
-    let platform = shot("");
-    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/snapshots")
-        .join(platform.trim_end_matches('/'));
-    let mut orphans: Vec<String> = std::fs::read_dir(&folder)
-        .expect("the accepted images")
-        .flatten()
-        .filter_map(|entry| {
+    // **Both folders, not just this machine's** (`task-1984` T11). Each platform has its own
+    // accepted set — the menus, the window buttons and the font are deliberately different — so a
+    // picture that stopped being taken went on sitting in the *other* folder being read as evidence
+    // until somebody ran the suite on that platform. A name is a name on either.
+    let snapshots = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots");
+    let mut orphans: Vec<String> = Vec::new();
+    for folder in [snapshots.clone(), snapshots.join("windows")] {
+        let Ok(listed) = std::fs::read_dir(&folder) else { continue };
+        let platform = match folder == snapshots {
+            true => "macos",
+            false => "windows",
+        };
+        for entry in listed.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
-            let stem = name.strip_suffix(".png")?.to_owned();
+            let Some(stem) = name.strip_suffix(".png") else { continue };
             let scratch = [".new", ".diff", ".old"].iter().any(|end| stem.ends_with(end));
-            (!scratch && !named(&stem)).then_some(stem)
-        })
-        .collect();
+            if !scratch && !named(stem) {
+                orphans.push(format!("{platform}/{stem}"));
+            }
+        }
+    }
     orphans.sort();
     assert!(
         orphans.is_empty(),
         "these accepted images are named by no test, so nothing takes them any more: {orphans:?}"
     );
+}
+
+/// **The two platforms hold the same set of accepted pictures.** `task-1984` T11.
+///
+/// The test above asks whether an accepted image is still taken by some test, on either platform.
+/// This asks the other question, and it is the one that catches the thing that really happens: a
+/// picture accepted on the machine somebody was working on and **never accepted on the other**. Each
+/// platform has its own set deliberately — the menus, the window buttons and the font are different —
+/// but which *pictures* there are is not a platform difference, it is the same list of tests.
+///
+/// `task-1949` is what this is about. It redrew ten icons and added two sheets, and both sheets were
+/// accepted on Windows only — so on a Mac `icons_classic` and `icons_material` cannot pass at all,
+/// and nobody running the suite there could tell a missing baseline from a real difference.
+///
+/// It is a **report rather than a refusal**, because the fix is on the platform that is missing one
+/// and this test cannot do it: accepting a picture means opening it and looking at it, which is the
+/// one thing a script must not do on somebody's behalf. So it names them and passes, and the names
+/// are what a person running the suite on that platform reads.
+#[test]
+fn both_platforms_hold_the_same_accepted_pictures() {
+    let snapshots = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots");
+    let accepted = |folder: &std::path::Path| -> Vec<String> {
+        let Ok(listed) = std::fs::read_dir(folder) else { return Vec::new() };
+        let mut names: Vec<String> = listed
+            .flatten()
+            .filter_map(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let stem = name.strip_suffix(".png")?.to_owned();
+                let scratch = [".new", ".diff", ".old"].iter().any(|end| stem.ends_with(end));
+                (!scratch).then_some(stem)
+            })
+            .collect();
+        names.sort();
+        names
+    };
+    let mac = accepted(&snapshots);
+    let windows = accepted(&snapshots.join("windows"));
+    assert!(mac.len() > 100 && windows.len() > 100, "{} and {}", mac.len(), windows.len());
+
+    let only_here: Vec<&String> = mac.iter().filter(|name| !windows.contains(name)).collect();
+    let only_there: Vec<&String> = windows.iter().filter(|name| !mac.contains(name)).collect();
+    if !only_here.is_empty() || !only_there.is_empty() {
+        println!(
+            "These pictures are accepted on one platform only. Run the suite on the other and look \
+             at each one before accepting it.\n  macOS only: {only_here:?}\n  Windows only: {only_there:?}"
+        );
+    }
 }
 
 /// Every `.rs` file under `tests/`, run together into one string.

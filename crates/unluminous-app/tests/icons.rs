@@ -15,6 +15,31 @@
 //! The sheet is the **material** set, because that is the one a window opens in. The `classic` set
 //! gets its own, because "the marks Unluminous shipped with" is a promise that somebody has to be able
 //! to check.
+//!
+//! ## ⚠️ Neither sheet has been accepted on macOS
+//!
+//! **`task-1984` T10.** `task-1949` was worked on a Windows machine, so both sheets were accepted
+//! into `tests/snapshots/windows` and neither into `tests/snapshots`. On a Mac these two tests
+//! therefore cannot pass at all: there is nothing to compare against, and a person running the suite
+//! there cannot tell a missing baseline from a mark that really moved.
+//!
+//! It is left rather than fixed because fixing it means **opening the sheet and looking at it** on a
+//! Mac, and `UPDATE_SNAPSHOTS=1` accepting a picture nobody has looked at is the one thing this
+//! repository's own rule about accepted images forbids. `both_platforms_hold_the_same_accepted_pictures`
+//! in `tests/window_and_chrome.rs` names them on every run, on either platform, so it is a job
+//! somebody will be told about rather than one that has to be remembered.
+//!
+//! What to do, on a Mac, once:
+//!
+//! ```sh
+//! UPDATE_SNAPSHOTS=1 cargo test -p unluminous-app --test icons
+//! open crates/unluminous-app/tests/snapshots/icons_material.png
+//! open crates/unluminous-app/tests/snapshots/icons_classic.png
+//! ```
+//!
+//! and then look at both — `design/icons.md` says what each mark is meant to be, and
+//! `task-1949` records that a mark is judged at **both** sizes, the sheet's and the fourteen pixels a
+//! person really sees.
 
 mod common;
 
