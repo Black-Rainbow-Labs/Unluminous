@@ -17,6 +17,12 @@ twelve language plugins, git in full, completion, go to definition, run configur
 — and an infinite canvas holding terminals, web pages, folder trees, editors, agent chats and a ticket
 board wired to each other.
 
+[![Unluminous open on a Markdown file in the side by side view, the desktop showing through the window](documentation/images/01-unluminous-window.jpg)](documentation/overview.md)
+
+*[Forty-five more](documentation/overview.md), each cropped with a margin of desktop round the edge,
+because a picture cropped tight to the window cannot show that the colour in the editing area is the
+wallpaper rather than a shade somebody chose.*
+
 |  |  |  |
 |---|---|---|
 | **213 commands, 24 areas** | everything the menus, the keyboard and the mouse can ask for, `--json` on every one | [The command line](documentation/command-line.md) |
@@ -60,9 +66,9 @@ the decorations turned off — so it draws its own title bar, its own menus on W
 eight resize grips. `Settings -> Appearance -> Background` is how far the desktop shows through, from
 5 per cent to 100, and every glyph is painted at full opacity at every setting.
 
-[What it looks like](documentation/overview.md) is thirty-seven captures of it running, each cropped
-with a margin of desktop round the edge, because a picture cropped tight to the window cannot show
-that the colour in the editing area is the wallpaper rather than a shade somebody chose.
+[What it looks like](documentation/overview.md) is thirty-seven captures of the window and
+[the Database plugin](documentation/database.md) is nine more, all of this version. One command takes
+all forty-six, without taking the keyboard: [Taking the pictures](documentation/taking-the-pictures.md).
 
 ## Driving it from the command line
 
