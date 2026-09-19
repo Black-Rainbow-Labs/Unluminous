@@ -43,7 +43,15 @@ it is the only part of this document that is done.
 
 `tools/contrast.mjs` computes every ratio from `theme/mod.rs` itself — the palette is a closed list,
 so this is the source of truth rather than a sample off a screenshot, and it can be run again the day
-a colour moves. `node tools/contrast.mjs --check` fails when an ordinary-text pair is under 4.5:1.
+a colour moves.
+
+**`node tools/contrast.mjs --check` is a gate in both release scripts since `task-1984`, and what it
+asks is whether a pair has got worse** — not whether the whole palette meets WCAG 2.2, which it does
+not and which this page is about. The five pairs below are listed in that file's own `ACCEPTED`, each
+with the ratio it has now, and the check fails when a pair that is not on that list drops under its
+bar, when one that is drops below the number written down, or when one that is has been fixed and
+left on the list. So the five stay visible in a run and in this page, and the day a sixth appears the
+release refuses.
 
 **23 of the 28 pairs the window really draws meet WCAG 2.2. Five do not**, and they are named rather
 than summarised:
@@ -61,7 +69,7 @@ button in every modal in the product — `Done`, `Open`, `Replace`, `Commit`. At
 one button a person is meant to press is the least legible text in the window.
 
 **Nothing here has been changed**, and that is deliberate: the palette is closed, five theme plugins
-inherit from it, and 482 accepted screenshots are of it. Moving a colour is a change somebody should
+inherit from it, and 483 accepted screenshots are of it. Moving a colour is a change somebody should
 agree to rather than one a measurement makes on its own. What it needs is a darker accent for the
 button's ground or a darker word on it — `#2C6FB8` under white reaches 4.6:1, and near-black on the
 accent as it is reaches 8.4:1 — and a decision about whether the dividers become visible or the

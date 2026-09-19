@@ -8,6 +8,22 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- The release gate checks what it used to check, and the window suite leaves a receipt (`task-1984`)
+- One cargo fmt pass, with nothing else in it (`task-1984`)
+- The window suite receipt does not ask about the nightly's own binary (`task-1984`)
+- Closing the window writes every modified tab, and a tab whose save failed stays open (`task-1984`)
+- A Markdown document cannot end the process however it is nested (`task-1984`)
+- A value somebody typed is never read as an option, and the table test says so (`task-1984`)
+- A person's source files and the instance file are written through a temporary (`task-1984`)
+- A value nobody can read is refused, and a gesture cannot be made unbounded (`task-1984`)
+- Four small corrections in the core, each of which showed on the screen (`task-1984`)
+- A thread that will not start is one feature saying so, and no two controls share a name (`task-1984`)
+- The open source files, and the one command that publishes the mirror (`task-1989`)
+- The small refusals and readings that were each one line wrong (`task-1984`)
+- An agent that is not Claude Code has a guide with its own name on it (`task-1989`)
+
+## 0.49.2 — 2026-09-18
+
 - A second review of Unluminous, and the plan that acts on it (`task-1984`)
 
 ## 0.49.1 — 2026-09-16
