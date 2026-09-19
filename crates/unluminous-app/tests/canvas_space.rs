@@ -1419,8 +1419,36 @@ fn a_node_agents_environment_points_at_the_command_that_orients_it() {
     let instance = named(unluminous_app::services::agent_tasks::agent::ENV_INSTANCE)
         .expect("which window to drive");
     assert_eq!(instance, std::process::id().to_string());
-    assert!(hint.contains(unluminous_app::services::agent_tasks::agent::ENV_CLI), "{hint}");
-    assert!(hint.contains(unluminous_app::services::agent_tasks::agent::ENV_INSTANCE), "{hint}");
+
+    // **And it is on the node's own `PATH`** — `task-2004`. The three variables above were the whole
+    // answer, and the report is what that was worth: *"Agent's in the base of infinite space don't seem
+    // to have the cli, or don't understand the unluminous cli."* Nothing makes an agent run `env`, so
+    // the sentence was never read and the name it guesses was the name that did not work. The hint says
+    // the bare command now, because the bare command is what works.
+    //
+    // **The `PATH` is carried whenever there is a folder to carry**, and in a test there is not:
+    // `beside_this_program` looks beside the running binary, which here is the test harness in
+    // `target/debug/deps` with no client next to it, so it answers with the bare name and there is no
+    // folder to put in front of anything. The arithmetic itself is
+    // `agent_tasks::path_with_the_cli_in_front`, which has its own tests; what this asserts is that the
+    // node's environment carries whatever that answered.
+    let separator = if cfg!(windows) { ';' } else { ':' };
+    let folder = std::path::Path::new(&cli).parent().map(|folder| folder.display().to_string());
+    match folder.filter(|folder| !folder.is_empty()) {
+        Some(folder) => {
+            let path = named("PATH").expect("the node's own PATH");
+            assert_eq!(
+                path.split(separator).next(),
+                Some(folder.as_str()),
+                "the client beside this window is in front, so it wins over another Unluminous:                  {path}"
+            );
+        }
+        None => assert!(
+            named("PATH").is_none(),
+            "there is nothing beside this binary to put on a PATH, so nothing is put there"
+        ),
+    }
+    assert!(hint.contains("unluminous-cli space here"), "{hint}");
 }
 
 /// With two folder nodes overlapping, the wheel goes to the one on top.

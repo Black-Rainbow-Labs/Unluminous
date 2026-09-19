@@ -79,7 +79,7 @@ impl Problem {
 
 /// The global flags, spelled out so that the help can print them and the parser can find them.
 pub const GLOBAL_FLAGS: &[(&str, Option<&str>, &str)] = &[
-    ("instance", Some("pid|port|path"), "Which Unluminous to talk to when several are running: its process id, its port, or part of its project's path."),
+    ("instance", Some("pid|port|path"), "Which Unluminous to talk to when several are running: its process id, its port, or part of its project's path. Needs no saying in a terminal or an agent a window started, which set UNLUMINOUS_INSTANCE to their own window."),
     ("json", None, "Print the whole reply as JSON. This is what a program or an agent should always pass."),
     ("quiet", None, "Print nothing when it worked. The exit code still says whether it did."),
     ("timeout", Some("milliseconds"), "How long to wait for an answer. 15000 by default. Lower it to fail fast; a command that waits for something of its own, such as `terminal read --wait-for`, is still waited out in full."),
@@ -320,6 +320,27 @@ pub fn parse(words: &[String]) -> Result<Typed, Problem> {
     }
 
     Ok(Typed { command: Some(command), arguments, global })
+}
+
+/// The variable a window sets on a child's environment, naming which window to drive.
+pub const INSTANCE_VARIABLE: &str = "UNLUMINOUS_INSTANCE";
+
+/// Which window to drive, when the caller named none and this process was started by one.
+///
+/// **The same bargain [`the_node_this_process_is_in`] makes**, about the other thing a node's shell is
+/// told. `UNLUMINOUS_INSTANCE` is set by the window on every shell it starts — a terminal node, a chat
+/// node's agent and a ticket's agent — and it holds that window's own process id, so on a machine with
+/// two Unluminous windows open an agent that says nothing is otherwise asking an ambiguous question.
+/// `task-2004`: *"Agent's in the base of infinite space don't seem to have the cli, or don't understand
+/// the unluminous cli."*
+///
+/// A caller that passed `--instance` is left alone, and a value that is not a process id is ignored
+/// rather than refused: it is not something a caller typed, so a refusal would be about a variable
+/// somebody's shell happens to hold.
+pub fn the_window_that_started_this_process() -> Option<String> {
+    let said = std::env::var(INSTANCE_VARIABLE).ok()?;
+    let said = said.trim();
+    said.parse::<u32>().ok().map(|instance| instance.to_string())
 }
 
 /// The node this process was started in, from `UNLUMINOUS_SPACE_NODE`.

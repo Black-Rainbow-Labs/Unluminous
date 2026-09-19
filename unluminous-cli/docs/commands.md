@@ -1496,7 +1496,7 @@ unluminous-cli panel reset
 
 ## space — the Base of Infinite Space: a canvas of terminals, web pages, folder trees and file editors, wired together
 
-If `UNLUMINOUS_SPACE_NODE` is set in your environment you are running inside a node on this canvas, and `space here` is the first thing to run: it says which node you are, which nodes you are wired to, and the command that drives each of them. **`unluminous-cli` is not on your PATH** - it lives inside the application - so run it as `"$UNLUMINOUS_CLI" --instance $UNLUMINOUS_INSTANCE <command>`, which are both set in your environment. You may act on the nodes you are wired to and no others, so every command you send carries `--from <your node>`. The Base of Infinite Space is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `space browser`, `space folder`, `space editor` and `space send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `space view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.
+If `UNLUMINOUS_SPACE_NODE` is set in your environment you are running inside a node on this canvas, and `space here` is the first thing to run: it says which node you are, which nodes you are wired to, and the command that drives each of them. `unluminous-cli` is on your PATH inside a node and already knows which window to drive, so `unluminous-cli space here` is the whole command - no path and no `--instance`. (`$UNLUMINOUS_CLI` and `$UNLUMINOUS_INSTANCE` are set too, for a program that wants them.) You may act on the nodes you are wired to and no others, so every command you send carries `--from <your node>`. The Base of Infinite Space is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `space browser`, `space folder`, `space editor` and `space send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `space view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.
 
 ### space show
 
@@ -1662,7 +1662,7 @@ unluminous-cli space delete-view Rendering
 unluminous-cli space add <terminal|browser|folder|editor|chat|tasks> [--x <points>] [--y <points>] [--width <points>] [--height <points>] [--title <text>] [--command <text>] [--url <address>] [--root <path>] [--path <path>]
 ```
 
-Put a node on the view that is showing and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with UNLUMINOUS_SPACE_NODE set to its id so an agent started in it knows which node it is, UNLUMINOUS_SPACE_HINT saying what to run first, and UNLUMINOUS_CLI and UNLUMINOUS_INSTANCE saying where `unluminous-cli` is and which window it drives - it is on nobody's PATH.
+Put a node on the view that is showing and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with `unluminous-cli` on its PATH and pointed at this window, UNLUMINOUS_SPACE_NODE set to its id so an agent started in it knows which node it is, UNLUMINOUS_SPACE_HINT saying what to run first, and UNLUMINOUS_CLI and UNLUMINOUS_INSTANCE for a program that wants the path and the window outright.
 
 - `kind` — terminal, browser, folder, editor, chat or tasks.
 
@@ -2974,6 +2974,25 @@ Make a folder and every folder above it, updating Unluminous's live tree immedia
 unluminous-cli explorer new-folder src/services
 ```
 
+### explorer new-project
+
+```
+unluminous-cli explorer new-project <name> [--location <folder>] [--no-git]
+```
+
+Make a project folder, start a git repository in it, and open it in a window of its own — which is what `File -> Create Project...` does without the dialog. The folder is `<location>/<name>`; an existing folder with anything in it is refused rather than opened, and a name with a path separator in it is refused because a project name is a folder name.
+
+- `name` — What the project folder is called.
+
+- `--location <folder>` — The folder the project goes in. Beside the project that is open when it is not given, which is where the dialog starts too.
+- `--no-git` — Do not run `git init` in it. A git repository is made otherwise.
+
+```sh
+unluminous-cli explorer new-project my-thing
+unluminous-cli explorer new-project my-thing --location C:/jason/dev
+unluminous-cli explorer new-project scratch --no-git
+```
+
 ### explorer reload
 
 ```
@@ -3292,6 +3311,68 @@ Paint the window in a theme. It takes effect at once, in every tab and every pan
 unluminous-cli theme set themes-bundle-1/dracula
 unluminous-cli theme set "Monokai Pro" --icons material
 unluminous-cli theme set unluminous/dark --accent none
+```
+
+## background — the picture behind the window
+
+What is behind Unluminous's window: the desktop showing through, which is what it does unless something else is chosen, or a picture. A picture is **copied into Unluminous's own folder** when it is added, so the setting survives the original being moved, and `background remove` deletes that copy. `settings set appearance.background.image` reaches the same setting by name; these exist because a setting cannot say what pictures there are. How much of it shows through is `appearance.background.opacity`.
+
+### background list
+
+```
+unluminous-cli background list
+```
+
+The pictures Unluminous is keeping, and which one is behind the window now. An empty name is the desktop showing through, which is what an Unluminous that has never chosen one does.
+
+```sh
+unluminous-cli background list --json
+```
+
+### background add
+
+```
+unluminous-cli background add <file> [--keep]
+```
+
+Copy a picture into Unluminous's backgrounds folder and draw the window on it. PNG, JPEG, WebP, BMP, GIF or TIFF. The copy is named after the file it came from, with a number added when that name is taken, so adding the same picture twice keeps both.
+
+- `file` — The picture to copy in, relative to the project or absolute.
+
+- `--keep` — Copy it in without drawing the window on it.
+
+```sh
+unluminous-cli background add ~/Pictures/nebula.jpg
+unluminous-cli background add wallpapers/dark.png --keep
+```
+
+### background use
+
+```
+unluminous-cli background use [name]
+```
+
+Draw the window on one of the pictures Unluminous is keeping, by the name `background list` prints. No name at all puts it back to the desktop showing through.
+
+- `name` (optional) — The picture's file name. Left out, the desktop shows through again.
+
+```sh
+unluminous-cli background use nebula.jpg
+unluminous-cli background use
+```
+
+### background remove
+
+```
+unluminous-cli background remove <name>
+```
+
+Delete one of the pictures Unluminous is keeping. Only a name is taken, never a path, so nothing outside that folder can be reached. Removing the one that is showing puts the window back to the desktop.
+
+- `name` — The picture's file name, as `background list` prints it.
+
+```sh
+unluminous-cli background remove nebula.jpg
 ```
 
 ## plugins — the languages Unluminous colours, and the panes it draws

@@ -443,9 +443,22 @@ pub const EDITOR_MIN_WIDTH: f32 = crate::theme::size::EDITOR_PANE_MIN;
 
 /// The shortest the editing area is ever left.
 ///
-/// 120 points, which is the number the three tiles have always been clamped against — `(panes.height()
-/// - 120).max(MIN)` was written out three times in `UnluminousApp::ui` and is now written once.
-pub const EDITOR_MIN_HEIGHT: f32 = 120.0;
+/// **This is the limit a person's drag reaches as well as the one the layout keeps**, and the two cannot
+/// be different numbers: [`regions_with`] scales a strip back down whenever the panels ask for more than
+/// `room - EDITOR_MIN_HEIGHT`, so a drag allowed past it would move the stored size and leave the drawn
+/// one where it was. That is the shape of the `task-1907` fault, and it is why this number is what
+/// `task-2004` had to change rather than adding a second one beside it.
+///
+/// It was 120 — the number the three tiles were clamped against before any of this was one function — and
+/// at 120 the window arrives at the limit immediately: the canvas asks for 560 points of a 670 point body
+/// and is drawn 550, so a person dragging its divider up gains nothing at all and five arrangements of
+/// the canvas and the terminal could not be resized in one direction. Measured on `task-2004`, which is
+/// the report *"it shrinks just fine … i can't resize it"*.
+///
+/// 72 points is the tab strip and two lines, which is the promise [`crate::theme::size::EDITOR_PANE_MIN`]
+/// already makes about width said about height: enough to still be an editor rather than a stripe. A
+/// person who wants it gone has `View -> Toggle Editor`, which is one keystroke.
+pub const EDITOR_MIN_HEIGHT: f32 = 72.0;
 
 /// The least the band between the two strips may be squeezed to when the editing area is hidden and
 /// something is docked to the left or the right.
@@ -455,9 +468,12 @@ pub const EDITOR_MIN_HEIGHT: f32 = 120.0;
 /// right is exactly something else between them, and with the height given away entirely those panels
 /// came out hundreds of points wide and nothing tall. `task-1905`.
 ///
-/// The number is the same 120, because what it protects is the same thing: enough of a panel to be worth
-/// drawing.
-pub const COLUMN_BAND_MIN: f32 = EDITOR_MIN_HEIGHT;
+/// **A number of its own since `task-2004`**, where it used to be defined as [`EDITOR_MIN_HEIGHT`]. What
+/// the two protect looked like the same thing and is not: the editing area has a tab strip and a line of
+/// text in it at its floor, and a panel at its floor has a header and a row. So when the editing area's
+/// floor went down to make a divider draggable, this stayed at 120 — which is what its own sentence above
+/// asks for, *enough of a panel to be worth drawing*.
+pub const COLUMN_BAND_MIN: f32 = 120.0;
 
 /// Where every panel that is showing was put, and what is left for the document.
 #[derive(Debug, Clone, Copy, PartialEq)]

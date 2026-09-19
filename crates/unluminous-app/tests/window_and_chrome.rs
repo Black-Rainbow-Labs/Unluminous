@@ -1579,16 +1579,21 @@ fn a_maximised_window_offers_no_resize_grips() {
     }
 }
 
-/// `task-1945`: a window whose keyboard focus is somewhere else asks for no resize either.
+/// `task-1945` and `task-2004`: what a window asks for when it is not the one with the focus.
 ///
 /// A browser node's page is a native child window, and while it holds the operating system's focus
 /// `winit`'s `Window::has_focus()` is false. `egui-winit` already refuses to forward `StartDrag` in
 /// that state; `BeginResize` is not behind the same check upstream, so it reaches
 /// `handle_os_dragging`, which latches a flag that only `WM_EXITSIZEMOVE` clears — and after that the
-/// window can be neither resized nor moved for the life of the process. So the grips are still there
-/// and still drawn, and the request is simply not sent.
+/// window can be neither resized nor moved for the life of the process.
+///
+/// **The guard is about the page, not about `winit`'s answer**, which is what `task-2004` changed: a
+/// window merely sitting in the background reports no focus either, and there every grip was dead for
+/// no reason at all — *"when the base of infinite space is open on windows, i can't resize the main
+/// window … it's intermittent"*. `resize_edges::ask_for_it` is the decision and its own test holds the
+/// two answers side by side; this one asserts the window really asks in the case that used to refuse.
 #[test]
-fn a_window_whose_keyboard_is_elsewhere_asks_for_no_resize() {
+fn a_window_in_the_background_still_asks_for_a_resize() {
     let mut focused = harness("");
     let top = focused.get_by_label("Resize window: top").rect().center();
 
@@ -1635,13 +1640,16 @@ fn a_window_whose_keyboard_is_elsewhere_asks_for_no_resize() {
     );
     let mut second = harness("");
     assert!(
-        asked(&mut second, Some(false)).is_empty(),
-        "a window whose keyboard is on a native child asks the window manager for nothing"
+        asked(&mut second, Some(false)).iter().any(|command| command.contains("BeginResize")),
+        "and so does one in the background: no page has taken the operating system's keyboard, which          is the only thing the window manager throws a resize away for"
     );
     assert!(
         second.query_by_label("Resize window: top").is_some(),
-        "and the grip is still there, because the window can still be resized once it has the keyboard"
+        "and the grip is still there either way"
     );
+    // What it asked for is written down as well as sent, because nothing in this process can watch a
+    // window change size. `status --section window` reports the same field.
+    assert!(second.state().last_resize_request().is_some(), "and the window recorded the request");
 }
 
 /// The commands a frame sent that move or resize the window, including `BeginResize`.
@@ -3898,6 +3906,7 @@ const EVERY_VARIANT: &[&str] = &[
     "RevealPath",
     "ReloadPath",
     "Git",
+    "CreateProject",
     "Highlight",
     "ClearHighlight",
     "ClearHighlights",
@@ -3918,6 +3927,7 @@ fn variant_name(action: &Action) -> &'static str {
     match action {
         Action::NewWindow => "NewWindow",
         Action::OpenFolder => "OpenFolder",
+        Action::CreateProject => "CreateProject",
         Action::OpenFile => "OpenFile",
         Action::OpenWebAddress => "OpenWebAddress",
         Action::OpenInBrowser(_) => "OpenInBrowser",
@@ -4597,6 +4607,10 @@ fn every_step() -> Vec<Step> {
     let readme = folder.join("readme.md");
     let mut steps: Vec<Step> = vec![
         Step::new(Action::OpenWebAddress),
+        // It opens a dialog and nothing else, which is what makes it drivable where `Open Folder`
+        // beside it on the menu is not: the platform's own folder chooser is only reached from the
+        // button inside it.
+        Step::new(Action::CreateProject),
         Step::new(Action::OpenInBrowser(folder.join("page.html"))),
         Step::new(Action::GoToFile),
         Step::new(Action::FindInFiles),
@@ -5065,4 +5079,56 @@ fn no_two_controls_share_a_name() {
          find controls by:\n{}",
         shared.join("\n")
     );
+}
+
+// --------------------------------------------------- a field's text is a fraction of its own height
+
+// `task-2004`: *"Filter files in folder pane is too large, and the blinking cursor is too tall …
+// ensure that the cursor fits the height of the input and that the 'Filter files' text is about the
+// same size as the folder/file name text. Same for search settings modal input. Find other inputs that
+// may have the same issue."*
+//
+// The machine it was reported from has `appearance.ui.font.size` well above the default, which is what
+// makes it visible: every field in the window set its text at the interface's size inside a box that is
+// a fixed number of points tall. The pictures below are at 24, where the fault filled the box.
+
+/// The explorer's filter box with the interface set large, which is the arrangement in the report.
+#[test]
+fn the_filter_box_keeps_its_size_when_the_interface_is_set_large() {
+    let mut harness = harness("");
+    did(&mut harness, "settings set appearance.ui.font.size 24");
+    steady(&mut harness);
+    // The box is 24 points tall whatever the interface is, so its text has to be about 12.5 — which is
+    // exactly what the rows under it are drawn at. Asserted as arithmetic beside the picture, because
+    // a size cannot be read off a screenshot.
+    assert!(
+        (unluminous_app::components::controls::field_font_size(24.0) - 12.5).abs() < 0.1,
+        "a 24 point field asks for the size the file names are drawn at"
+    );
+    harness.snapshot(shot("field_filter_box_large_interface"));
+}
+
+/// And the Settings window's own search box, which is the second one the report names.
+#[test]
+fn the_settings_search_box_keeps_its_size_when_the_interface_is_set_large() {
+    let mut harness = harness("");
+    did(&mut harness, "settings set appearance.ui.font.size 24");
+    steady(&mut harness);
+    open_settings(&mut harness);
+    harness.snapshot(shot("field_settings_search_large_interface"));
+}
+
+/// A dialog whose fields are the shared `modal::field`, at the same interface size.
+///
+/// `Go to File` is the one to photograph because it is a search field and a list of rows in one
+/// picture, so the field and the rows can be compared against each other in the same way the explorer's
+/// can.
+#[test]
+fn a_modals_field_keeps_its_size_when_the_interface_is_set_large() {
+    let mut harness = harness("");
+    did(&mut harness, "settings set appearance.ui.font.size 24");
+    steady(&mut harness);
+    did(&mut harness, "modal open go-to-file");
+    steady(&mut harness);
+    harness.snapshot(shot("field_go_to_file_large_interface"));
 }

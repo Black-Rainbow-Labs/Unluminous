@@ -318,7 +318,7 @@ pub fn show(
 /// `Ui::painter_at` **sets** the clip rectangle rather than intersecting it, so a row scrolled half
 /// out of the conversation drew its whole self over whatever was above the scrolling area — the pane's
 /// own header, measured on a real window. One function rather than the same intersection in nine
-/// places, which is the reason `controls::field_text_rect` exists.
+/// places, which is the reason `controls::field_text` exists.
 fn painter_in(ui: &egui::Ui, rect: Rect) -> egui::Painter {
     ui.painter_at(rect.intersect(ui.clip_rect()))
 }

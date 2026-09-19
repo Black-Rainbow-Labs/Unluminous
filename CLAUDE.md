@@ -704,6 +704,14 @@ test asks for `Todos` and the drawing is what shouts. And a sprint or an epic is
 line **by its name**, because that is what is on the screen: `split_off_a_name` takes the longest run of
 arguments that names one, so `sprint-rename August 2nd Half September` needs no id.
 
+### The plus sits after the last view, which is where a browser puts it
+
+`components::space::view_bar` drew it at `area.right() - 18.0`, past the zoom controls at the far end of
+the bar — so the one control that acts on the row of tabs was the furthest thing in the window from the row
+of tabs. `task-2004`: *"The + sign to add a new view to base of infinite space should be on the right of the
+last view/tab, similar to Firefox browser."* It is at the pen now, after the last chip and after the `+N
+more` row when there is one, kept clear of the zoom controls so a full bar does not put it underneath them.
+
 ## The canvas is a fifth panel, and a node is where a tab can live
 
 `task-1904` asks for a new view called the **Base of Infinite Space**: an infinite canvas holding a
@@ -750,6 +758,16 @@ started in one knows which node it is without being told. `Edge::pipe` is off un
 on, because a shell's output is its prompt and its escape sequences as well as its answers — and **a
 line that arrived through a pipe is never sent back out**, which is the one rule that stops two
 terminals wired both ways looping for ever. `services::space::pipe` is that rule and its test.
+
+**And `unluminous-cli` is on a node's own `PATH`, in front of whatever was there.** `task-2004`:
+*"Agent's in the base of infinite space don't seem to have the cli, or don't understand the unluminous
+cli."* It was on nobody's — on macOS it is inside the application bundle and on Windows in the
+installation folder — and the variables that said where it is were never read, because nothing makes an
+agent run `env`. So the name an agent guesses is the name that works, and `--instance` defaults from
+`UNLUMINOUS_INSTANCE`, so a machine with two windows open is not an ambiguous question.
+`agent_tasks::how_to_reach_this_window` is the one answer a terminal node, a chat node's agent and a
+ticket's agent all use, and the `space` preamble in the catalogue says the bare command now, because the
+catalogue is what an agent reads.
 
 **One browser node renders at a time**, because a window has one native child view: the others draw the
 toolbar and say the page is showing in another node, which is the sentence `browser_view::show` already
@@ -902,6 +920,29 @@ the pane and stopped at the first one that would not fit, so a short pane — or
 rows that could not be reached at all. The ticket's rule is that anything with more in it than there is
 room for scrolls, and that is as true of five rows as of a conversation.
 
+### A page's zoom travels on its placement, beside the bounds
+
+A node is drawn into a layer carrying the camera, so it is genuinely scaled; a `WebView` is a native child
+and cannot be transformed, so the camera's zoom is spent on the page's own and the whole screen rectangle
+is sent as the bounds. Between them the page's layout viewport is meant to stay the node's own size, so it
+never reflows.
+
+`task-2004` reports *"when i zoom in/out of the canvas, it jitters as it zooms in/out the content to
+match"*, and the cause is that the two were sent from two places on two sides of the egui pass: the bounds
+from `raw_input_hook`, off the placement the **previous** frame recorded, and the zoom from inside
+`show_a_browser_node`. So the page was scaled one step ahead of the rectangle it was drawn into on every
+frame of a zoom, and a viewport that is the one divided by the other was therefore wrong by one step for
+the whole glide. `task-1945`'s `Camera::glide` made it continuous rather than occasional, which is why the
+report arrived when it did.
+
+`BrowserPlacement::zoom` carries it now and `native::place` sends it beside the bounds, **only when it
+moves** — `put_ZoomFactor` raises a zoom-changed event and re-lays the page out, and it was being called on
+every frame whether or not the number had changed. `None` is a page in a pane, whose zoom is the person's
+own through `browser zoom` and is not Unluminous's to write back sixty times a second. And `NativeView`
+remembers *whether* it has a window region rather than which pair of rectangles produced one, so a node
+wholly inside the pane no longer calls `SetWindowRgn(hwnd, …, TRUE)` — redrawing the child from scratch —
+on every frame of a zoom.
+
 ### A page keeps its whole width, and the crop is a separate answer
 
 `set_bounds` is a native child's **viewport** as well as its position, so a placement cut to the pane is
@@ -976,6 +1017,26 @@ the narrow one: *if the editing area is not showing and the canvas is, the canva
 Where both are showing the editing area keeps it, which is what a text editor should do and what every
 test written before this asserts.
 
+### A field's text is a fraction of its own height, and the caret is measured the same way
+
+`task-2004`: *"Filter files in folder pane is too large, and the blinking cursor is too tall … ensure that
+the cursor fits the height of the input and that the 'Filter files' text is about the same size as the
+folder/file name text. Same for search settings modal input. Find other inputs that may have the same
+issue."*
+
+A field's box is a fixed number of points tall and its text was `TextStyle::Body`, which is
+`appearance.ui.font.size` — two unrelated numbers. The machine this was reported from has it at 24, so the
+explorer's 24 point filter box drew `Filter files` more than twice the height of the file names beside it,
+and the caret, whose height is the row that font occupies, stood proud of the box at both ends. Every field
+built from `controls::search_field` and from `modal::field` is the same pair.
+
+So `controls::field_font_size` is a fraction of the field's own height, and `controls::field_text` answers
+with the strip **and** the font it measured the strip for, so a caller cannot take one and forget the
+other. A fraction rather than a cap on the interface, because a field that is zoomed carries the zoom in
+its height: the explorer's box is `view.at(24.0)` and its rows are `view.at(12.5)`, so it is exactly the
+rows at every zoom. The two shapes that genuinely know better — a box whose text follows a pane's own font,
+and a well several rows tall — pass their size to `field_takes_the_whole_rectangle_at`.
+
 ### A field centres the row it is going to draw
 
 `controls::field_text_rect` measures its strip with `TextStyle::Body`, which is `appearance.ui.font.size`
@@ -1023,6 +1084,41 @@ And a Folder node draws **no file count**: the strip that counts a project's fil
 which `footer_top` has said since the node was built, and the count was drawn anyway — centred on a
 rectangle of no height sitting on the node's own bottom edge, so half of it was inside the node and half
 below. The footer is named `File count` now, which is what made a test of it possible at all.
+
+## A drag on a divider takes room from whatever is between the two sides
+
+`app::panels::move_a_divider_by_sharing` grows a side by taking what it gains off the side facing it, and —
+since `task-1907` — off the editing area as well. `task-2004` reports what those two miss: *"I also have
+problems resizing the terminal pane to be taller. it shrinks just fine, but with Base of Infinite Space
+pane above it, i can't resize it."*
+
+Three causes, and the sweep that found them is in `crates/unluminous-app/tests/panel_docking.rs` — the
+canvas docked to each of the four sides, with the editing area showing and hidden, every divider dragged
+both ways, asserting **the rectangle the frame really drew** rather than the number in `settings::Panes`.
+Seven arrangements failed and shrinking worked in all of them, which is why it took a sweep: a divider that
+moves one way and not the other looks like a divider that works.
+
+**What is between the strips is not always the editing area.** With the editing area hidden and a panel
+docked left or right, the band those columns live in is between the two strips and `dock::COLUMN_BAND_MIN`
+is all that has to be kept in it. `from_the_middle` asks about whichever of the three it is; asking only
+about the editing area answered zero, so a terminal 90 points deep under a canvas column in a 1394 point
+window could not be dragged one point taller. That is the report, and it is the arrangement the project
+this was measured in was actually in.
+
+**`dock::EDITOR_MIN_HEIGHT` is the limit a person's drag reaches as well as the one the layout keeps**, and
+the two cannot be different numbers: `regions_with` scales a strip back down whenever the panels ask for
+more than `room - EDITOR_MIN_HEIGHT`, so a drag allowed past it would move the stored size and leave the
+drawn one where it was. At 120 the window arrived at that limit immediately — the canvas asks for 560 of a
+670 point body and was drawn 550. It is 72 now, which is the tab strip and two lines, the promise
+`size::EDITOR_PANE_MIN` already makes about width said about height. `COLUMN_BAND_MIN` stopped being
+defined as it and keeps its own 120, because what the two protect is not the same thing.
+
+**And only a panel whose own stored number is part of a side's share is settled**, which is `dock::regions`'
+rule read back: a column's side is the sum of its panels and a strip's side is the greatest of them. So
+every column is written back and only the deepest panel in a strip is — the others are drawn at the strip's
+depth because `lay_a_strip_out` equalises it, and writing that back gave the terminal the canvas's own
+height and kept it after the canvas was hidden. Nothing is written at all until the drag is known to move
+something, because a drag that turns out to be clamped to nothing used to rewrite every stored size.
 
 ## A colour is a question, and the list of names is still closed
 
@@ -3165,10 +3261,34 @@ cannot see a press a widget drawn over it consumed.
 **Two things are asked rather than assumed now, and both are new answers to old questions.**
 `status --section window` carries `focused` and `maximised`, which is the operating system's answer about the
 **window** where `--section keyboard` is Unluminous's own answer about the surface inside it. And
-`show_the_resize_grips` sends no `BeginResize` while the window does not have the focus, for the same reason
-it adds no grips at all while the window is maximised: `components::resize_edges` records what one refused
-request costs, and a request the window manager throws away latches a flag in `winit` that only
+`show_the_resize_grips` sends no `BeginResize` while a page holds the operating system's keyboard, for the
+same reason it adds no grips at all while the window is maximised: `components::resize_edges` records what
+one refused request costs, and a request the window manager throws away latches a flag in `winit` that only
 `WM_EXITSIZEMOVE` clears.
+
+### The page holds the keyboard from one press until the next, and nothing else stops a resize
+
+`task-1945` gave the keyboard back when a browser node **stopped being the chosen one** and refused
+`BeginResize` whenever `winit` said the window had no focus. Both halves were a little wrong, and together
+they are `task-2004`: *"when the base of infinite space is open on windows, i can't resize the main window
+… it's intermittent."* Pressing the title bar, a resize grip, the menu bar, the rail or the status bar
+changes which node is chosen not at all, so the page kept the keyboard through every one of them — and a
+window merely sitting in the background reports no focus either, so there the eight grips were dead for no
+reason at all. Measured on the installed build with `status --section window`, which carries
+`pageHasTheKeyboard` and `lastResizeAsked` for exactly this.
+
+So the rule is **the page holds the operating system's keyboard while it is the chosen node and the last
+press landed on it**, and the refusal is about that rather than about `winit`'s answer.
+`services::browser::the_page_was_the_last_thing_pressed` is the first half, read in `raw_input_hook` off the
+events of the frame about to be drawn against the placements the last frame recorded, and
+`resize_edges::ask_for_it` is the second. **It is a state rather than an event**: `placement.focused` is
+worked out afresh every frame, so clearing it on the frame the press arrives gave the keyboard back for one
+frame and the next handed it straight to the page again — measured, and fixed, on the installed build
+rather than in a test.
+
+`BeginResize` goes straight to the window manager, so nothing inside this process can watch a window change
+size. What is readable is **what the window asked for**: `UnluminousApp::last_resize_asked`, reported by
+`status --section window` and asserted by the tests.
 
 ## A glyph is rasterised at the size it is seen at, in both text engines
 
@@ -4655,6 +4775,11 @@ trade that away to be a shade nearer a screenshot.
   turned four "I cannot type in X" reports from guesswork into measurement, what each of the seven really
   was and which two did not reproduce, the two controls that were drawn at one size inside a box measured
   at another, and the three faults the visual sweep found that nobody had reported.
+- `tasks/task-2004-issues-five-tdd.md` — eight reports and what each one really is: the resize guard
+  that was refusing every resize rather than the one it was written for, the three causes behind a pane
+  that shrinks and will not grow, the field whose text was the interface's size inside a fixed box, the
+  Create Project dialog, the background picture, the agent that could not reach `unluminous-cli`, the
+  one-frame mismatch behind the browser node's jitter, and where the plus goes.
 - `tasks/task-1914-testing-without-stealing-focus-tdd.md` — driving the real window without taking the
   keyboard out of whatever a person is typing into: which of the three steps was actually at fault, the
   three ways of photographing a window that is not in front and the one already in the product, why

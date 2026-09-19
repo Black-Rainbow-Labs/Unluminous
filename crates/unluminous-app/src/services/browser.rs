@@ -302,12 +302,30 @@ pub struct BrowserPlacement {
     /// `native::clip_to_the_visible_part` for what that costs on each platform.
     pub visible: Rect,
     pub focused: bool,
+    /// The zoom the page itself is to be set to, or nothing to leave whatever it is on.
+    ///
+    /// **A native child cannot be transformed**, so the canvas spends its camera on the page's own zoom:
+    /// a node at half the camera's scale draws a page half the size rather than reflowing it at half the
+    /// width. `app::space::show_a_browser_node` works out the product of the node's own zoom and the
+    /// camera's, and it used to send it straight to the engine from inside the egui pass — while the
+    /// bounds went to the engine from `raw_input_hook`, **before** the pass, off the placement the
+    /// *previous* frame recorded.
+    ///
+    /// So on every frame of a zoom the page was being scaled one step ahead of the rectangle it was being
+    /// drawn into, and a page whose layout viewport is its bounds divided by its zoom therefore had a
+    /// viewport that was wrong by one step, every step, for the whole glide. That is `task-2004`'s
+    /// *"it jitters as it zooms in/out the content to match"*. Carrying it on the placement is what makes
+    /// the two one answer applied at one moment.
+    ///
+    /// **`None` for a page in a pane**, whose zoom is the person's own through `browser zoom` and is not
+    /// Unluminous's to write back on every frame.
+    pub zoom: Option<f64>,
 }
 
 impl BrowserPlacement {
     /// A placement that is wholly visible, which is every page drawn in a pane.
     pub fn whole(id: u64, area: Rect, focused: bool) -> Self {
-        Self { id, area, visible: area, focused }
+        Self { id, area, visible: area, focused, zoom: None }
     }
 }
 
@@ -379,6 +397,17 @@ impl BrowserHost {
         if !self.has_views() {
             self.profile = Some(folder);
         }
+    }
+
+    /// Whether a page holds the **operating system's** keyboard focus right now.
+    ///
+    /// The one question `app::frame::show_the_resize_grips` has to ask before it sends
+    /// `ViewportCommand::BeginResize`, and it is narrower than the one it used to ask. See [`TheFocus`]
+    /// for what one refused resize costs, and `task-2004` for what asking `winit` instead cost: a
+    /// window that is merely in the background has no focus either, and there the eight grips were dead
+    /// for no reason at all.
+    pub fn page_holds_the_keyboard(&self) -> bool {
+        self.native.page_holds_the_keyboard()
     }
 
     /// Whether the native view exists, which is what decides if there is anything to settle.
@@ -531,6 +560,42 @@ pub enum TheFocus {
     GiveItToThePage,
     /// The page is not that surface any more, so hand the focus back to Unluminous's own window.
     GiveItBackToTheWindow,
+}
+
+/// Whether the last press anywhere in the window landed on one of the pages.
+///
+/// **A press outside a page hands the operating system's keyboard back to the window**, which is the
+/// half of [`TheFocus`] `task-1945` did not say. `placement.focused` means *this node is the chosen
+/// one*, and pressing the title bar, a resize grip, the menu bar, the rail or the status bar changes
+/// which node is chosen not at all — so a page kept the operating system's keyboard through every one
+/// of them, and with it `winit` went on answering `Window::has_focus()` with false.
+///
+/// `task-2004` reports what that costs: *"when the base of infinite space is open on windows, i can't
+/// resize the main window … it's intermittent"*. The intermittence is whether a browser node has been
+/// pressed since the window opened.
+///
+/// Read from the events of the frame that is about to be drawn, against the placements the last frame
+/// drew, which is the pair `UnluminousApp::settle_the_native_views_before_the_pass` already has in
+/// hand. **`visible` rather than `area`**, because the part of a node hanging off the canvas is not on
+/// the screen and a press there is a press on whatever is drawn over it.
+/// **It is a state rather than an event**, which is what makes it hold. `placement.focused` is worked
+/// out afresh on every frame from which node is chosen, so clearing it on the frame the press arrives
+/// gave the keyboard back for exactly one frame and the next frame handed it straight to the page
+/// again. Measured on the installed build: pressing the window's own chrome moved
+/// `pageHasTheKeyboard` to false and it was true again by the time the next command read it. What the
+/// title bar's drag needs is for `winit` to have had its `WM_SETFOCUS`, which is a frame or two later.
+pub fn the_page_was_the_last_thing_pressed(
+    events: &[egui::Event],
+    placements: &[BrowserPlacement],
+    before: bool,
+) -> bool {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            egui::Event::PointerButton { pos, pressed: true, .. } => Some(*pos),
+            _ => None,
+        })
+        .fold(before, |_, at| placements.iter().any(|placement| placement.visible.contains(at)))
 }
 
 /// Which of [`TheFocus`]'s three, from what the view holds now and what this frame asked for.
@@ -868,6 +933,8 @@ mod native {
         /// The last pair [`clip_to_the_visible_part`] was given, so a frame that changed neither costs
         /// no call into the window manager. `wry::Rect` is not comparable, so this keeps egui's own.
         clip: Option<(egui::Rect, egui::Rect)>,
+        /// The zoom [`place`] last sent, so a frame that did not move it costs no call into the engine.
+        zoom: Option<f64>,
         visible: bool,
         /// Whether the page holds the **operating system's** keyboard focus. See [`super::TheFocus`].
         has_the_focus: bool,
@@ -889,6 +956,11 @@ mod native {
         /// Whether the native view exists.
         pub fn has_view(&self) -> bool {
             self.view.is_some()
+        }
+
+        /// Whether the page holds the operating system's keyboard focus, from the flag the view keeps.
+        pub fn page_holds_the_keyboard(&self) -> bool {
+            self.view.as_ref().is_some_and(|view| view.has_the_focus)
         }
 
         /// Take the window's handle while the frame that has one is in scope.
@@ -930,8 +1002,11 @@ mod native {
             } else if request.showing.load(Ordering::Relaxed) != id {
                 // The tab that is showing changed, so the one view follows it to that tab's address.
                 request.showing.store(id, Ordering::Relaxed);
-                if let Some(view) = &self.view {
+                if let Some(view) = &mut self.view {
                     let _ = view.webview.load_url(&super::engine_url(request.tab.current_url()));
+                    // The zoom belongs to the tab, so what was sent for the last one says nothing about
+                    // this one and the next placement has to be believed.
+                    view.zoom = None;
                 }
             }
             if let Some(view) = &mut self.view {
@@ -997,6 +1072,7 @@ mod native {
                 webview,
                 bounds: None,
                 clip: None,
+                zoom: None,
                 visible: false,
                 has_the_focus: false,
             });
@@ -1068,9 +1144,29 @@ mod native {
         if view.bounds != Some(bounds) && view.webview.set_bounds(bounds).is_ok() {
             view.bounds = Some(bounds);
         }
-        if view.clip != Some((placement.area, placement.visible)) {
+        // **And the zoom in the same breath as the bounds**, because a page's layout viewport is the one
+        // divided by the other: sending them from two places on two different sides of the egui pass left
+        // the viewport wrong by one step of the glide on every frame of it. See
+        // [`BrowserPlacement::zoom`], and `task-2004`.
+        if let Some(zoom) = placement.zoom {
+            // Compared before it is sent, which the bounds beside it have always been: `put_ZoomFactor`
+            // raises a zoom-changed event and re-lays the page out, and this used to be called on every
+            // frame whether or not the number had moved.
+            if view.zoom != Some(zoom) && view.webview.zoom(zoom).is_ok() {
+                view.zoom = Some(zoom);
+            }
+        }
+        // **Whether there is a region, not which pair of rectangles produced one.** During a canvas zoom
+        // both rectangles change on every frame, so this was calling `SetWindowRgn(hwnd, …, TRUE)` sixty
+        // times a second — redrawing the child from scratch each time — for a node wholly inside the pane
+        // where the answer is no region at all. `task-2004`.
+        let wanted = match placement.visible.contains_rect(placement.area) {
+            true => None,
+            false => Some((placement.area, placement.visible)),
+        };
+        if view.clip != wanted {
             clip_to_the_visible_part(view, placement.area, placement.visible);
-            view.clip = Some((placement.area, placement.visible));
+            view.clip = wanted;
         }
         set_visible(view, true);
         match super::the_focus(view.has_the_focus, placement.focused) {
@@ -1219,6 +1315,10 @@ mod native {
         pub fn has_view(&self) -> bool {
             false
         }
+        /// And so never holds the keyboard.
+        pub fn page_holds_the_keyboard(&self) -> bool {
+            false
+        }
         /// There is no child window to create, so the window's handle is not wanted.
         pub fn remember_window(&mut self, _frame: &eframe::Frame) {}
         /// There is nothing to drop.
@@ -1262,6 +1362,48 @@ mod tests {
     /// the frame a placement stops being focused is the frame the focus goes back, and no frame after
     /// it asks again. Before this ticket there was no such frame at all — `place` had a branch for
     /// `focused` and none for anything else — and three of `task-1945`'s four reports were that.
+    #[test]
+    fn the_last_press_decides_whether_the_page_holds_the_keyboard() {
+        let page = BrowserPlacement::whole(
+            1,
+            egui::Rect::from_min_size(egui::pos2(100.0, 100.0), egui::vec2(400.0, 300.0)),
+            true,
+        );
+        let placements = [page];
+        let press = |x: f32, y: f32| egui::Event::PointerButton {
+            pos: egui::pos2(x, y),
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::default(),
+        };
+        let release = egui::Event::PointerButton {
+            pos: egui::pos2(10.0, 10.0),
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::default(),
+        };
+
+        // **A frame with no press at all leaves the answer where it was**, which is what makes it hold:
+        // `placement.focused` is worked out afresh every frame, so an event would give the keyboard back
+        // for exactly one frame and the next would hand it straight to the page again.
+        assert!(the_page_was_the_last_thing_pressed(&[], &placements, true));
+        assert!(!the_page_was_the_last_thing_pressed(&[], &placements, false));
+        assert!(
+            the_page_was_the_last_thing_pressed(std::slice::from_ref(&release), &placements, true),
+            "and a release is not a press"
+        );
+
+        assert!(the_page_was_the_last_thing_pressed(&[press(200.0, 200.0)], &placements, false));
+        assert!(!the_page_was_the_last_thing_pressed(&[press(20.0, 20.0)], &placements, true));
+        // The last press in the frame is the one that decides, which is the same rule said about a
+        // frame that carried two.
+        assert!(the_page_was_the_last_thing_pressed(
+            &[press(20.0, 20.0), press(200.0, 200.0)],
+            &placements,
+            false
+        ));
+    }
+
     #[test]
     fn a_page_that_loses_the_keyboard_hands_it_back_once() {
         assert_eq!(the_focus(false, true), TheFocus::GiveItToThePage, "the page was clicked");

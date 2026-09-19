@@ -168,6 +168,27 @@ pub fn show(ui: &mut egui::Ui, window: Rect, maximized: bool) -> Option<ResizeDi
     started
 }
 
+/// Whether a drag on a grip becomes a request to the window manager.
+///
+/// **The one decision `app::frame::show_the_resize_grips` makes**, here rather than inline so that a
+/// test can hold both answers side by side: `BeginResize` goes straight to the window manager and
+/// nothing inside this process can watch a window change size.
+///
+/// `page_has_the_keyboard` is whether a native child — a browser node's page — has taken the operating
+/// system's keyboard focus. While one has, `winit`'s `handle_os_dragging` latches a flag that only
+/// `WM_EXITSIZEMOVE` clears and returns early from every later move and resize for the life of the
+/// process; see the note at the top of this file for what that costs.
+///
+/// **It is that question rather than "does the window have the focus"**, which is what `task-1945`
+/// asked and what `task-2004` found was refusing every resize for a second reason: a window merely in
+/// the background reports no focus either, and there the eight grips were dead for no reason at all.
+pub fn ask_for_it(
+    direction: Option<ResizeDirection>,
+    page_has_the_keyboard: bool,
+) -> Option<ResizeDirection> {
+    direction.filter(|_| !page_has_the_keyboard)
+}
+
 /// One grip: invisible, named, and reporting the frame the drag began on.
 ///
 /// The drag is reported once, when it starts, rather than on every frame of it. `BeginResize` hands the
@@ -189,6 +210,16 @@ fn grip(ui: &mut egui::Ui, area: Rect, name: &str, cursor: egui::CursorIcon) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A page holding the operating system's keyboard is the one thing that stops a resize being
+    /// asked for, and a window that is merely in the background is not that thing. `task-2004`.
+    #[test]
+    fn a_resize_is_asked_for_unless_a_page_has_taken_the_keyboard() {
+        let north = Some(ResizeDirection::North);
+        assert_eq!(ask_for_it(north, false), north, "the ordinary case");
+        assert_eq!(ask_for_it(north, true), None, "a browser node's page has the keyboard");
+        assert_eq!(ask_for_it(None, false), None, "and no drag asks for nothing");
+    }
 
     /// `task-1693`: a maximised window adds no grips, so no resize the window manager would refuse
     /// is ever asked for. See the note at the top of this file for what one refused request costs.

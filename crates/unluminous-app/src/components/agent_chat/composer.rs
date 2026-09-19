@@ -411,13 +411,19 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
             fonts.layout_no_wrap(LONG_HINT.to_owned(), font, Color32::PLACEHOLDER).size().x
         });
         let prompt_id = ui.id().with("agent-chat-prompt");
+        // **The strip is measured at the size the box really sets its text in** — `task-2004`. The
+        // pair without `_at` measures a single row at a fraction of the field's own height, and this
+        // well is as tall as the draft in it, so it would have asked for letters half the height of a
+        // four line message.
+        let prompt_font = egui::FontId::proportional(look.font_size * 0.9);
         let response = ui.put(
-            crate::components::controls::field_takes_the_whole_rectangle(
+            crate::components::controls::field_takes_the_whole_rectangle_at(
                 ui,
                 field,
                 0.0,
                 prompt_id,
                 "Prompt field",
+                &prompt_font,
             ),
             egui::TextEdit::multiline(parts.draft)
                 .id(prompt_id)
@@ -436,7 +442,7 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
                 )
                 .desired_width(field.width())
                 .desired_rows(rows)
-                .font(egui::FontId::proportional(look.font_size * 0.9))
+                .font(prompt_font.clone())
                 .text_color(look.palette.text),
         );
         // Named, because every control in Unluminous has a plain name and a test finds one by it. Its hint

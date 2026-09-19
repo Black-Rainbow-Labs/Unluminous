@@ -378,27 +378,29 @@ pub fn show(
         view.zoom,
     );
     let filter_id = ui.id().with("explorer-filter");
-    let text_rect = crate::components::controls::field_takes_the_whole_rectangle(
+    let inside = crate::components::controls::field_takes_the_whole_rectangle(
         ui,
         filter_rect,
         view.at(26.0),
         filter_id,
         "Filter field",
     );
-    // The size the box would set text in, zoomed. Asked of the style rather than written down, so at a
-    // zoom of one the filter box is exactly the box it was before `task-1771` — which is a promise a
-    // screenshot test keeps and which a number chosen here would have quietly broken.
-    let typed =
-        ui.style().text_styles.get(&egui::TextStyle::Body).map(|font| font.size).unwrap_or(12.0)
-            * view.zoom;
-    let mut field = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
+    // **The size comes from the box's own height, not from `appearance.ui.font.size`** - `task-2004`.
+    // It used to be the interface's size times this pane's zoom, and the rows under it are
+    // `view.at(12.5)` whatever the interface is set to: on a machine with a large interface `Filter
+    // files` came out more than twice the height of the file names beside it, and the caret, whose
+    // height is the row that font occupies, stood proud of the 24 point box at both ends.
+    // `controls::field_font_size` is a fraction of the field's own height, and the field is
+    // `view.at(24.0)` - so it is `view.at(12.5)` at every zoom, which is exactly the rows.
+    let typed = inside.font.size;
+    let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
     let response = field.add(
         egui::TextEdit::singleline(filter)
             .id(filter_id)
             .hint_text(egui::RichText::new("Filter files").color(color::text_faint()).size(typed))
-            .font(egui::FontId::proportional(typed))
+            .font(inside.font.clone())
             .frame(egui::Frame::NONE)
-            .desired_width(text_rect.width())
+            .desired_width(inside.rect.width())
             .text_color(color::text_control()),
     );
     // Named, because a test finds a control by its name and egui names a text box after what is typed in it.

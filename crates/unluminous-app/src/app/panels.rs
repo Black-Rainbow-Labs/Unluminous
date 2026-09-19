@@ -612,6 +612,23 @@ impl UnluminousApp {
             })
     }
 
+    /// How deep the band between the two strips was drawn, when columns are what is in it.
+    ///
+    /// **Read off the rectangles the frame really drew**, which is `the_sizes_are_being_shared`'s rule:
+    /// `dock::lay_columns_out` gives every column the whole height of that band, so the deepest showing
+    /// column *is* the band, and a second computation here would be a second place for the two to
+    /// disagree. Nothing is in the band means nothing to give, which is `dock::fill_the_depth`'s own
+    /// answer — the strips already have the whole height between them.
+    fn band_between_the_strips(&self) -> f32 {
+        let showing = self.panels_showing();
+        dock::Panel::all(self.plugin_ui.pane_count())
+            .into_iter()
+            .filter(|one| showing[one.index()])
+            .filter(|one| self.panes.dock.side_of(*one).is_a_column())
+            .map(|one| self.panel_rects.of(one).height())
+            .fold(0.0_f32, f32::max)
+    }
+
     /// Move a divider by taking what one side gains off the side facing it.
     ///
     /// **The room is shared out in proportion whenever the panels ask for more than there is**, which
@@ -657,17 +674,60 @@ impl UnluminousApp {
             .filter(|one| showing[one.index()])
             .filter(|one| self.panes.dock.side_of(*one).is_a_column() == column)
             .collect();
-        for one in here.iter().copied() {
-            let rect = self.panel_rects.of(one);
-            let drawn = match column {
-                true => rect.width(),
-                false => rect.height(),
-            };
-            let least = smallest(&self.panes, one);
-            if drawn > 0.0 {
-                set(&mut self.panes, one, drawn.max(least));
+        // **What each panel is treated as having, worked out before anything is written down.**
+        //
+        // Two changes from the loop this replaces, both `task-2004`.
+        //
+        // **Only a panel whose own stored number is part of a side's share is settled**, and which those
+        // are is `dock::regions`' own rule read back: *a column's side is the sum of its panels and a
+        // strip's side is the greatest of them*. So on the width axis every panel is part of the sum and
+        // every one of them is settled; on the height axis only the **deepest** panel in a strip carries
+        // the side's depth, and the others are drawn at it because `dock::lay_a_strip_out` equalises the
+        // strip — a panel that wanted less would leave a hole under the one that wanted more. Writing the
+        // strip's depth into a shallow panel gave the terminal the canvas's own height: stored 260 beside
+        // a canvas at 560, drawn 550, and 550 is what it kept once the canvas was hidden.
+        //
+        // **And nothing is written until the drag is known to move something.** A drag that turns out to
+        // be clamped to nothing used to leave every stored size rewritten — measured on the canvas alone
+        // along the bottom, stored 560 and drawn 550, dragged up and left at 550 with the drawn rectangle
+        // exactly where it was. A drag that does nothing changes nothing.
+        let deepest = |panes: &Panes, side: dock::Side| -> f32 {
+            here.iter()
+                .copied()
+                .filter(|one| panes.dock.side_of(*one) == side)
+                .map(|one| panes.height_of(one))
+                .fold(0.0_f32, f32::max)
+        };
+        let settled: Vec<(dock::Panel, f32)> = here
+            .iter()
+            .copied()
+            .filter_map(|one| {
+                let rect = self.panel_rects.of(one);
+                let drawn = match column {
+                    true => rect.width(),
+                    false => rect.height(),
+                };
+                if drawn <= 0.0 {
+                    return None;
+                }
+                let asked = measured(&self.panes, one);
+                let carries_the_side = match column {
+                    true => true,
+                    false => asked >= deepest(&self.panes, self.panes.dock.side_of(one)) - 0.01,
+                };
+                let least = smallest(&self.panes, one);
+                (carries_the_side && (asked - drawn).abs() > 0.5).then(|| (one, drawn.max(least)))
+            })
+            .collect();
+        let measured = |panes: &Panes, one: dock::Panel| -> f32 {
+            match settled.iter().find(|(panel, _)| *panel == one) {
+                Some((_, value)) => *value,
+                None => match column {
+                    true => panes.width_of(one),
+                    false => panes.height_of(one),
+                },
             }
-        }
+        };
         let mine: Vec<dock::Panel> =
             here.iter().copied().filter(|one| self.panes.dock.side_of(*one) == side).collect();
         let facing: Vec<dock::Panel> = here
@@ -689,28 +749,36 @@ impl UnluminousApp {
         };
         let givable = (depth(&self.panes, &facing) - floor(&self.panes, &facing)).max(0.0);
         let sparable = (depth(&self.panes, &mine) - floor(&self.panes, &mine)).max(0.0);
-        // **And the editing area gives room too, which is what it is between the two sides for.**
+        // **And whatever is between the two sides gives room too, which is what it is between them for.**
         // Without this, a strip whose facing side has no panels on it could not grow at all — `givable` was
         // zero, the drag was clamped to nothing, and the divider did not move however far the pointer went.
         // That is `task-1907`'s report with the canvas alone along the bottom: measured, a drag of 120 points
-        // bought ten. What the editing area has spare is whatever it is drawn at above its own minimum, and
-        // it is asked for the same measurement the panels are.
-        let from_the_editor = match self.editor_visible {
-            true => {
-                // The rectangle the frame really gave it, for `the_sizes_are_being_shared`'s own reason:
-                // one answer read back rather than a second computation that could disagree.
-                let editor = self.panel_rects.editor;
-                let (drawn, least) = match column {
-                    true => (editor.width(), dock::EDITOR_MIN_WIDTH),
-                    false => (editor.height(), dock::EDITOR_MIN_HEIGHT),
-                };
-                (drawn - least).max(0.0)
-            }
-            false => 0.0,
+        // bought ten.
+        //
+        // **What is between them is not always the editing area**, which is the half `task-2004` adds. With
+        // the editing area hidden and a panel docked left or right, the band those columns live in is
+        // between the two strips, and `dock::COLUMN_BAND_MIN` is all that has to be kept in it. Asking only
+        // about the editing area answered zero there, so a terminal 260 points deep in a 670 point window,
+        // under a canvas docked to the left, could not be dragged one point taller. That is the report
+        // *"it shrinks just fine … i can't resize it"*.
+        let from_the_middle = match (column, self.editor_visible) {
+            // The rectangle the frame really gave the editing area, for `the_sizes_are_being_shared`'s own
+            // reason: one answer read back rather than a second computation that could disagree.
+            (true, true) => (self.panel_rects.editor.width() - dock::EDITOR_MIN_WIDTH).max(0.0),
+            (false, true) => (self.panel_rects.editor.height() - dock::EDITOR_MIN_HEIGHT).max(0.0),
+            // The band the columns are drawn in, which is what is between the strips instead.
+            (false, false) => (self.band_between_the_strips() - dock::COLUMN_BAND_MIN).max(0.0),
+            // Nothing: with no editing area `dock::fill_the_depth` has already given the columns the whole
+            // width, so a column's only source of room is the side facing it.
+            (true, false) => 0.0,
         };
-        let by = by.clamp(-sparable, givable + from_the_editor);
+        let by = by.clamp(-sparable, givable + from_the_middle);
         if by == 0.0 {
             return;
+        }
+        // The drag really moves something, so what the frame drew is written down — see `settled`.
+        for (one, value) in &settled {
+            set(&mut self.panes, *one, *value);
         }
         match column {
             // One panel moves and its side's total moves with it, because a column's side is a sum.

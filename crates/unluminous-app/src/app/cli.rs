@@ -757,6 +757,7 @@ impl UnluminousApp {
             "modal" => self.cli_modal(request, verb, ctx),
             "settings" => self.cli_settings(request, verb),
             "theme" => self.cli_theme(request, verb),
+            "background" => self.cli_background(request, verb),
             "plugins" => self.cli_plugins(request, verb),
             "git" => self.cli_git(request, verb),
             "action" => self.cli_action(request, verb, ctx),
@@ -1000,6 +1001,25 @@ impl UnluminousApp {
             // way to ask that from outside the window — it had to be found by trying to drag it.
             "focused": ctx.input(|input| input.viewport().focused),
             "maximised": ctx.input(|input| input.viewport().maximized),
+            // **Whether a page has taken the operating system's keyboard**, which is the cause `focused`
+            // above is only the symptom of — and the one thing that stops the window asking for a resize.
+            // `task-2004` reported the window as unresizable while the canvas was open, intermittently;
+            // this is the field that says which of the two it is, since a window that is merely in the
+            // background also answers `focused: false`.
+            "pageHasTheKeyboard": self.browser.page_holds_the_keyboard(),
+            // The last resize this window asked the window manager for, which is the only thing inside
+            // the process that can be read back about one: `BeginResize` hands the drag to the window
+            // manager and nothing here sees what it did with it. See `UnluminousApp::last_resize_asked`.
+            "lastResizeAsked": self.last_resize_asked.map(|direction| match direction {
+                egui::viewport::ResizeDirection::North => "north",
+                egui::viewport::ResizeDirection::South => "south",
+                egui::viewport::ResizeDirection::West => "west",
+                egui::viewport::ResizeDirection::East => "east",
+                egui::viewport::ResizeDirection::NorthEast => "north east",
+                egui::viewport::ResizeDirection::NorthWest => "north west",
+                egui::viewport::ResizeDirection::SouthEast => "south east",
+                egui::viewport::ResizeDirection::SouthWest => "south west",
+            }),
             "window": { "width": screen.width(), "height": screen.height() },
             "tabs": self.tabs_value(),
             "activeTab": self.files.active_index(),
@@ -1091,7 +1111,20 @@ const STATUS_SECTIONS: &[(&str, &[&str])] = &[
     ("modal", &["modal"]),
     ("settings", &["settings"]),
     ("git", &["git"]),
-    ("window", &["window", "version", "buildDate", "pid", "port", "focused", "maximised"]),
+    (
+        "window",
+        &[
+            "window",
+            "version",
+            "buildDate",
+            "pid",
+            "port",
+            "focused",
+            "maximised",
+            "pageHasTheKeyboard",
+            "lastResizeAsked",
+        ],
+    ),
     ("project", &["project"]),
     ("message", &["message"]),
 ];

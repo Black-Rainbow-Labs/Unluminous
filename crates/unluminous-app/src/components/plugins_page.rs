@@ -146,20 +146,25 @@ fn header(ui: &mut egui::Ui, area: Rect, state: &mut PluginsState, plugins: &Plu
         color::text_faint(),
     );
     let search_id = ui.id().with("plugins-search");
-    let text_rect = crate::components::controls::field_takes_the_whole_rectangle(
+    let inside = crate::components::controls::field_takes_the_whole_rectangle(
         ui,
         search,
         26.0,
         search_id,
         "Search field",
     );
-    let mut field = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
+    let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
     let response = field.add(
         egui::TextEdit::singleline(&mut state.search)
             .id(search_id)
-            .hint_text(egui::RichText::new("Search plugins").color(color::text_faint()))
+            .hint_text(
+                egui::RichText::new("Search plugins")
+                    .color(color::text_faint())
+                    .size(inside.font.size),
+            )
+            .font(inside.font.clone())
             .frame(egui::Frame::NONE)
-            .desired_width(text_rect.width())
+            .desired_width(inside.rect.width())
             .text_color(color::text_control()),
     );
     response.widget_info(|| {

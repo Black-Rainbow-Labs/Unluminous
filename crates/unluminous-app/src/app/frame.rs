@@ -113,6 +113,8 @@ impl UnluminousApp {
         // The modals, newest first: the one a person asked for most recently belongs on top of the
         // older ones.
         self.show_the_prompt(ui);
+        self.show_the_new_project_dialog(ui);
+        self.show_the_background_grid(ui);
         self.show_the_command_palette(ui);
         self.show_go_to_file(ui);
         self.show_find_in_files(ui);
@@ -270,6 +272,12 @@ impl UnluminousApp {
     fn lay_the_frame_out(&mut self, ui: &mut egui::Ui) -> FramePlaces {
         let full = ui.max_rect();
 
+        // **The picture behind the window, when there is one** — `task-2004`. It goes between the
+        // rounded rectangle and the ground, so the opacity slider goes on meaning exactly what it meant:
+        // at 100% the panes hide it and below that it shows through, which is the relationship the
+        // desktop has with it now. A window with no picture chosen paints nothing here at all and the
+        // desktop shows through as it always did.
+        self.paint_the_background(ui, full);
         // The window is one painted surface with rounded corners, because it has no operating system
         // title bar. Everything else is drawn on top of it.
         ui.painter().rect_filled(
@@ -1331,6 +1339,134 @@ impl UnluminousApp {
         }
     }
 
+    /// `File -> Create Project...`, beside the prompt and for the same reason.
+    ///
+    /// The dialog decides nothing: it says what was pressed, and `make_the_project` is what makes the
+    /// folder — which is the split `show_the_prompt` already keeps and is what lets `project new` reach
+    /// the same code with no dialog at all.
+    fn show_the_new_project_dialog(&mut self, ui: &mut egui::Ui) {
+        let Some(mut project) = self.new_project.take() else {
+            return;
+        };
+        let outcome = crate::components::new_project_dialog::show(ui.ctx(), &mut project);
+        if outcome.browse {
+            // The platform's own folder picker, started at wherever the field is pointing now.
+            let start = std::path::PathBuf::from(project.location.trim());
+            let start = match start.is_dir() {
+                true => start,
+                false => self.tree.root().to_path_buf(),
+            };
+            if let Some(chosen) = rfd::FileDialog::new()
+                .set_title("Project location")
+                .set_directory(&start)
+                .pick_folder()
+            {
+                project.location = unluminous_terminal::paths::plain(&chosen).display().to_string();
+                project.problem = None;
+            }
+        }
+        if outcome.cancelled {
+            return;
+        }
+        if outcome.create {
+            match self.make_the_project(&project.folder(), project.git) {
+                Ok(()) => return,
+                Err(problem) => project.problem = Some(problem),
+            }
+        }
+        self.new_project = Some(project);
+    }
+
+    /// The Background grid, beside the other modals. `task-2004`.
+    ///
+    /// **Everything it reports is acted on here and takes effect at once**, which needs no machinery at
+    /// all: `appearance.background.image` is what `paint_the_background` reads, and the window paints
+    /// every frame. The grid itself decides nothing, which is every component in Unluminous.
+    fn show_the_background_grid(&mut self, ui: &mut egui::Ui) {
+        let Some(mut problem) = self.background_grid.take() else {
+            // Nothing is open, so nothing is being looked at: the thumbnails go.
+            self.background_thumbnails.clear();
+            return;
+        };
+        let names = crate::services::backgrounds::list();
+        // **Decoded before the dialog is drawn rather than inside it**, so the closure it is handed only
+        // reads a map. A picture is decoded once while the grid is open and forgotten when it closes.
+        for name in &names {
+            if !self.background_thumbnails.contains_key(name) {
+                let decoded =
+                    crate::services::picture::decode(&crate::services::backgrounds::path_of(name))
+                        .ok()
+                        .map(|image| {
+                            crate::services::picture::upload(
+                                ui.ctx(),
+                                format!("unluminous-background-cell-{name}"),
+                                image,
+                                egui::TextureOptions::LINEAR,
+                            )
+                        });
+                self.background_thumbnails.insert(name.clone(), decoded);
+            }
+        }
+        let thumbnails = &self.background_thumbnails;
+        let texture = |name: &str| thumbnails.get(name).cloned().flatten();
+        let outcome = crate::components::background_dialog::show(
+            ui.ctx(),
+            crate::components::background_dialog::Look {
+                names: &names,
+                chosen: &self.settings.background_image,
+                texture: &texture,
+                opacity: self.settings.opacity,
+                problem: problem.as_deref(),
+            },
+        );
+        if let Some(chosen) = outcome.chosen {
+            self.settings.background_image = chosen;
+            self.unsaved_settings = true;
+            problem = None;
+        }
+        if outcome.add {
+            let start = crate::services::backgrounds::folder();
+            if let Some(chosen) = rfd::FileDialog::new()
+                .set_title("Choose a background")
+                .add_filter(
+                    "Pictures",
+                    &["png", "jpg", "jpeg", "webp", "bmp", "gif", "tif", "tiff"],
+                )
+                .set_directory(&start)
+                .pick_file()
+            {
+                match crate::services::backgrounds::add(&chosen) {
+                    // Chosen as well as added, because somebody who picked a picture meant to use it.
+                    Ok(name) => {
+                        self.settings.background_image = name;
+                        self.unsaved_settings = true;
+                        problem = None;
+                    }
+                    Err(said) => problem = Some(said),
+                }
+            }
+        }
+        if let Some(name) = outcome.remove {
+            match crate::services::backgrounds::remove(&name) {
+                Ok(()) => {
+                    self.background_thumbnails.remove(&name);
+                    // The one that was showing has gone, so the window goes back to the desktop rather
+                    // than to a name that is no longer there.
+                    if self.settings.background_image == name {
+                        self.settings.background_image.clear();
+                        self.unsaved_settings = true;
+                    }
+                    problem = None;
+                }
+                Err(said) => problem = Some(said),
+            }
+        }
+        match outcome.closed {
+            true => self.background_thumbnails.clear(),
+            false => self.background_grid = Some(problem),
+        }
+    }
+
     /// `Find Action`: the palette that finds a menu entry by name and runs it. `task-1922` WP4.
     ///
     /// Drawn beside `Go to File`, because it is the same kind of thing asked about a different list.
@@ -1596,11 +1732,40 @@ impl UnluminousApp {
             settings_dialog::PageOutcome::Install(id) => self.install_plugin(&id),
             settings_dialog::PageOutcome::Uninstall(id) => self.uninstall_plugin(&id),
             settings_dialog::PageOutcome::SetEnabled(id, on) => self.set_plugin_enabled(&id, on),
+            // Over the Settings window rather than in place of it, which is what every modal opened
+            // from another one does: closing the grid puts Appearance back where it was.
+            settings_dialog::PageOutcome::OpenBackgrounds => self.background_grid = Some(None),
             settings_dialog::PageOutcome::Nothing | settings_dialog::PageOutcome::Changed => {}
         }
         if page_changed || self.settings != before {
             self.apply_settings(&before);
         }
+    }
+
+    /// The picture `appearance.background.image` names, drawn inside the window's rounded corners.
+    ///
+    /// **Scaled to cover and clipped to the corners.** A picture that fitted would leave bands of
+    /// nothing down two sides, and the window is drawn on a transparent ground so there is no colour to
+    /// put there — see `services::backgrounds::cover`. The corners are cut by painting it as a rounded
+    /// rectangle with the picture as its brush, which is one shape rather than a clip layer.
+    ///
+    /// Nothing at all when no picture is chosen, or when the one named is not there: the desktop shows
+    /// through, which is what `appearance.background.image` says by being empty and what a picture
+    /// somebody deleted by hand should fall back to.
+    fn paint_the_background(&mut self, ui: &mut egui::Ui, full: Rect) {
+        let Some(texture) = self.wallpaper.texture(ui.ctx(), &self.settings.background_image)
+        else {
+            return;
+        };
+        let taken = crate::services::backgrounds::cover(texture.size_vec2(), full.size());
+        ui.painter().add(egui::Shape::Rect(
+            egui::epaint::RectShape::filled(
+                full,
+                CornerRadius::same(size::WINDOW_CORNER),
+                egui::Color32::WHITE,
+            )
+            .with_texture(texture.id(), taken),
+        ));
     }
 
     /// The notices, over every pane and under a modal.
@@ -1641,17 +1806,29 @@ impl UnluminousApp {
         // costs: it wedges every later move and resize as well.
         let maximized = ui.ctx().input(|input| input.viewport().maximized.unwrap_or(false));
         let direction = resize_edges::show(ui, full, maximized);
-        // **And nothing is asked for while something else holds the keyboard**, which is the same rule
-        // read against the other case the window manager throws a request away in. `egui-winit` already
-        // refuses to forward `StartDrag` unless `Window::has_focus()`, and `winit` answers that with
-        // `is_active && is_focused` — so a native child that has taken `SetFocus`, which is what a
-        // browser node's page does, makes it false. `BeginResize` is **not** behind that check upstream,
-        // so it reaches `handle_os_dragging`, which latches a flag that only `WM_EXITSIZEMOVE` clears
-        // and returns early from every later move and resize for the life of the process. `task-1945`.
+        // **And nothing is asked for while a page holds the operating system's keyboard**, which is the
+        // same rule read against the other case the window manager throws a request away in.
+        // `egui-winit` already refuses to forward `StartDrag` unless `Window::has_focus()`, and `winit`
+        // answers that with `is_active && is_focused` — so a native child that has taken `SetFocus`,
+        // which is what a browser node's page does, makes it false. `BeginResize` is **not** behind that
+        // check upstream, so it reaches `handle_os_dragging`, which latches a flag that only
+        // `WM_EXITSIZEMOVE` clears and returns early from every later move and resize for the life of
+        // the process. `task-1945`.
         //
-        // `unwrap_or(true)` because a platform that never reports the focus must not lose its grips.
-        let focused = ui.ctx().input(|input| input.viewport().focused.unwrap_or(true));
-        if let Some(direction) = direction.filter(|_| focused) {
+        // **Asked of the browser host rather than of `winit`** (`task-2004`). The two are the same answer
+        // in the case this guard exists for and different answers everywhere else: a window merely in the
+        // background reports no focus too, and there every grip was dead for no reason. And the page has
+        // already been told to give the keyboard back by the time a grip is pressed — see
+        // `settle_the_native_views_before_the_pass` — but `winit` cannot know that until it has had its
+        // `WM_SETFOCUS`, which is a frame later than the press this drag started on.
+        let page_has_it = self.browser.page_holds_the_keyboard();
+        if let Some(direction) = resize_edges::ask_for_it(direction, page_has_it) {
+            // **Written down as well as sent**, because `BeginResize` goes to the window manager and
+            // nothing inside this process can watch a window change size. What a test — and
+            // `status --section window` — can read back is what the window *asked for*, which is the one
+            // thing this file decides. It is the last request rather than this frame's, for the same
+            // reason: a drag is asserted on some frame after the one it started on.
+            self.last_resize_asked = Some(direction);
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::BeginResize(direction));
         }
     }
@@ -1836,24 +2013,34 @@ impl UnluminousApp {
             .chain(self.space.live.browsers().cloned())
             .collect();
         let occluded = self.browser_is_occluded(ctx);
-        let placements = self.browser_placements.clone();
+        let mut placements = self.browser_placements.clone();
+        // **A press that landed on none of the pages hands the operating system's keyboard back, and it
+        // stays back until one lands on a page again.** `placement.focused` says only that this node is
+        // the chosen one, and pressing the title bar, a resize grip, the menu bar or the rail changes
+        // which node is chosen not at all — so the page kept the keyboard through every one of them and
+        // `winit` went on saying the window had none. See
+        // `services::browser::the_page_was_the_last_thing_pressed`, and `task-2004`.
+        self.page_was_pressed = crate::services::browser::the_page_was_the_last_thing_pressed(
+            &raw_input.events,
+            &placements,
+            self.page_was_pressed,
+        );
+        if !self.page_was_pressed {
+            for placement in &mut placements {
+                placement.focused = false;
+            }
+        }
         let settled = self.browser.reconcile(&tabs, &placements, occluded, ctx.clone());
         if let Some(id) = settled.pointed_at {
             self.change_browser_tab(id, |tab| tab.pointed_at());
-            // **A browser node's own zoom is applied again when the one view arrives at its tab.** A window
-            // has one native child, so zooming a node whose page is not the one rendering could not reach the
-            // engine at the time — the factor is remembered on the node, and this is where it is spent. The
-            // Codex Sol review of `task-1905` found that it never was, so selecting the node later left it at
-            // whatever zoom the previous page had.
-            if let Some(node) = self.space.live.node_of_browser(id) {
-                // The node's own zoom **and** the camera's, which is the same product
-                // `show_a_browser_node` applies — a page is not transformed by the node's layer, so the
-                // camera has to be spent here as well. Two places computing one number would be one too
-                // many, so this asks the same question of the same two values.
-                let zoom =
-                    self.space.live.page_zoom_of(node) * self.space.space.current().camera.zoom;
-                let _ = self.browser.zoom(id, f64::from(zoom));
-            }
+            // **A browser node's own zoom is applied again when the one view arrives at its tab**, and
+            // since `task-2004` it is applied by the placement rather than here. A window has one native
+            // child, so zooming a node whose page is not the one rendering could not reach the engine at
+            // the time — the factor is remembered on the node, and `show_a_browser_node` puts it on the
+            // node's placement every frame. The Codex Sol review of `task-1905` found that it never was
+            // spent at all; the fix was a second call that computed the same product a second time, and
+            // `NativeView::zoom` is forgotten when the view is pointed somewhere else, so the placement's
+            // answer is believed on the first frame at the new tab.
         }
         for (id, problem) in settled.problems {
             self.change_browser_tab(id, |tab| tab.problem = Some(problem.clone()));

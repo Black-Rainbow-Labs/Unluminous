@@ -2048,6 +2048,25 @@ fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
     c.refuses(&mut harness, "settings reset no.such.key");
     c.works(&mut harness, "settings fonts --json");
 
+    // The backgrounds, which are files in Unluminous's own folder rather than a setting on its own.
+    // Added from a picture this walk writes, so nothing depends on what is on the machine.
+    let picture = a_picture_to_add();
+    c.works(&mut harness, "background list --json");
+    c.works(&mut harness, &format!("background add {} --keep", picture.display()));
+    c.refuses(&mut harness, "background add no-such-picture.png");
+    c.works(&mut harness, "background use a-background.png");
+    c.refuses(&mut harness, "background use no-such-picture.png");
+    c.works(&mut harness, "background remove a-background.png");
+    c.refuses(&mut harness, "background remove no-such-picture.png");
+
+    // A project of its own, in a folder this walk owns. `--no-git`, so it needs no git on the machine.
+    let made = new_project_folder();
+    c.works(
+        &mut harness,
+        &format!("explorer new-project a-new-project --location {} --no-git", made.display()),
+    );
+    c.refuses(&mut harness, "explorer new-project a/b");
+
     c.works(&mut harness, "theme list --json");
     c.works(&mut harness, "theme show --json");
     c.refuses(&mut harness, "theme show no-such-theme --json");
@@ -2761,4 +2780,31 @@ fn every_command_that_holds_its_answer_says_so_in_the_catalogue() {
         );
         pump(&mut harness);
     }
+}
+
+/// A picture on disk for `background add` to copy in, written once.
+///
+/// A one pixel PNG rather than anything on the machine, so the walk depends on nothing it did not make
+/// — `common::sample_folder`'s own bargain.
+fn a_picture_to_add() -> std::path::PathBuf {
+    let folder = std::env::temp_dir().join("unluminous-command-line-backgrounds");
+    std::fs::create_dir_all(&folder).expect("make the folder");
+    let at = folder.join("a-background.png");
+    let bytes: [u8; 67] = [
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+    std::fs::write(&at, bytes).expect("write the picture");
+    at
+}
+
+/// An empty folder for `explorer new-project` to make a project in.
+fn new_project_folder() -> std::path::PathBuf {
+    let folder = std::env::temp_dir().join("unluminous-command-line-projects");
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).expect("make the folder");
+    folder
 }

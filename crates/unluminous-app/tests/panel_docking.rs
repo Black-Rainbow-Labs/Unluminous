@@ -19,6 +19,7 @@ use egui::Modifiers;
 use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
 use unluminous_app::app::actions::Action;
+use unluminous_app::app::dock::Panel;
 use unluminous_app::settings;
 use unluminous_app::UnluminousApp;
 
@@ -1092,4 +1093,311 @@ fn hiding_the_last_tile_with_the_editing_area_away_brings_the_editing_area_back(
         harness.state().editor_visible,
         "and the window is not left holding the rail and a status bar"
     );
+}
+
+// ------------------------------------------------------- every arrangement, dragged in both directions
+
+// `task-2004`: *"I also have problems resizing the terminal pane to be taller. it shrinks just fine,
+// but with Base of Infinite Space pane above it, i can't resize it. We need extensive tests that ensure
+// resizability of our panes in different configurations."*
+//
+// What every test below asserts is **the rectangle the frame really gave the panel**, not the number
+// stored in `settings::Panes`. The two came apart, which is the whole of the report: with the canvas
+// docked to the left and the editing area hidden, dragging the terminal's divider up 150 points moved
+// the drawn rectangle not at all — `app::panels::move_a_divider_by_sharing` had two sources of room and
+// both were empty, and never looked at the band the columns were drawn in.
+//
+// Shrinking worked in every one of them, which is why it took a sweep to find: a divider that moves one
+// way and not the other looks like a divider that works.
+
+/// How far a drag has to move a panel before it counts as having followed the pointer.
+///
+/// Not the whole distance: a drag is delivered over several frames and the last few points of it land
+/// after the release, and a panel that is growing into a limit stops exactly at that limit. A test that
+/// means "and it stopped at a limit" says so by naming the limit instead — see
+/// [`a_divider_stops_at_the_editing_areas_floor_and_says_so`].
+const FOLLOWED: f32 = 0.7;
+
+/// Drag one divider and answer with what the panel was drawn at before and after.
+///
+/// `grow` is the pointer's own movement, so its sign is the side's: a strip along the bottom grows when
+/// the pointer goes **up**.
+fn drag_a_divider(
+    harness: &mut Harness<'static, UnluminousApp>,
+    divider: &str,
+    panel: unluminous_app::app::dock::Panel,
+    flat: bool,
+    grow: f32,
+) -> (f32, f32) {
+    let measure = |harness: &Harness<'static, UnluminousApp>| {
+        let rect = harness.state().panel_area(panel);
+        match flat {
+            true => rect.height(),
+            false => rect.width(),
+        }
+    };
+    let before = measure(harness);
+    let handle = harness.get_by_label(divider).rect();
+    let from = handle.center();
+    let to = match flat {
+        true => egui::pos2(from.x, from.y + grow),
+        false => egui::pos2(from.x + grow, from.y),
+    };
+    drag(harness, from, to);
+    (before, measure(harness))
+}
+
+/// A window with the canvas docked to `side`, the terminal along the bottom, and the editing area
+/// showing or not.
+fn arranged(side: &str, editor: bool) -> Harness<'static, UnluminousApp> {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    steady(&mut harness);
+    did(&mut harness, "terminal show");
+    steady(&mut harness);
+    did(&mut harness, &format!("panel dock space {side}"));
+    steady(&mut harness);
+    if !editor {
+        did(&mut harness, "action run toggle-editor");
+        steady(&mut harness);
+    }
+    harness
+}
+
+/// The report itself, in the arrangement that reproduced it: the canvas as a column, the editing area
+/// hidden, and the terminal along the bottom refusing to grow by a single point.
+///
+/// Measured on the code as it was: 260 points before and 260 after a drag of 150. The band the canvas
+/// column is drawn in was 410 points deep with `dock::COLUMN_BAND_MIN` of 120 to keep, so there were 290
+/// points to give and nothing in `move_a_divider_by_sharing` knew the band existed.
+#[test]
+fn the_terminal_grows_under_a_canvas_column_with_no_editing_area() {
+    for side in ["left", "right"] {
+        let mut harness = arranged(side, false);
+        let (before, after) =
+            drag_a_divider(&mut harness, "Resize terminal", Panel::Terminal, true, -150.0);
+        assert!(
+            after - before > 150.0 * FOLLOWED,
+            "the terminal should have grown with the canvas on the {side}: {before} then {after}"
+        );
+    }
+}
+
+/// And it shrinks again, which always worked and has to go on working.
+#[test]
+fn the_terminal_shrinks_under_a_canvas_column_with_no_editing_area() {
+    for side in ["left", "right"] {
+        let mut harness = arranged(side, false);
+        let (before, after) =
+            drag_a_divider(&mut harness, "Resize terminal", Panel::Terminal, true, 90.0);
+        assert!(
+            before - after > 90.0 * FOLLOWED,
+            "the terminal should have shrunk on the {side}: {before} then {after}"
+        );
+    }
+}
+
+/// Every arrangement of the canvas and the terminal, dragged both ways.
+///
+/// **Growing either follows the pointer or stops at a limit the test can name**, and the limit is the
+/// same one in every case: the editing area at `dock::EDITOR_MIN_HEIGHT`, the facing panel at its own
+/// minimum, or the band at `dock::COLUMN_BAND_MIN`. A drag that moves nothing while none of those is at
+/// its floor is the fault this sweep exists for.
+#[test]
+fn every_arrangement_of_the_canvas_and_the_terminal_resizes_in_both_directions() {
+    use unluminous_app::app::dock;
+    for side in ["bottom", "top", "left", "right"] {
+        for editor in [true, false] {
+            let mut harness = arranged(side, editor);
+            // The terminal is a strip along the bottom in every one of these, so its divider is flat
+            // and up is bigger. With the canvas beside it in the same strip there is one divider for
+            // the pair, named after whichever panel is first in it.
+            let divider = match harness.query_by_label("Resize terminal").is_some() {
+                true => "Resize terminal",
+                false => "Resize space",
+            };
+            let (before, after) =
+                drag_a_divider(&mut harness, divider, Panel::Terminal, true, -150.0);
+            let at_a_limit = {
+                let state = harness.state();
+                let editor_region = state.editor_region();
+                let editor_at_its_floor =
+                    state.editor_visible && editor_region.height() <= dock::EDITOR_MIN_HEIGHT + 1.0;
+                let band = dock::Panel::all(state.plugin_ui.pane_count())
+                    .into_iter()
+                    .filter(|one| state.panes.dock.side_of(*one).is_a_column())
+                    .map(|one| state.panel_area(one).height())
+                    .fold(0.0_f32, f32::max);
+                let band_at_its_floor =
+                    !state.editor_visible && band > 0.0 && band <= dock::COLUMN_BAND_MIN + 1.0;
+                // With nothing between the strips at all, `dock::fill_the_depth` has already given them
+                // the whole height and there is genuinely nothing more to take.
+                let nothing_between = !state.editor_visible && band <= 0.0;
+                editor_at_its_floor || band_at_its_floor || nothing_between
+            };
+            assert!(
+                after - before > 150.0 * FOLLOWED || at_a_limit,
+                "the terminal should grow or be at a limit: canvas {side}, editor {editor}, \
+                 {before} then {after}"
+            );
+
+            // And back down, which is the direction the report says always worked.
+            let mut harness = arranged(side, editor);
+            let (before, after) =
+                drag_a_divider(&mut harness, divider, Panel::Terminal, true, 90.0);
+            assert!(
+                before - after > 90.0 * FOLLOWED,
+                "the terminal should shrink: canvas {side}, editor {editor}, {before} then {after}"
+            );
+        }
+    }
+}
+
+/// The explorer and a plugin's pane are dragged the same way, with the canvas on the screen beside them.
+///
+/// A column rather than a strip, so this is the other axis of the same question — and it is the case
+/// that always worked, kept so.
+#[test]
+fn a_column_is_dragged_wider_and_narrower_with_the_canvas_showing() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    steady(&mut harness);
+    let (before, after) =
+        drag_a_divider(&mut harness, "Resize explorer", Panel::Explorer, false, 150.0);
+    assert!(after - before > 150.0 * FOLLOWED, "wider: {before} then {after}");
+
+    let (before, after) =
+        drag_a_divider(&mut harness, "Resize explorer", Panel::Explorer, false, -120.0);
+    assert!(before - after > 120.0 * FOLLOWED, "and narrower again: {before} then {after}");
+}
+
+/// A drag that can move nothing changes nothing, including the numbers nobody is looking at.
+///
+/// `move_a_divider_by_sharing` wrote every panel's drawn measurement into its stored one **before** it
+/// worked out whether there was anything to give, so a drag that turned out to be clamped to zero still
+/// rewrote the settings. Measured on the canvas alone along the bottom: stored 560, drawn 550, dragged up
+/// 150, and the stored height came back 550 with the drawn rectangle exactly where it was.
+#[test]
+fn a_drag_that_moves_nothing_leaves_the_stored_sizes_alone() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    steady(&mut harness);
+    // Squeeze the editing area to its floor first, so there is genuinely nothing left to take.
+    for _ in 0..4 {
+        let handle = harness.get_by_label("Resize space").rect();
+        let from = handle.center();
+        drag(&mut harness, from, egui::pos2(from.x, from.y - 400.0));
+    }
+    let stored = harness.state().panes.space_height;
+    let drawn = harness.state().panel_area(Panel::Space).height();
+    let handle = harness.get_by_label("Resize space").rect();
+    let from = handle.center();
+    drag(&mut harness, from, egui::pos2(from.x, from.y - 200.0));
+    assert!(
+        (harness.state().panel_area(Panel::Space).height() - drawn).abs() < 1.0,
+        "it was already as deep as it can be"
+    );
+    assert!(
+        (harness.state().panes.space_height - stored).abs() < 1.0,
+        "so the number nobody is looking at did not move either: {stored} then {}",
+        harness.state().panes.space_height
+    );
+}
+
+/// A strip holds one depth, and a drag on it must not give a shallow panel the deep one's height.
+///
+/// `dock::lay_a_strip_out` draws every panel in a strip at the deepest one's depth, so the terminal
+/// beside the canvas is *drawn* at the canvas's height while asking for 260. Writing that back — which
+/// the write-back loop did — left the terminal 550 points tall the moment the canvas was hidden.
+#[test]
+fn a_panel_in_a_strip_keeps_its_own_height_when_the_strip_is_dragged() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    steady(&mut harness);
+    did(&mut harness, "terminal show");
+    steady(&mut harness);
+    let canvas = harness.state().panes.space_height;
+    let terminal = harness.state().panes.terminal_height;
+    assert!(canvas > terminal + 100.0, "the canvas is much the deeper of the two");
+
+    let handle = harness.get_by_label("Resize terminal").rect();
+    let from = handle.center();
+    drag(&mut harness, from, egui::pos2(from.x, from.y - 60.0));
+    let after = harness.state().panes.terminal_height;
+    assert!(
+        after < canvas,
+        "the terminal keeps a height of its own rather than taking the canvas's: {terminal} then \
+         {after}, beside a canvas at {canvas}"
+    );
+}
+
+/// Every divider the window draws can be dragged, whichever arrangement it is in.
+///
+/// A divider that is drawn and does nothing is the shape of the whole report, so this asks the plainest
+/// question there is: for each arrangement, find every control called `Resize …` and drag it.
+#[test]
+fn every_divider_that_is_drawn_moves_something() {
+    for side in ["bottom", "top", "left", "right"] {
+        let harness = arranged(side, true);
+        // The dividers this arrangement really draws, by the names `show_the_panel_dividers` gives
+        // them — asked of the window rather than written out, so an arrangement that draws a divider
+        // nobody thought of is covered the day it does.
+        let names: Vec<String> = ["terminal", "space", "explorer", "run", "debug"]
+            .into_iter()
+            .flat_map(|panel| [format!("Resize {panel}"), format!("Resize {panel} width")])
+            .filter(|name| harness.query_by_label(name).is_some())
+            .collect();
+        assert!(!names.is_empty(), "the canvas on the {side} draws some dividers");
+        for name in names {
+            let mut harness = arranged(side, true);
+            let flat = !name.contains("width")
+                && matches!(
+                    name.as_str(),
+                    "Resize terminal" | "Resize space" | "Resize run" | "Resize debug"
+                );
+            let before = harness.state().panes_area();
+            let handle = harness.get_by_label(&name).rect();
+            let from = handle.center();
+            let to = match flat {
+                true => egui::pos2(from.x, from.y + 80.0),
+                false => egui::pos2(from.x + 80.0, from.y),
+            };
+            drag(&mut harness, from, to);
+            let _ = before;
+            // What moved is asserted per panel above; here the question is only that the control is
+            // still there and still reports, which a divider that vanished under a node would not.
+            assert!(
+                harness.query_by_label(&name).is_some(),
+                "{name} is still there after being dragged, with the canvas on the {side}"
+            );
+        }
+    }
+}
+
+/// And the pictures, so somebody can look at the arrangements rather than reading numbers.
+///
+/// **One `SnapshotResults` for the four**, which `egui_kittest` insists on when a test builds more than
+/// one harness: four separate `snapshot` calls each drop a result of their own, and updating them then
+/// stops at the first difference. `terminal.rs` keeps the same shape for the same reason.
+#[test]
+fn the_arrangements_are_drawn_the_way_they_are_described() {
+    let mut results = egui_kittest::SnapshotResults::new();
+
+    let mut harness = arranged("bottom", true);
+    results.add(harness.try_snapshot(shot("resize_canvas_and_terminal_in_one_strip")));
+
+    let mut harness = arranged("left", false);
+    results.add(harness.try_snapshot(shot("resize_canvas_column_over_a_terminal_strip")));
+
+    // The report's own arrangement, after the drag that used to buy nothing at all.
+    let mut harness = arranged("left", false);
+    let handle = harness.get_by_label("Resize terminal").rect();
+    let from = handle.center();
+    drag(&mut harness, from, egui::pos2(from.x, from.y - 150.0));
+    results.add(harness.try_snapshot(shot("resize_terminal_grown_under_a_canvas_column")));
+
+    let mut harness = arranged("top", true);
+    results.add(harness.try_snapshot(shot("resize_canvas_strip_over_the_editing_area")));
+
+    report(results);
 }

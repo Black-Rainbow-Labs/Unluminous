@@ -136,7 +136,7 @@ pub struct DebugPanel {
     /// What is being typed into the watch field.
     pub watch: String,
     /// The row being edited, and what has been typed into it. `Set Value` turns a cell into a field,
-    /// which is `controls::field_text_rect`'s five-fields lesson applied once more.
+    /// which is `controls::field_text`'s five-fields lesson applied once more.
     pub editing: Option<(String, String)>,
     /// The rectangle the tile has along the bottom of the window, whether it is showing or not.
     /// Recorded by the window every frame, which is `RunPanel::tile`'s arrangement.
@@ -622,7 +622,7 @@ pub fn show_row(ui: &mut egui::Ui, draw: RowDraw<'_>, outcome: &mut RowOutcome) 
         pen += label.size().x + 10.0;
     }
 
-    // The cell being edited, which is what `Set Value` turns a row into. `field_text_rect` is what
+    // The cell being edited, which is what `Set Value` turns a row into. `field_text` is what
     // stops it being the sixth field in Unluminous to put its words against its own top edge.
     if let Some((key, typed)) = editing.as_mut() {
         if *key == row.key {
@@ -638,8 +638,14 @@ pub fn show_row(ui: &mut egui::Ui, draw: RowDraw<'_>, outcome: &mut RowOutcome) 
                 egui::StrokeKind::Inside,
             );
             let value_id = ui.id().with(("debug-set-value", row.key.clone()));
-            let inner =
-                controls::field_takes_the_whole_rectangle(ui, field, 8.0, value_id, "Value field");
+            let inner = controls::field_takes_the_whole_rectangle_at(
+                ui,
+                field,
+                8.0,
+                value_id,
+                "Value field",
+                &egui::FontId::monospace(11.5),
+            );
             let editor = ui.put(
                 inner,
                 egui::TextEdit::singleline(typed)

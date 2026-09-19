@@ -24,6 +24,11 @@ pub enum Action {
     /// Window` sat under it doing what this does now; `task-1658` asks for the second behaviour and
     /// two entries that do the same thing are worse than one.
     OpenFolder,
+    /// `File -> Create Project...`: make a folder, optionally start a git repository, and open it.
+    ///
+    /// A modal of its own rather than a `Prompt`, because `task-2004` asks for a name, a location and a
+    /// tick box. See `components::new_project_dialog`.
+    CreateProject,
     /// Choose a file and open it in the editor.
     OpenFile,
     /// Ask for an HTTP address or HTML path and render it in a tab.
@@ -1621,6 +1626,10 @@ fn file_menu(state: &MenuState) -> Menu {
             Action::GoToFile,
             Shortcut::command_shift(egui::Key::O),
         ),
+        // A new project beside the one that is open, which is what the reference editor's New Project
+        // does and what `task-2004` asks for. Above `Open Folder`, because making one and opening one
+        // are the same question asked two ways.
+        Entry::item("Create Project...", Action::CreateProject),
         // A project of its own in a window of its own, which is how a second project is opened without
         // giving up the one that is open.
         Entry::with_shortcut(

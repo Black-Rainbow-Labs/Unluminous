@@ -682,6 +682,118 @@ impl UnluminousApp {
         Value::Object(map)
     }
 
+    /// `background` — the picture behind the window — `task-2004`.
+    ///
+    /// `settings set appearance.background.image` reaches the same setting, because that setting is the
+    /// one place a background becomes a change. These exist for `cli_theme`'s own reason: a setting can
+    /// be written and cannot be **discovered**, and adding a picture and deleting one are not things a
+    /// setting can do at all.
+    pub(crate) fn cli_background(&mut self, request: &Request, verb: &str) -> Outcome {
+        use crate::services::backgrounds;
+        match verb {
+            "list" => {
+                let names = backgrounds::list();
+                let showing = self.settings.background_image.clone();
+                let rows: Vec<String> = names
+                    .iter()
+                    .map(|name| format!("{}{name}", if *name == showing { "*" } else { " " }))
+                    .collect();
+                let said = match names.is_empty() {
+                    true => "No pictures have been added. `background add <file>` copies one in."
+                        .to_owned(),
+                    false => rows.join(
+                        "
+",
+                    ),
+                };
+                ok(
+                    request,
+                    said,
+                    json!({
+                        "pictures": names,
+                        "showing": showing,
+                        "folder": backgrounds::folder().to_string_lossy(),
+                    }),
+                )
+            }
+            "add" => {
+                let Some(file) = self.cli_path_argument(request, "file") else {
+                    return no(request, code::USAGE, "Say which picture to add.");
+                };
+                match backgrounds::add(&file) {
+                    Ok(name) => {
+                        let using = !request.switch("keep");
+                        if using {
+                            self.settings.background_image = name.clone();
+                            self.unsaved_settings = true;
+                        }
+                        // Decoded again on the next frame by `Wallpaper`, which is keyed on the name.
+                        self.background_thumbnails.remove(&name);
+                        ok(
+                            request,
+                            match using {
+                                true => format!("The window is drawn on {name}"),
+                                false => format!("Added {name}"),
+                            },
+                            json!({ "picture": name, "showing": using }),
+                        )
+                    }
+                    Err(problem) => no(request, code::NOT_APPLICABLE, problem),
+                }
+            }
+            "use" => {
+                let wanted = request.text("name").unwrap_or_default();
+                if wanted.trim().is_empty() {
+                    self.settings.background_image.clear();
+                    self.unsaved_settings = true;
+                    return ok(
+                        request,
+                        "The desktop shows through again.".to_owned(),
+                        json!({ "showing": "" }),
+                    );
+                }
+                if !backgrounds::list().contains(&wanted) {
+                    return no(
+                        request,
+                        code::NOT_FOUND,
+                        format!(
+                            "There is no background called {wanted}. `background list` names them."
+                        ),
+                    );
+                }
+                self.settings.background_image = wanted.clone();
+                self.unsaved_settings = true;
+                ok(
+                    request,
+                    format!("The window is drawn on {wanted}"),
+                    json!({ "showing": wanted }),
+                )
+            }
+            "remove" => {
+                let Some(name) = request.text("name") else {
+                    return no(request, code::USAGE, "Say which background to remove.");
+                };
+                match backgrounds::remove(&name) {
+                    Ok(()) => {
+                        self.background_thumbnails.remove(&name);
+                        let was_showing = self.settings.background_image == name;
+                        if was_showing {
+                            self.settings.background_image.clear();
+                        }
+                        self.unsaved_settings = true;
+                        ok(
+                            request,
+                            format!("Removed {name}"),
+                            json!({ "removed": name, "wasShowing": was_showing }),
+                        )
+                    }
+                    Err(problem) => no(request, code::NOT_FOUND, problem),
+                }
+            }
+            _ => unknown(request),
+        }
+    }
+
     /// `theme` — what the whole window is painted in — `task-1776`.
     ///
     /// `settings set appearance.theme` reaches the same code, because `apply_the_theme` is the one place a

@@ -10,6 +10,7 @@ pub mod agent_tasks;
 // Allocation counters, compiled in only by the `diagnostic-allocations` feature. A release build
 // keeps the system allocator and reads zeroes, which is what makes it safe to ask from a frame.
 pub mod allocation_trace;
+pub mod backgrounds;
 pub mod breakpoint_store;
 pub mod browser;
 // Borrowing the terminal's console so that `--version` and `--help` can be read, which on

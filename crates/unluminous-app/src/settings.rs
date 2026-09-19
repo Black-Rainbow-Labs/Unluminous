@@ -845,6 +845,19 @@ settings! {
         /// Empty means the editor's family, which is what the interface was always set in and is why this can
         /// be added without anything moving. The reference editor's `Appearance -> Use custom font`.
         ui_font_family = String::new() => "appearance.ui.font.family", "a family this machine has, or empty for the editor's";
+        /// Which picture is drawn behind the window, by its file name in Unluminous's own backgrounds folder.
+        ///
+        /// **Empty means the desktop shows through**, which is what every Unluminous that has never chosen
+        /// one says by saying nothing — `terminal_shell`'s rule and `theme`'s. `task-2004` asks for a
+        /// second answer beside `appearance.background.opacity`: a picture, chosen from a grid, kept by
+        /// the application rather than pointed at wherever it happened to be.
+        ///
+        /// **A file name, not a path.** What it names is a file in
+        /// `services::backgrounds::folder`, which a picture is copied into when it is chosen — so the
+        /// setting survives the original being moved or deleted, and one person's settings file cannot
+        /// point at another person's disk. A name that is not there falls back to the desktop rather than
+        /// to a blank window, which is what a picture somebody deleted by hand should do.
+        background_image = String::new() => "appearance.background.image", "a file in Unluminous's backgrounds folder, or empty to let the desktop show through";
     }
 
     text_raw {
@@ -1498,6 +1511,7 @@ mod tests {
             "debug.value_tooltip",
             "mcp.tools",
             "mcp.port",
+            "appearance.background.image",
         ];
         expected.sort_unstable();
         let mut actual: Vec<&str> = Settings::NAMES.to_vec();
@@ -1567,6 +1581,7 @@ mod tests {
             icons: "material".to_owned(),
             ui_font_family: "Segoe UI".to_owned(),
             ui_font_size: 14.0,
+            background_image: "wallpaper.png".to_owned(),
             debug_adapters: vec![("lldb".to_owned(), r"C:\tools\codelldb.exe".to_owned())],
         };
         let mut values = Values::new();

@@ -157,6 +157,7 @@ impl UnluminousApp {
             }
             Action::NewWindow
             | Action::OpenFolder
+            | Action::CreateProject
             | Action::OpenFile
             | Action::OpenWebAddress
             | Action::OpenInBrowser(_)
@@ -276,12 +277,59 @@ impl UnluminousApp {
 
     /// The File menu.
     ///
+    /// Make a project folder, start a git repository in it when asked, and open it.
+    ///
+    /// **The one place a project is made**, so `File -> Create Project...` and
+    /// `unluminous-cli project new` are the same thing — which is `run_cli`'s own rule said about a
+    /// dialog, and is what keeps an agent's project and a person's project from being two different
+    /// things.
+    ///
+    /// **A window of its own**, which is what `Open Folder` and `Recent Projects` already do: a project
+    /// is a window, so making a second one keeps the first. Only if a second process cannot be started
+    /// does the folder take this window, which is `Open Folder`'s own fallback and is better than the
+    /// entry appearing to do nothing.
+    ///
+    /// `git init` is the machine's own git through `unluminous_git`, so a machine without one says what
+    /// git said rather than what Unluminous guessed — and it is **not** fatal: the folder is made either
+    /// way, and a project that exists without a repository is better than a refusal that leaves a folder
+    /// half made.
+    pub(crate) fn make_the_project(
+        &mut self,
+        folder: &std::path::Path,
+        git: bool,
+    ) -> Result<(), String> {
+        std::fs::create_dir_all(folder)
+            .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
+        if git {
+            let done = unluminous_git::command::run(folder, &["init", "--initial-branch=main"]);
+            if !done.ok {
+                // git's own words, which is `unluminous-git`'s rule: nothing here invents a message.
+                let said = match done.stderr.trim().is_empty() {
+                    true => done.stdout.trim().to_owned(),
+                    false => done.stderr.trim().to_owned(),
+                };
+                self.message = Some(format!("The project was made. git init: {said}"));
+            }
+        }
+        let folder = unluminous_terminal::paths::plain(folder);
+        if launcher::open_window(&folder).is_none() {
+            self.open_folder(&folder);
+        }
+        self.new_project = None;
+        Ok(())
+    }
+
     /// Reached only from [`Self::run_action`], which is what decides that an action is one of
     /// these, so the last arm cannot happen.
     fn a_file_entry(&mut self, action: Action, ctx: &egui::Context) {
         match action {
             Action::NewWindow => {
                 launcher::open_window(self.tree.root());
+            }
+            Action::CreateProject => {
+                self.new_project = Some(crate::components::new_project_dialog::NewProject::beside(
+                    self.tree.root(),
+                ));
             }
             Action::OpenFolder => {
                 let start = self.tree.root().to_path_buf();

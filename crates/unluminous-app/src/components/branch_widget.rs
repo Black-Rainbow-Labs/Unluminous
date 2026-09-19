@@ -154,14 +154,18 @@ fn rows(ui: &mut egui::Ui, state: &BranchState) -> Option<Action> {
         wanted = ui.data_mut(|data| data.get_temp::<String>(id).unwrap_or_default());
         let field = ui.allocate_space(Vec2::new(ui.available_width(), 24.0)).1;
         let mut editing = wanted.clone();
-        // `field_text_rect` is what stops this being the sixth field in Unluminous to put its words
+        // `field_text` is what stops this being the sixth field in Unluminous to put its words
         // against its own top edge: egui lays a text box out at the top of the rectangle it is given and
-        // `Frame::NONE` leaves no margin to push it down.
+        // `Frame::NONE` leaves no margin to push it down. It answers with the font it measured the strip
+        // for as well as the strip, so the box and the caret are the same size as each other —
+        // `task-2004`.
+        let inside = controls::field_text(ui, field, 6.0);
         ui.put(
-            controls::field_text_rect(ui, field, 6.0),
+            inside.rect,
             egui::TextEdit::singleline(&mut editing)
                 .frame(egui::Frame::NONE)
-                .hint_text("Filter branches"),
+                .font(inside.font.clone())
+                .hint_text(egui::RichText::new("Filter branches").size(inside.font.size)),
         );
         if editing != wanted {
             wanted = editing.clone();

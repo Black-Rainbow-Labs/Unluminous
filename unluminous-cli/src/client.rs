@@ -77,7 +77,20 @@ fn answers(instance: &Instance) -> bool {
 /// part of a project's path, because those are the three things somebody looking at the list has.
 pub fn choose(wanted: Option<&str>) -> Result<Instance, Unreachable> {
     let alive = running();
-    let Some(wanted) = wanted else {
+    // **A window that started this process has already said which one it is**, and with nothing named
+    // that is the answer. `UNLUMINOUS_INSTANCE` holds the window's own process id and is set on every
+    // shell a window starts — a terminal node, a chat node's agent, a ticket's agent — so an agent on a
+    // machine with two windows open was otherwise asking a question it had no way to answer, and got the
+    // list back instead of doing what it was asked. `task-2004`.
+    //
+    // It is consulted only when the caller named nothing, and only when the window it names is still
+    // running: a stale variable is a variable, not an instruction, and falling through to the rule below
+    // is what a person typing in that shell after the window closed should get.
+    let wanted = wanted.map(str::to_owned).or_else(|| {
+        crate::parse::the_window_that_started_this_process()
+            .filter(|said| alive.iter().any(|instance| instance.pid.to_string() == *said))
+    });
+    let Some(wanted) = wanted.as_deref() else {
         return match alive.len() {
             0 => Err(Unreachable::new(
                 code::NOT_RUNNING,

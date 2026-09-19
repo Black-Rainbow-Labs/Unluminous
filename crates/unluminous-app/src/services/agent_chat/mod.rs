@@ -662,7 +662,14 @@ impl AgentChat {
     /// debug adapters are all started with, so there is one reading of the profile behind four consumers.
     /// It is an `OnceLock` read after the first call, so this costs a vector rather than a shell.
     pub fn the_environment() -> unluminous_chat::Environment {
-        unluminous_chat::Environment::from(crate::services::login_shell::for_a_child())
+        let mut variables = crate::services::login_shell::for_a_child();
+        // **And `unluminous-cli` on the agent's `PATH`**, which is `task-2004`'s report said about a chat
+        // node rather than a terminal node: an agent this pane starts is the same agent, on the same
+        // project, and it reached the window the same way — which is to say not at all, because the name
+        // it guesses is on nobody's `PATH`. See `agent_tasks::how_to_reach_this_window`, which is the one
+        // answer both routes use.
+        variables.extend(crate::services::agent_tasks::how_to_reach_this_window(&variables));
+        unluminous_chat::Environment::from(variables)
     }
 
     /// Why each endpoint cannot answer, or `None` where it can — worked out at most every

@@ -1019,12 +1019,13 @@ fn plain_field(
         );
     }
     let field_id = ui.id().with(("agent-tasks-listing-field", name));
-    let inner = crate::components::controls::field_takes_the_whole_rectangle(
+    let inner = crate::components::controls::field_takes_the_whole_rectangle_at(
         ui,
         area,
         14.0,
         field_id,
         "Field field",
+        &egui::FontId::proportional(look.font_size - 1.0),
     );
     let response = ui
         .push_id(name, |ui| {

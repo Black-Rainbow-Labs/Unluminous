@@ -69,10 +69,15 @@ pub struct BarOutcome {
 
 /// How much room the overflow row takes, when there is one.
 const MORE_ROW: f32 = 68.0;
-/// How much room the zoom controls take at the right hand end of the bar, before the plus.
-///
-/// The bar already kept 30 points clear for the plus, so this is what the chips now stop before instead.
+/// How much room the zoom controls take at the right hand end of the bar.
 const ZOOM_CONTROLS: f32 = 116.0;
+/// How much room the plus takes, which now sits after the last chip rather than at the far right.
+///
+/// `task-2004`: *"The + sign to add a new view to base of infinite space should be on the right of the
+/// last view/tab, similar to Firefox browser."* The button itself is 22 points across with six of gap
+/// in front of it, and the chips stop before whatever is left after this and the zoom controls — which
+/// is the same sum the bar always made, with the plus moved from one end of it to the other.
+const PLUS: f32 = 28.0;
 
 /// The strip of views along the top of the canvas: one chip a view, the current one lit, and a plus.
 ///
@@ -116,7 +121,7 @@ pub fn view_bar(
         );
         // **Room kept for the overflow row as well**, because a bar that filled itself to the edge and then
         // said "3 more" off the end of itself would be the fault it is there to fix.
-        if chip.right() > area.right() - 30.0 - ZOOM_CONTROLS - MORE_ROW {
+        if chip.right() > area.right() - PLUS - ZOOM_CONTROLS - MORE_ROW {
             break;
         }
         drawn += 1;
@@ -154,11 +159,6 @@ pub fn view_bar(
         }
         pen = chip.right() + 6.0;
     }
-    let plus =
-        Rect::from_center_size(Pos2::new(area.right() - 18.0, area.center().y), Vec2::splat(22.0));
-    if crate::components::controls::icon_button(ui, plus, "New view", icon::plus) {
-        outcome.add = true;
-    }
     // **How many are not listed, and a way to see them.** `view_bar` has always broken out of its loop when
     // a chip would not fit, so past about six views the rest were not merely hard to reach — they were not
     // drawn at all and nothing said so. `task-1906`.
@@ -187,6 +187,20 @@ pub fn view_bar(
         if response.clicked() {
             outcome.manage = true;
         }
+        pen = row.right() + 6.0;
+    }
+    // **After the last chip, which is where a browser puts it** — `task-2004`. It was at
+    // `area.right() - 18.0`, past the zoom controls at the far end of the bar, so the one control that
+    // acts on the row of tabs was the furthest thing in the window from the row of tabs. It is kept clear
+    // of the zoom controls, so a bar full of chips puts the plus where the chips stopped rather than
+    // underneath the zoom buttons.
+    let plus_left = pen.min(area.right() - ZOOM_CONTROLS - PLUS);
+    let plus = Rect::from_center_size(
+        Pos2::new(plus_left + PLUS / 2.0 - 3.0, area.center().y),
+        Vec2::splat(22.0),
+    );
+    if crate::components::controls::icon_button(ui, plus, "New view", icon::plus) {
+        outcome.add = true;
     }
     show_the_zoom_controls(ui, area, zoom, &mut outcome);
     outcome

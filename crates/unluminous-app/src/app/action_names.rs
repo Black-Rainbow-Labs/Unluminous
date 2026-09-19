@@ -34,6 +34,7 @@ impl Action {
             Action::PluginCommand { plugin, command } => format!("plugin-run:{plugin}:{command}"),
             Action::NewWindow => "new-window".to_owned(),
             Action::OpenFolder => "open-folder".to_owned(),
+            Action::CreateProject => "create-project".to_owned(),
             Action::OpenFile => "open-file".to_owned(),
             Action::OpenWebAddress => "open-web-address".to_owned(),
             Action::OpenInBrowser(_) => "open-in-browser".to_owned(),
@@ -189,6 +190,7 @@ impl Action {
         Some(match name {
             "new-window" => Action::NewWindow,
             "open-folder" => Action::OpenFolder,
+            "create-project" => Action::CreateProject,
             "open-file" => Action::OpenFile,
             "open-web-address" => Action::OpenWebAddress,
             "open-in-browser" => Action::OpenInBrowser(with_path()),

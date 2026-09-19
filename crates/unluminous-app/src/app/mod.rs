@@ -761,8 +761,23 @@ pub struct UnluminousApp {
     pub canvases: crate::services::vello_canvas::Canvases,
     /// Native browser views and the shared WebView2 or WKWebView environment behind rendered tabs.
     pub browser: BrowserHost,
+    /// Whether the last press in this window landed on a rendered page.
+    ///
+    /// What decides whether a browser node's page may hold the **operating system's** keyboard, over and
+    /// above being the chosen node. See `services::browser::the_page_was_the_last_thing_pressed`.
+    pub(crate) page_was_pressed: bool,
+    /// The picture behind the window, decoded once and kept. See `services::backgrounds`.
+    pub wallpaper: crate::services::backgrounds::Wallpaper,
     /// Browser child rectangles reported by the panes in this frame.
     browser_placements: Vec<BrowserPlacement>,
+    /// The last resize this window asked the window manager for, and nothing if it has asked for none.
+    ///
+    /// **`ViewportCommand::BeginResize` goes straight to the window manager**, so nothing inside this
+    /// process can watch a window change size and no screenshot holds the answer. What this records is the
+    /// one thing `app::frame::show_the_resize_grips` decides, which is whether to ask at all — the
+    /// question `task-1945` put a guard on and `task-2004` found was refusing every resize while a browser
+    /// node's page held the operating system's keyboard. `status --section window` reports it.
+    pub(crate) last_resize_asked: Option<egui::viewport::ResizeDirection>,
     /// Where the native browser views were asked to go last frame, for a test.
     ///
     /// **A native child is a real window and nothing Unluminous draws**, so no screenshot holds one and no
@@ -1041,6 +1056,19 @@ pub struct UnluminousApp {
     window_place: Option<project_state::WindowPlace>,
     /// The text prompt, when one is open.
     pub prompt: Option<Prompt>,
+    /// `File -> Create Project...` while it is open. See `components::new_project_dialog`.
+    pub new_project: Option<crate::components::new_project_dialog::NewProject>,
+    /// The Background grid while it is open, holding why the last thing asked for was refused.
+    ///
+    /// `Some(None)` is open with nothing wrong. The list of pictures it draws is read off the disk
+    /// rather than kept here, because `services::backgrounds` says the folder is the whole of the state.
+    pub background_grid: Option<Option<String>>,
+    /// The pictures the grid draws, decoded once each while it is open and dropped when it closes.
+    ///
+    /// Separate from `wallpaper`, which holds the one the window is drawn on: that one is decoded at the
+    /// size the card will take and is kept for as long as it is chosen, and these are a dozen pictures
+    /// nobody is looking at a moment after the dialog goes.
+    background_thumbnails: std::collections::HashMap<String, Option<egui::TextureHandle>>,
     /// The `Go to File` modal, when it is open.
     pub go_to_file: Option<GoToFile>,
     /// The `Find Action` palette, when it is open — `task-1922` WP4.
@@ -1241,6 +1269,9 @@ impl UnluminousApp {
             files: OpenFiles::new(document),
             browser: BrowserHost::new(),
             browser_placements: Vec::new(),
+            page_was_pressed: false,
+            wallpaper: crate::services::backgrounds::Wallpaper::default(),
+            last_resize_asked: None,
             tree,
             renderer,
             settings,
@@ -1311,6 +1342,9 @@ impl UnluminousApp {
             clipboard: FileClipboard::new(),
             explorer_menu: None,
             prompt: None,
+            new_project: None,
+            background_grid: None,
+            background_thumbnails: std::collections::HashMap::new(),
             go_to_file: None,
             palette: None,
             closed_tabs: Vec::new(),
@@ -1775,6 +1809,21 @@ impl UnluminousApp {
     /// How opaque the window background is.
     pub fn opacity(&self) -> f32 {
         self.settings.opacity
+    }
+
+    /// The last resize this window asked the window manager for. See [`Self::last_resize_asked`].
+    pub fn last_resize_request(&self) -> Option<egui::viewport::ResizeDirection> {
+        self.last_resize_asked
+    }
+
+    /// The editing area's own rectangle as `app::dock` gave it, which is the one the panels share room
+    /// with.
+    ///
+    /// **Not [`Self::editor_area`]**, which is the text of the pane that has the keyboard: that one is
+    /// inside this by a tab strip and a gutter, so a test asking whether the editing area is at its floor
+    /// would be asking about a different number from the one `app::panels` clamps against.
+    pub fn editor_region(&self) -> Rect {
+        self.panel_rects.editor
     }
 
     /// Where the caret is, as the status bar reports it.

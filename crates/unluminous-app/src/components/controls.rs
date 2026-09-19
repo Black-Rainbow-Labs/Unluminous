@@ -29,34 +29,90 @@ pub fn pointer_in(ui: &egui::Ui) -> Option<Pos2> {
     }
 }
 
-/// The rectangle the `TextEdit` inside one of Unluminous's fields is given.
+/// How much of a field's height the letters inside it may occupy.
+///
+/// 0.52, which is chosen so that the explorer's 24 point filter box asks for 12.5 — exactly the size
+/// the file names under it are drawn at, which is what `task-2004` asks for in as many words: *"the
+/// 'Filter files' text is about the same size as the folder/file name text"*.
+const FIELD_TEXT: f32 = 0.52;
+
+/// The point size a field of `height` points sets its text in.
+///
+/// **A field's box is a fixed number of points tall and its text was the interface's size**, and those
+/// are two unrelated numbers. `appearance.ui.font.size` is 12.5 by default and the machine `task-2004`
+/// was reported from has it far larger, so the explorer's filter drew `Filter files` more than twice the
+/// height of the file names beside it — and the caret, whose height is the row that font occupies, stood
+/// proud of the 24 point box at both ends. `components::settings_dialog`'s 26 point search box is the
+/// same pair, and so is every field built from [`search_field`] and from `modal::field`.
+///
+/// So **a field sets its text at a fixed fraction of its own height**, and the interface's size is not
+/// asked about at all. That is the rule rather than a cap on the interface for one reason worth writing
+/// down: a field that is zoomed carries the zoom in its height. The explorer's filter box is
+/// `view.at(24.0)` points tall and its rows are `view.at(12.5)` — so a fraction of the height is the
+/// row size at every zoom, where a cap on `appearance.ui.font.size` would have been right at a zoom of
+/// one and too small at every other.
+///
+/// The clamp is a floor and a ceiling rather than a preference. A field dragged to nothing would ask for
+/// a font of no size, which egui lays out as an empty galley with no caret in it; and a well several rows
+/// tall — a commit message, a chat composer — is not asking for letters half its own height, so those
+/// pass the size they really draw in to [`field_takes_the_whole_rectangle_at`] instead.
+pub fn field_font_size(height: f32) -> f32 {
+    (height * FIELD_TEXT).clamp(6.0, 24.0)
+}
+
+/// The same as a `FontId`, which is what a `TextEdit` and a measurement both take.
+pub fn field_font(height: f32) -> egui::FontId {
+    egui::FontId::proportional(field_font_size(height))
+}
+
+/// Where a field's `TextEdit` goes and what it sets its text in.
+///
+/// **The two are one answer, so a caller cannot take one and forget the other.** A strip measured for one
+/// size holding text set in another is the fault `task-1914` fixed by hand at the browser's address bar
+/// and `task-2004` found at every field in the window; returning them together is what stops the next
+/// field being the next chance to get it wrong.
+pub struct FieldText {
+    /// The rectangle to lay the box out in: one text row, centred in the field.
+    pub rect: Rect,
+    /// The font that row was measured for, which is the font the box has to be given.
+    pub font: egui::FontId,
+}
+
+/// The strip inside a field, and the font it is measured for.
 ///
 /// Every field in Unluminous draws its own frame — `FIELD` with a one point stroke, the corner radius the
 /// style guide gives — and puts an `egui::TextEdit` inside it with `Frame::NONE`, because egui's own
-/// frame is not the one the design shows. egui then lays that box out at the **top** of the
-/// rectangle it is given, and with no frame there is no margin to push it down, so a rectangle the
-/// height of the whole field left the words sitting against its top edge: `Filter files` was about
-/// three points high in a 24 point box, on a different line from the magnifier beside it.
+/// frame is not the one the design shows. egui then lays that box out at the **top** of the rectangle it
+/// is given, and with no frame there is no margin to push it down, so a rectangle the height of the whole
+/// field left the words sitting against its top edge: `Filter files` was about three points high in a 24
+/// point box, on a different line from the magnifier beside it.
 ///
-/// So a field hands its box one text row, centred in the field. One function rather than a number
-/// repeated in five components, because a fifth field added later would otherwise be the fifth
-/// chance to get it wrong.
+/// So a field hands its box one text row, centred in the field, set in [`field_font_size`]'s own answer.
+/// One function rather than a number repeated in five components, because a fifth field added later would
+/// otherwise be the fifth chance to get it wrong.
 ///
-/// `left` is how far in from the field's left edge the text starts — 26 points where there is a
-/// magnifier in front of it, 8 where there is not.
-pub fn field_text_rect(ui: &egui::Ui, field: Rect, left: f32) -> Rect {
-    field_text_rect_at(field, left, ui.text_style_height(&egui::TextStyle::Body))
+/// `left` is how far in from the field's left edge the text starts — 26 points where there is a magnifier
+/// in front of it, 8 where there is not.
+pub fn field_text(ui: &egui::Ui, field: Rect, left: f32) -> FieldText {
+    let font = field_font(field.height());
+    let row = ui.ctx().fonts_mut(|fonts| fonts.row_height(&font));
+    FieldText { rect: field_text_rect_at(field, left, row), font }
 }
 
-/// The same, for a field that sets its text in a size of its own rather than in the interface's.
+/// The same, for a field that sets its text in a size of its own rather than in [`field_font_size`]'s.
 ///
 /// **A field centres the row it is going to draw, and the size that row will be set in is therefore an
-/// argument rather than an assumption.** [`field_text_rect`] measures the strip with
-/// `TextStyle::Body`, which is `appearance.ui.font.size` — 12.5 by default and 24 on the machine
-/// `task-1914` was reported from. A caller that then draws at a fixed size gets a strip measured for
-/// one size holding text set in another: at 24 the browser's address bar was handed a 28 point strip,
-/// drew its 12 point words at the **top** of it, and so put them about six points above the middle of
-/// a 22 point field and over its own border.
+/// argument rather than an assumption.** This used to be the exception and [`field_text`] used
+/// `TextStyle::Body` — `appearance.ui.font.size`, 12.5 by default and 24 on the machine `task-1914` was
+/// reported from. A caller that then drew at a fixed size got a strip measured for one size holding text
+/// set in another: at 24 the browser's address bar was handed a 28 point strip, drew its 12 point words
+/// at the **top** of it, and so put them about six points above the middle of a 22 point field and over
+/// its own border.
+///
+/// Since `task-2004` the pair without `_at` derives the size from the field's own height instead, so this
+/// is for the two shapes that genuinely know better: a box whose text follows a pane's own font — the
+/// Agent-Tasks board, the chat composer — and a well several rows tall, which is not asking for letters
+/// half its own height.
 ///
 /// `row` is the height the text will really occupy, which is `FontId::proportional(n)`'s own row —
 /// `Ui::fonts(|f| f.row_height(&font))` — so the box and the letters are measured the same way.
@@ -96,9 +152,9 @@ pub fn field_takes_the_whole_rectangle(
     left: f32,
     id: egui::Id,
     name: &str,
-) -> Rect {
+) -> FieldText {
     claim_the_field(ui, field, id, name);
-    field_text_rect(ui, field, left)
+    field_text(ui, field, left)
 }
 
 /// The same claim, for a field whose text is set in a size of its own. See [`field_text_rect_at`].
@@ -201,14 +257,15 @@ pub fn search_field_over(
     }
     icon::magnifier(&painter, Pos2::new(area.left() + 15.0, area.center().y), color::text_faint());
     let id = ui.id().with(("search-field", name));
-    let text_rect = field_takes_the_whole_rectangle(ui, area, 28.0, id, &format!("{name} field"));
-    let mut field = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
+    let inside = field_takes_the_whole_rectangle(ui, area, 28.0, id, &format!("{name} field"));
+    let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
     let response = field.add(
         egui::TextEdit::singleline(value)
             .id(id)
-            .hint_text(egui::RichText::new(hint).color(color::text_faint()))
+            .hint_text(egui::RichText::new(hint).color(color::text_faint()).size(inside.font.size))
+            .font(inside.font.clone())
             .frame(egui::Frame::NONE)
-            .desired_width(text_rect.width())
+            .desired_width(inside.rect.width())
             .text_color(color::text_control()),
     );
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, name));
@@ -870,6 +927,67 @@ pub fn bar_button(ui: &mut egui::Ui, area: Rect, name: &str, strong: bool) -> eg
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
     response
+}
+
+#[cfg(test)]
+mod field_sizing {
+    use super::*;
+
+    /// `task-2004`: *"ensure that the cursor fits the height of the input and that the 'Filter files'
+    /// text is about the same size as the folder/file name text"*.
+    ///
+    /// The explorer's filter box is `view.at(24.0)` points tall and its rows are `view.at(12.5)`, so
+    /// one number says both: a field's text is a fraction of its own height, and at 24 that fraction is
+    /// the row size.
+    #[test]
+    fn the_filter_box_asks_for_exactly_the_size_the_file_names_are_drawn_at() {
+        assert!((field_font_size(24.0) - 12.5).abs() < 0.1, "{}", field_font_size(24.0));
+    }
+
+    /// And at every zoom, which is why the interface's size is not asked about at all: the box carries
+    /// the zoom in its height and `appearance.ui.font.size` does not.
+    #[test]
+    fn it_goes_on_matching_them_at_every_zoom() {
+        for zoom in [0.6_f32, 1.0, 1.5, 2.0, 3.0] {
+            let rows = 12.5 * zoom;
+            let asked = field_font_size(24.0 * zoom);
+            assert!(
+                (asked - rows).abs() < 0.2 || asked >= 24.0,
+                "at a zoom of {zoom} the rows are {rows} and the box asked for {asked}"
+            );
+        }
+    }
+
+    /// The caret is the row the font occupies, so a box that asked for a font its own height could not
+    /// hold is a caret standing proud of the field at both ends — which is the other half of the report.
+    #[test]
+    fn the_row_a_field_asks_for_fits_inside_the_field() {
+        let context = egui::Context::default();
+        let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+            for height in [20.0_f32, 22.0, 24.0, 26.0, 30.0, 48.0] {
+                let field = Rect::from_min_size(Pos2::ZERO, Vec2::new(200.0, height));
+                let inside = field_text(ui, field, 8.0);
+                assert!(
+                    inside.rect.height() <= height - 2.0,
+                    "a {height} point field asked for a {} point row",
+                    inside.rect.height()
+                );
+                assert!(
+                    field.contains_rect(inside.rect),
+                    "and the strip is inside the field it was measured from"
+                );
+            }
+        });
+        output.textures_delta.clear();
+    }
+
+    /// A well several rows tall is not asking for letters half its own height, which is why the ceiling
+    /// is there and why those callers pass their own font to [`field_takes_the_whole_rectangle_at`].
+    #[test]
+    fn a_very_tall_well_is_capped_rather_than_asking_for_enormous_letters() {
+        assert_eq!(field_font_size(400.0), 24.0);
+        assert_eq!(field_font_size(0.0), 6.0, "and a field dragged to nothing still has a caret");
+    }
 }
 
 #[cfg(test)]

@@ -59,6 +59,12 @@ impl UnluminousApp {
         if let Some(prompt) = &self.prompt {
             return Some(prompt_name(prompt).to_owned());
         }
+        if self.new_project.is_some() {
+            return Some("create-project".to_owned());
+        }
+        if self.background_grid.is_some() {
+            return Some("background".to_owned());
+        }
         if self.confirmation.is_some() {
             return Some("confirmation".to_owned());
         }
@@ -215,6 +221,42 @@ impl UnluminousApp {
                 ok(request, "About Unluminous is open", answer)
             }
             "new-file" | "rename" => self.cli_modal_open_prompt(request, &name, &query),
+            // **The dialog, not the making.** `explorer new-project` is how a project is made with no
+            // dialog at all; this is for driving the dialog itself, which is what every other modal
+            // here is for. `--query` seeds the name, because that is what `query` means on the others.
+            "background" => {
+                self.close_every_modal();
+                self.background_grid = Some(None);
+                let pictures = crate::services::backgrounds::list();
+                ok(
+                    request,
+                    format!("Background is open with {} pictures", pictures.len()),
+                    json!({
+                        "open": "background",
+                        "pictures": pictures,
+                        "showing": self.settings.background_image,
+                    }),
+                )
+            }
+            "create-project" => {
+                self.close_every_modal();
+                let mut project =
+                    crate::components::new_project_dialog::NewProject::beside(self.tree.root());
+                if !query.trim().is_empty() {
+                    project.name = query.clone();
+                }
+                if let Some(location) = request.text("path") {
+                    project.location = location;
+                }
+                let folder = project.folder().to_string_lossy().into_owned();
+                let refused = project.why_not();
+                self.new_project = Some(project);
+                ok(
+                    request,
+                    format!("Create Project is open, and would make {folder}"),
+                    json!({ "open": "create-project", "folder": folder, "refused": refused }),
+                )
+            }
             other => no(
                 request,
                 code::USAGE,
@@ -305,6 +347,22 @@ impl UnluminousApp {
                 request,
                 format!("{found} files match {text}"),
                 json!({ "query": text, "results": found }),
+            );
+        }
+        if let Some(project) = &mut self.new_project {
+            // The name, because that is the field a person types in first and `query` meant the name
+            // when the dialog was opened. `--path` is the other field, for the same reason.
+            project.name = text.clone();
+            if let Some(location) = request.text("path") {
+                project.location = location;
+            }
+            project.problem = None;
+            let folder = project.folder().to_string_lossy().into_owned();
+            let refused = project.why_not();
+            return ok(
+                request,
+                format!("Create Project would make {folder}"),
+                json!({ "name": text, "folder": folder, "refused": refused }),
             );
         }
         if let Some(find) = &mut self.find_in_files {
@@ -600,6 +658,24 @@ impl UnluminousApp {
             // the same thing the Close button does.
             return done(request, "Closed About Unluminous.");
         }
+        if let Some(project) = self.new_project.take() {
+            // Through `make_the_project`, which is the one place a project is made — so the dialog's
+            // own button, this, and `explorer new-project` are one thing.
+            if let Some(problem) = project.why_not() {
+                let folder = project.folder().to_string_lossy().into_owned();
+                self.new_project = Some(project);
+                return no(request, code::NOT_APPLICABLE, format!("{problem} ({folder})"));
+            }
+            let folder = project.folder();
+            return match self.make_the_project(&folder, project.git) {
+                Ok(()) => ok(
+                    request,
+                    format!("Made {}", folder.display()),
+                    json!({ "folder": folder.to_string_lossy(), "git": project.git }),
+                ),
+                Err(problem) => no(request, code::REFUSED, problem),
+            };
+        }
         if let Some(prompt) = self.prompt.take() {
             let value = prompt.value.clone();
             self.run_prompt(prompt);
@@ -645,6 +721,8 @@ impl UnluminousApp {
         self.about = None;
         self.settings_window.open = false;
         self.prompt = None;
+        self.new_project = None;
+        self.background_grid = None;
         self.confirmation = None;
         self.breakpoint_dialog = None;
         self.evaluate = None;
@@ -707,6 +785,14 @@ const MODALS: &[(&str, &str)] = &[
     ),
     ("about", "Who wrote Unluminous, what version this is and when it was built."),
     ("new-file", "Make an empty file in a folder. Takes --path."),
+    (
+        "background",
+        "Settings -> Appearance -> Behind: the grid of backgrounds. `background list`, `background use` and `background remove` do the same things with no dialog.",
+    ),
+    (
+        "create-project",
+        "File -> Create Project: a name, a location and whether to start a git repository. Takes --query for the name and --path for the location. `explorer new-project` does the whole thing with no dialog.",
+    ),
     ("rename", "Rename a file or a folder. Takes --path."),
 ];
 
@@ -719,6 +805,8 @@ fn modal_id(name: &str) -> Option<&'static str> {
         "settings" => "unluminous-settings",
         "about" => "unluminous-about",
         "new-file" | "rename" | "prompt" => "unluminous-prompt",
+        "create-project" => "unluminous-new-project",
+        "background" => "unluminous-background",
         "confirmation" => "unluminous-confirmation",
         "commit" => "unluminous-commit",
         "git-dialog" => "unluminous-git-dialog",

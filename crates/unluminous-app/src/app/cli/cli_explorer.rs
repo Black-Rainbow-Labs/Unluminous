@@ -69,6 +69,7 @@ impl UnluminousApp {
             }
             "new-file" => self.cli_explorer_new(request, false),
             "new-folder" => self.cli_explorer_new(request, true),
+            "new-project" => self.cli_explorer_new_project(request),
             "reload" => {
                 self.tree.reload();
                 ok(
@@ -124,6 +125,42 @@ impl UnluminousApp {
                 "Nothing is selected in the explorer.",
                 json!({ "selected": null, "focused": self.focus == crate::app::Focus::Explorer }),
             ),
+        }
+    }
+
+    /// `explorer new-project` — the whole of `File -> Create Project...` with no dialog in front of it.
+    ///
+    /// It goes through `UnluminousApp::make_the_project`, which is the one place a project is made, so a
+    /// project an agent makes and one a person makes are the same thing — `run_cli`'s own rule.
+    /// `new_project_dialog::NewProject::why_not` is the one set of refusals, so the command and the
+    /// dialog cannot disagree about what a project name is either.
+    fn cli_explorer_new_project(&mut self, request: &Request) -> Outcome {
+        use crate::components::new_project_dialog::NewProject;
+        let Some(name) = request.text("name") else {
+            return no(request, code::USAGE, "Say what the project is called.");
+        };
+        // Beside the project that is open when no location is given, which is where the dialog starts.
+        let location = match request.text("location") {
+            Some(said) => std::path::PathBuf::from(said),
+            None => self.tree.root().parent().unwrap_or(self.tree.root()).to_path_buf(),
+        };
+        let wanted = NewProject {
+            name,
+            location: location.display().to_string(),
+            git: !request.switch("no-git"),
+            problem: None,
+        };
+        if let Some(problem) = wanted.why_not() {
+            return no(request, code::NOT_APPLICABLE, problem);
+        }
+        let folder = wanted.folder();
+        match self.make_the_project(&folder, wanted.git) {
+            Ok(()) => ok(
+                request,
+                format!("Made {}", folder.display()),
+                json!({ "folder": folder.to_string_lossy(), "git": wanted.git }),
+            ),
+            Err(problem) => no(request, code::REFUSED, problem),
         }
     }
 

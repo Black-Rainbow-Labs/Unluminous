@@ -239,12 +239,13 @@ fn left_column(
         let mut title = board.detail().title_draft.clone();
         let title_id = ui.id().with("agent-tasks-ticket-title");
         let response = ui.put(
-            crate::components::controls::field_takes_the_whole_rectangle(
+            crate::components::controls::field_takes_the_whole_rectangle_at(
                 ui,
                 title_at,
                 2.0,
                 title_id,
                 "Ticket title field",
+                &egui::FontId::proportional(look.font_size + 4.0),
             ),
             egui::TextEdit::singleline(&mut title)
                 .id(title_id)
@@ -966,12 +967,13 @@ fn field_row(
     // Its own id scope for the reason a row of choices has one: two fields whose hint happens to match would be
     // two text boxes sharing an id.
     let typed_id = ui.id().with(("agent-tasks-ticket-field", name));
-    let inner = crate::components::controls::field_takes_the_whole_rectangle(
+    let inner = crate::components::controls::field_takes_the_whole_rectangle_at(
         ui,
         at,
         6.0,
         typed_id,
         "Typed field",
+        &egui::FontId::proportional(look.font_size - 1.0),
     );
     let changed = ui
         .push_id(name, |ui| {

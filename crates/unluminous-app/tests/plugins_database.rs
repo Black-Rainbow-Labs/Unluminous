@@ -95,7 +95,7 @@ fn until_the_database_settles(harness: &mut Harness<'static, UnluminousApp>) {
 
 /// Press a field anywhere inside it, and the box inside it takes the keyboard.
 ///
-/// `controls::field_text_rect` lays a `TextEdit` out as a strip one line tall, centred in the
+/// `controls::field_text` lays a `TextEdit` out as a strip one line tall, centred in the
 /// control — 15 points inside a 24 point field, inset eight points from the left — and that strip
 /// used to be the only part of the field a pointer could hit. `task-1795`.
 #[test]

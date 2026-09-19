@@ -808,10 +808,15 @@ impl UnluminousApp {
             // half-size node **reflow** its page at half the width rather than draw it half as large. The
             // Codex Sol review of `task-1905` named that, and the page's own zoom is the only lever `wry`
             // offers. It is combined with whatever zoom the node was given, so the two compose.
+            //
+            // **It travels on the placement rather than being sent from here** — `task-2004`. This is
+            // inside the egui pass and the bounds are sent from `raw_input_hook` before it, off the
+            // placement the *previous* frame recorded, so the page was being scaled one step ahead of the
+            // rectangle it was drawn into on every frame of a zoom. A page's layout viewport is the one
+            // divided by the other, so it was wrong by one step for the whole glide, which is the
+            // reported jitter. See `services::browser::BrowserPlacement::zoom`.
             let wanted = self.space.live.page_zoom_of(node.id) * camera.zoom;
-            if let Some(tab) = self.space.live.browser(node.id).map(|tab| tab.id) {
-                let _ = self.browser.zoom(tab, f64::from(wanted));
-            }
+            placement.zoom = Some(f64::from(wanted));
             // A node scrolled off the canvas has nothing on the screen to place, and a rectangle with no room
             // in it would ask the view to be a pixel wide somewhere on the pane's edge. Asked of the
             // **visible** part, because the whole one is now the node wherever it is.
@@ -2175,19 +2180,24 @@ impl UnluminousApp {
             // `agent_tasks::beside_this_program`. The hint uses those variables rather than a bare name,
             // so what it tells an agent to run is a command that works.
             env: {
-                let cli = crate::services::agent_tasks::beside_this_program("unluminous-cli");
-                let instance = std::process::id().to_string();
+                // **And `unluminous-cli` is on the node's `PATH`** — `task-2004`. It never was, and the
+                // three variables that said where it is instead were never read, because nothing makes
+                // an agent run `env`: *"Agent's in the base of infinite space don't seem to have the
+                // cli, or don't understand the unluminous cli."* The name an agent guesses is now the
+                // name that works. `agent_tasks::how_to_reach_this_window` is the whole of it and the
+                // chat pane uses the same one.
                 let hint = format!(
-                    "This terminal is node {node} on an Unluminous canvas. Run `\"${cli_var}\" --instance ${instance_var} space here` to see which nodes it is wired to and how to drive them.",
-                    cli_var = crate::services::agent_tasks::agent::ENV_CLI,
-                    instance_var = crate::services::agent_tasks::agent::ENV_INSTANCE,
+                    "This terminal is node {node} on an Unluminous canvas. Run `unluminous-cli space here` to see which nodes it is wired to and how to drive them. `unluminous-cli` is on your PATH here and already knows which window to drive.",
                 );
-                vec![
+                let mut carried = vec![
                     ("UNLUMINOUS_SPACE_NODE".to_owned(), node.to_string()),
                     ("UNLUMINOUS_SPACE_HINT".to_owned(), hint),
-                    (crate::services::agent_tasks::agent::ENV_CLI.to_owned(), cli),
-                    (crate::services::agent_tasks::agent::ENV_INSTANCE.to_owned(), instance),
-                ]
+                ];
+                // A node's shell is the person's own, so its `PATH` is the one this process has and
+                // `how_to_reach_this_window` falls back to it: there is nothing in `carried` to read one
+                // off, which is what the empty slice says.
+                carried.extend(crate::services::agent_tasks::how_to_reach_this_window(&[]));
+                carried
             },
             // **Filled in by the caller, not here.** Whether a node has a screen to come back showing is a
             // question about this window's project and about whether the node is starting for the first time,

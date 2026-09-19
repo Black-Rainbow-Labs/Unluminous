@@ -63,13 +63,15 @@ const SCROLLBAR: &str = "settings";
 pub(crate) struct Drawn {
     /// Whether a setting on the page changed this frame.
     pub changed: bool,
+    /// Whether the page asked for the Background grid.
+    pub backgrounds: bool,
     /// How tall the page needs to be, from the top of the page area to [`TAIL`] under its last thing.
     pub height: f32,
 }
 
 /// What a page reports, from where its pen stopped.
 pub(crate) fn drawn(area: Rect, pen: f32, changed: bool) -> Drawn {
-    Drawn { changed, height: pen - area.top() + TAIL }
+    Drawn { changed, backgrounds: false, height: pen - area.top() + TAIL }
 }
 
 /// The rectangle a page measures itself from, which is the page area lifted by however far it is
@@ -145,6 +147,8 @@ pub enum PageOutcome {
     Uninstall(String),
     /// The Plugins page asked to switch a plugin on or off, by id and the state it asked for.
     SetEnabled(String, bool),
+    /// The Appearance page asked for the Background grid. `task-2004`.
+    OpenBackgrounds,
 }
 
 /// What happened in the Settings window this frame.
@@ -318,6 +322,12 @@ fn contents(
             if page.changed {
                 outcome.page = PageOutcome::Changed;
             }
+            // **After the change**, so a frame on which both happened opens the grid: choosing the
+            // button changes nothing by itself, and a change that arrived with it is written by the
+            // window's own before-and-after comparison anyway.
+            if page.backgrounds {
+                outcome.page = PageOutcome::OpenBackgrounds;
+            }
             page.height
         }
         Page::Theme => {
@@ -445,20 +455,25 @@ fn show_list(ui: &mut egui::Ui, area: Rect, state: &mut SettingsWindow, plugin_p
         color::text_faint(),
     );
     let search_id = ui.id().with("settings-search");
-    let text_rect = crate::components::controls::field_takes_the_whole_rectangle(
+    let inside = crate::components::controls::field_takes_the_whole_rectangle(
         ui,
         search,
         26.0,
         search_id,
         "Search field",
     );
-    let mut field = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
+    let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
     field.add(
         egui::TextEdit::singleline(&mut state.search)
             .id(search_id)
-            .hint_text(egui::RichText::new("Search settings").color(color::text_faint()))
+            .hint_text(
+                egui::RichText::new("Search settings")
+                    .color(color::text_faint())
+                    .size(inside.font.size),
+            )
+            .font(inside.font.clone())
             .frame(egui::Frame::NONE)
-            .desired_width(text_rect.width())
+            .desired_width(inside.rect.width())
             .text_color(color::text_control()),
     );
 
@@ -730,13 +745,44 @@ fn appearance_page(
     });
     changed |= response.changed();
     pen += 34.0;
-    note(
+    pen = note(
         ui,
         area,
         pen,
-        "Fades the window so the desktop shows through. Text stays fully solid at every setting.",
+        "Fades the window so what is behind shows through. Text stays fully solid at every setting.",
     );
-    pen += 44.0;
+
+    // **What is behind the window**, which is the desktop unless a picture has been chosen —
+    // `task-2004`. A button that opens a grid rather than a row of controls here, because what it
+    // chooses between is pictures and a picture is chosen by looking at it.
+    let behind_row = row_at(area, pen + 6.0);
+    label(ui, area, behind_row, "Behind:");
+    let showing = match settings.background_image.trim().is_empty() {
+        true => "Show Contents Underneath".to_owned(),
+        false => settings.background_image.clone(),
+    };
+    let button = Rect::from_min_size(
+        Pos2::new(area.left() + 130.0, behind_row.top()),
+        Vec2::new(300.0, 26.0),
+    );
+    let mut backgrounds = false;
+    if crate::components::controls::choice_button_named(
+        ui,
+        button,
+        &crate::components::controls::truncate_chars(&showing, 34, 33),
+        "Background",
+        false,
+    ) {
+        backgrounds = true;
+    }
+    pen = behind_row.bottom() + 6.0;
+    pen = note(
+        ui,
+        area,
+        pen,
+        "A picture behind the window, or the desktop. Pictures chosen here are kept in Unluminous's own folder, so moving the original does not lose it.",
+    );
+    pen += 10.0;
 
     // Here rather than on the Plugins page, which is a list of what is installed and has no settings behind
     // it. Depth is an appearance choice in exactly the way the opacity above it is.
@@ -754,7 +800,7 @@ fn appearance_page(
         pen,
         "Soft shadows, gradients and pressed edges behind a plugin's own pane, drawn on the processor. Off, a plugin draws flat, which costs nothing at all.",
     );
-    drawn(area, pen, changed)
+    Drawn { backgrounds, ..drawn(area, pen, changed) }
 }
 
 /// `Appearance & Behavior > Theme`: which palette the window is painted in, its accent, and its icons.

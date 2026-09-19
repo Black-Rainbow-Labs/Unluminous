@@ -113,6 +113,119 @@ pub fn beside_this_program(name: &str) -> String {
         .unwrap_or(spelled)
 }
 
+/// How a child of this window reaches `unluminous-cli`: on its `PATH`, and by name and instance.
+///
+/// **`unluminous-cli` is on nobody's `PATH`.** On macOS it is inside the application bundle beside
+/// `unluminous` and on Windows in the installation folder, so an agent told to run
+/// `unluminous-cli space here` answers `command not found`. The answer until `task-2004` was three
+/// variables — [`agent::ENV_CLI`], [`agent::ENV_INSTANCE`] and a sentence in `UNLUMINOUS_SPACE_HINT`
+/// saying to use them — and the report is what that was worth: *"Agent's in the base of infinite space
+/// don't seem to have the cli, or don't understand the unluminous cli."* Nothing makes an agent run
+/// `env`, so the sentence was never read, and the name it guesses was the name that did not work.
+///
+/// So the folder goes on the child's `PATH`, **in front**, so the client beside *this* window wins over
+/// another Unluminous installed elsewhere. The three variables stay: a program that wants the path wants
+/// the path, and `--instance` still has to name a window when several are open — which is what
+/// `unluminous_cli::parse` reads [`agent::ENV_INSTANCE`] for.
+///
+/// `over` is the environment the child is being given, which is where the `PATH` it will really have is:
+/// an Unluminous started from the Dock has launchd's four folders and the login shell's list is the one
+/// `services::login_shell::for_a_child` has just read. This process's own is the fallback. A child's
+/// environment is laid **over** the inherited one rather than replacing it, so the answer has to carry
+/// the whole of whichever list it extended.
+pub fn how_to_reach_this_window(over: &[(String, String)]) -> Vec<(String, String)> {
+    let cli = beside_this_program("unluminous-cli");
+    let mut carried = vec![
+        (agent::ENV_CLI.to_owned(), cli.clone()),
+        (agent::ENV_INSTANCE.to_owned(), std::process::id().to_string()),
+    ];
+    let existing = over
+        .iter()
+        .rev()
+        .find(|(name, _)| name.eq_ignore_ascii_case("PATH"))
+        .map(|(_, value)| value.clone())
+        .or_else(|| std::env::var("PATH").ok());
+    if let Some(path) = path_with_the_cli_in_front(&cli, existing) {
+        carried.push(("PATH".to_owned(), path));
+    }
+    carried
+}
+
+/// `PATH` with the folder holding `unluminous-cli` in front of it, or nothing when it is there already.
+///
+/// A separate function because it is the whole of the arithmetic and a test can check it with no window,
+/// no installation and no child process. `cli` is the answer [`beside_this_program`] gave, which is a bare
+/// name when there is nothing beside this program to find — and a bare name has no folder, so there is
+/// nothing to add.
+pub fn path_with_the_cli_in_front(cli: &str, existing: Option<String>) -> Option<String> {
+    let folder = std::path::Path::new(cli).parent()?;
+    if folder.as_os_str().is_empty() {
+        return None;
+    }
+    let folder = folder.display().to_string();
+    let existing = existing.unwrap_or_default();
+    // Already in front means nothing to do, which keeps a node restarted in its own shell from growing a
+    // `PATH` with the same folder on it twice.
+    let separator = if cfg!(windows) { ';' } else { ':' };
+    if existing.split(separator).any(|part| part == folder) {
+        return None;
+    }
+    match existing.is_empty() {
+        true => Some(folder),
+        false => Some(format!("{folder}{separator}{existing}")),
+    }
+}
+
+#[cfg(test)]
+mod reaching_this_window {
+    use super::path_with_the_cli_in_front;
+
+    fn separator() -> char {
+        if cfg!(windows) {
+            ';'
+        } else {
+            ':'
+        }
+    }
+
+    /// `task-2004`: the folder holding `unluminous-cli` goes in **front**, so the client beside this
+    /// window wins over another Unluminous installed elsewhere.
+    #[test]
+    fn the_folder_holding_the_client_goes_in_front_of_what_was_there() {
+        let cli = format!("{0}tools{0}unluminous-cli", std::path::MAIN_SEPARATOR);
+        let existing = format!("{0}usr{0}bin", std::path::MAIN_SEPARATOR);
+        let answered = path_with_the_cli_in_front(&cli, Some(existing.clone())).expect("a path");
+        let folder = format!("{0}tools", std::path::MAIN_SEPARATOR);
+        assert_eq!(answered, format!("{folder}{}{existing}", separator()));
+    }
+
+    /// A folder already in front is nothing to do, so a node restarted in its own shell does not grow
+    /// a `PATH` with the same folder on it twice.
+    #[test]
+    fn a_folder_that_is_already_there_is_left_alone() {
+        let cli = format!("{0}tools{0}unluminous-cli", std::path::MAIN_SEPARATOR);
+        let folder = format!("{0}tools", std::path::MAIN_SEPARATOR);
+        let elsewhere = format!("{0}usr{0}bin", std::path::MAIN_SEPARATOR);
+        let existing = format!("{folder}{}{elsewhere}", separator());
+        assert_eq!(path_with_the_cli_in_front(&cli, Some(existing)), None);
+    }
+
+    /// A bare name has no folder, which is what `beside_this_program` answers when there is nothing
+    /// beside this binary to find — so there is nothing to put on a `PATH`.
+    #[test]
+    fn a_bare_name_adds_nothing() {
+        assert_eq!(path_with_the_cli_in_front("unluminous-cli", Some("/usr/bin".to_owned())), None);
+    }
+
+    /// And an empty `PATH` becomes the folder alone rather than a path with a stray separator on it.
+    #[test]
+    fn an_empty_path_becomes_the_folder_on_its_own() {
+        let cli = format!("{0}tools{0}unluminous-cli", std::path::MAIN_SEPARATOR);
+        let folder = format!("{0}tools", std::path::MAIN_SEPARATOR);
+        assert_eq!(path_with_the_cli_in_front(&cli, None), Some(folder));
+    }
+}
+
 /// The agent's authentication key: the keychain first, then what the person's shell sets.
 ///
 /// `task-28` asked for "the iliad key from zshrc", and the second half of that only worked when Unluminous had
@@ -1069,11 +1182,17 @@ impl AgentTasks {
                     "UNLUMINOUS_AGENT_TASKS".to_owned(),
                     self.configuration.database_said(self.folder.as_deref()),
                 ));
-                // The two the handoff line names. Without them the line would have to hold an absolute
-                // path and a process id, which is a line nobody could read and nobody could retype.
-                environment
-                    .push((agent::ENV_CLI.to_owned(), beside_this_program("unluminous-cli")));
-                environment.push((agent::ENV_INSTANCE.to_owned(), std::process::id().to_string()));
+                // The two the handoff line names, and `unluminous-cli` on the `PATH` beside them.
+                // Without them the line would have to hold an absolute path and a process id, which is a
+                // line nobody could read and nobody could retype — and without the `PATH` an agent that
+                // simply types the name is told there is no such command. See
+                // [`how_to_reach_this_window`].
+                //
+                // The `PATH` it goes in front of is the **login shell's**, which is what
+                // `login_shell::for_a_child` has just put in `environment` and is the one this child will
+                // really have; this process's own is a different and shorter list when Unluminous was
+                // started from the Dock.
+                environment.extend(how_to_reach_this_window(&environment));
                 // Last, so the board's gateway and key beat the profile's. They are what the Settings
                 // page shows and what somebody edits there, and a page whose value was quietly
                 // overruled by a shell profile would be a page that lies.

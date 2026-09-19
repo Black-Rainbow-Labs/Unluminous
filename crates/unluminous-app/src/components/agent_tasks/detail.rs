@@ -198,12 +198,13 @@ pub(crate) fn todo_rows(
     let mut draft = board.detail().todo_draft.clone();
     let todo_id = ui.id().with("agent-tasks-todo-draft");
     let response = ui.put(
-        crate::components::controls::field_takes_the_whole_rectangle(
+        crate::components::controls::field_takes_the_whole_rectangle_at(
             ui,
             at,
             8.0,
             todo_id,
             "Todo field",
+            &egui::FontId::proportional(look.font_size - 0.5),
         ),
         egui::TextEdit::singleline(&mut draft)
             .id(todo_id)
@@ -378,12 +379,13 @@ pub(crate) fn comment_section(
                         );
                         let edit_id = ui.id().with("agent-tasks-comment-edit");
                         let response = ui.put(
-                            crate::components::controls::field_takes_the_whole_rectangle(
+                            crate::components::controls::field_takes_the_whole_rectangle_at(
                                 ui,
                                 at,
                                 6.0,
                                 edit_id,
                                 "Comment edit field",
+                                &egui::FontId::proportional(look.font_size - 1.0),
                             ),
                             egui::TextEdit::multiline(&mut edited)
                                 .id(edit_id)
@@ -594,12 +596,13 @@ pub(crate) fn comment_section(
     let mut draft = board.detail().draft.clone();
     let draft_id = ui.id().with("agent-tasks-comment-draft");
     let response = ui.put(
-        crate::components::controls::field_takes_the_whole_rectangle(
+        crate::components::controls::field_takes_the_whole_rectangle_at(
             ui,
             at,
             8.0,
             draft_id,
             "Draft field",
+            &egui::FontId::proportional(look.font_size - 0.5),
         ),
         egui::TextEdit::singleline(&mut draft)
             .id(draft_id)
