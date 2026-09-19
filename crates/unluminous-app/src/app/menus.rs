@@ -373,10 +373,14 @@ impl UnluminousApp {
                 Err(problem) => self.message = Some(problem),
             },
             Action::CloseWindow | Action::Quit => {
-                self.closing = true;
-                self.write_settings();
-                self.remember_the_project();
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                // As the cross in the title bar does: every modified tab is written first and the
+                // window stays when one of them could not be (`task-1984` A2).
+                if self.may_the_window_close() {
+                    self.closing = true;
+                    self.write_settings();
+                    self.remember_the_project();
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
             }
             other => unreachable!("{other:?} is not handled by a_file_entry"),
         }

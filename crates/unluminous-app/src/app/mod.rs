@@ -2045,6 +2045,15 @@ impl eframe::App for UnluminousApp {
         // Every program a node started, killed rather than dropped - `Live::forget`'s own note, and
         // `task-1769`'s 119 orphaned shells.
         self.space.live.stop_everything();
+        // **Every modified tab, as a last resort** (`task-1984` A2). The two ways a person closes the
+        // window ask `may_the_window_close` and stay open when a save failed, so by the time this runs
+        // there is usually nothing left to write. What reaches here is the operating system closing
+        // the window over Unluminous's head -- a log off, a shutdown -- where there is nobody to show a
+        // notice to and nothing to be gained by refusing. So the failures are logged rather than
+        // shown, and the text is written wherever it can be.
+        for problem in self.save_every_modified_tab() {
+            eprintln!("{problem}");
+        }
         // `f64::MAX` so a write that failed a moment ago is still tried: this is the last chance
         // there is, and the two second wait exists for a window that is still drawing.
         self.write_the_space_if_it_changed(f64::MAX);

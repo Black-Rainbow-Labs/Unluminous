@@ -441,9 +441,63 @@ impl UnluminousApp {
         // Written down **before** it is closed, because afterwards there is no tab to ask where it
         // was. `task-1922` WP4.
         self.remember_a_closed_tab(index);
-        self.save_before_closing(index);
+        // **A tab whose save failed is not closed.** `task-1984` A3: the write's failure went into the
+        // status bar and the next line closed the tab anyway, so a read only file, a full disk or a
+        // file in an encoding Unluminous only reads took the typing with it. A notice that stays is
+        // what says so, and `close_tab_without_saving` -- which `tab close --discard` already is -- is
+        // how somebody closes it anyway.
+        if let Err(problem) = self.save_before_closing(index) {
+            self.toasts.say(problem, crate::components::toast::Kind::Problem);
+            return;
+        }
         self.files.close(index);
         self.forget_layout();
+    }
+
+    /// Write every tab that has unsaved changes, and answer with the ones that could not be written.
+    ///
+    /// **`task-1984` A2: the window's close did not do this and a person's edits went with it.**
+    /// `close_tab` has written a modified tab since `task-1681`; the X in the title bar,
+    /// `Action::CloseWindow`, `Action::Quit` and `on_exit` wrote the settings and the project state
+    /// and sent `ViewportCommand::Close` without once asking `Document::is_modified`. The project
+    /// state written a line earlier records the file as open, so it came back the next day showing
+    /// the disk.
+    ///
+    /// Every tab rather than the one with the keyboard: a person with three edited tabs pressing the
+    /// cross means all three, and there is no dialog here to ask them which.
+    pub fn save_every_modified_tab(&mut self) -> Vec<String> {
+        let mut refused = Vec::new();
+        for index in 0..self.files.len() {
+            if let Err(problem) = self.save_before_closing(index) {
+                refused.push(problem);
+            }
+        }
+        refused
+    }
+
+    /// Save every modified tab and say whether the window may now go.
+    ///
+    /// The one function the three ways of closing the window call, so none of them can be the one
+    /// that forgets. A refusal is a notice that stays -- `Kind::Problem` is dismissed by a person --
+    /// naming each file, because a window that simply did not close with nothing on the screen to say
+    /// why is worse than one that lost the text.
+    pub fn may_the_window_close(&mut self) -> bool {
+        let refused = self.save_every_modified_tab();
+        if refused.is_empty() {
+            return true;
+        }
+        self.toasts.say(
+            format!(
+                "Unluminous did not close: {} could not be saved.\n{}",
+                match refused.len() {
+                    1 => "one tab".to_owned(),
+                    many => format!("{many} tabs"),
+                },
+                refused.join("\n")
+            ),
+            crate::components::toast::Kind::Problem,
+        );
+        false
     }
 
     /// Write a tab that is about to be closed, if it has unsaved changes and somewhere to put them.
@@ -453,18 +507,18 @@ impl UnluminousApp {
     /// this reason. **A tab with no path** has nowhere to be written, and choosing one is a dialog,
     /// which is the thing this is removing; it says so rather than writing `untitled.md` into
     /// somebody's project because they shut a scratch buffer.
-    fn save_before_closing(&mut self, index: usize) {
+    fn save_before_closing(&mut self, index: usize) -> Result<(), String> {
         let Some(file) = self.files.get(index) else {
-            return;
+            return Ok(());
         };
         if file.is_picture() || file.is_browser() || !file.document.is_modified() {
-            return;
+            return Ok(());
         }
         let Some(path) = file.path().map(Path::to_path_buf) else {
             self.message = Some(
                 "That tab has no file to save to, so it was closed without saving.".to_owned(),
             );
-            return;
+            return Ok(());
         };
         let name = file.name();
         // The same trim a save from the menu does, because closing a modified tab **is** a save.
@@ -476,10 +530,12 @@ impl UnluminousApp {
                 // The disk is what the index holds for every file that is not open, and this one is
                 // about to stop being open.
                 self.the_project_changed_on_disk();
+                Ok(())
             }
             Err(problem) => {
-                self.message =
-                    Some(format!("Unluminous could not save {}: {problem}", path.display()))
+                let said = format!("Unluminous could not save {}: {problem}", path.display());
+                self.message = Some(said.clone());
+                Err(said)
             }
         }
     }

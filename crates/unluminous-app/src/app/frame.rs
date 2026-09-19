@@ -388,10 +388,15 @@ impl UnluminousApp {
             branch_width,
         );
         if outcome.close {
-            self.closing = true;
-            self.write_settings();
-            self.remember_the_project();
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            // Every modified tab is written first, and the window does not go when one of them could
+            // not be (`task-1984` A2). `may_the_window_close` is the one function the three ways of
+            // closing ask, so none of them can be the one that forgets.
+            if self.may_the_window_close() {
+                self.closing = true;
+                self.write_settings();
+                self.remember_the_project();
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            }
         }
         if outcome.minimise {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));

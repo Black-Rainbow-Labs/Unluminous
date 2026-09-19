@@ -2022,3 +2022,103 @@ fn alt_and_an_arrow_moves_the_line_without_moving_the_caret_off_it() {
         "the caret went with the line rather than up off it"
     );
 }
+
+// -------------------------------------------------------------------------------------- task-1984
+//
+// Work is never lost: closing the window, and a tab whose save failed.
+
+/// Type into a file, close the window, and the text is on the disk.
+///
+/// `task-1984` A2. The cross in the title bar, `Action::CloseWindow`, `Action::Quit` and `on_exit`
+/// all wrote the settings and the project state and sent `ViewportCommand::Close` without once
+/// asking `Document::is_modified`, so a person who typed and pressed the cross lost the edits with
+/// nothing on the screen to say so -- and the project state written a line earlier recorded the file
+/// as open, so it came back the next day showing the disk.
+#[test]
+fn closing_the_window_writes_every_modified_tab() {
+    let folder = fixture(
+        "unluminous-1984-close-saves",
+        &[("one.md", "# One\n"), ("two.md", "# Two\n"), ("three.md", "# Three\n")],
+    );
+    let mut harness = harness_in(&folder);
+    for name in ["one.md", "two.md", "three.md"] {
+        did(&mut harness, &format!("tab open {name} --permanent"));
+        did(&mut harness, "editor caret --line 1 --column 1");
+        did(&mut harness, "editor insert edited");
+    }
+    assert_eq!(
+        harness.state().files.iter().filter(|file| file.document.is_modified()).count(),
+        3,
+        "three tabs with unsaved changes is what this is about"
+    );
+
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::CloseWindow, &ctx);
+    harness.run();
+
+    // Every one of them, not only the tab with the keyboard: a person with three edited tabs
+    // pressing the cross means all three, and there is no dialog here to ask them which.
+    for name in ["one.md", "two.md", "three.md"] {
+        let on_disk = std::fs::read_to_string(folder.join(name)).expect("the file is still there");
+        assert!(
+            on_disk.starts_with("edited"),
+            "{name} should hold what was typed, and holds {on_disk:?}"
+        );
+    }
+    assert!(
+        harness.state().files.iter().all(|file| !file.document.is_modified()),
+        "and nothing is left saying it has unsaved changes"
+    );
+}
+
+/// A tab Unluminous could not write stays open, and says so in a notice a person has to dismiss.
+///
+/// `task-1984` A3: `save_before_closing` put the failed write in the status bar and `close_tab`
+/// closed the tab on the next line, so a read only file, a full disk or a file in an encoding
+/// Unluminous only reads took the typing with it. `tab close --discard` is still the way to close it
+/// anyway, which is what makes refusing here the right answer rather than a dialog.
+#[test]
+fn a_tab_whose_save_failed_stays_open() {
+    let folder = fixture("unluminous-1984-save-failed", &[("locked.md", "# Locked\n")]);
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open locked.md --permanent");
+    did(&mut harness, "editor caret --line 1 --column 1");
+    did(&mut harness, "editor insert edited");
+
+    // A file that cannot be written. Read only on both platforms, which is what a person meets far
+    // more often than a full disk and is the one of the three a test can make.
+    let file = folder.join("locked.md");
+    let mut permissions = std::fs::metadata(&file).expect("the file").permissions();
+    permissions.set_readonly(true);
+    std::fs::set_permissions(&file, permissions).expect("make it read only");
+
+    let before = harness.state().files.len();
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::CloseTab, &ctx);
+    harness.run();
+
+    assert_eq!(harness.state().files.len(), before, "the tab is still there");
+    assert!(
+        harness.state().document().is_modified(),
+        "and it still holds what was typed, rather than having been closed and lost"
+    );
+    let notice = harness
+        .state()
+        .toasts
+        .notices()
+        .iter()
+        .map(|notice| notice.text.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(notice.contains("locked.md"), "the notice names the file: {notice:?}");
+
+    // And the window does not close either, for the same reason.
+    harness.state_mut().run_action(Action::CloseWindow, &ctx);
+    harness.run();
+    assert!(!harness.state().closing, "the window stays while a tab could not be written");
+
+    let mut permissions = std::fs::metadata(&file).expect("the file").permissions();
+    #[allow(clippy::permissions_set_readonly_false)]
+    permissions.set_readonly(false);
+    std::fs::set_permissions(&file, permissions).expect("put it back");
+}
