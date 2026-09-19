@@ -130,7 +130,7 @@ pub fn write(folder: &Path, plugin: &str, key: &str, value: &str) -> std::io::Re
     if let Some(parent) = file.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(file, values.to_text())
+    crate::services::store::write_atomically(&file, values.to_text().as_bytes())
 }
 
 #[cfg(test)]

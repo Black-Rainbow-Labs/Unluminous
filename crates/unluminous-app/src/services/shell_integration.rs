@@ -94,7 +94,11 @@ pub fn write_the_script(folder: &Path) -> Option<PathBuf> {
         return Some(file);
     }
     std::fs::create_dir_all(folder).ok()?;
-    std::fs::write(&file, SCRIPT).ok()?;
+    // Through a temporary and a rename, for `store::write_atomically`'s own reason -- and here the
+    // window is narrower than usual and the reader is a shell: this is written as a terminal opens
+    // and the shell about to start reads it a moment later, so a half written script is a person's
+    // prompt failing in front of them.
+    crate::services::store::write_atomically(&file, SCRIPT.as_bytes()).ok()?;
     Some(file)
 }
 

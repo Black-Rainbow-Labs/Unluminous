@@ -369,15 +369,13 @@ fn advertise(instance: &Instance) -> std::io::Result<PathBuf> {
     let folder = instances::folder();
     std::fs::create_dir_all(&folder)?;
     let path = instance.path_in(&folder);
-    crate::services::store::write_atomically(&path, instance.to_text().as_bytes())?;
-    // The token is in it, so on a system with file modes it is the person's own and nobody else's.
-    // Windows has no equivalent to set here: the folder is already under the person's own
-    // application data, which is what the platform's own access control covers.
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
-    }
+    // The token is in it, so on a system with file modes it is the person's own and nobody else's --
+    // **from its first byte** (`task-1984` S5). It was written at the umask's own mode and tightened
+    // afterwards, which leaves a window, however short, during which another local user can read it,
+    // and the temporary's name is predictable enough to be waited for. Windows has no equivalent to
+    // set here: the folder is already under the person's own application data, which is what the
+    // platform's own access control covers.
+    crate::services::store::write_atomically_private(&path, instance.to_text().as_bytes())?;
     Ok(path)
 }
 

@@ -481,7 +481,9 @@ pub fn save(root: &Path, configurations: &RunConfigurations) {
         return;
     }
     let path = folder.join(FILE);
-    if let Err(problem) = std::fs::write(&path, write(configurations)) {
+    if let Err(problem) =
+        crate::services::store::write_atomically(&path, write(configurations).as_bytes())
+    {
         eprintln!("Unluminous could not write {}: {problem}", path.display());
     }
 }

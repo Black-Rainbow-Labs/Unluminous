@@ -116,7 +116,7 @@ impl Store {
             .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
         let text = serde_json::to_string(&to_json(chat))
             .map_err(|problem| format!("the conversation could not be written: {problem}"))?;
-        std::fs::write(&path, text)
+        crate::services::store::write_atomically(&path, text.as_bytes())
             .map_err(|problem| format!("{} could not be written: {problem}", path.display()))
     }
 

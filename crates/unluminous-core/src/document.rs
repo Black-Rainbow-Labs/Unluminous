@@ -487,6 +487,49 @@ impl Document {
     /// than a re-encoding for anything this version only reads. `task-1804` §7.1 measured what the
     /// first of those is worth -- one character typed into a file with Windows line breaks used to
     /// rewrite every line ending in it, which on a checkout with `core.autocrlf` set is every file.
+    /// Write `bytes` to `path` through a temporary in the same folder and a rename.
+    ///
+    /// **`task-1984` A10, and the one place this crate has to answer it itself.** `std::fs::write`
+    /// truncates the file and then fills it, so a crash, a power cut or a full disk between those two
+    /// leaves a person's source file at zero length. `services::store::write_atomically` is where
+    /// this is written down for the files Unluminous remembers itself in, and `unluminous-core`
+    /// cannot depend on the app crate -- the dependency points the other way -- so the shape is
+    /// repeated here rather than the dependency being turned round for one function.
+    ///
+    /// The temporary is in the **same folder** as the target, because a rename is only atomic within
+    /// one file system. Its name carries the process id, so two Unluminous windows saving the same
+    /// file cannot take each other's temporary. `sync_all` before the rename is what makes the bytes
+    /// really be on the disk rather than in the operating system's cache when the rename makes them
+    /// visible.
+    fn write_through_a_temporary(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+        use std::io::Write as _;
+
+        let folder = path.parent().unwrap_or_else(|| Path::new("."));
+        let name = path.file_name().map(|name| name.to_string_lossy().into_owned());
+        let name = name.unwrap_or_else(|| "unluminous".to_owned());
+        // The process id and a number no other write in this process is using. Two Unluminous
+        // windows are two processes, which is what the first half is for; two threads saving the
+        // same file name in one process share it, which is what the second half is for.
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let ticket = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let temporary = folder.join(format!("{name}.tmp-{}-{ticket}", std::process::id()));
+
+        let written = (|| -> std::io::Result<()> {
+            let mut file = std::fs::File::create(&temporary)?;
+            file.write_all(bytes)?;
+            file.sync_all()
+        })();
+        if let Err(problem) = written {
+            let _ = std::fs::remove_file(&temporary);
+            return Err(problem);
+        }
+        if let Err(problem) = std::fs::rename(&temporary, path) {
+            let _ = std::fs::remove_file(&temporary);
+            return Err(problem);
+        }
+        Ok(())
+    }
+
     pub fn save_as(&mut self, path: &Path) -> std::io::Result<()> {
         if !self.encoding.writable() {
             return Err(std::io::Error::other(format!(
@@ -499,7 +542,7 @@ impl Document {
         let mut bytes = Vec::with_capacity(self.encoding.prefix().len() + text.len());
         bytes.extend_from_slice(self.encoding.prefix());
         bytes.extend_from_slice(text.as_bytes());
-        std::fs::write(path, &bytes)?;
+        Self::write_through_a_temporary(path, &bytes)?;
         self.path = Some(path.to_owned());
         self.saved_history_revision = self.history_revision;
         // Typing after a save must begin a new undo group. Otherwise it merges with the typing that

@@ -242,16 +242,18 @@ impl Configuration {
         values.set("lease", self.lease_minutes.to_string());
         std::fs::create_dir_all(folder)
             .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
-        std::fs::write(
-            folder.join(Self::FILE),
-            values.to_text_headed(
+        crate::services::store::write_atomically(
+            &folder.join(Self::FILE),
+            values
+                .to_text_headed(
                 "The Agent-Tasks board. No secret is in here: the agent's authentication key lives in this \
                  machine's keychain under `iliad`, and `base-url` is the gateway it is used against. An empty \
                  `base-url` means whichever endpoint the agent itself is configured for. `claude-command` and \
                  `codex-command` are the program and the flags in front of it a ticket's agent is launched with, \
                  and the ticket's own model, effort and session flag are added after them; empty means the \
                  command Unluminous builds itself.",
-            ),
+                )
+                .as_bytes(),
         )
         .map_err(|problem| format!("the settings could not be written: {problem}"))
     }

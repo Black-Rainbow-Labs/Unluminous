@@ -324,9 +324,12 @@ impl Plugins {
         };
         let folder = store.folder().join(FOLDER).join(id);
         std::fs::create_dir_all(&folder)?;
-        std::fs::write(folder.join(MANIFEST), manifest)?;
+        // Through a temporary and a rename, for `store::write_atomically`'s own reason: a manifest
+        // left half written is a plugin that is refused at the next start, and a plugin folder is
+        // read at every one.
+        crate::services::store::write_atomically(&folder.join(MANIFEST), manifest.as_bytes())?;
         if let Some(icon) = icon {
-            std::fs::write(folder.join(ICON), icon)?;
+            crate::services::store::write_atomically(&folder.join(ICON), icon)?;
         }
         let plugin = read_folder(&folder)
             .map_err(|reason| std::io::Error::new(std::io::ErrorKind::InvalidData, reason))?;

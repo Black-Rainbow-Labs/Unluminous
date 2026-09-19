@@ -759,7 +759,7 @@ pub fn write_values(
     std::fs::create_dir_all(folder)
         .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
     let path = folder.join(file);
-    std::fs::write(&path, values.to_text_headed(header))
+    crate::services::store::write_atomically(&path, values.to_text_headed(header).as_bytes())
         .map_err(|problem| format!("{} could not be written: {problem}", path.display()))
 }
 

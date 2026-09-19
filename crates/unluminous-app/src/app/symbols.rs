@@ -666,7 +666,9 @@ impl UnluminousApp {
         let edits: Vec<(std::ops::Range<usize>, String)> =
             found.iter().rev().map(|range| (range.clone(), with.to_owned())).collect();
         let after = symbols::applied(&text, &edits);
-        std::fs::write(path, &after).map_err(|problem| problem.to_string())?;
+        // Through a temporary and a rename, for `write_a_source_file`'s own reason (`task-1984` A10).
+        crate::services::store::write_a_source_file(path, after.as_bytes())
+            .map_err(|problem| problem.to_string())?;
         // The store owns a closed file's marks and this is one of the two places a closed file's
         // bytes move, so they are shifted by the same edits -- `rewrite_closed_file`'s rule.
         let shifted = edits.clone();
@@ -699,7 +701,9 @@ impl UnluminousApp {
             return Ok(0);
         }
         let after = symbols::applied(&text, &edits);
-        std::fs::write(path, &after).map_err(|problem| problem.to_string())?;
+        // Through a temporary and a rename, for `write_a_source_file`'s own reason (`task-1984` A10).
+        crate::services::store::write_a_source_file(path, after.as_bytes())
+            .map_err(|problem| problem.to_string())?;
         // The store owns a closed file's marks, and this is the one place a closed file's bytes
         // move, so they are shifted by the same edits — back to front, for the same reason.
         let shifted = edits.clone();

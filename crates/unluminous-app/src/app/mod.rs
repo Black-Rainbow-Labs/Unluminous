@@ -1879,7 +1879,11 @@ fn write_the_edits(path: &Path, edits: &[(std::ops::Range<usize>, String)]) -> R
         return Err("it has changed since the move was worked out".to_owned());
     }
     let after = file_move::applied(&text, edits);
-    std::fs::write(path, after).map_err(|problem| problem.to_string())
+    // Through a temporary and a rename (`task-1984` A10): a crash or a full disk part way through a
+    // rename across forty files would otherwise leave one of them at zero length, with no buffer
+    // anywhere to build it back from.
+    crate::services::store::write_a_source_file(path, after.as_bytes())
+        .map_err(|problem| problem.to_string())
 }
 
 /// The colour a file is drawn in for what git thinks of it.

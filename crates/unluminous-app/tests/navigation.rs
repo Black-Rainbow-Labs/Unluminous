@@ -2122,3 +2122,59 @@ fn a_tab_whose_save_failed_stays_open() {
     permissions.set_readonly(false);
     std::fs::set_permissions(&file, permissions).expect("put it back");
 }
+
+/// A rename across a project that cannot write one of the files leaves that file as it was.
+///
+/// `task-1984` A10. `task-1922` B7 made the files Unluminous remembers itself in atomic and left the
+/// four that write a person's **code** as one `std::fs::write` each — a rename, Replace All, a file
+/// move, and `Document::save_as`. A `write` truncates and then fills, so a crash or a full disk part
+/// way through a rename across forty files leaves one of them at zero length, and the buffer it was
+/// built from has already gone because the file was never open.
+///
+/// A read only file stands in for the crash: the write is refused rather than interrupted, which is
+/// the same question asked of the same code — does the old file survive a write that did not finish.
+#[test]
+fn a_source_file_write_that_fails_leaves_the_file_as_it_was() {
+    let folder = fixture(
+        "unluminous-1984-atomic-source",
+        &[
+            ("first.rs", "pub fn draw_everything() {}\n"),
+            ("second.rs", "pub fn other() { draw_everything(); }\n"),
+        ],
+    );
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open first.rs --permanent");
+    did(&mut harness, "editor caret --line 1 --column 8");
+
+    let second = folder.join("second.rs");
+    let was = std::fs::read_to_string(&second).expect("read it before");
+    let mut permissions = std::fs::metadata(&second).expect("the file").permissions();
+    permissions.set_readonly(true);
+    std::fs::set_permissions(&second, permissions).expect("make it read only");
+
+    // The rename walks the project and rewrites every file that names it. One of them cannot be
+    // written, and what matters is what is left in that file afterwards.
+    // `editor rename` is answered on a later frame -- it reads the project on a thread -- so the
+    // reply is not what this is about. What is asserted is what is in the file afterwards.
+    let ctx = harness.ctx.clone();
+    let _ = harness.state_mut().run_command_line(
+        "editor rename draw_the_lot --name draw_everything --json",
+        &ctx,
+    );
+    for _ in 0..60 {
+        pump(&mut harness);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+
+    let now = std::fs::read_to_string(&second).expect("the file is still readable");
+    assert_eq!(
+        now, was,
+        "a file that could not be written is left exactly as it was, rather than at zero length"
+    );
+    assert!(!now.is_empty(), "and in particular it is not empty");
+
+    let mut permissions = std::fs::metadata(&second).expect("the file").permissions();
+    #[allow(clippy::permissions_set_readonly_false)]
+    permissions.set_readonly(false);
+    std::fs::set_permissions(&second, permissions).expect("put it back");
+}

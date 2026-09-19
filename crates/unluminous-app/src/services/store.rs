@@ -30,15 +30,57 @@ use std::path::{Path, PathBuf};
 /// existing file needs nothing extra. When the rename is refused the temporary is taken away again,
 /// so a folder does not fill with them, and the old file is left exactly as it was.
 pub fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    write_through_a_temporary(path, bytes, false)
+}
+
+/// The same, for a file nobody else on this machine should be able to read.
+///
+/// `task-1984` S5. The instance file carries the token that drives the editor, and it was written at
+/// the umask's own mode and tightened to `0o600` afterwards -- so on macOS and Linux there is a
+/// window, however short, during which another local user can read it, and the temporary's name was
+/// predictable enough to be waited for. The mode goes on at `File::create` instead, so the file has
+/// it from its first byte and there is nothing to tighten afterwards.
+///
+/// On Windows there is no mode to set: a file inherits the folder's access control list, and the
+/// instance folder is under the person's own profile. This is the same function there.
+pub fn write_atomically_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    write_through_a_temporary(path, bytes, true)
+}
+
+/// A number no other write in this process is using.
+///
+/// The process id alone is not enough: two threads writing the same file name in one process share
+/// it, so both make the same temporary, one renames it away and the other's rename finds nothing.
+/// Two Unluminous **windows** are two processes and were the case the process id was for; two
+/// threads are the case this is for, and the suite is full of them.
+fn next_temporary() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+fn write_through_a_temporary(
+    path: &Path,
+    bytes: &[u8],
+    // Read only where there is a mode to set, which is why it carries an underscore on Windows
+    // rather than the two forms being written out twice.
+    #[cfg_attr(not(unix), allow(unused_variables))] private: bool,
+) -> std::io::Result<()> {
     use std::io::Write;
 
     let folder = path.parent().unwrap_or_else(|| Path::new("."));
     let name = path.file_name().map(|name| name.to_string_lossy().into_owned());
     let name = name.unwrap_or_else(|| "unluminous".to_owned());
-    let temporary = folder.join(format!("{name}.tmp-{}", std::process::id()));
+    let temporary = folder.join(format!("{name}.tmp-{}-{}", std::process::id(), next_temporary()));
 
     let written = (|| -> std::io::Result<()> {
-        let mut file = std::fs::File::create(&temporary)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        if private {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&temporary)?;
         file.write_all(bytes)?;
         file.sync_all()
     })();
@@ -51,6 +93,21 @@ pub fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         return Err(problem);
     }
     Ok(())
+}
+
+/// Write a file somebody else's program reads, through a temporary and a rename.
+///
+/// `task-1984` A10. `write_atomically` above is about the files Unluminous remembers itself in;
+/// this is about the files that hold a person's **code**, which `task-1922` B7 left as one
+/// `std::fs::write` each: a rename across forty files, a Replace All, a file move. A `write`
+/// truncates and then fills, so a crash or a full disk in the middle of one of those leaves a source
+/// file at zero length -- and the buffer it was built from has already gone, because the file was
+/// never open.
+///
+/// It is the same mechanism under a name that says which question it is answering, so the source
+/// test in this module can tell one from the other.
+pub fn write_a_source_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    write_atomically(path, bytes)
 }
 
 /// How many projects the recent list holds. Fifteen fills a menu without needing to scroll.
@@ -839,5 +896,140 @@ theme.comment = #6272A4
             "the settings folder should be named after Unluminous, it was {}",
             folder.display()
         );
+    }
+
+    // ---------------------------------------------------------------------------------- task-1984
+
+    /// A write that cannot finish leaves the file as it was and no temporary behind.
+    ///
+    /// The temporary is what makes that true: the target is only ever replaced by a rename, so
+    /// there is no moment at which it is open and empty. A destination inside a folder that is not
+    /// there is a write that fails at its first step, which is the one failure a test can make
+    /// happen on demand -- a full disk is the one this exists for and is not.
+    #[test]
+    fn a_write_that_fails_leaves_the_file_and_the_folder_as_they_were() {
+        let folder = temporary("unluminous-1984-atomic");
+        std::fs::create_dir_all(&folder).expect("the folder");
+        let file = folder.join("source.rs");
+        std::fs::write(&file, "pub fn one() {}
+").expect("write it first");
+
+        let nowhere = folder.join("not-a-folder").join("source.rs");
+        assert!(write_a_source_file(&nowhere, b"anything").is_err(), "there is no folder to write in");
+
+        assert_eq!(
+            std::fs::read_to_string(&file).expect("read it back"),
+            "pub fn one() {}
+",
+            "the file that was there is untouched"
+        );
+        let left_behind: Vec<String> = std::fs::read_dir(&folder)
+            .expect("read the folder")
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains(".tmp-"))
+            .collect();
+        assert!(left_behind.is_empty(), "and no temporary is left behind: {left_behind:?}");
+    }
+
+    /// A file written privately is the person's own and nobody else's, from its first byte.
+    ///
+    /// `task-1984` S5: the instance file carries the token that drives the editor and was written at
+    /// the umask's own mode and tightened afterwards. On Windows there is no mode to assert on -- a
+    /// file inherits the folder's access control list -- so what is checked there is that the bytes
+    /// arrived.
+    #[test]
+    fn a_private_write_is_readable_only_by_its_owner() {
+        let folder = temporary("unluminous-1984-private");
+        std::fs::create_dir_all(&folder).expect("the folder");
+        let file = folder.join("instance.conf");
+        write_atomically_private(&file, b"token = secret
+").expect("write it");
+        assert_eq!(std::fs::read_to_string(&file).expect("read it back"), "token = secret
+");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(&file).expect("the file").permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "nobody else on this machine can read the token");
+        }
+    }
+
+    /// Every `std::fs::write` outside a test is on a list with a reason beside it.
+    ///
+    /// **`task-1984` A10 and S3.** `task-1922` B7 made the files Unluminous remembers itself in
+    /// atomic and left nine behind: the four that write a person's **code** -- a rename, Replace
+    /// All, a file move, and `Document::save_as` -- and five persisted files. `std::fs::write`
+    /// truncates the file and then fills it, so a crash or a full disk between those two leaves it
+    /// at zero length, and for a source file the buffer it was built from has already gone.
+    ///
+    /// A source test rather than a test of behaviour, because the fault is a call site that was
+    /// never changed rather than a function that is wrong: nothing fails, nothing is slower, and the
+    /// only way to see it is to look. The list below is what makes adding a tenth a decision rather
+    /// than an accident.
+    #[test]
+    fn every_persisted_write_goes_through_write_atomically() {
+        // A file nothing reads back, with its reason. A path is matched as a suffix, so the
+        // separator does not matter.
+        const ALLOWED: &[(&str, &str)] = &[
+            (
+                "app/cli/cli_explorer.rs",
+                "`explorer new-file` makes an empty file; there are no bytes to lose",
+            ),
+            ("app/modals.rs", "the New File dialog, the same empty file"),
+            (
+                "app/git.rs",
+                "the commit message git itself is about to read and delete, in a folder git owns",
+            ),
+            (
+                "components/explorer.rs",
+                "a fixture the explorer's own test writes, inside a `#[cfg(test)]` helper",
+            ),
+        ];
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        collect_rust_files(&root, &mut files);
+        assert!(files.len() > 100, "the walk found only {} files", files.len());
+
+        let mut unaccounted = Vec::new();
+        for path in &files {
+            let Ok(source) = std::fs::read_to_string(path) else { continue };
+            let relative = path.strip_prefix(&root).unwrap_or(path).to_string_lossy().replace('\\', "/");
+            if ALLOWED.iter().any(|(name, _)| relative.ends_with(name)) {
+                continue;
+            }
+            // Everything below `#[cfg(test)]` is a fixture rather than something a person loses, and
+            // a test that wrote its files through a rename would be testing the temporary.
+            let code = source.split("#[cfg(test)]").next().unwrap_or_default();
+            for (number, line) in code.lines().enumerate() {
+                let text = line.trim_start();
+                if text.starts_with("//") || text.starts_with("///") {
+                    continue;
+                }
+                if line.contains("std::fs::write(") || line.contains("fs::write(") {
+                    unaccounted.push(format!("{relative}:{}", number + 1));
+                }
+            }
+        }
+        assert!(
+            unaccounted.is_empty(),
+            "these write a file with `std::fs::write`, which truncates it and then fills it. Use \n             `store::write_atomically` for a file Unluminous remembers itself in, \n             `store::write_a_source_file` for one that holds a person's code, or add the path to \n             ALLOWED above with the reason it cannot lose anything:
+{}",
+            unaccounted.join("
+")
+        );
+    }
+
+    fn collect_rust_files(folder: &Path, into: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(folder) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_rust_files(&path, into);
+            } else if path.extension().is_some_and(|end| end == "rs") {
+                into.push(path);
+            }
+        }
     }
 }
