@@ -426,3 +426,188 @@ fn a_handshake_waits_for_the_connect_budget_rather_than_the_query_budget() {
     let mut session = session;
     session.close();
 }
+
+/// One answer with `columns` named columns and `rows` rows of text, as the wire carries it.
+///
+/// `task-1984` T6. The six introspection queries each read a fixed shape out of a result, and what
+/// nothing checked is that the shape they read is the shape they asked for — so this builds one, and
+/// each test below says what it expects out of it.
+fn rows_of(columns: &[&str], rows: &[Vec<Option<&str>>]) -> Vec<u8> {
+    let mut description = Out::tagged(b'T').int16(columns.len() as i16);
+    for name in columns {
+        description =
+            description.string(name).int32(16385).int16(1).int32(25).int16(-1).int32(-1).int16(0);
+    }
+    let mut out = description.finish();
+    for row in rows {
+        let mut data = Out::tagged(b'D').int16(row.len() as i16);
+        for cell in row {
+            data = match cell {
+                Some(text) => data.int32(text.len() as i32).bytes(text.as_bytes()),
+                None => data.int32(-1),
+            };
+        }
+        out.extend(data.finish());
+    }
+    out.extend(Out::tagged(b'C').string(&format!("SELECT {}", rows.len())).finish());
+    out.extend(Out::tagged(b'Z').bytes(b"I").finish());
+    out
+}
+
+/// A session on a server that will answer each statement with the bytes given, in order.
+fn answering(answers: Vec<Vec<u8>>) -> (Scripted, Session) {
+    let server = Scripted::start(Some("pencil"), Script::Answers(answers));
+    let session = Session::connect(&server.source(), Some("pencil")).expect("connected");
+    (server, session)
+}
+
+/// **`task-1984` T6.** The six queries the tree is built from, each replayed.
+///
+/// `unluminous-db` has a scripted server behind its tests and none of it reached
+/// `postgres::introspect`, which is the half of the PostgreSQL client that decides what a person
+/// *sees*: the databases, the schemas, what is in one, its routines, a table's columns and its DDL.
+/// Every one of them reads a fixed shape out of a result — a name here, a `relkind` letter there, a
+/// flag that says a column is part of the key — and a reading that was wrong about any of those would
+/// be a tree with the wrong rows in it or a grid that refuses an edit it should allow.
+#[test]
+fn every_database_that_can_be_connected_to_is_listed() {
+    let answer = rows_of(&["datname"], &[vec![Some("postgres")], vec![Some("unluminous")]]);
+    let (server, mut session) = answering(vec![answer]);
+    let listed = unluminous_db::postgres::introspect::databases(&mut session).expect("listed");
+    assert_eq!(listed, vec!["postgres".to_owned(), "unluminous".to_owned()]);
+    session.close();
+    drop(server);
+}
+
+/// The schemas come back in the order the query asked for, system ones last.
+#[test]
+fn the_schemas_keep_the_order_the_query_put_them_in() {
+    // The server answers in the order a real one would, which is what `order by system, nspname`
+    // means: everything of the person's own first, then the two the server keeps for itself.
+    let answer = rows_of(
+        &["nspname", "system"],
+        &[
+            vec![Some("public"), Some("0")],
+            vec![Some("reporting"), Some("0")],
+            vec![Some("information_schema"), Some("1")],
+            vec![Some("pg_catalog"), Some("1")],
+        ],
+    );
+    let (server, mut session) = answering(vec![answer]);
+    let listed = unluminous_db::postgres::introspect::schemas(&mut session).expect("listed");
+    assert_eq!(
+        listed,
+        vec![
+            "public".to_owned(),
+            "reporting".to_owned(),
+            "information_schema".to_owned(),
+            "pg_catalog".to_owned()
+        ],
+        "the client keeps the server's order rather than sorting again"
+    );
+    session.close();
+    drop(server);
+}
+
+/// Every `relkind` letter the tree draws a row for becomes the right kind, and an unknown one is
+/// dropped rather than guessed at.
+#[test]
+fn every_relkind_becomes_the_kind_the_tree_draws() {
+    use unluminous_db::catalog::Kind;
+    let answer = rows_of(
+        &["relname", "relkind"],
+        &[
+            vec![Some("member"), Some("r")],
+            vec![Some("member_2024"), Some("p")],
+            vec![Some("active"), Some("v")],
+            vec![Some("daily"), Some("m")],
+            vec![Some("remote"), Some("f")],
+            vec![Some("member_id_seq"), Some("S")],
+            // Something a later PostgreSQL adds that this version has never heard of.
+            vec![Some("mystery"), Some("z")],
+        ],
+    );
+    let (server, mut session) = answering(vec![answer]);
+    let items = unluminous_db::postgres::introspect::items(&mut session, "public").expect("listed");
+    let read: Vec<(String, Kind)> =
+        items.iter().map(|item| (item.name.clone(), item.kind)).collect();
+    assert_eq!(
+        read,
+        vec![
+            ("member".to_owned(), Kind::Table),
+            ("member_2024".to_owned(), Kind::Table),
+            ("active".to_owned(), Kind::View),
+            ("daily".to_owned(), Kind::MaterialisedView),
+            ("remote".to_owned(), Kind::Foreign),
+            ("member_id_seq".to_owned(), Kind::Sequence),
+        ],
+        "a partitioned table is a table, and a letter this version has not got is left out"
+    );
+    session.close();
+    drop(server);
+}
+
+/// The routines hang under their own folder and are all one kind.
+#[test]
+fn every_routine_comes_back_as_a_routine() {
+    use unluminous_db::catalog::Kind;
+    let answer = rows_of(&["proname"], &[vec![Some("now_ish")], vec![Some("tally")]]);
+    let (server, mut session) = answering(vec![answer]);
+    let items =
+        unluminous_db::postgres::introspect::routines(&mut session, "public").expect("listed");
+    assert_eq!(items.len(), 2);
+    assert!(items.iter().all(|item| item.kind == Kind::Routine), "{items:?}");
+    assert_eq!(items[0].name, "now_ish");
+    session.close();
+    drop(server);
+}
+
+/// **A table's primary key is the whole point of reading its columns.**
+///
+/// Whether a row can be changed is decided by whether it can be addressed, and the key is what
+/// addresses it — see `catalog::Table::can_be_changed`. A reading that lost the key would turn an
+/// editable grid into a read only one with a sentence saying the table has no primary key, which is
+/// the fault `task-1814` found by driving the released build.
+#[test]
+fn a_tables_primary_key_comes_back_marked_and_in_order() {
+    let answer = rows_of(
+        &["attname", "kind", "attnotnull", "in_key", "key_at"],
+        &[
+            vec![Some("tenant"), Some("integer"), Some("t"), Some("t"), Some("1")],
+            vec![Some("id"), Some("bigint"), Some("t"), Some("t"), Some("2")],
+            vec![Some("name"), Some("text"), Some("f"), Some("f"), Some("0")],
+        ],
+    );
+    let (server, mut session) = answering(vec![answer]);
+    let table =
+        unluminous_db::postgres::introspect::table(&mut session, "public", "member").expect("read");
+    assert_eq!(table.schema, "public");
+    assert_eq!(table.name, "member");
+    assert_eq!(table.columns.len(), 3);
+    assert_eq!(table.columns[0].name, "tenant");
+    assert_eq!(table.columns[0].type_name, "integer");
+    assert!(table.columns[0].not_null, "the first key column is NOT NULL, as the server said");
+    assert!(!table.columns[2].not_null, "and the one that is not a key column is not");
+    assert!(table.columns[0].in_key && !table.columns[2].in_key, "the key is marked per column");
+    assert_eq!(table.key, vec!["tenant".to_owned(), "id".to_owned()], "in the key's own order");
+    session.close();
+    drop(server);
+}
+
+/// A view's DDL is the server's own `pg_get_viewdef`, wrapped in the statement that would make it.
+///
+/// `task-1814`'s rule about never inventing an answer, one engine along: PostgreSQL keeps no
+/// `CREATE TABLE` text, so what is shown for a view is what the server really said.
+#[test]
+fn a_views_ddl_is_the_servers_own_definition() {
+    use unluminous_db::catalog::Kind;
+    let answer = rows_of(&["pg_get_viewdef"], &[vec![Some(" SELECT id, name\n   FROM member;")]]);
+    let (server, mut session) = answering(vec![answer]);
+    let said =
+        unluminous_db::postgres::introspect::ddl(&mut session, "public", "active", Kind::View)
+            .expect("read");
+    assert!(said.starts_with("CREATE VIEW public.active AS"), "{said}");
+    assert!(said.contains("FROM member"), "{said}");
+    session.close();
+    drop(server);
+}
