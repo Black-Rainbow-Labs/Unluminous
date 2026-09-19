@@ -21,6 +21,7 @@ bumps the release script makes are left out, because they are the boundaries rat
 - The open source files, and the one command that publishes the mirror (`task-1989`)
 - The small refusals and readings that were each one line wrong (`task-1984`)
 - An agent that is not Claude Code has a guide with its own name on it (`task-1989`)
+- The contrast gate asks whether a pair got worse, and the changelog catches up (`task-1984`)
 
 ## 0.49.2 — 2026-09-18
 
