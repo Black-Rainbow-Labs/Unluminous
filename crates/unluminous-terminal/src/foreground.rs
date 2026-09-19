@@ -220,6 +220,24 @@ fn folder_of(pid: u32) -> Option<std::path::PathBuf> {
     }
 }
 
+/// How many sixteen bit characters a `UNICODE_STRING` of `length` bytes holds, if it is one to read.
+///
+/// **An odd length is refused** (`task-1984` P1). `Length` counts bytes holding sixteen bit
+/// characters, so it is even in every well formed `UNICODE_STRING` -- but this one is read out of
+/// another process's memory, and an odd one made `vec![0u16; length / 2]` one byte short of what
+/// `ReadProcessMemory` was then told to write into it: a heap write past the end of the allocation,
+/// in `unsafe` code, from a value nothing here controls. The guard checked zero and too large and
+/// not this.
+///
+/// A function of its own rather than a condition, because the condition is the thing worth testing
+/// and everything around it needs a live process handle.
+fn characters_to_read(length: usize, longest: usize) -> Option<usize> {
+    match length == 0 || length > longest || length % 2 != 0 {
+        true => None,
+        false => Some(length / 2),
+    }
+}
+
 /// The three reads that turn a `PEB` address into a folder. See [`folder_of`].
 ///
 /// Split out so that the handle above is closed on one path rather than on five, which is the shape
@@ -262,12 +280,15 @@ unsafe fn read_the_directory(
             std::ptr::null_mut(),
         )
     };
-    let length = directory.Length as usize;
-    if read == 0 || directory.Buffer.is_null() || length == 0 || length > longest {
+    if read == 0 || directory.Buffer.is_null() {
         return None;
     }
+    let Some(characters) = characters_to_read(directory.Length as usize, longest) else {
+        return None;
+    };
+    let length = characters * 2;
     // The letters themselves, which are sixteen bit and are not terminated.
-    let mut letters = vec![0u16; length / 2];
+    let mut letters = vec![0u16; characters];
     let read = unsafe {
         ReadProcessMemory(
             process,
@@ -740,5 +761,23 @@ mod argv_tests {
     #[test]
     fn a_process_that_is_not_there_answers_with_nothing() {
         assert_eq!(argv_zero(0x7fff_fff0), None);
+    }
+
+    /// A `UNICODE_STRING` whose length is odd is not read at all.
+    ///
+    /// `task-1984` P1. The length is read out of another process's memory, so nothing here decides
+    /// it, and `vec![0u16; length / 2]` was one byte short of what `ReadProcessMemory` was then told
+    /// to write into it -- a heap write past the end of an allocation in `unsafe` code. The guard
+    /// checked zero and too large and not odd.
+    #[test]
+    fn a_unicode_string_of_an_odd_length_is_refused() {
+        let longest = 1024;
+        assert_eq!(characters_to_read(9, longest), None, "odd");
+        assert_eq!(characters_to_read(1, longest), None, "odd, and the smallest one");
+        assert_eq!(characters_to_read(longest - 1, longest), None, "odd, and the largest one");
+        assert_eq!(characters_to_read(0, longest), None, "nothing to read");
+        assert_eq!(characters_to_read(longest + 1, longest), None, "past what a path may be");
+        assert_eq!(characters_to_read(8, longest), Some(4), "four sixteen bit characters");
+        assert_eq!(characters_to_read(longest, longest), Some(longest / 2), "the largest one");
     }
 }

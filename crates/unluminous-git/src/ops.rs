@@ -111,7 +111,32 @@ pub enum PullStrategy {
     Rebase,
 }
 
+/// **`--end-of-options` does not reach the remote and the branch here, which was measured.**
+/// `git pull` reads its own options, drops the guard, and hands what is left to `git fetch`, which
+/// parses them again -- so `git pull --no-rebase --end-of-options --upload-pack=... main` reaches
+/// fetch as an option and runs a program. Both values are typed into the Pull dialog's own fields,
+/// so this is the same door `task-1984` P3 closed at `git clone` with the guard git honours there.
+///
+/// What closes it is refusing before git is started: a remote or a branch beginning with a dash is
+/// not a name git could have used anyway, so nothing that would have worked stops working. The
+/// refusal is Unluminous's own sentence because there is no git message to quote -- git is never
+/// reached -- which is the one case the rule about never inventing an error message does not cover.
+fn a_name_git_would_read_as_an_option(value: &str) -> bool {
+    value.starts_with('-')
+}
+
 pub fn pull(folder: &Path, remote: &str, branch: &str, strategy: PullStrategy) -> Outcome {
+    for (what, value) in [("remote", remote), ("branch", branch)] {
+        if a_name_git_would_read_as_an_option(value) {
+            return Outcome {
+                ok: false,
+                stdout: String::new(),
+                stderr: format!(
+                    "Unluminous did not run this: a {what} name beginning with a dash is read by git \n                     as an option rather than as a name. {value:?} is not a {what} git could have \n                     used."
+                ),
+            };
+        }
+    }
     let mut arguments: Vec<OsString> = vec!["pull".into()];
     arguments.push(match strategy {
         PullStrategy::Merge => "--no-rebase".into(),
@@ -278,7 +303,10 @@ pub fn remove_remote(folder: &Path, name: &str) -> Outcome {
 pub fn clone(parent: &Path, url: &str) -> (Outcome, std::path::PathBuf) {
     let name = clone_folder_name(url);
     let target = parent.join(&name);
-    let outcome = run(parent, &["clone", url, &name]);
+    // `task-1922` B4 put `END_OF_OPTIONS` in front of every caller supplied value and missed this
+    // one (`task-1984` P3). `url` is whatever was typed into the Clone dialog, so a pasted value
+    // beginning with `--upload-pack=` or `--config` was a program git would run.
+    let outcome = run(parent, &["clone", END_OF_OPTIONS, url, &name]);
     (outcome, target)
 }
 

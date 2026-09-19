@@ -560,3 +560,96 @@ fn a_revision_or_a_name_beginning_with_a_dash_cannot_become_an_option() {
     assert!(ops::tag(&root, "v1.0.0").ok);
     assert!(ops::reset(&root, "HEAD", ResetMode::Mixed).ok);
 }
+
+// -------------------------------------------------------------------------------------- task-1984
+//
+// A value somebody typed is never read as an option.
+
+/// Every function that hands git a value a caller supplied, given a value that is an option.
+///
+/// **`task-1984` P3, and the next one.** `task-1922` B4 put `END_OF_OPTIONS` in front of every such
+/// value and missed `git clone`, whose `url` is whatever was typed into the Clone dialog — so a
+/// pasted address beginning with `--upload-pack=` or `--config` was a program git would run. A
+/// missing guard at one call site is invisible in every test about what that command does, because
+/// the command works perfectly until somebody types a leading dash.
+///
+/// So the property is asserted rather than the call sites being read: **git did not read the value as
+/// an option.** Given `--version`, git says `error: unknown option ` version'` and prints a usage
+/// block when it parsed it as one, and says `repository '--version' does not exist`,
+/// `invalid reference: --version` or `pathspec '--version' did not match` when it took it as the
+/// value it is. The first of those is the fault; which of the others git chose does not matter here.
+///
+/// Three rows deliberately have no `END_OF_OPTIONS` behind them and are here anyway, because they
+/// have to keep the property by their own route: a branch name is the argument to `switch -c`, a
+/// stash message is the argument to `-m`, and a commit message is too, and git never reads the
+/// argument of a flag as an option of its own.
+#[test]
+fn end_of_options_precedes_every_caller_supplied_argument() {
+    let root = repository("option-shaped-values");
+    write(&root, "readme.md", "# changed\n");
+    let parent = root.parent().expect("the folder above").to_path_buf();
+
+    // The value every one of them is given. Anything git would answer to as an option does; this is
+    // the one option every subcommand has.
+    let typed = "--version";
+
+    let calls: Vec<(&str, Box<dyn Fn() -> unluminous_git::command::Outcome>)> = vec![
+        ("add", Box::new(|| ops::add(&root, &[typed]))),
+        ("unstage", Box::new(|| ops::unstage(&root, &[typed]))),
+        ("rollback", Box::new(|| ops::rollback(&root, &[typed]))),
+        ("commit", Box::new(|| ops::commit(&root, typed, false))),
+        (
+            "push",
+            Box::new(|| {
+                ops::push(
+                    &root,
+                    &PushTarget {
+                        remote: typed.to_owned(),
+                        branch: typed.to_owned(),
+                        set_upstream: false,
+                        force: false,
+                        tags: false,
+                    },
+                )
+            }),
+        ),
+        ("pull", Box::new(|| ops::pull(&root, typed, typed, PullStrategy::Merge))),
+        ("reset", Box::new(|| ops::reset(&root, typed, ResetMode::Mixed))),
+        ("stash", Box::new(|| ops::stash(&root, typed, false))),
+        ("unstash", Box::new(|| ops::unstash(&root, typed, false))),
+        ("drop_stash", Box::new(|| ops::drop_stash(&root, typed))),
+        ("tag", Box::new(|| ops::tag(&root, typed))),
+        ("add_remote", Box::new(|| ops::add_remote(&root, typed, typed))),
+        ("set_remote_url", Box::new(|| ops::set_remote_url(&root, typed, typed))),
+        ("remove_remote", Box::new(|| ops::remove_remote(&root, typed))),
+        ("clone", Box::new(|| ops::clone(&parent, typed).0)),
+        ("branch::switch", Box::new(|| branch::switch(&root, typed))),
+        ("branch::create", Box::new(|| branch::create(&root, typed))),
+        ("branch::delete", Box::new(|| branch::delete(&root, typed, false))),
+        ("branch::merge", Box::new(|| branch::merge(&root, typed, MergeOptions::default()))),
+        ("branch::rebase", Box::new(|| branch::rebase(&root, typed))),
+        (
+            "diff::of_path",
+            Box::new(|| diff::of_path(&root, Path::new("readme.md"), false, Some(typed))),
+        ),
+        ("diff::of_commit", Box::new(|| diff::of_commit(&root, typed))),
+    ];
+
+    let mut read_as_an_option = Vec::new();
+    for (name, call) in calls {
+        let outcome = call();
+        let said = format!("{}
+{}", outcome.stdout, outcome.stderr);
+        if said.contains("unknown option") || said.contains("unknown switch") {
+            read_as_an_option.push(format!(
+                "{name}: git answered `{}`",
+                said.lines().find(|line| line.contains("unknown")).unwrap_or_default()
+            ));
+        }
+    }
+    assert!(
+        read_as_an_option.is_empty(),
+        "these handed git a value that it read as an option of its own:\n{}",
+        read_as_an_option.join("\n")
+    );
+}
