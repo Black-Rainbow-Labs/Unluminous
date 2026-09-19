@@ -109,6 +109,51 @@ With only one installed it builds that one and says so.
 The image goes to `releases/unluminous-<version>.dmg`. `installer/dist/` is the working area and is
 rewritten on every run.
 
+### macOS, from Windows
+
+`build.sh` needs a Mac. `installer/macos/build-on-windows.ps1` does the same job on the Windows
+machine (task-1995), because every Apple program it used has a replacement that runs there: zig links
+the Mach-O, and `rcodesign` replaces `lipo`, `codesign`, `notarytool` and `stapler`. The committed
+`installer/icon/unluminous.icns` is the icon, so `iconutil` is not needed either.
+
+```powershell
+pwsh tools\cross\fetch-toolchain.ps1                       # once: zig, cargo-zigbuild, rcodesign
+pwsh installer\macos\build-on-windows.ps1 -CliOnly         # unluminous-cli, which needs no SDK
+pwsh installer\macos\build-on-windows.ps1 -Sdk <MacOSX.sdk> -Notarize
+pwsh tools\release.ps1 -Macos                               # the whole release, with the bundle attached
+```
+
+**It needs a copy of Apple's macOS SDK, and that is the one thing the machine cannot supply itself.**
+Unluminous is a windowed application: the link line asks for `-lobjc` and for AppKit, Metal, QuartzCore,
+WebKit, Carbon, ApplicationServices, CoreGraphics, CoreVideo, Foundation, CoreFoundation and
+Security. zig ships a stub for `libSystem` and for nothing else, so the link stops at the first of
+them with `unable to find dynamic system library 'objc'`. The stubs are in Xcode and in the Command
+Line Tools, at `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk`; copy that directory to
+`tools/cross/sdk/MacOSX.sdk`, or name it with `-Sdk` or `$env:SDKROOT`. **Apple's licence for the SDK
+says Apple-branded hardware**, so whether a copy belongs on a Windows machine is a decision for
+whoever accepted that licence; the script never downloads one. `unluminous-cli` links no framework and
+cross compiles with no SDK at all.
+
+**The identity is a `.p12` rather than a keychain entry**, because Windows has no keychain.
+Keychain Access on a Mac exports a Developer ID Application identity as one. `CODESIGN_P12` names it
+in the same `installer/macos/notarize.env` the rest of the credentials live in, and
+`CODESIGN_P12_PASSWORD_FILE` holds its password sealed with DPAPI — which encrypts under one Windows
+account, so the file is worthless on another machine. The notary credentials are unchanged:
+`NOTARY_KEY`, `NOTARY_KEY_ID` and `NOTARY_ISSUER`, folded into the one JSON file rcodesign wants on
+the RAM disk for the length of the submission.
+
+**It writes a `.zip`, not a `.dmg`.** A disk image holds an HFS+ filesystem and writing one needs
+`hdiutil`; rcodesign signs a disk image but does not create one. Apple's notary accepts a zipped
+bundle as well, and the ticket is stapled to the **application** inside it rather than to the zip, so
+what a person ends up running carries its own ticket and opens with no network — the same property
+the two-submission order below gives the image. `build.sh` still writes the `.dmg` on a Mac.
+
+**What it cannot check.** A Mach-O only runs on macOS, so nothing on Windows can say the application
+starts, that `spctl` accepts it, or that it behaves under the hardened runtime. Apple's notary service
+covers part of it: it unpacks the submission, walks every Mach-O and refuses an unsigned binary, a
+missing hardened runtime, a missing timestamp or an archive it cannot parse. The script prints what it
+checked and what it could not, every time.
+
 ### Signing, in three levels
 
 The script says which one it did, and checks with `spctl` afterwards rather than leaving it to be

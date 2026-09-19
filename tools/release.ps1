@@ -63,6 +63,13 @@
   the version before this one, and so does `update check` for everybody, so use this only when they
   are being published by hand straight afterwards.
 
+.PARAMETER Macos
+  Also build, sign and attach the macOS bundle, with
+  installer\macos\build-on-windows.ps1. Off by default because it needs a copy of Apple's
+  macOS SDK on this machine and a Developer ID certificate, and a release that
+  refused to run without them would be a release that cannot be cut at all. That
+  script says what is missing when either is absent.
+
 .PARAMETER WhatIf
   Say what would happen and change nothing.
 
@@ -82,7 +89,8 @@ param(
     [switch] $WhatIf,
     # Skip the suite. For a release whose tests were just run by hand; the gate exists because
     # `task-1922` found every release so far had been made with nothing checking the build at all.
-    [switch] $SkipTests
+    [switch] $SkipTests,
+    [switch] $Macos
 )
 
 $ErrorActionPreference = 'Stop'
@@ -324,6 +332,7 @@ if ($WhatIf) {
     Write-Host "  1. Cargo.toml version -> $next"
     Write-Host "  2. installer\windows\build.ps1$(if (-not $SkipInstall) { ' -Install' })"
     Write-Host "  3. releases\UnluminousSetup-$next-x64.exe"
+    if ($Macos) { Write-Host "  3b. installer\macos\build-on-windows.ps1 -Notarize, then releases\Unluminous-$next-macos.zip" }
     Write-Host "  4. commit `"Unluminous $next`", tag v$next, push $branch"
     if (-not $SkipPublish) {
         Write-Host "  5. gh release create v$next with the installer attached, on jasonmcaffee/unluminous"
@@ -439,6 +448,20 @@ $kept = Join-Path $ReleasesDir "UnluminousSetup-$next-x64.exe"
 Copy-Item -Path $setup -Destination $kept -Force
 Write-Host "Kept $kept"
 
+# The macOS half, when it is asked for. It is a separate script rather than a branch in here for the
+# same reason installer\windows\build.ps1 is: the two platforms share the version and nothing else.
+# The bundle is signed and notarised by that script, so what comes back is ready to attach.
+$macosZip = $null
+if ($Macos) {
+    Write-Step 'Building, signing and notarising the macOS bundle'
+    $macosBuild = Join-Path $Repo 'installer\macos\build-on-windows.ps1'
+    & pwsh -NoProfile -File $macosBuild -Version $next -Notarize
+    if ($LASTEXITCODE -ne 0) { throw 'installer\macos\build-on-windows.ps1 failed.' }
+    $macosZip = Join-Path $ReleasesDir "Unluminous-$next-macos.zip"
+    if (-not (Test-Path $macosZip)) { throw "The macOS archive was not written to $macosZip." }
+    Write-Host "Kept $macosZip"
+}
+
 # **Written from the history rather than kept by hand**, so it cannot fall behind. `task-1804` §6:
 # 201 commits and 34 minor versions with no record of what changed that a person could read. It runs
 # before the commit so the changelog for this release is in the release's own commit -- the entries
@@ -477,7 +500,17 @@ Windows: download **UnluminousSetup-$next-x64.exe** below and run it. It install
 
 ``Unluminous -> About Unluminous`` in the window says which build this is.
 "@
-& $gh release create "v$next" $kept --repo jasonmcaffee/unluminous --title "Unluminous $next" --notes $body
+if ($macosZip) {
+    $body += @"
+
+macOS: download **Unluminous-$next-macos.zip**, unpack it, and drag Unluminous.app into Applications. It is
+signed with a Developer ID and notarised, so it opens with no warning. ``unluminous`` and ``unluminous-cli`` are
+inside ``Unluminous.app/Contents/MacOS``.
+"@
+}
+$assets = @($kept)
+if ($macosZip) { $assets += $macosZip }
+& $gh release create "v$next" @assets --repo jasonmcaffee/unluminous --title "Unluminous $next" --notes $body
 if ($LASTEXITCODE -ne 0) {
     throw "The tag v$next was pushed but the release was not created. Run: gh release create v$next `"$kept`" --title `"Unluminous $next`""
 }
@@ -493,7 +526,7 @@ Write-Step "Publishing the source and the release on $PublicRepository"
 if ($LASTEXITCODE -ne 0) {
     throw "The release v$next exists on the private repository but the public source was not pushed. Run: node tools\publish-open-source.mjs --push"
 }
-& $gh release create "v$next" $kept --repo $PublicRepository --title "Unluminous $next" --notes $body
+& $gh release create "v$next" @assets --repo $PublicRepository --title "Unluminous $next" --notes $body
 if ($LASTEXITCODE -ne 0) {
     throw "The public source was pushed but its release was not created. Run: gh release create v$next `"$kept`" --repo $PublicRepository --title `"Unluminous $next`""
 }

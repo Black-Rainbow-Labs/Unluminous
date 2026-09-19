@@ -37,3 +37,19 @@ AuthKey_K2466BV829.p8
 installer/macos/notarize.env
 # The App Store Connect API key notarytool submits with. A private key: never committed.
 installer/macos/*.p8
+
+# The macOS cross toolchain, which tools/cross/fetch-toolchain.ps1 downloads and
+# checks against a pinned SHA-256. Somebody else's binaries, re-fetchable in a
+# minute, and about 400 MB of zig.
+/tools/cross/bin/
+/tools/cross/cache/
+
+# A copy of Apple's macOS SDK, if one is put here. It is Apple's, its licence
+# says Apple-branded hardware, and it is 1.5 GB: it does not belong in a git
+# repository under any of those three headings.
+/tools/cross/sdk/
+
+# The macOS archive installer/macos/build-on-windows.ps1 writes, for the same
+# reason the .exe and the .dmg above are ignored: it is staged here and uploaded
+# to the GitHub release.
+/releases/*.zip

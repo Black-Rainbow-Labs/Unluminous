@@ -166,6 +166,14 @@ makes `git push` work, so a machine that can push can release with nothing new i
 credential to keep. `GH_TOKEN` wins when it is set. The Windows script installs `gh` with winget the
 first time, exactly as the Windows installer script installs Inno Setup.
 
+**And since `task-1995` the Windows one can cut the macOS half as well**, with `-Macos`:
+`installer/macos/build-on-windows.ps1` cross compiles both Apple architectures with zig, joins and
+signs them with `rcodesign`, assembles `Unluminous.app`, and notarises and staples a zipped bundle. It
+needs a copy of Apple's macOS SDK on the machine, because Unluminous links AppKit, Metal, WebKit and
+eight more frameworks and zig ships a stub for `libSystem` alone; `installer/README.md` says where the
+SDK comes from and what Apple's licence says about keeping one there. It is off by default for that
+reason, and `installer/macos/build.sh` is unchanged and still the route on a Mac.
+
 ## What the crates are for
 
 | Crate | What is in it | What must never be in it |
