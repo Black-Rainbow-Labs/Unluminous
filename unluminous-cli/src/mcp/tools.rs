@@ -794,8 +794,14 @@ mod tests {
         // A ratio rather than a figure, so it stays true as the catalogue grows. If one tool an area
         // ever stopped being a clear saving, the default would be the wrong default and this would
         // be the thing to say so.
-        let grouped = serde_json::to_string(&as_json_in(Shape::Grouped, &crate::mcp::tools::Areas::all())).expect("serialises").len();
-        let every = serde_json::to_string(&as_json_in(Shape::Every, &crate::mcp::tools::Areas::all())).expect("serialises").len();
+        let grouped =
+            serde_json::to_string(&as_json_in(Shape::Grouped, &crate::mcp::tools::Areas::all()))
+                .expect("serialises")
+                .len();
+        let every =
+            serde_json::to_string(&as_json_in(Shape::Every, &crate::mcp::tools::Areas::all()))
+                .expect("serialises")
+                .len();
         assert!(
             grouped * 2 < every,
             "grouped is {grouped} bytes against every's {every}, which is not a saving worth a default"

@@ -284,15 +284,17 @@ impl UnluminousApp {
                 {
                     self.set_the_zoom_of(panel, factor);
                 }
-                _ => return no(
-                    request,
-                    code::USAGE,
-                    format!(
+                _ => {
+                    return no(
+                        request,
+                        code::USAGE,
+                        format!(
                         "`{said}` is not a zoom: say a number between {:.1} and {:.1}, or `reset`.",
                         settings::MIN_ZOOM,
                         settings::MAX_ZOOM
                     ),
-                ),
+                    )
+                }
             },
         }
         let tile = panel.is_a_tile();
