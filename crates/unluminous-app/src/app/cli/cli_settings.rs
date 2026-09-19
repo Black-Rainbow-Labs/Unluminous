@@ -199,7 +199,11 @@ impl UnluminousApp {
                     Some(key) => ok(
                         request,
                         self.setting_text(key.name),
-                        json!({ "key": key.name, "value": self.setting_text(key.name), "accepts": key.accepts }),
+                        json!({
+                            "key": key.name,
+                            "value": self.setting_text(key.name),
+                            "accepts": settings::Settings::accepts(key.name),
+                        }),
                     ),
                     None => match self.pane_setting(&name) {
                         Some((_, measure)) => ok(
@@ -494,6 +498,34 @@ impl UnluminousApp {
             _ => Err(format!("{name} wants true or false, and {value} is neither.")),
         };
         let mut settings = self.settings.clone();
+
+        // **Everything the table can describe is answered by the table** (`task-1984` A12). A number's
+        // range, a flag's two words and a coded setting's list were each written out here as well as
+        // in `settings!`, and a third time as prose in `SETTINGS` — so `appearance.font.size` said
+        // "6 to 144" in one file, `MIN_FONT_SIZE` and `MAX_FONT_SIZE` in another, and `.clamp(…)`
+        // here, and a range that moved in one of the three moved in one of the three.
+        //
+        // What is left below is exactly what a table of keys, ranges and word lists **cannot** say: a
+        // family that has to exist on this machine, a theme that has to be one the plugins loaded, an
+        // accent that has to parse as a colour, an icon set, an area list the catalogue has to know, a
+        // debug adapter whose key is one row per name read at run time, and the four `panes.*`
+        // measurements, which are not `Settings` fields at all.
+        if settings::Settings::clamp_number(name, 0.0).is_some() {
+            settings.set_number(name, number()?);
+            self.set_settings(settings);
+            return Ok(());
+        }
+        if settings::Settings::is_a_flag(name) {
+            settings.set_flag(name, flag()?);
+            self.set_settings(settings);
+            return Ok(());
+        }
+        if let Some(read) = settings.parse_coded(name, value) {
+            read?;
+            self.set_settings(settings);
+            return Ok(());
+        }
+
         match name {
             "appearance.font.family" => {
                 if !self.renderer.families().iter().any(|family| family == value) {
@@ -502,10 +534,6 @@ impl UnluminousApp {
                     ));
                 }
                 settings.font_family = value.to_owned();
-            }
-            "appearance.font.size" => {
-                settings.font_size =
-                    number()?.clamp(settings::MIN_FONT_SIZE, settings::MAX_FONT_SIZE)
             }
             "appearance.theme" => {
                 // Named by key or by the name on the screen, exactly as `theme set` takes it, and
@@ -561,59 +589,16 @@ impl UnluminousApp {
                 }
                 settings.ui_font_family = value.trim().to_owned();
             }
-            "appearance.ui.font.size" => {
-                settings.ui_font_size =
-                    number()?.clamp(settings::MIN_UI_FONT_SIZE, settings::MAX_UI_FONT_SIZE)
-            }
-            "appearance.background.opacity" => {
-                settings.opacity = number()?.clamp(settings::MIN_OPACITY, 1.0)
-            }
-            "terminal.font.size" => settings.terminal_font_size = number()?.clamp(6.0, 48.0),
             // Not checked against the machine the way a font family is: a shell may be a bare name to
             // be found on the path, an absolute path, or something installed a moment from now. When
             // it is wrong the tile says so in the shell's own words, which is `Tabs::open`'s answer
             // and is a better message than one made up here.
             "terminal.shell" => settings.terminal_shell = value.trim().to_owned(),
-            "editor.line_numbers" => settings.line_numbers = flag()?,
-            "terminal.shell_integration" => settings.shell_integration = flag()?,
-            "editor.indent" => {
-                settings.indent = crate::settings::Indent::parse(value).ok_or_else(|| {
-                    format!(
-                        "{name} wants tabs or spaces:N with N from {} to {}, and {value} is neither.",
-                        crate::settings::Indent::MIN_WIDTH,
-                        crate::settings::Indent::MAX_WIDTH
-                    )
-                })?
-            }
-            "editor.auto_indent" => settings.auto_indent = flag()?,
-            "editor.trim" => settings.trim_on_save = flag()?,
-            "editor.suggestions" => {
-                settings.suggestions =
-                    crate::settings::Suggestions::parse(value).ok_or_else(|| {
-                        format!("{name} wants automatic or manual, and {value} is neither.")
-                    })?
-            }
-            "editor.line_ending" => {
-                settings.line_endings =
-                    crate::settings::LineEndings::parse(value).ok_or_else(|| {
-                        format!("{name} wants keep, lf or crlf, and {value} is none of them.")
-                    })?
-            }
-            "update.check" => {
-                settings.update_check = crate::settings::UpdateCheck::parse(value)
-                    .ok_or_else(|| format!("{name} wants off or start, and {value} is neither."))?
-            }
             // Not checked, for `terminal.shell`'s reason turned round: a pattern naming nothing in
             // this project today may name something tomorrow, and a line that matches nothing costs
             // nothing. A pattern that will not parse at all is skipped by the reader with the rest
             // of the line kept, which is what a `.gitignore` comment does.
             "editor.exclude" => settings.exclude = value.trim().to_owned(),
-            "debug.value_tooltip" => {
-                settings.value_tooltip =
-                    crate::settings::ValueTooltip::parse(value).ok_or_else(|| {
-                        format!("{name} wants automatic or manual, and {value} is neither.")
-                    })?
-            }
             // Not checked against the machine, for `terminal.shell`'s reason: a path may name
             // something installed a moment from now, and when it is wrong the status bar says so in
             // the adapter's own words, which is a better message than one made up here.
@@ -633,14 +618,9 @@ impl UnluminousApp {
                         .unwrap_or(usize::MAX)
                 });
             }
-            "plugins.chrome" => settings.plugin_chrome = flag()?,
-            "mcp.enabled" => settings.mcp_enabled = flag()?,
+            // Not in the table, because it is not one of `settings!`'s five kinds: it is a `u16` in
+            // the `extra` block, and its range is `clamp_port`'s.
             "mcp.port" => settings.mcp_port = crate::settings::clamp_port(number()?),
-            "mcp.tools" => {
-                settings.mcp_tools = unluminous_cli::mcp::Shape::parse(value).ok_or_else(|| {
-                    format!("{name} wants grouped or every, and {value} is neither.")
-                })?
-            }
             // Checked here, unlike when it is read off the disk: a person or an agent setting it now
             // can be told, and `Settings::mcp_area_filter` explains why the two differ.
             "mcp.areas" => {
@@ -692,7 +672,11 @@ impl UnluminousApp {
         for key in SETTINGS {
             map.insert(
                 key.name.to_owned(),
-                json!({ "value": self.setting_text(key.name), "accepts": key.accepts, "help": key.help }),
+                json!({
+                    "value": self.setting_text(key.name),
+                    "accepts": settings::Settings::accepts(key.name),
+                    "help": key.help,
+                }),
             );
         }
         Value::Object(map)
@@ -909,9 +893,15 @@ impl UnluminousApp {
 }
 
 /// One setting the command line can read and change.
+///
+/// **It says the name and what the setting is for, and nothing about what it takes** (`task-1984`
+/// A12). There was an `accepts` column here as well, in prose — `"6 to 144"` beside
+/// `appearance.font.size` — while `MIN_FONT_SIZE` and `MAX_FONT_SIZE` said the same thing in
+/// `settings.rs` and `apply_setting` said it a third time as a `clamp`. [`Settings::accepts`] is
+/// generated from the one table that already holds the ranges and the word lists, so there is one
+/// place a range can be changed and no way for the three to disagree.
 struct SettingKey {
     name: &'static str,
-    accepts: &'static str,
     help: &'static str,
 }
 
@@ -1001,157 +991,126 @@ impl PaneMeasure {
 const SETTINGS: &[SettingKey] = &[
     SettingKey {
         name: "appearance.font.family",
-        accepts: "a family this machine has; `settings fonts` lists them",
         help: "The family the editor sets text in.",
     },
     SettingKey {
         name: "appearance.font.size",
-        accepts: "6 to 144",
         help: "The point size the editor sets text in, in every tab.",
     },
     SettingKey {
         name: "appearance.background.opacity",
-        accepts: "0.05 to 1.0",
         help: "How opaque the window is. Below 1 the desktop shows through.",
     },
     SettingKey {
         name: "appearance.theme",
-        accepts: "a theme's key or its name; `theme list` names them, and empty is Unluminous Dark",
         help: "What every colour in the window is. A theme that names the nine token colours also colours code, in every language at once.",
     },
     SettingKey {
         name: "appearance.accent",
-        accepts: "#RRGGBB, or empty for the theme's own",
         help: "One colour for everything the accent means: the caret, the open tab, an open folder.",
     },
     SettingKey {
         name: "appearance.icons",
-        accepts: "material, classic, or empty for whichever the theme names",
         help: "Which drawn marks the rail buttons and the explorer's folder arrow use.",
     },
     SettingKey {
         name: "appearance.ui.font.family",
-        accepts: "a family this machine has, or empty for the editor's",
         help: "The family the window's own text is set in: the menus, the rail and the status bar.",
     },
     SettingKey {
         name: "appearance.ui.font.size",
-        accepts: "8 to 24",
         help: "The point size the window's own text is set in. The editing area keeps its own.",
     },
     SettingKey {
         name: "terminal.font.size",
-        accepts: "6 to 48",
         help: "The point size the terminal sets its grid in.",
     },
     SettingKey {
         name: "terminal.shell",
-        accepts: "a program, or empty for this machine's own",
         help: "What each terminal tab runs. Empty means PowerShell on Windows and $SHELL elsewhere.",
     },
     SettingKey {
         name: "terminal.shell_integration",
-        accepts: "true or false",
         help: "Whether PowerShell is asked to report the folder it is in, so a tab reopens where you were rather than where it started. Off. PowerShell's Set-Location never moves the process's own current directory, so there is no other way to read it; turning this on adds one line to the prompt, after your own profile has set it up. A shell that already reports its folder is followed whatever this says.",
     },
     SettingKey {
         name: "editor.line_numbers",
-        accepts: "true or false",
         help: "Whether the editing area has a column of line numbers.",
     },
     SettingKey {
         name: "editor.indent",
-        accepts: "tabs or spaces:N, N from 2 to 8",
         help: "What one indent is made of, which is what the Tab key types where nothing is selected. Tabs, which is what it has always typed. Indenting a selection is still one character a line, because unluminous-core's indent unit is a character.",
     },
     SettingKey {
         name: "editor.auto_indent",
-        accepts: "true or false",
         help: "Whether a new line starts with the indentation of the line it was started from.",
     },
     SettingKey {
         name: "editor.trim",
-        accepts: "true or false",
         help: "Whether the trailing whitespace goes off every line when a file is written. Off. It never runs on a Markdown file, where two trailing spaces are a line break.",
     },
     SettingKey {
         name: "editor.suggestions",
-        accepts: "automatic or manual",
         help: "Whether the completion popup arrives as you type. Ctrl+Space works either way.",
     },
     SettingKey {
         name: "editor.line_ending",
-        accepts: "keep, lf or crlf",
         help: "What line breaks a file is written back with. `keep` writes it the way it was read, which is what leaves a one character edit as a one line diff. A new file gets the platform's own either way.",
     },
     SettingKey {
         name: "update.check",
-        accepts: "off or start",
         help: "Whether Unluminous asks the releases page for a newer version when it opens. Off, and it asks nothing until somebody presses Check for Updates or runs `update check`. It never installs anything either way.",
     },
     SettingKey {
         name: "editor.exclude",
-        accepts: "comma separated .gitignore patterns",
         help: "Patterns Go to File, Find in Files, completion, Go to Definition and Find References leave out, beside the project's own .gitignore, which is read already. The explorer goes on showing everything.",
     },
     SettingKey {
         name: "debug.value_tooltip",
-        accepts: "automatic or manual",
         help: "Whether resting the pointer on a name while the program is stopped shows its value. Show Value on the Debug menu works either way.",
     },
     SettingKey {
         name: "plugins.chrome",
-        accepts: "true or false",
         help: "Whether a plugin that asked for it draws depth: the soft shadows, gradients and pressed edges behind its own pane. Off, it draws flat.",
     },
     SettingKey {
         name: "mcp.enabled",
-        accepts: "true or false",
         help: "Whether this Unluminous serves MCP over HTTP. An agent that launches the server itself needs neither this nor a port.",
     },
     SettingKey {
         name: "mcp.port",
-        accepts: "1024 to 65535",
         help: "The port it serves on when it does.",
     },
     SettingKey {
         name: "mcp.areas",
-        accepts: "comma separated area names, or empty for all of them",
         help: "Which areas of the catalogue the MCP server offers, so an agent is not handed the whole of it. Empty means all of them. `mcp tools --count --areas editor,git` says what a choice costs; the whole catalogue is about 18 per cent of a 96k context window before a question is asked.",
     },
     SettingKey {
         name: "mcp.tools",
-        accepts: "grouped or every",
         help: "One tool an area, or one tool a command. `mcp tools --count` says what each costs.",
     },
     SettingKey {
         name: "debug.lldb",
-        accepts: "a path to lldb-dap or codelldb, or empty for whatever is on PATH",
         help: "Where the LLDB adapter lives, for Rust and native code. Empty means Unluminous looks for codelldb then lldb-dap on PATH. `tools/get-debug-adapter.ps1` fetches one and prints the line.",
     },
     SettingKey {
         name: "debug.node",
-        accepts: "a path to js-debug's dapDebugServer.js",
         help: "Where js-debug lives, for JavaScript and TypeScript. There is no default: js-debug is a script rather than a program, so Unluminous has nothing to look for until it is told.",
     },
     SettingKey {
         name: "panes.explorer.width",
-        accepts: "150 to 620",
         help: "How wide the file explorer is.",
     },
     SettingKey {
         name: "panes.terminal.height",
-        accepts: "90 upwards",
         help: "How tall the terminal tile is.",
     },
     SettingKey {
         name: "panes.preview.fraction",
-        accepts: "0.15 to 0.85",
         help: "How much of the side by side view the source takes.",
     },
     SettingKey {
         name: "panes.find.split",
-        accepts: "0.15 to 0.85",
         help: "How much of Find in Files the results take.",
     },
 ];

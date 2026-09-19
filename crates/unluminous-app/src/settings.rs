@@ -584,19 +584,19 @@ macro_rules! settings {
         text {
             $(
                 $(#[$tnote:meta])*
-                $tname:ident = $tdefault:expr => $tkey:literal;
+                $tname:ident = $tdefault:expr => $tkey:literal, $taccepts:literal;
             )*
         }
         text_raw {
             $(
                 $(#[$rnote:meta])*
-                $rname:ident = $rdefault:expr => $rkey:literal;
+                $rname:ident = $rdefault:expr => $rkey:literal, $raccepts:literal;
             )*
         }
         text_lower {
             $(
                 $(#[$lnote:meta])*
-                $lname:ident = $ldefault:expr => $lkey:literal;
+                $lname:ident = $ldefault:expr => $lkey:literal, $laccepts:literal;
             )*
         }
         number {
@@ -614,14 +614,14 @@ macro_rules! settings {
         coded {
             $(
                 $(#[$cnote:meta])*
-                $cname:ident : $cty:ty = $cdefault:expr => $ckey:literal;
+                $cname:ident : $cty:ty = $cdefault:expr => $ckey:literal, $caccepts:literal;
             )*
         }
         extra {
             fields {
                 $( $(#[$xnote:meta])* pub $xname:ident : $xty:ty, )*
             }
-            keys { $( $xkey:literal ),* $(,)? }
+            keys { $( $xkey:literal => $xaccepts:literal ),* $(,)? }
             defaults {
                 $( $xdname:ident : $xddefault:expr, )*
             }
@@ -688,6 +688,97 @@ macro_rules! settings {
                 settings
             }
 
+            /// What one setting takes, in the words the command line and the Settings page print.
+            ///
+            /// **`task-1984` A12.** This was written out a third time in `cli_settings::SETTINGS`,
+            /// as prose beside every key: `appearance.font.size` said `"6 to 144"` in one file while
+            /// `MIN_FONT_SIZE` and `MAX_FONT_SIZE` said the same thing in another, and `apply_setting`
+            /// restated the clamp as code in a third. A number's range is **derived from the same two
+            /// expressions the clamp uses**, and written with the row's own format string, so the two
+            /// cannot disagree about what 6 and 144 are. A flag is always the same words. Everything
+            /// else is prose the table itself carries, beside the key it is about.
+            ///
+            /// `None` for a key this does not name, which is `debug.<adapter>` and the pane
+            /// measurements — both of them one row per something read at run time rather than a fixed
+            /// set, which is the same reason they are not in [`Settings::NAMES`].
+            pub fn accepts(key: &str) -> Option<String> {
+                match key {
+                    $( $tkey => Some($taccepts.to_owned()), )*
+                    $( $rkey => Some($raccepts.to_owned()), )*
+                    $( $lkey => Some($laccepts.to_owned()), )*
+                    $( $nkey => Some(format!(concat!($nfmt, " to ", $nfmt), $nmin, $nmax)), )*
+                    $( $fkey => Some("true or false".to_owned()), )*
+                    $( $ckey => Some($caccepts.to_owned()), )*
+                    $( $xkey => Some($xaccepts.to_owned()), )*
+                    _ => None,
+                }
+            }
+
+            /// A number brought inside the range the table gives it, or `None` for a key that is not
+            /// a number here.
+            ///
+            /// `task-1984` A12. `apply_setting` had the same `clamp` written out once per key, and a
+            /// range that moved in the table did not move there — the one thing `read_from` above
+            /// does with the same two expressions, on the same line, for a value read out of the
+            /// file. **Brought inside its limits rather than refused**, which is the rule a hand
+            /// edited `settings.conf` is already read by.
+            pub fn clamp_number(key: &str, value: f32) -> Option<f32> {
+                match key {
+                    $( $nkey => Some(value.clamp($nmin, $nmax)), )*
+                    _ => None,
+                }
+            }
+
+            /// Write a number setting, brought inside its range. `false` for a key that is not one.
+            pub fn set_number(&mut self, key: &str, value: f32) -> bool {
+                match key {
+                    $( $nkey => {
+                        self.$nname = value.clamp($nmin, $nmax);
+                        true
+                    } )*
+                    _ => false,
+                }
+            }
+
+            /// Whether `key` is a setting that is on or off.
+            pub fn is_a_flag(key: &str) -> bool {
+                matches!(key, $( $fkey )|*)
+            }
+
+            /// Write a flag setting. `false` for a key that is not one.
+            pub fn set_flag(&mut self, key: &str, value: bool) -> bool {
+                match key {
+                    $( $fkey => {
+                        self.$fname = value;
+                        true
+                    } )*
+                    _ => false,
+                }
+            }
+
+            /// Read a setting whose values are a fixed list, or `None` for a key that is not one.
+            ///
+            /// `task-1984` A12. Every one of these was an arm in `apply_setting` calling the type's
+            /// own `parse` and writing out a refusal naming the values — which is the list the table
+            /// already carries for [`Settings::accepts`], written a second time in a second file.
+            pub fn parse_coded(&mut self, key: &str, value: &str) -> Option<Result<(), String>> {
+                match key {
+                    $(
+                        $ckey => Some(match <$cty>::parse(value) {
+                            Some(read) => {
+                                self.$cname = read;
+                                Ok(())
+                            }
+                            None => Err(format!(
+                                "{} wants {}, and {value} is not one of them.",
+                                $ckey, $caccepts
+                            )),
+                        }),
+                    )*
+                    _ => None,
+                }
+            }
+
             pub fn write_into(&self, values: &mut Values) {
                 // **A setting that has gone back to its default is taken out of the file, not left in
                 // it.** Every `text`/`text_raw`/`text_lower` setting means "whatever this Unluminous's own
@@ -721,7 +812,7 @@ settings! {
     text {
         /// The program a new terminal runs. Empty means the one this machine says the person has, which
         /// `unluminous_terminal::session` decides and which is PowerShell on Windows.
-        terminal_shell = String::new() => "terminal.shell";
+        terminal_shell = String::new() => "terminal.shell", "a program, or empty for this machine's own";
         /// Extra patterns the project index leaves out, beyond `.gitignore` and the build folders.
         ///
         /// `task-1804` §7.3: the index skipped three hardcoded folder names and read no ignore file at
@@ -731,40 +822,40 @@ settings! {
         ///
         /// Written as one line of comma separated patterns, in `.gitignore`'s own syntax, because that
         /// is the syntax a person already knows and the one the reader beside it implements.
-        exclude = String::new() => "editor.exclude";
+        exclude = String::new() => "editor.exclude", "comma separated .gitignore patterns";
         /// Which areas of the catalogue the hosted server offers, separated by commas.
         ///
         /// Empty means all of them, which is what it always did. `task-1804` §4.2 measured what all
         /// of them costs -- 18% of a local model's window before a question is asked -- and this is the
         /// same lever `mcp serve --areas` gives the server an agent launches itself.
-        mcp_areas = String::new() => "mcp.areas";
+        mcp_areas = String::new() => "mcp.areas", "comma separated area names, or empty for all of them";
         /// Which theme the window is painted in, as `<plugin>/<theme>` — `themes-bundle-1/dracula`.
         ///
         /// Empty means `unluminous/dark`, which is the palette Unluminous shipped with. Empty rather than the key
         /// written out, for `terminal_shell`'s reason once more: a settings file that names nothing is a file
         /// that asks for whatever this Unluminous's default is, and one that names a theme whose plugin has been
         /// switched off falls back to it rather than to nothing.
-        theme = String::new() => "appearance.theme";
+        theme = String::new() => "appearance.theme", "a theme's key or its name; `theme list` names them, and empty is Unluminous Dark";
         /// One colour used for everything the accent means, over whatever the theme said.
         ///
         /// Written as `#RRGGBB`, empty meaning the theme's own. Material Theme UI's best known setting.
-        accent = String::new() => "appearance.accent";
+        accent = String::new() => "appearance.accent", "#RRGGBB, or empty for the theme's own";
         /// The family the window's own text is set in — menus, the explorer, the status bar.
         ///
         /// Empty means the editor's family, which is what the interface was always set in and is why this can
         /// be added without anything moving. The reference editor's `Appearance -> Use custom font`.
-        ui_font_family = String::new() => "appearance.ui.font.family";
+        ui_font_family = String::new() => "appearance.ui.font.family", "a family this machine has, or empty for the editor's";
     }
 
     text_raw {
         /// The family the editor sets text in.
-        font_family = String::new() => "appearance.font.family";
+        font_family = String::new() => "appearance.font.family", "a family this machine has; `settings fonts` lists them";
     }
 
     text_lower {
         /// Which drawn icon set is used, from `plugins::ICON_SETS`. Empty means the theme's own choice,
         /// which is what `Follow the theme` is on the Theme page.
-        icons = String::new() => "appearance.icons";
+        icons = String::new() => "appearance.icons", "material, classic, or empty for whichever the theme names";
     }
 
     number {
@@ -821,17 +912,17 @@ settings! {
 
     coded {
         /// Whether the completion popup arrives while you type, or waits to be asked.
-        suggestions: Suggestions = Suggestions::Automatic => "editor.suggestions";
+        suggestions: Suggestions = Suggestions::Automatic => "editor.suggestions", "automatic or manual";
         /// What one indent is made of. See [`Indent`], whose default is what `Tab` already typed.
-        indent: Indent = Indent::Tab => "editor.indent";
+        indent: Indent = Indent::Tab => "editor.indent", "tabs or spaces:N, N from 2 to 8";
         /// What line breaks a file is written back with. See [`LineEndings`].
-        line_endings: LineEndings = LineEndings::Keep => "editor.line_ending";
+        line_endings: LineEndings = LineEndings::Keep => "editor.line_ending", "keep, lf or crlf";
         /// Whether the window asks for a newer version as it opens. See [`UpdateCheck`].
-        update_check: UpdateCheck = UpdateCheck::Off => "update.check";
+        update_check: UpdateCheck = UpdateCheck::Off => "update.check", "off or start";
         /// Whether the debugger's value tooltip arrives when the pointer rests on a name.
-        value_tooltip: ValueTooltip = ValueTooltip::Automatic => "debug.value_tooltip";
+        value_tooltip: ValueTooltip = ValueTooltip::Automatic => "debug.value_tooltip", "automatic or manual";
         /// How many tools the catalogue is cut into for an agent. See `unluminous_cli::mcp::tools`.
-        mcp_tools: unluminous_cli::mcp::Shape = unluminous_cli::mcp::Shape::default() => "mcp.tools";
+        mcp_tools: unluminous_cli::mcp::Shape = unluminous_cli::mcp::Shape::default() => "mcp.tools", "grouped or every";
     }
 
     extra {
@@ -845,7 +936,7 @@ settings! {
             /// path rather than a preference, so a settings file copied to another machine names nothing.
             pub debug_adapters: Vec<(String, String)>,
         }
-        keys { "mcp.port" }
+        keys { "mcp.port" => "1024 to 65535" }
         defaults {
             mcp_port: unluminous_cli::mcp::DEFAULT_PORT,
             debug_adapters: Vec::new(),
@@ -1771,5 +1862,95 @@ mod tests {
         assert!(Page::Appearance.matches("background"), "a section inside the page counts");
         assert!(Page::Terminal.matches("font"), "both pages have a Font section");
         assert!(!Page::Terminal.matches("background"));
+    }
+}
+
+#[cfg(test)]
+mod one_declaration {
+    use super::*;
+
+    /// Every setting the table names says what it takes, and says it once.
+    ///
+    /// **`task-1984` A12.** A setting's range and its word list were written down three times: in the
+    /// `settings!` table, as a `clamp` in `apply_setting`, and as prose in `cli_settings::SETTINGS`.
+    /// Nothing made the three agree, and `task-1922` §3.3 had already named this and fixed only the
+    /// first of them. There is one declaration now and the other two read it, and this is what says
+    /// so: a key that `NAMES` holds must have an answer from [`Settings::accepts`], and the answer
+    /// must be about that key rather than an empty string somebody forgot.
+    #[test]
+    fn every_named_setting_says_what_it_takes() {
+        for key in Settings::NAMES {
+            let accepts = Settings::accepts(key).unwrap_or_else(|| {
+                panic!("{key} is a setting and says nothing about what it takes")
+            });
+            assert!(!accepts.trim().is_empty(), "{key} accepts an empty description");
+        }
+        // And nothing else does, so a key that is not a setting cannot be set by a route that only
+        // asks this.
+        assert_eq!(Settings::accepts("nothing.at.all"), None);
+    }
+
+    /// A number's range comes from the same two expressions the clamp uses.
+    ///
+    /// `task-1984` A12. This is the half that a third copy in prose could get wrong and did:
+    /// [`Settings::accepts`] is built from the table's own `min` and `max`, so the sentence a person
+    /// reads and the arithmetic their value goes through cannot name different numbers.
+    #[test]
+    fn a_number_is_clamped_to_the_range_it_says_it_takes() {
+        for key in Settings::NAMES {
+            let Some(low) = Settings::clamp_number(key, f32::MIN) else { continue };
+            let high = Settings::clamp_number(key, f32::MAX).expect("the same key");
+            assert!(low < high, "{key} clamps everything to {low}");
+            let said = Settings::accepts(key).expect("a number says what it takes");
+            // The words are "<min> to <max>", written with the row's own format string.
+            let (from, to) = said.split_once(" to ").unwrap_or_else(|| {
+                panic!("{key} is a number and says {said:?}, which is not a range")
+            });
+            assert_eq!(
+                from.parse::<f32>().expect("a number"),
+                low,
+                "{key} says it takes from {from} and clamps to {low}"
+            );
+            assert_eq!(
+                to.parse::<f32>().expect("a number"),
+                high,
+                "{key} says it takes up to {to} and clamps to {high}"
+            );
+        }
+    }
+
+    /// A coded setting takes every value it says it takes, and refuses one it does not.
+    ///
+    /// `task-1984` A12. [`Settings::parse_coded`] is generated from the same row that carries the
+    /// list, so the refusal names what the list says — which is what the arms it replaced each wrote
+    /// out by hand, in wording that had already drifted apart from the prose beside them.
+    #[test]
+    fn a_coded_setting_takes_the_values_it_says_it_takes() {
+        let mut settings = Settings::new();
+        let mut checked = 0;
+        for key in Settings::NAMES {
+            let said = Settings::accepts(key).expect("a setting says what it takes");
+            if settings.parse_coded(key, "definitely-not-a-value").is_none() {
+                continue;
+            }
+            checked += 1;
+            // **The value it is holding right now is a value it takes**, which is the round trip that
+            // matters: `write_into` writes a coded setting as its own `name()`, and `read_from` reads
+            // it back through the same `parse`. A pair that did not agree would be a settings file
+            // this Unluminous wrote and cannot read.
+            let mut written = crate::services::store::Values::default();
+            settings.write_into(&mut written);
+            let held = written.text(key).expect("a coded setting is written down").to_owned();
+            assert!(
+                settings.parse_coded(key, &held).expect("a coded key").is_ok(),
+                "{key} is holding {held:?}, which it says it does not take: {said}"
+            );
+            let refusal = settings
+                .parse_coded(key, "definitely-not-a-value")
+                .expect("a coded key")
+                .expect_err("a value it does not take");
+            assert!(refusal.contains(key), "{key}'s refusal does not name it: {refusal}");
+        }
+        assert!(checked >= 6, "only {checked} coded settings were checked");
     }
 }
