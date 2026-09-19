@@ -1698,3 +1698,63 @@ fn a_new_line_starts_where_the_line_it_was_started_from_starts() {
         "switched off, a new line is a new line: {text:?}"
     );
 }
+
+// -------------------------------------------------------------------------------------- task-1984
+//
+// The two documents that ended the process, through the window rather than through the crate.
+
+/// A document of ten thousand `>` and one of ten thousand `*` are shown rather than ending the
+/// process.
+///
+/// `task-1984` C2 and C3 measured both, and `unluminous-core`'s own tests hold the parser's half.
+/// This is the half that says the window survives them, on the two paths a person actually reaches
+/// them by: the Markdown preview, which runs on every text revision of the open tab, and
+/// `components::markdown_text`, which is what every message in the chat pane is drawn with — so a
+/// model's answer with a banner of asterisks in it is a thing that arrives rather than a thing
+/// somebody types.
+///
+/// A stack overflow is not a panic. `crash.log` would be empty, macOS would file no report, and the
+/// test binary would end with `STATUS_STACK_OVERFLOW` and no failing test named — which is what this
+/// did before the fix.
+#[test]
+fn a_pathological_document_is_drawn_rather_than_ending_the_process() {
+    let quotes = format!("{}hello\n", ">".repeat(10_000));
+    let stars = format!("{}a{}\n", "*".repeat(10_000), "*".repeat(10_000));
+    let folder = fixture(
+        "unluminous-1984-pathological",
+        &[("quotes.md", quotes.as_str()), ("stars.md", stars.as_str())],
+    );
+    let mut harness = harness_in(&folder);
+
+    for name in ["quotes.md", "stars.md"] {
+        did(&mut harness, &format!("tab open {name} --permanent"));
+        // Both view modes, because the preview is what reads the document and the split view lays it
+        // out beside the source.
+        did(&mut harness, "editor view preview");
+        did(&mut harness, "editor view side");
+        did(&mut harness, "editor view raw");
+    }
+
+    // And the chat pane's own renderer, which is the reachable path: this is a model's answer rather
+    // than a file somebody opened.
+    let colors = unluminous_app::components::markdown_text::Colors {
+        text: egui::Color32::WHITE,
+        strong: egui::Color32::WHITE,
+        code: egui::Color32::GRAY,
+        link: egui::Color32::LIGHT_BLUE,
+        quiet: egui::Color32::GRAY,
+        rule: egui::Color32::GRAY,
+    };
+    for source in [&quotes, &stars] {
+        let rendered = unluminous_app::components::markdown_text::render(
+            source,
+            &harness.state().renderer,
+            "Consolas",
+            12.0,
+            colors,
+            400.0,
+            None,
+        );
+        assert!(rendered.height() > 0.0, "the answer was laid out rather than ending the process");
+    }
+}

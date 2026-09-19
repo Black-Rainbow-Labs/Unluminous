@@ -640,3 +640,45 @@ fn a_link_inside_a_fenced_block_is_not_a_link() {
     let page = preview("```\n[a](https://example.com)\n```");
     assert!(page.links.is_empty());
 }
+
+// -------------------------------------------------------------------------------------- task-1984
+//
+// The two documents that ended the process.
+//
+// A stack overflow is not a panic: `crash.log` is empty, macOS files no report, and the window is
+// simply gone. Both of these were measured on `task-1984` at a third of the length used here, and
+// both are reached from the preview on every text revision and from every message drawn in the chat
+// pane, so neither needs a document to arrive.
+//
+// `preview` runs the four invariants over what comes back, so these assert that the answer is a
+// well formed preview as well as that there is one.
+
+#[test]
+fn a_document_of_ten_thousand_quotes_renders() {
+    // `blocks::MOST_NESTED` stops the containers opening; what is left of the line is kept as text,
+    // so nothing is thrown away and every one of the characters is still on the screen.
+    let source = format!("{}hello\n", ">".repeat(10_000));
+    let preview = preview(&source);
+    assert!(
+        preview.text.to_string().contains("hello"),
+        "the words after ten thousand quote marks are still there"
+    );
+}
+
+#[test]
+fn a_document_of_ten_thousand_asterisks_renders() {
+    // `inline::flatten`'s depth is a `Vec` rather than the machine stack. A block depth limit does
+    // not reach this: the nesting is inside one line rather than in the containers around it.
+    let source = format!("{}a{}\n", "*".repeat(10_000), "*".repeat(10_000));
+    let preview = preview(&source);
+    assert!(preview.text.to_string().contains('a'), "the letter in the middle is still there");
+}
+
+#[test]
+fn ten_thousand_quotes_inside_a_list_inside_a_quote_render() {
+    // The depth is carried through all three containers rather than counted per kind, which is what
+    // makes a document that alternates them cost the same as one that does not.
+    let source = format!("> - {}deep\n", "> ".repeat(5_000));
+    let preview = preview(&source);
+    assert!(preview.text.to_string().contains("deep"), "and the word at the bottom of it survives");
+}

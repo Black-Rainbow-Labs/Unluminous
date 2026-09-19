@@ -111,9 +111,24 @@ pub(crate) fn parse(source: &str) -> (Vec<Block>, References) {
     }
 
     let mut references = References::default();
-    blocks.extend(parse_blocks(&lines, &mut references));
+    blocks.extend(parse_blocks(&lines, &mut references, 0));
     (blocks, references)
 }
+
+/// How many containers may be open at once before the rest of a line is read as ordinary text.
+///
+/// **A stack overflow is not a panic**, so `crash.log` never sees one and neither does macOS: the
+/// process simply ends. `task-1984` C2 measured it -- 1,300 `>` characters on one line, which is a
+/// banner somebody pastes or a model writes, ends Unluminous -- and the path is reached from the
+/// preview on every text revision and from every message drawn in the chat pane, so a document is
+/// not even needed for it.
+///
+/// Sixty four is far more than any document a person writes: CommonMark's own reference
+/// implementation stops at 100 for the same reason and the deepest nesting in this repository's own
+/// Markdown is three. Past it the containers stop opening and what is left of the line is kept as
+/// text, so nothing is thrown away and nothing is drawn wrongly -- the `>` characters are simply
+/// shown rather than read.
+pub(crate) const MOST_NESTED: usize = 64;
 
 /// Where the closing `---` of a file's front matter is, if it has any.
 fn front_matter_end(lines: &[Line]) -> Option<usize> {
@@ -127,7 +142,10 @@ fn front_matter_end(lines: &[Line]) -> Option<usize> {
 }
 
 /// Read a run of lines that have already had every container's prefix taken off them.
-fn parse_blocks(lines: &[Line], references: &mut References) -> Vec<Block> {
+///
+/// `depth` is how many containers are open above this run, and is what keeps the recursion off the
+/// machine stack past [`MOST_NESTED`]. See its own note.
+fn parse_blocks(lines: &[Line], references: &mut References, depth: usize) -> Vec<Block> {
     let mut blocks = Vec::new();
     let mut at = 0;
     while at < lines.len() {
@@ -170,30 +188,38 @@ fn parse_blocks(lines: &[Line], references: &mut References) -> Vec<Block> {
             at += 1;
             continue;
         }
-        if quote_prefix(&line.text).is_some() {
-            let (inner, used) = gather_quote(lines, at);
-            blocks.push(Block {
-                line: line.number,
-                kind: Kind::Quote(parse_blocks(&inner, references)),
-            });
-            at = used;
-            continue;
-        }
-        if let Some((label, name)) = footnote_definition(&line.text) {
-            let (inner, used) = gather_footnote(lines, at, &name);
-            let number = footnote_number(references, &label);
-            blocks.push(Block {
-                line: line.number,
-                kind: Kind::Footnote { number, blocks: parse_blocks(&inner, references) },
-            });
-            at = used;
-            continue;
-        }
-        if marker(&line.text).is_some() {
-            let (list, used) = gather_list(lines, at, references);
-            blocks.push(Block { line: line.number, kind: Kind::List(list) });
-            at = used;
-            continue;
+        // The three containers, and the one place the depth is read. Past [`MOST_NESTED`] none of
+        // them opens and the line falls through to the paragraph below, which keeps its characters
+        // as text.
+        if depth < MOST_NESTED {
+            if quote_prefix(&line.text).is_some() {
+                let (inner, used) = gather_quote(lines, at);
+                blocks.push(Block {
+                    line: line.number,
+                    kind: Kind::Quote(parse_blocks(&inner, references, depth + 1)),
+                });
+                at = used;
+                continue;
+            }
+            if let Some((label, name)) = footnote_definition(&line.text) {
+                let (inner, used) = gather_footnote(lines, at, &name);
+                let number = footnote_number(references, &label);
+                blocks.push(Block {
+                    line: line.number,
+                    kind: Kind::Footnote {
+                        number,
+                        blocks: parse_blocks(&inner, references, depth + 1),
+                    },
+                });
+                at = used;
+                continue;
+            }
+            if marker(&line.text).is_some() {
+                let (list, used) = gather_list(lines, at, references, depth);
+                blocks.push(Block { line: line.number, kind: Kind::List(list) });
+                at = used;
+                continue;
+            }
         }
         if indent_of(&line.text) >= 4 {
             let start = at;
@@ -386,7 +412,12 @@ fn marker(text: &str) -> Option<Marker> {
 }
 
 /// Gather a whole list, one item at a time, and decide whether it is tight.
-fn gather_list(lines: &[Line], mut at: usize, references: &mut References) -> (List, usize) {
+fn gather_list(
+    lines: &[Line],
+    mut at: usize,
+    references: &mut References,
+    depth: usize,
+) -> (List, usize) {
     let first = marker(&lines[at].text).expect("only called on a marker");
     let ordered = first.ordered;
     let start = first.number;
@@ -456,7 +487,7 @@ fn gather_list(lines: &[Line], mut at: usize, references: &mut References) -> (L
         items.push(Item {
             line: inner.first().map(|line| line.number).unwrap_or(0),
             task,
-            blocks: parse_blocks(&inner, references),
+            blocks: parse_blocks(&inner, references, depth + 1),
         });
     }
     (List { ordered, start, tight: !loose, items }, at)

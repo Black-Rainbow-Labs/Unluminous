@@ -168,8 +168,33 @@ fn fold(spans: Vec<Span>) -> Vec<Span> {
 }
 
 /// Walk the nodes, carrying down what each one is inside.
+///
+/// **The depth is a `Vec` rather than the machine stack**, which is what `task-1984` C3 asks for: a
+/// tree of emphasis is as deep as the emphasis was nested, and 6,000 `*` characters before and after
+/// one letter -- a banner in a pasted file, or a model's answer -- ended the process. A stack
+/// overflow is not a panic, so nothing is written to `crash.log` and macOS files no report; the
+/// window is simply gone. `blocks::MOST_NESTED` does not reach this, because the nesting here is
+/// inside one line rather than in the containers around it.
+///
+/// So the work to be done is a stack of its own: a node list, where in it the walk has got to, and
+/// what that list is inside. Growing that is growing a heap allocation, which is bounded by the size
+/// of the document rather than by a thread's stack.
 fn flatten(nodes: &[Node], state: Span, out: &mut Vec<Span>) {
-    for node in nodes {
+    /// One list being walked, and the formatting every node in it is inside.
+    struct Level<'a> {
+        nodes: &'a [Node],
+        at: usize,
+        state: Span,
+    }
+
+    let mut levels = vec![Level { nodes, at: 0, state }];
+    while let Some(level) = levels.last_mut() {
+        let Some(node) = level.nodes.get(level.at) else {
+            levels.pop();
+            continue;
+        };
+        level.at += 1;
+        let state = &level.state;
         match node {
             Node::Text(text) => out.push(Span { text: text.clone(), ..state.clone() }),
             Node::Code(text) => {
@@ -184,7 +209,7 @@ fn flatten(nodes: &[Node], state: Span, out: &mut Vec<Span>) {
             Node::Link { target, children } => {
                 let inside =
                     Span { kind: Kind::Link, target: Some(target.clone()), ..state.clone() };
-                flatten(children, inside, out);
+                levels.push(Level { nodes: children, at: 0, state: inside });
             }
             Node::Emph { bold, italic, strike, children } => {
                 let inside = Span {
@@ -193,7 +218,7 @@ fn flatten(nodes: &[Node], state: Span, out: &mut Vec<Span>) {
                     strike: state.strike || *strike,
                     ..state.clone()
                 };
-                flatten(children, inside, out);
+                levels.push(Level { nodes: children, at: 0, state: inside });
             }
         }
     }
