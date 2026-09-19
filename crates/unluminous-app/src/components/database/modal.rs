@@ -476,7 +476,13 @@ fn secret_field(ui: &mut egui::Ui, area: Rect, value: &mut String) {
         egui::StrokeKind::Inside,
     );
     let id = ui.id().with("database-source-password");
-    let text_rect = crate::components::controls::field_takes_the_whole_rectangle(ui, area, 8.0, id);
+    let text_rect = crate::components::controls::field_takes_the_whole_rectangle(
+        ui,
+        area,
+        8.0,
+        id,
+        "Password field",
+    );
     let mut edit = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
     let response = edit.add(
         egui::TextEdit::singleline(value)

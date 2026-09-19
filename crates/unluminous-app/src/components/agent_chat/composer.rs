@@ -412,7 +412,13 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         });
         let prompt_id = ui.id().with("agent-chat-prompt");
         let response = ui.put(
-            crate::components::controls::field_takes_the_whole_rectangle(ui, field, 0.0, prompt_id),
+            crate::components::controls::field_takes_the_whole_rectangle(
+                ui,
+                field,
+                0.0,
+                prompt_id,
+                "Prompt field",
+            ),
             egui::TextEdit::multiline(parts.draft)
                 .id(prompt_id)
                 .frame(egui::Frame::NONE)

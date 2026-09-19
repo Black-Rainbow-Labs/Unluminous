@@ -270,7 +270,7 @@ fn fragment_field(
     );
     // The whole well, including the word in front of it, hands the keyboard to the box.
     let fragment_id = egui::Id::new(("database-fragment-field", name));
-    crate::components::controls::claim_the_field(ui, area, fragment_id);
+    crate::components::controls::claim_the_field(ui, area, fragment_id, "Fragment field");
     let mut edit = ui
         .new_child(egui::UiBuilder::new().max_rect(text_rect).id_salt(("database-fragment", name)));
     let response = edit.add(

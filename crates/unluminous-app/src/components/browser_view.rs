@@ -228,6 +228,7 @@ fn address_field(
         field,
         9.0,
         toolbar.id,
+        "Address field",
         &ADDRESS_FONT,
     );
     let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));

@@ -383,6 +383,7 @@ pub fn show(
         filter_rect,
         view.at(26.0),
         filter_id,
+        "Filter field",
     );
     // The size the box would set text in, zoomed. Asked of the style rather than written down, so at a
     // zoom of one the filter box is exactly the box it was before `task-1771` — which is a promise a

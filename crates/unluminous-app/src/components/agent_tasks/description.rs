@@ -127,7 +127,7 @@ fn raw(board: &mut AgentTasks, ui: &mut egui::Ui, area: Rect, look: &Look<'_>) -
     let description_id = ui.id().with("agent-tasks-description");
     // The whole of the drawn box takes a click, not only the rectangle the text is laid out in — the
     // eight points of margin round it are part of the control. See `controls::claim_the_field`.
-    crate::components::controls::claim_the_field(ui, area, description_id);
+    crate::components::controls::claim_the_field(ui, area, description_id, "Description field");
     let response = ui.put(
         inside,
         egui::TextEdit::multiline(&mut text)

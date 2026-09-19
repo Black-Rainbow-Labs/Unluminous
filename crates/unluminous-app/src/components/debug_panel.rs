@@ -638,7 +638,8 @@ pub fn show_row(ui: &mut egui::Ui, draw: RowDraw<'_>, outcome: &mut RowOutcome) 
                 egui::StrokeKind::Inside,
             );
             let value_id = ui.id().with(("debug-set-value", row.key.clone()));
-            let inner = controls::field_takes_the_whole_rectangle(ui, field, 8.0, value_id);
+            let inner =
+                controls::field_takes_the_whole_rectangle(ui, field, 8.0, value_id, "Value field");
             let editor = ui.put(
                 inner,
                 egui::TextEdit::singleline(typed)

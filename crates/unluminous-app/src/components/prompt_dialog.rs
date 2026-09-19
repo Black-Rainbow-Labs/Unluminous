@@ -120,8 +120,13 @@ pub fn show(ctx: &egui::Context, prompt: &mut Prompt) -> PromptOutcome {
             egui::StrokeKind::Inside,
         );
         let entry_id = ui.id().with("prompt-dialog-value");
-        let text_rect =
-            crate::components::controls::field_takes_the_whole_rectangle(ui, field, 8.0, entry_id);
+        let text_rect = crate::components::controls::field_takes_the_whole_rectangle(
+            ui,
+            field,
+            8.0,
+            entry_id,
+            "Entry field",
+        );
         let mut edit = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
         let entry = edit.add(
             egui::TextEdit::singleline(&mut prompt.value)

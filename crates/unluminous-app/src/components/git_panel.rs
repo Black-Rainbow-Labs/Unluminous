@@ -220,7 +220,7 @@ fn commit_tab(
     let text_rect = message.shrink(8.0);
     // The eight points of margin round the box are part of the control, so a press in them hands it
     // the keyboard rather than leaving the pane behind holding the keys — `task-1795`.
-    crate::components::controls::claim_the_field(ui, message, message_id);
+    crate::components::controls::claim_the_field(ui, message, message_id, "Message field");
     let mut edit = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
     let response = edit.add(
         egui::TextEdit::multiline(&mut panel.message)

@@ -300,7 +300,13 @@ fn rows(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Reque
     if has_a_keychain {
         let key_id = ui.id().with("agent-tasks-key");
         let response = ui.put(
-            crate::components::controls::field_takes_the_whole_rectangle(ui, at, 8.0, key_id),
+            crate::components::controls::field_takes_the_whole_rectangle(
+                ui,
+                at,
+                8.0,
+                key_id,
+                "Key field",
+            ),
             egui::TextEdit::singleline(&mut secret)
                 .id(key_id)
                 .frame(egui::Frame::NONE)
@@ -569,7 +575,13 @@ fn field(
     let mut value = settings_field.value.to_owned();
     let value_id = ui.id().with(("agent-tasks-setting", settings_field.name));
     let response = ui.put(
-        crate::components::controls::field_takes_the_whole_rectangle(ui, box_at, 8.0, value_id),
+        crate::components::controls::field_takes_the_whole_rectangle(
+            ui,
+            box_at,
+            8.0,
+            value_id,
+            "Value field",
+        ),
         egui::TextEdit::singleline(&mut value)
             .id(value_id)
             .frame(egui::Frame::NONE)

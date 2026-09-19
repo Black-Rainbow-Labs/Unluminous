@@ -77,8 +77,9 @@ pub fn field_takes_the_whole_rectangle(
     field: Rect,
     left: f32,
     id: egui::Id,
+    name: &str,
 ) -> Rect {
-    claim_the_field(ui, field, id);
+    claim_the_field(ui, field, id, name);
     field_text_rect(ui, field, left)
 }
 
@@ -88,9 +89,10 @@ pub fn field_takes_the_whole_rectangle_at(
     field: Rect,
     left: f32,
     id: egui::Id,
+    name: &str,
     font: &egui::FontId,
 ) -> Rect {
-    claim_the_field(ui, field, id);
+    claim_the_field(ui, field, id, name);
     let row = ui.ctx().fonts_mut(|fonts| fonts.row_height(font));
     field_text_rect_at(field, left, row)
 }
@@ -100,8 +102,17 @@ pub fn field_takes_the_whole_rectangle_at(
 ///
 /// Those have the same fault in a milder form — the margin between the drawn frame and the box is
 /// dead — and the same answer. See [`field_takes_the_whole_rectangle`] for what it is for.
-pub fn claim_the_field(ui: &egui::Ui, field: Rect, id: egui::Id) -> egui::Response {
+pub fn claim_the_field(ui: &egui::Ui, field: Rect, id: egui::Id, name: &str) -> egui::Response {
     let response = ui.interact(field, id.with("field-ground"), Sense::click());
+    // **Named, like every other control** (`task-1984` §3.6). It is a widget that takes a press and
+    // can be found, and `design/style-guide.md` has required a name on one of those since
+    // `task-1655` — this was the one shape that had none, at every field in the window. The name says
+    // what the field is and ends in `field`, so it cannot collide with the box inside it, which
+    // carries its own.
+    let named = name.to_owned();
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Other, ui.is_enabled(), named.clone())
+    });
     if response.clicked() {
         ui.ctx().data_mut(|data| data.insert_temp(wants_the_keyboard(), id));
     }
@@ -172,7 +183,7 @@ pub fn search_field_over(
     }
     icon::magnifier(&painter, Pos2::new(area.left() + 15.0, area.center().y), color::text_faint());
     let id = ui.id().with(("search-field", name));
-    let text_rect = field_takes_the_whole_rectangle(ui, area, 28.0, id);
+    let text_rect = field_takes_the_whole_rectangle(ui, area, 28.0, id, &format!("{name} field"));
     let mut field = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
     let response = field.add(
         egui::TextEdit::singleline(value)

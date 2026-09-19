@@ -654,7 +654,13 @@ pub fn field(ui: &mut egui::Ui, area: Rect, name: &str, value: &mut String) -> e
         egui::StrokeKind::Inside,
     );
     let id = ui.id().with(("modal-field", name));
-    let text_rect = crate::components::controls::field_takes_the_whole_rectangle(ui, area, 8.0, id);
+    let text_rect = crate::components::controls::field_takes_the_whole_rectangle(
+        ui,
+        area,
+        8.0,
+        id,
+        "Modal text field",
+    );
     let mut edit = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
     let response = edit.add(
         egui::TextEdit::singleline(value)

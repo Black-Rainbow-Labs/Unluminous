@@ -153,7 +153,7 @@ fn sql_editor(
     // margin used to leave the console without the keyboard, which is why `Ctrl/Cmd+Enter` below did
     // nothing and why a paste went into the file behind the tab — `task-1795`.
     let sql_id = egui::Id::new(("database-console-sql", id));
-    crate::components::controls::claim_the_field(ui, area, sql_id);
+    crate::components::controls::claim_the_field(ui, area, sql_id, "Sql field");
     let mut child =
         ui.new_child(egui::UiBuilder::new().max_rect(inner).id_salt(("database-console", id)));
     // **The colouring comes from the window's own plugins**, through the same `CodeHighlighter` the
