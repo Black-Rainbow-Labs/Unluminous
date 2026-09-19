@@ -547,6 +547,86 @@ mod tests {
         }
     }
 
+    /// Several edits before one reading, over text that is not all one byte a character.
+    ///
+    /// **`task-1984` C22.** The fuzz above applies one edit and then reads, with a `Dirt` built from
+    /// `Dirt::Clean` every round -- so the one thing `Dirt::note` exists for, **compounding**, was
+    /// never exercised by it. A window really does compound: a frame can carry a paste and a delete,
+    /// and `editor rename` is one undo step holding hundreds of edits, all of them arriving at the
+    /// tokeniser as one `Dirt`. And every piece it edits with is ASCII, so the boundary arithmetic --
+    /// which is where an incremental reader goes wrong -- was checked against the easy case only.
+    ///
+    /// So this one makes one to three edits per round and folds them into one `Dirt`, over text with
+    /// accented letters, Chinese characters and an emoji in it. The bar is the whole-file reading,
+    /// exactly as above: a file coloured wrongly from the middle down is visible and hard to
+    /// attribute.
+    #[test]
+    fn several_edits_folded_into_one_dirt_agree_with_reading_the_whole_file() {
+        let grammar = rust_like();
+        // Multi byte throughout: two byte accents, three byte Chinese, a four byte emoji, and the
+        // ASCII the grammar actually has rules about.
+        let pieces = [
+            "let caf\u{e9} = 1;",
+            "// \u{4f60}\u{597d} a note",
+            "\"\u{1f600} in a string\"",
+            "/*",
+            "*/",
+            "\n",
+            " ",
+            "\"",
+            "na\u{ef}ve",
+            "42",
+            "(",
+            ")",
+            ";",
+        ];
+        let mut text = String::new();
+        for index in 0..80 {
+            text.push_str(pieces[index * 7 % pieces.len()]);
+            text.push('\n');
+        }
+        let mut cache = Tokens::default();
+        incrementally(&mut cache, &text, &grammar, Dirt::Clean);
+
+        let mut seed = 0x5EED_1984u64;
+        let mut next = move || {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (seed >> 33) as usize
+        };
+        for round in 0..500 {
+            let mut dirt = Dirt::Clean;
+            for _ in 0..1 + next() % 3 {
+                let mut at = next() % (text.len() + 1);
+                while !text.is_char_boundary(at) {
+                    at -= 1;
+                }
+                if next() % 3 == 0 {
+                    let mut end = (at + 1 + next() % 12).min(text.len());
+                    while !text.is_char_boundary(end) {
+                        end += 1;
+                    }
+                    if end <= at {
+                        continue;
+                    }
+                    let removed = end - at;
+                    text.replace_range(at..end, "");
+                    dirt = dirt.note(at, removed, 0);
+                } else {
+                    let piece = pieces[next() % pieces.len()];
+                    text.insert_str(at, piece);
+                    dirt = dirt.note(at, 0, piece.len());
+                }
+            }
+            let (read, update) = incrementally(&mut cache, &text, &grammar, dirt);
+            assert_eq!(
+                read,
+                whole(&text, &grammar),
+                "round {round} disagreed with the whole-file reading; changed was {:?}",
+                update.changed
+            );
+        }
+    }
+
     /// And the same for the *changed range*, which is the half a wrong answer would show as a stale
     /// colour rather than as a wrong token: everything outside it must really be unchanged.
     #[test]

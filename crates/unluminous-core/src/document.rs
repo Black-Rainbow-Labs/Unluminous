@@ -3366,6 +3366,33 @@ the fourth line",
         }
     }
 
+    /// A file with two kinds of line ending in it comes back with one, and it is the commoner one.
+    ///
+    /// **`task-1984` C22.** The round trip above pins four files that each use one ending throughout,
+    /// which is the case where the answer is that nothing changes. A **mixed** file is the case where
+    /// something has to, and `LineEnding::dominant_in`'s own comment says why: there is no reading
+    /// that leaves every line alone, so counting is the one that changes the fewest of them. That is a
+    /// decision a reader might disagree with, so it is written down as bytes rather than left to be
+    /// discovered by somebody whose file came back different.
+    #[test]
+    fn a_file_with_two_kinds_of_line_ending_comes_back_with_the_commoner_one() {
+        // Three Windows endings and two Unix ones, so Windows wins by counting.
+        let path = round_trip_folder().join("mixed.txt");
+        let before = "one\r\ntwo\r\nthree\nfour\r\nfive\n";
+        std::fs::write(&path, before).expect("write the test file");
+        let mut document = Document::open(&path).expect("open it");
+        assert_eq!(document.line_ending(), crate::encoding::LineEnding::Crlf, "counted");
+        document.apply(Command::MoveDocumentStart { extend: false });
+        document.apply(Command::Insert("X".to_owned()));
+        document.save().expect("save it");
+        let written = std::fs::read(&path).expect("read it back");
+        assert_eq!(
+            String::from_utf8_lossy(&written),
+            "Xone\r\ntwo\r\nthree\r\nfour\r\nfive\r\n",
+            "the two Unix endings became Windows ones and the three Windows ones did not move"
+        );
+    }
+
     /// A lone carriage return is a line break, which it was not before `task-1804` §7.5.
     #[test]
     fn a_classic_macintosh_file_opens_as_its_lines_rather_than_as_one() {
@@ -4824,5 +4851,161 @@ mod replacing_many {
         assert_ne!(document.text().to_string(), before);
         assert!(document.apply(Command::Undo));
         assert_eq!(document.text().to_string(), before, "one step back");
+    }
+}
+
+#[cfg(test)]
+mod splicing {
+    use super::*;
+    use crate::breakpoints::Breakpoint;
+    use crate::highlights::Highlight;
+
+    /// An offset moved back to a character boundary, which is what `ReplaceMany` requires.
+    fn clamped(document: &Document, mut at: usize) -> usize {
+        while at > 0 && !document.text().is_char_boundary(at) {
+            at -= 1;
+        }
+        at
+    }
+
+    /// Every structure an edit moves, checked against a plain reckoning of how each one moves.
+    ///
+    /// **`task-1984` C20.** [`Document::splice`] is the one place in Unluminous that knows a range of
+    /// bytes moved, and it moves six things by the same edit: the text, the character formatting, the
+    /// marked passages, the folds, the breakpoints and the paragraph list. Its own comment says that a
+    /// seventh would otherwise have had four call sites to be threaded through. What nothing checked
+    /// is where each one ends up.
+    ///
+    /// **They do not all move the same way, and that is the finding rather than a fault.** A splice
+    /// is a removal and then an insertion, and each structure answers both in its own terms:
+    ///
+    /// | | text removed over it | text inserted at its own first byte |
+    /// |---|---|---|
+    /// | a marked passage | cut to what is left, and dropped when nothing is | moves after what was typed |
+    /// | a fold | **dropped**, because a fold's offset *is* its head line's first byte | stays where it is |
+    /// | a breakpoint | moved to the seam, because a breakpoint is a mark *on* a line | stays where it is |
+    ///
+    /// Every one of those is right about its own thing. A fold whose head line has gone has nothing
+    /// left to fold; a breakpoint whose line has gone belongs on the line the text closed up into,
+    /// which is what every editor does; and typing in front of a highlighted word must not draw the
+    /// highlight over what was typed. The reckoning below is those three rules written out, and the
+    /// test is three hundred random edits held against them.
+    ///
+    /// **The ticket asked for this as `splice_shifts_every_structure_the_same_way`**, and the name is
+    /// different because writing it disproved it. A test named after an assumption it goes on to
+    /// contradict is the §3.6 fault this same package spent a day taking out of the comments.
+    #[test]
+    fn splice_moves_every_structure_by_its_own_rule() {
+        let mut seed = 0x0198_4c20_u64;
+        let mut next = move || {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (seed >> 33) as usize
+        };
+
+        let source: String =
+            (0..30).map(|line| format!("line {line} with some words on it\n")).collect();
+        let mut document = Document::from_text(&source);
+
+        let mut marked: Vec<(usize, usize)> =
+            (0..6).map(|step| (step * 90 + 5, step * 90 + 17)).collect();
+        document.set_highlights(crate::Highlights::from_list(
+            marked.iter().map(|(from, to)| Highlight {
+                range: *from..*to,
+                color: Rgba::new(255, 255, 0, 96),
+            }),
+        ));
+        let mut folded: Vec<usize> = (0..6).map(|step| step * 120 + 3).collect();
+        let mut folds = crate::Folds::new();
+        for at in &folded {
+            folds.add(*at);
+        }
+        document.set_folds(folds);
+        let mut stops: Vec<usize> = (0..6).map(|step| step * 100 + 7).collect();
+        document.set_breakpoints(crate::Breakpoints::from_list(
+            stops.iter().map(|at| Breakpoint::at(*at)),
+        ));
+
+        let words = ["", "x", "one two", "\nand a line\n", "abc"];
+        for round in 0..300 {
+            let len = document.text().len_bytes();
+            if len < 8 {
+                break;
+            }
+            let start = clamped(&document, next() % len);
+            let end = clamped(&document, (start + next() % 40).min(len));
+            let replacement = words[next() % words.len()].to_owned();
+            let range = start..end;
+            if range.is_empty() && replacement.is_empty() {
+                continue;
+            }
+            assert!(
+                document.apply(Command::ReplaceMany(vec![(range.clone(), replacement.clone())])),
+                "round {round}"
+            );
+
+            // The removal, in each structure's own terms.
+            let gone = range.end - range.start;
+            if gone > 0 {
+                // An offset before the deletion stays, one after it comes back by what went, and
+                // one inside it lands on the seam -- after which a mark of no width is dropped.
+                let shift = |offset: usize| match offset {
+                    _ if offset <= range.start => offset,
+                    _ if offset >= range.end => offset - gone,
+                    _ => range.start,
+                };
+                for (from, to) in marked.iter_mut() {
+                    *from = shift(*from);
+                    *to = shift(*to);
+                }
+                marked.retain(|(from, to)| from < to);
+                folded.retain(|at| !(range.start..range.end).contains(at));
+                for at in folded.iter_mut() {
+                    if *at >= range.end {
+                        *at -= gone;
+                    }
+                }
+                for at in stops.iter_mut() {
+                    if *at >= range.end {
+                        *at -= gone;
+                    } else if *at > range.start {
+                        *at = range.start;
+                    }
+                }
+                stops.dedup();
+            }
+
+            // Then the insertion, in each structure's own terms.
+            let grew = replacement.len();
+            if grew > 0 {
+                let at = range.start;
+                for (from, to) in marked.iter_mut() {
+                    if *from >= at {
+                        *from += grew;
+                        *to += grew;
+                    } else if *to > at {
+                        *to += grew;
+                    }
+                }
+                for offset in folded.iter_mut().chain(stops.iter_mut()) {
+                    if *offset > at {
+                        *offset += grew;
+                    }
+                }
+            }
+
+            let held: Vec<(usize, usize)> = document
+                .highlights()
+                .iter()
+                .map(|mark| (mark.range.start, mark.range.end))
+                .collect();
+            assert_eq!(held, marked, "the marked passages, round {round}, after {range:?}");
+
+            let shut: Vec<usize> = document.folds().offsets().to_vec();
+            assert_eq!(shut, folded, "the folds, round {round}, after {range:?}");
+
+            let stopped: Vec<usize> =
+                document.breakpoints().all().iter().map(|one| one.offset).collect();
+            assert_eq!(stopped, stops, "the breakpoints, round {round}, after {range:?}");
+        }
     }
 }
