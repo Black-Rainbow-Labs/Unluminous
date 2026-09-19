@@ -201,11 +201,38 @@ fn string_around(text: &str, offset: usize, grammar: &Grammar) -> Option<Range<u
     if grammar.strings.is_empty() {
         return None;
     }
-    let start = text[..offset].rfind('\n').map(|at| at + 1).unwrap_or(0);
-    let end = text[offset..].find('\n').map(|at| offset + at).unwrap_or(text.len());
+    // **Bounded** (`task-1984` C5). This runs once per keystroke for every language whose manifest
+    // names `language.imports`, which is JavaScript and TypeScript -- and on a minified `.js`, where
+    // there is one line, the two searches and the scan below were the whole file per letter typed.
+    // A module specifier is a path, so [`LONGEST_SPECIFIER`] either side is more than one can be, and
+    // a string that really is longer than that is one this answers about from where it can see.
+    let floor = offset.saturating_sub(LONGEST_SPECIFIER);
+    let ceiling = (offset + LONGEST_SPECIFIER).min(text.len());
+    let floor = on_a_boundary(text, floor, false);
+    let ceiling = on_a_boundary(text, ceiling, true);
+    let start = text[floor..offset].rfind('\n').map(|at| floor + at + 1).unwrap_or(floor);
+    let end = text[offset..ceiling].find('\n').map(|at| offset + at).unwrap_or(ceiling);
     strings_on_line(text, start, end, grammar)
         .into_iter()
         .find(|content| content.contains(&offset) || content.end == offset)
+}
+
+/// How much text either side of the caret [`string_around`] is given to look at.
+///
+/// `task-1984` C5. A module specifier is a path: 512 bytes is longer than any that has ever been
+/// written, and the alternative is reading a minified file's one line on every keystroke.
+const LONGEST_SPECIFIER: usize = 512;
+
+/// `offset` moved to the nearest character boundary, outwards.
+fn on_a_boundary(text: &str, offset: usize, forwards: bool) -> usize {
+    let mut offset = offset.min(text.len());
+    while offset > 0 && offset < text.len() && !text.is_char_boundary(offset) {
+        offset = match forwards {
+            true => offset + 1,
+            false => offset - 1,
+        };
+    }
+    offset
 }
 
 /// The content of every string on one line, without the quotes, left to right.

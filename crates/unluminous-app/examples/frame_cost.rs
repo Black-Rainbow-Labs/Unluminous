@@ -312,4 +312,46 @@ fn main() {
             1000.0 / ms
         );
     }
+
+    measure_the_caret(&source);
+}
+
+/// What one arrow key costs on a file with no line breaks in it.
+///
+/// **`task-1984` C5.** `Document::line_window` handed the grapheme and word walks the whole line,
+/// copied into a fresh `String` -- which is a few dozen bytes in ordinary source and is the whole
+/// file in a minified `.js`, a one line `.json` or a single log line. The review measured **15.9 ms
+/// for one `MoveRight`** on a megabyte of one line, against 0.002 ms on the same bytes with line
+/// breaks in them, so holding an arrow key dropped every frame.
+///
+/// Both readings are printed in one run, for the reason the two typing readings above are: a number
+/// with nothing beside it is a number nobody can judge. The same bytes are measured twice, once as
+/// the file really is and once with every line break taken out of it.
+fn measure_the_caret(source: &str) {
+    println!();
+    println!("  and one arrow key, on the same bytes read two ways:");
+    let flat = source.replace('\n', " ");
+    for (shape, text) in [("as it is", source), ("with no line breaks", flat.as_str())] {
+        let mut document = Document::from_text(text);
+        let middle = on_a_boundary(text, text.len() / 2);
+        let ms = timed(200, || {
+            document.apply(Command::PlaceCaret { offset: middle, extend: false });
+            document.apply(Command::MoveRight { extend: false });
+        });
+        let lines = document.text().len_lines();
+        println!("  MoveRight, {shape:<19} {ms:8.3} ms  ({} bytes, {lines} lines)", text.len());
+        let ms = timed(200, || {
+            document.apply(Command::PlaceCaret { offset: middle, extend: false });
+            document.apply(Command::MoveWordRight { extend: false });
+        });
+        println!("  MoveWordRight, {shape:<15} {ms:8.3} ms");
+    }
+}
+
+/// `offset` moved forward to the nearest character boundary.
+fn on_a_boundary(text: &str, mut offset: usize) -> usize {
+    while offset < text.len() && !text.is_char_boundary(offset) {
+        offset += 1;
+    }
+    offset
 }

@@ -219,7 +219,17 @@ struct Snapshot {
     breakpoints: Breakpoints,
 }
 
-const UNDO_LIMIT: usize = 256;
+pub const UNDO_LIMIT: usize = 256;
+
+/// How much text either side of the caret the movement commands are given to look at.
+///
+/// **`task-1984` C5.** `line_window` used to hand over the whole line, and the grapheme and word
+/// walks then read it from its start -- a few dozen bytes in ordinary source and the whole file in a
+/// minified `.js`, a one line `.json` or a single log line, where one arrow key was measured at
+/// 15.9 ms on a megabyte. Two hundred and fifty six bytes is far more than the longest grapheme
+/// cluster Unicode defines and far more than any word, so every answer inside a line is unchanged;
+/// what changes is that a line nobody writes by hand no longer costs its whole length per keystroke.
+pub const CARET_WINDOW: usize = 256;
 
 /// An open document.
 #[derive(Debug, Clone)]
@@ -959,12 +969,40 @@ impl Document {
         first..last + 1
     }
 
-    /// The text of the line the caret is on, and the document offset it starts at. Movement by
+    /// A window of the text around `offset`, and the document offset it starts at. Movement by
     /// grapheme cluster and by word works on this window rather than on the whole document.
+    ///
+    /// **Bounded at [`CARET_WINDOW`] either side** (`task-1984` C5). It used to be the whole line,
+    /// copied into a fresh `String` -- which is a few dozen bytes in ordinary source and is the whole
+    /// file in a minified `.js`, a one line `.json` or a single log line. Measured there: **15.9 ms
+    /// for one arrow key** on a 1 MB file with one line in it, against 0.002 ms on a file with line
+    /// breaks. Holding an arrow key dropped every frame.
+    ///
+    /// The window is cut to the line as well, so nothing steps across a line break that was not there
+    /// before, and to character boundaries, so the slice is a `str`. A grapheme cluster longer than
+    /// the bound is the one thing this cannot see whole, and a few hundred bytes is far more than the
+    /// longest cluster Unicode defines.
     fn line_window(&self, offset: usize) -> (String, usize) {
         let line = self.text.byte_to_line(offset);
-        let range = self.text.line_range(line);
-        (self.text.byte_slice(range.clone()), range.start)
+        let whole = self.text.line_range(line);
+        let from = self.on_a_boundary(offset.saturating_sub(CARET_WINDOW).max(whole.start), false);
+        let to = self.on_a_boundary((offset + CARET_WINDOW).min(whole.end), true);
+        (self.text.byte_slice(from..to), from)
+    }
+
+    /// `offset` moved to the nearest character boundary, outwards from the caret.
+    ///
+    /// `forwards` says which way to move: a window's end goes up and its start goes down, so the
+    /// window can only ever grow to reach one, never shrink past what was asked for.
+    fn on_a_boundary(&self, offset: usize, forwards: bool) -> usize {
+        let mut offset = offset.min(self.text.len_bytes());
+        while offset > 0 && offset < self.text.len_bytes() && !self.text.is_char_boundary(offset) {
+            offset = match forwards {
+                true => offset + 1,
+                false => offset - 1,
+            };
+        }
+        offset
     }
 
     /// Run a command. Returns true when the document changed in a way that needs repainting.
@@ -980,15 +1018,17 @@ impl Document {
             Command::MoveRight { extend } => self.move_horizontally(1, extend, false),
             Command::MoveWordLeft { extend } => self.move_horizontally(-1, extend, true),
             Command::MoveWordRight { extend } => self.move_horizontally(1, extend, true),
+            // **The rope already has both of these numbers** (`task-1984` C5). Both used to build a
+            // window -- a copy of the whole line -- and then throw the text away to keep an offset.
             Command::MoveLineStart { extend } => {
-                let (_, start) = self.line_window(self.selection.head);
-                self.selection.move_to(start, extend);
+                let line = self.text.byte_to_line(self.selection.head);
+                self.selection.move_to(self.text.line_range(line).start, extend);
                 self.desired_x = None;
                 self.caret_moved(selection_before);
             }
             Command::MoveLineEnd { extend } => {
-                let (text, start) = self.line_window(self.selection.head);
-                self.selection.move_to(start + text.len(), extend);
+                let line = self.text.byte_to_line(self.selection.head);
+                self.selection.move_to(self.text.line_range(line).end, extend);
                 self.desired_x = None;
                 self.caret_moved(selection_before);
             }
@@ -2280,13 +2320,10 @@ mod base_style_tests {
     #[test]
     fn the_base_style_changes_the_family_and_size_of_the_whole_document() {
         let mut document = Document::from_text("two lines here\nand the second");
-        document.set_base_style(StyleChange {
-            size: Some(28.0),
-            ..StyleChange::family("Courier".to_owned())
-        });
+        document.set_base_style(StyleChange { size: Some(28.0), ..StyleChange::family("Courier") });
         for offset in [0, 5, 20, document.text().len_bytes() - 1] {
             let style = document.chars().style_at(offset);
-            assert_eq!(style.family, "Courier", "offset {offset} should have the new family");
+            assert_eq!(&*style.family, "Courier", "offset {offset} should have the new family");
             assert_eq!(style.size, 28.0, "offset {offset} should have the new size");
         }
     }
@@ -2294,11 +2331,11 @@ mod base_style_tests {
     #[test]
     fn the_base_style_leaves_formatting_it_does_not_name_alone() {
         let mut document = document_with_a_bold_red_word();
-        document.set_base_style(StyleChange::family("Courier".to_owned()));
+        document.set_base_style(StyleChange::family("Courier"));
         let word = document.chars().style_at(7);
         assert!(word.bold, "the word that was made bold should still be bold");
         assert_eq!(word.color, Color::RED, "and still red");
-        assert_eq!(word.family, "Courier", "with the new family under it");
+        assert_eq!(&*word.family, "Courier", "with the new family under it");
         assert!(!document.chars().style_at(0).bold, "the words either side are still not bold");
     }
 
@@ -4456,5 +4493,69 @@ mod grouping {
         assert_eq!(document.text().to_string(), "abc", "the deleting undid as one step");
         document.apply(Command::Undo);
         assert_eq!(document.text().to_string(), "", "and the typing as another");
+    }
+}
+
+#[cfg(test)]
+mod caret_windows {
+    use super::*;
+
+    /// A line longer than the window is still moved through one grapheme and one word at a time.
+    ///
+    /// **`task-1984` C5.** `line_window` handed the whole line to the grapheme and word walks, and a
+    /// minified `.js`, a one line `.json` or a single log line is a line a megabyte long — where one
+    /// arrow key was measured at 15.9 ms and holding one dropped every frame. The window is bounded
+    /// now, and what has to stay true is that every answer inside a line is the answer it was.
+    #[test]
+    fn a_line_longer_than_the_window_moves_a_grapheme_and_a_word_at_a_time() {
+        // A single line far longer than `CARET_WINDOW`, with words in it.
+        let words = "alpha beta gamma delta ".repeat(4_000);
+        let mut document = Document::from_text(&words);
+        // A caret deep inside it, on a word boundary, so what is being tested is the middle of a line
+        // rather than either end.
+        let caret = words.find("gamma").expect("it is in there") + 20_000;
+        let caret = words[..caret].rfind(' ').expect("a space") + 1;
+        document.apply(Command::PlaceCaret { offset: caret, extend: false });
+
+        document.apply(Command::MoveRight { extend: false });
+        assert_eq!(document.selection().head, caret + 1, "one grapheme");
+        document.apply(Command::MoveLeft { extend: false });
+        assert_eq!(document.selection().head, caret, "and back");
+
+        document.apply(Command::MoveWordRight { extend: false });
+        let after = document.selection().head;
+        assert!(after > caret, "the word moved forward, to {after}");
+        assert!(after - caret < 32, "by one word rather than to the end of the line");
+        document.apply(Command::MoveWordLeft { extend: false });
+        assert_eq!(document.selection().head, caret, "and back again");
+    }
+
+    /// And the ends of such a line are still its ends.
+    #[test]
+    fn the_ends_of_a_long_line_are_where_the_rope_says_they_are() {
+        let source = format!("{}\nsecond\n", "x".repeat(50_000));
+        let mut document = Document::from_text(&source);
+        document.apply(Command::PlaceCaret { offset: 25_000, extend: false });
+        document.apply(Command::MoveLineStart { extend: false });
+        assert_eq!(document.selection().head, 0, "the first line starts at nothing");
+        document.apply(Command::PlaceCaret { offset: 25_000, extend: false });
+        document.apply(Command::MoveLineEnd { extend: false });
+        assert_eq!(document.selection().head, 50_000, "and ends before the line break");
+    }
+
+    /// A multi byte character at the window's edge does not split a `str`.
+    #[test]
+    fn a_window_edge_lands_on_a_character_boundary() {
+        // Three byte characters throughout, so nearly every offset is inside one.
+        let source = "\u{4f60}".repeat(20_000);
+        let mut document = Document::from_text(&source);
+        // A caret at a boundary in the middle, and then a step each way.
+        let caret = 3 * 10_000;
+        document.apply(Command::PlaceCaret { offset: caret, extend: false });
+        document.apply(Command::MoveRight { extend: false });
+        assert_eq!(document.selection().head, caret + 3, "one whole character");
+        document.apply(Command::MoveLeft { extend: false });
+        document.apply(Command::MoveLeft { extend: false });
+        assert_eq!(document.selection().head, caret - 3, "and one back the other way");
     }
 }
