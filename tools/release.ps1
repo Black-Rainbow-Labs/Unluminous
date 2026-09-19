@@ -25,14 +25,17 @@
     6. Creates the GitHub release with the installer attached, on BOTH repositories: the private one
        where releases are cut, and the public Black-Rainbow-Labs one, whose history it publishes
        first with tools/publish-open-source.mjs.
-    7. Publishes unluminous.com: the new installer, the page that prints its size and hash, and the
-       manifest at /releases/latest.json that the update check asks before it asks anything else.
+    7. Publishes both sites. unluminous.com gets the new installer, the page that prints its size and
+       hash, and the manifest at /releases/latest.json that the update check asks before it asks
+       anything else; blackrainbowlabs.com then reads that manifest for the version it prints.
 
   Steps 6 and 7 are both there because of `task-1993`, which found that every address the update
   check knew named the private repository and therefore answered 404 to everybody but Jason. The
   check asks unluminous.com now and falls back to the public repository, so a release that reached
   neither of them is a release nobody is told about -- and a site left behind by a release is worse
-  than one that never answered, because it answers with the version before this one.
+  than one that never answered, because it answers with the version before this one. The same
+  argument is why blackrainbowlabs.com is published here rather than by hand: its version was set by
+  a script nobody could run, and the page said v0.37.1 through fifteen releases.
 
   The task's own code is expected to be committed already: the version bump is a commit of its own so
   that the history stays greppable by ticket.
@@ -56,9 +59,9 @@
   Do everything up to and including the tag, and stop before touching GitHub or the site.
 
 .PARAMETER SkipSite
-  Publish the releases but leave unluminous.com alone. The site then says the version before this
-  one, and so does `update check` for everybody, so use this only when the site is being published
-  by hand straight afterwards.
+  Publish the releases but leave unluminous.com and blackrainbowlabs.com alone. The sites then say
+  the version before this one, and so does `update check` for everybody, so use this only when they
+  are being published by hand straight afterwards.
 
 .PARAMETER WhatIf
   Say what would happen and change nothing.
@@ -91,11 +94,23 @@ $ReleasesDir = Join-Path $Repo 'releases'
 # The public repository the source was opened under on `task-1989`, and what `update check` falls
 # back to when unluminous.com does not answer. Never the private one: it is 404 to everybody else.
 $PublicRepository = 'Black-Rainbow-Labs/Unluminous'
-# unluminous.com's checkout, which carries its own publish script. A machine without it releases
-# everything else and says so.
+# The two sites that say which version Unluminous is, each carrying its own publish script: the
+# product page, which is where the installer and the manifest `update check` reads actually are, and
+# the parent company page, which prints the version beside the product. A machine without a checkout
+# releases everything else and says so.
+#
+# They are published in this order because the second reads the first: blackrainbowlabs.com takes the
+# version out of unluminous.com's manifest rather than out of a repository, which is what `task-1993`
+# gave it in place of the private repository that answered 404 and left it saying v0.37.1 for fifteen
+# releases.
 $SiteRepo = $env:UNLUMINOUS_SITE_REPO
 if (-not $SiteRepo) { $SiteRepo = 'C:/jason/dev/unluminous-site' }
-$SitePublish = Join-Path $SiteRepo 'scripts/publish.ps1'
+$ParentSiteRepo = $env:BLACK_RAINBOW_LABS_REPO
+if (-not $ParentSiteRepo) { $ParentSiteRepo = 'C:/jason/dev/blackrainbowlabs' }
+$SitePublishers = @(
+    @{ Name = 'unluminous.com'; Script = (Join-Path $SiteRepo 'scripts/publish.ps1'); Versioned = $true },
+    @{ Name = 'blackrainbowlabs.com'; Script = (Join-Path $ParentSiteRepo 'scripts/publish.ps1'); Versioned = $false }
+)
 
 function Write-Step([string] $Message) {
     Write-Host ''
@@ -313,7 +328,13 @@ if ($WhatIf) {
     if (-not $SkipPublish) {
         Write-Host "  5. gh release create v$next with the installer attached, on jasonmcaffee/unluminous"
         Write-Host "  6. node tools\publish-open-source.mjs --push, then the same release on $PublicRepository"
-        if (-not $SkipSite) { Write-Host "  7. pwsh $SitePublish -Version $next" }
+        if (-not $SkipSite) {
+            $lead = '  7.'
+            foreach ($site in $SitePublishers) {
+                Write-Host "$lead pwsh $($site.Script)$(if ($site.Versioned) { " -Version $next" })"
+                $lead = '    '
+            }
+        }
     }
     return
 }
@@ -392,10 +413,12 @@ if (-not $SkipPublish) {
     }
     Write-Host "Public repository: $PublicRepository (reachable)"
     if (-not $SkipSite) {
-        if (-not (Test-Path $SitePublish)) {
-            throw "No site checkout at $SiteRepo. Set UNLUMINOUS_SITE_REPO, or pass -SkipSite and publish the site by hand."
+        foreach ($site in $SitePublishers) {
+            if (-not (Test-Path $site.Script)) {
+                throw "No publish script at $($site.Script) for $($site.Name). Set UNLUMINOUS_SITE_REPO or BLACK_RAINBOW_LABS_REPO, or pass -SkipSite and publish the sites by hand."
+            }
         }
-        Write-Host "Site: $SiteRepo"
+        Write-Host "Sites: $(($SitePublishers | ForEach-Object { $_.Name }) -join ', ')"
     }
 }
 
@@ -476,20 +499,28 @@ if ($LASTEXITCODE -ne 0) {
 }
 $publicUrl = (& $gh release view "v$next" --repo $PublicRepository --json url --jq .url).Trim()
 
-# **And the site last**, because it is the one step that can fail on somebody else's toolchain and
-# both releases above are published by the time it runs. It is still a hard failure: a site a release
-# did not reach answers `update check` with the version before this one, which is worse than not
-# answering at all, and the message says exactly what to run again.
+# **And the sites last**, because they are the one step that can fail on somebody else's toolchain
+# and both releases above are published by the time they run. It is still a hard failure: a site a
+# release did not reach answers `update check` with the version before this one, which is worse than
+# not answering at all, and the message says exactly what to run again.
 if (-not $SkipSite) {
-    Write-Step 'Publishing unluminous.com'
-    & pwsh -NoProfile -File $SitePublish -Version $next
-    if ($LASTEXITCODE -ne 0) {
-        throw "Unluminous $next is released but unluminous.com still serves the version before it, so update check will too. Run: pwsh $SitePublish -Version $next"
+    foreach ($site in $SitePublishers) {
+        Write-Step "Publishing $($site.Name)"
+        $arguments = @('-NoProfile', '-File', $site.Script)
+        # Only the product site is told which version: the parent page reads it out of the manifest
+        # the product site has just published, which is the whole reason they go in this order.
+        if ($site.Versioned) { $arguments += @('-Version', $next) }
+        & pwsh @arguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "Unluminous $next is released but $($site.Name) still says the version before it. Run: pwsh $($site.Script)$(if ($site.Versioned) { " -Version $next" })"
+        }
     }
 } else {
     Write-Host ''
-    Write-Host 'unluminous.com was not published, so update check still answers with the version before this one.' -ForegroundColor Yellow
-    Write-Host "Run: pwsh $SitePublish -Version $next" -ForegroundColor Yellow
+    Write-Host 'The sites were not published, so update check still answers with the version before this one.' -ForegroundColor Yellow
+    foreach ($site in $SitePublishers) {
+        Write-Host "Run: pwsh $($site.Script)$(if ($site.Versioned) { " -Version $next" })" -ForegroundColor Yellow
+    }
 }
 
 Write-Host ''
