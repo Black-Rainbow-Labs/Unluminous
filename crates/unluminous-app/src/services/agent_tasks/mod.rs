@@ -1278,7 +1278,7 @@ impl AgentTasks {
             self.todo_scroll = 0.0;
             return 0.0;
         }
-        if ui.ctx().pointer_interact_pos().is_some_and(|at| area.contains(at)) {
+        if crate::components::controls::pointer_in(ui).is_some_and(|at| area.contains(at)) {
             self.todo_scroll -= ui.ctx().input(|input| input.smooth_scroll_delta.y);
         }
         self.todo_scroll = self.todo_scroll.clamp(0.0, most);
@@ -1630,7 +1630,7 @@ impl AgentTasks {
             self.lane_scroll = 0.0;
             return 0.0;
         }
-        let over = ui.ctx().pointer_interact_pos().is_some_and(|at| area.contains(at));
+        let over = crate::components::controls::pointer_in(ui).is_some_and(|at| area.contains(at));
         if over {
             let wheel = ui.ctx().input(|input| {
                 // A trackpad gives a sideways delta of its own; a wheel gives a vertical one.
@@ -1706,7 +1706,7 @@ impl AgentTasks {
         let mut down = at.map(|at| self.lane_downs[at].1).unwrap_or(0.0);
         if most <= 0.0 {
             down = 0.0;
-        } else if ui.ctx().pointer_interact_pos().is_some_and(|pointer| area.contains(pointer)) {
+        } else if crate::components::controls::pointer_in(ui).is_some_and(|at| area.contains(at)) {
             // A lane is a column of cards, so a wheel means further down it. The sideways scroll of the board
             // as a whole reads the horizontal delta, so the two do not fight over one gesture.
             down -= ui.ctx().input(|input| input.smooth_scroll_delta.y);
@@ -1727,7 +1727,7 @@ impl AgentTasks {
             self.listing_down = 0.0;
             return 0.0;
         }
-        if ui.ctx().pointer_interact_pos().is_some_and(|pointer| area.contains(pointer)) {
+        if crate::components::controls::pointer_in(ui).is_some_and(|at| area.contains(at)) {
             self.listing_down -= ui.ctx().input(|input| input.smooth_scroll_delta.y);
         }
         self.listing_down = self.listing_down.clamp(0.0, most);

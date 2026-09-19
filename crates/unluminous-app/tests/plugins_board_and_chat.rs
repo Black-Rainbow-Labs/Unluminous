@@ -2711,6 +2711,45 @@ fn a_notice_is_drawn_over_the_window_and_can_be_dismissed() {
     assert!(harness.state().toasts.is_empty(), "the cross dismissed it");
 }
 
+/// The bottom of the page, which is the picture `task-2003` was reported with.
+///
+/// *"the settings configurations look like crap"*, and what the screenshot showed was the permission
+/// buttons, the System box and the History box with **no labels, no headings and no sentences beside
+/// them**. That is a clip rather than a style: the page paints at absolute positions through a painter
+/// cut to `Ui::available_rect_before_wrap`, which inside a `ScrollArea` is the viewport moved up by the
+/// scroll offset — so scrolling threw away the bottom of the window, and only the fields and the
+/// buttons survived because those are clipped by the scrolling area itself. `modal::down_the_page`.
+///
+/// A picture rather than a query, because what went missing is **painted** text: a heading, a label and
+/// a note register no widget, so there is nothing for `get_by_label` to fail to find. It is the one
+/// thing that would have caught this and the one thing that will catch it again.
+#[test]
+fn the_chats_settings_page_keeps_its_labels_when_it_is_scrolled() {
+    agents_on_the_path();
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    did(&mut harness, "action run settings");
+    steady(&mut harness);
+    harness.get_all_by_label("Agent-Chat").last().expect("the Settings row").click();
+    steady(&mut harness);
+
+    // Far enough to reach the last section, with the pointer inside the page so egui gives it the wheel.
+    let over = harness.get_all_by_label("Use").next().expect("an endpoint row").rect().center();
+    harness.input_mut().events.push(egui::Event::PointerMoved(over));
+    steady(&mut harness);
+    for _ in 0..8 {
+        harness.input_mut().events.push(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: vec2(0.0, -240.0),
+            phase: egui::TouchPhase::Move,
+            modifiers: Modifiers::default(),
+        });
+        steady(&mut harness);
+    }
+    steady(&mut harness);
+    harness.snapshot(shot("agent_chat_settings_scrolled").as_str());
+}
+
 /// The two rows that run an agent and the one that sends to an address, and never a key.
 #[test]
 fn the_chats_settings_page_lists_the_endpoints() {
@@ -2727,6 +2766,10 @@ fn the_chats_settings_page_lists_the_endpoints() {
 /// Everything a person can do here an agent can do too, through the same code.
 #[test]
 fn the_chat_answers_the_command_line() {
+    // **Both stand-in agents on `PATH`**, because since `task-2003` a row Unluminous ships for an agent
+    // that is not installed is not offered — see `Configuration::forget_the_agents_that_are_not_installed`.
+    // Without this the list of endpoints would be a fact about the machine the test is running on.
+    agents_on_the_path();
     let mut harness = harness("");
     let shown = did(&mut harness, "plugins pane agent-chat/chat --show");
     assert_eq!(shown["showing"], true);
@@ -2751,8 +2794,9 @@ fn the_chat_answers_the_command_line() {
     assert_eq!(rows[2]["wire"], "openai");
     assert_eq!(rows[2]["runs_a_program"], false);
     assert_eq!(rows[2]["url"], "http://127.0.0.1:8080/v1/chat/completions");
-    // What an agent may do without asking, which is the setting that replaced the key.
-    assert_eq!(providers["permission"], "read");
+    // What an agent may do without asking, which is the setting that replaced the key. `full` since
+    // `task-2003` — *"Agent chat should have full by default"* — and see `Permission::Full` for why.
+    assert_eq!(providers["permission"], "full");
     let printed = serde_json::to_string(&providers).expect("json");
     assert!(!printed.contains("sk-"), "no key is ever printed: {printed}");
 

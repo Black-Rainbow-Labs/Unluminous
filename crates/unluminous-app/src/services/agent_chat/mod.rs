@@ -79,8 +79,8 @@ pub struct Configuration {
     ///
     /// **Only a command-line agent has one**, and it is the setting that matters most for those:
     /// `claude` and `codex` run with `--print`, so they cannot stop and ask a question, and what they
-    /// may do has to be decided before they start. `read` is the default and is both agents' own
-    /// safest mode. Unluminous's own `tools` and `shell` switches are the equivalent for an HTTP endpoint,
+    /// may do has to be decided before they start. `full` is the default since `task-2003` — see
+    /// [`unluminous_chat::Permission::Full`]. Unluminous's own `tools` and `shell` switches are the equivalent for an HTTP endpoint,
     /// where the model asks and Unluminous runs it — the two are never both in play, because the
     /// transport decides which of them applies.
     pub permission: unluminous_chat::Permission,
@@ -113,6 +113,10 @@ impl Default for Configuration {
             // will run any command line at all on this machine.
             shell: false,
             tool_limit: DEFAULT_TOOL_LIMIT,
+            // **`full`**, which `task-2003` asks for: *"Agent chat should have full by default."* See
+            // `unluminous_chat::Permission::Full` for why the safest value was the wrong one to start
+            // from here. It governs a command-line agent only; `tools` and `shell` above are the
+            // equivalent for an endpoint, and `shell` is still off.
             permission: unluminous_chat::Permission::default(),
             system: String::new(),
             history: DEFAULT_HISTORY,
@@ -122,6 +126,12 @@ impl Default for Configuration {
 
 impl Configuration {
     const FILE: &'static str = "settings.conf";
+    /// What wrote this file, so a setting whose default changed can be moved once and only once.
+    ///
+    /// **1 is the first**, written from `task-2003` onwards; a file with no `version` at all was
+    /// written before it. See the migration in [`Configuration::of`], and the reason there is one: a
+    /// file that is rewritten on every change carries the old default as though it were a choice.
+    const VERSION: f64 = 1.0;
 
     /// Read the configuration out of the plugin's folder, or the defaults when there is no file.
     ///
@@ -164,7 +174,18 @@ impl Configuration {
         if let Some(limit) = values.number("tool-limit") {
             configuration.tool_limit = limit.clamp(1.0, 32.0) as u32;
         }
-        if let Some(named) = values.text("permission") {
+        // **A file written before `task-2003` does not get to keep the old default.** `full` is what
+        // the ticket asks for — *"Agent chat should have full by default"* — and a default alone would
+        // never have reached anybody: this file is rewritten whenever anything on the page changes, so
+        // every existing installation has `permission = read` in it because the **code** wrote it and
+        // not because a person chose it. Without this the change would be true of a fresh install and
+        // of nobody else, which is not what was asked for.
+        //
+        // It happens once. `version` is written from here on, so a file that has been read by this
+        // version or a later one is left exactly as it is, including a `read` somebody really did
+        // choose. See [`Configuration::VERSION`].
+        let written_by_an_older_version = values.number("version").is_none();
+        if let Some(named) = values.text("permission").filter(|_| !written_by_an_older_version) {
             match unluminous_chat::Permission::from_name(named) {
                 Some(permission) => configuration.permission = permission,
                 // Refused with the list rather than falling back quietly, because falling back to
@@ -205,6 +226,7 @@ impl Configuration {
         values.set("tools", self.tools.to_string());
         values.set("shell", self.shell.to_string());
         values.set("tool-limit", self.tool_limit.to_string());
+        values.set("version", Self::VERSION.to_string());
         values.set("permission", self.permission.name());
         values.set("system", self.system.replace('\n', " "));
         values.set("history", self.history.to_string());
@@ -218,6 +240,44 @@ impl Configuration {
              # A row that sends names the environment variable its key comes from; the key itself is never\n\
              # written here or anywhere else by Unluminous.",
         )
+    }
+
+    /// Drop the rows Unluminous ships for a command-line agent that is not on this machine.
+    ///
+    /// `task-2003`: *"why do we show codex option if its not on the machine?"* Three rows ship and two
+    /// of them run an agent, so a machine with only one of the two agents installed opened the Settings
+    /// page on a card that said in red that it could never work — and the endpoint list in the pane's
+    /// own header offered it as something to talk to. A row that cannot answer, that nobody asked for
+    /// and that names a program which is not here is not a choice; it is a thing to explain.
+    ///
+    /// Three conditions, and each one is there to make this smaller than it sounds:
+    ///
+    /// - **It runs a program, and the program is not installed.** A URL that is unreachable is not the
+    ///   same thing: nothing here can tell a server that is down from one that is asleep, and the row
+    ///   is still where the address a person typed lives.
+    /// - **It is one of the rows Unluminous ships, unchanged** — [`Provider::is_one_unluminous_ships`].
+    ///   A row somebody wrote stays, whatever it names, because it is a thing they meant.
+    /// - **Nobody chose it by name.** Choosing it is asking for it, and a chosen row that will not run
+    ///   has to say so rather than disappear and leave the pane answering from a different endpoint.
+    ///   By **name**, and not [`Self::provider`]: with nothing chosen that function answers with the
+    ///   first row there is, so on a machine with `codex` and no `claude` the broken row would have
+    ///   been kept and gone on being the default, which is the case this exists for.
+    ///
+    /// **Nothing is written.** The file keeps the row, so installing the agent brings it back at the
+    /// next start with no settings to repair. It is a filter on what is offered rather than a deletion,
+    /// which is also why it is safe to run on every open. The `local` row sends to an address, so there
+    /// is always at least one row left however few agents are installed.
+    pub fn forget_the_agents_that_are_not_installed(
+        &mut self,
+        environment: &unluminous_chat::Environment,
+    ) {
+        let chosen = self.chosen.trim().to_owned();
+        self.providers.retain(|one| {
+            one.name == chosen
+                || !one.is_a_program()
+                || !one.is_one_unluminous_ships()
+                || one.program_path(environment).is_some()
+        });
     }
 
     /// The endpoint that is used, which is the chosen one or the first there is.
@@ -364,20 +424,41 @@ pub struct PaneState {
     /// with the pane showing and the explorer's filter box focused, `Ctrl`+`V` was attaching the clipboard's
     /// picture to a conversation nobody was typing into. Found by the ticket's own review.
     pub prompt_focused: bool,
-    /// How far down the conversation the view is, and where to put it on the next frame.
+    /// How far down the list that is showing the view is, and where to put it on the next frame.
     ///
     /// `task-1771`: the pane is zoomable, and a zoom that does not keep what the pointer was over still is
     /// a zoom you have to scroll back from. The scrolling is `egui`'s, so the offset is read back off the
     /// `ScrollArea` each frame and handed to it once when it has to move - the one-shot shape
     /// `jump_to_bottom` beside it already uses. Worked out in `AgentChat::zoomed`, which is what the
     /// window calls when the pane's zoom changes.
+    ///
+    /// **Whichever list is showing**, which is the conversation, the history or the endpoints: the three
+    /// are drawn into the same rectangle and one of them at a time, so one set of numbers describes what
+    /// a person is looking at. Since `task-2003` the wheel over a canvas node is applied through the same
+    /// three, so the history and the endpoints scroll there exactly as the conversation does.
     pub scrolled: f32,
-    /// How far the conversation *could* be scrolled: its content height less the room it is drawn in.
+    /// How far the list that is showing *could* be scrolled: its content height less the room it is drawn in.
     ///
     /// Kept beside `scrolled` so that "is it at the bottom" is answerable as data — `scrolled` alone says
     /// nothing without the maximum to compare it against. `task-1848`.
     pub scrollable: f32,
     pub scroll_to: Option<f32>,
+    /// Where that list was drawn, in the points the pane was handed.
+    ///
+    /// Written by the drawing each frame so the window can ask whether a wheel it read belongs to the
+    /// list rather than to the header or the composer. `task-2003`: a canvas node's layer registers no
+    /// `AreaState`, so nothing inside one can take the wheel itself and the window has to hand it over —
+    /// see [`AgentChat::scroll_at`].
+    pub list_rect: Option<egui::Rect>,
+    /// A wheel the window read over a canvas node, for the list that is showing to take.
+    ///
+    /// Taken once and cleared, like `jump_to_bottom` beside it. It is handed to `egui` as a **delta**
+    /// through `Ui::scroll_with_delta` rather than as an offset, and that is not a detail: an offset
+    /// written straight into `ScrollArea::vertical_scroll_offset` is overwritten again before the frame
+    /// ends whenever `stick_to_bottom` is on and the view was already at the bottom — which is exactly
+    /// where a conversation sits, so scrolling up did nothing at all. A delta sets egui's own
+    /// `had_explicit_scroll_adjustment`, which is what unsticks it. `task-2003`.
+    pub wheel: Option<f32>,
     /// How big each of those is, read out of the picture's own header.
     ///
     /// Kept apart from the textures because the measuring pass needs it and has no `egui::Ui` to
@@ -454,6 +535,9 @@ pub struct AgentChat {
     /// Why each endpoint cannot answer, and when that was last worked out. See [`AgentChat::readiness`].
     readiness: Vec<Option<String>>,
     readiness_taken: Option<std::time::Instant>,
+    /// Which wire shapes a row could be switched to here. See [`AgentChat::shapes_available`].
+    shapes: Vec<&'static str>,
+    shapes_taken: Option<std::time::Instant>,
 }
 
 impl std::fmt::Debug for AgentChat {
@@ -498,6 +582,8 @@ impl AgentChat {
             dirty: false,
             readiness: Vec::new(),
             readiness_taken: None,
+            shapes: Vec::new(),
+            shapes_taken: None,
         }
     }
 
@@ -602,12 +688,70 @@ impl AgentChat {
         self.readiness.clone()
     }
 
+    /// Which wire shapes a row could really be switched to on this machine.
+    ///
+    /// Every address shape, always — nothing about a URL is a fact about this machine. A **program**
+    /// shape only when the program is installed, which is `task-2003`: *"why do we show codex option if
+    /// its not on the machine?"* A button that turns a working endpoint into a broken one is not a
+    /// choice, and Unluminous's rule is that a control which cannot apply is absent rather than dimmed.
+    ///
+    /// The Settings page still draws the shape a row **already** uses whether or not it is in here, so a
+    /// row is never left naming something that is not on its own row of buttons.
+    ///
+    /// Cached on the same clock as [`Self::readiness`] and for the same reason: the answer is a walk of
+    /// `PATH` per shape, and a page asking once a shape once a row once a frame is a frame broken by the
+    /// file system.
+    pub fn shapes_available(&mut self) -> Vec<&'static str> {
+        let stale = self.shapes_taken.is_none_or(|at| at.elapsed() >= READINESS);
+        if stale {
+            let environment = Self::the_environment();
+            self.shapes = unluminous_chat::provider::WIRES
+                .iter()
+                .copied()
+                .filter(|named| {
+                    unluminous_chat::provider::Wire::from_name(named)
+                        .is_some_and(|wire| wire.is_available(&environment))
+                })
+                .collect();
+            self.shapes_taken = Some(std::time::Instant::now());
+        }
+        self.shapes.clone()
+    }
+
     /// Ask again on the next frame, because the answer may have changed.
     ///
     /// Called where a row is edited: a program name being typed would otherwise go on saying `Ready`
     /// about the program it used to name for as long as five seconds.
     pub fn readiness_may_have_changed(&mut self) {
         self.readiness_taken = None;
+    }
+
+    /// Scroll whatever list this pane is showing, because the window read a wheel over it.
+    ///
+    /// **A canvas node's layer registers no `AreaState`**, so `Context::rect_contains_pointer` is false
+    /// everywhere inside one and `egui::ScrollArea` never takes the wheel itself. That is `task-1905`'s
+    /// *"I can't scroll the node"* about a folder node and `task-2003`'s *"I cant scroll agent chat in
+    /// base of infinite space"* about this one — the same fault, and the same answer: the window reads
+    /// the wheel and says how far to move, and `egui` is handed an offset the way [`Self::zoomed`]
+    /// already hands it one.
+    ///
+    /// `at` is where the pointer is in the points the pane was drawn in, so a wheel over the header or
+    /// the composer is not the list's. Answers whether it took it, which is what tells the caller to
+    /// take the wheel out of the frame so the canvas does not zoom at the same time.
+    ///
+    /// The three lists — the conversation, the history and the endpoints — share one set of numbers
+    /// because one of them is drawn at a time, in the same rectangle. See [`PaneState::scrolled`].
+    pub fn scroll_at(&mut self, at: egui::Pos2, wheel: f32) -> bool {
+        if wheel.abs() < 0.5 || !self.ui.list_rect.is_some_and(|rect| rect.contains(at)) {
+            return false;
+        }
+        // Nothing to scroll is not something to take the wheel for: the canvas's own zoom should still
+        // get it, which is what a wheel over a pane with a two line conversation means.
+        if self.ui.scrollable <= 0.5 {
+            return false;
+        }
+        self.ui.wheel = Some(wheel);
+        true
     }
 
     /// Start a new conversation, keeping the one that was open.
@@ -1195,7 +1339,10 @@ impl UiProvider for AgentChat {
         self.showing = context.showing.clone();
         self.store = Store::at(self.folder.clone());
         if let Some(folder) = &self.folder {
-            let (configuration, refused) = Configuration::read(folder);
+            let (mut configuration, refused) = Configuration::read(folder);
+            // Before anything is drawn or offered, so the endpoint list, the header's chip and the
+            // Settings page all see the same list. See [`Configuration::forget_the_agents_that_are_not_installed`].
+            configuration.forget_the_agents_that_are_not_installed(&Self::the_environment());
             self.configuration = configuration;
             if !refused.is_empty() {
                 self.problem = Some(refused.join(" "));
@@ -1464,6 +1611,111 @@ impl UiProvider for AgentChat {
         self.stop();
         self.write_the_conversation();
         self.open = false;
+    }
+}
+
+#[cfg(test)]
+mod tests_task_2003 {
+    use super::*;
+
+    /// `full` is what a command-line agent may do, and a file written before that reaches it once.
+    ///
+    /// `task-2003` asks for it outright: *"Agent chat should have full by default."* A default on its
+    /// own would have reached a fresh install and nobody else, because this file is rewritten whenever
+    /// anything on the page changes — so every existing installation carries `permission = read`
+    /// because the code wrote it, not because a person chose it. `version` is what tells the two apart
+    /// from here on.
+    #[test]
+    fn full_is_the_default_and_a_file_written_before_it_takes_it_once() {
+        assert_eq!(Configuration::default().permission, unluminous_chat::Permission::Full);
+
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-chat-permission-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder");
+
+        // A file from before the default moved. It says `read` because that is what was written out.
+        std::fs::write(
+            folder.join("settings.conf"),
+            "permission = read
+",
+        )
+        .expect("a file");
+        let (read_back, refused) = Configuration::read(&folder);
+        assert!(refused.is_empty(), "{refused:?}");
+        assert_eq!(
+            read_back.permission,
+            unluminous_chat::Permission::Full,
+            "a file with no version was written before the default moved, so it takes the new one"
+        );
+
+        // Written back, and read again: the version is there now, so what it says is kept — including
+        // a `read` somebody really did choose.
+        let mut chosen = read_back;
+        chosen.permission = unluminous_chat::Permission::Read;
+        chosen.write(&folder).expect("it writes");
+        assert_eq!(
+            Configuration::read(&folder).0.permission,
+            unluminous_chat::Permission::Read,
+            "a choice made since is a choice, and is not moved again"
+        );
+
+        let written = std::fs::read_to_string(folder.join("settings.conf")).expect("it is there");
+        assert!(written.contains("version"), "and the version is written down: {written}");
+    }
+
+    /// A row Unluminous ships for an agent that is not here is not offered, and nothing is written.
+    ///
+    /// `task-2003`: *"why do we show codex option if its not on the machine?"* Three conditions, and
+    /// each one is asserted, because each is what keeps this smaller than it sounds.
+    #[test]
+    fn a_shipped_row_for_an_agent_that_is_not_installed_is_not_offered() {
+        use unluminous_chat::provider::Provider;
+        // **A `PATH` with one empty folder on it**, rather than no `PATH` at all: `environment::path_of`
+        // falls back to this process's own, so an empty environment finds whatever is really installed
+        // and the test would answer differently on two machines.
+        let nowhere =
+            std::env::temp_dir().join(format!("unluminous-nowhere-{}", std::process::id()));
+        std::fs::create_dir_all(&nowhere).expect("an empty folder");
+        let bare = unluminous_chat::Environment::from(vec![(
+            "PATH".to_owned(),
+            nowhere.display().to_string(),
+        )]);
+
+        let mut shipped =
+            Configuration { providers: Provider::defaults(), ..Configuration::default() };
+        shipped.forget_the_agents_that_are_not_installed(&bare);
+        let left: Vec<&str> = shipped.providers.iter().map(|one| one.name.as_str()).collect();
+        assert_eq!(
+            left,
+            ["local"],
+            "with nothing installed, only the row that sends to an address"
+        );
+
+        // The chosen one stays, however little it can do, because choosing it is asking for it.
+        let mut chosen =
+            Configuration { providers: Provider::defaults(), ..Configuration::default() };
+        chosen.chosen = "codex".to_owned();
+        chosen.forget_the_agents_that_are_not_installed(&bare);
+        let left: Vec<&str> = chosen.providers.iter().map(|one| one.name.as_str()).collect();
+        assert_eq!(
+            left,
+            ["codex", "local"],
+            "the chosen row says why it cannot run rather than going"
+        );
+
+        // And a row somebody wrote stays whatever it names, because it is a thing they meant.
+        let mut theirs =
+            Configuration { providers: Provider::defaults(), ..Configuration::default() };
+        let mut mine = Provider::defaults()[1].clone();
+        mine.name = "mine".to_owned();
+        theirs.providers.push(mine);
+        theirs.forget_the_agents_that_are_not_installed(&bare);
+        let left: Vec<&str> = theirs.providers.iter().map(|one| one.name.as_str()).collect();
+        assert_eq!(
+            left,
+            ["local", "mine"],
+            "a row nobody shipped is not one of the rows that ship"
+        );
     }
 }
 

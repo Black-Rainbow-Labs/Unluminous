@@ -1,21 +1,51 @@
 //! The Agent-Chat page in the Settings window.
 //!
 //! The ticket's fourth ask: "a config in settings to allow configure url for Claude, codex etc." So
-//! an endpoint is a **row in a list** rather than a constant in the binary, and the three that ship
-//! are only the three rows that are there the first time this page is opened. Every field of every
-//! one is editable, rows can be added and taken away, and one of them is the one that is used.
+//! an endpoint is a **row in a list** rather than a constant in the binary, and the rows that ship
+//! are only the rows that are there the first time this page is opened. Every field of every one is
+//! editable, rows can be added and taken away, and one of them is the one that is used.
 //!
 //! Built from `components::modal`'s own furniture — its sections, notes, fields, tick boxes and
 //! buttons — so this is the same page as the other six rather than a seventh that almost agrees with
 //! them. It scrolls, which `components/agent_tasks/settings_page.rs` established for a page with more
 //! in it than the 640 points every page gets.
 //!
+//! ## What `task-2003` changed, and why the page looked broken rather than merely plain
+//!
+//! *"the settings configurations look like crap"*, with a screenshot of a page whose permission
+//! buttons, System box and History box had **no labels, no headings and no explanations beside
+//! them** — a column of controls with nothing saying what any of them was.
+//!
+//! That was a clip rather than a style. Everything here paints at absolute positions down a `pen`,
+//! and the rectangle those positions are measured from is `Ui::available_rect_before_wrap` — which
+//! inside an `egui::ScrollArea` is the **viewport moved up by the scroll offset**, one screenful
+//! tall. Painting through a painter clipped to it therefore threw away everything past the first
+//! screenful: scrolled down by three hundred points, the bottom three hundred points of the window
+//! lost every heading, label and note, while the fields and the buttons went on drawing because
+//! those paint through `ui.painter()` and are clipped by the scrolling area itself. `modal::section`
+//! and `modal::note` clip down the page now — `modal::down_the_page` — and the label column here
+//! does the same.
+//!
+//! The rest of the ticket's ask is the arrangement, and three things changed:
+//!
+//! - **A row is a card with a ground**, painted behind its own contents through a reserved shape
+//!   slot, rather than a border stroked round them afterwards. The one that is in use carries the
+//!   accent and says `In use` where the others offer `Use`, so which endpoint answers is readable
+//!   without comparing five buttons.
+//! - **The five shape buttons have a row and a label of their own.** On one line with the name and
+//!   two buttons they needed 390 points in the 350 there are, so `responses` was drawn underneath
+//!   `Use`, which is the measurement the old `WIRE_BUTTON` comment records losing a fight with.
+//! - **A shape that cannot work here is not offered.** *"why do we show codex option if its not on
+//!   the machine?"* — `AgentChat::shapes_available` walks `PATH` once every few seconds, and a
+//!   program that is not installed is absent rather than dimmed, which is Unluminous's own rule for a
+//!   control that can never apply. The shape a row already uses is always drawn, so a row is never
+//!   left naming something missing from its own row of buttons.
+//!
 //! ## A row is a program or an address, and it draws the fields that apply
 //!
-//! The two rows that ship run the **command-line agent** installed on this machine, so what they
-//! need is a program and how much it may do — and a URL, a key and a token budget are four fields
-//! that mean nothing there. They are **absent** rather than dimmed for such a row, which is Unluminous's
-//! own rule for a control that can never apply.
+//! The rows that run the **command-line agent** installed on this machine need a program and how much
+//! it may do — and a URL, a key and a token budget are three fields that mean nothing there. They are
+//! **absent** rather than dimmed for such a row, which is the same rule again.
 //!
 //! ## No key is drawn and no key is written
 //!
@@ -34,19 +64,23 @@ use crate::services::agent_chat::AgentChat;
 use crate::services::plugin_ui::{Look, Request};
 use crate::theme::color;
 
+/// The page's own margin.
 const PAD: f32 = 12.0;
 /// How wide one of the wire-shape buttons is, and the gap between two of them.
 ///
-/// Narrower than the 74 the first version used, because there are five of them now: at 74 the row
-/// was 390 points wide against the 350 there is between the name field and `Use`, and `responses`
-/// was drawn underneath `Use`. Measured against the rendered page rather than guessed at.
-const WIRE_BUTTON: f32 = 60.0;
-const WIRE_GAP: f32 = 4.0;
+/// They have a row to themselves since `task-2003`, so the width is what the longest word needs
+/// rather than what was left over beside the name field and two buttons.
+const WIRE_BUTTON: f32 = 74.0;
+const WIRE_GAP: f32 = 6.0;
 /// A field's own height, and the gap under a row.
 const FIELD: f32 = 26.0;
 const GAP: f32 = 10.0;
 /// How wide the label column is, so every field on the page starts at the same x.
 const LABEL: f32 = 96.0;
+/// What a card leaves between its own edge and what is inside it.
+const CARD_PAD: f32 = 10.0;
+/// How wide the `Use` and `Remove` buttons at the top of a card are.
+const ACT_BUTTON: f32 = 62.0;
 
 /// Draw the page inside the rectangle every page gets.
 pub fn show(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {
@@ -63,7 +97,8 @@ pub fn show(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Req
 ///
 /// The rectangle comes from the `Ui` this is given rather than from the caller, because inside a
 /// scrolling area that `Ui`'s origin is where the scroll offset has put it — the fault
-/// `components/agent_tasks/settings_page.rs` records, where the bar moved and the page did not.
+/// `components/agent_tasks/settings_page.rs` records, where the bar moved and the page did not. What
+/// it is **not** safe to do is clip to that rectangle; see this module's own comment.
 fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {
     let area = ui.available_rect_before_wrap();
     let inner = Rect::from_min_max(
@@ -76,6 +111,7 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
     // answer is a walk of `PATH`; asked once a row once a frame it was a directory listing inside the
     // draw. See `AgentChat::readiness`.
     let refusals = chat.readiness();
+    let shapes = chat.shapes_available();
     let mut configuration = chat.configuration().clone();
     let mut changed = false;
     let chosen = configuration.provider().map(|one| one.name.clone()).unwrap_or_default();
@@ -90,7 +126,9 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
          instructions. `openai`, `anthropic` and `responses` send to a URL instead — for those a key \
          is never stored by Unluminous, so name the environment variable it is in.",
     );
+    pen += 2.0;
 
+    let only_one = configuration.providers.len() == 1;
     let mut removing: Option<usize> = None;
     for index in 0..configuration.providers.len() {
         // **A child `Ui` an endpoint, carrying its own id salt.** Every button and field here is drawn
@@ -105,7 +143,15 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
             &mut row,
             look,
             &mut configuration,
-            EndpointRow { area: inner, top: pen, index, chosen: &chosen, why_not },
+            EndpointRow {
+                area: inner,
+                top: pen,
+                index,
+                chosen: &chosen,
+                why_not,
+                shapes: &shapes,
+                only_one,
+            },
         );
         pen += height;
         match act {
@@ -119,21 +165,17 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
             None => {}
         }
     }
+    // The last one is never taken away: a pane with no endpoint cannot do anything, and there would
+    // then be no row to type a new one into. The button is **absent** on a single row rather than
+    // answering with a refusal, which is the same rule the fields on a program row keep.
     if let Some(index) = removing {
-        // The last one is never taken away: a pane with no endpoint cannot do anything, and there
-        // would then be no row to type a new one into.
         if configuration.providers.len() > 1 {
             configuration.providers.remove(index);
             changed = true;
-        } else {
-            requests.push(Request::Message(
-                "There has to be one endpoint. Change this one rather than taking it away."
-                    .to_owned(),
-            ));
         }
     }
 
-    let add = Rect::from_min_size(Pos2::new(inner.left(), pen), Vec2::new(120.0, FIELD));
+    let add = Rect::from_min_size(Pos2::new(inner.left(), pen), Vec2::new(130.0, FIELD));
     if crate::components::modal::button(ui, add, "Add endpoint", true, false) {
         let mut new = Provider::defaults()[2].clone();
         new.name = unused_name(&configuration.providers);
@@ -163,57 +205,38 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
         );
         pen = permission_row(ui, inner, pen, &mut configuration, &mut changed);
     } else {
-        let row = Rect::from_min_size(Pos2::new(inner.left(), pen), Vec2::new(inner.width(), 22.0));
-        if crate::components::modal::check(ui, row, "Stream the answer", &mut configuration.stream)
-        {
-            changed = true;
-        }
-        pen += 22.0;
-        pen = crate::components::modal::note(
+        pen = a_switch(
             ui,
             inner,
             pen,
+            "Stream the answer",
             "On, the answer arrives a word at a time. Off, it arrives whole — which is what a proxy \
              that will not stream needs. A program always streams.",
+            &mut configuration.stream,
+            &mut changed,
         );
-
-        let row = Rect::from_min_size(Pos2::new(inner.left(), pen), Vec2::new(inner.width(), 22.0));
-        if crate::components::modal::check(
-            ui,
-            row,
-            "Let the model use Unluminous's own commands",
-            &mut configuration.tools,
-        ) {
-            changed = true;
-        }
-        pen += 22.0;
-        pen = crate::components::modal::note(
+        pen = a_switch(
             ui,
             inner,
             pen,
+            "Let the model use Unluminous's own commands",
             "On unless you turn it off. The model is offered Unluminous's whole command catalogue as \
              tools, so it can open a file, read the git status or run a search — through exactly the \
              code a menu entry runs. The commands that run a program of the model's choosing are the \
              switch below, and that one is off. The same switch is the first button in the composer.",
+            &mut configuration.tools,
+            &mut changed,
         );
-
-        let row = Rect::from_min_size(Pos2::new(inner.left(), pen), Vec2::new(inner.width(), 22.0));
-        if crate::components::modal::check(
-            ui,
-            row,
-            "…including the ones that run a program",
-            &mut configuration.shell,
-        ) {
-            changed = true;
-        }
-        pen += 22.0;
-        pen = crate::components::modal::note(
+        pen = a_switch(
             ui,
             inner,
             pen,
+            "…including the ones that run a program",
             "A second switch, because typing into a terminal, starting a run configuration and \
              installing a debug adapter hand this machine's shell to whatever is on the far end of \
              that URL.",
+            &mut configuration.shell,
+            &mut changed,
         );
 
         let mut limit = configuration.tool_limit.to_string();
@@ -233,6 +256,9 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
              again.",
         );
     }
+
+    pen += GAP;
+    pen = crate::components::modal::section(ui, inner, pen, "Conversation");
 
     let mut system = configuration.system.clone();
     if one_field(ui, look, inner, &mut pen, "System", &mut system, "nothing").is_some() {
@@ -279,6 +305,23 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
     requests
 }
 
+/// A tick box with the sentence that explains it underneath. Answers the y below both.
+fn a_switch(
+    ui: &mut egui::Ui,
+    area: Rect,
+    top: f32,
+    name: &str,
+    said: &str,
+    value: &mut bool,
+    changed: &mut bool,
+) -> f32 {
+    let row = Rect::from_min_size(Pos2::new(area.left(), top), Vec2::new(area.width(), 22.0));
+    if crate::components::modal::check(ui, row, name, value) {
+        *changed = true;
+    }
+    crate::components::modal::note(ui, area, top + 22.0, said)
+}
+
 /// What a command-line agent may do, as three buttons.
 ///
 /// Buttons rather than a dropdown for the reason the wire shapes are buttons: there are three, and
@@ -291,14 +334,7 @@ fn permission_row(
     configuration: &mut crate::services::agent_chat::Configuration,
     changed: &mut bool,
 ) -> f32 {
-    crate::components::modal::label(
-        &ui.painter_at(area),
-        Rect::from_min_size(Pos2::new(area.left(), top), Vec2::new(area.width(), FIELD)),
-        area.left(),
-        "May",
-        color::text_dim(),
-        11.5,
-    );
+    column_label(ui, area, top, "May");
     let mut left = area.left() + LABEL;
     for named in unluminous_chat::PERMISSIONS {
         let at = Rect::from_min_size(Pos2::new(left, top), Vec2::new(84.0, FIELD));
@@ -317,13 +353,17 @@ fn permission_row(
     // its hooks and its plugins are not limited at all.
     let said = match configuration.permission {
         unluminous_chat::Permission::Read => {
-            "Look and answer, changing nothing. `codex` runs in a read-only sandbox; `claude` refuses              any tool of its own that would change something."
+            "Look and answer, changing nothing. `codex` runs in a read-only sandbox; `claude` refuses \
+             any tool of its own that would change something."
         }
         unluminous_chat::Permission::Edit => {
-            "Change files in the project this window has open. `codex` is sandboxed to it; `claude`              accepts its own edits without asking."
+            "Change files in the project this window has open. `codex` is sandboxed to it; `claude` \
+             accepts its own edits without asking."
         }
         unluminous_chat::Permission::Full => {
-            "Anything at all: edit any file and run any command, with no sandbox and nothing to ask."
+            "Anything at all: edit any file and run any command, with no sandbox and nothing to ask. \
+             This is what ships, because the agent on the other end is the one already signed in on \
+             this machine and trusted with this checkout."
         }
     };
     crate::components::modal::note(ui, area, top + FIELD + 4.0, said)
@@ -348,9 +388,13 @@ struct EndpointRow<'a> {
     chosen: &'a str,
     /// Why this endpoint cannot be reached right now, if it cannot.
     why_not: Option<String>,
+    /// Which wire shapes could be used on this machine. See [`AgentChat::shapes_available`].
+    shapes: &'a [&'static str],
+    /// Whether this is the only endpoint there is, in which case there is no `Remove`.
+    only_one: bool,
 }
 
-/// One endpoint: its name, where it is, what it speaks and where its key comes from.
+/// One endpoint: its name, what it speaks, where it is, and whether it can answer.
 ///
 /// Answers how tall it drew, so the page's pen moves by what was really drawn rather than by a
 /// constant that has to be kept in step with it.
@@ -360,61 +404,94 @@ fn endpoint(
     configuration: &mut crate::services::agent_chat::Configuration,
     at: EndpointRow<'_>,
 ) -> (f32, Option<Act>) {
-    let EndpointRow { area, top, index, chosen, why_not } = at;
+    let EndpointRow { area, top, index, chosen, why_not, shapes, only_one } = at;
     let mut act = None;
-    let mut pen = top + 4.0;
     let in_use = configuration.providers[index].name == chosen;
-    // A card round each row, so a page of five endpoints reads as five things rather than as twenty
-    // fields. The ground the code blocks in a preview already sit on.
-    let card_top = pen;
-
-    let head = Rect::from_min_size(
-        Pos2::new(area.left() + 8.0, pen + 6.0),
-        Vec2::new(area.width() - 16.0, FIELD),
+    let card_top = top + 4.0;
+    // **The card's ground is painted behind what is drawn into it**, through a shape slot reserved
+    // before any of it. egui hands a layer's shapes to the tessellator in the order they arrive, so a
+    // rectangle painted afterwards covers the fields — which is why this used to be a border alone and
+    // why the rows read as twenty loose fields rather than as five things. `show_a_chat_node` and
+    // `show_the_plugin_panes` reserve a slot for the same reason.
+    let ground = ui.painter().add(egui::Shape::Noop);
+    let inside = Rect::from_min_max(
+        Pos2::new(area.left() + CARD_PAD, card_top),
+        Pos2::new(area.right() - CARD_PAD, card_top),
     );
+    let mut pen = card_top + CARD_PAD;
+
+    // The name, and the two things that can be done to the row, on one line.
+    let head = Rect::from_min_size(Pos2::new(inside.left(), pen), Vec2::new(inside.width(), FIELD));
+    let acts_left = match only_one {
+        true => head.right() - ACT_BUTTON,
+        false => head.right() - ACT_BUTTON * 2.0 - 6.0,
+    };
     let mut name = configuration.providers[index].name.clone();
-    let name_at = Rect::from_min_size(head.min, Vec2::new(140.0, FIELD));
+    // A name is a word, so the field is a word wide rather than however much is left over: a box four
+    // hundred points across says the page expects a sentence.
+    let name_at = Rect::from_min_size(
+        head.min,
+        Vec2::new((acts_left - head.left() - 12.0).clamp(80.0, 200.0), FIELD),
+    );
     if crate::components::modal::field(ui, name_at, "Endpoint name", &mut name).changed() {
         configuration.providers[index].name = name.trim().to_owned();
         act = Some(Act::Changed);
     }
-    // Which shape it speaks, as buttons rather than a dropdown: there are five and they are the
-    // whole of what this row is, so a list that has to be opened would hide the answer.
-    let mut left = name_at.right() + 8.0;
+    let use_at =
+        Rect::from_min_size(Pos2::new(acts_left, head.top()), Vec2::new(ACT_BUTTON, FIELD));
+    if in_use {
+        // **A statement rather than a button that does nothing.** Which endpoint answers is the one
+        // thing a person comes to this page to change, and a `Use` that is greyed out on exactly the
+        // row that matters says it the least clearly of the available ways.
+        in_use_pill(ui, use_at);
+    } else if crate::components::modal::button(ui, use_at, "Use", true, false) {
+        act = Some(Act::Use);
+    }
+    if !only_one {
+        let remove_at = Rect::from_min_size(
+            Pos2::new(head.right() - ACT_BUTTON, head.top()),
+            Vec2::new(ACT_BUTTON, FIELD),
+        );
+        if crate::components::modal::button(ui, remove_at, "Remove", true, false) {
+            act = Some(Act::Remove);
+        }
+    }
+    pen = head.bottom() + GAP;
+
+    // Which shape it speaks, as buttons rather than a dropdown: there are five and they are the whole
+    // of what this row is, so a list that has to be opened would hide the answer. A row of their own,
+    // with the label column every other field on the page uses.
+    let here = configuration.providers[index].wire;
+    column_label(ui, inside, pen, "Speaks");
+    let mut left = inside.left() + LABEL;
     for named in WIRES {
-        let at = Rect::from_min_size(Pos2::new(left, head.top()), Vec2::new(WIRE_BUTTON, FIELD));
-        let on = configuration.providers[index].wire.name() == *named;
-        if crate::components::controls::choice_button(ui, at, named, on) {
+        // The shape this row already uses is always drawn; the rest only when they could be used.
+        if !shapes.contains(named) && here.name() != *named {
+            continue;
+        }
+        let at = Rect::from_min_size(Pos2::new(left, pen), Vec2::new(WIRE_BUTTON, FIELD));
+        if at.right() > inside.right() {
+            break;
+        }
+        if crate::components::controls::choice_button(ui, at, named, here.name() == *named) {
             if let Some(wire) = Wire::from_name(named) {
                 configuration.providers[index].wire = wire;
                 // **Changing the shape fills in what that shape needs.** A row switched to
                 // `codex-cli` with `https://api.anthropic.com/…` still in it is a row that says it
                 // runs codex and names an address, which is a page telling two stories at once.
                 let row = &mut configuration.providers[index];
-                if wire.is_a_program() && row.command.trim().is_empty() {
-                    row.command = match wire {
-                        Wire::CodexCli => "codex".to_owned(),
-                        _ => "claude".to_owned(),
-                    };
+                if let Some(program) = wire.program_name() {
+                    if row.command.trim().is_empty() {
+                        row.command = program.to_owned();
+                    }
                 }
                 act = Some(Act::Changed);
             }
         }
         left += WIRE_BUTTON + WIRE_GAP;
     }
-    let use_at =
-        Rect::from_min_size(Pos2::new(area.right() - 118.0, head.top()), Vec2::new(56.0, FIELD));
-    if crate::components::modal::button(ui, use_at, "Use", !in_use, in_use) {
-        act = Some(Act::Use);
-    }
-    let remove_at =
-        Rect::from_min_size(Pos2::new(area.right() - 58.0, head.top()), Vec2::new(50.0, FIELD));
-    if crate::components::modal::button(ui, remove_at, "Remove", true, false) {
-        act = Some(Act::Remove);
-    }
-    pen = head.bottom() + GAP;
+    pen += FIELD + GAP * 0.6;
 
-    let inside = area.shrink2(Vec2::new(8.0, 0.0));
     let a_program = configuration.providers[index].is_a_program();
     if a_program {
         // **A program, and nothing else this row needs.** The agent holds its own key and picks its
@@ -454,9 +531,14 @@ fn endpoint(
     }
     if !a_program {
         let mut key = configuration.providers[index].key_env.clone();
-        if one_field(ui, look, inside, &mut pen, "Key from", &mut key, "ANTHROPIC_API_KEY")
-            .is_some()
-        {
+        // **The hint names the variable that shape's own tools use.** It said `ANTHROPIC_API_KEY` on
+        // every row, so the `openai` row that ships pointed at a local llama.cpp suggested Anthropic's —
+        // a page telling two stories at once, which is the same fault the wire buttons fill in against.
+        let usual = match configuration.providers[index].wire {
+            Wire::Anthropic => "ANTHROPIC_API_KEY",
+            _ => "OPENAI_API_KEY",
+        };
+        if one_field(ui, look, inside, &mut pen, "Key from", &mut key, usual).is_some() {
             configuration.providers[index].key_env = key.trim().to_owned();
             act = Some(Act::Changed);
         }
@@ -497,33 +579,68 @@ fn endpoint(
             color::git_added(),
         ),
     };
-    let painter = ui.painter_at(area);
+    pen += 2.0;
+    let dot = Pos2::new(inside.left() + 4.0, pen + 6.0);
+    let painter = ui.painter().clone();
+    painter.circle_filled(dot, 3.5, tint);
     painter.text(
-        Pos2::new(area.left() + 8.0, pen),
+        Pos2::new(inside.left() + 14.0, pen),
         egui::Align2::LEFT_TOP,
         said,
         egui::FontId::proportional(11.5),
         tint,
     );
-    pen += 20.0;
+    pen += 18.0 + CARD_PAD;
 
-    // The card is painted **behind** what was drawn into it, which egui cannot do — so it is drawn
-    // as a rectangle at the bottom of this widget's own layer, which is what `Painter::with_z` does
-    // not offer here. Instead the border alone is drawn, which reads as a card without covering the
-    // fields.
-    painter.rect_stroke(
-        Rect::from_min_max(Pos2::new(area.left(), card_top), Pos2::new(area.right(), pen - 4.0)),
-        CornerRadius::same(8),
-        Stroke::new(
-            1.0,
-            match in_use {
-                true => color::accent(),
-                false => color::divider(),
-            },
-        ),
-        egui::StrokeKind::Inside,
+    let card = Rect::from_min_max(Pos2::new(area.left(), card_top), Pos2::new(area.right(), pen));
+    painter.set(
+        ground,
+        egui::Shape::Rect(egui::epaint::RectShape::new(
+            card,
+            CornerRadius::same(10),
+            // **The same ground for every card, and the accent only in the stroke.** A whole card filled
+            // in `SELECTED_ROW` was tried and is too loud for a page of five of them: it washes the
+            // fields inside it and it competes with the `In use` pill, which is the thing that actually
+            // says so. The pill and the border together are enough, and are what the style guide records.
+            color::code_panel(),
+            Stroke::new(
+                1.0,
+                match in_use {
+                    true => color::accent(),
+                    false => color::divider(),
+                },
+            ),
+            egui::StrokeKind::Inside,
+        )),
     );
     (pen + GAP - top, act)
+}
+
+/// `In use`, as a filled pill the size of the button it stands in place of.
+fn in_use_pill(ui: &egui::Ui, at: Rect) {
+    let painter = ui.painter();
+    painter.rect_filled(
+        at,
+        CornerRadius::same(crate::theme::size::CONTROL_CORNER),
+        color::accent(),
+    );
+    let galley = painter.layout_no_wrap(
+        "In use".to_owned(),
+        egui::FontId::proportional(12.5),
+        color::text_strong(),
+    );
+    painter.galley(at.center() - galley.size() / 2.0, galley, color::text_strong());
+}
+
+/// The word in the label column, centred on the row it names.
+///
+/// Its own function because the painter has to be clipped **down the page** rather than to the
+/// rectangle the page measures from — see this module's comment, and `modal::down_the_page`.
+fn column_label(ui: &egui::Ui, area: Rect, top: f32, name: &str) {
+    let row = Rect::from_min_size(Pos2::new(area.left(), top), Vec2::new(area.width(), FIELD));
+    let painter =
+        ui.painter_at(Rect::from_x_y_ranges(area.x_range().expand(20.0), ui.clip_rect().y_range()));
+    crate::components::modal::label(&painter, row, row.left(), name, color::text_dim(), 11.5);
 }
 
 /// A labelled field on one line, which is what every row on this page is.
@@ -539,14 +656,7 @@ fn one_field(
     hint: &str,
 ) -> Option<String> {
     let row = Rect::from_min_size(Pos2::new(area.left(), *pen), Vec2::new(area.width(), FIELD));
-    crate::components::modal::label(
-        &ui.painter_at(area),
-        row,
-        row.left(),
-        name,
-        color::text_dim(),
-        11.5,
-    );
+    column_label(ui, area, *pen, name);
     let box_at = Rect::from_min_max(Pos2::new(row.left() + LABEL, row.top()), row.max);
     let response = crate::components::modal::field(ui, box_at, name, value);
     if value.trim().is_empty() {

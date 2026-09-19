@@ -11,6 +11,24 @@ use crate::app::actions::{Action, Entry};
 use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, icon, size};
 
+/// Where the pointer is in this `Ui`'s own points.
+///
+/// `Context::pointer_interact_pos` answers in the **window's** points. A canvas node draws into a layer
+/// of its own carrying the camera, so a rectangle measured inside a node is in the canvas's points and
+/// the two are different spaces the moment the canvas is panned or zoomed at all — comparing one
+/// against the other answers about somewhere else entirely. `task-2003` reports that as an Agent-Tasks
+/// node whose lanes would not scroll.
+///
+/// In a pane there is no transform and this is the pointer position unchanged, so one call is right in
+/// both places and a component does not have to know which one it is drawing in.
+pub fn pointer_in(ui: &egui::Ui) -> Option<Pos2> {
+    let at = ui.ctx().pointer_interact_pos()?;
+    match ui.ctx().layer_transform_to_global(ui.layer_id()) {
+        Some(to_global) => Some(to_global.inverse() * at),
+        None => Some(at),
+    }
+}
+
 /// The rectangle the `TextEdit` inside one of Unluminous's fields is given.
 ///
 /// Every field in Unluminous draws its own frame — `FIELD` with a one point stroke, the corner radius the

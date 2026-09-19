@@ -436,6 +436,53 @@ runs inside a frame and a command that blocked would stop the window drawing for
 model's answer, which is the sentence `unluminous_git::Worker` exists for; `state` says when it has
 finished, which is the shape `run start` and `run output` already have.
 
+### A settings page that scrolls must not clip to the rectangle it measures from (`task-2003`)
+
+*"the settings configurations look like crap"*, with a screenshot of the Agent-Chat page whose
+permission buttons, System box and History box had **no labels, no headings and no sentences beside
+them** — a column of controls with nothing saying what any of them was.
+
+That is a clip rather than a style, and every page of this shape could have had it. A page here paints
+at absolute positions down a `pen`, and the rectangle those positions are measured from is
+`Ui::available_rect_before_wrap` — which inside an `egui::ScrollArea` is
+`Rect::from_min_size(inner_rect.min - state.offset, inner_size)`: the viewport **moved up by the scroll
+offset**, and one screenful tall however long the page is. Clipping to it therefore throws away
+everything past the first screenful of content, and scrolling makes it worse rather than better.
+What survived in the screenshot is the fields and the buttons, because those paint through
+`ui.painter()` and are clipped by the scrolling area itself; what vanished is everything drawn by
+`modal::section`, `modal::note` and `modal::label`, which were handed `area.expand(20.0)`.
+
+`modal::down_the_page` is the fix and it is in `modal` so every page gets it: the sideways clip stays,
+because a heading must not draw past the page's own margins, and downwards the `Ui`'s own clip
+rectangle is used — which is the scrolling area's, and is the right answer in a page that does not
+scroll too.
+
+The rest of that report is the arrangement, and the Agent-Chat page's own module comment records it: a
+row is a card with a ground painted **behind** its contents through a reserved shape slot rather than a
+border stroked round them afterwards; the five wire-shape buttons have a row and a label of their own,
+because on one line with the name and two buttons they needed 390 points in the 350 there are; and the
+row in use says `In use` where the others offer `Use`.
+
+### `full` is the default permission, and a shape that is not on this machine is not offered
+
+Two more of `task-2003`. *"Agent chat should have full by default"* — `Permission::Full` is
+`#[default]` now. The reasoning that made it `read` was that an agent run with `--print` cannot stop
+and ask, so the safest value is the one to start from; what that left out is who is on the other end of
+this one. It is the agent the person already has signed in, started by the person sitting at the
+machine, on the checkout that window has open — the same agent they would otherwise run in a terminal,
+where it has no sandbox either. A pane whose answer to *"fix this"* is that it is not allowed to is a
+pane whose first use is a trip to Settings.
+
+*"why do we show codex option if its not on the machine?"* — two answers, and they are different
+questions. `Wire::is_available` is asked before a **shape button** is drawn, so a program that is not
+installed is absent rather than offered as a way to break a working row; the shape a row already uses
+is always drawn, so a row is never left naming something missing from its own row of buttons. And
+`Configuration::forget_the_agents_that_are_not_installed` drops a **row** on three conditions, each
+there to make it smaller than it sounds: it runs a program that is not installed, it is one of the rows
+Unluminous ships unchanged (`Provider::is_one_unluminous_ships`), and it is not the chosen one.
+**Nothing is written** — the file keeps the row, so installing the agent brings it back at the next
+start with no settings to repair.
+
 ### Pasting a picture is seen on the key going **up**, and it could never have been seen any other way
 
 `task-1771` reported that pasting a picture into the composer did nothing, and the reason is in
@@ -794,6 +841,55 @@ Neither node is a plugin surface. No manifest contributed it, so `chrome_for_a_n
 `chrome_for`'s three questions a person can see — `plugins.chrome` — and neither `ui.chrome` nor
 `UiProvider::draws_chrome` is involved. A chat node still reads its endpoints out of the plugin's own
 folder, so `Settings -> Agent-Chat` governs the panel and every node at once.
+
+### Nothing inside a node can take the wheel, so the window hands it over
+
+A node draws into an `egui` layer of its own, and a layer made this way registers no `AreaState`. That
+is the whole of it: `Memory::layer_id_at` walks the areas it knows and a node's layer is not among
+them, so `Context::rect_contains_pointer` is **false everywhere inside a node** — and that is the
+question `egui::ScrollArea` asks before it takes a wheel. `task-1905` reported it as *"I can't scroll
+the node"* about a folder node, and `task-2003` as *"I cant scroll agent chat in base of infinite
+space. All nodes that have content that is scrollable must be scrollable."*
+
+**egui's hit test is a different question and does work here.** `Context::interact_widgets` walks the
+widget rectangles of every layer that is interactable, and a layer with no `AreaState` counts as
+interactable, so a `Response` inside a node reports `hovered` and `contains_pointer` correctly. That is
+why a terminal node's grid and a File Editor node's page scroll with no help: both read the wheel off a
+`Response`. It is also why they must **not** be handed one — the wheel would be taken out of the frame
+before they read it.
+
+So `wheel_over_a_node` reads the frame's delta for the node the pointer is over, in the node's own
+points, and the caller clears it once the node really used it. Three things follow that are each a rule
+rather than a line:
+
+- **Read, not taken.** A wheel over a node with nothing to scroll is still the canvas's, and clearing it
+  unconditionally made a full-height chat node a dead spot where the canvas would not zoom.
+- **The canvas asks the model whether the pointer is over a node**, rather than relying on a node's own
+  widgets having claimed the point first. That was true where a node has a widget under the pointer and
+  false over its margins, its empty transcript and its board's background — so a wheel there zoomed the
+  canvas *and* scrolled the node, and the node slid away under the pointer while its contents moved.
+- **What is handed to `egui` is a delta, never an offset.** `ScrollArea::vertical_scroll_offset` writes
+  the offset and is then overwritten again before the frame ends whenever `stick_to_bottom` is on and
+  the view was already at the bottom, which is exactly where a conversation sits — so scrolling up did
+  nothing at all. `Ui::scroll_with_delta` sets egui's own `had_explicit_scroll_adjustment`, which is
+  what unsticks it. `AgentChat::scroll_at` takes the pointer in the pane's own points, because a wheel
+  over the header or the composer is not the transcript's, and `PaneState::list_rect` is where the
+  drawing writes down which rectangle that is.
+
+**A rectangle measured inside a node and `Context::pointer_interact_pos` are different spaces**, and
+that is the second half of `task-2003`'s report. The pointer position is in the window's points and a
+node's contents are in the canvas's, so the two agree only while the camera sits at 1.0 on the origin —
+which is where a test leaves it and where nobody leaves a canvas. The Agent-Tasks board reads the wheel
+itself and compared the two, so its lanes, its listings, its todo list and its description scrolled on a
+fresh canvas and stopped the moment it was panned; dragging a card missed for the same reason.
+`controls::pointer_in` maps the pointer into a `Ui`'s own points through
+`Context::layer_transform_to_global`, and answers the pointer unchanged in a pane, so one call is right
+in both places and a component does not have to know which it is drawing in.
+
+And the chat pane's **endpoint list** scrolls now, which it never did anywhere: it laid its rows down
+the pane and stopped at the first one that would not fit, so a short pane — or enough endpoints — had
+rows that could not be reached at all. The ticket's rule is that anything with more in it than there is
+room for scrolls, and that is as true of five rows as of a conversation.
 
 ### A page keeps its whole width, and the crop is a separate answer
 
@@ -3612,6 +3708,38 @@ is concerned", and it answers with the memory whenever there is one. **A toggle 
 for the same reason: hiding the maximised pane left a body with nothing in it at all, so every route that
 shows or hides a panel calls `leave_the_maximised_pane` first, and `settling_the_maximise` is what stops the
 maximise ending itself while it is putting the panels away.
+
+### A toggle opens the pane it names, and ending a maximise is not restoring one (`task-2003`)
+
+*"When I have base of infinite open, the press/toggle agent chat pane, it opens the editor pane too. The
+behavior is inconsistent. sometimes it has that issue, other times it doesn't."*
+
+The inconsistency was the maximise, which is why the same button behaved differently on two afternoons.
+`leave_the_maximised_pane` did not end the maximise, it called `restore_the_maximised_pane` — which puts
+back every panel that was showing before one pane filled the window. So with the canvas merely showing,
+the Agent-Chat button opened the Agent-Chat pane; with the canvas **filling the window**, the same button
+restored the editing area and the explorer and then opened the chat pane on top of them. One press, three
+panes, and nothing on the screen to say why.
+
+Ending a maximise and restoring an arrangement are two different things and are two functions now.
+`leave_the_maximised_pane` sets `Maximise::No` and touches nothing else: what is filling the window stays
+on the screen, the editing area stays where the maximise left it, every other panel stays put away, and
+the pane that was asked for opens. Putting the arrangement back is `restore_the_maximised_pane`, which is
+what `Escape`, a second double click on the header and `toggle-maximised-pane` all mean.
+
+**The promise that there is always something to look at moved** with it, to
+`keep_something_to_look_at`, because it used to be kept by accident: hiding the last tile with the
+editing area away was safe only because the restore had already put the editing area back. It is called
+from `show_a_panel`, from each of the three tiles and from `show_the_plugin_pane`, so the routes that
+reach a tile directly — `Action::ToggleTerminal`, `unluminous-cli terminal hide` — keep it too.
+
+`SpaceAction::Toggle` asked `was_showing`, which answers with the arrangement the maximise is holding
+rather than with what is on the screen. That was right while leaving a maximise restored it and wrong
+afterwards, so it reads `space.visible`. Nothing else asked.
+
+`every_panel_toggle_changes_only_the_panel_it_names` walks `Panel::all` rather than naming three panels,
+so a seventh panel is covered the day it is added, and two things it does **not** treat as violations are
+asserted rather than worked around: the three tiles share a strip, and the window is never left empty.
 
 The handle is the same one a panel is dragged by, so `components::dock::Grab` gained `twice`. The
 explorer's project row reports into the same `Grab`, because the row is added *after* the handle and

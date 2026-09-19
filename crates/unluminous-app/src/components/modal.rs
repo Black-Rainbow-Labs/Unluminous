@@ -560,7 +560,7 @@ pub fn button(ui: &mut egui::Ui, area: Rect, name: &str, enabled: bool, primary:
 
 /// A heading inside a page, with a rule running to the right edge, as the reference editor draws one.
 pub fn section(ui: &mut egui::Ui, area: Rect, top: f32, name: &str) -> f32 {
-    let painter = ui.painter_at(area.expand(20.0));
+    let painter = ui.painter_at(down_the_page(ui, area));
     let galley = painter.layout_no_wrap(
         name.to_owned(),
         egui::FontId::proportional(12.5),
@@ -581,7 +581,7 @@ pub fn section(ui: &mut egui::Ui, area: Rect, top: f32, name: &str) -> f32 {
 
 /// A line of explanation, in the faintest colour. Returns the y below it.
 pub fn note(ui: &mut egui::Ui, area: Rect, top: f32, text: &str) -> f32 {
-    let painter = ui.painter_at(area.expand(20.0));
+    let painter = ui.painter_at(down_the_page(ui, area));
     let galley = painter.layout(
         text.to_owned(),
         egui::FontId::proportional(11.5),
@@ -591,6 +591,23 @@ pub fn note(ui: &mut egui::Ui, area: Rect, top: f32, text: &str) -> f32 {
     let height = galley.size().y;
     painter.galley(Pos2::new(area.left(), top), galley, color::text_faint());
     top + height + 8.0
+}
+
+/// `area` widened a little sideways and left alone downwards, which is the clip a page's own painting wants.
+///
+/// **A settings page that scrolls paints a row well below the rectangle it was given**, and `area.expand(20)`
+/// clipped everything past the first twenty points of that away. It is not obvious because of where the
+/// rectangle comes from: inside an `egui::ScrollArea` a page reads `Ui::available_rect_before_wrap`, which is
+/// the viewport moved **up** by however far the page is scrolled — so scrolling down by 300 points threw away
+/// the bottom 300 points of the window. What survived was the fields and the buttons, because those paint
+/// through `ui.painter()` and are clipped by the scrolling area itself; what vanished was every heading,
+/// label and note. `task-2003` reports it on the Agent-Chat page as controls with nothing beside them.
+///
+/// So the sideways clip stays — a heading must not draw past the page's own margins — and downwards the
+/// `Ui`'s own clip rectangle is used, which is the scrolling area's and is the right answer in a page that
+/// does not scroll too.
+fn down_the_page(ui: &egui::Ui, area: Rect) -> Rect {
+    Rect::from_x_y_ranges(area.x_range().expand(20.0), ui.clip_rect().y_range())
 }
 
 /// A tick box with its label to the right of it. Returns true when it was changed.

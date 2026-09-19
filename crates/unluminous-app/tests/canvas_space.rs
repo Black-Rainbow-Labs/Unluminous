@@ -3390,3 +3390,167 @@ fn a_chat_node_at_its_smallest_keeps_the_composer_inside_it() {
         parts.body,
     );
 }
+
+/// `task-2003`: *"I cant scroll agent chat in base of infinite space. All nodes that have content that
+/// is scrollable must be scrollable."*
+///
+/// A node draws into an egui layer that registers **no `AreaState`**, so
+/// `Context::rect_contains_pointer` is false everywhere inside one — and that is the question
+/// `egui::ScrollArea` asks before it takes a wheel. A folder node has had the answer since `task-1905`:
+/// the window reads the wheel and tells the node how far to move. Nothing else did, so the chat node's
+/// transcript could not be scrolled at all.
+///
+/// Asserted on the pane's own `scrolled`, which is read back off the `ScrollArea` every frame, and on
+/// the pointer being put over the rectangle the transcript really drew in — which the pane writes down
+/// for exactly this reason. `stick_to_bottom` leaves a full conversation at the bottom, so the gesture
+/// under test is a wheel **up**.
+#[test]
+fn the_wheel_over_a_chat_node_scrolls_its_conversation() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space size {node} --width 460 --height 360"));
+    steady(&mut harness);
+    a_long_conversation_on(&mut harness, node);
+
+    let (was, most, list) = {
+        let chat = harness.state().space.live.chat(node).expect("the node has a chat");
+        (chat.ui.scrolled, chat.ui.scrollable, chat.ui.list_rect)
+    };
+    assert!(most > 60.0, "there is far more conversation than node, and it can scroll {most}");
+    assert!(was > 60.0, "and it is at the bottom of it, at {was}");
+    let list = list.expect("the transcript wrote down where it drew");
+
+    let camera_was = harness.state().space.space.current().camera;
+    let body = harness.state().space.body;
+    let over_the_transcript = camera_was.to_screen(body.min, list.center());
+    harness.input_mut().events.push(egui::Event::PointerMoved(over_the_transcript));
+    steady(&mut harness);
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: vec2(0.0, 240.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::default(),
+    });
+    // **`pump`, not `run`**, for `task-1654`'s reason: egui's own tooltip layer asks for a repaint on
+    // every frame while the pointer is scrolling, so a window that has to go quiet never does.
+    pump(&mut harness);
+    pump(&mut harness);
+
+    let now = harness.state().space.live.chat(node).expect("the node has a chat").ui.scrolled;
+    assert!(now < was - 60.0, "the conversation moved: it was at {was} and is at {now}");
+    // **And the canvas did not move with it.** A wheel the node took is taken out of the frame, which is
+    // what `egui::ScrollArea` does when it takes one; and the canvas's own zoom asks whether the pointer
+    // is over a node before it reads the wheel at all.
+    let camera_now = harness.state().space.space.current().camera;
+    assert_eq!(camera_now.at, camera_was.at, "the canvas stayed where it was");
+    assert_eq!(camera_now.zoom, camera_was.zoom);
+}
+
+/// The same gesture on a canvas that is zoomed out moves the transcript by what the pointer moved.
+///
+/// The delta arrives in the window's points and the transcript is measured in the node's own, so it is
+/// divided by the camera's zoom — the rule `wheel_over_a_node` states and the one a canvas at 0.5 would
+/// otherwise break by scrolling twice as far as the pointer went.
+#[test]
+fn the_wheel_over_a_chat_node_scrolls_by_the_nodes_own_points() {
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let node = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("space size {node} --width 460 --height 360"));
+    did(&mut harness, "space camera --zoom 0.5");
+    steady(&mut harness);
+    a_long_conversation_on(&mut harness, node);
+
+    let (was, list) = {
+        let chat = harness.state().space.live.chat(node).expect("the node has a chat");
+        (chat.ui.scrolled, chat.ui.list_rect.expect("the transcript drew"))
+    };
+    let camera = harness.state().space.space.current().camera;
+    assert!((camera.zoom - 0.5).abs() < 0.01, "the canvas is at {}", camera.zoom);
+    let body = harness.state().space.body;
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::PointerMoved(camera.to_screen(body.min, list.center())));
+    steady(&mut harness);
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: vec2(0.0, 100.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::default(),
+    });
+    pump(&mut harness);
+    pump(&mut harness);
+
+    let now = harness.state().space.live.chat(node).expect("the node has a chat").ui.scrolled;
+    let moved = was - now;
+    assert!(
+        (moved - 200.0).abs() < 20.0,
+        "100 points of wheel on a canvas at 0.5 is 200 of the node's own, and it moved {moved}"
+    );
+}
+
+/// A conversation far taller than any node, so there is something to scroll.
+fn a_long_conversation_on(harness: &mut Harness<'static, UnluminousApp>, node: u64) {
+    if let Some(chat) = harness.state_mut().space.live.chat_mut(node) {
+        for number in 0..40 {
+            let id = chat.session_mut().chat.next_id();
+            chat.session_mut().chat.push(unluminous_chat::Message::said(
+                id,
+                unluminous_chat::Role::Assistant,
+                format!(
+                    "Answer number {number}, with enough words in it to take a line of its own and \
+                     then some more besides, so that forty of them are far taller than the node."
+                ),
+            ));
+        }
+    }
+    steady(harness);
+    steady(harness);
+}
+
+/// The wheel over a File Editor node moves its page, which is the other half of `task-2003`'s
+/// *"All nodes that have content that is scrollable must be scrollable."*
+///
+/// This one needs nothing handed to it and is asserted so that it stays that way: `show_editor` reads
+/// the wheel off a `Response`, and a `Response` comes from egui's hit test, which **does** see a node's
+/// layer. Handing it a wheel as well would take the delta out of the frame before it read it, so
+/// `show_a_node_body` deliberately does not — and this is what would fail if somebody added it.
+#[test]
+fn the_wheel_over_a_file_editor_node_moves_its_page() {
+    use unluminous_app::services::space::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    let long: String = (0..400).map(|line| format!("Line {line} of a long file.\n")).collect();
+    let file = std::env::temp_dir().join("unluminous-editor-node-scroll.txt");
+    std::fs::write(&file, long).expect("a long file");
+    let node = harness.state_mut().new_detached_space_node(Kind::Editor, egui::pos2(20.0, 20.0));
+    did(&mut harness, &format!("space size {node} --width 460 --height 360"));
+    harness.state_mut().open_in_a_space_node(node, &file).expect("the file opens in the node");
+    steady(&mut harness);
+
+    let index = harness.state().files.tab_in_node(node).expect("the node has a tab");
+    assert_eq!(harness.state().files.at(index).scroll, 0.0, "it starts at the top");
+
+    let camera_was = harness.state().space.space.current().camera;
+    let body = harness.state().space.body;
+    let over_the_page = camera_was.to_screen(body.min, egui::pos2(240.0, 220.0));
+    harness.input_mut().events.push(egui::Event::PointerMoved(over_the_page));
+    steady(&mut harness);
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: vec2(0.0, -240.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::default(),
+    });
+    pump(&mut harness);
+    pump(&mut harness);
+
+    let scrolled = harness.state().files.at(index).scroll;
+    assert!(scrolled > 60.0, "the page moved down, it is at {scrolled}");
+    let camera_now = harness.state().space.space.current().camera;
+    assert_eq!(camera_now.zoom, camera_was.zoom, "and the canvas did not zoom under it");
+    assert_eq!(camera_now.at, camera_was.at);
+    let _ = std::fs::remove_file(&file);
+}

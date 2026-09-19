@@ -43,6 +43,7 @@ impl UnluminousApp {
         } else if self.focus == Focus::Terminal {
             self.focus = Focus::Editor;
         }
+        self.keep_something_to_look_at();
     }
 
     /// The rectangle a panel has, or **would** have if it were showing.
@@ -196,6 +197,7 @@ impl UnluminousApp {
         } else if self.focus == Focus::Terminal {
             self.focus = Focus::Editor;
         }
+        self.keep_something_to_look_at();
     }
 
     /// Show the debug tile, or put it away.
@@ -213,6 +215,7 @@ impl UnluminousApp {
                 self.focus = Focus::Editor;
             }
         }
+        self.keep_something_to_look_at();
     }
 
     /// Fill the window with one pane, or put back what was showing before one did.
@@ -308,15 +311,31 @@ impl UnluminousApp {
     /// The four have their own flags and a contributed pane has a registry, so "put this panel away" was
     /// four `match` arms written out wherever it was needed. One function, so maximising cannot forget a
     /// kind of panel the day a fifth is added — the compiler names it here.
-    /// Put the window back before a panel is shown or hidden by anything but the maximise itself.
+    /// Stop filling the window with one pane, because a panel was asked for by name.
     ///
     /// **A maximised window is one pane and nothing else**, so a toggle inside it has no arrangement to
     /// change: hiding the maximised pane left a body with nothing in it at all, and showing a second one
-    /// left two panes up with the menu still offering `Restore Pane`. The arrangement comes back first and
-    /// the toggle then means what it has always meant. Found by the `task-1771` review.
+    /// left two panes up with the menu still offering `Restore Pane`. That much is `task-1771`'s and is
+    /// unchanged — what ends is the maximise, so `Restore Pane` stops being offered for an arrangement
+    /// nobody is in any more.
+    ///
+    /// **What it does not do is put the remembered arrangement back**, and that is `task-2003`: *"When I
+    /// have base of infinite open, the press/toggle agent chat pane, it opens the editor pane too. The
+    /// behavior is inconsistent."* It was this, and the inconsistency is the maximise: with the canvas
+    /// merely showing, the Agent-Chat button opened the Agent-Chat pane; with the canvas **filling the
+    /// window**, the same button restored every panel that was showing before the canvas was maximised —
+    /// the editing area among them — and then opened the chat pane on top of that. A person pressing one
+    /// button had three panes appear.
+    ///
+    /// So a toggle opens the pane it names and changes nothing else: what is filling the window stays on
+    /// the screen, the editing area stays where the maximise left it, and every other panel stays put
+    /// away. Putting the arrangement back is [`Self::restore_the_maximised_pane`]'s job, which is what
+    /// `Escape`, a second double click on the header and `toggle-maximised-pane` all mean. The promise
+    /// that there is always something to look at is kept where it was, at the end of
+    /// [`Self::show_a_panel`].
     pub(crate) fn leave_the_maximised_pane(&mut self) {
-        if self.maximised != Maximise::No && !self.settling_the_maximise {
-            self.restore_the_maximised_pane();
+        if !self.settling_the_maximise {
+            self.maximised = Maximise::No;
         }
     }
 
@@ -327,7 +346,10 @@ impl UnluminousApp {
         self.tile_with_the_keyboard = tile;
     }
 
-    pub(crate) fn show_a_panel(&mut self, panel: dock::Panel, showing: bool) {
+    /// Public because a test drives every panel through it, which is `task-2003`'s
+    /// *"We need better testing to ensure that toggles only open panes they are associated with."*
+    /// Everything in the window that shows or hides a panel already goes through here.
+    pub fn show_a_panel(&mut self, panel: dock::Panel, showing: bool) {
         // **The two rules that used to be written out at each caller.** `task-1984` A9 found what that
         // cost: `unluminous-cli explorer show` and `hide` wrote `explorer_visible` directly, so
         // showing the explorer while a pane was maximised left a state no pointer can produce, and
@@ -363,9 +385,25 @@ impl UnluminousApp {
                 }
             }
         }
-        // Putting the last panel away while the editing area is hidden would leave a window with
-        // nothing in it at all, so the editing area comes back instead. The other half of this rule
-        // is in `Action::ToggleEditor`, which is about the editing area rather than about a panel.
+        self.keep_something_to_look_at();
+    }
+
+    /// There is always something to look at.
+    ///
+    /// Putting the last panel away while the editing area is hidden would leave a window holding the
+    /// rail and a status bar and nothing else, so the editing area comes back instead. The other half
+    /// of this rule is in `Action::ToggleEditor`, which is about the editing area rather than about a
+    /// panel.
+    ///
+    /// **Called by each of the three tiles as well as by [`Self::show_a_panel`]**, because the three are
+    /// public and `Action::ToggleTerminal`, `Action::ToggleRunTile` and `unluminous-cli terminal hide`
+    /// reach them directly. It used to be `leave_the_maximised_pane` that kept the window from emptying
+    /// on those paths, by putting the whole remembered arrangement back first; since `task-2003` that
+    /// function only ends the maximise, so the promise is made here where every path can keep it.
+    ///
+    /// Skipped while a maximise is being settled, because that is the one caller putting panels away on
+    /// purpose: `settle_the_maximise` walks every panel and then puts the rules back itself.
+    pub(crate) fn keep_something_to_look_at(&mut self) {
         if !self.settling_the_maximise
             && !self.editor_visible
             && !self.anything_is_showing_in_the_panes()

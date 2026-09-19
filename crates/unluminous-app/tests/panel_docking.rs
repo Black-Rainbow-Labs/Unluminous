@@ -134,10 +134,21 @@ fn maximising_is_not_an_arrangement_and_a_toggle_inside_it_ends_it() {
 
     // **A toggle inside a maximise ends it.** Hiding the maximised pane used to leave a body with nothing
     // in it at all; showing a second one left two panes up with the menu still offering `Restore Pane`.
+    //
+    // **What it does not do is put the arrangement back** — `task-2003`, and see
+    // `a_pane_toggle_inside_a_maximise_opens_that_pane_and_nothing_else` for the report. The terminal
+    // was asked for, so the terminal appears; the explorer that was filling the window is still there;
+    // and the editing area, which nobody asked for, stays away.
     did(&mut harness, "action run toggle-terminal");
     steady(&mut harness);
-    assert_eq!(harness.state().maximised_pane(), None, "the arrangement came back first");
-    assert!(harness.state().editor_visible, "so there is something to look at");
+    assert_eq!(harness.state().maximised_pane(), None, "the maximise is over");
+    assert!(harness.state().terminal.visible, "the pane that was asked for is showing");
+    assert!(harness.state().explorer_visible, "so there is something to look at");
+    assert!(!harness.state().editor_visible, "and nothing nobody asked for came back with it");
+    // Put it back by hand, because the rest of this test is about a window with an editing area in it.
+    did(&mut harness, "action run toggle-editor");
+    steady(&mut harness);
+    assert!(harness.state().editor_visible);
 
     // **The tile with the keyboard is the tile that maximises.** The terminal tile and the run tile both
     // say `Focus::Terminal`, which is fine for the zoom — the three share one font size — and wrong here.
@@ -949,5 +960,136 @@ fn a_plugin_switched_off_while_a_pane_is_maximised_does_not_restore_the_wrong_on
     assert!(
         showing_after.iter().any(|key| key.starts_with("agent-tasks/")),
         "and the one that was showing and is still installed does: {showing_after:?}"
+    );
+}
+
+/// `task-2003`: *"When I have base of infinite open, the press/toggle agent chat pane, it opens the
+/// editor pane too. The behavior is inconsistent. sometimes it has that issue, other times it
+/// doesn't."*
+///
+/// The inconsistency was the **maximise**, which is why the same button behaved differently on two
+/// afternoons. `show_the_plugin_pane` begins with `leave_the_maximised_pane`, and that function used to
+/// call `restore_the_maximised_pane` — which puts back every panel that was showing before one pane
+/// filled the window, the editing area among them. So with the canvas merely showing, the Agent-Chat
+/// button opened the Agent-Chat pane; with the canvas **filling the window**, the same button brought
+/// the editing area and the explorer back and then opened the chat pane on top of them. One press,
+/// three panes.
+///
+/// A toggle opens the pane it names and changes nothing else. Putting the arrangement back is what
+/// `Escape`, a second double click on the header and `toggle-maximised-pane` mean, and
+/// `escape_puts_a_maximised_pane_back_and_does_nothing_when_none_is` is where that is asserted.
+#[test]
+fn a_pane_toggle_inside_a_maximise_opens_that_pane_and_nothing_else() {
+    use unluminous_app::app::dock::Panel;
+    let mut harness = harness("");
+    did(&mut harness, "space show");
+    steady(&mut harness);
+    assert!(harness.state().editor_visible && harness.state().explorer_visible);
+    assert!(!showing(&harness, "agent-chat/chat"), "the chat pane starts put away");
+
+    // Two presses on the canvas's own header fill the window with it, which is the state the report is
+    // about and the half that made it intermittent.
+    let header = harness.get_by_label("Move Base of Infinite Space").rect();
+    double_click_at(&mut harness, header.center());
+    steady(&mut harness);
+    assert_eq!(harness.state().maximised_pane(), Some(Some(Panel::Space)));
+    assert!(!harness.state().editor_visible, "the editing area is away");
+    assert!(!harness.state().explorer_visible, "and so is the explorer");
+
+    // The Agent-Chat button in the rail, which is the press in the report.
+    harness.get_by_label("Agent-Chat pane").click();
+    steady(&mut harness);
+
+    assert!(showing(&harness, "agent-chat/chat"), "the pane that was asked for opened");
+    assert!(harness.state().space.visible, "the canvas is still on the screen");
+    assert!(!harness.state().editor_visible, "and the editing area did not come back with it");
+    assert!(!harness.state().explorer_visible, "and neither did the explorer");
+    assert_eq!(
+        harness.state().maximised_pane(),
+        None,
+        "the maximise is over, so `Restore Pane` is not offered for an arrangement nobody is in"
+    );
+
+    // And pressing it again closes the one it opened, and still nothing else.
+    harness.get_by_label("Agent-Chat pane").click();
+    steady(&mut harness);
+    assert!(!showing(&harness, "agent-chat/chat"));
+    assert!(harness.state().space.visible);
+    assert!(!harness.state().editor_visible);
+}
+
+/// Every panel's toggle changes that panel and no other, from a window with all of them put away.
+///
+/// The other half of `task-2003`'s *"We need better testing to ensure that toggles only open panes
+/// they are associated with."* The one above is about a maximise; this one is about the ordinary case,
+/// and it walks the list rather than naming three panels, so a seventh panel added later is covered
+/// the day it is added.
+///
+/// Two rules are deliberately not violations of this and are asserted rather than worked around. The
+/// three **tiles** share a strip, so showing one puts the others on that strip away — `task-1683`.
+/// And there is always something to look at, so putting the last panel away with the editing area
+/// hidden brings the editing area back.
+#[test]
+fn every_panel_toggle_changes_only_the_panel_it_names() {
+    use unluminous_app::app::dock::Panel;
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    steady(&mut harness);
+    let panels: Vec<Panel> = Panel::all(harness.state().plugin_ui.pane_count())
+        .into_iter()
+        .filter(|panel| harness.state().panel_area(*panel).width() > 1.0)
+        .collect();
+    assert!(panels.len() >= 5, "the five that ship and whatever the plugins added: {panels:?}");
+
+    for panel in panels {
+        // A window with the editing area and nothing else, so every panel starts from the same place
+        // and "there is always something to look at" never fires.
+        for one in Panel::all(harness.state().plugin_ui.pane_count()) {
+            harness.state_mut().show_a_panel(one, false);
+        }
+        harness.state_mut().editor_visible = true;
+        steady(&mut harness);
+        let before = harness.state().panels_showing();
+        assert!(!before.iter().any(|showing| *showing), "nothing is showing: {before:?}");
+
+        harness.state_mut().show_a_panel(panel, true);
+        steady(&mut harness);
+        let after = harness.state().panels_showing();
+        for one in Panel::all(harness.state().plugin_ui.pane_count()) {
+            let wanted = one == panel;
+            assert_eq!(
+                after[one.index()],
+                wanted,
+                "showing {panel:?} should have changed {panel:?} alone, and {one:?} is {}",
+                after[one.index()]
+            );
+        }
+        assert!(harness.state().editor_visible, "and the editing area is where it was");
+    }
+}
+
+/// A tile put away with nothing else on the screen brings the editing area back.
+///
+/// The promise `show_a_panel` has always kept, asserted on the paths that do **not** go through it:
+/// `Action::ToggleTerminal` and `unluminous-cli terminal hide` call `show_the_terminal_tile` directly.
+/// It used to be kept for them by accident, because `leave_the_maximised_pane` put the whole
+/// arrangement back before the tile was hidden; since `task-2003` that function only ends the maximise,
+/// so the promise is `keep_something_to_look_at` and is made where every path can keep it.
+#[test]
+fn hiding_the_last_tile_with_the_editing_area_away_brings_the_editing_area_back() {
+    let mut harness = harness("");
+    did(&mut harness, "terminal show");
+    did(&mut harness, "explorer hide");
+    did(&mut harness, "action run toggle-editor");
+    steady(&mut harness);
+    assert!(!harness.state().editor_visible, "the terminal is the only thing on the screen");
+    assert!(harness.state().terminal.visible);
+
+    did(&mut harness, "action run toggle-terminal");
+    steady(&mut harness);
+    assert!(!harness.state().terminal.visible, "the tile went away");
+    assert!(
+        harness.state().editor_visible,
+        "and the window is not left holding the rail and a status bar"
     );
 }

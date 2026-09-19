@@ -302,12 +302,24 @@ impl UnluminousApp {
                 self.space.adding = Some(add_modal::State { at: world, ..Default::default() });
             }
         }
-        // The wheel over the empty canvas zooms, which is what Chordical does and what a canvas
-        // means by a wheel. Over a node it goes to the node, which is what the node's own widgets
-        // take before this is reached.
+        // The wheel over the **empty** canvas zooms, which is what Chordical does and what a canvas
+        // means by a wheel. Over a node it is the node's.
+        //
+        // **Asked of the model rather than left to the hit test** (`task-2003`). This used to rely on a
+        // node's own widgets having taken the point before it was reached, which is true where a node
+        // has a widget under the pointer and false over its margins, its empty transcript, its board's
+        // background — so a wheel there both zoomed the canvas and scrolled the node, and the node
+        // slid away under the pointer while its contents moved. A node is a rectangle and the canvas
+        // knows where every one of them is, so the question is answered from that.
         if response.hovered() {
             let steps = ui.input(|input| input.smooth_scroll_delta.y);
-            if steps.abs() > 0.5 {
+            let over_a_node = ui
+                .ctx()
+                .pointer_latest_pos()
+                .map(|at| self.space.space.current().camera.to_world(body.min, at))
+                .and_then(|world| self.space.space.current().node_at(world))
+                .is_some();
+            if steps.abs() > 0.5 && !over_a_node {
                 if let Some(at) = ui.ctx().pointer_latest_pos() {
                     let notches = (steps / 50.0).clamp(-3.0, 3.0);
                     // **Off where the camera is going rather than off where it is**, so turning the wheel
@@ -682,11 +694,16 @@ impl UnluminousApp {
         // body *and* the frame. It used to be set here, around the body alone, so a node's own header was
         // still a magnified bitmap. `task-1907`, and `task-1945` for the half it left out.
         match node.kind() {
+            // The terminal's grid and the editing area both read the wheel themselves, off a `Response`
+            // rather than off `Context::rect_contains_pointer` — and a `Response` comes from egui's hit
+            // test, which does include a node's layer. So those two work inside a node with no help, and
+            // taking the wheel out of the frame for them would stop them working.
             Kind::Terminal => self.show_a_terminal_node(ui, node, body, focused),
+            // A page is a native child and scrolls itself, under the operating system's own pointer.
             Kind::Browser => self.show_a_browser_node(ui, node, body, focused),
             Kind::Folder => self.show_a_folder_node(ui, node, body, focused, has_the_pointer),
             Kind::Editor => self.show_an_editor_node(ui, node, body, focused),
-            Kind::Chat => self.show_a_chat_node(ui, node, body, focused),
+            Kind::Chat => self.show_a_chat_node(ui, node, body, focused, has_the_pointer),
             Kind::Tasks => self.show_a_tasks_node(ui, node, body, focused),
         }
     }
@@ -911,17 +928,34 @@ impl UnluminousApp {
         node: &Node,
         has_the_pointer: bool,
     ) -> Option<f32> {
+        let delta = self.wheel_over_a_node(ui, has_the_pointer)?;
+        let was = self.space.live.scroll_of(node.id);
+        ui.ctx().input_mut(|input| input.smooth_scroll_delta.y = 0.0);
+        Some((was - delta).max(0.0))
+    }
+
+    /// The wheel turned over the node under the pointer this frame, in the node's own points.
+    ///
+    /// **Read, not taken**: the caller clears the frame's delta once it knows the node really used it,
+    /// which is what `egui::ScrollArea` itself does when it takes one. Without that the canvas would pan
+    /// or zoom at the same time as the node scrolled, which is one gesture doing two things; with it
+    /// taken unconditionally, a wheel over a node with nothing to scroll would do nothing at all.
+    ///
+    /// The delta arrives in screen points and a node's contents are in the node's own, so it is divided
+    /// by the camera's zoom — a canvas at 0.5 would otherwise scroll twice as far as the pointer moved.
+    ///
+    /// `has_the_pointer` is whether this is the node the pointer is over, worked out **once** before any
+    /// node was drawn — see [`Self::show_the_space_nodes`]. Each node asking for itself gave the wheel to
+    /// the backmost of a stack, and cleared the delta so the one on top got nothing.
+    fn wheel_over_a_node(&self, ui: &egui::Ui, has_the_pointer: bool) -> Option<f32> {
         if !has_the_pointer {
             return None;
         }
-        let camera = self.space.space.current().camera;
         let delta = ui.input(|input| input.smooth_scroll_delta.y);
         if delta.abs() < 0.5 {
             return None;
         }
-        ui.ctx().input_mut(|input| input.smooth_scroll_delta.y = 0.0);
-        let was = self.space.live.scroll_of(node.id);
-        Some((was - delta / camera.zoom.max(0.01)).max(0.0))
+        Some(delta / self.space.space.current().camera.zoom.max(0.01))
     }
 
     /// What a folder node's rows asked for.
@@ -1030,8 +1064,32 @@ impl UnluminousApp {
     /// the provider list, the streaming and the tool blocks all arrive with no code of their own. What is
     /// different is which `AgentChat` it is handed — this node's, from `space::live::Live` — and that is
     /// the whole of what makes two chats on one canvas two agents.
-    fn show_a_chat_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
+    fn show_a_chat_node(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        body: Rect,
+        focused: bool,
+        has_the_pointer: bool,
+    ) {
         self.make_sure_a_node_has_a_chat(node);
+        // **The wheel, because the pane cannot take it here.** A node's layer registers no `AreaState`,
+        // so the transcript's own `ScrollArea` never sees the pointer — `task-2003`'s *"I cant scroll
+        // agent chat in base of infinite space"*. The window reads it and the chat is told how far to
+        // move, which is the same answer `show_a_folder_node` has had since `task-1905`.
+        if let Some(wheel) = self.wheel_over_a_node(ui, has_the_pointer) {
+            let at = ui
+                .ctx()
+                .pointer_latest_pos()
+                .map(|at| self.space.space.current().camera.to_world(self.space.body.min, at));
+            let took = match (at, self.space.live.chat_mut(node.id)) {
+                (Some(at), Some(chat)) => chat.scroll_at(at, wheel),
+                _ => false,
+            };
+            if took {
+                ui.ctx().input_mut(|input| input.smooth_scroll_delta.y = 0.0);
+            }
+        }
         // The ground first, then the slot the decoration goes in, then the chat's widgets. egui hands a
         // layer's shapes to the tessellator in the order they arrive, so a ground painted after the slot
         // would cover the very thing the slot is for — which is the fault `task-1765` records for the
@@ -2780,10 +2838,13 @@ impl UnluminousApp {
     /// The one place a canvas action turns into a change.
     pub(crate) fn run_a_space_action(&mut self, action: SpaceAction) {
         match action {
+            // **What is on the screen, not what a maximise is remembering.** This used to ask
+            // `was_showing`, which answers with the arrangement `Maximise::Filling` is holding — right
+            // while `leave_the_maximised_pane` put that arrangement back first, and wrong since
+            // `task-2003` made it only end the maximise. With another pane filling the window the canvas
+            // is not showing, so the button means show it.
             SpaceAction::Toggle => {
-                let showing = self.was_showing(dock::Panel::Space, self.space.visible);
-                self.leave_the_maximised_pane();
-                self.show_a_panel(dock::Panel::Space, !showing);
+                self.show_a_panel(dock::Panel::Space, !self.space.visible);
             }
             SpaceAction::OpenAddModal => {
                 let at = self.middle_of_the_canvas();

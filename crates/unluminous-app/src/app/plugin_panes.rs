@@ -702,6 +702,10 @@ impl UnluminousApp {
                 provider.keyboard(false);
             }
         }
+        // Reached directly by the rail button and by `plugins pane … --close`, so the promise that there
+        // is always something to look at is kept here as well as in `show_a_panel`. See
+        // [`Self::keep_something_to_look_at`].
+        self.keep_something_to_look_at();
         self.unsaved_settings = true;
     }
 

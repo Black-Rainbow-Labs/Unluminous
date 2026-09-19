@@ -183,12 +183,24 @@ pub struct Ask {
 /// one thing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Permission {
-    /// Look, and change nothing. Each agent's own safest setting, and the default.
-    #[default]
+    /// Look, and change nothing. Each agent's own safest setting.
     Read,
     /// May change files in the project it was started in.
     Edit,
     /// May do anything, including run commands with no sandbox at all.
+    ///
+    /// **The default since `task-2003`**, which asks for it outright: *"Agent chat should have full by
+    /// default."* It was `read`, on the reasoning that an agent run with `--print` cannot stop and ask
+    /// so the safest setting is the one to start from. What that reasoning left out is who is on the
+    /// other end of this one: a chat pane in an editor, started by the person sitting at the machine,
+    /// running the agent they already have signed in and already trust with this checkout — the same
+    /// agent they would otherwise have run in a terminal, where it has no sandbox either. A pane whose
+    /// answer to *"fix this"* is that it is not allowed to is a pane whose first use is a trip to
+    /// Settings, and `read` was that for everybody.
+    ///
+    /// It is a setting rather than a prompt, and the two other values are still a press away for a
+    /// checkout where they are what is wanted.
+    #[default]
     Full,
 }
 
@@ -939,9 +951,13 @@ mod tests {
     fn a_second_question_carries_the_agents_own_session_rather_than_the_transcript() {
         // Which is the whole reason this transport is better than sending to the API behind it: the
         // context the agent has built is the context it keeps, and Unluminous sends one turn's words.
+        // **The permission is named rather than defaulted**, because the second half of this asserts
+        // how `codex exec resume` is told about the sandbox — and at `full`, which is the default since
+        // `task-2003`, there is no sandbox to name. `read` is what that half is about.
         let ask = Ask {
             prompt: "And the other one?".to_owned(),
             session: "29611139-4d2a-495a-b9a9-94a6189e509c".to_owned(),
+            permission: Permission::Read,
             ..Ask::default()
         };
         let claude = command_line(&provider(Wire::ClaudeCli), &ask);

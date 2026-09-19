@@ -152,6 +152,9 @@ fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
         Pos2::new(inner.left() - side, header_rect.bottom() + 4.0 * scale),
         Pos2::new(inner.right() + side, composer_rect.top() - 4.0 * scale),
     );
+    // Forgotten before it is drawn again, so a pane too short to hold a list does not go on answering a
+    // wheel with where one used to be. See `PaneState::list_rect`.
+    parts.state.list_rect = None;
     if body.height() > 20.0 {
         // The two lists are drawn **over** the conversation rather than in a popup, because egui keeps
         // at most one popup open at a time — the rule that already shaped the flyouts, the colour wheel
@@ -160,7 +163,7 @@ fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
         if parts.state.history_open {
             acts.extend(history_list(&mut parts, ui, look, body));
         } else if parts.state.providers_open {
-            acts.extend(provider_list(&parts, ui, look, body));
+            acts.extend(provider_list(&mut parts, ui, look, body));
         } else {
             acts.extend(conversation(&mut parts, ui, look, body));
         }
@@ -320,7 +323,12 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     // Asked for once and then cleared, which is what `reveal_caret` does: a jump that ran on every
     // frame would make the conversation impossible to scroll at all.
     let jump = std::mem::take(&mut parts.state.jump_to_bottom);
+    // Where the list a wheel belongs to is, for the reason `PaneState::list_rect` gives.
+    parts.state.list_rect = Some(area);
+    let wheel = parts.state.wheel.take();
     if session.chat.messages.is_empty() {
+        parts.state.scrolled = 0.0;
+        parts.state.scrollable = 0.0;
         return empty(ui, look, area);
     }
     let mut acts = Vec::new();
@@ -362,6 +370,15 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
         scroller = scroller.vertical_scroll_offset(offset.max(0.0));
     }
     let scrolled = scroller.show(&mut body, |ui| {
+        // The wheel the window read over a canvas node, handed to `egui` the way a wheel it read itself
+        // would have been. See `PaneState::wheel` for why it is a delta and not an offset, and
+        // `ScrollAnimation::none` because a wheel moves the page now rather than gliding to it.
+        if let Some(wheel) = wheel {
+            ui.scroll_with_delta_animation(
+                Vec2::new(0.0, wheel),
+                egui::style::ScrollAnimation::none(),
+            );
+        }
         let width = area.width();
         for one in &session.chat.messages {
             // A tool result is the copy that goes back up the wire; it is drawn inside the block
@@ -486,6 +503,9 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     let history = parts.history;
     let mut acts = Vec::new();
     let scale = look.scale();
+    parts.state.list_rect = Some(area);
+    let put = parts.state.scroll_to.take();
+    let wheel = parts.state.wheel.take();
     let painter = ui.painter_at(area);
     if history.is_empty() {
         controls::centred_line(
@@ -500,85 +520,134 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     let row = look.row_height * scale;
     let mut body = ui.new_child(egui::UiBuilder::new().max_rect(area));
     body.set_clip_rect(area.intersect(ui.clip_rect()));
-    egui::ScrollArea::vertical().id_salt("agent-chat-history").auto_shrink([false, false]).show(
-        &mut body,
-        |ui| {
-            for one in history {
-                let (rect, _) =
-                    ui.allocate_exact_size(Vec2::new(area.width(), row), egui::Sense::hover());
-                if !rect.intersects(ui.clip_rect()) {
-                    continue;
-                }
-                let chosen = one.id == session.chat.id;
-                let response = ui.interact(
-                    rect,
-                    ui.id().with(("agent-chat-history", &one.id)),
-                    egui::Sense::click(),
-                );
-                response.widget_info(|| {
-                    egui::WidgetInfo::labeled(
-                        egui::WidgetType::Button,
-                        true,
-                        format!("Conversation: {}", one.name),
-                    )
-                });
-                let painter = ui.painter_at(rect);
-                if chosen || response.hovered() {
-                    painter.rect_filled(
-                        rect.shrink2(Vec2::new(2.0, 1.0)),
-                        CornerRadius::same(6),
-                        match chosen {
-                            true => look.palette.selected_row,
-                            false => look.palette.control.gamma_multiply(0.5),
-                        },
-                    );
-                }
-                let cross = Rect::from_center_size(
-                    Pos2::new(rect.right() - 12.0 * scale, rect.center().y),
-                    Vec2::splat(18.0 * scale),
-                );
-                painter
-                    .with_clip_rect(Rect::from_min_max(
-                        rect.min,
-                        Pos2::new(cross.left() - 4.0, rect.max.y),
-                    ))
-                    .text(
-                        Pos2::new(
-                            rect.left() + 8.0 * scale,
-                            rect.center().y - look.font_size * 0.42,
-                        ),
-                        egui::Align2::LEFT_TOP,
-                        &one.name,
-                        egui::FontId::proportional(look.font_size * 0.85),
-                        look.palette.text_control,
-                    );
-                if response.clicked() {
-                    acts.push(Act::Open(one.id.clone()));
-                }
-                if crate::components::controls::icon_button(
-                    ui,
-                    cross,
-                    &format!("Remove conversation: {}", one.name),
-                    icon::cross,
-                ) {
-                    acts.push(Act::Remove(one.id.clone()));
-                }
+    let mut scroller =
+        egui::ScrollArea::vertical().id_salt("agent-chat-history").auto_shrink([false, false]);
+    if let Some(offset) = put {
+        scroller = scroller.vertical_scroll_offset(offset.max(0.0));
+    }
+    let scrolled = scroller.show(&mut body, |ui| {
+        if let Some(wheel) = wheel {
+            ui.scroll_with_delta_animation(
+                Vec2::new(0.0, wheel),
+                egui::style::ScrollAnimation::none(),
+            );
+        }
+        for one in history {
+            let (rect, _) =
+                ui.allocate_exact_size(Vec2::new(area.width(), row), egui::Sense::hover());
+            if !rect.intersects(ui.clip_rect()) {
+                continue;
             }
-        },
-    );
+            let chosen = one.id == session.chat.id;
+            let response = ui.interact(
+                rect,
+                ui.id().with(("agent-chat-history", &one.id)),
+                egui::Sense::click(),
+            );
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(
+                    egui::WidgetType::Button,
+                    true,
+                    format!("Conversation: {}", one.name),
+                )
+            });
+            let painter = ui.painter_at(rect);
+            if chosen || response.hovered() {
+                painter.rect_filled(
+                    rect.shrink2(Vec2::new(2.0, 1.0)),
+                    CornerRadius::same(6),
+                    match chosen {
+                        true => look.palette.selected_row,
+                        false => look.palette.control.gamma_multiply(0.5),
+                    },
+                );
+            }
+            let cross = Rect::from_center_size(
+                Pos2::new(rect.right() - 12.0 * scale, rect.center().y),
+                Vec2::splat(18.0 * scale),
+            );
+            painter
+                .with_clip_rect(Rect::from_min_max(
+                    rect.min,
+                    Pos2::new(cross.left() - 4.0, rect.max.y),
+                ))
+                .text(
+                    Pos2::new(rect.left() + 8.0 * scale, rect.center().y - look.font_size * 0.42),
+                    egui::Align2::LEFT_TOP,
+                    &one.name,
+                    egui::FontId::proportional(look.font_size * 0.85),
+                    look.palette.text_control,
+                );
+            if response.clicked() {
+                acts.push(Act::Open(one.id.clone()));
+            }
+            if crate::components::controls::icon_button(
+                ui,
+                cross,
+                &format!("Remove conversation: {}", one.name),
+                icon::cross,
+            ) {
+                acts.push(Act::Remove(one.id.clone()));
+            }
+        }
+    });
+    // Read back where the list ended up and how far it can go, which is the pair the wheel over a canvas
+    // node is measured from. See `PaneState::scrolled`.
+    parts.state.scrolled = scrolled.state.offset.y;
+    parts.state.scrollable = (scrolled.content_size.y - area.height()).max(0.0);
     acts
 }
 
 /// The endpoints, drawn over the conversation area.
-fn provider_list(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
+///
+/// **It scrolls**, which it did not until `task-2003`: the rows were laid out down the pane and the loop
+/// stopped at the first one that would not fit, so a pane short enough — or a person with enough
+/// endpoints — had rows that could not be reached at all. The ticket's rule is that anything with more
+/// in it than there is room for scrolls, and that is as true of a list of five rows as of a
+/// conversation. It is drawn at absolute positions rather than allocated, like everything else on this
+/// pane, so the offset is this pane's own number rather than `egui`'s — which is also what lets the
+/// window hand it a wheel on a canvas node. See [`crate::services::agent_chat::PaneState::scrolled`].
+fn provider_list(
+    parts: &mut Parts<'_>,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    area: Rect,
+) -> Vec<Act> {
     let mut acts = Vec::new();
     let scale = look.scale();
     let row = look.row_height * scale + 12.0 * scale;
-    let mut pen = area.top() + 4.0 * scale;
+    let step = row + 4.0 * scale;
+    let content = 4.0 * scale + parts.configuration.providers.len() as f32 * step;
+    let most = (content - area.height()).max(0.0);
+    parts.state.list_rect = Some(area);
+    // The wheel the pane itself can take, which is what happens in a panel; a canvas node has none to
+    // give here because `rect_contains_pointer` is false inside its layer, and the window hands one over
+    // through `AgentChat::scroll_at` instead. Both end at the same number.
+    let mut down = parts.state.scroll_to.take().unwrap_or(parts.state.scrolled);
+    if let Some(wheel) = parts.state.wheel.take() {
+        down -= wheel;
+    } else if most > 0.0 && ui.rect_contains_pointer(area) {
+        down -= ui.input(|input| input.smooth_scroll_delta.y);
+    }
+    let down = down.clamp(0.0, most);
+    parts.state.scrolled = down;
+    parts.state.scrollable = most;
+    let mut pen = area.top() + 4.0 * scale - down;
+    // **Cut to the list, in both the things that draw.** A child `Ui` carries the clip, so a row scrolled
+    // half out of view is cut and takes no click outside the list — `Ui::interact` cuts an interact
+    // rectangle by the clip the same way a painter is cut. And `Decor::Clip` is the only thing that can
+    // reach the decoration's canvas, which records absolute rectangles into one texture covering the whole
+    // pane: without it a half-scrolled row's shadow is painted over the header above. Both are the rules
+    // `conversation` already keeps.
+    let mut body = ui.new_child(egui::UiBuilder::new().max_rect(area));
+    body.set_clip_rect(area.intersect(ui.clip_rect()));
+    let ui = &mut body;
+    look.chrome.clip(area, 0.0);
     for (index, provider) in parts.configuration.providers.iter().enumerate() {
         let rect = Rect::from_min_size(Pos2::new(area.left(), pen), Vec2::new(area.width(), row));
-        if rect.bottom() > area.bottom() {
-            break;
+        pen += step;
+        if rect.bottom() < area.top() || rect.top() > area.bottom() {
+            continue;
         }
         let chosen = parts.configuration.provider().is_some_and(|one| one.name == provider.name);
         let response = ui.interact(
@@ -638,8 +707,8 @@ fn provider_list(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Re
         if response.clicked() {
             acts.push(Act::Choose(provider.name.clone()));
         }
-        pen += row + 4.0 * scale;
     }
+    look.chrome.unclip();
     acts
 }
 

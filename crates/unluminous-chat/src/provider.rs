@@ -127,6 +127,31 @@ impl Wire {
     pub fn is_an_agent(self) -> bool {
         self.is_a_program()
     }
+
+    /// The program a row of this shape runs when nobody has named one, or `None` for an address.
+    ///
+    /// **One answer rather than two that agree today.** It is what a shipped row carries, and it is what
+    /// the Settings page fills in when somebody presses a shape's button and what it looks for on this
+    /// machine before offering that button at all — `task-2003`: *"why do we show codex option if its
+    /// not on the machine?"*
+    pub fn program_name(self) -> Option<&'static str> {
+        match self {
+            Self::ClaudeCli => Some("claude"),
+            Self::CodexCli => Some("codex"),
+            Self::OpenAi | Self::Anthropic | Self::Responses => None,
+        }
+    }
+
+    /// Whether a row could be switched to this shape here.
+    ///
+    /// An address always can — nothing about a URL is a fact about this machine. A program can only if
+    /// it is installed, which is the question the Settings page asks before it draws that shape's button.
+    pub fn is_available(self, environment: &Environment) -> bool {
+        match self.program_name() {
+            None => true,
+            Some(named) => program(named, environment).is_some(),
+        }
+    }
 }
 
 /// One endpoint.
@@ -211,6 +236,15 @@ impl Provider {
                 max_tokens: DEFAULT_MAX_TOKENS,
             },
         ]
+    }
+
+    /// Whether this is one of the rows Unluminous ships, unchanged.
+    ///
+    /// Asked before a row is dropped for naming a program that is not on this machine, so that only a
+    /// row nobody wrote is ever dropped. A row somebody typed — even one naming the same missing
+    /// program — stays and says why it cannot answer, because it is a thing they meant.
+    pub fn is_one_unluminous_ships(&self) -> bool {
+        Self::defaults().iter().any(|shipped| shipped == self)
     }
 
     /// Whether this endpoint can be reached at all, as a sentence naming what is missing.

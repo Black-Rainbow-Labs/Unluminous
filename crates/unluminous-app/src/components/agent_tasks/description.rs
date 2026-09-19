@@ -94,7 +94,10 @@ fn rendered(
     markdown_text::show(ui, inside, made, renderer, scroll);
     // Scrolled with the wheel, clamped to what there is. A `ScrollArea` cannot be used here because the painting
     // is at absolute positions, which is the arrangement everything in this plugin already has.
-    let over = ui.rect_contains_pointer(area);
+    // `controls::pointer_in` rather than `Ui::rect_contains_pointer`, which asks whether this `Ui`'s
+    // layer is the top one at that point — and a canvas node's layer registers no `AreaState`, so the
+    // answer inside one is no everywhere. `task-2003`.
+    let over = crate::components::controls::pointer_in(ui).is_some_and(|at| area.contains(at));
     if over {
         let wheel = ui.ctx().input(|input| input.smooth_scroll_delta.y);
         if wheel != 0.0 {

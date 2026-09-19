@@ -165,6 +165,21 @@ the word in `TEXT_STRONG` or `TEXT_CONTROL` at 12.5 points. The three line spaci
 and they are buttons rather than a dropdown because they live in a flyout — and because which spacing
 is on can then be seen without opening anything, as it can for the alignments beside them.
 
+**A state that is not a button.** The same drawing as a `choice_button` that is on — `ACCENT` filled,
+the word in `TEXT_STRONG` at 12.5 points, corner radius `CONTROL_CORNER` — with no click. It stands
+where the button would have been and says the thing is already so: `In use` on the endpoint the
+Agent-Chat pane answers from. A button that is greyed out says the same thing in the place a person
+looks last, which is what `task-2003` reported about that page.
+
+**A card in a list of things.** A ground in `CODE_PANEL` with a one point `DIVIDER` stroke, corner
+radius 10, and the one that is chosen keeps the same ground with an `ACCENT` stroke instead. Filling
+the chosen card in `SELECTED_ROW` was tried and is too loud at card size: it washes the fields inside
+it and competes with whatever already says the card is the chosen one. **It is painted
+behind its contents**, which egui cannot do by drawing it afterwards — reserve a shape slot with
+`Painter::add(Shape::Noop)` before the contents and `Painter::set` it at the end. A border stroked
+round the fields instead is what an endpoint row was until `task-2003`, and five of them read as
+twenty loose fields rather than as five things.
+
 **A text field.** `FIELD` with a one point `DIVIDER` stroke, corner radius `CONTROL_CORNER`, an
 `egui::TextEdit` with `Frame::NONE` inside it, text `TEXT_CONTROL` and placeholder `TEXT_FAINT`. A
 search field has a magnifier at its left, 13 points in from the edge. **The box inside it is given

@@ -142,7 +142,9 @@ pub fn show(
     let mut start_the_next: Option<String> = None;
     let mut dragged = None;
     let mut dropped: Option<(Status, i64)> = None;
-    let pointer = ui.ctx().pointer_interact_pos();
+    // In this `Ui`'s own points, because a board drawn on a canvas node is inside a layer carrying the
+    // camera and the lane rectangles below are in the canvas's points. `task-2003`.
+    let pointer = crate::components::controls::pointer_in(ui);
     let released = ui.ctx().input(|input| input.pointer.any_released());
     let query = board.query().to_owned();
     let dragging = board.dragging;
