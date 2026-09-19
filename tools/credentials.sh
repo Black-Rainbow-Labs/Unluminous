@@ -2,12 +2,11 @@
 #
 # Says which GitHub account answers for which repository, and why it matters here.
 #
-# **This machine has two GitHub accounts and they are complementary.** `jasonmcaffee` owns the personal
-# repositories — `unluminous`, `inillucent` — and its token is in the login keychain. `Jason-McAffee` is
-# the work account, `gh` is logged in as it, and it is what reaches `allergan-data-labs`. Measured, each
-# way round: the keychain token gets 200 on `jasonmcaffee/unluminous` and 404 on
-# `allergan-data-labs/alle-experience-bfe`, and the `gh` token gets exactly the opposite. So neither can
-# be the default for github.com as a whole.
+# **A machine can have two GitHub accounts and they are complementary.** Here `jasonmcaffee` owns the
+# personal repositories — `unluminous`, `inillucent` — and its token is in the login keychain. A second,
+# work account is what `gh` is logged in as, and it is what reaches the work repositories. Measured, each
+# way round: the keychain token gets 200 on `jasonmcaffee/unluminous` and 404 on a work repository, and
+# the `gh` token gets exactly the opposite. So neither can be the default for github.com as a whole.
 #
 # **`~/.gitconfig` routes them by repository owner**, which is the fix rather than a workaround:
 #
@@ -31,6 +30,9 @@
 #
 #     tools/credentials.sh              # check every repository this checkout needs
 #     tools/credentials.sh <owner/repo> # check one
+#
+# `UNLUMINOUS_WORK_REPOSITORY=<owner/repo>` adds a repository that should answer through the OTHER
+# account, because the point of the routing is that both still work.
 #
 # It changes nothing and prints no secret.
 
@@ -93,10 +95,11 @@ else
     for entry in "${DEFAULT_REPOSITORIES[@]}"; do
         check_one "${entry%%:*}" "${entry##*:}" || failed=1
     done
-    # A work repository as well, because the point of the routing is that both still work. Skipped
-    # rather than failed when it is not checked out: not everybody has it.
-    if [ -d "$HOME/dev/alle-experience-bfe" ]; then
-        check_one "allergan-data-labs/alle-experience-bfe" "Jason-McAffee" || failed=1
+    # A work repository as well, because the point of the routing is that both still work. Named by
+    # the environment rather than written down here: which repository that is belongs to whoever is at
+    # the machine, and it is skipped rather than failed when nobody has said.
+    if [ -n "${UNLUMINOUS_WORK_REPOSITORY:-}" ]; then
+        check_one "$UNLUMINOUS_WORK_REPOSITORY" || failed=1
     fi
 fi
 

@@ -22,8 +22,10 @@ New-Item -ItemType Directory -Path (Join-Path $demo 'src') | Out-Null
 Push-Location $demo
 try {
     git init -q --initial-branch=main
-    git config user.name 'Jason'
-    git config user.email 'jsinjasonjsin@gmail.com'
+    # Three invented authors, on example.com, because this fixture is checked in and a real address in
+    # it is a real address published. The other two are named on their own commits below.
+    git config user.name 'Ada Lovelace'
+    git config user.email 'ada@example.com'
     git config commit.gpgsign false
 
     Set-Content -Encoding utf8 readme.md @'

@@ -1,5 +1,9 @@
 # Unluminous
 
+**[unluminous.com](https://unluminous.com)** — what it looks like, what it does, and the installer.
+Made by [Black Rainbow Labs](https://blackrainbowlabs.com). Dual licensed
+[MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE), at your option.
+
 A text editor for macOS and Windows, written in Rust. It opens any file holding text, has a file explorer
 with folders that expand in place, a terminal along the bottom with tabs, and it lets the desktop show
 through its background while the text stays solid.
@@ -29,6 +33,9 @@ driven down and the MCP server on top of it, and [Where a change goes](#where-a-
 file to open first.
 
 ## Installing it
+
+**[unluminous.com](https://unluminous.com) has the Windows installer**, with its size and its SHA-256
+beside it, which is the way in for somebody who does not want to build anything. To build it yourself:
 
 ```powershell
 powershell -File installer\windows\build.ps1 -Install   # Windows
@@ -1069,6 +1076,7 @@ Each stands on its own, and states any fact it needs rather than pointing at ano
 | `tools/agent-study/README.md` | Watching an agent actually drive the window: how to run the study, what a scenario is, and the one number it reports. |
 | `tasks/task-1695-agent-study.md` | The first run of it: 23 scenarios, what an agent did instead of asking Unluminous, and the nine tickets it produced. |
 | `installer/README.md` | How to build an installer, on either platform. |
+| `tools/publish-open-source.mjs` | The one command that publishes this history to the public repository: what it rewrites, what it checks before it pushes, and why publishing is an ordinary push rather than a force push. |
 | `tasks/unluminous-technical-design-document.md` | The editor: what was chosen, what was rejected, and what is deliberately not included. |
 | `tasks/unluminous-ide-tdd.md` | The line numbers, the tabs, the explorer's menu, git, and the plugins. |
 | `tasks/unluminous-terminal-tdd.md` | The terminal: where the line was drawn between `alacritty_terminal` and Unluminous, and what it does not do. |
@@ -1083,3 +1091,15 @@ Each stands on its own, and states any fact it needs rather than pointing at ano
 | `tasks/task-1672-zoom-tdd.md` | The zoom that keeps the line you were reading where it was. |
 | `tasks/task-1673-split-view-tdd.md` | The source and its preview scrolling together, dragging a tab into another pane, and the scrollbar. |
 | `tasks/task-1679-mcp-tdd.md` | The MCP server: why the tools are generated, what the two shapes were measured at, and why the server holds no session. |
+
+## Licence, and how to take part
+
+Dual licensed under [MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE), at your option — the licence
+pair Rust itself uses, so Unluminous can be vendored into either kind of project without a decision.
+Any contribution you deliberately submit is under those same terms, with no further conditions.
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — the four things `CLAUDE.md` does not say in one place: why a
+  feature is three things, how to run each of the four test layers, which crate a change goes in, and
+  the house style.
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — be decent to people; argue about code.
+- [`SECURITY.md`](SECURITY.md) — where to report a vulnerability, what is in scope and what is not.
