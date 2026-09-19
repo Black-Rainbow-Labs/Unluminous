@@ -18,6 +18,8 @@
 //! and a warning about that would be a warning about the split rather than about the code.
 #![allow(dead_code)]
 
+pub mod receipt;
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 
@@ -92,6 +94,7 @@ pub fn shared_render_state() -> RenderState {
 /// test added later cannot go back to a device of its own without meaning to. See
 /// [`shared_render_state`].
 pub fn builder<State>() -> egui_kittest::HarnessBuilder<State> {
+    receipt::note_this_binary_started();
     egui_kittest::HarnessBuilder::default()
         .renderer(WgpuTestRenderer::from_render_state(shared_render_state()))
 }
@@ -733,7 +736,13 @@ pub fn run(
     // The reply's own name rather than the line's, because the reply is what the window dispatched
     // on: a line that would not parse answers with an empty name, which [`note_a_drive`] drops.
     note_a_drive(&reply.command, reply.ok);
-    harness.run();
+    // **`pump`, not `Harness::run`.** `task-1984` T1: `run` gives the window four steps to go quiet
+    // and panics otherwise, and a command whose work is still being done by a thread -- a database
+    // statement, git, a picture being decoded -- leaves the window correctly asking to be drawn
+    // again. `plugins_database.rs` failed three runs in five on exactly that, and the 668 calls to
+    // [`did`] across fourteen files all had the same latent shape. Pumping here fixes it once
+    // rather than at each call site, and is why [`did_while_waiting`] is now the same function.
+    pump(harness);
     reply
 }
 
@@ -746,23 +755,15 @@ pub fn did(harness: &mut Harness<'static, UnluminousApp>, line: &str) -> serde_j
 
 /// The same, for a command that leaves the window asking to be drawn again later.
 ///
-/// A polite stop asks for one frame two seconds hence, so the window has not gone quiet when the
-/// reply lands. `Harness::run` gives it four steps to settle and panics otherwise, which is right
-/// for a settled window and wrong here — the rule `task-1654` already wrote down about waiting
-/// loops, wearing a different hat.
+/// Kept as a name rather than removed, because it says at the call site that the command being
+/// driven starts work on a thread, which is worth reading. It is [`did`]: since `task-1984` every
+/// command is driven the patient way, because which commands leave a thread running is not
+/// something a test author should have to know.
 pub fn did_while_waiting(
     harness: &mut Harness<'static, UnluminousApp>,
     line: &str,
 ) -> serde_json::Value {
-    let ctx = harness.ctx.clone();
-    let reply = harness
-        .state_mut()
-        .run_command_line(line, &ctx)
-        .unwrap_or_else(|| panic!("`{line}` was not answered on the frame it was asked"));
-    note_a_drive(&reply.command, reply.ok);
-    harness.step();
-    assert!(reply.ok, "`{line}` was refused: {}", reply.message);
-    reply.result
+    did(harness, line)
 }
 
 /// The same, insisting it was refused, and returning the code it was refused with.

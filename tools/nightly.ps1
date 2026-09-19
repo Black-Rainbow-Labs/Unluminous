@@ -81,8 +81,20 @@ Write-Host "    Writing to $log"
 
 # One at a time, because each starts an agent that reads and writes files in its own temporary folder
 # and this machine has one key with one rate limit behind it. That is `agent_board.rs`'s own rule.
-& cargo test --manifest-path (Join-Path $Repo 'Cargo.toml') -p unluminous-app --test agent_board -- --ignored --test-threads=1 2>&1 |
-    Tee-Object -FilePath $log
+#
+# With `CC` out of the environment, for the reason `tools/release.ps1` gives at `Invoke-WithoutCc`:
+# a user `CC` naming `cl.exe` with no `INCLUDE` beside it makes `cc-rs` skip its own toolchain lookup
+# and `libsqlite3-sys` fails to build, so a scheduled run would fail at the build and never reach a
+# test (`task-1984` T4).
+$hadCc = Test-Path env:CC
+$wasCc = if ($hadCc) { $env:CC } else { $null }
+if ($hadCc) { Remove-Item env:CC }
+try {
+    & cargo test --manifest-path (Join-Path $Repo 'Cargo.toml') -p unluminous-app --test agent_board -- --ignored --test-threads=1 2>&1 |
+        Tee-Object -FilePath $log
+} finally {
+    if ($hadCc) { $env:CC = $wasCc }
+}
 
 $passed = $LASTEXITCODE -eq 0
 Write-Host ''

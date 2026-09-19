@@ -1235,8 +1235,16 @@ fn the_terminal_page_holds_the_font_size_and_the_shell() {
     harness.snapshot(shot("settings_terminal"));
 }
 
+/// The two tests below set and remove `UNLUMINOUS_HOME` process wide, and one of them takes an
+/// accepted screenshot that depends on it (`task-1984` T8). Run at the same time on two threads,
+/// one's `remove_var` lands in the middle of the other's window being drawn and the picture is of a
+/// machine's real agent configuration rather than of an empty folder. So they take it in turns,
+/// which is `command_line.rs`'s `ONE_AT_A_TIME` copied here for the same reason.
+static ONE_HOME_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn the_mcp_page_holds_the_install_buttons_the_server_and_the_configuration_to_copy() {
+    let _turn = ONE_HOME_AT_A_TIME.lock().unwrap_or_else(|held| held.into_inner());
     // Two things are pinned before the page is drawn, and both are what make a picture of it the
     // same on every machine. `UNLUMINOUS_HOME` is where the installers look for an agent's own
     // configuration, so a folder of its own is what makes the buttons read `Install for ...`
@@ -1279,6 +1287,7 @@ fn the_mcp_page_holds_the_install_buttons_the_server_and_the_configuration_to_co
 
 #[test]
 fn ticking_the_mcp_box_is_a_setting_and_not_a_listener_in_a_test() {
+    let _turn = ONE_HOME_AT_A_TIME.lock().unwrap_or_else(|held| held.into_inner());
     // A window a test builds never opens a command channel, so it never opens an MCP endpoint
     // either — the rule `open_control_channel` already keeps, for the same reason: a test must not
     // open a port or leave a listener behind when it ends. What the tick box does here is change
@@ -2980,7 +2989,7 @@ fn every_markdown_file_in_the_repository_renders_with_no_broken_invariant() {
     let mut files = Vec::new();
     collect_markdown_files(&root, &mut files);
     assert!(
-        files.len() >= 50,
+        files.len() >= 100,
         "found only {} markdown files under {}, which looks like a broken walk rather than a small \
          repository",
         files.len(),
@@ -3020,7 +3029,12 @@ fn collect_markdown_files(folder: &std::path::Path, into: &mut Vec<std::path::Pa
     for entry in entries.flatten() {
         let path = entry.path();
         let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-        if name.starts_with('.') || matches!(name.as_str(), "target" | "node_modules" | "releases")
+        // `_agent_output` is this machine's agent scratch, not the repository (`task-1984` T5). It
+        // is gitignored, it held 536 of the 646 files this walk was reading, and a report written
+        // there with unusual Markdown in it failed a test about the editor. What travels with the
+        // code is what this is about.
+        if name.starts_with('.')
+            || matches!(name.as_str(), "target" | "node_modules" | "releases" | "_agent_output")
         {
             continue;
         }

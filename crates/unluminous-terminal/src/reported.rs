@@ -149,12 +149,13 @@ impl Scanner {
                 CAN | SUB => self.state = State::Ground,
                 _ => {
                     self.body.push(byte);
-                    // Four bytes is enough to tell `9;9;` from `9;12` and `7;` from `71;`, and after them
-                    // there is nothing to be gained by keeping a clipboard in memory.
-                    if self.body.len() >= 4 && !could_be_a_folder(&self.body) {
-                        self.body.clear();
-                        self.state = State::Skipping;
-                    } else if self.body.len() > LARGEST_SEQUENCE {
+                    // Two reasons to stop reading a body, and the same thing to do about each: it is
+                    // not one of the two sequences this reads, or it has run past what a sequence may
+                    // be. Four bytes is enough to tell `9;9;` from `9;12` and `7;` from `71;`, and
+                    // after them there is nothing to be gained by keeping a clipboard in memory;
+                    // `OSC 52` carries a whole one, which is what the length is about.
+                    let not_ours = self.body.len() >= 4 && !could_be_a_folder(&self.body);
+                    if not_ours || self.body.len() > LARGEST_SEQUENCE {
                         self.body.clear();
                         self.state = State::Skipping;
                     }

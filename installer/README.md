@@ -53,6 +53,16 @@ The script installs the Inno Setup compiler with `winget` the first time, if it 
 Nothing else is needed beyond what building Unluminous already needs: `rc.exe`, which puts the icon inside
 `unluminous.exe`, comes with the Windows SDK that the MSVC toolchain already depends on.
 
+**A `CC` in the environment stops the build, and `tools/release.ps1` unsets it.** `cc-rs` takes a `CC`
+it is given as the whole answer and skips its own Visual Studio lookup, so with a user `CC` naming
+`cl.exe` by its full path and no `INCLUDE` or `LIB` beside it, the compiler it invokes cannot find a
+single system header and `libsqlite3-sys` fails to build — from any ordinary shell, which is every
+shell a release is started from. `task-1984` T4 measured that on this machine: the only gate failed at
+step 0 and every number in that review had to be taken with `env -u CC`. The release scripts and
+`tools/nightly.ps1` now run cargo with `CC` unset. Nothing puts the variable back or takes it away —
+it is the person's — so a `cargo build` typed by hand in that shell still fails, and `env -u CC cargo
+build` is what to type instead.
+
 **What the installer does.** A plain double click installs into `%LOCALAPPDATA%\Programs\Unluminous` with
 no elevation prompt; the first page offers all users, which puts it in `Program Files` instead. Five
 optional things, all on one page and all remembered by the uninstaller:

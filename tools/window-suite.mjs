@@ -1,0 +1,93 @@
+// Has the window suite been run against the code being released?
+//
+// `task-1928` made `tools/release.ps1` the only gate and `task-1984` T9 found the hole it left. The
+// gate deliberately does not run the 639 window tests -- they need a graphics card and a person to
+// open any image that changed, and a script must not be allowed to satisfy the second on its own --
+// so a release could be cut from a commit whose window suite had never been run, and several were.
+//
+// This does not run the suite. It reads the receipts the suite leaves in
+// `_agent_output/window-suite/` (see `crates/unluminous-app/tests/common/receipt.rs`) and says
+// whether every window test binary has run, and run against a commit this one is built on.
+//
+//   node tools/window-suite.mjs --check     exit 0 when every binary has a current receipt
+//   node tools/window-suite.mjs             print what there is and what is missing
+//
+// A receipt names a commit and the time that binary started. It is written when the binary starts
+// and deleted the instant anything in it panics, so a receipt present means that binary ran and
+// nothing in it failed.
+
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const receipts = path.join(repo, '_agent_output', 'window-suite');
+const testsDir = path.join(repo, 'crates', 'unluminous-app', 'tests');
+
+/** Every window test binary, read from the folder rather than written down twice. */
+function expectedBinaries() {
+  return fs
+    .readdirSync(testsDir)
+    .filter((name) => name.endsWith('.rs'))
+    .map((name) => name.slice(0, -3))
+    .sort();
+}
+
+/** The receipt for one binary, or null. */
+function receiptFor(binary) {
+  const file = path.join(receipts, `${binary}.txt`);
+  if (!fs.existsSync(file)) return null;
+  const [commit, when] = fs.readFileSync(file, 'utf8').trim().split(/\s+/);
+  if (!commit) return null;
+  return { commit, when: Number(when) || 0 };
+}
+
+/** Is `commit` one HEAD is built on? A receipt from a commit that was never merged says nothing. */
+function isAncestorOfHead(commit) {
+  try {
+    execFileSync('git', ['-C', repo, 'merge-base', '--is-ancestor', commit, 'HEAD'], {
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const check = process.argv.includes('--check');
+const binaries = expectedBinaries();
+const missing = [];
+const stale = [];
+for (const binary of binaries) {
+  const receipt = receiptFor(binary);
+  if (!receipt) {
+    missing.push(binary);
+  } else if (!isAncestorOfHead(receipt.commit)) {
+    stale.push(`${binary} (last passed at ${receipt.commit.slice(0, 7)}, which HEAD is not built on)`);
+  }
+}
+
+if (!check) {
+  console.log(`Window suite receipts in ${path.relative(repo, receipts)}:`);
+  for (const binary of binaries) {
+    const receipt = receiptFor(binary);
+    const when = receipt?.when ? new Date(receipt.when * 1000).toISOString() : '';
+    console.log(
+      receipt ? `  ${binary}: ${receipt.commit.slice(0, 7)} ${when}` : `  ${binary}: never`,
+    );
+  }
+}
+
+if (missing.length === 0 && stale.length === 0) {
+  if (check) console.log(`The window suite has passed at this commit: ${binaries.length} binaries.`);
+  process.exit(0);
+}
+
+console.error('The window suite has not passed against this code.');
+for (const binary of missing) console.error(`  never run, or last run failed: ${binary}`);
+for (const line of stale) console.error(`  ${line}`);
+console.error('');
+console.error('Run it and look at any image that changed:');
+console.error("  cargo test -p unluminous-app --test '*' --no-fail-fast");
+process.exit(1);

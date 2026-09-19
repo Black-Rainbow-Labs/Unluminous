@@ -4046,14 +4046,27 @@ Four layers, and a change should leave all four green:
 1. `unluminous-core` and `unluminous-terminal`: unit tests with no window. Layout tests measure through a fixed width
    stub, so the expected numbers are arithmetic a reader can check and are the same on every machine.
 2. `unluminous-app`: unit tests for the file tree, the fonts, the settings file, the menus and the key encoding.
-3. `crates/unluminous-app/tests/screenshots.rs`: builds the whole window through `egui_kittest`, feeds it real
-   events, renders through `wgpu` and writes a PNG for each test. **Look at the images.** They are how a
+3. `crates/unluminous-app/tests/`: fourteen binaries that build the whole window through `egui_kittest`,
+   feed it real events, render through `wgpu` and write a PNG for each test. **Look at the images.** They
+   are how a
    person or an agent confirms that bold text is bolder and that the terminal's colours are right. Once
    accepted they are the comparison baseline, so a later change that alters the rendering fails a test.
    `UPDATE_SNAPSHOTS=1 cargo test` accepts new images, and nothing should be accepted without opening it.
    Each platform has its own accepted set — macOS reads `tests/snapshots`, Windows `tests/snapshots/windows`
    — because the menus, the window buttons and the font are all deliberately different there, so one set
    cannot be the baseline for both. `shot()` at the top of the test file is where that is decided.
+
+   **Run it with `--no-fail-fast`, always**: `cargo test -p unluminous-app --test '*' --no-fail-fast`.
+   Cargo stops at the first binary that fails, and these are fourteen separate binaries, so a run
+   without that flag reports one red test while two hundred are simply untested — which is what
+   `task-1984` T2 found, in the sentence the release scripts print as well as in this one.
+
+   **A run leaves a receipt** in `_agent_output/window-suite/`, one file a binary naming the commit it
+   ran at, written when the binary starts and deleted the instant anything in it panics. Both release
+   scripts read it through `node tools/window-suite.mjs --check` and refuse to publish while one is
+   missing or names a commit HEAD is not built on. The suite stays manual, because a graphics card and
+   a person opening a changed image are both needed and a script must not satisfy the second; what
+   stops being possible is releasing from a commit the suite has never seen.
 4. The real application: `cargo run --release`, and `cargo run --example terminal_capture -- claude` for the
    terminal. For git, `pwsh tools/build-git-demo.ps1` builds a small repository under the temporary
    folder — three commits by three authors on three widely separated dates, a branch, an uncommitted

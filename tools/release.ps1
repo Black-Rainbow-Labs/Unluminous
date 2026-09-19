@@ -85,6 +85,27 @@ function Invoke-Checked([string] $What, [scriptblock] $Body) {
 
 <#
 .SYNOPSIS
+  Run a block with `CC` out of the environment, and put it back afterwards.
+.DESCRIPTION
+  `task-1984` T4. This machine has a user environment variable `CC` naming `cl.exe` by its full path
+  with no `INCLUDE` or `LIB` beside it. `cc-rs` takes a `CC` it is given as the whole answer and skips
+  its own Visual Studio lookup, so the compiler it invokes cannot find a single system header and
+  `libsqlite3-sys` fails to build -- from any ordinary shell, which is every shell this script is
+  started from. The only gate therefore failed at step 0 here and every measurement in that review
+  had to be taken with `env -u CC`.
+
+  So cargo is run with `CC` unset. The variable itself is the person's and is left alone; what
+  changes is the environment this script hands to a build.
+#>
+function Invoke-WithoutCc([scriptblock] $Body) {
+    $had = Test-Path env:CC
+    $was = if ($had) { $env:CC } else { $null }
+    if ($had) { Remove-Item env:CC }
+    try { & $Body } finally { if ($had) { $env:CC = $was } }
+}
+
+<#
+.SYNOPSIS
   The version in Cargo.toml, which is the one place a version is written down.
 #>
 function Get-CurrentVersion {
@@ -258,7 +279,9 @@ Write-Host "Unluminous $current -> $next  on $branch"
 if ($WhatIf) {
     Write-Host ''
     Write-Host 'What would happen:' -ForegroundColor Yellow
-    Write-Host "  0. cargo test --workspace --exclude unluminous-app, then -p unluminous-app --lib --bins"
+    Write-Host "  0. cargo fmt --check, cargo clippy -D warnings, changelog --check, contrast --check,"
+    Write-Host "     the window suite's receipt, then cargo test --workspace --exclude unluminous-app"
+    Write-Host "     and -p unluminous-app --lib --bins"
     Write-Host "  1. Cargo.toml version -> $next"
     Write-Host "  2. installer\windows\build.ps1$(if (-not $SkipInstall) { ' -Install' })"
     Write-Host "  3. releases\UnluminousSetup-$next-x64.exe"
@@ -284,17 +307,44 @@ Write-Step 'Running the suite'
 # open any image that changed, which is the one rule a script must not be allowed to satisfy on its
 # own -- and with no continuous integration there is nowhere else it runs either. So a release says
 # plainly that it did not run it, rather than leaving that unsaid.
+#
+# `cargo fmt --check` and `cargo clippy` are here for the same reason the tests are. `task-1928`
+# moved the suite into this script when it removed the continuous integration and left those two
+# behind, so between then and `task-1984` seven files drifted out of format and one clippy error
+# arrived, with nothing to say so.
 if (-not $SkipTests) {
-    Invoke-Checked 'cargo test --workspace --exclude unluminous-app' {
-        & cargo test --manifest-path $Manifest --workspace --exclude unluminous-app
-    }
-    Invoke-Checked 'cargo test -p unluminous-app --lib --bins' {
-        & cargo test --manifest-path $Manifest -p unluminous-app --lib --bins
+    Invoke-WithoutCc {
+        Invoke-Checked 'cargo fmt --all -- --check' {
+            & cargo fmt --manifest-path $Manifest --all -- --check
+        }
+        Invoke-Checked 'cargo clippy --workspace --all-targets -- -D warnings' {
+            & cargo clippy --manifest-path $Manifest --workspace --all-targets -- -D warnings
+        }
+        Invoke-Checked 'node tools\changelog.mjs --check' {
+            & node (Join-Path $Repo 'tools\changelog.mjs') --check
+        }
+        Invoke-Checked 'node tools\contrast.mjs --check' {
+            & node (Join-Path $Repo 'tools\contrast.mjs') --check
+        }
+        Invoke-Checked 'cargo test --workspace --exclude unluminous-app' {
+            & cargo test --manifest-path $Manifest --workspace --exclude unluminous-app
+        }
+        Invoke-Checked 'cargo test -p unluminous-app --lib --bins' {
+            & cargo test --manifest-path $Manifest -p unluminous-app --lib --bins
+        }
     }
     Write-Host 'The window through wgpu is not run here: it needs a graphics card and a person to look'
-    Write-Host 'at any image that changed. Run it by hand: cargo test -p unluminous-app --tests'
+    Write-Host "at any image that changed. Run it by hand: cargo test -p unluminous-app --test '*' --no-fail-fast"
+    # What is checked instead is that somebody did. `task-1984` T9: the window suite is deliberately
+    # manual and nothing recorded when it last passed, so a release could be made from a commit it
+    # had never seen.
+    Invoke-Checked 'the window suite has passed at this commit' {
+        & node (Join-Path $Repo 'tools\window-suite.mjs') --check
+    }
 } else {
-    Write-Host 'Skipped by -SkipTests.'
+    Write-Host 'Skipped by -SkipTests.' -ForegroundColor Yellow
+    Write-Host 'Nothing has checked this build: not the suite, not cargo fmt, not clippy, and not' -ForegroundColor Yellow
+    Write-Host 'whether the window suite has ever been run against it.' -ForegroundColor Yellow
 }
 
 # Everything GitHub needs is checked here, before anything is changed, so that a missing credential

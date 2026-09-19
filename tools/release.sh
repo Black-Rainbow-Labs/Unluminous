@@ -134,7 +134,9 @@ echo "Unluminous $current -> $next  on $branch"
 if [ "$dry_run" = 1 ]; then
     echo
     echo "What would happen:"
-    echo "  0. cargo test --workspace --exclude unluminous-app, then -p unluminous-app --lib --bins"
+    echo "  0. cargo fmt --check, cargo clippy -D warnings, changelog --check, contrast --check,"
+    echo "     the window suite's receipt, then cargo test --workspace --exclude unluminous-app"
+    echo "     and -p unluminous-app --lib --bins"
     echo "  1. Cargo.toml version -> $next"
     echo "  2. installer/macos/build.sh$([ "$skip_install" = 1 ] || echo ' --install')$([ "$skip_notarize" = 1 ] || echo ' --notarize')"
     echo "  3. $image"
@@ -160,13 +162,33 @@ step 'Running the suite'
 # open any image that changed, which is the one rule a script must not be allowed to satisfy on its
 # own -- and with no continuous integration there is nowhere else it runs either. So a release says
 # plainly that it did not run it, rather than leaving that unsaid.
+#
+# `cargo fmt --check` and `cargo clippy` are here for the same reason the tests are. `task-1928`
+# moved the suite into this script when it removed the continuous integration and left those two
+# behind, so between then and `task-1984` seven files drifted out of format and one clippy error
+# arrived, with nothing to say so.
+#
+# `CC` is taken out of the environment cargo is handed (`task-1984` T4). On the Windows machine this
+# is developed alongside, a user `CC` naming `cl.exe` with no `INCLUDE` beside it makes `cc-rs` skip
+# its own toolchain lookup and `libsqlite3-sys` fails to build from any ordinary shell, so the only
+# gate failed at step 0. It costs nothing to unset it here and it is the person's variable to keep.
 if [ "$skip_tests" = 1 ]; then
     echo 'Skipped by --skip-tests.'
+    echo 'Nothing has checked this build: not the suite, not cargo fmt, not clippy, and not whether'
+    echo 'the window suite has ever been run against it.'
 else
-    cargo test --manifest-path "$repo/Cargo.toml" --workspace --exclude unluminous-app
-    cargo test --manifest-path "$repo/Cargo.toml" -p unluminous-app --lib --bins
+    env -u CC cargo fmt --manifest-path "$repo/Cargo.toml" --all -- --check
+    env -u CC cargo clippy --manifest-path "$repo/Cargo.toml" --workspace --all-targets -- -D warnings
+    node "$repo/tools/changelog.mjs" --check
+    node "$repo/tools/contrast.mjs" --check
+    env -u CC cargo test --manifest-path "$repo/Cargo.toml" --workspace --exclude unluminous-app
+    env -u CC cargo test --manifest-path "$repo/Cargo.toml" -p unluminous-app --lib --bins
     echo 'The window through wgpu is not run here: it needs a graphics card and a person to look at'
-    echo 'any image that changed. Run it by hand: cargo test -p unluminous-app --tests'
+    echo "any image that changed. Run it by hand: cargo test -p unluminous-app --test '*' --no-fail-fast"
+    # What is checked instead is that somebody did. `task-1984` T9: the window suite is deliberately
+    # manual and nothing recorded when it last passed, so a release could be made from a commit it
+    # had never seen.
+    node "$repo/tools/window-suite.mjs" --check
 fi
 
 # Everything GitHub needs is checked here, before anything is changed, so a missing credential cannot
