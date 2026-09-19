@@ -177,6 +177,10 @@ pub fn tab(explorer: &mut DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>) 
 /// The one place an act becomes a change.
 pub fn apply(explorer: &mut DatabaseExplorer, acts: Vec<Act>) -> Vec<Request> {
     let mut requests = Vec::new();
+    // One of the two doors the tree's rows change through -- see `DatabaseExplorer::revision`.
+    if !acts.is_empty() {
+        explorer.changed();
+    }
     for act in acts {
         match act {
             Act::ToggleSource(name) => explorer.toggle_source(&name),

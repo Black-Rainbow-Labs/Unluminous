@@ -34,6 +34,15 @@ use alacritty_terminal::term::{Config, Term, TermMode};
 use alacritty_terminal::vte::ansi::{CursorShape as VteCursorShape, Processor};
 
 use crate::keys::Mode;
+
+/// How often the operating system is asked where a shell process is.
+///
+/// **`task-1984` A4.** `Session::folder`'s fallback is `OpenProcess`, `NtQueryInformationProcess`,
+/// two `ReadProcessMemory` calls and a `stat` on Windows, and `/proc/<pid>/cwd` on Linux -- and
+/// `remember_the_project` asks it for every terminal tab on every frame. Half a second is
+/// `app::HEARTBEAT`, which is how often an idle window draws at all, so nothing a person can see is
+/// slower to notice and the ordinary frame asks nothing.
+pub const FOLDER_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 use crate::mouse::MouseMode;
 use crate::palette::Palette;
 use crate::reap::Reaper;
@@ -298,6 +307,14 @@ pub struct Session {
     /// directory where it was, and running a native command after it does not move it either. See
     /// [`crate::reported`] for the sequences this is filled in from and `Watching` for where they are read.
     reported: crate::reported::Reported,
+    /// When the process was last asked where it is, and what it said.
+    ///
+    /// **`task-1984` A4.** See [`Session::folder`]: the fallback is kernel round trips and a `stat`,
+    /// and the caller asks once a frame for every tab. A `RefCell` because `folder` takes `&self` and
+    /// is called from a draw -- the value is a cache rather than state, and making the accessor
+    /// mutable would push `&mut` through `project_state` and the status bar for nothing.
+    process_folder_asked:
+        std::cell::RefCell<Option<(std::time::Instant, Option<std::path::PathBuf>)>>,
     /// The name a person typed for this tab, which beats both of the two above.
     ///
     /// Empty until somebody renames the tab. A name that was asked for by hand is the one thing in
@@ -423,6 +440,7 @@ impl Session {
             name,
             started,
             reported,
+            process_folder_asked: std::cell::RefCell::new(None),
             given: String::new(),
         })
     }
@@ -458,6 +476,7 @@ impl Session {
             started: String::new(),
             // A detached session has no shell to report anything, and `feed` is the test's own way in.
             reported: crate::reported::Reported::new(),
+            process_folder_asked: std::cell::RefCell::new(None),
             given: String::new(),
         }
     }
@@ -623,10 +642,25 @@ impl Session {
         if !self.running {
             return None;
         }
-        // No question is asked of the disk here. The reported folder was checked against it once, on the
-        // reader thread, at the moment it was reported — which is once a prompt rather than once a frame, and
-        // this is called once a frame for every tab. `task-1805` is the ticket that rule comes from.
-        self.reported.folder().or_else(|| self.master.folder())
+        // **The shell's own answer costs nothing**: it was read on the reader thread when the shell
+        // reported it, and checked against the disk there — once a prompt rather than once a frame.
+        if let Some(reported) = self.reported.folder() {
+            return Some(reported);
+        }
+        // **The process's answer is asked on a clock** (`task-1984` A4). The comment above this used
+        // to say no question is asked of the disk here, and the fallback ends in `path.is_dir()` —
+        // reached through `OpenProcess`, `NtQueryInformationProcess` and two `ReadProcessMemory`
+        // calls on Windows, and `/proc/<pid>/cwd` on Linux. `remember_the_project` asks this for
+        // every terminal tab on every frame, so an idle window with three shells open was nine
+        // kernel round trips and three `stat`s twice a second, for an answer that changes when
+        // somebody types `cd`. `WATCH_INTERVAL` is what the folder watch and the adapter search are
+        // already asked on.
+        let mut asked = self.process_folder_asked.borrow_mut();
+        let fresh = asked.as_ref().is_some_and(|(when, _)| when.elapsed() < FOLDER_INTERVAL);
+        if !fresh {
+            *asked = Some((std::time::Instant::now(), self.master.folder()));
+        }
+        asked.as_ref().and_then(|(_, folder)| folder.clone())
     }
 
     /// The two halves of [`Self::folder`] separately, so the difference between them can be measured.

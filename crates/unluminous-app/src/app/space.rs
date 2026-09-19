@@ -249,7 +249,11 @@ impl UnluminousApp {
 
         let bar_outcome = {
             let mut bar_ui = ui.new_child(egui::UiBuilder::new().max_rect(bar));
-            let views = self.space.space.views().to_vec();
+            // **A name and an id a canvas, rather than every canvas the project has** (`task-1984`
+            // A8). `views().to_vec()` deep copied every node on every canvas, with every string in
+            // it, on every frame, to draw a row of chips.
+            let views: Vec<(crate::services::space::ViewId, String)> =
+                self.space.space.views().iter().map(|view| (view.id, view.name.clone())).collect();
             let current = self.space.space.current_id();
             let zoom = self.space.space.current().camera.zoom;
             space_view::view_bar(&mut bar_ui, bar, &views, current, zoom, look)
@@ -257,10 +261,13 @@ impl UnluminousApp {
         self.act_on_the_view_bar(bar_outcome);
 
         self.take_the_canvas_input(&mut body_ui, body);
+        // **Borrowed rather than cloned** (`task-1984` A8): the canvas that is showing, with every
+        // node on it, was deep copied on every frame to escape a borrow. `space` is one field of
+        // `self` and `body_ui` is a local, so there is no borrow to escape.
         let wire_outcome = {
-            let view = self.space.space.current().clone();
+            let view = self.space.space.current();
             let camera = view.camera;
-            space_view::wires(&mut body_ui, body, &view, &camera, look)
+            space_view::wires(&mut body_ui, body, view, &camera, look)
         };
         if let Some((at, edge)) = wire_outcome.menu {
             self.space.in_hand.wire = Some(edge);

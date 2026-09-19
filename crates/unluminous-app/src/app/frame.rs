@@ -70,12 +70,20 @@ impl UnluminousApp {
         self.ask_for_the_next_frame_and_let_the_plugins_catch_up(ui);
 
         let places = self.lay_the_frame_out(ui);
+        // **The menus, built once** (`task-1984` A6). `menu_state` was built at least twice a frame
+        // and `menus` once, plus once more inside `action_for_key` for every key press -- and
+        // `menu_state` clones the recent list and every plugin's menu tree and asks the run
+        // detectors, which read and parse `package.json`. One tree, handed to the bar that draws it
+        // and to the shortcuts that search it, so a chord and a click cannot answer differently
+        // about the same frame either.
+        let menus = actions::menus(&self.menu_state());
+        crate::services::frame_trace::phase("menus");
         // What a menu entry, a key chord, a button or a right click asked for. One is run at the end of
         // the frame, after everything that could ask has been drawn.
         let mut action = None;
-        self.show_the_title_bar(ui, &places, &mut action);
+        self.show_the_title_bar(ui, &places, &menus, &mut action);
         self.show_the_rail(ui, &places, &mut action);
-        self.read_the_menu_shortcuts(ui, &mut action);
+        self.read_the_menu_shortcuts(ui, &menus, &mut action);
         crate::services::frame_trace::phase("chrome");
 
         self.show_the_explorer(ui, &places);
@@ -360,15 +368,13 @@ impl UnluminousApp {
         &mut self,
         ui: &mut egui::Ui,
         places: &FramePlaces,
+        menus: &[actions::Menu],
         action: &mut Option<Action>,
     ) {
         let title_rect = places.title_rect;
         let (tools_rect, run_rect) = (places.tools_rect, places.run_rect);
         let (tools_width, run_width) = (places.tools_width, places.run_width);
         let run_state = &places.run_state;
-        // The menus, which the title bar draws when they are not in the screen's own bar.
-        let menus = actions::menus(&self.menu_state());
-        crate::services::frame_trace::phase("menus");
 
         // The branch the repository is on and the local branches, for the widget beside the project's
         // name. Worked out before the bar is drawn because the bar needs the width to leave room for it.
@@ -382,7 +388,7 @@ impl UnluminousApp {
             self.folder_name().as_deref(),
             self.settings.opacity,
             self.menu_placement,
-            &menus,
+            menus,
             tools_width,
             run_width,
             branch_width,
@@ -419,7 +425,7 @@ impl UnluminousApp {
 
         // The macOS menu bar, which is built once and rebuilt when what it holds changes.
         if let Some(native) = self.native_menu.as_mut() {
-            native.refresh(&menus);
+            native.refresh(menus);
             if let Some(chosen) = native.poll() {
                 *action = Some(chosen);
             }
@@ -571,13 +577,17 @@ impl UnluminousApp {
     /// Read here rather than in the editing area, because they work whether or not the editing area has
     /// the keyboard, and because in preview mode there is no editing area taking key presses at all. On
     /// macOS these never arrive: the menu bar takes them first and sends an action instead.
-    fn read_the_menu_shortcuts(&mut self, ui: &mut egui::Ui, action: &mut Option<Action>) {
+    fn read_the_menu_shortcuts(
+        &mut self,
+        ui: &mut egui::Ui,
+        menus: &[actions::Menu],
+        action: &mut Option<Action>,
+    ) {
         // The shortcuts belonging to the menus. Read here rather than in the editing area, because they work
         // whether or not the editing area has the keyboard, and because in preview mode there is no editing
         // area taking key presses at all. On macOS these never arrive, because the menu bar takes them
         // first and sends an action instead.
         if action.is_none() {
-            let state = self.menu_state();
             // While one of the window's text boxes has the keyboard, undo, redo and select all
             // belong to that box rather than to the document, and it already does all three itself.
             // The rest of the menu is untouched, so control and S in the filter box still saves.
@@ -586,7 +596,7 @@ impl UnluminousApp {
                 let mut found = None;
                 for event in &input.events {
                     if let egui::Event::Key { key, pressed: true, modifiers, .. } = event {
-                        if let Some(chosen) = actions::action_for_key(&state, *key, modifiers) {
+                        if let Some(chosen) = actions::action_for_key(menus, *key, modifiers) {
                             if in_a_text_box && chosen.belongs_to_a_focused_text_box() {
                                 continue;
                             }
@@ -629,25 +639,51 @@ impl UnluminousApp {
                 }
                 // Worked out for every row before the explorer is drawn, because decoding an icon
                 // needs the context mutably and the explorer already has the window borrowed.
-                let rows: Vec<PathBuf> = if self.filter.trim().is_empty() {
-                    self.tree.rows().iter().map(|row| row.entry.path.clone()).collect()
-                } else {
-                    self.tree.matching(&self.filter).iter().map(|path| path.to_path_buf()).collect()
-                };
-                // A map rather than a list. It used to be searched for each row as the row was
-                // drawn, comparing paths, so a project with four hundred rows open did a hundred and
-                // sixty thousand path comparisons every frame.
-                let decorations: std::collections::HashMap<PathBuf, explorer::Decoration> = rows
-                    .into_iter()
-                    .map(|path| {
-                        let icon = self.plugin_icon(ui.ctx(), Some(&path));
-                        let tint =
-                            self.git.as_ref().and_then(|git| git.state_of(&path)).map(git_colour);
-                        (path, explorer::Decoration { tint, icon })
-                    })
-                    .collect();
+                //
+                // **Once per set of rows rather than once a frame** (`task-1984` A5). It is a `Vec`
+                // of every visible row's path, a `HashMap` keyed on a clone of each, and a plugin
+                // icon looked up a row -- all of it rebuilt twice a second on a project where nothing
+                // had changed. The key is what really decides the answer: which rows there are (the
+                // tree's revision and the filter) and what git says about them. It is the shape
+                // `symbols::Hover` already uses.
+                let key = (
+                    self.tree.revision(),
+                    self.filter.clone(),
+                    self.git.as_ref().map(|git| git.reads()).unwrap_or_default(),
+                );
+                if self.explorer_decorations.as_ref().map(|(was, _)| was) != Some(&key) {
+                    let rows: Vec<PathBuf> = if self.filter.trim().is_empty() {
+                        self.tree.rows().iter().map(|row| row.entry.path.clone()).collect()
+                    } else {
+                        self.tree
+                            .matching(&self.filter)
+                            .iter()
+                            .map(|path| path.to_path_buf())
+                            .collect()
+                    };
+                    // A map rather than a list. It used to be searched for each row as the row was
+                    // drawn, comparing paths, so a project with four hundred rows open did a hundred
+                    // and sixty thousand path comparisons every frame.
+                    let built: std::collections::HashMap<PathBuf, explorer::Decoration> = rows
+                        .into_iter()
+                        .map(|path| {
+                            let icon = self.plugin_icon(ui.ctx(), Some(&path));
+                            let tint = self
+                                .git
+                                .as_ref()
+                                .and_then(|git| git.state_of(&path))
+                                .map(git_colour);
+                            (path, explorer::Decoration { tint, icon })
+                        })
+                        .collect();
+                    self.explorer_decorations = Some((key, built));
+                }
+                // **Borrowed rather than cloned**: cloning the map back out would be the allocation
+                // this cache exists to remove. It is a field of `self` and `filter` is another, which
+                // is what lets the closure hold one while `explorer::show` holds the other.
+                let decorations = self.explorer_decorations.as_ref().map(|(_, built)| built);
                 let decorate = move |path: &std::path::Path| -> explorer::Decoration {
-                    decorations.get(path).cloned().unwrap_or_default()
+                    decorations.and_then(|built| built.get(path)).cloned().unwrap_or_default()
                 };
                 let mut explorer_ui = ui.new_child(egui::UiBuilder::new().max_rect(explorer_rect));
                 explorer::show(
@@ -1447,7 +1483,17 @@ impl UnluminousApp {
     /// Every borrow in here is a **field of `self` named on its own**, which is what lets the page
     /// closure hold `plugin_ui` mutably while the dialog holds `settings` and `settings_window`.
     fn show_the_settings_window(&mut self, ui: &mut egui::Ui) {
-        // The Settings window, drawn last because it is a modal and sits over everything.
+        // **Nothing below this line happens while the window is shut** (`task-1984` A1).
+        // `settings_dialog::show` returns on its own second line for a closed window, and everything
+        // between here and the call was run first: a clone of the whole `Settings`, a copy of every
+        // installed font family's name, a clone of every plugin's icon into two vectors, and
+        // `unluminous_cli_program`, which asks the operating system where this program is and then
+        // asks the disk whether that is a file. Twice a second for the life of a window nobody has
+        // opened the Settings on, which is the disk and the allocator both, and is `task-1805`'s two
+        // rules in one function.
+        if !self.settings_window.open {
+            return;
+        }
         let before = self.settings.clone();
         let project = self.folder_name().unwrap_or_default();
         let families: Vec<String> = self.renderer.families().to_vec();
@@ -1619,6 +1665,14 @@ impl UnluminousApp {
     fn end_the_frame(&mut self, ui: &mut egui::Ui) {
         // What is open in this project is written down for next time, on the same terms as the
         // settings: once the pointer is up, and only when something has actually changed.
+        //
+        // **On every frame, deliberately** (`task-1984` A4). What made this expensive was
+        // `Session::folder`, which it asks for every terminal tab and which reached the kernel and
+        // then the disk; that is asked on a clock now, inside the session. Putting *this* on a clock
+        // as well was tried and taken out: `a_split_project_opens_split_again` and everything like it
+        // reads the file on the frame after the change, and a person who closes a window half a
+        // second after splitting a pane should not lose the split. What a project remembers is
+        // written when it changes, which is what the paragraph above says.
         self.remember_the_project();
         // And the canvas, which says for itself whether anything on it changed - `task-1904`. Written
         // at the end of a frame on which something moved rather than on every frame, or dragging a

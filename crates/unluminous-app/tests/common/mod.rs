@@ -1059,8 +1059,15 @@ pub fn debug_harness(name: &str) -> Harness<'static, UnluminousApp> {
     let folder = debug_folder(name);
     let mut harness = harness_in(&folder);
     harness.get_by_label_contains("main.rs").click();
-    harness.run();
-    harness.run();
+    // **`pump`, not `Harness::run`**, which is `common`'s third rule and `task-1984` T1's finding
+    // said about a helper rather than about a command: opening a file starts the symbol index and
+    // the git worker, and a window with work on a thread behind it is a window that is correctly
+    // still asking to be drawn. `run` gives it four steps to go quiet and panics otherwise, which is
+    // what made `the_execution_point_and_the_inline_values_are_drawn_over_the_source` fail on a
+    // loaded machine with `Harness::run exceeded max_steps (4)`.
+    for _ in 0..4 {
+        pump(&mut harness);
+    }
     harness
 }
 

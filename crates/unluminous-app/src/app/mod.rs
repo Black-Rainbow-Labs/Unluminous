@@ -687,6 +687,13 @@ impl SymbolIndexState {
 ///
 /// The fields are named for the locals they were, so a phase binds the two or three it needs at the
 /// top of its body and the rest of the body is what it always was.
+/// The explorer's decorations, and what they were worked out from: the tree's revision, the filter,
+/// and how many times git's answer has changed. See where it is filled in, in `frame.rs`.
+type ExplorerDecorations = (
+    (u64, String, u64),
+    std::collections::HashMap<std::path::PathBuf, crate::components::explorer::Decoration>,
+);
+
 struct FramePlaces {
     /// The whole window, rounded corners and all.
     full: Rect,
@@ -952,6 +959,21 @@ pub struct UnluminousApp {
     pub plugins: Plugins,
     /// The plugins' icons, decoded once each.
     icons: Icons,
+    /// The explorer's decorations, and what they were worked out from.
+    ///
+    /// `task-1984` A5: which rows there are (the tree's revision and the filter) and what git said
+    /// about them. See where it is filled in, in `frame.rs`.
+    /// What the run detectors last said, and what they were asked about. See `UnluminousApp::detected`.
+    #[allow(clippy::type_complexity)]
+    detected_runs: std::cell::RefCell<
+        Option<(
+            std::time::Instant,
+            std::path::PathBuf,
+            Vec<String>,
+            Vec<crate::services::run_configurations::Configuration>,
+        )>,
+    >,
+    explorer_decorations: Option<ExplorerDecorations>,
     /// The debug tile along the bottom, which is the run tile's sibling as the run tile is the
     /// terminal's: the window shows **one** of the three and never two, because two grids stacked
     /// take the editing area below the fold.
@@ -1281,6 +1303,8 @@ impl UnluminousApp {
             last_focus: Focus::Editor,
             plugins,
             icons: Icons::new(),
+            detected_runs: std::cell::RefCell::new(None),
+            explorer_decorations: None,
             git: None,
             git_looked: false,
             confirmation: None,

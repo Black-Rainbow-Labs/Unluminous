@@ -80,10 +80,16 @@ const ZOOM_CONTROLS: f32 = 116.0;
 /// new, clone/duplicate"*. The four of those that are about one view are on its right click menu, which
 /// is where the explorer, the tabs and every panel in Unluminous already put the things that are about
 /// one row.
+/// `views` is a name and an id a canvas, which is all the bar draws.
+///
+/// **Not `&[View]`** (`task-1984` A8). A `View` holds every node on that canvas with every string in
+/// it, and the caller could not lend one while the rest of the window was borrowed -- so it deep
+/// copied every canvas the project has, on every frame, to draw a row of chips. Two fields is what
+/// the bar reads, and two fields is what it is given.
 pub fn view_bar(
     ui: &mut egui::Ui,
     area: Rect,
-    views: &[View],
+    views: &[(ViewId, String)],
     current: ViewId,
     zoom: f32,
     look: Look<'_>,
@@ -101,8 +107,9 @@ pub fn view_bar(
     );
     let mut pen = area.left() + 8.0;
     let mut drawn = 0usize;
-    for view in views {
-        let width = chip_width(&painter, &view.name);
+    for (view_id, view_name) in views {
+        let (view_id, view_name) = (*view_id, view_name.as_str());
+        let width = chip_width(&painter, view_name);
         let chip = Rect::from_min_size(
             Pos2::new(pen, area.top() + 4.0),
             Vec2::new(width, area.height() - 9.0),
@@ -113,8 +120,8 @@ pub fn view_bar(
             break;
         }
         drawn += 1;
-        let on = view.id == current;
-        let response = ui.interact(chip, ui.id().with(("space-view", view.id)), Sense::click());
+        let on = view_id == current;
+        let response = ui.interact(chip, ui.id().with(("space-view", view_id)), Sense::click());
         if on {
             look.chrome.raised(chip, 6.0, Fill::Solid(look.card), Lift::Small);
         }
@@ -125,7 +132,7 @@ pub fn view_bar(
         painter.crisp_text(
             chip.center(),
             Align2::CENTER_CENTER,
-            &view.name,
+            view_name,
             FontId::proportional(11.5),
             tint,
         );
@@ -134,15 +141,15 @@ pub fn view_bar(
                 egui::WidgetType::Button,
                 true,
                 on,
-                format!("View: {}", view.name),
+                format!("View: {}", view_name),
             )
         });
         if response.clicked() {
-            outcome.show = Some(view.id);
+            outcome.show = Some(view_id);
         }
         if response.secondary_clicked() {
             if let Some(at) = response.interact_pointer_pos().or_else(|| response.hover_pos()) {
-                outcome.menu = Some((at, view.id));
+                outcome.menu = Some((at, view_id));
             }
         }
         pen = chip.right() + 6.0;

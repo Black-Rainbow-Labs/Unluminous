@@ -286,6 +286,16 @@ impl PluginUi {
             .map(|one| one.provider.view())
     }
 
+    /// The number this plugin's pane header draws beside its name, if it has one.
+    ///
+    /// `task-1984` A7: the header used to ask `view_of` and read `total` out of the whole JSON.
+    pub fn badge_of(&self, plugin: &str) -> Option<String> {
+        self.loaded
+            .iter()
+            .find(|one| one.plugin == plugin && one.problem.is_none())
+            .and_then(|one| one.provider.badge())
+    }
+
     /// Why this plugin's pane is empty, if it is.
     pub fn problem_with(&self, plugin: &str) -> Option<&str> {
         self.loaded.iter().find(|one| one.plugin == plugin).and_then(|one| one.problem.as_deref())
@@ -384,11 +394,9 @@ impl UnluminousApp {
                 rect.min,
                 egui::Vec2::new(rect.width(), crate::components::agent_tasks::PANE_HEADER),
             );
-            let count = self
-                .plugin_ui
-                .view_of(&plugin)
-                .and_then(|view| view["total"].as_u64())
-                .map(|total| total.to_string());
+            // `badge` rather than the whole `view` (`task-1984` A7): for Agent-Tasks that was every
+            // card on the board as JSON, built twice a second at idle for one short string.
+            let count = self.plugin_ui.badge_of(&plugin);
             let outcome = {
                 let mut header_ui = ui.new_child(egui::UiBuilder::new().max_rect(header));
                 crate::components::agent_tasks::pane_header(
@@ -1080,16 +1088,22 @@ impl UnluminousApp {
     }
 
     /// The picture the plugin that claims `path` puts in front of it, decoded and ready to draw.
+    ///
+    /// **The id is looked up before the bytes are reached for** (`task-1984` A5). `Icons::texture`
+    /// answers from its own map on every call after the first, so the clone of the plugin's whole PNG
+    /// -- eleven of them, 1.5 to 2.8 KB each -- was a few hundred kilobytes of memcpy per frame,
+    /// handed to a function that never looked at it. The explorer asks this once a visible row.
     pub(crate) fn plugin_icon(
         &mut self,
         ctx: &egui::Context,
         path: Option<&Path>,
     ) -> Option<egui::TextureHandle> {
         let path = path?;
-        let (id, bytes) = {
-            let plugin = self.plugins.for_path(path)?;
-            (plugin.id.clone(), plugin.icon.clone()?)
-        };
+        let id = self.plugins.for_path(path)?.id.clone();
+        if let Some(already) = self.icons.known(&id) {
+            return already;
+        }
+        let bytes = self.plugins.for_path(path)?.icon.clone()?;
         self.icons.texture(ctx, &id, &bytes)
     }
 

@@ -29,6 +29,16 @@ impl Icons {
     ///
     /// A picture that will not decode is remembered as absent rather than tried again every frame,
     /// and the row falls back to the coloured square. A missing picture must never be a missing row.
+    /// What is already decoded for `id`, without needing the bytes.
+    ///
+    /// `task-1984` A5: every caller of [`Self::texture`] has to hand over the picture's bytes, and
+    /// after the first frame the bytes are never read -- so a caller asking once a visible row was
+    /// cloning a plugin's whole PNG a row a frame to hand it to a map lookup. `None` means nothing is
+    /// decoded under that id yet and the bytes really are needed.
+    pub fn known(&self, id: &str) -> Option<Option<egui::TextureHandle>> {
+        self.textures.get(id).cloned()
+    }
+
     pub fn texture(
         &mut self,
         ctx: &egui::Context,

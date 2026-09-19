@@ -2550,6 +2550,14 @@ impl UiProvider for AgentTasks {
         commands::LIST.to_vec()
     }
 
+    /// How many tickets are on the board, which is what its pane header draws beside its name.
+    ///
+    /// `task-1984` A7: the header used to ask `view` and read `total` out of it, which for this
+    /// provider is every card on the board serialised to JSON, twice a second at idle.
+    fn badge(&self) -> Option<String> {
+        Some(self.board.total().to_string())
+    }
+
     fn view(&self) -> serde_json::Value {
         json!({
             "open": self.is_open(),

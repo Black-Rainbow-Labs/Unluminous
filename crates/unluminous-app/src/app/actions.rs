@@ -2569,8 +2569,12 @@ pub fn gutter_menu(state: &MenuState) -> Vec<Entry> {
 /// The action a key press asks for, if any menu entry claims it.
 ///
 /// Entries marked [`Entry::not_from_the_keyboard`] are skipped, because something else delivers those.
+///
+/// **Takes the menus rather than building them** (`task-1984` A6). It built the whole tree on every
+/// key press, and the frame that is asking has already built one -- the same one the title bar is
+/// drawing, so a chord and a click cannot answer differently about a frame either.
 pub fn action_for_key(
-    state: &MenuState,
+    menus: &[Menu],
     key: egui::Key,
     modifiers: &egui::Modifiers,
 ) -> Option<Action> {
@@ -2592,7 +2596,7 @@ pub fn action_for_key(
         }
         None
     }
-    menus(state).iter().find_map(|menu| search(&menu.entries, key, modifiers))
+    menus.iter().find_map(|menu| search(&menu.entries, key, modifiers))
 }
 
 #[cfg(test)]
@@ -3034,19 +3038,19 @@ mod tests {
             ..MenuState::default()
         };
         let run = if cfg!(target_os = "macos") {
-            action_for_key(&state, egui::Key::R, &pressing_control())
+            action_for_key(&menus(&state), egui::Key::R, &pressing_control())
         } else {
             action_for_key(
-                &state,
+                &menus(&state),
                 egui::Key::F10,
                 &egui::Modifiers { shift: true, ..Default::default() },
             )
         };
         assert_eq!(run, Some(Action::Run(RunAction::Start(None))));
         let stop = if cfg!(target_os = "macos") {
-            action_for_key(&state, egui::Key::F2, &pressing_command())
+            action_for_key(&menus(&state), egui::Key::F2, &pressing_command())
         } else {
-            action_for_key(&state, egui::Key::F2, &pressing_control())
+            action_for_key(&menus(&state), egui::Key::F2, &pressing_control())
         };
         assert_eq!(stop, Some(Action::Run(RunAction::Stop(None))));
     }
@@ -3199,7 +3203,7 @@ mod tests {
         // do nothing in the real window, which is exactly what happened before this was fixed.
         let state = MenuState::default();
         assert_eq!(
-            action_for_key(&state, egui::Key::S, &egui::Modifiers::COMMAND),
+            action_for_key(&menus(&state), egui::Key::S, &egui::Modifiers::COMMAND),
             Some(Action::Save)
         );
     }
@@ -3209,9 +3213,12 @@ mod tests {
         // This is the case that used to fail on Windows: `Ctrl+S` arrives with `command` and `ctrl`
         // both set, and `Save` asks for the command key and not the control key.
         let state = MenuState::default();
-        assert_eq!(action_for_key(&state, egui::Key::S, &pressing_command()), Some(Action::Save));
         assert_eq!(
-            action_for_key(&state, egui::Key::Backtick, &pressing_control()),
+            action_for_key(&menus(&state), egui::Key::S, &pressing_command()),
+            Some(Action::Save)
+        );
+        assert_eq!(
+            action_for_key(&menus(&state), egui::Key::Backtick, &pressing_control()),
             Some(Action::ToggleTerminal),
             "control and backtick opens the terminal on both platforms"
         );
@@ -3223,12 +3230,12 @@ mod tests {
         // pressing "control and plus": the unshifted key, the shifted key, and the numeric keypad.
         let state = MenuState::default();
         let larger = Some(Action::ChangeFontSize { larger: true });
-        assert_eq!(action_for_key(&state, egui::Key::Equals, &pressing_command()), larger);
-        assert_eq!(action_for_key(&state, egui::Key::Plus, &pressing_command()), larger);
+        assert_eq!(action_for_key(&menus(&state), egui::Key::Equals, &pressing_command()), larger);
+        assert_eq!(action_for_key(&menus(&state), egui::Key::Plus, &pressing_command()), larger);
         let shifted = egui::Modifiers { shift: true, ..pressing_command() };
-        assert_eq!(action_for_key(&state, egui::Key::Plus, &shifted), larger);
+        assert_eq!(action_for_key(&menus(&state), egui::Key::Plus, &shifted), larger);
         assert_eq!(
-            action_for_key(&state, egui::Key::Minus, &pressing_command()),
+            action_for_key(&menus(&state), egui::Key::Minus, &pressing_command()),
             Some(Action::ChangeFontSize { larger: false })
         );
     }
@@ -3239,8 +3246,11 @@ mod tests {
         // entries and have to stay that way.
         let state = MenuState::default();
         let shifted = egui::Modifiers { shift: true, ..pressing_command() };
-        assert_eq!(action_for_key(&state, egui::Key::S, &shifted), Some(Action::SaveAs));
-        assert_eq!(action_for_key(&state, egui::Key::S, &pressing_command()), Some(Action::Save));
+        assert_eq!(action_for_key(&menus(&state), egui::Key::S, &shifted), Some(Action::SaveAs));
+        assert_eq!(
+            action_for_key(&menus(&state), egui::Key::S, &pressing_command()),
+            Some(Action::Save)
+        );
     }
 
     #[test]
@@ -3297,27 +3307,34 @@ mod tests {
     fn a_key_press_finds_the_action_whose_shortcut_it_is() {
         let state = MenuState { can_undo: true, can_redo: true, ..MenuState::default() };
         let command = pressing_command();
-        assert_eq!(action_for_key(&state, egui::Key::S, &command), Some(Action::Save));
-        assert_eq!(action_for_key(&state, egui::Key::Z, &command), Some(Action::Undo));
+        assert_eq!(action_for_key(&menus(&state), egui::Key::S, &command), Some(Action::Save));
+        assert_eq!(action_for_key(&menus(&state), egui::Key::Z, &command), Some(Action::Undo));
         let with_shift = egui::Modifiers { shift: true, ..command };
-        assert_eq!(action_for_key(&state, egui::Key::Z, &with_shift), Some(Action::Redo));
-        assert_eq!(action_for_key(&state, egui::Key::S, &with_shift), Some(Action::SaveAs));
+        assert_eq!(action_for_key(&menus(&state), egui::Key::Z, &with_shift), Some(Action::Redo));
+        assert_eq!(action_for_key(&menus(&state), egui::Key::S, &with_shift), Some(Action::SaveAs));
     }
 
     #[test]
     fn a_shortcut_with_more_modifiers_is_not_mistaken_for_one_with_fewer() {
         let state = MenuState::default();
         let command = pressing_command();
-        assert_eq!(action_for_key(&state, egui::Key::N, &command), None, "Cmd+N is not New Window");
+        assert_eq!(
+            action_for_key(&menus(&state), egui::Key::N, &command),
+            None,
+            "Cmd+N is not New Window"
+        );
         let with_shift = egui::Modifiers { shift: true, ..command };
-        assert_eq!(action_for_key(&state, egui::Key::N, &with_shift), Some(Action::NewWindow));
+        assert_eq!(
+            action_for_key(&menus(&state), egui::Key::N, &with_shift),
+            Some(Action::NewWindow)
+        );
     }
 
     #[test]
     fn undo_that_cannot_be_done_is_not_taken_from_the_keyboard_either() {
         let state = MenuState::default();
         let command = pressing_command();
-        assert_eq!(action_for_key(&state, egui::Key::Z, &command), None);
+        assert_eq!(action_for_key(&menus(&state), egui::Key::Z, &command), None);
     }
 
     #[test]
@@ -3326,9 +3343,9 @@ mod tests {
         // well, one press would do the work twice.
         let state = MenuState { has_selection: true, ..MenuState::default() };
         let command = pressing_command();
-        assert_eq!(action_for_key(&state, egui::Key::C, &command), None);
-        assert_eq!(action_for_key(&state, egui::Key::V, &command), None);
-        assert_eq!(action_for_key(&state, egui::Key::X, &command), None);
+        assert_eq!(action_for_key(&menus(&state), egui::Key::C, &command), None);
+        assert_eq!(action_for_key(&menus(&state), egui::Key::V, &command), None);
+        assert_eq!(action_for_key(&menus(&state), egui::Key::X, &command), None);
         // They are still in the menu, with their shortcuts shown.
         let edit = find(&menus(&state), "Edit");
         assert!(names(&edit.entries).contains(&"Paste".to_owned()));
@@ -3382,12 +3399,12 @@ mod tests {
         let state =
             MenuState { folding_applies: true, foldable: 3, folded: 1, ..MenuState::default() };
         assert_eq!(
-            action_for_key(&state, egui::Key::Period, &pressing_command()),
+            action_for_key(&menus(&state), egui::Key::Period, &pressing_command()),
             Some(Action::Fold(FoldAction::Toggle))
         );
         assert_eq!(
             action_for_key(
-                &state,
+                &menus(&state),
                 egui::Key::Period,
                 &egui::Modifiers { shift: true, ..pressing_command() }
             ),
@@ -3395,20 +3412,20 @@ mod tests {
         );
         assert_eq!(
             action_for_key(
-                &state,
+                &menus(&state),
                 egui::Key::Comma,
                 &egui::Modifiers { shift: true, ..pressing_command() }
             ),
             Some(Action::Fold(FoldAction::None_))
         );
         assert_eq!(
-            action_for_key(&state, egui::Key::Comma, &pressing_command()),
+            action_for_key(&menus(&state), egui::Key::Comma, &pressing_command()),
             Some(Action::Settings),
             "the comma on its own still opens Settings"
         );
         assert_eq!(
             action_for_key(
-                &state,
+                &menus(&state),
                 egui::Key::Period,
                 &egui::Modifiers { alt: true, ..pressing_command() }
             ),
@@ -3416,7 +3433,7 @@ mod tests {
         );
         assert_eq!(
             action_for_key(
-                &state,
+                &menus(&state),
                 egui::Key::Period,
                 &egui::Modifiers { alt: true, shift: true, ..pressing_command() }
             ),
@@ -3425,7 +3442,7 @@ mod tests {
         );
         assert_eq!(
             action_for_key(
-                &state,
+                &menus(&state),
                 egui::Key::Comma,
                 &egui::Modifiers { alt: true, shift: true, ..pressing_command() }
             ),
@@ -3439,7 +3456,7 @@ mod tests {
         let state = MenuState { folding_applies: false, ..MenuState::default() };
         assert!(folding_menu(&state).is_empty());
         assert!(folding_here_menu(&state).is_empty());
-        assert_eq!(action_for_key(&state, egui::Key::Period, &pressing_command()), None);
+        assert_eq!(action_for_key(&menus(&state), egui::Key::Period, &pressing_command()), None);
         assert!(!names(&gutter_menu(&state)).contains(&"Collapse All".to_owned()));
     }
 

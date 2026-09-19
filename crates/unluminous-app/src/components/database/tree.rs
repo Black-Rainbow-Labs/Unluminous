@@ -82,6 +82,22 @@ pub enum What {
     },
 }
 
+/// Every row the tree would draw, in order, **built once per change** rather than once a frame.
+///
+/// `task-1984` S16: only the drawing was virtualised, so a tree with two hundred rows in it built
+/// two hundred `Line` values with their strings on every frame whether or not anything had moved.
+/// The key is `DatabaseExplorer::revision` -- bumped by `apply`, which is the one place an act
+/// becomes a change, and by `take_the_replies`, which is the one place a worker's answer arrives --
+/// and the filter, which is typed rather than acted.
+pub fn lines_cached(explorer: &DatabaseExplorer) -> std::rc::Rc<Vec<Line>> {
+    let key = (explorer.revision(), explorer.filter.clone());
+    let mut kept = explorer.drawn_lines.borrow_mut();
+    if kept.as_ref().map(|(was, _)| was) != Some(&key) {
+        *kept = Some((key, std::rc::Rc::new(lines(explorer))));
+    }
+    kept.as_ref().map(|(_, rows)| std::rc::Rc::clone(rows)).unwrap_or_default()
+}
+
 /// Every row the tree would draw, in order.
 pub fn lines(explorer: &DatabaseExplorer) -> Vec<Line> {
     let filter = explorer.filter.trim().to_lowercase();
@@ -351,7 +367,7 @@ fn the_rows(
 ) -> Vec<Act> {
     let scale = look.scale();
     let row_height = look.row_height;
-    let lines = lines(explorer);
+    let lines = lines_cached(explorer);
     let mut acts = Vec::new();
     let mut inside = ui.new_child(egui::UiBuilder::new().max_rect(area).id_salt("database-tree"));
     let mut scrolled = egui::ScrollArea::vertical()

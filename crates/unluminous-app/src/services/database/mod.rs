@@ -419,6 +419,17 @@ pub struct DatabaseExplorer {
     asking: Vec<Request>,
     /// A Test Connection in flight. See [`ConnectionTest`].
     testing: Option<ConnectionTest>,
+    /// Bumped whenever anything the tree draws changes.
+    ///
+    /// **What a cache over the tree's rows is keyed on** (`task-1984` S16). There are exactly two
+    /// doors: `components::database::apply`, which is the one place an act becomes a change, and
+    /// `take_the_replies`, which is the one place a worker's answer arrives.
+    revision: u64,
+    /// The rows the tree last drew, and what they were built from. See `tree::lines_cached`.
+    #[allow(clippy::type_complexity)]
+    pub drawn_lines: std::cell::RefCell<
+        Option<((u64, String), std::rc::Rc<Vec<crate::components::database::tree::Line>>)>,
+    >,
 }
 
 /// A Test Connection, on a thread.
@@ -535,6 +546,8 @@ impl DatabaseExplorer {
             last_ddl: None,
             asking: Vec::new(),
             testing: None,
+            revision: 0,
+            drawn_lines: std::cell::RefCell::new(None),
         }
     }
 
@@ -608,6 +621,16 @@ impl DatabaseExplorer {
         }
         let password = password_for(&source);
         self.testing = Some(ConnectionTest::start(&source, password, self.wake.clone()));
+    }
+
+    /// How many times anything the tree draws has changed. See the field's own note.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    /// Say that something the tree draws has changed.
+    pub fn changed(&mut self) {
+        self.revision += 1;
     }
 
     /// Whether a Test Connection is still waiting for an answer, which is what the modal draws.
@@ -1145,6 +1168,8 @@ impl DatabaseExplorer {
     pub fn take_the_replies(&mut self) -> bool {
         let names: Vec<String> = self.connections.keys().cloned().collect();
         let mut anything = self.take_the_test_answer();
+        // One of the two doors the tree's rows change through -- see `DatabaseExplorer::revision`.
+        self.changed();
         for name in names {
             let answered = match self.connections.get(&name) {
                 Some(connection) => connection.worker.take(),

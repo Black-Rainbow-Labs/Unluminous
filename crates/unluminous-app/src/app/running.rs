@@ -122,15 +122,43 @@ impl UnluminousApp {
     ///
     /// Worked out at the moment of use rather than held, which is the rule `Plugins::renders`
     /// keeps: switching the JavaScript plugin off withdraws the npm suggestions in the same frame.
+    ///
+    /// **The detectors themselves are asked on a clock** (`task-1984` A6).
+    /// `run_configurations::detect` stats `Cargo.toml` and reads and parses the whole of
+    /// `package.json`, and this is asked three times a frame -- `menu_state` builds the run names,
+    /// `run_widget_state` asks again, and the widget's own default asks a third time -- so an idle
+    /// window read and parsed that file six times a second. What the filter does afterwards is not
+    /// cached, so switching a plugin off or keeping a suggestion still takes effect in the same
+    /// frame, which is what the paragraph above promises.
     pub fn suggestions(&self) -> Vec<Configuration> {
         let runners = self.plugins.project_runners();
-        let offered = run_configurations::detect(self.tree.root(), &runners);
+        let offered = self.detected(&runners);
         // A suggestion whose name is already a configuration is not offered twice: once somebody
         // has kept `cargo run`, the detector has nothing left to say about it.
         offered
             .into_iter()
             .filter(|configuration| self.run_configurations.find(&configuration.name).is_none())
             .collect()
+    }
+
+    /// What the detectors last said about this project, re-read on [`crate::app::HEARTBEAT`].
+    ///
+    /// Keyed on the root and the runners as well as the clock, so opening another project or
+    /// switching a plugin on answers at once rather than at the next tick. `RefCell` because every
+    /// caller of `suggestions` holds `&self` -- it is a cache rather than state, and making it
+    /// `&mut` would push that through the menus, the widget and `run_rows`.
+    fn detected(&self, runners: &[&str]) -> Vec<Configuration> {
+        let root = self.tree.root().to_path_buf();
+        let named: Vec<String> = runners.iter().map(|runner| (*runner).to_owned()).collect();
+        let mut last = self.detected_runs.borrow_mut();
+        let fresh = last.as_ref().is_some_and(|(when, was_root, was_runners, _)| {
+            when.elapsed() < crate::app::HEARTBEAT && *was_root == root && *was_runners == named
+        });
+        if !fresh {
+            let found = run_configurations::detect(&root, runners);
+            *last = Some((std::time::Instant::now(), root, named, found));
+        }
+        last.as_ref().map(|(_, _, _, found)| found.clone()).unwrap_or_default()
     }
 
     /// Every configuration the widget's flyout and the `Run` menu list, in that order.

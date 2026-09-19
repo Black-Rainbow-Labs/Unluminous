@@ -101,6 +101,14 @@ pub struct FileTree {
     /// This is what makes a file another program made appear without anybody asking. See
     /// [`FileTree::changed_on_disk`].
     folder_times: Vec<(PathBuf, Option<std::time::SystemTime>)>,
+    /// Bumped whenever the rows change: a reload, a folder opened or shut, a new root.
+    ///
+    /// **What a cache over the rows is keyed on** (`task-1984` A5 and S16). The explorer works out a
+    /// decoration for every visible row before it draws -- a plugin's icon and git's colour -- and
+    /// built the whole map every frame, on a project where nothing had changed since the last one.
+    /// A counter is the cheapest honest answer to "are these the same rows", and it is the shape
+    /// `Document::revision` and `Space::is_dirty` already use.
+    revision: u64,
 }
 
 impl FileTree {
@@ -117,6 +125,7 @@ impl FileTree {
             exclude: String::new(),
             last_error: None,
             folder_times: Vec::new(),
+            revision: 0,
         };
         tree.reload();
         tree
@@ -143,8 +152,14 @@ impl FileTree {
         &self.ignores
     }
 
+    /// How many times the rows have changed. See the field's own note.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
     /// Read the root's children again, keeping which folders were open.
     pub fn reload(&mut self) {
+        self.revision += 1;
         let expanded = self.expanded_paths();
         match read_directory(&self.root) {
             Ok(entries) => {
@@ -302,6 +317,7 @@ impl FileTree {
         if error.is_some() {
             self.last_error = error;
         }
+        self.revision += 1;
         // The set of folders that are showing has just changed, so what is being watched has too.
         // Without this, opening a folder would look like a change on disk on the very next tick.
         self.folder_times = self.read_folder_times();

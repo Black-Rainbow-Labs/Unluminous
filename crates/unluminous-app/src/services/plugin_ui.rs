@@ -611,6 +611,18 @@ pub trait UiProvider: std::fmt::Debug {
     /// test asserts against, built from the same reads the drawing uses.
     fn view(&self) -> serde_json::Value;
 
+    /// The number drawn beside this pane's name in its header, if it has one.
+    ///
+    /// **`task-1984` A7.** The header used to ask [`Self::view`] and read `total` out of it — which
+    /// for Agent-Tasks is every card on the board serialised to JSON, built twice a second at idle
+    /// for one short string. `view` is the answer to `plugins view <id>`, where building the whole
+    /// thing is the point; this is the answer to a question the header actually asks.
+    ///
+    /// A default of `None`, so a provider that has no number to show is unchanged and says nothing.
+    fn badge(&self) -> Option<String> {
+        None
+    }
+
     /// Told when this plugin gains or loses the keyboard.
     ///
     /// The window owns `Focus`, so it is the window that says so. A provider with a terminal in it draws that

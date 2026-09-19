@@ -35,6 +35,12 @@ pub struct GitState {
     worker: Worker,
     /// What the last refresh read.
     pub snapshot: Snapshot,
+    /// How many times [`GitState::snapshot`] has been replaced.
+    ///
+    /// **What a cache over what git says is keyed on** (`task-1984` A5). The explorer's decorations
+    /// hold a colour a file, read from this snapshot, and a counter is the cheapest honest answer to
+    /// "is this still what git said". `Document::revision`'s shape.
+    reads: u64,
     pub panel: CommitPanel,
     pub dialogs: GitDialogs,
     pub history: Vec<Commit>,
@@ -81,6 +87,7 @@ impl GitState {
             repository,
             worker,
             snapshot: Snapshot::default(),
+            reads: 0,
             panel: CommitPanel::default(),
             dialogs: GitDialogs::default(),
             history: Vec::new(),
@@ -135,6 +142,7 @@ impl GitState {
             match reply {
                 Reply::Snapshot(snapshot) => {
                     self.snapshot = *snapshot;
+                    self.reads += 1;
                     self.read = true;
                     // A commit that has just been made is not in the panel's message any more.
                     if let Some(label) = self.snapshot.in_progress {
@@ -285,6 +293,11 @@ impl GitState {
     }
 
     /// What git thinks of a file in the explorer, so the row can be tinted by it.
+    /// How many times what git says has changed. See the field's own note.
+    pub fn reads(&self) -> u64 {
+        self.reads
+    }
+
     pub fn state_of(&self, path: &Path) -> Option<unluminous_git::State> {
         let relative = self.relative(path)?;
         let entry = self.snapshot.status.entry(&relative)?;
