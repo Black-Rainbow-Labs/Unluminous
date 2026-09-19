@@ -52,10 +52,34 @@ impl Store {
     ///
     /// The clock plus a counter, because two conversations started inside one second are a thing
     /// somebody does by pressing the new-chat button twice.
+    ///
+    /// **The counter is kept in memory as well as read off the disk** (`task-1984` M1). It used to be
+    /// made unique only against the files already written, and a conversation that has not been
+    /// written yet is not one of them -- a new chat is written when it has something in it -- so two
+    /// made in one second got the same id. The second chat node on a canvas then shared the first
+    /// one's conversation and whichever was written second wrote over the other, and it is why
+    /// `canvas_space.rs`'s `a_chat_node_holds_its_own_conversation_and_comes_back_on_it` was flaky.
+    ///
+    /// Process wide rather than per `Store`, because a `Store` is made where it is needed rather than
+    /// held: the canvas builds one per node. The disk is still asked, so an id is unique against a
+    /// folder written by an earlier run as well.
     pub fn new_id(&self) -> String {
+        static HANDED_OUT: std::sync::Mutex<Option<(u64, u32)>> = std::sync::Mutex::new(None);
+
         let now = seconds_now();
-        let mut id = format!("{now:010}");
-        let mut count = 0;
+        let mut count = {
+            let mut last = HANDED_OUT.lock().unwrap_or_else(|held| held.into_inner());
+            let next = match *last {
+                Some((second, count)) if second == now => count + 1,
+                _ => 0,
+            };
+            *last = Some((now, next));
+            next
+        };
+        let mut id = match count {
+            0 => format!("{now:010}"),
+            count => format!("{now:010}-{count}"),
+        };
         while self.path_of(&id).is_some_and(|path| path.exists()) {
             count += 1;
             id = format!("{now:010}-{count}");
@@ -410,5 +434,32 @@ mod tests {
             .expect("written");
         assert!(store.read("bad").is_none());
         assert_eq!(store.list(usize::MAX).len(), 1, "the unreadable one is skipped, not fatal");
+    }
+
+    // ---------------------------------------------------------------------------------- task-1984
+
+    /// Two conversations made in one second get two ids.
+    ///
+    /// `task-1984` M1. The id was made unique only against the files already written, and a
+    /// conversation that has not been written yet is not one of them -- a new chat is written when
+    /// it has something in it -- so two made in the same second got the same id. The second chat
+    /// node on a canvas then shared the first one's conversation and whichever was written second
+    /// wrote over the other.
+    #[test]
+    fn two_conversations_made_in_one_second_have_two_ids() {
+        let folder = std::env::temp_dir().join("unluminous-1984-two-ids");
+        std::fs::remove_dir_all(&folder).ok();
+        let store = Store::at(Some(folder));
+
+        // Nothing is written between them, which is the whole of the case.
+        let ids: Vec<String> = (0..8).map(|_| store.new_id()).collect();
+        let mut unique = ids.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), ids.len(), "eight in a row, eight ids: {ids:?}");
+
+        // And a second `Store`, because the canvas builds one per node rather than holding one.
+        let another = Store::at(Some(std::env::temp_dir().join("unluminous-1984-two-ids")));
+        assert!(!ids.contains(&another.new_id()), "a second store does not hand out the same one");
     }
 }

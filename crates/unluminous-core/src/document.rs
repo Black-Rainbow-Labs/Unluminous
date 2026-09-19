@@ -1124,8 +1124,16 @@ impl Document {
     /// Save the current state unless this edit belongs to the current run of typing.
     fn push_undo(&mut self, kind: EditKind) {
         // A run of single character typing is one undo step, so that undo removes a word rather than a
-        // letter. A caret move, a delete or a formatting change breaks the run.
-        if kind != EditKind::None && kind == self.last_edit && kind == EditKind::Typing {
+        // letter, and **a run of deleting is one too** -- which is what `EditKind::Deleting` was
+        // recorded for and never used for. `task-1984` C13: the only comparison against it was
+        // `kind == EditKind::Typing`, so it behaved exactly as `Other` and holding Backspace was one
+        // whole document snapshot per character and one undo step per character. On a 2 MB file that
+        // is 15.5 MB a keystroke.
+        //
+        // A caret move, a word delete or a formatting change is `Other` and still breaks the run,
+        // which is what keeps undo's steps the size of an action rather than of a gesture.
+        let grouping = matches!(kind, EditKind::Typing | EditKind::Deleting);
+        if grouping && kind == self.last_edit {
             return;
         }
         // `snapshot()` rather than a second copy of its eight fields, which is `task-1922`'s review
@@ -4384,5 +4392,69 @@ mod auto_indent_tests {
         assert_eq!(document.indentation_for_a_new_line(), "    ");
         document.apply(Command::PlaceCaret { offset: 5, extend: false });
         assert_eq!(document.indentation_for_a_new_line(), "");
+    }
+}
+
+#[cfg(test)]
+mod grouping {
+    use super::*;
+
+    /// A run of Backspaces is one undo step, as a run of typing is.
+    ///
+    /// `task-1984` C13. `EditKind::Deleting` was recorded and the only comparison against it was
+    /// `kind == EditKind::Typing`, so it behaved exactly as `Other`: holding Backspace was one whole
+    /// document snapshot per character and one undo step per character. On a 2 MB file that is
+    /// 15.5 MB a keystroke, and it is why undoing a deleted word took as many presses as the word
+    /// had letters.
+    #[test]
+    fn a_run_of_backspaces_is_one_undo_step() {
+        let mut document = Document::from_text("hello world\n");
+        document.apply(Command::PlaceCaret { offset: 11, extend: false });
+        for _ in 0..5 {
+            document.apply(Command::DeleteBackward);
+        }
+        assert_eq!(document.text().to_string(), "hello \n");
+
+        document.apply(Command::Undo);
+        assert_eq!(
+            document.text().to_string(),
+            "hello world\n",
+            "one press brings back the whole run rather than one letter of it"
+        );
+    }
+
+    /// A caret move between two deletes breaks the run, which is what keeps an undo step the size of
+    /// an action rather than of a session.
+    #[test]
+    fn a_caret_move_breaks_a_run_of_deleting() {
+        let mut document = Document::from_text("one two three\n");
+        document.apply(Command::PlaceCaret { offset: 13, extend: false });
+        document.apply(Command::DeleteBackward);
+        document.apply(Command::DeleteBackward);
+        document.apply(Command::PlaceCaret { offset: 3, extend: false });
+        document.apply(Command::DeleteBackward);
+        assert_eq!(document.text().to_string(), "on two thr\n");
+
+        document.apply(Command::Undo);
+        assert_eq!(document.text().to_string(), "one two thr\n", "the second run came back");
+        document.apply(Command::Undo);
+        assert_eq!(document.text().to_string(), "one two three\n", "and then the first");
+    }
+
+    /// Typing and deleting are two runs, not one.
+    #[test]
+    fn typing_and_deleting_are_two_runs() {
+        let mut document = Document::from_text("");
+        for letter in "abc".chars() {
+            document.apply(Command::Insert(letter.to_string()));
+        }
+        document.apply(Command::DeleteBackward);
+        document.apply(Command::DeleteBackward);
+        assert_eq!(document.text().to_string(), "a");
+
+        document.apply(Command::Undo);
+        assert_eq!(document.text().to_string(), "abc", "the deleting undid as one step");
+        document.apply(Command::Undo);
+        assert_eq!(document.text().to_string(), "", "and the typing as another");
     }
 }

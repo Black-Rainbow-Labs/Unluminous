@@ -8,3 +8,8 @@ license.workspace = true
 
 [dependencies]
 unicode-segmentation.workspace = true
+# How many columns a character occupies, for the pipe tables. A CJK character and an emoji are two
+# columns wide and one grapheme, so a table padded by grapheme count came out misaligned by as many
+# columns as it had wide characters (`task-1984` C11). It is already in the tree -- `alacritty_terminal`
+# depends on it -- so this adds no crate at all.
+unicode-width.workspace = true

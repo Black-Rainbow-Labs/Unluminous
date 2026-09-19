@@ -18,6 +18,7 @@
 //! characters of the code font fit across the pane, and that is taken once, by the caller.
 
 use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use super::blocks::Line;
 use super::inline::{self, Kind, References, Span};
@@ -207,15 +208,26 @@ fn fit(head: &[Vec<Span>], rows: &[Vec<Vec<Span>>], available: usize) -> Vec<usi
     widths
 }
 
-/// How many characters wide a cell's text is. A hard break inside a cell is a space, because a cell
-/// is one run of text however it was written.
+/// How many columns a cell's text occupies. A hard break inside a cell is a space, because a cell is
+/// one run of text however it was written.
+///
+/// **Columns, not graphemes** (`task-1984` C11). The module's own opening says the columns line up by
+/// construction rather than by measurement, and that is only true if what is counted is what the
+/// monospaced font actually draws: a CJK character and an emoji are one grapheme and two columns, so
+/// a table with `你好世界` in a cell was four columns narrow and every rule below it was out of
+/// line. `unicode-width` is the same reading the terminal's own grid takes of a wide character.
 fn width_of(cell: &[Span]) -> usize {
     cell.iter()
         .map(|span| match span.kind {
             Kind::Break => 1,
-            _ => span.text.graphemes(true).count(),
+            _ => columns_in(&span.text),
         })
         .sum()
+}
+
+/// How many columns a piece of text occupies when the monospaced font draws it.
+fn columns_in(text: &str) -> usize {
+    UnicodeWidthStr::width(text)
 }
 
 /// One horizontal rule of the box, with the corner pieces it is drawn with.
@@ -301,7 +313,7 @@ fn wrap(cell: &[Span], width: usize) -> Vec<Vec<Span>> {
     let mut used = 0;
     for span in &flat {
         for word in split_keeping_spaces(&span.text) {
-            let length = word.graphemes(true).count();
+            let length = columns_in(word);
             if used + length > width && used > 0 {
                 trim_end(&mut line);
                 lines.push(std::mem::take(&mut line));
@@ -313,15 +325,32 @@ fn wrap(cell: &[Span], width: usize) -> Vec<Vec<Span>> {
             // A single word longer than the column is cut, because leaving it whole would push the
             // rules of the box out of line and a broken word is easier to read than a broken table.
             let mut word = word;
-            while word.graphemes(true).count() > width {
-                let cut: String = word.graphemes(true).take(width - used).collect();
+            while columns_in(word) > width {
+                // Taken by columns as well, so a run of wide characters is cut where the box's rule
+                // is rather than twice as far along.
+                let mut cut = String::new();
+                let mut taken = 0;
+                for grapheme in word.graphemes(true) {
+                    let next = taken + columns_in(grapheme);
+                    if next > width.saturating_sub(used) {
+                        break;
+                    }
+                    cut.push_str(grapheme);
+                    taken = next;
+                }
+                // A cell one column wide cannot hold a two column character at all, and a cut that
+                // took nothing would loop for ever.
+                if cut.is_empty() {
+                    cut = word.graphemes(true).next().unwrap_or_default().to_owned();
+                }
+                let taken = cut.len();
                 push_word(&mut line, span, &cut);
                 trim_end(&mut line);
                 lines.push(std::mem::take(&mut line));
                 used = 0;
-                word = &word[cut.len()..];
+                word = &word[taken..];
             }
-            let length = word.graphemes(true).count();
+            let length = columns_in(word);
             if length == 0 {
                 continue;
             }
@@ -500,5 +529,44 @@ mod tests {
         assert!(row.iter().any(|span| span.text == "bold" && span.bold), "{row:?}");
         let text: String = row.iter().map(|span| span.text.as_str()).collect();
         assert!(!text.contains('*'), "the marks are not shown: {text:?}");
+    }
+
+    // ------------------------------------------------------------------------------- task-1984
+
+    /// A cell holding CJK text lines up with one holding Latin text.
+    ///
+    /// `task-1984` C11. The columns were padded by **grapheme count**, and a CJK character or an
+    /// emoji is one grapheme and two columns wide, so a table with a Chinese word in a cell was as
+    /// many columns narrow as it had wide characters: every rule below it was out of line, in the
+    /// preview and in the chat pane. This module's own opening says the columns line up by
+    /// construction, which is only true if what is counted is what the monospaced font draws.
+    #[test]
+    fn a_cell_of_wide_characters_is_as_wide_as_it_is_drawn() {
+        let source = "| name | note |\n| --- | --- |\n| 你好世界 | four |\n| abcdefgh | eight |";
+        let lines = lines(source);
+        let (table, _) = read(&lines, 0).expect("a table");
+        let drawn = draw(&table, &References::default(), 60);
+
+        let widths: Vec<usize> = drawn
+            .lines
+            .iter()
+            .map(|line| {
+                let text: String = line.iter().map(|span| span.text.as_str()).collect();
+                columns_in(&text)
+            })
+            .collect();
+        let first = widths[0];
+        assert!(
+            widths.iter().all(|width| *width == first),
+            "every line of the box is the same number of columns wide: {widths:?}"
+        );
+    }
+
+    /// And the reading itself: four CJK characters are eight columns and four graphemes.
+    #[test]
+    fn a_wide_character_is_two_columns() {
+        assert_eq!(columns_in("你好世界"), 8);
+        assert_eq!(columns_in("abcdefgh"), 8);
+        assert_eq!(columns_in(""), 0);
     }
 }

@@ -4977,6 +4977,7 @@ name = "unluminous-core"
 version = "0.49.2"
 dependencies = [
  "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]

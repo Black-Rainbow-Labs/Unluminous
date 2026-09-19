@@ -68,13 +68,27 @@ fn preview_paragraph_for_line(source_lines: &[usize], line: usize) -> usize {
     at.saturating_sub(1)
 }
 
-/// Where a paragraph's `fraction` falls on a page. Nothing to say gives the top of the page, which is
-/// the only honest answer and is where the view is anyway.
+/// Where a paragraph's `fraction` falls on a page.
+///
+/// **A paragraph with no band is a paragraph that is hidden**, which since `task-1686` means folded:
+/// a collapsed heading's whole block produces no lines and keeps its place in the layout's `starts`.
+/// So the answer is the nearest paragraph above it that did produce lines, which is the head line
+/// the fold is drawn on and is exactly where a reader looking at the collapsed heading is.
+///
+/// It answered `page.height` -- the **bottom** of the page -- while the comment above it said the
+/// top, and neither was right: scrolling the preview into a collapsed heading sent the source pane
+/// to the end of the file (`task-1984` C9). Walking up rather than either of them is what makes the
+/// two halves agree about where the reader is.
 fn at_fraction(page: &Layout, paragraph: usize, fraction: f32) -> f32 {
-    match page.paragraph_band(paragraph) {
-        Some((top, height)) => top + height * fraction,
-        None => page.height,
+    if let Some((top, height)) = page.paragraph_band(paragraph) {
+        return top + height * fraction;
     }
+    for above in (0..paragraph).rev() {
+        if let Some((top, height)) = page.paragraph_band(above) {
+            return top + height;
+        }
+    }
+    0.0
 }
 
 #[cfg(test)]
@@ -188,5 +202,43 @@ mod tests {
             "{back} is outside a {} page",
             source.height
         );
+    }
+
+    // ------------------------------------------------------------------------------- task-1984
+
+    /// A folded paragraph answers with the line above it rather than the end of the page.
+    ///
+    /// `task-1984` C9. A folded paragraph produces no lines and keeps its place in the layout's
+    /// `starts` -- which is what makes the line numbers stay right -- so `paragraph_band` answers
+    /// `None` for it. `at_fraction` answered `page.height`, the **bottom** of the page, while the
+    /// comment above it said the top: scrolling the preview into a collapsed heading sent the source
+    /// pane to the end of the file.
+    #[test]
+    fn a_folded_paragraph_answers_with_the_one_above_it() {
+        let source = "first\n\nhidden one\n\nhidden two\n\nlast\n";
+        let document = crate::Document::from_text(source);
+        let metrics = FixedMetrics::default();
+        // Paragraphs two to four, collapsed, which is what a fold over a heading does. `Hidden`
+        // holds paragraph numbers rather than bytes.
+        let hidden = 2;
+        let folded = crate::layout::layout_with(
+            document.text(),
+            document.chars(),
+            document.paragraphs(),
+            &metrics,
+            600.0,
+            &crate::folding::Hidden::of([hidden..5]),
+        );
+
+        assert!(folded.paragraph_band(hidden).is_none(), "the fold is what makes it have no band");
+        let answer = at_fraction(&folded, hidden, 0.5);
+        assert!(
+            answer < folded.height,
+            "a folded paragraph answers at the head line above it rather than at the end of the \
+             page: {answer} against {}",
+            folded.height
+        );
+        let above = folded.paragraph_band(hidden - 1).expect("the paragraph above it is drawn");
+        assert_eq!(answer, above.0 + above.1, "which is the bottom of the line it is folded under");
     }
 }
