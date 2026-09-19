@@ -343,6 +343,29 @@ fn main() {
             "  typing, coloured again:  {ms:8.2} ms  ({:.0} frames a second, {scanned} tokens read)",
             1000.0 / ms
         );
+
+        // **The tokeniser's own share of a keystroke** (`task-1984` C8). `Tokens::update` allocated a
+        // fresh vector the size of the whole token list and copied the untouched prefix and the tail
+        // into it, and `safe_start` walked every token in front of the edit -- 5.25 ms a keystroke on
+        // a 2 MB file while reading fourteen tokens. It is measured on its own here because the
+        // reading above has a relayout and a screenful of glyphs in it, which are larger and moved
+        // for their own reasons.
+        const KEYSTROKES: usize = 20;
+        let mut spent = std::time::Duration::ZERO;
+        for _ in 0..KEYSTROKES {
+            document.apply(Command::Insert("w".to_owned()));
+            // Outside the clock: reading the rope into a `String` is 2 MB of its own and is a cost
+            // the reading above already carries.
+            let text = document.text().to_string();
+            let dirt = document.syntax_dirt();
+            let began = Instant::now();
+            let update = cache.update(&text, &plugin.grammar, dirt, |_, _| {});
+            spent += began.elapsed();
+            document.set_syntax_in(base, &[], update.changed);
+            std::hint::black_box(update.scanned);
+        }
+        let ms = spent.as_secs_f64() * 1000.0 / KEYSTROKES as f64;
+        println!("  the tokeniser alone:     {ms:8.2} ms  ({} tokens held)", cache.all().len());
     }
 
     measure_the_caret(&source);

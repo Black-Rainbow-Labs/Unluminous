@@ -155,12 +155,17 @@ impl Tokens {
         // reading straddles it. In the old text's coordinates first, because that is what the old
         // tokens are in.
         let start = self.safe_start(text, edited_from, delta);
-        let mut fresh: Vec<(Range<usize>, Token)> = Vec::with_capacity(self.tokens.len());
-        // Everything before the start is what it was: the same bytes, unmoved.
-        for entry in self.tokens.iter().take_while(|(range, _)| range.end <= start) {
-            fresh.push(entry.clone());
-        }
-        let carried = fresh.len();
+        // **Everything before the start is what it was, and stays where it is** (`task-1984` C8).
+        // This used to allocate a fresh vector the size of the whole list and copy the untouched
+        // prefix into it one token at a time -- on a 2 MB file that is 157,000 tokens, about 3.8 MB
+        // allocated and copied to record a change of one letter, 5.25 ms a keystroke while reading
+        // fourteen tokens. The list is spliced in place below instead, so the prefix is never
+        // touched at all and only what really changed moves.
+        //
+        // `partition_point` rather than a walk, for the same reason: the tokens are in file order and
+        // do not overlap, so where the prefix ends is a binary search.
+        let carried = self.tokens.partition_point(|(range, _)| range.end <= start);
+        let mut middle: Vec<(Range<usize>, Token)> = Vec::new();
 
         // The old tokens that could still be ahead of us, shifted into the new text's coordinates.
         // Only those beginning at or after the watermark can be synchronised on.
@@ -183,31 +188,40 @@ impl Tokens {
                     }
                 }
             }
-            fresh.push((range, token));
+            middle.push((range, token));
             std::ops::ControlFlow::Continue(())
         });
 
-        let read_to = fresh.len();
+        let read_to = carried + middle.len();
         let changed_to = match spliced_at {
-            // Everything from the synchronisation point on is the old reading, moved.
+            // Everything from the synchronisation point on is the old reading, moved. The moving is
+            // done where those tokens already are rather than into a second list.
             Some(at) => {
-                let resume = fresh.last().map(|(range, _)| range.end).unwrap_or(start);
-                for (range, token) in &self.tokens[at..] {
-                    fresh.push((shift(range.start, delta)..shift(range.end, delta), *token));
+                let resume = middle
+                    .last()
+                    .or_else(|| self.tokens[..carried].last())
+                    .map(|(range, _)| range.end)
+                    .unwrap_or(start);
+                for (range, _) in self.tokens[at..].iter_mut() {
+                    *range = shift(range.start, delta)..shift(range.end, delta);
                 }
+                self.tokens.splice(carried..at, middle);
                 resume.max(edited_to)
             }
             // Nothing matched, so the reading really did change all the way to the end.
-            None => text.len(),
+            None => {
+                self.tokens.truncate(carried);
+                self.tokens.append(&mut middle);
+                text.len()
+            }
         };
 
         // The tokens inside the changed stretch, in file order. `carried..read_to` is exactly that
         // range of the list: everything before it is the untouched prefix, and everything after it
         // is the spliced tail, which by definition did not change.
-        for (range, token) in &fresh[carried..read_to] {
+        for (range, token) in &self.tokens[carried..read_to] {
             report(range.clone(), *token);
         }
-        self.tokens = fresh;
         self.read = true;
         Update { changed: start..changed_to.min(text.len()), scanned }
     }
@@ -233,13 +247,19 @@ impl Tokens {
     /// made by shifting them. Bytes before the edit did not move, so for those the shift is zero and
     /// the two coordinate systems agree — which is why only the tokens *ending before* the edit are
     /// consulted here.
+    /// **One token can straddle a byte, and it is the last one that starts before it**
+    /// (`task-1984` C8). This walked every token in front of `at` on every keystroke, which on a
+    /// 2 MB file is up to 157,000 of them to answer a question about one. The tokens are in file
+    /// order and do not overlap, so anything earlier ends at or before the start of that one, which
+    /// is itself before `at`.
     fn safe_start(&self, text: &str, edited_from: usize, delta: isize) -> usize {
         let mut at = line_start(text, edited_from.min(text.len()));
         loop {
-            let straddled =
-                self.tokens.iter().take_while(|(range, _)| range.start < at).any(|(range, _)| {
-                    range.start < at && shift(range.end, delta).max(range.end) > at
-                });
+            let before = self.tokens.partition_point(|(range, _)| range.start < at);
+            let straddled = before > 0 && {
+                let (range, _) = &self.tokens[before - 1];
+                shift(range.end, delta).max(range.end) > at
+            };
             if !straddled || at == 0 {
                 return at;
             }
