@@ -1355,18 +1355,60 @@ impl Document {
             return;
         }
         self.push_undo(EditKind::Other);
-        for (range, replacement) in edits {
+
+        // **Every style is read in one walk, and every colour is written in one** (`task-1984` C6).
+        //
+        // This loop used to read `style_for_insertion` and call `StyleSpans::set` once per
+        // replacement, and both of those walk the whole span list -- so Replace All over 210 matches
+        // in a coloured 117 KB file walked 10,000 spans four hundred and twenty times. Measured,
+        // **27.5 ms coloured against 0.24 ms uncoloured**: a colour scheme was deciding what an edit
+        // cost, which is the same fault `task-1804` §5.2 took out of one keystroke, left behind on
+        // the one path that pays it hundreds of times in a row. `editor rename`, Find in Files
+        // Replace All and every accepted completion come through here.
+        //
+        // The styles are read **before any edit**, forwards, in a single pass over the spans, which
+        // is what `style_at` would have been doing repeatedly -- and it is the same answer, because
+        // `insert` and `replace_many` both read a style from the text as it was before the deletion.
+        let styles = self.chars.styles_at(edits.iter().rev().map(|(range, _)| range.start));
+
+        // Then the text, back to front, so an earlier edit's start is not moved by a later one.
+        // Nothing is coloured in here: the colouring is one call once every byte has stopped moving.
+        for (range, replacement) in &edits {
             let at = range.start;
-            // Read before the deletion, because deleting can take away the very span the new text
-            // should inherit from — the same order `insert` reads it in.
-            let style = self.chars.style_for_insertion(at);
-            self.remove_range(range);
+            self.remove_range(range.clone());
+            if !replacement.is_empty() {
+                self.splice(at..at, replacement);
+            }
+        }
+
+        // Where each replacement ended up. Applying back to front means a replacement is shifted
+        // only by the edits **before** it in the text, and those are exactly the ones applied after
+        // it, so the shift is the running difference in length over the earlier edits.
+        let mut changes: Vec<(Range<usize>, StyleChange)> = Vec::with_capacity(edits.len());
+        let mut shift = 0isize;
+        let mut caret = None;
+        for (turn, ((range, replacement), style)) in edits.iter().rev().zip(styles).enumerate() {
+            let at = range.start.saturating_add_signed(shift);
+            shift += replacement.len() as isize - (range.end - range.start) as isize;
             if replacement.is_empty() {
                 continue;
             }
-            self.splice(at..at, &replacement);
-            self.chars.set(at..at + replacement.len(), &style_as_change(&style));
-            self.selection.set_caret(at + replacement.len());
+            changes.push((at..at + replacement.len(), style_as_change(&style)));
+            // **Only the earliest edit moves the caret**, and only when it really inserted
+            // something. The loop this replaced ran back to front setting the caret every turn, so
+            // the last thing to touch it was the earliest edit -- and where an earliest edit with
+            // an empty replacement left it is `remove_range`'s answer, which the splice loop above
+            // has already given, so there is nothing to say about that case here.
+            if turn == 0 {
+                caret = Some(at + replacement.len());
+            }
+        }
+        if let (Some(first), Some(last)) = (changes.first(), changes.last()) {
+            let stretch = first.0.start..last.0.end;
+            self.chars.set_in(stretch, &StyleChange::default(), &changes);
+        }
+        if let Some(caret) = caret {
+            self.selection.set_caret(caret);
         }
         self.desired_x = None;
         self.mark_changed();
@@ -1396,7 +1438,9 @@ impl Document {
             // an indent is not typing.
             let style = self.chars.style_for_insertion(at);
             self.splice(at..at, unit);
-            self.chars.set(at..at + unit.len(), &style_as_change(&style));
+            // `set_in`, the same as `replace_many` above: one indent is one span's worth of colour
+            // and this loop runs once per line of the selection.
+            self.chars.set_in(at..at + unit.len(), &style_as_change(&style), &[]);
         }
         let shift =
             |offset: usize| starts.iter().filter(|start| **start <= offset).count() * unit.len();
@@ -2150,7 +2194,10 @@ impl Document {
         }
         self.push_undo(EditKind::Other);
         let range = self.selection.range();
-        self.chars.set(range, &change);
+        // `set_in` rather than `set`: pressing bold on one word of a coloured file rebuilt every span
+        // in it. One call rather than hundreds, so this is the smallest of the three, and it is the
+        // same change for the same reason. `task-1984` C6.
+        self.chars.set_in(range, &change, &[]);
         self.mark_changed();
     }
 }
@@ -4557,5 +4604,140 @@ mod caret_windows {
         document.apply(Command::MoveLeft { extend: false });
         document.apply(Command::MoveLeft { extend: false });
         assert_eq!(document.selection().head, caret - 3, "and one back the other way");
+    }
+}
+
+#[cfg(test)]
+mod replacing_many {
+    use super::*;
+
+    /// The reading `replace_many` used to be: one style read and one colour written per turn.
+    ///
+    /// Kept here so the two can be compared. It is the loop as it stood before `task-1984` C6, with
+    /// nothing else changed -- the same filtering and ordering above it, so what differs between this
+    /// and [`Document::replace_many`] is only the part C6 moved.
+    fn the_old_way(document: &mut Document, edits: Vec<(Range<usize>, String)>) {
+        let mut edits: Vec<(Range<usize>, String)> = edits
+            .into_iter()
+            .filter(|(range, replacement)| {
+                (range.start < range.end || !replacement.is_empty())
+                    && range.start <= range.end
+                    && range.end <= document.text.len_bytes()
+                    && document.clamp_to_boundary(range.start) == range.start
+                    && document.clamp_to_boundary(range.end) == range.end
+            })
+            .collect();
+        edits.sort_by_key(|(range, _)| range.start);
+        let mut reached = 0;
+        edits.retain(|(range, _)| {
+            if range.start < reached {
+                return false;
+            }
+            reached = range.end;
+            true
+        });
+        edits.reverse();
+        if edits.is_empty() {
+            return;
+        }
+        document.push_undo(EditKind::Other);
+        for (range, replacement) in edits {
+            let at = range.start;
+            let style = document.chars.style_for_insertion(at);
+            document.remove_range(range);
+            if replacement.is_empty() {
+                continue;
+            }
+            document.splice(at..at, &replacement);
+            document.chars.set(at..at + replacement.len(), &style_as_change(&style));
+            document.selection.set_caret(at + replacement.len());
+        }
+        document.desired_x = None;
+        document.mark_changed();
+        document.last_edit = EditKind::Other;
+    }
+
+    /// A coloured document with one colour per word, which is where a colour landing on the wrong
+    /// word would show.
+    fn coloured(text: &str) -> Document {
+        let mut document = Document::from_text(text);
+        let mut at = 0usize;
+        let mut index = 0u8;
+        for word in text.split(' ') {
+            index += 1;
+            document.apply(Command::PlaceCaret { offset: at, extend: false });
+            document.apply(Command::PlaceCaret { offset: at + word.len(), extend: true });
+            document.apply(Command::ApplyStyle(StyleChange::color(Color::rgb(index * 10, 0, 0))));
+            at += word.len() + 1;
+        }
+        document.apply(Command::PlaceCaret { offset: 0, extend: false });
+        document
+    }
+
+    /// Every span of a document, as a length and the red channel of its colour.
+    fn shape(document: &Document) -> Vec<(usize, u8)> {
+        document
+            .chars()
+            .spans()
+            .map(|(range, style)| (range.end - range.start, style.color.r))
+            .collect()
+    }
+
+    /// Replacing many ranges leaves exactly what the loop it replaced left.
+    ///
+    /// **`task-1984` C6.** `replace_many` read a style and wrote a colour inside the same loop turn,
+    /// and both of those walk the whole span list -- so Replace All over 210 matches in a coloured
+    /// 117 KB file walked 10,084 spans four hundred and twenty times: **27.5 ms coloured against
+    /// 0.24 ms uncoloured**, a colour scheme deciding what an edit costs. It reads every style in one
+    /// pass, applies every edit, and writes every colour in one call now, and the arithmetic that
+    /// works out where each replacement ended up is where a colour could land on the wrong word.
+    ///
+    /// So this is a differential test against the loop itself rather than against an expectation
+    /// somebody wrote down: same text, same edits, same everything, compared span for span. The
+    /// replacements are longer, shorter and the same length, and there is an empty one, so no two
+    /// edits shift the ones after them by the same amount.
+    #[test]
+    fn replacing_many_ranges_leaves_what_the_loop_it_replaced_left() {
+        let cases: Vec<Vec<(Range<usize>, String)>> = vec![
+            vec![(0..3, "AAAAAA".to_owned())],
+            vec![(0..3, "AAAAAA".to_owned()), (8..11, "C".to_owned())],
+            vec![(0..3, "AAAAAA".to_owned()), (8..11, "C".to_owned()), (16..19, "EEE".to_owned())],
+            vec![(4..7, String::new()), (12..15, "DDDDDDDD".to_owned())],
+            vec![(3..3, "|".to_owned()), (7..7, "||".to_owned())],
+            vec![(0..19, "one".to_owned())],
+            // Out of order and overlapping, which the filtering above the loop has to settle the
+            // same way in both readings.
+            vec![(12..15, "d".to_owned()), (0..3, "a".to_owned()), (1..5, "x".to_owned())],
+        ];
+        for edits in cases {
+            let mut mine = coloured("aaa bbb ccc ddd eee");
+            let mut reference = coloured("aaa bbb ccc ddd eee");
+            assert!(mine.apply(Command::ReplaceMany(edits.clone())));
+            the_old_way(&mut reference, edits.clone());
+            assert_eq!(
+                mine.text().to_string(),
+                reference.text().to_string(),
+                "the text, for {edits:?}"
+            );
+            assert_eq!(shape(&mine), shape(&reference), "the formatting, for {edits:?}");
+            assert_eq!(
+                mine.selection().head,
+                reference.selection().head,
+                "the caret, for {edits:?}"
+            );
+        }
+    }
+
+    /// And every replacement is still one undo step.
+    #[test]
+    fn replacing_many_ranges_is_one_undo_step() {
+        let mut document = coloured("aaa bbb ccc ddd eee");
+        let before = document.text().to_string();
+        let edits =
+            vec![(0..3, "AAAAAA".to_owned()), (8..11, String::new()), (16..19, "EEE".to_owned())];
+        assert!(document.apply(Command::ReplaceMany(edits)));
+        assert_ne!(document.text().to_string(), before);
+        assert!(document.apply(Command::Undo));
+        assert_eq!(document.text().to_string(), before, "one step back");
     }
 }

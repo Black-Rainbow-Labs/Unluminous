@@ -314,6 +314,7 @@ fn main() {
     }
 
     measure_the_caret(&source);
+    measure_replace_all(&path, &source, &plugins);
 }
 
 /// What one arrow key costs on a file with no line breaks in it.
@@ -354,4 +355,69 @@ fn on_a_boundary(text: &str, mut offset: usize) -> usize {
         offset += 1;
     }
     offset
+}
+
+/// What Replace All costs on a coloured file.
+///
+/// **`task-1984` C6.** `Document::replace_many` coloured each replacement with `StyleSpans::set`,
+/// which rebuilds the whole span list -- so a rename or a Find in Files Replace All over 210 matches
+/// rebuilt it 210 times. The review measured **27.5 ms coloured against 0.24 ms uncoloured** on a
+/// 117 KB file, which is the cost `task-1804` §5.2 took out of one keystroke, left behind on the one
+/// path that pays it hundreds of times in a row.
+///
+/// Both readings are printed, because the difference between them is the finding: the same
+/// replacements are applied to the same text, once with the file coloured and once without, and a
+/// colour scheme is not supposed to change what an edit costs.
+fn measure_replace_all(
+    path: &str,
+    source: &str,
+    plugins: &unluminous_app::services::plugins::Plugins,
+) {
+    println!();
+    println!("  and Replace All, on the same file read two ways:");
+    // A word that really is all over the file, so the matches are in real places rather than planted
+    // at regular intervals.
+    let needle = "self";
+    let found: Vec<std::ops::Range<usize>> =
+        source.match_indices(needle).map(|(at, _)| at..at + needle.len()).take(210).collect();
+    if found.is_empty() {
+        println!("  nothing to replace in this file");
+        return;
+    }
+    let count = found.len();
+    for coloured in [false, true] {
+        let mut document = Document::from_text(source);
+        let mut spans = 1;
+        if coloured {
+            colour_like_the_editor(path, source, &mut document, plugins);
+            spans = document.chars().spans().count();
+        }
+        let edits: Vec<(std::ops::Range<usize>, String)> =
+            found.iter().map(|range| (range.clone(), "this".to_owned())).collect();
+        let began = Instant::now();
+        document.apply(Command::ReplaceMany(edits));
+        let ms = began.elapsed().as_secs_f64() * 1000.0;
+        let shape = match coloured {
+            true => "coloured",
+            false => "uncoloured",
+        };
+        println!("  {count} replacements, {shape:<10} {ms:8.2} ms  ({spans} spans)");
+    }
+}
+
+/// Colour a document the way `UnluminousApp::colour_the_file` does, if a plugin claims the file.
+fn colour_like_the_editor(
+    path: &str,
+    source: &str,
+    document: &mut Document,
+    plugins: &unluminous_app::services::plugins::Plugins,
+) {
+    let Some(plugin) = plugins.for_path(std::path::Path::new(path)) else { return };
+    let base = unluminous_core::Color::rgb(0xF2, 0xF2, 0xF2);
+    let spans: Vec<(std::ops::Range<usize>, unluminous_core::Color)> =
+        unluminous_core::syntax::highlight(source, &plugin.grammar)
+            .into_iter()
+            .filter_map(|(range, token)| plugin.theme.colour(token).map(|colour| (range, colour)))
+            .collect();
+    document.set_syntax(base, &spans);
 }

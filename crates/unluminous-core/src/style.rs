@@ -220,23 +220,64 @@ impl StyleSpans {
     }
 
     /// Shrink the formatting to match `range` being deleted from the text.
+    ///
+    /// **Only the spans `range` overlaps are touched** (`task-1984` C6). This used to walk the whole
+    /// list three times -- once subtracting an overlap that was zero for nearly every span, once in
+    /// `Vec::retain`, and once in `merge_neighbours` comparing every neighbouring pair of styles.
+    /// One deletion is one keystroke and nobody would notice; `Document::replace_many` runs one per
+    /// replacement, so Replace All over 210 matches in a coloured file walked 10,084 spans six
+    /// hundred and thirty times.
+    ///
+    /// Nothing outside the overlap changed, so any two spans out there that could have been folded
+    /// together already were -- which is the argument [`Self::set_in`] makes about its own splice.
+    /// Exactly one join is new, the one where the deleted stretch used to be, and that is the one
+    /// folded here.
     pub fn remove(&mut self, range: Range<usize>) {
         if range.is_empty() {
             return;
         }
-        let mut acc = 0;
-        for span in self.spans.iter_mut() {
-            let start = acc;
-            let end = acc + span.len;
-            acc = end;
-            let overlap = range.end.min(end).saturating_sub(range.start.max(start));
-            span.len -= overlap;
+        // The first span the deletion reaches into, and where in the document it starts.
+        let mut acc = 0usize;
+        let mut first = self.spans.len();
+        for (index, span) in self.spans.iter().enumerate() {
+            if acc + span.len > range.start {
+                first = index;
+                break;
+            }
+            acc += span.len;
         }
-        self.spans.retain(|s| s.len > 0);
+        if first == self.spans.len() {
+            return;
+        }
+
+        // Then forward over the spans it touches, taking the overlap off each, and stopping at the
+        // first one that starts past the end of it.
+        let mut at = acc;
+        let mut last = first;
+        while last < self.spans.len() && at < range.end {
+            let end = at + self.spans[last].len;
+            let overlap = range.end.min(end).saturating_sub(range.start.max(at));
+            self.spans[last].len -= overlap;
+            at = end;
+            last += 1;
+        }
+
+        // What is left of the touched run is at most two pieces: whatever of the first span was in
+        // front of the deletion and whatever of the last was behind it. Those two are now next to
+        // each other, so the run is folded within itself and then at each end -- `set_in`'s pattern,
+        // and for its reason: exactly the joins the deletion made are new, and every other pair in
+        // the list was folded already because nothing about it changed.
+        let mut kept: Vec<Span> =
+            self.spans[first..last].iter().filter(|span| span.len > 0).cloned().collect();
+        merge_in_place(&mut kept);
+        let after = first + kept.len();
+        self.spans.splice(first..last, kept);
         if self.spans.is_empty() {
             self.spans.push(Span { len: 0, style: CharStyle::default() });
+            return;
         }
-        self.merge_neighbours();
+        self.join_around(after);
+        self.join_around(first);
     }
 
     /// Apply `change` to the bytes in `range`.
@@ -261,6 +302,36 @@ impl StyleSpans {
     /// The formatting to use for text typed at a caret, or for a selection about to be replaced.
     pub fn style_for_insertion(&self, offset: usize) -> CharStyle {
         self.style_at(offset).clone()
+    }
+
+    /// The formatting at each of `offsets`, which are in increasing order, in one walk of the list.
+    ///
+    /// **`task-1984` C6.** [`Self::style_at`] adds the lengths up from the front, because a span
+    /// stores a length rather than a position -- so asking it about two hundred offsets is two
+    /// hundred walks. `Document::replace_many` did exactly that, once per replacement, and on a
+    /// coloured file that was half of what Replace All cost.
+    ///
+    /// The answer is `style_at`'s, offset for offset: one on the boundary between two spans reports
+    /// the earlier one, so that typing at the end of a bold word stays bold. An offset **before** the
+    /// one in front of it is answered from where the walk has already reached rather than refused,
+    /// because the one caller has sorted its ranges and cannot get here with a list out of order.
+    pub fn styles_at(&self, offsets: impl IntoIterator<Item = usize>) -> Vec<CharStyle> {
+        let last = self.spans.len() - 1;
+        let mut index = 0usize;
+        let mut acc = 0usize;
+        let mut answers = Vec::new();
+        for offset in offsets {
+            while index < self.spans.len() {
+                let span = &self.spans[index];
+                if offset <= acc + span.len && span.len > 0 {
+                    break;
+                }
+                acc += span.len;
+                index += 1;
+            }
+            answers.push(self.spans[index.min(last)].style.clone());
+        }
+        answers
     }
 
     /// Every span, as an absolute byte range paired with its formatting.
@@ -1050,5 +1121,86 @@ mod set_in_tests {
         spans.set_in(100..200, &colour(5), &[]);
         assert_eq!(spans.span_count(), 1, "it folded back into one");
         assert_eq!(spans.total_len(), 300);
+    }
+
+    /// A bounded `remove` leaves exactly the list a whole pass over it would have left.
+    ///
+    /// **`task-1984` C6.** [`StyleSpans::remove`] used to walk the whole list three times -- once
+    /// subtracting an overlap that was zero for nearly every span, once in `Vec::retain`, and once in
+    /// `merge_neighbours`. It touches only the spans the deletion reaches now, and the thing that has
+    /// to stay true is that the answer did not change. A differential test, the shape `task-1804`
+    /// gave `set_in`: a reference reading kept beside the real one over hundreds of random deletions,
+    /// because a span list that is subtly wrong is a file coloured wrongly from somewhere in the
+    /// middle down, which is visible and hard to attribute.
+    #[test]
+    fn a_deletion_leaves_the_list_a_whole_pass_over_it_would_have_left() {
+        // The reading this replaced: subtract from every span, drop the empty ones, fold the rest.
+        fn whole_pass(spans: &StyleSpans, range: Range<usize>) -> Vec<(usize, u8)> {
+            let mut out: Vec<(usize, u8)> = Vec::new();
+            for (span, style) in spans.spans() {
+                let overlap = range.end.min(span.end).saturating_sub(range.start.max(span.start));
+                out.push(((span.end - span.start) - overlap, style.color.r));
+            }
+            out.retain(|(len, _)| *len > 0);
+            let mut folded: Vec<(usize, u8)> = Vec::new();
+            for (len, red) in out {
+                match folded.last_mut() {
+                    Some((before, same)) if *same == red => *before += len,
+                    _ => folded.push((len, red)),
+                }
+            }
+            if folded.is_empty() {
+                folded.push((0, CharStyle::default().color.r));
+            }
+            folded
+        }
+
+        // A deterministic spread, so the same rounds are checked on every machine.
+        let mut seed = 0x5eed_u64;
+        let mut next = move || {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (seed >> 33) as usize
+        };
+        for round in 0..300 {
+            let mut spans = StyleSpans::new(400, CharStyle::default());
+            for _ in 0..24 {
+                let start = next() % 400;
+                let end = (start + 1 + next() % 40).min(400);
+                spans.set(start..end, &colour((next() % 7) as u8));
+            }
+            let start = next() % 400;
+            let end = (start + next() % 60).min(400);
+            let expected = whole_pass(&spans, start..end);
+            spans.remove(start..end);
+            let after: Vec<(usize, u8)> = spans
+                .spans()
+                .map(|(range, style)| (range.end - range.start, style.color.r))
+                .collect();
+            assert_eq!(after, expected, "round {round}, removing {start}..{end}");
+            assert_eq!(spans.total_len(), 400 - (end - start), "round {round}");
+        }
+    }
+
+    /// Many offsets answered in one walk are the answers asking each one gives.
+    ///
+    /// **`task-1984` C6.** [`StyleSpans::styles_at`] exists so that `Document::replace_many` reads two
+    /// hundred styles in one pass rather than in two hundred passes, and it is only worth having if
+    /// it is the same answer -- including on a span boundary, where the rule is that the **earlier**
+    /// span wins so that typing at the end of a bold word stays bold.
+    #[test]
+    fn many_offsets_answered_in_one_walk_are_what_asking_each_one_gives() {
+        let mut spans = StyleSpans::new(100, CharStyle::default());
+        spans.set(10..20, &colour(1));
+        spans.set(20..30, &colour(2));
+        spans.set(60..75, &colour(3));
+        let offsets: Vec<usize> = (0..=100).collect();
+        let one_walk = spans.styles_at(offsets.iter().copied());
+        let one_at_a_time: Vec<CharStyle> =
+            offsets.iter().map(|at| spans.style_at(*at).clone()).collect();
+        assert_eq!(one_walk, one_at_a_time, "every offset from nothing to the end");
+
+        // And on an empty document, which is the one case where a span has no length at all.
+        let empty = StyleSpans::new(0, CharStyle::default());
+        assert_eq!(empty.styles_at([0, 0, 0]), vec![empty.style_at(0).clone(); 3]);
     }
 }
