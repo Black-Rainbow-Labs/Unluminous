@@ -96,8 +96,7 @@ impl UnluminousApp {
             return;
         };
         // A window with no store is a test's window, which starts no shell anybody types into.
-        let Some(script) =
-            crate::services::shell_integration::write_the_script(store.folder())
+        let Some(script) = crate::services::shell_integration::write_the_script(store.folder())
         else {
             return;
         };

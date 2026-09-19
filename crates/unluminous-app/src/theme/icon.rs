@@ -718,10 +718,7 @@ fn material_terminal(painter: &egui::Painter, centre: Pos2, color: Color32) {
         egui::StrokeKind::Middle,
     );
     // The prompt, pointing the way a shell's does.
-    painter.add(egui::Shape::line(
-        vec![at(-3.1, -3.1), at(-1.8, -1.8), at(-3.1, -0.5)],
-        stroke,
-    ));
+    painter.add(egui::Shape::line(vec![at(-3.1, -3.1), at(-1.8, -1.8), at(-3.1, -0.5)], stroke));
     // The line waiting to be typed on.
     painter.line_segment([at(-0.6, 1.0), at(2.4, 1.0)], stroke);
 }
@@ -1514,10 +1511,7 @@ pub fn database(painter: &egui::Painter, centre: Pos2, color: Color32) {
         (0..=16)
             .map(|step| {
                 let angle = std::f32::consts::PI * step as f32 / 16.0;
-                Pos2::new(
-                    centre.x - half_width * angle.cos(),
-                    y + sign * squash * angle.sin(),
-                )
+                Pos2::new(centre.x - half_width * angle.cos(), y + sign * squash * angle.sin())
             })
             .collect()
     };

@@ -83,35 +83,32 @@ fn draw_the_sheet(set: IconSet, name: &str) {
     // is a picture that silently stops holding the thing it was taken of.
     let margin = 24.0;
     let size = Vec2::new(CELL * ACROSS as f32 + margin, CELL * down as f32 + margin);
-    let mut harness = builder()
-        .with_pixels_per_point(ZOOM)
-        .with_size(size)
-        .build_ui(move |ui| {
-            // The set is chosen inside the closure because the thread drawing a frame is not
-            // necessarily the thread that built the harness, and `theme::activate` is thread-local
-            // on purpose — see `theme::ACTIVE`.
-            let mut theme = unluminous_app::theme::active();
-            theme.icons = set;
-            unluminous_app::theme::activate(theme);
-            let area = ui.max_rect();
-            let painter = ui.painter_at(area);
-            painter.rect_filled(area, egui::CornerRadius::ZERO, color::editor());
-            for (index, (_, draw)) in sheet().into_iter().enumerate() {
-                let centre = Pos2::new(
-                    area.left() + CELL * (index % ACROSS) as f32 + CELL / 2.0,
-                    area.top() + CELL * (index / ACROSS) as f32 + CELL / 2.0,
-                );
-                // The cell's own edge, so a mark that has grown past the room the rail gives it is
-                // visible as a mark crossing a line rather than as one that looks a little large.
-                painter.rect_stroke(
-                    Rect::from_center_size(centre, Vec2::splat(CELL)),
-                    egui::CornerRadius::ZERO,
-                    egui::Stroke::new(0.2, color::divider()),
-                    egui::StrokeKind::Inside,
-                );
-                draw(&painter, centre, color::icon());
-            }
-        });
+    let mut harness = builder().with_pixels_per_point(ZOOM).with_size(size).build_ui(move |ui| {
+        // The set is chosen inside the closure because the thread drawing a frame is not
+        // necessarily the thread that built the harness, and `theme::activate` is thread-local
+        // on purpose — see `theme::ACTIVE`.
+        let mut theme = unluminous_app::theme::active();
+        theme.icons = set;
+        unluminous_app::theme::activate(theme);
+        let area = ui.max_rect();
+        let painter = ui.painter_at(area);
+        painter.rect_filled(area, egui::CornerRadius::ZERO, color::editor());
+        for (index, (_, draw)) in sheet().into_iter().enumerate() {
+            let centre = Pos2::new(
+                area.left() + CELL * (index % ACROSS) as f32 + CELL / 2.0,
+                area.top() + CELL * (index / ACROSS) as f32 + CELL / 2.0,
+            );
+            // The cell's own edge, so a mark that has grown past the room the rail gives it is
+            // visible as a mark crossing a line rather than as one that looks a little large.
+            painter.rect_stroke(
+                Rect::from_center_size(centre, Vec2::splat(CELL)),
+                egui::CornerRadius::ZERO,
+                egui::Stroke::new(0.2, color::divider()),
+                egui::StrokeKind::Inside,
+            );
+            draw(&painter, centre, color::icon());
+        }
+    });
     harness.run();
     harness.snapshot(shot(name).as_str());
 }

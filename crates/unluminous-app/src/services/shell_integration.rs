@@ -112,8 +112,7 @@ pub fn apply(settings: &mut SessionSettings, script: &Path) -> bool {
     if !settings.args.is_empty() {
         return false;
     }
-    let shell =
-        settings.shell.clone().unwrap_or_else(unluminous_terminal::session::default_shell);
+    let shell = settings.shell.clone().unwrap_or_else(unluminous_terminal::session::default_shell);
     if !is_powershell(&shell) {
         return false;
     }
@@ -155,10 +154,15 @@ mod tests {
 
     #[test]
     fn a_powershell_with_nothing_else_to_do_is_started_under_the_script() {
-        let script = PathBuf::from(r"C:\Users\jason\AppData\Roaming\Unluminous\shell-integration.ps1");
+        let script =
+            PathBuf::from(r"C:\Users\jason\AppData\Roaming\Unluminous\shell-integration.ps1");
         let mut asked = settings("pwsh.exe");
         assert!(apply(&mut asked, &script));
-        assert_eq!(asked.shell.as_deref(), Some("pwsh.exe"), "the tab is still named after the shell");
+        assert_eq!(
+            asked.shell.as_deref(),
+            Some("pwsh.exe"),
+            "the tab is still named after the shell"
+        );
         assert_eq!(
             asked.args,
             vec![
@@ -202,7 +206,10 @@ mod tests {
         let written = std::fs::metadata(&file).expect("ask about it").modified().expect("a time");
         assert_eq!(write_the_script(&folder).as_deref(), Some(file.as_path()));
         let again = std::fs::metadata(&file).expect("ask again").modified().expect("a time");
-        assert_eq!(written, again, "an unchanged script is not written over on every terminal opened");
+        assert_eq!(
+            written, again,
+            "an unchanged script is not written over on every terminal opened"
+        );
     }
 
     /// The whole feature, against a real PowerShell in a real pseudoconsole.
@@ -224,8 +231,9 @@ mod tests {
         let folder = std::env::temp_dir().join("unluminous-shell-integration-live");
         std::fs::create_dir_all(&folder).expect("make somewhere to move to");
         let started_in = std::env::current_dir().expect("a folder to start in");
-        let script = write_the_script(&std::env::temp_dir().join("unluminous-shell-integration-script"))
-            .expect("write the script");
+        let script =
+            write_the_script(&std::env::temp_dir().join("unluminous-shell-integration-script"))
+                .expect("write the script");
 
         let mut settings = SessionSettings {
             shell: Some(shell),
@@ -234,9 +242,12 @@ mod tests {
         };
         assert!(apply(&mut settings, &script), "a plain PowerShell is what this is for");
         let waker: unluminous_terminal::Waker = std::sync::Arc::new(|| {});
-        let mut session =
-            unluminous_terminal::Session::spawn(&settings, unluminous_terminal::Size::new(12, 100), waker)
-                .expect("start a shell");
+        let mut session = unluminous_terminal::Session::spawn(
+            &settings,
+            unluminous_terminal::Size::new(12, 100),
+            waker,
+        )
+        .expect("start a shell");
 
         let moved = folder.display().to_string();
         session.send(format!("Set-Location \"{moved}\"\r").into_bytes());
@@ -261,7 +272,11 @@ mod tests {
             Some(folder.as_path()),
             "Set-Location moved the process's own current directory, which it has never done here"
         );
-        assert_eq!(session.folder().as_deref(), Some(folder.as_path()), "the shell's answer is the one kept");
+        assert_eq!(
+            session.folder().as_deref(),
+            Some(folder.as_path()),
+            "the shell's answer is the one kept"
+        );
         session.kill();
     }
 
@@ -278,7 +293,10 @@ mod tests {
     fn the_script_writes_the_sequence_the_reader_reads() {
         assert!(SCRIPT.contains("]9;9;"), "the script does not write OSC 9;9");
         assert!(SCRIPT.contains("[char]27"), "the script does not write an escape character");
-        assert!(SCRIPT.contains("__UnluminousInnerPrompt"), "the prompt that was there is not kept");
+        assert!(
+            SCRIPT.contains("__UnluminousInnerPrompt"),
+            "the prompt that was there is not kept"
+        );
         // Read by `unluminous_terminal::reported`, which is the other end of it. The path is a real folder so
         // the reading is the whole path a live shell's report takes.
         let here = std::env::temp_dir();

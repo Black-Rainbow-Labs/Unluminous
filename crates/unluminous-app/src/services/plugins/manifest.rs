@@ -905,17 +905,28 @@ pane.id = b
         assert!(!read(&format!("{head}pane.group = top")).tile, "and so does a top one");
         // And either default can be said out loud, which is the whole point of the key: the board puts
         // its button at the top and keeps the strip to itself.
-        assert!(read(&format!("{head}pane.group = top
-pane.tile = yes")).tile);
-        assert!(!read(&format!("{head}pane.group = bottom
-pane.tile = no")).tile);
+        assert!(
+            read(&format!(
+                "{head}pane.group = top
+pane.tile = yes"
+            ))
+            .tile
+        );
+        assert!(
+            !read(&format!(
+                "{head}pane.group = bottom
+pane.tile = no"
+            ))
+            .tile
+        );
     }
 
     /// The board's own manifest is what `task-1949` changed, so it is what is checked.
     #[test]
     fn the_agent_tasks_button_is_in_the_top_group_and_the_board_is_still_a_tile() {
         let manifest = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/agent-tasks/plugin.conf"),
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("plugins/agent-tasks/plugin.conf"),
         )
         .expect("the bundled Agent-Tasks manifest");
         let pane = parse(&Values::parse(&manifest), true)

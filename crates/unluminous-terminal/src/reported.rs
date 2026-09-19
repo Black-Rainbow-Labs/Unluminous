@@ -426,7 +426,10 @@ mod tests {
 
     #[test]
     fn osc_seven_reports_a_file_url() {
-        assert_eq!(read(b"\x1b]7;file://localhost/home/jason\x1b\\"), Some(PathBuf::from("/home/jason")));
+        assert_eq!(
+            read(b"\x1b]7;file://localhost/home/jason\x1b\\"),
+            Some(PathBuf::from("/home/jason"))
+        );
     }
 
     #[test]
@@ -436,10 +439,7 @@ mod tests {
 
     #[test]
     fn a_windows_drive_loses_the_slash_the_url_put_in_front_of_it() {
-        assert_eq!(
-            read(b"\x1b]7;file:///C:/jason/dev\x1b\\"),
-            Some(PathBuf::from("C:/jason/dev"))
-        );
+        assert_eq!(read(b"\x1b]7;file:///C:/jason/dev\x1b\\"), Some(PathBuf::from("C:/jason/dev")));
     }
 
     #[test]
@@ -537,7 +537,10 @@ mod tests {
         let reported = Reported::new();
         let mut scanner = Scanner::reading_only(reported.clone());
         scanner.read(&stream);
-        assert!(scanner.body.capacity() <= LARGEST_SEQUENCE + 8, "the body grew with the clipboard");
+        assert!(
+            scanner.body.capacity() <= LARGEST_SEQUENCE + 8,
+            "the body grew with the clipboard"
+        );
         assert_eq!(reported.folder(), Some(PathBuf::from("/home/jason")));
     }
 
