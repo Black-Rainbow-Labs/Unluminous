@@ -790,3 +790,87 @@ fn reading(
     }
     (requests, closed)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What a vector's components look like written out, six to a line, aligned.
+    ///
+    /// **`task-1984` S18.** This file is 792 lines with no test in it, and the reason it had none is
+    /// that nearly all of it draws — which is what the screenshot tests are for. What is here and is
+    /// **not** drawing is the text a dialog puts in front of somebody, and that is what these check:
+    /// the words are the thing a person reads and the thing a wrong change would silently alter.
+    ///
+    /// `numbered` in particular is the one place a vector is written out at full precision, which is
+    /// the whole point of the modal: `task-1814` asks for *"ways to see our vectors"*, and a grid cell
+    /// showing three of several hundred components is not one of them.
+    #[test]
+    fn a_vector_is_written_out_six_components_to_a_line_and_aligned() {
+        let vector = unluminous_db::Vector { values: (0..8).map(|at| at as f32 / 8.0).collect() };
+        let written = numbered(&vector);
+        let rows: Vec<&str> = written.split('\n').collect();
+        assert_eq!(rows.len(), 2, "eight components are two rows of six: {written:?}");
+        assert!(rows[0].starts_with("    0:"), "the index is right aligned: {:?}", rows[0]);
+        assert!(rows[0].contains("0.125000"), "and six decimal places: {:?}", rows[0]);
+        // Every row is the same width, which is what makes a column of them readable at all.
+        assert_eq!(
+            rows[0].len(),
+            6 * 21,
+            "a full row of six, each five for the index, eleven for the value and the gaps"
+        );
+        assert_eq!(rows[1].len(), 2 * 21, "and a short last row of two");
+    }
+
+    /// An empty vector is an empty block rather than a row of nothing.
+    ///
+    /// `task-1984` S18. `unluminous-db::vector` is deliberately permissive — a PNG's first eight
+    /// bytes decode to two perfectly finite floats — so a value with nothing in it really does reach
+    /// here, and what it must not do is produce a line of padding that looks like data.
+    #[test]
+    fn a_vector_with_nothing_in_it_is_written_as_nothing() {
+        let empty = unluminous_db::Vector { values: Vec::new() };
+        assert_eq!(numbered(&empty), "");
+    }
+
+    /// Connection security is named in words a person can choose between.
+    ///
+    /// **`task-1984` S18, and `task-1795`'s own report**: *"No idea what encryption option means."* It
+    /// was `sslmode`, which is a PostgreSQL setting rather than a sentence. Every value has to keep
+    /// plain words, and none of them may be the protocol's own spelling.
+    #[test]
+    fn every_connection_security_has_plain_words() {
+        for mode in [SslMode::Disable, SslMode::Prefer, SslMode::Require] {
+            let said = plain_words_for(mode);
+            assert!(!said.is_empty(), "{mode:?} says nothing");
+            assert!(
+                !said.to_lowercase().contains("ssl"),
+                "{mode:?} says {said:?}, which is the setting's name rather than what it does"
+            );
+        }
+    }
+
+    /// Every state a password can be in says where it is kept, and none of them says the password.
+    ///
+    /// **`task-1984` S18.** `services::agent_tasks::keychain` says a secret must not go in a settings
+    /// file, and the Settings page says `set` or `not set` and never the value. This is the sentence
+    /// under the field that explains it, and the thing it must never do is grow a case that names a
+    /// value instead of a place.
+    #[test]
+    fn every_password_state_says_where_it_is_kept() {
+        let states = [
+            Secret::None,
+            Secret::Keychain("unluminous-db-one".to_owned()),
+            Secret::Typed("hunter2".to_owned()),
+            Secret::Environment("PGPASSWORD".to_owned()),
+        ];
+        for secret in &states {
+            let said = secret_note(secret);
+            assert!(said.len() > 40, "{secret:?} says too little: {said:?}");
+            assert!(!said.contains("hunter2"), "{secret:?} put the password in the sentence");
+        }
+        // And the three that are not the same thing say different things.
+        assert_ne!(secret_note(&states[0]), secret_note(&states[1]));
+        assert_ne!(secret_note(&states[1]), secret_note(&states[3]));
+    }
+}

@@ -870,3 +870,149 @@ fn recolour_epic(tasks: &mut AgentTasks, arguments: &[String]) -> Result<Answer,
     tasks.refresh()?;
     Ok(Answer::said(format!("{} is {colour}", epic.name)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::plugin_ui::Context;
+
+    /// A board in memory, with nothing on disk and nothing running.
+    ///
+    /// `AgentTasks::open` with an empty context makes its store in memory, which is what
+    /// `the_schedule_table_is_still_read...` in `mod.rs` already relies on. Nothing here starts an
+    /// agent: the verbs that would are named in the last test and driven only far enough to be
+    /// refused for the right reason.
+    fn board() -> AgentTasks {
+        let mut board = AgentTasks::new();
+        board.open(&Context::default()).expect("a board with no settings folder opens in memory");
+        board
+    }
+
+    /// The key of the ticket a verb just made, out of its answer.
+    fn key(answer: &Answer) -> String {
+        answer.value["task"]
+            .as_str()
+            .unwrap_or_else(|| panic!("no task in {}", answer.value))
+            .to_owned()
+    }
+
+    fn did(board: &mut AgentTasks, command: &str, arguments: &[&str]) -> Answer {
+        let words: Vec<String> = arguments.iter().map(|word| (*word).to_owned()).collect();
+        run(board, command, &words)
+            .unwrap_or_else(|problem| panic!("`{command}` was refused: {problem}"))
+    }
+
+    /// A ticket is made, changed, given a todo and a comment, and deleted, through the one path.
+    ///
+    /// **`task-1984` S18.** This file is 872 lines with no test in it. `mod.rs`'s
+    /// `every_command_it_lists_is_a_command_it_answers` drives every verb with **no arguments**, so
+    /// what it catches is a verb that reaches none of the seven groups -- and what nothing catches is
+    /// a verb that reaches its group and does the wrong thing. That is what this is: the ordinary
+    /// life of a ticket, driven the way `unluminous-cli plugins run agent-tasks` drives it, with the
+    /// board read back after every step.
+    #[test]
+    fn a_ticket_can_be_made_changed_and_deleted_through_the_commands() {
+        let mut board = board();
+        let made = did(&mut board, "new-task", &["a", "ticket", "to", "drive"]);
+        let ticket = key(&made);
+        assert!(!ticket.is_empty(), "the answer names the ticket it made: {}", made.value);
+
+        let read = did(&mut board, "task", &[&ticket]);
+        assert_eq!(read.value["task"]["title"], "a ticket to drive");
+        assert_eq!(read.value["task"]["status"], "new", "a new ticket starts in New");
+
+        did(&mut board, "edit-task", &[&ticket, "a", "better", "title"]);
+        did(&mut board, "priority", &[&ticket, "high"]);
+        did(&mut board, "assign", &[&ticket, "claude"]);
+        did(&mut board, "move-task", &[&ticket, "in_progress"]);
+        let read = did(&mut board, "task", &[&ticket]);
+        assert_eq!(read.value["task"]["title"], "a better title");
+        assert_eq!(read.value["task"]["priority"], "high");
+        assert_eq!(read.value["task"]["assignee"], "claude");
+        assert_eq!(read.value["task"]["status"], "in_progress");
+
+        did(&mut board, "todo-add", &[&ticket, "the", "first", "thing"]);
+        did(&mut board, "todo-add", &[&ticket, "the", "second", "thing"]);
+        did(&mut board, "todo-done", &[&ticket, "1"]);
+        let read = did(&mut board, "task", &[&ticket]);
+        let todos = read.value["todos"].as_array().expect("todos").clone();
+        assert_eq!(todos.len(), 2, "both are there: {}", read.value);
+        assert_eq!(todos[0]["done"], true, "the first is ticked");
+        assert_eq!(todos[1]["done"], false, "and the second is not");
+
+        did(&mut board, "comment", &[&ticket, "a", "note", "on", "it"]);
+        let read = did(&mut board, "task", &[&ticket]);
+        let comments = read.value["comments"].as_array().expect("comments").clone();
+        assert_eq!(comments.len(), 1, "{}", read.value);
+
+        did(&mut board, "delete-task", &[&ticket]);
+        assert!(
+            run(&mut board, "task", std::slice::from_ref(&ticket)).is_err(),
+            "a deleted ticket is not there to read"
+        );
+    }
+
+    /// A verb that names a ticket that is not there is refused, and the refusal names it.
+    ///
+    /// `task-1984` S18. Every one of these reaches a real handler, so this is the half the dispatch
+    /// test in `mod.rs` cannot see: it drives each with no arguments and takes any refusal as an
+    /// answer.
+    #[test]
+    fn a_verb_about_a_ticket_that_is_not_there_says_which_ticket() {
+        let mut board = board();
+        for (command, arguments) in [
+            ("task", vec!["task-9999"]),
+            ("edit-task", vec!["task-9999", "new", "title"]),
+            ("move-task", vec!["task-9999", "done"]),
+            ("priority", vec!["task-9999", "low"]),
+            ("todo-add", vec!["task-9999", "something"]),
+            ("comment", vec!["task-9999", "something"]),
+            ("delete-task", vec!["task-9999"]),
+        ] {
+            let words: Vec<String> = arguments.iter().map(|word| (*word).to_owned()).collect();
+            let problem = run(&mut board, command, &words)
+                .expect_err(&format!("`{command}` answered about a ticket that is not there"));
+            assert!(
+                problem.contains("task-9999"),
+                "`{command}` refused without naming the ticket: {problem}"
+            );
+        }
+    }
+
+    /// A value a verb has a fixed list for is refused with the list rather than silently taken.
+    ///
+    /// `task-1984` S18, and it is the rule `language.renders`, `run.project` and `debug.adapter`
+    /// all keep: a name this version has not got is refused with what it does have.
+    #[test]
+    fn a_value_outside_a_fixed_list_is_refused_with_the_list() {
+        let mut board = board();
+        let ticket = key(&did(&mut board, "new-task", &["one", "to", "refuse", "about"]));
+        for (command, bad) in
+            [("priority", "urgent"), ("assign", "nobody"), ("move-task", "sideways")]
+        {
+            let problem = run(&mut board, command, &[ticket.clone(), bad.to_owned()])
+                .expect_err(&format!("`{command} {bad}` was taken"));
+            assert!(
+                problem.len() > bad.len(),
+                "`{command}` refused `{bad}` without saying what it does take: {problem}"
+            );
+        }
+    }
+
+    /// Every verb the plugin lists says something about itself, and no two share a name.
+    ///
+    /// `task-1984` S18. The list is what `plugins show agent-tasks` prints and what an agent reads
+    /// to decide what to call, so a repeated name is one of them nobody can reach.
+    #[test]
+    fn every_listed_verb_is_named_once_and_says_what_it_does() {
+        let mut seen = std::collections::HashSet::new();
+        for (name, summary) in LIST {
+            assert!(seen.insert(*name), "{name} is listed twice");
+            assert!(!summary.trim().is_empty(), "{name} says nothing about itself");
+            assert!(
+                summary.trim_end().ends_with('.'),
+                "{name}'s summary is a sentence and ends with a stop: {summary:?}"
+            );
+        }
+    }
+}
