@@ -184,6 +184,48 @@ impl Command {
         }
     }
 
+    /// Whether the window answers this command on a **later frame** than the one it arrived on.
+    ///
+    /// **`task-1984` L6.** `docs/protocol.md` named this list by hand and got it wrong in both
+    /// directions: it named `launch`, which the client answers itself and which no window ever sees,
+    /// and it omitted eight that really do hold -- `status`, `git status`, the five `input` commands
+    /// and `space browser <node> shot`. The test that guarded it compared the document against
+    /// "commands with a `timeout` or a `wait` flag", which is a different property that happened to
+    /// overlap.
+    ///
+    /// It is declared here rather than derived, because what really decides it is which arm of
+    /// `UnluminousApp::run_cli` returns `Outcome::Hold` -- and that lives in `unluminous-app`, which
+    /// this crate cannot see, the dependency pointing the other way.
+    /// `every_command_that_holds_its_answer_says_so_in_the_catalogue` in
+    /// `crates/unluminous-app/tests/command_line.rs` drives them and is what keeps the two in step.
+    pub fn answered_later(&self) -> bool {
+        matches!(
+            (self.area, self.verb),
+            ("", "status")
+                | ("git", "status" | "action" | "switch")
+                | ("window", "screenshot")
+                | ("input", _)
+                | ("editor", "references" | "rename")
+                | ("modal", "results")
+                | ("terminal", "read")
+                | ("run", "output")
+                | ("update", "check")
+                | (
+                    "debug",
+                    "start"
+                        | "continue"
+                        | "step-over"
+                        | "step-into"
+                        | "step-out"
+                        | "run-to"
+                        | "status"
+                        | "hover"
+                        | "evaluate"
+                )
+                | ("space", "browser")
+        )
+    }
+
     /// How long a client should wait for this command, given whatever `--timeout` or `--wait` said.
     ///
     /// One reading of the rule, in the crate both the command line and the MCP driver depend on,

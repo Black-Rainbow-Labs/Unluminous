@@ -399,3 +399,30 @@ fn a_row_limit_is_asked_for_as_one_more_and_says_that_there_are_more() {
     assert!(rows.more, "nobody counted the rest, and `1-1 of 1+` is what the grid says");
     session.close();
 }
+
+// -------------------------------------------------------------------------------------- task-1984
+
+/// A handshake waits under the connect budget, and only a query gets the long one.
+///
+/// **`task-1984` P4.** `connect_to` set `READ_TIMEOUT` on the socket the moment the TCP connection
+/// came up — thirty minutes, which is the right number for a query that may legitimately take
+/// minutes and is the wrong number for a handshake. So a server that accepted a connection and then
+/// said nothing held the thread that opened it for half an hour, and `Worker::open` waited on that
+/// thread with no deadline of its own. The budget is raised once `start_up` has finished, which is
+/// what this asks: the timeout after `connect` is the long one, so the change did not simply make
+/// every read short.
+///
+/// Asserted on the socket rather than by waiting a timeout out, because the alternative is a test
+/// that takes fifteen seconds to say one thing.
+#[test]
+fn a_handshake_waits_for_the_connect_budget_rather_than_the_query_budget() {
+    let server = Scripted::start(None, Script::Answers(vec![two_rows()]));
+    let session = Session::connect(&server.source(), None).expect("connected");
+    let waits = session.read_timeout().expect("the socket has a read timeout");
+    assert!(
+        waits > std::time::Duration::from_secs(60),
+        "once the handshake is done a read waits the query budget, and it waits {waits:?}"
+    );
+    let mut session = session;
+    session.close();
+}

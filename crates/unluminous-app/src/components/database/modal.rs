@@ -14,7 +14,7 @@
 
 use egui::{Pos2, Rect, Vec2};
 
-use unluminous_db::source::{Engine, Secret, Source, SslMode};
+use unluminous_db::source::{Engine, Secret, SslMode};
 
 use crate::components::modal;
 use crate::services::database::{ColumnForm, DatabaseExplorer, Modal, SourceForm, TableForm};
@@ -222,11 +222,17 @@ fn source_modal(
             outcome.test = true;
         }
         // What the server called itself, or why it would not answer - beside the button that asked,
-        // so the two read as one thing rather than as an answer floating above the footer.
-        if let Some(tested) = &form.tested {
-            let (said, tint) = match tested {
-                Ok(version) => (version.clone(), color::git_added()),
-                Err(why) => (why.clone(), color::unsaved()),
+        // so the two read as one thing rather than as an answer floating above the footer. While the
+        // question is still out it says so, because the connection is on a thread now and an answer
+        // that simply appears some seconds later with nothing in between reads as a button that did
+        // nothing (`task-1984` S2).
+        let testing = explorer.is_testing();
+        if testing || form.tested.is_some() {
+            let (said, tint) = match (&form.tested, testing) {
+                (_, true) => ("Testing\u{2026}".to_owned(), color::text_dim()),
+                (Some(Ok(version)), _) => (version.clone(), color::git_added()),
+                (Some(Err(why)), _) => (why.clone(), color::unsaved()),
+                (None, false) => (String::new(), color::text_dim()),
             };
             let painter = ui.painter_at(body);
             let galley = painter.layout(
@@ -243,12 +249,20 @@ fn source_modal(
             _ => {}
         }
     });
+    // **Both of these are changes to the world, and neither happens in a draw any more**
+    // (`task-1984` S2 and S9). Test Connection opened a connection synchronously -- about twenty one
+    // seconds of TCP against a host that is down, with the window drawing nothing -- and the password
+    // was written to the credential store from here, which on macOS and Linux spawns `security` or
+    // `secret-tool` and can put an unlock prompt up behind a frozen window. The explorer owns both
+    // now, which is what makes `components/mod.rs`'s "no component changes the window's state"
+    // true of this file.
     if outcome.test {
-        form.tested = Some(test_it(&form));
+        form.tested = None;
+        explorer.test_the_source(&form);
     }
     if outcome.save {
         let mut source = form.source.clone();
-        let (secret, said) = secret_of(&form);
+        let (secret, said) = explorer.keep_the_password(&form);
         source.secret = secret;
         if let Some(said) = said {
             requests.push(Request::Message(said));
@@ -481,58 +495,6 @@ fn secret_field(ui: &mut egui::Ui, area: Rect, value: &mut String) {
 
 /// Where the password for this form is, as the settings file will record it.
 ///
-/// A password typed into the dialog is written to this machine’s own credential store and what
-/// comes back is the **name** of the entry — never the value, which is the rule the settings file has
-/// always kept. Nothing typed leaves whatever the source already had alone, so opening a data source
-/// to change its port does not clear its password.
-///
-/// A store that refuses says so, and the password is then held in this window only, which is what
-/// `Secret::Typed` has always been: refusing to connect at all because a keychain was locked would
-/// be a worse answer than a connection that lasts until the window closes.
-fn secret_of(form: &SourceForm) -> (Secret, Option<String>) {
-    if form.typed.is_empty() {
-        return (form.source.secret.clone(), None);
-    }
-    let entry = crate::services::database::keychain_entry_for(&form.source.name);
-    match crate::services::agent_tasks::keychain::write(&entry, &form.typed) {
-        Ok(()) => (Secret::Keychain(entry), None),
-        Err(why) => (
-            Secret::Typed(form.typed.clone()),
-            Some(format!(
-                "The password is held in this window only: {why}. It is not written to any file."
-            )),
-        ),
-    }
-}
-
-/// Open a connection, say what the server called itself, and close it again.
-///
-/// **The server’s own version string**, rather than a sentence of Unluminous’s about it, which is
-/// `unluminous-git`’s rule about quoting a program. Read only for the test whatever the data source is
-/// set to: a Test Connection that could write is one nobody should press twice.
-fn test_it(form: &SourceForm) -> Result<String, String> {
-    let mut source: Source = form.source.clone();
-    // What is *typed* rather than what is stored, so Test Connection tests the password on the
-    // screen — and without writing anything to the credential store, because a test is not a save.
-    if !form.typed.is_empty() {
-        source.secret = Secret::Typed(form.typed.clone());
-    }
-    source.read_only = true;
-    let password = crate::services::database::password_for(&source);
-    match unluminous_db::Database::connect(&source, password.as_deref()) {
-        Ok(mut database) => {
-            let said = database.version();
-            let encrypted = database.is_encrypted();
-            database.close();
-            Ok(match encrypted {
-                true => format!("{said}, encrypted"),
-                false => said,
-            })
-        }
-        Err(why) => Err(why.to_string()),
-    }
-}
-
 /// How wide the column list is, leaving the rest of the body for the statement beside it.
 const COLUMNS: f32 = 400.0;
 /// A row of the column list.

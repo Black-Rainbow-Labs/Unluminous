@@ -475,13 +475,13 @@ fn mcp_tools(typed: &Typed) -> i32 {
     OK
 }
 
-/// Everything the two writing commands need, read off the command line.
 // **The readings live in `mcp::ask` now, where the MCP driver calls them too** (`task-1984` L4 and
 // §5.6). `mcp tools`, `mcp config` and `mcp install` are `local: true` and were answered here and
 // nowhere else, so an agent that called them as tools was refused by the window with
 // `unknown-command` -- three tools that resolve and can never succeed. What stays here is how a
 // person's command line *prints* an answer; what the answer is made of is shared.
 
+/// Everything the two writing commands need, read off the command line.
 fn wanted_from(typed: &Typed) -> Result<mcp::install::Wanted, String> {
     mcp::ask::wanted_from(&typed.arguments)
 }

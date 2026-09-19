@@ -60,6 +60,27 @@ impl Transport {
         }
     }
 
+    /// How long a read waits from here on.
+    ///
+    /// `task-1984` P4: the handshake reads under `CONNECT_TIMEOUT` and everything after it under
+    /// `READ_TIMEOUT`, so a server that accepts a connection and then says nothing is reported in
+    /// fifteen seconds rather than in thirty minutes. See `Session::connect`.
+    fn set_read_timeout(&self, how_long: Duration) {
+        let _ = self.socket().set_read_timeout(Some(how_long));
+    }
+
+    /// What a read waits now, which is what `a_handshake_waits_for_the_connect_budget` asks.
+    fn read_timeout(&self) -> Option<Duration> {
+        self.socket().read_timeout().ok().flatten()
+    }
+
+    fn socket(&self) -> &TcpStream {
+        match self {
+            Transport::Plain(stream) => stream,
+            Transport::Tls(stream) => stream.get_ref(),
+        }
+    }
+
     fn is_encrypted(&self) -> bool {
         matches!(self, Transport::Tls(_))
     }
@@ -109,6 +130,13 @@ impl Session {
             notices: Vec::new(),
         };
         session.start_up(source, password)?;
+        // **The read timeout is raised only once the handshake is done** (`task-1984` P4). Until
+        // here every read is part of connecting -- the `SSLRequest` byte, the TLS handshake, the
+        // authentication round trips -- and a server that accepts a connection and then says nothing
+        // held the thread under `READ_TIMEOUT`, which is thirty minutes. A query may legitimately
+        // take minutes and is what that number is for; a handshake may not. `connect_to` sets
+        // `CONNECT_TIMEOUT` and this is where it stops applying.
+        session.stream.set_read_timeout(READ_TIMEOUT);
         if source.read_only {
             // **The guarantee is the server's, not a parser's.** Unluminous also hides the editing
             // controls, but a statement that got past the check in `sql::only_reads` is still
@@ -116,6 +144,15 @@ impl Session {
             session.simple("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY", usize::MAX)?;
         }
         Ok(session)
+    }
+
+    /// How long a read on this session waits before giving up.
+    ///
+    /// For `a_handshake_waits_for_the_connect_budget_rather_than_the_query_budget` (`task-1984` P4).
+    /// It is the one thing about that change nothing else in the session reports, and the alternative
+    /// is a test that waits the timeout out.
+    pub fn read_timeout(&self) -> Option<Duration> {
+        self.stream.read_timeout()
     }
 
     /// What the server calls itself, which is what Test Connection reports.
@@ -517,7 +554,9 @@ fn connect_to(address: &str) -> Answer<TcpStream> {
     for candidate in addresses {
         match TcpStream::connect_timeout(&candidate, CONNECT_TIMEOUT) {
             Ok(stream) => {
-                let _ = stream.set_read_timeout(Some(READ_TIMEOUT));
+                // `CONNECT_TIMEOUT` until the handshake has finished, and `READ_TIMEOUT` after --
+                // see `Session::connect` (`task-1984` P4).
+                let _ = stream.set_read_timeout(Some(CONNECT_TIMEOUT));
                 let _ = stream.set_write_timeout(Some(CONNECT_TIMEOUT));
                 // A query answered in pieces is a query drawn in pieces, and Nagle would hold the
                 // last short write of every message until the previous one was acknowledged.

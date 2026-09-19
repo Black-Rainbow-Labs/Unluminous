@@ -24,14 +24,13 @@ fn protocol() -> String {
         .unwrap_or_else(|problem| panic!("could not read {}: {problem}", path.display()))
 }
 
-/// Every command that waits for an answer rather than replying with whatever the window already
-/// knows at the top of its next frame -- which is exactly the commands with a `timeout` or a `wait`
-/// flag of their own, since that is the flag a caller reaches for to say how long to wait.
+/// Every command the window answers on a **later frame** than the one it arrived on.
+///
+/// `task-1984` L6: this used to be "the commands with a `timeout` or a `wait` flag of their own",
+/// which is a different property that happened to overlap -- it named `launch`, which no window ever
+/// sees, and omitted eight that really do hold. `Command::answered_later` is the declaration now.
 fn waiting_commands() -> Vec<&'static Command> {
-    catalogue::COMMANDS
-        .iter()
-        .filter(|command| command.flag("timeout").is_some() || command.flag("wait").is_some())
-        .collect()
+    catalogue::COMMANDS.iter().filter(|command| command.answered_later()).collect()
 }
 
 /// The heading a command is documented under: `### tab open`.
@@ -123,7 +122,7 @@ fn the_protocol_document_names_exactly_the_commands_that_wait() {
     // text with every run of whitespace collapsed to one space rather than against the file's own
     // line breaks, which are not meaningful and move whenever the paragraph is reflowed.
     let text = protocol().split_whitespace().collect::<Vec<_>>().join(" ");
-    let anchor = "flag of its own:";
+    let anchor = "They are:";
     let after_start = text.find(anchor).unwrap_or_else(|| {
         panic!(
             "unluminous-cli/docs/protocol.md has no {anchor:?} -- \

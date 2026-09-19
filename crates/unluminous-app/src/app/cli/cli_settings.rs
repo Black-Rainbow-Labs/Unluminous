@@ -80,11 +80,18 @@ impl UnluminousApp {
 
     /// `update check` -- whether a newer Unluminous has been released.
     ///
-    /// **It asks on this thread and waits**, unlike the window's own check, and that is the right
-    /// shape here rather than a shortcut: a command line caller has asked a question and is waiting
-    /// for the answer, so a reply saying "started asking" would be a reply they then have to poll
-    /// for. The window's check is on a thread because a window that stops drawing looks like a
-    /// crash; a command that takes a second does not.
+    /// **On a thread, answered on a later frame** (`task-1984` L1). It used to ask on this thread and
+    /// wait, on the argument that a command line caller is waiting for the answer anyway -- but
+    /// `run_cli` runs at the top of a frame, so what it really did was stop the window drawing for up
+    /// to ten seconds against an endpoint that is slow or unreachable, which is the one thing
+    /// `unluminous_git::Worker`'s comment says never to do: it looks exactly like a crash, and the
+    /// control channel is read at the top of a frame too, so `unluminous-cli status` stopped
+    /// answering as well. `Check::start` was already doing it the right way for the About box.
+    ///
+    /// `Outcome::Hold` is how every other slow command in `app/cli/` answers, so the caller waits
+    /// exactly as it did and nothing about the reply changed. `--timeout` is read and passed to the
+    /// check, which is the flag the catalogue has declared since this command was written and that
+    /// nothing read.
     ///
     /// The answer is also kept on the window, so opening the About box after running this shows what
     /// it found -- one place a check's answer lives, which is `run_cli`'s rule.
@@ -92,13 +99,28 @@ impl UnluminousApp {
         if verb != "check" {
             return unknown(request);
         }
-        let answer = crate::services::update::ask();
-        self.message = Some(answer.sentence());
-        self.update_answer = Some(answer.clone());
+        let until = waits_for(request, "timeout", crate::services::update::TIMEOUT);
+        // The check itself is given the same budget, so the request that is still in flight when the
+        // command gives up is one that has given up too.
+        let asking = until.saturating_duration_since(Instant::now());
+        self.update = Some(crate::services::update::Check::start_for(asking, self.thread_waker()));
+        self.update_answer = None;
+        Outcome::Hold(Waiting::UpdateCheck { until })
+    }
+
+    /// The reply `update check` makes once the answer has come back.
+    pub(crate) fn update_check_reply(&self, request: &Request) -> Reply {
+        let Some(answer) = self.update_answer.clone() else {
+            return Reply::failed(
+                &request.command,
+                code::REFUSED,
+                "The check finished with no answer.",
+            );
+        };
         let said = answer.sentence();
         match answer {
-            crate::services::update::Answer::Newer(release) => ok(
-                request,
+            crate::services::update::Answer::Newer(release) => Reply::done(
+                &request.command,
                 said,
                 json!({
                     "current": crate::build_info::VERSION,
@@ -108,8 +130,8 @@ impl UnluminousApp {
                     "notes": release.notes,
                 }),
             ),
-            crate::services::update::Answer::Current(version) => ok(
-                request,
+            crate::services::update::Answer::Current(version) => Reply::done(
+                &request.command,
                 said,
                 json!({
                     "current": crate::build_info::VERSION,
@@ -120,7 +142,9 @@ impl UnluminousApp {
             ),
             // A check that could not be made is a failure rather than "no update", which is
             // `task-1804` §7.2's rule: a caller told there is nothing newer would believe it.
-            crate::services::update::Answer::Failed(problem) => no(request, code::FAILED, problem),
+            crate::services::update::Answer::Failed(problem) => {
+                Reply::failed(&request.command, code::FAILED, problem)
+            }
         }
     }
 

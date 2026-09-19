@@ -1596,7 +1596,11 @@ const CANNOT_BE_MADE_TO_SUCCEED: &[(&str, &str)] = &[
     ("mcp.tools", "the client answers it, out of the catalogue it already holds"),
     // And the four that do reach the window and must not be allowed to finish.
     ("quit", "it ends the window, and the walk has the rest of the catalogue still to drive"),
-    ("update.check", "it asks GitHub for the latest release, and a test does not reach the network"),
+    // It is on a thread since `task-1984` L1, so the coverage walk sees a hold rather than a reply
+    // -- and it would still ask the real GitHub, because this walk stands up no server.
+    // `update_check_does_not_block_the_frame_it_arrives_on` and
+    // `update_check_answers_with_what_the_releases_page_said` drive it against one on loopback.
+    ("update.check", "it asks the releases page, and this walk stands up no server to answer it"),
     ("debug.install", "it downloads and installs a debug adapter onto this machine"),
     ("explorer.reveal", "it hands the path to the operating system's own file manager"),
     // Three that need something a window with no web view behind it has not got.
@@ -2582,4 +2586,179 @@ fn the_mcp_server_lists_its_tools_and_calls_one_against_a_real_window() {
     assert!(open.contains(&"notes.txt".to_owned()), "the tool call opened nothing: {open:?}");
 
     std::fs::remove_dir_all(&instances).ok();
+}
+
+// -------------------------------------------------------------------------------------- task-1984
+//
+// `update check` is answered on a thread, against a server a test can stand up.
+
+/// `update check` does not stop the window drawing, and it reads its own `--timeout`.
+///
+/// **`task-1984` L1.** It used to call the blocking `update::ask` inside `run_cli`, which runs at the
+/// top of a frame — so one command stopped the window drawing for up to ten seconds against an
+/// endpoint that is slow or unreachable, which is the one thing `unluminous_git::Worker`'s comment
+/// says never to do: it looks exactly like a crash, and the control channel is read at the top of a
+/// frame too, so `unluminous-cli status` stopped answering as well. `Check::start` in the same file
+/// was already doing it the right way for the About box.
+///
+/// **Measured rather than asserted about the shape**: the first half points the check at a server
+/// that accepts the connection and never answers, and insists the command comes back in under a
+/// second. On the code as it was that call took the whole timeout.
+///
+/// `UNLUMINOUS_RELEASES` is what makes this possible at all — a scripted endpoint on loopback,
+/// which is the seam `UNLUMINOUS_HOME` and `UNLUMINOUS_INSTANCES` already are.
+#[test]
+fn update_check_does_not_block_the_frame_it_arrives_on() {
+    let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|held| held.into_inner());
+
+    // A releases endpoint that accepts and says nothing, which is what a slow GitHub looks like.
+    let silent = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let port = silent.local_addr().expect("the address").port();
+    let held_open = std::thread::spawn(move || {
+        let taken = silent.accept();
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        drop(taken);
+    });
+    std::env::set_var("UNLUMINOUS_RELEASES", format!("http://127.0.0.1:{port}/releases/latest"));
+
+    let mut harness = harness("# a file\n");
+    let ctx = harness.ctx.clone();
+    let began = std::time::Instant::now();
+    let answered = harness.state_mut().run_command_line("update check --timeout 20000", &ctx);
+    let took = began.elapsed();
+
+    assert!(
+        answered.is_none(),
+        "the answer belongs to a later frame, as every slow command's does"
+    );
+    assert!(
+        took < std::time::Duration::from_millis(1000),
+        "the command came back in {took:?}; on the code as it was it held the frame for the whole \
+         timeout, which is what makes a window look like it has crashed"
+    );
+    // And the window really is still drawing while the check is in flight.
+    for _ in 0..4 {
+        pump(&mut harness);
+    }
+    let began = std::time::Instant::now();
+    let status = did(&mut harness, "status");
+    assert!(
+        began.elapsed() < std::time::Duration::from_millis(500),
+        "the control channel is read at the top of a frame too, so a blocked frame stops `status` \n         answering as well -- and it answered at once"
+    );
+    assert!(status.get("window").is_some(), "and answered with a window: {status}");
+
+    std::env::remove_var("UNLUMINOUS_RELEASES");
+    let _ = held_open.join();
+}
+
+/// And the answer, when the releases page does answer, is the one it gave.
+#[test]
+fn update_check_answers_with_what_the_releases_page_said() {
+    let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|held| held.into_inner());
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let port = listener.local_addr().expect("the address").port();
+    let served = std::thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            use std::io::{Read as _, Write as _};
+            let mut buffer = [0u8; 4096];
+            let _ = stream.read(&mut buffer);
+            let body =
+                r#"{"tag_name":"v99.0.0","html_url":"https://example.invalid/99","body":"newer"}"#;
+            let _ = stream.write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\
+                     connection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            );
+        }
+    });
+    std::env::set_var("UNLUMINOUS_RELEASES", format!("http://127.0.0.1:{port}/releases/latest"));
+
+    let mut harness = harness("# a file\n");
+    let ctx = harness.ctx.clone();
+    assert!(harness.state_mut().run_command_line("update check --timeout 20000", &ctx).is_none());
+
+    // The answer is kept on the window, so the About box after this shows what the check found —
+    // one place a check's answer lives, which is `run_cli`'s rule.
+    settle(&mut harness, "the releases page to answer", |app| {
+        app.update_line().is_some_and(|line| line != "Checking...")
+    });
+    assert_eq!(
+        harness.state().update_line().as_deref(),
+        Some("99.0.0 is available"),
+        "the scripted releases page named 99.0.0"
+    );
+
+    std::env::remove_var("UNLUMINOUS_RELEASES");
+    let _ = served.join();
+}
+
+/// Every command the catalogue says is answered on a later frame really is.
+///
+/// **`task-1984` L6.** `Command::answered_later` is a declaration in `unluminous-cli`, because what
+/// really decides it is which arm of `UnluminousApp::run_cli` returns `Outcome::Hold` and that lives
+/// here, in the crate the catalogue cannot see. `docs/protocol.md` is generated against the
+/// declaration, and the declaration was wrong in both directions before this: it named `launch`,
+/// which the client answers itself and no window ever sees, and it omitted `status`, `git status`,
+/// the five `input` commands and `space browser <node> shot`.
+///
+/// Driven rather than read, for the ones a test window can drive: `run_command_line` answers `None`
+/// for a command the window held, which is the property itself.
+#[test]
+fn every_command_that_holds_its_answer_says_so_in_the_catalogue() {
+    let mut harness = harness_in(&dispatch_folder());
+    let ctx = harness.ctx.clone();
+
+    // **Declared means *can* hold, not *always* holds**, which is the property a client has to
+    // handle: `status` and `git status` hold only while git is still reading the repository, and
+    // `run output` only while the words it is waiting for have not been written. So what is driven
+    // here is the ones that hold every time in a window with no project behind it, and the rest are
+    // driven by the suites they belong to.
+    let holds = [
+        "input move 10 10",
+        "input click 10 10",
+        "input drag 10 10 --to-x 20 --to-y 20",
+        "input key Escape",
+        "input text hello",
+        "input wheel -1",
+    ];
+    for line in holds {
+        let first = line.split_whitespace().take(2).collect::<Vec<&str>>().join(" ");
+        let command = unluminous_cli::catalogue::find(&first)
+            .or_else(|| unluminous_cli::catalogue::find(line.split_whitespace().next().unwrap()))
+            .unwrap_or_else(|| panic!("`{first}` is a command"));
+        assert!(
+            command.answered_later(),
+            "`{}` holds its answer and the catalogue says it does not",
+            command.typed()
+        );
+        let answered = harness.state_mut().run_command_line(line, &ctx);
+        note_a_driven_line(line, true);
+        assert!(
+            answered.is_none(),
+            "`{line}` was answered on the frame it arrived on, so `answered_later` is wrong about it"
+        );
+        pump(&mut harness);
+    }
+
+    // And the other way: a command that answers at once must not claim to hold, or a client would
+    // wait for a reply that has already been sent.
+    for line in ["tab list", "editor status", "panel list", "theme list"] {
+        let first = line.split_whitespace().take(2).collect::<Vec<&str>>().join(" ");
+        let command = unluminous_cli::catalogue::find(&first).expect("a command");
+        assert!(
+            !command.answered_later(),
+            "`{}` answers at once and the catalogue says it holds",
+            command.typed()
+        );
+        assert!(
+            harness.state_mut().run_command_line(line, &ctx).is_some(),
+            "`{line}` really does answer at once"
+        );
+        pump(&mut harness);
+    }
 }

@@ -49,7 +49,11 @@ pub const RELEASES_PAGE: &str = "https://github.com/jasonmcaffee/unluminous/rele
 /// GitHub refuses a request with no `user-agent` outright, so it names the program and nothing else.
 const AGENT: &str = "Unluminous";
 /// How long the whole thing is given. It is a background question and a slow answer is no answer.
-const TIMEOUT: Duration = Duration::from_secs(10);
+///
+/// The catalogue's `update check --timeout` says 15000 by default and this was ten seconds whatever
+/// the caller asked (`task-1984` L1), so the documented default was not the real one and the flag
+/// did nothing. `Check::start_for` takes a wait; this is what a check nobody gave one is given.
+pub const TIMEOUT: Duration = Duration::from_secs(15);
 
 /// What the releases page says the newest one is.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,11 +108,21 @@ pub struct Check {
 impl Check {
     /// Start asking. `wake` asks the window to draw again when the answer lands.
     pub fn start(wake: Arc<dyn Fn() + Send + Sync>) -> Self {
+        Self::start_for(TIMEOUT, wake)
+    }
+
+    /// The same, with a wait the caller chose.
+    ///
+    /// `unluminous-cli update check --timeout` (`task-1984` L1). The catalogue has declared that flag
+    /// since the command was written and nothing read it: the wait was a constant, and the number the
+    /// documentation gave was not the number the code used.
+    pub fn start_for(timeout: Duration, wake: Arc<dyn Fn() + Send + Sync>) -> Self {
         let (sender, answers) = std::sync::mpsc::channel();
+        let url = releases_endpoint();
         std::thread::Builder::new()
             .name("unluminous-update-check".to_owned())
             .spawn(move || {
-                let answer = ask();
+                let answer = ask_within(&url, timeout);
                 // The window may have gone; a send to a closed channel is the ordinary end of this
                 // thread rather than something to report.
                 let _ = sender.send(answer);
@@ -148,19 +162,35 @@ impl Check {
     }
 }
 
+/// Where a check asks, which is GitHub unless something in the environment says otherwise.
+///
+/// `UNLUMINOUS_RELEASES` is a test seam of the shape `UNLUMINOUS_HOME`, `UNLUMINOUS_INSTANCES` and
+/// `UNLUMINOUS_CLI_BIN` already are: a scripted server on loopback stands in for GitHub, so
+/// `update check` can be driven to a real success in the suite rather than sitting on
+/// `CANNOT_BE_MADE_TO_SUCCEED` for ever (`task-1984` L1). Nothing in a released Unluminous sets it,
+/// so the address a person's window asks is unchanged.
+fn releases_endpoint() -> String {
+    std::env::var("UNLUMINOUS_RELEASES").unwrap_or_else(|_| RELEASES.to_owned())
+}
+
 /// Ask the real releases endpoint. Runs on the worker thread.
 pub fn ask() -> Answer {
-    ask_at(RELEASES)
+    ask_at(&releases_endpoint())
 }
 
 /// The same against any address, so a test can point it at a server on loopback.
 pub fn ask_at(url: &str) -> Answer {
+    ask_within(url, TIMEOUT)
+}
+
+/// The same, with a wait the caller chose. See [`Check::start_for`].
+pub fn ask_within(url: &str, timeout: Duration) -> Answer {
     let config = ureq::Agent::config_builder()
         .tls_config(unluminous_chat::client::tls_config())
         // The body of a 403 is where GitHub says *why* -- a rate limit, usually -- and that is the
         // whole of what there is to tell somebody. `unluminous-chat` makes the same argument.
         .http_status_as_error(false)
-        .timeout_global(Some(TIMEOUT))
+        .timeout_global(Some(timeout))
         // A redirect goes somewhere nobody named. There is nothing secret in this request, so this is
         // not the security decision it is in the chat client; it is the same decision about honesty.
         .max_redirects(0)

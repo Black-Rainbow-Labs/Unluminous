@@ -26,6 +26,15 @@ const CONNECT_GRACE: Duration = Duration::from_secs(5);
 /// How long to wait between attempts.
 const CONNECT_PAUSE: Duration = Duration::from_millis(50);
 
+/// How long one dial waits before it is taken as an answer of no.
+///
+/// `task-1984` P5. This loop runs on the window's own thread, and `TcpStream::connect` waits whatever
+/// the operating system's own connect timeout is -- twenty one seconds on Windows against an address
+/// that drops packets rather than refusing one. Both addresses here are loopback, where a server that
+/// is listening answers in microseconds and one that is not is refused at once, so a fifth of a
+/// second is far more than an answer needs and is short enough that the loop keeps its own rhythm.
+const DIAL_TIMEOUT: Duration = Duration::from_millis(200);
+
 /// Where the messages go.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Transport {
@@ -188,7 +197,11 @@ fn start_server(command: &AdapterCommand, port: u16) -> Result<Connection, Strin
         let mut refused = None;
         let mut connected = None;
         for address in addresses {
-            match TcpStream::connect(address) {
+            // **Bounded per attempt** (`task-1984` P5). `TcpStream::connect` waits whatever the
+            // operating system's own connect timeout is -- twenty one seconds on Windows against an
+            // address that drops packets rather than refusing -- and this runs on the window's thread.
+            // A loopback dial that has not answered in `DIAL_TIMEOUT` is not going to.
+            match TcpStream::connect_timeout(&address, DIAL_TIMEOUT) {
                 Ok(stream) => {
                     connected = Some(stream);
                     break;
@@ -199,14 +212,21 @@ fn start_server(command: &AdapterCommand, port: u16) -> Result<Connection, Strin
         if let Some(stream) = connected {
             break stream;
         }
-        if started.elapsed() >= CONNECT_GRACE {
+        // **A program that has already ended is not one to keep waiting for** (`task-1984` P5). This
+        // is the case the five seconds were measured on: `debug.node` pointing at a file that is not
+        // there makes `node` exit at once, and the loop went on dialling a port nothing would ever
+        // open while the window drew nothing. Asked of the child rather than guessed at, so an
+        // adapter that really is still starting up keeps its whole grace.
+        let gone = child.as_mut().is_some_and(|child| matches!(child.try_wait(), Ok(Some(_))));
+        if gone || started.elapsed() >= CONNECT_GRACE {
             let mut child = child;
             if let Some(child) = child.as_mut() {
                 let _ = child.kill();
             }
-            let problem = match refused {
-                Some(problem) => problem.to_string(),
-                None => "nothing answered".to_owned(),
+            let problem = match (gone, refused) {
+                (true, _) => "the adapter's own program ended before it opened its port".to_owned(),
+                (false, Some(problem)) => problem.to_string(),
+                (false, None) => "nothing answered".to_owned(),
             };
             return Err(format!(
                 "Unluminous could not reach the debug adapter on 127.0.0.1:{port} or [::1]:{port}: {problem}"
@@ -329,5 +349,53 @@ mod tests {
         };
         let problem = start(&command).expect_err("nothing listening");
         assert!(problem.contains("127.0.0.1:1"), "{problem}");
+    }
+
+    // -------------------------------------------------------------------------------- task-1984
+
+    /// An adapter whose own program ends is given up on at once rather than dialled for the grace.
+    ///
+    /// **`task-1984` P5.** This loop runs on the window's own thread, so its whole length is a window
+    /// that is not drawing -- and the case it was measured on is the commonest one there is:
+    /// `debug.node` pointing at a file that is not there, where `node` exits in milliseconds and the
+    /// loop went on dialling a port nothing would ever open for the whole five seconds. An adapter
+    /// that really is still starting up keeps its whole grace, because what is asked is whether the
+    /// child has ended rather than how long it has been.
+    #[test]
+    fn an_adapter_whose_program_ended_is_not_dialled_for_the_whole_grace() {
+        // A program that exits at once and opens no port. `cmd /c exit` on Windows and `true`
+        // elsewhere are the two smallest ones there are.
+        let program = match cfg!(windows) {
+            true => "cmd",
+            false => "true",
+        };
+        let arguments = match cfg!(windows) {
+            true => vec!["/c".to_owned(), "exit".to_owned()],
+            false => Vec::new(),
+        };
+        // A port nothing is listening on, taken and let go so it is free.
+        let port = {
+            let held = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+            held.local_addr().expect("an address").port()
+        };
+        let command = AdapterCommand {
+            program: Some(std::path::PathBuf::from(program)),
+            args: arguments,
+            working_directory: None,
+            env: Vec::new(),
+            transport: Transport::Port(port),
+        };
+
+        let began = Instant::now();
+        let problem = start(&command).expect_err("it opened no port");
+        let took = began.elapsed();
+        assert!(
+            problem.contains("ended before it opened its port"),
+            "the refusal says what really happened: {problem}"
+        );
+        assert!(
+            took < CONNECT_GRACE,
+            "it gave up in {took:?}, which is inside the {CONNECT_GRACE:?} grace rather than at the \n             end of it"
+        );
     }
 }

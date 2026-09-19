@@ -864,7 +864,10 @@ mod tests {
         );
         // And nothing in that list names a command that has gone.
         for wire in crate::mcp::driver::ANSWERED_LOCALLY {
-            assert!(catalogue::find(wire).is_some(), "ANSWERED_LOCALLY names `{wire}`, which is not a command");
+            assert!(
+                catalogue::find(wire).is_some(),
+                "ANSWERED_LOCALLY names `{wire}`, which is not a command"
+            );
         }
     }
 
@@ -1141,9 +1144,11 @@ mod tests {
                     continue;
                 }
                 let given = json!({ "command": command.verb, "timeout": 800 });
-                let Ok(call) =
-                    resolve(Shape::Grouped, &tool_name(area, ""), given.as_object().expect("an object"))
-                else {
+                let Ok(call) = resolve(
+                    Shape::Grouped,
+                    &tool_name(area, ""),
+                    given.as_object().expect("an object"),
+                ) else {
                     continue;
                 };
                 if call.arguments.get("timeout") != Some(&json!(800)) {

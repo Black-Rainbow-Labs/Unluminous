@@ -953,3 +953,80 @@ fn showing_a_tab_that_was_already_laid_out_does_not_lay_it_out_again() {
     assert_eq!(harness.state().document().text().to_string(), "# Unluminous\n");
     assert!(!harness.state().layout().lines.is_empty(), "with its lines still in place");
 }
+
+// -------------------------------------------------------------------------------------- task-1984
+//
+// Test Connection is on a thread, and the window goes on drawing while it waits.
+
+/// Pressing Test Connection against a host that will not answer does not stop the window drawing.
+///
+/// **`task-1984` S2.** It called `unluminous_db::Database::connect` synchronously from inside the
+/// modal's own draw function — the one side effect on the world anywhere in `components/`, and the
+/// only connection in the plugin that did not go through a worker. A host that is down costs about
+/// twenty one seconds of TCP on Windows, during which the window drew nothing and the control
+/// channel, which is read at the top of a frame, answered nothing either.
+///
+/// **A server that accepts the connection and then says nothing** is what this points the dialog at,
+/// because a port nothing is listening on is refused in a millisecond and would say nothing about
+/// whether the connection was made inside the draw. What is asserted is that the frame the button
+/// was pressed on came back at once, and that the plugin says the question is still out.
+#[test]
+fn test_connection_does_not_stop_the_window_drawing() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane database/explorer --show");
+    harness.run();
+    did(&mut harness, "plugins run database add-source");
+    harness.run();
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let port = listener.local_addr().expect("the address").port();
+    // Not joined: it is waiting for a connection that may never be made — a host name that resolves
+    // to IPv6 first reaches somewhere else — and a test that hung on that would be a test about the
+    // machine's name resolution rather than about the window.
+    std::thread::spawn(move || {
+        let taken = listener.accept();
+        std::thread::sleep(std::time::Duration::from_millis(2500));
+        drop(taken);
+    });
+
+    // Typed into the dialog, because a Test Connection tests what is on the screen. The host as well
+    // as the port, so nothing depends on what `localhost` resolves to first on this machine.
+    for (field, wanted) in [("Host", "127.0.0.1".to_owned()), ("Port", port.to_string())] {
+        let box_at = harness.get_by_role_and_label(egui::accesskit::Role::TextInput, field);
+        box_at.focus();
+        harness.run();
+        harness.input_mut().events.push(egui::Event::Key {
+            key: egui::Key::A,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::COMMAND,
+        });
+        harness.run();
+        harness.get_by_role_and_label(egui::accesskit::Role::TextInput, field).type_text(&wanted);
+        harness.run();
+        assert_eq!(
+            harness.get_by_role_and_label(egui::accesskit::Role::TextInput, field).value(),
+            Some(wanted.clone()),
+            "the {field} field holds what was typed"
+        );
+    }
+
+    let began = std::time::Instant::now();
+    harness.get_by_label("Test Connection").click();
+    harness.run();
+    let took = began.elapsed();
+    assert!(
+        took < std::time::Duration::from_secs(2),
+        "the frame that pressed Test Connection took {took:?}; on the code as it was it held the \
+         window until the server answered or the connect gave up"
+    );
+    // And while the question is out the plugin says so, rather than the button appearing to have
+    // done nothing: the answer arrives on a later frame, through the same waker every worker's
+    // answer comes back on.
+    assert_eq!(
+        did(&mut harness, "plugins view database")["testing"],
+        serde_json::Value::Bool(true),
+        "a Test Connection is in flight rather than one that was already answered inside the draw"
+    );
+}

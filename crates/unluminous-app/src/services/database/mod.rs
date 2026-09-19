@@ -417,6 +417,79 @@ pub struct DatabaseExplorer {
     /// tab in front whoever asked for it — the tree's own double click, the menu, or an agent running
     /// `plugins run database open` — and only the window can show a tab.
     asking: Vec<Request>,
+    /// A Test Connection in flight. See [`ConnectionTest`].
+    testing: Option<ConnectionTest>,
+}
+
+/// A Test Connection, on a thread.
+///
+/// **`task-1984` S2.** Test Connection called `unluminous_db::Database::connect` synchronously from
+/// inside the modal's own draw function -- the one side effect on the world anywhere in
+/// `components/`, and the only connection in the plugin that did not go through `Worker::open`. A
+/// host that is down costs about twenty one seconds of TCP on Windows, during which the window drew
+/// nothing and the control channel answered nothing, which is what `unluminous_git::Worker`'s comment
+/// says never to do.
+///
+/// `update::Check`'s shape, because it is the same question: a thread, a channel, a waker, and a
+/// `poll` the frame loop calls.
+pub struct ConnectionTest {
+    answers: std::sync::mpsc::Receiver<Result<String, String>>,
+    asking: bool,
+}
+
+impl ConnectionTest {
+    /// Open a connection, read what the server called itself, and close it again.
+    ///
+    /// **Read only whatever the data source is set to**: a Test Connection that could write is one
+    /// nobody should press twice.
+    pub fn start(
+        source: &Source,
+        password: Option<String>,
+        wake: Option<Arc<dyn Fn() + Send + Sync>>,
+    ) -> Self {
+        let (sender, answers) = std::sync::mpsc::channel();
+        let mut source = source.clone();
+        source.read_only = true;
+        std::thread::Builder::new()
+            .name(format!("unluminous-db test {}", source.name))
+            .spawn(move || {
+                let answer = match unluminous_db::Database::connect(&source, password.as_deref()) {
+                    Ok(mut database) => {
+                        let said = database.version();
+                        let encrypted = database.is_encrypted();
+                        database.close();
+                        Ok(match encrypted {
+                            true => format!("{said}, encrypted"),
+                            false => said,
+                        })
+                    }
+                    Err(why) => Err(why.to_string()),
+                };
+                // The window may have gone; a send to a closed channel is the ordinary end of this
+                // thread rather than something to report.
+                let _ = sender.send(answer);
+                if let Some(wake) = wake {
+                    wake();
+                }
+            })
+            .ok();
+        Self { answers, asking: true }
+    }
+
+    /// The answer, once. `None` while the server has not replied.
+    pub fn poll(&mut self) -> Option<Result<String, String>> {
+        match self.answers.try_recv() {
+            Ok(answer) => {
+                self.asking = false;
+                Some(answer)
+            }
+            Err(_) => None,
+        }
+    }
+
+    pub fn is_asking(&self) -> bool {
+        self.asking
+    }
 }
 
 impl std::fmt::Debug for DatabaseExplorer {
@@ -461,6 +534,7 @@ impl DatabaseExplorer {
             scroll_to: None,
             last_ddl: None,
             asking: Vec::new(),
+            testing: None,
         }
     }
 
@@ -519,6 +593,68 @@ impl DatabaseExplorer {
             loaded.schemas.clear();
             loaded.items.clear();
             loaded.columns.clear();
+        }
+    }
+
+    /// Start a Test Connection against what is on the screen, on a thread.
+    ///
+    /// `task-1984` S2. What is tested is what is **typed** rather than what is stored, so the
+    /// password on the screen is the one that is tried -- and nothing is written to the credential
+    /// store, because a test is not a save.
+    pub fn test_the_source(&mut self, form: &SourceForm) {
+        let mut source = form.source.clone();
+        if !form.typed.is_empty() {
+            source.secret = unluminous_db::source::Secret::Typed(form.typed.clone());
+        }
+        let password = password_for(&source);
+        self.testing = Some(ConnectionTest::start(&source, password, self.wake.clone()));
+    }
+
+    /// Whether a Test Connection is still waiting for an answer, which is what the modal draws.
+    pub fn is_testing(&self) -> bool {
+        self.testing.as_ref().is_some_and(ConnectionTest::is_asking)
+    }
+
+    /// Take the answer into the form, if one has arrived. Called once a frame beside the workers'.
+    fn take_the_test_answer(&mut self) -> bool {
+        let Some(test) = self.testing.as_mut() else {
+            return false;
+        };
+        let Some(answer) = test.poll() else {
+            return false;
+        };
+        self.testing = None;
+        if let Some(Modal::Source(form)) = self.modal.as_mut() {
+            form.tested = Some(answer);
+        }
+        true
+    }
+
+    /// Write a password into this machine's credential store, and say where it ended up.
+    ///
+    /// `task-1984` S9. It used to happen inside the modal's draw function, where on macOS and Linux
+    /// it spawns `security` or `secret-tool` and can put an unlock prompt up behind a window that has
+    /// stopped drawing. It is a change to the world, so it belongs where every other change does.
+    ///
+    /// **`Secret::Typed` when the store refuses**, which it has always been: refusing to connect at
+    /// all because a keychain was locked would be a worse answer than a connection that lasts until
+    /// the window closes.
+    pub fn keep_the_password(
+        &mut self,
+        form: &SourceForm,
+    ) -> (unluminous_db::source::Secret, Option<String>) {
+        if form.typed.is_empty() {
+            return (form.source.secret.clone(), None);
+        }
+        let entry = keychain_entry_for(&form.source.name);
+        match crate::services::agent_tasks::keychain::write(&entry, &form.typed) {
+            Ok(()) => (unluminous_db::source::Secret::Keychain(entry), None),
+            Err(why) => (
+                unluminous_db::source::Secret::Typed(form.typed.clone()),
+                Some(format!(
+                    "The password is held in this window only: {why}. It is not written to any file."
+                )),
+            ),
         }
     }
 
@@ -1008,7 +1144,7 @@ impl DatabaseExplorer {
     /// which it is: `try_recv` on each open connection and nothing else.
     pub fn take_the_replies(&mut self) -> bool {
         let names: Vec<String> = self.connections.keys().cloned().collect();
-        let mut anything = false;
+        let mut anything = self.take_the_test_answer();
         for name in names {
             let answered = match self.connections.get(&name) {
                 Some(connection) => connection.worker.take(),
@@ -1231,6 +1367,11 @@ impl DatabaseExplorer {
             })),
             "pages": self.pages.iter().map(|page| self.page_value(page)).collect::<Vec<serde_json::Value>>(),
             "current": self.pages.get(self.current).map(|page| page.id),
+            // **Whether a Test Connection is still out** (`task-1984` S2). It is on a thread now, so
+            // the answer arrives on a later frame and there has to be a way to ask whether it has --
+            // which is the same sentence `busy` above makes about a query, and what the dialog itself
+            // draws as `Testing…`.
+            "testing": self.is_testing(),
             // Which dialog is in front of somebody, by name. An agent that has just asked for one
             // has no other way to know it arrived, and one that is about to press a button in the
             // pane behind it needs to know there is something over it — `task-1795`.

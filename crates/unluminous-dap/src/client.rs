@@ -1,11 +1,21 @@
 //! The thread the adapter is spoken to on, arranged exactly as `unluminous_git::Worker` is.
 //!
-//! The window never blocks on an adapter. A `stackTrace` over a deep stack, an adapter still loading
-//! a twenty-megabyte binary's debug information, a `node dapDebugServer.js` that has not opened its
-//! port yet — a window that waited for any of them would stop drawing, which on this machine looks
-//! exactly like a crash. So one reader thread parses frames and pushes [`Reply`] values onto a
-//! channel, calling a [`Waker`] after each, and the window drains the channel once at the top of a
-//! frame where `Worker::poll` and `Session::pump` are already called.
+//! The window never blocks on an adapter **once one is running**. A `stackTrace` over a deep stack,
+//! an adapter still loading a twenty-megabyte binary's debug information, a `node dapDebugServer.js`
+//! that has answered nothing yet — a window that waited for any of them would stop drawing, which on
+//! this machine looks exactly like a crash. So one reader thread parses frames and pushes [`Reply`]
+//! values onto a channel, calling a [`Waker`] after each, and the window drains the channel once at
+//! the top of a frame where `Worker::poll` and `Session::pump` are already called.
+//!
+//! **Starting one is the exception, and it is bounded rather than absent** (`task-1984` P5). A
+//! server-shaped adapter is a program that has to be spawned and a port that has to be dialled until
+//! it opens, and both happen on the window's own thread, once, when somebody presses Debug. What was
+//! measured and fixed is how long that can be: each dial waits `adapter::DIAL_TIMEOUT` rather than
+//! the operating system's own connect timeout, and the loop stops the moment the adapter's program
+//! has ended -- which is the case the five seconds came from, `debug.node` pointing at a file that is
+//! not there. Moving the whole dial onto the reader thread would mean a client with no writer until
+//! it connected, and is written down in `tasks/task-1984-code-review-tdd.md` §5.3 as the design if
+//! this ever needs to be nothing at all.
 //!
 //! Writing is done from the window's own thread. It is a handful of small writes to a pipe or a
 //! loopback socket, which never blocks in practice, and a second thread to do it would need a second

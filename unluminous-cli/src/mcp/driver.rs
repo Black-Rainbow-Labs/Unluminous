@@ -247,11 +247,10 @@ fn mcp_tools(arguments: &Map<String, Value>) -> Reply {
 /// Read only. Writing that file is `mcp install`, which is held back from the tool list -- see
 /// `tools::offered`.
 fn mcp_config(arguments: &Map<String, Value>) -> Reply {
-    let clients =
-        match super::ask::clients_from(arguments.get("client").and_then(Value::as_str)) {
-            Ok(clients) => clients,
-            Err(problem) => return Reply::failed("mcp.config", code::USAGE, problem),
-        };
+    let clients = match super::ask::clients_from(arguments.get("client").and_then(Value::as_str)) {
+        Ok(clients) => clients,
+        Err(problem) => return Reply::failed("mcp.config", code::USAGE, problem),
+    };
     let wanted = match super::ask::wanted_from(arguments) {
         Ok(wanted) => wanted,
         Err(problem) => return Reply::failed("mcp.config", code::USAGE, problem),

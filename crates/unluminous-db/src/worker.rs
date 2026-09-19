@@ -16,12 +16,23 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 
+use std::time::Duration;
+
 use crate::catalog::{Item, Kind, Table};
 use crate::edit::Statement;
 use crate::engine::{Database, Stopper};
 use crate::rows::{Answer, Failure, Rows};
 use crate::source::Source;
 use crate::value::Value;
+
+/// How long [`Worker::open`] waits for the thread to say whether it connected.
+///
+/// `task-1984` P4. A little over the connect budget: `postgres::session::CONNECT_TIMEOUT` is fifteen
+/// seconds **per address the name resolves to**, and a name with an IPv6 and an IPv4 answer is two,
+/// so forty is room for both and a margin. It is a backstop rather than the ordinary deadline -- the
+/// handshake has its own, on the socket -- and what it catches is an engine that takes a thread down
+/// somewhere neither of those covers.
+pub const OPEN_TIMEOUT: Duration = Duration::from_secs(40);
 
 /// What a caller asked for.
 #[derive(Debug, Clone)]
@@ -226,14 +237,30 @@ impl Worker {
             .map_err(|why| {
                 Failure::said(format!("a thread for this connection could not be started: {why}"))
             })?;
-        let report = match was_opened.recv() {
+        // **Bounded** (`task-1984` P4). This waited with no deadline at all, on the argument that a
+        // failure to connect is answered before `open` returns -- which is right, and says nothing
+        // about how long. The connect itself is fifteen seconds per address the name resolves to, and
+        // before this ticket the handshake after it ran under a thirty minute read timeout, so a
+        // server that accepted and then stalled held whoever called this for half an hour.
+        // `Session::connect` now does its handshake under the connect budget; this is the backstop
+        // for everything else that can take a thread down there, and it is reported in the same
+        // `Failure` shape as any other connection that did not come up.
+        let report = match was_opened.recv_timeout(OPEN_TIMEOUT) {
             Ok(report) => report?,
             // The thread ended without saying anything, which it only does by panicking - and a panic
             // inside the engine is not something to answer with silence.
-            Err(_) => {
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
                 return Err(Failure::said(
                     "this connection's thread stopped before it said whether it had connected.",
                 ))
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                closing.store(true, Ordering::Release);
+                return Err(Failure::said(format!(
+                    "{} did not finish connecting within {} seconds.",
+                    source.name,
+                    OPEN_TIMEOUT.as_secs()
+                )));
             }
         };
         let can_stop = report.engine.can_stop_a_statement();

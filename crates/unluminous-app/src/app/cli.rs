@@ -172,6 +172,8 @@ pub enum Waiting {
     /// same thing: an `evaluate` answer is one round trip and a *tree* is that plus the `variables`
     /// its children come from, which is what `DebugState::hover_is_ready` counts.
     DebugHover { id: u64, expand: Option<String>, until: Instant },
+    /// `update check` waiting for the releases endpoint, which is on a thread. `task-1984` L1.
+    UpdateCheck { until: Instant },
 }
 
 /// A rename a command asked for, waiting for the search that will find what it changes.
@@ -196,6 +198,7 @@ impl Waiting {
             | Waiting::ModalResults { until, .. }
             | Waiting::References { until, .. }
             | Waiting::Git { until, .. }
+            | Waiting::UpdateCheck { until }
             | Waiting::DebugPause { until, .. }
             | Waiting::DebugEvaluate { until, .. }
             | Waiting::DebugHover { until, .. } => *until,
@@ -458,6 +461,12 @@ impl UnluminousApp {
                 let find = self.find_in_files.as_ref()?;
                 (!find.is_searching()).then(|| self.modal_results_reply(request, *limit))
             }
+            Waiting::UpdateCheck { .. } => {
+                let check = self.update.as_ref()?;
+                // `take_the_update_answer` is what reads the channel, once a frame, beside the git
+                // replies -- so by the time this is asked the answer is on the window.
+                (!check.is_asking()).then(|| self.update_check_reply(request))
+            }
             Waiting::References { .. } => {
                 let modal = self.references.as_ref()?;
                 (!modal.is_searching()).then(|| self.references_reply(request, waiting))
@@ -596,6 +605,10 @@ impl UnluminousApp {
             Waiting::ModalResults { .. } => {
                 ("modal.results", "The search was still running when the time ran out.".to_owned())
             }
+            Waiting::UpdateCheck { .. } => (
+                "update.check",
+                "The releases page had not answered when the time ran out.".to_owned(),
+            ),
             Waiting::References { rename, .. } => (
                 if rename.is_some() { "editor.rename" } else { "editor.references" },
                 "The search was still running when the time ran out, so nothing was changed."
