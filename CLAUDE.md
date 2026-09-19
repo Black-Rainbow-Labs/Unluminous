@@ -132,6 +132,17 @@ kept from a build is the image in `releases/`, which carries its version in its 
 
 ## Finishing a task means releasing it
 
+**One script does the whole release, and since `task-1995` that includes macOS.** `tools/release.ps1`
+runs the suite, bumps the version, builds and installs the Windows installer, builds, signs and
+notarises `Unluminous.app` on this machine, writes the changelog, commits, tags, pushes, publishes
+the GitHub release on both repositories and both sites, and then asks each of those destinations what
+it actually serves rather than trusting an exit code.
+
+**macOS is not behind a flag.** It was, for one afternoon, and 0.53.1 went out Windows-only the same
+day and left Windows 0.53.1 beside macOS 0.53.0 on unluminous.com. It now runs whenever its
+preflight passes and the release says at the start why it does not when it cannot. `-SkipMacos`
+forces it off.
+
 **When the work is done and verified, run the release. Do not ask first — run it.** On macOS and
 Linux that is `bash tools/release.sh`, and on Windows `pwsh tools/release.ps1`. Patch by default,
 `--part minor` (`-Part minor`) for a feature. It bumps the version in `Cargo.toml`, rebuilds — which

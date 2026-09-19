@@ -63,12 +63,15 @@
   the version before this one, and so does `update check` for everybody, so use this only when they
   are being published by hand straight afterwards.
 
-.PARAMETER Macos
-  Also build, sign and attach the macOS bundle, with
-  installer\macos\build-on-windows.ps1. Off by default because it needs a copy of Apple's
-  macOS SDK on this machine and a Developer ID certificate, and a release that
-  refused to run without them would be a release that cannot be cut at all. That
-  script says what is missing when either is absent.
+.PARAMETER SkipMacos
+  Leave macOS out of this release.
+
+  It is **in** by default. It was behind a `-Macos` switch for one afternoon, and a switch that
+  defaults off is a switch the next release forgets - which is how a product ends up shipping one
+  platform for fifteen versions. What replaces the switch is a preflight:
+  `installer\macos\build-on-windows.ps1 -Preflight` says whether the SDK, the Developer ID identity
+  and the notary credential are all present, and the release includes macOS when they are and says
+  at the start why it does not when they are not.
 
 .PARAMETER WhatIf
   Say what would happen and change nothing.
@@ -90,7 +93,7 @@ param(
     # Skip the suite. For a release whose tests were just run by hand; the gate exists because
     # `task-1922` found every release so far had been made with nothing checking the build at all.
     [switch] $SkipTests,
-    [switch] $Macos
+    [switch] $SkipMacos
 )
 
 $ErrorActionPreference = 'Stop'
@@ -332,7 +335,7 @@ if ($WhatIf) {
     Write-Host "  1. Cargo.toml version -> $next"
     Write-Host "  2. installer\windows\build.ps1$(if (-not $SkipInstall) { ' -Install' })"
     Write-Host "  3. releases\UnluminousSetup-$next-x64.exe"
-    if ($Macos) { Write-Host "  3b. installer\macos\build-on-windows.ps1 -Notarize, then releases\Unluminous-$next-macos.zip" }
+    if (-not $SkipMacos) { Write-Host "  3b. installer\macos\build-on-windows.ps1 -Notarize, then releases\Unluminous-$next-macos.zip, if its preflight passes" }
     Write-Host "  4. commit `"Unluminous $next`", tag v$next, push $branch"
     if (-not $SkipPublish) {
         Write-Host "  5. gh release create v$next with the installer attached, on jasonmcaffee/unluminous"
@@ -431,6 +434,39 @@ if (-not $SkipPublish) {
     }
 }
 
+# ---------------------------------------------------------------------------------------------
+# What this release will and will not reach, decided before anything is written.
+#
+# `task-1995`. A release publishes to six destinations - two GitHub repositories, two sites and two
+# platforms - and until now it found out one at a time, after the tag had been pushed. A tag is the
+# one step that cannot be taken back quietly, so the answers are gathered here, while the tree is
+# still untouched.
+# ---------------------------------------------------------------------------------------------
+Write-Step 'What this release will reach'
+$macosBuild = Join-Path $Repo 'installer\macos\build-on-windows.ps1'
+$macosReason = $null
+if ($SkipMacos) {
+    $macosReason = '-SkipMacos was passed'
+} elseif (-not (Test-Path $macosBuild)) {
+    $macosReason = "$macosBuild is missing"
+} else {
+    $answer = & pwsh -NoProfile -File $macosBuild -Preflight 2>&1
+    if ($LASTEXITCODE -ne 0) { $macosReason = ($answer | Out-String).Trim() }
+}
+$doMacos = -not $macosReason
+
+$plan = [ordered]@{
+    'Windows installer'    = 'yes'
+    'macOS bundle'         = $(if ($doMacos) { 'yes' } else { "no - $macosReason" })
+    'GitHub (private)'     = $(if ($SkipPublish) { 'no - -SkipPublish' } else { 'yes' })
+    'GitHub (public)'      = $(if ($SkipPublish) { 'no - -SkipPublish' } else { 'yes' })
+    'unluminous.com'       = $(if ($SkipPublish -or $SkipSite) { 'no - skipped' } else { 'yes' })
+    'blackrainbowlabs.com' = $(if ($SkipPublish -or $SkipSite) { 'no - skipped' } else { 'yes' })
+}
+foreach ($destination in $plan.Keys) {
+    Write-Host ("  {0,-22} {1}" -f $destination, $plan[$destination])
+}
+
 Write-Step "Setting the version to $next"
 Set-Version $next
 
@@ -452,14 +488,16 @@ Write-Host "Kept $kept"
 # same reason installer\windows\build.ps1 is: the two platforms share the version and nothing else.
 # The bundle is signed and notarised by that script, so what comes back is ready to attach.
 $macosZip = $null
-if ($Macos) {
+if ($doMacos) {
     Write-Step 'Building, signing and notarising the macOS bundle'
-    $macosBuild = Join-Path $Repo 'installer\macos\build-on-windows.ps1'
     & pwsh -NoProfile -File $macosBuild -Version $next -Notarize
     if ($LASTEXITCODE -ne 0) { throw 'installer\macos\build-on-windows.ps1 failed.' }
     $macosZip = Join-Path $ReleasesDir "Unluminous-$next-macos.zip"
     if (-not (Test-Path $macosZip)) { throw "The macOS archive was not written to $macosZip." }
     Write-Host "Kept $macosZip"
+} else {
+    Write-Host ''
+    Write-Host "macOS is not in this release: $macosReason" -ForegroundColor Yellow
 }
 
 # **Written from the history rather than kept by hand**, so it cannot fall behind. `task-1804` §6:
@@ -555,6 +593,60 @@ if (-not $SkipSite) {
         Write-Host "Run: pwsh $($site.Script)$(if ($site.Versioned) { " -Version $next" })" -ForegroundColor Yellow
     }
 }
+
+# ---------------------------------------------------------------------------------------------
+# What reached where, asked of the destinations rather than assumed from exit codes.
+#
+# `task-1995`. Six destinations scrolled past in the output above and nobody could say afterwards
+# which of them actually changed - which is how 0.53.0 went out with no macOS archive on either
+# GitHub release and nobody noticed until somebody looked. The site is asked what it serves; the two
+# GitHub releases are asked for their assets.
+# ---------------------------------------------------------------------------------------------
+function Test-Destination {
+    <#
+    .SYNOPSIS
+        Runs one check and turns it into a line for the report.
+
+    .PARAMETER Name
+        What is being checked.
+
+    .PARAMETER Check
+        A scriptblock returning $null when the destination is right, or the reason it is not.
+    #>
+    param([string] $Name, [scriptblock] $Check)
+    $why = try { & $Check } catch { $_.Exception.Message }
+    $state = if ($why) { 'NOT THERE' } else { 'ok' }
+    $colour = if ($why) { 'Red' } else { 'Green' }
+    Write-Host ("  {0,-24} {1,-10} {2}" -f $Name, $state, $why) -ForegroundColor $colour
+}
+
+Write-Step "What Unluminous $next reached"
+Test-Destination 'GitHub (private)' {
+    $assets = & $gh release view "v$next" --repo jasonmcaffee/unluminous --json assets --jq '.assets[].name' 2>$null
+    if (-not $assets) { return 'no assets' }
+    if ($macosZip -and ($assets -notmatch 'macos')) { return 'the macOS archive is not attached' }
+    $null
+}
+Test-Destination 'GitHub (public)' {
+    $assets = & $gh release view "v$next" --repo $PublicRepository --json assets --jq '.assets[].name' 2>$null
+    if (-not $assets) { return 'no assets' }
+    $null
+}
+if (-not $SkipSite) {
+    Test-Destination 'unluminous.com' {
+        $manifest = (Invoke-WebRequest -Uri 'https://unluminous.com/releases/latest.json' -UseBasicParsing -TimeoutSec 30).Content | ConvertFrom-Json
+        if ($manifest.version -ne $next) { return "the manifest says $($manifest.version)" }
+        $null
+    }
+    if ($macosZip) {
+        Test-Destination 'unluminous.com, macOS' {
+            $head = Invoke-WebRequest -Uri "https://unluminous.com/downloads/Unluminous-$next-macos.zip" -Method Head -UseBasicParsing -TimeoutSec 30
+            if ($head.StatusCode -ne 200) { return "answered $($head.StatusCode)" }
+            $null
+        }
+    }
+}
+Write-Host ("  {0,-24} {1}" -f 'macOS in this release', $(if ($macosZip) { 'yes, signed and notarised' } else { "no - $macosReason" }))
 
 Write-Host ''
 Write-Host "Unluminous $next is released: $url" -ForegroundColor Green

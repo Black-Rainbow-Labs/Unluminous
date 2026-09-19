@@ -1,5 +1,28 @@
 # AGENTS.md — working on Unluminous, for an AI agent
 
+> ## Releasing: one command
+>
+> ```powershell
+> pwsh tools/release.ps1              # patch
+> pwsh tools/release.ps1 -Part minor
+> pwsh tools/release.ps1 -WhatIf      # the plan, and nothing written
+> ```
+>
+> It runs the suite, bumps the version, builds and installs the Windows installer, **builds, signs
+> and notarises the macOS bundle**, writes the changelog, commits, tags, pushes, publishes the
+> GitHub release on both repositories and both sites, and then asks each destination what it
+> actually serves.
+>
+> **macOS is in by default and is not a flag.** It was behind `-Macos` for one afternoon, and a
+> switch that defaults off is a switch the next release forgets - 0.53.1 went out Windows-only that
+> same day and put Windows 0.53.1 next to macOS 0.53.0 on the site. It is included whenever its
+> preflight passes (`installer/macos/build-on-windows.ps1 -Preflight`), and the release says at the
+> start why it is not when it does not. `-SkipMacos` forces it off.
+>
+> **Do not run `installer/windows/build.ps1` or `installer/macos/build-on-windows.ps1` by hand for a
+> release.** They are what it calls.
+
+
 **[`CLAUDE.md`](CLAUDE.md) is the guide, whichever agent you are.** It is not about one vendor: it is
 what each crate is for and what must never be in it, the seams between them, and the reason beside
 every rule that was measured rather than chosen. It is long because the reasons are in it. Read the

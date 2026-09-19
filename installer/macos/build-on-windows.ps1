@@ -71,6 +71,12 @@
 .PARAMETER Notarize
     Submit the zip to Apple, wait, and staple the ticket to the bundle.
 
+.PARAMETER Preflight
+    Say whether a macOS build could run here, and exit. Nothing is built and nothing is written.
+    `tools/release.ps1` asks this before it bumps the version, so that a release either includes
+    macOS or says at the start why it does not - rather than finding out after the tag is pushed.
+    Exit code 0 means it could run; 1 means it could not, and the reason is on stdout.
+
 .EXAMPLE
     pwsh installer\macos\build-on-windows.ps1 -CliOnly
     pwsh installer\macos\build-on-windows.ps1 -Sdk J:\mac-sdk\MacOSX.sdk -Notarize
@@ -82,7 +88,8 @@ param(
     [switch] $SkipBuild,
     [switch] $CliOnly,
     [switch] $SelfSigned,
-    [switch] $Notarize
+    [switch] $Notarize,
+    [switch] $Preflight
 )
 
 $ErrorActionPreference = 'Stop'
@@ -596,6 +603,31 @@ if (Test-Path -LiteralPath $envFile) {
 # Only a build needs the SDK. Assembling, signing and packaging what is already
 # built does not, and asking for it there would make -SkipBuild useless on the
 # machine the earlier build ran on.
+# -Preflight answers one question and stops: can a macOS build run on this machine? It is here,
+# after notarize.env has been read and before anything is built, because that is the moment the
+# answer is knowable and nothing has changed yet.
+if ($Preflight) {
+    $problems = @()
+    try { $null = Resolve-Sdk } catch { $problems += 'no macOS SDK (see -Sdk)' }
+    if (-not (Test-Path -LiteralPath $rcodesign)) { $problems += 'rcodesign is missing; run tools/cross/fetch-toolchain.ps1' }
+    $haveKey = $env:CODESIGN_KEY_SEALED -and $env:CODESIGN_CERT -and
+        (Test-Path -LiteralPath $env:CODESIGN_KEY_SEALED) -and (Test-Path -LiteralPath $env:CODESIGN_CERT)
+    $haveP12 = $env:CODESIGN_P12 -and (Test-Path -LiteralPath $env:CODESIGN_P12)
+    if (-not $haveKey -and -not $haveP12) {
+        $problems += 'no Developer ID identity: set CODESIGN_KEY_SEALED with CODESIGN_CERT, or CODESIGN_P12'
+    }
+    $haveNotary = ($env:NOTARY_KEY_SEALED -and (Test-Path -LiteralPath $env:NOTARY_KEY_SEALED)) -or
+        ($env:NOTARY_KEY -and $env:NOTARY_KEY_ID -and $env:NOTARY_ISSUER)
+    if (-not $haveNotary) { $problems += 'no notary credential: set NOTARY_KEY_SEALED, or the NOTARY_KEY trio' }
+
+    if ($problems.Count -gt 0) {
+        Write-Host ($problems -join '; ')
+        exit 1
+    }
+    Write-Host "ready: SDK, Developer ID identity and notary credential are all present"
+    exit 0
+}
+
 $sdkRoot = if ($CliOnly -or $SkipBuild) { '' } else { Resolve-Sdk }
 Write-Host "Unluminous $Version - macOS, built on Windows"
 if ($sdkRoot) { Write-Host "  SDK: $sdkRoot" }
