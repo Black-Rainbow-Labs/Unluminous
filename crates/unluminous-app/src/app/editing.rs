@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use egui::{Pos2, Rect, Vec2};
-use unluminous_core::{relayout, Command, Highlights, Rgba};
+use unluminous_core::{relayout_touching, Command, Highlights, Rgba, Touched};
 
 use crate::components::editor_view;
 use crate::components::file_tabs::{self, TabView};
@@ -346,6 +346,9 @@ impl UnluminousApp {
         {
             return;
         }
+        // Read before the layout is taken out of the cache, because taking it borrows the file.
+        let (cached_revision, cached_folds, cached_width) =
+            (cached.laid_out_revision, cached.laid_out_folds, cached.laid_out_width);
         self.layouts_built += 1;
         let index = self.files.active_index();
         let hidden = self.hidden_paragraphs(index);
@@ -354,7 +357,20 @@ impl UnluminousApp {
         // it was typed into instead of the file.
         let previous = std::mem::take(&mut self.files.active_mut().cached.layout);
         let first_layout = previous.lines.is_empty();
-        let mut laid = relayout(
+        // **Which paragraphs changed, asked of the document rather than worked out by reading the
+        // file** (`task-1984` C7). `relayout` used to fingerprint every paragraph and compare each
+        // against the previous layout's, which is 17.2 ms of a 21.7 ms keystroke on a 2 MB file. The
+        // document has known where every edit landed since `splice` started saying so, and it keeps
+        // the answer per revision -- so this pane asks about the revision it itself last laid out.
+        //
+        // The hint is only about the **text**. A fold or a change of width alters the layout without
+        // any edit having happened, so both say `whole` and read the document, which is what every
+        // relayout did before this.
+        let touched = match folded == cached_folds && (width - cached_width).abs() < 0.5 {
+            true => self.document().touched_since(cached_revision),
+            false => Touched::whole(),
+        };
+        let mut laid = relayout_touching(
             previous,
             self.document().text(),
             self.document().chars(),
@@ -362,6 +378,7 @@ impl UnluminousApp {
             &self.renderer,
             width,
             &hidden,
+            touched,
         );
         if first_layout {
             laid.compact_capacity();

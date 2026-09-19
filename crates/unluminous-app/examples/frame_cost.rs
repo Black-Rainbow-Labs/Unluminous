@@ -228,6 +228,35 @@ fn main() {
     });
     println!("  typing a letter:         {ms:8.2} ms  ({:.0} frames a second)", 1000.0 / ms);
 
+    // **The same keystroke, with the document saying which paragraph it was typed into**
+    // (`task-1984` C7). The reading above is what the window did until then: `relayout` found the
+    // paragraphs to lay out again by fingerprinting every paragraph in the document and comparing
+    // each against the previous layout's, which reads and hashes the whole file on every key press.
+    // Measured on a 2 MB file with nothing else changed, that pass was 17.2 ms of a 21.7 ms
+    // keystroke. `Document::touched_since` answers it from what `splice` recorded instead.
+    let ms = timed(50, || {
+        let was = document.text_revision();
+        document.apply(Command::Insert("x".to_owned()));
+        carried = unluminous_core::relayout_touching(
+            std::mem::take(&mut carried),
+            document.text(),
+            document.chars(),
+            document.paragraphs(),
+            &renderer,
+            width,
+            &unluminous_core::folding::Hidden::none(),
+            document.touched_since(was),
+        );
+        std::hint::black_box(collect_visible_glyphs(
+            &renderer,
+            document.text(),
+            &carried,
+            0.0,
+            view_height,
+        ));
+    });
+    println!("  typing, told where:      {ms:8.2} ms  ({:.0} frames a second)", 1000.0 / ms);
+
     // The same, as the window really does it: a source file is coloured again after every edit.
     //
     // **Both readings, in one run**, because the point of `task-1804` §5.2 is the difference
@@ -279,6 +308,8 @@ fn main() {
         }
         let mut scanned = 0usize;
         let ms = timed(20, || {
+            // The window's own path end to end, hint and all, which is what `task-1984` C7 changed.
+            let was = document.text_revision();
             document.apply(Command::Insert("z".to_owned()));
             let text = document.text().to_string();
             let mut spans: Vec<(std::ops::Range<usize>, unluminous_core::Color)> = Vec::new();
@@ -290,7 +321,7 @@ fn main() {
                 });
             scanned = update.scanned;
             document.set_syntax_in(base, &spans, update.changed);
-            carried = relayout(
+            carried = unluminous_core::relayout_touching(
                 std::mem::take(&mut carried),
                 document.text(),
                 document.chars(),
@@ -298,6 +329,7 @@ fn main() {
                 &renderer,
                 width,
                 &unluminous_core::folding::Hidden::none(),
+                document.touched_since(was),
             );
             std::hint::black_box(collect_visible_glyphs(
                 &renderer,

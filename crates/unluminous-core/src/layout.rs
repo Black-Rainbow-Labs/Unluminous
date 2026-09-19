@@ -336,6 +336,51 @@ pub fn layout_with(
 /// The previous layout is **taken** rather than borrowed, so that the lines that did not change are
 /// moved into the answer instead of being copied into it. Copying them would mean copying every run
 /// and every cluster of nearly the whole document, which is most of what laying it out again cost.
+/// Which paragraphs an edit could have changed, counted from each end.
+///
+/// **`task-1984` C7.** [`relayout`] finds the paragraphs to lay out again by fingerprinting every
+/// paragraph in the document and comparing each against the previous layout's -- which reads the
+/// whole file and hashes it on every keystroke. Measured on a 2 MB file with **nothing changed**,
+/// that pass was 17.2 ms of a 21.7 ms keystroke, the largest remaining per keystroke cost in the
+/// crate, and its own comment said that a keystroke costs the paragraph it was typed into.
+///
+/// An editor knows where it typed, so it can say. `from` is the number of paragraphs at the start
+/// that cannot have changed and `tail` the number at the end. Both are counted from an end rather
+/// than given as a range, which is what makes them survive later edits that move every index between
+/// them -- so several edits in one undo step fold into one answer by taking the smaller of each.
+///
+/// **Under-stating either is safe and over-stating neither is**, so anything that cannot say exactly
+/// says [`Self::whole`] and gets the reading this replaced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Touched {
+    /// Paragraphs before this one are unchanged.
+    pub from: usize,
+    /// This many paragraphs at the end of the document are unchanged.
+    pub tail: usize,
+}
+
+impl Touched {
+    /// Nothing is known, so every paragraph is fingerprinted and compared.
+    pub const fn whole() -> Self {
+        Self { from: 0, tail: 0 }
+    }
+
+    /// Paragraphs `from` to `through` inclusive changed, in a document of `count` paragraphs.
+    pub fn between(from: usize, through: usize, count: usize) -> Self {
+        Self { from: from.min(count), tail: count.saturating_sub(through + 1) }
+    }
+
+    /// The narrower of two answers about the same document, which is what a second edit gives.
+    pub fn and(self, other: Self) -> Self {
+        Self { from: self.from.min(other.from), tail: self.tail.min(other.tail) }
+    }
+
+    /// True when this says nothing, which is what [`Self::whole`] means.
+    pub fn is_whole(self) -> bool {
+        self.from == 0 && self.tail == 0
+    }
+}
+
 pub fn relayout(
     previous: Layout,
     text: &Rope,
@@ -345,6 +390,32 @@ pub fn relayout(
     width: f32,
     hidden: &Hidden,
 ) -> Layout {
+    relayout_touching(previous, text, chars, paragraphs, metrics, width, hidden, Touched::whole())
+}
+
+/// The same, told which paragraphs an edit could have changed.
+///
+/// See [`Touched`] for what that buys and why under-stating it is safe. With [`Touched::whole`] this
+/// is [`relayout`] exactly: every paragraph is fingerprinted and compared against the previous
+/// layout's. With anything narrower, **no fingerprint is worked out for a paragraph that is kept** --
+/// a kept paragraph's fingerprint is by definition the one it had, so it is copied from the previous
+/// layout rather than read out of the text again.
+///
+/// The answer is the same either way, which is what
+/// `relayouting_with_a_hint_agrees_with_relayouting_without_one` holds: a hint narrower than the
+/// truth lays a few unchanged paragraphs out again, and laying an unchanged paragraph out again
+/// produces the lines it already had.
+#[allow(clippy::too_many_arguments)]
+pub fn relayout_touching(
+    previous: Layout,
+    text: &Rope,
+    chars: &StyleSpans,
+    paragraphs: &ParagraphStyles,
+    metrics: &dyn FontMetrics,
+    width: f32,
+    hidden: &Hidden,
+    touched: Touched,
+) -> Layout {
     let width = width.max(1.0);
     // A layout from before this existed, or one at another width, is not something to build on.
     if previous.width != width || previous.starts.len() != previous.fingerprints.len() + 1 {
@@ -353,25 +424,43 @@ pub fn relayout(
     let spans: Vec<(Range<usize>, &CharStyle)> = chars.spans().collect();
     let count = text.len_lines();
     let mut buffers = Buffers::default();
-    let fingerprints: Vec<u64> = (0..count)
-        .map(|paragraph| {
-            fingerprint_of(
-                paragraph,
-                text,
-                &spans,
-                paragraphs,
-                hidden.contains(paragraph),
-                &mut buffers,
-            )
-        })
-        .collect();
+    // **The whole document is read only when nothing said where the edit was.** Fingerprinting every
+    // paragraph is 17.2 ms of a 21.7 ms keystroke on a 2 MB file; a caller that knows where it typed
+    // says so, and then nothing outside that is read at all. `task-1984` C7.
+    let read_everything = match touched.is_whole() {
+        true => Some(
+            (0..count)
+                .map(|paragraph| {
+                    fingerprint_of(
+                        paragraph,
+                        text,
+                        &spans,
+                        paragraphs,
+                        hidden.contains(paragraph),
+                        &mut buffers,
+                    )
+                })
+                .collect::<Vec<u64>>(),
+        ),
+        false => None,
+    };
 
     let Layout { mut lines, starts: was, fingerprints: old, .. } = previous;
     let shortest = count.min(old.len());
-    let prefix = (0..shortest).take_while(|&i| fingerprints[i] == old[i]).count();
-    let suffix = (0..shortest - prefix)
-        .take_while(|&i| fingerprints[count - 1 - i] == old[old.len() - 1 - i])
-        .count();
+    let (prefix, suffix) = match &read_everything {
+        Some(fingerprints) => {
+            let prefix = (0..shortest).take_while(|&i| fingerprints[i] == old[i]).count();
+            let suffix = (0..shortest - prefix)
+                .take_while(|&i| fingerprints[count - 1 - i] == old[old.len() - 1 - i])
+                .count();
+            (prefix, suffix)
+        }
+        // The hint, cut so that the two ends cannot meet in the middle or reach past either list.
+        None => {
+            let prefix = touched.from.min(shortest);
+            (prefix, touched.tail.min(shortest - prefix))
+        }
+    };
 
     // The kept lines are moved out of the previous layout rather than copied out of it. Cloning them
     // would mean cloning every run and every cluster of nearly the whole document, which is most of
@@ -381,23 +470,33 @@ pub fn relayout(
     lines.truncate(was[prefix]);
 
     let mut work = Work::with_capacity(count);
-    work.fingerprints = fingerprints;
     work.starts.extend_from_slice(&was[..prefix]);
     work.y = lines.last().map(PlacedLine::bottom).unwrap_or(0.0);
     work.lines = lines;
     let inputs = LayoutInputs { text, spans: &spans, paragraphs, metrics, width };
     // The paragraphs that changed.
+    let mut middle: Vec<u64> = Vec::with_capacity((count - suffix).saturating_sub(prefix));
     for paragraph in prefix..count - suffix {
-        // The fingerprint it gives back is thrown away: this already has all of them, from the pass
-        // that decided which paragraphs these are.
-        let _ = lay_out_paragraph(
+        middle.push(lay_out_paragraph(
             paragraph,
             &inputs,
             hidden.contains(paragraph),
             &mut buffers,
             &mut work,
-        );
+        ));
     }
+    // A kept paragraph's fingerprint is the one it had, whether it was worked out again above or
+    // not, so this is the same list either way.
+    work.fingerprints = match read_everything {
+        Some(fingerprints) => fingerprints,
+        None => {
+            let mut all = Vec::with_capacity(count);
+            all.extend_from_slice(&old[..prefix]);
+            all.extend_from_slice(&middle);
+            all.extend_from_slice(&old[old.len() - suffix..]);
+            all
+        }
+    };
     // The paragraphs after the change: the same lines, moved. Their contents and their heights are by
     // definition unchanged, so only where they sit, which bytes they cover and which paragraph they
     // belong to have to be worked out again.
@@ -1502,6 +1601,130 @@ mod tests {
             );
             assert_eq!(incremental, fresh, "seed {seed:#x} round {round} disagreed after {what}");
         }
+    }
+
+    /// Told where the edit was, `relayout` gives the answer it gives when it is told nothing.
+    ///
+    /// **`task-1984` C7.** `relayout` found the paragraphs to lay out again by fingerprinting every
+    /// paragraph in the document -- reading and hashing the whole file on every keystroke, 17.2 ms of
+    /// a 21.7 ms keystroke at 2 MB. [`relayout_touching`] is handed [`Touched`] instead and reads
+    /// nothing outside it.
+    ///
+    /// This drives the whole chain rather than a hand-written hint: `Document::splice` records what
+    /// it touched, `Document::touched_since` folds every revision a pane has missed into one answer,
+    /// and the layout that comes out is compared against a **fresh** one. The same three hundred
+    /// random edits the test above uses, because a hint that is wrong is a stale line on the screen,
+    /// which is a fault that looks like a drawing bug and lives in the model.
+    #[test]
+    fn relayouting_with_a_hint_agrees_with_relayouting_without_one() {
+        let seed = 0x5EED_1984_u64;
+        let mut state = seed;
+        let mut next = move || {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (state >> 33) as usize
+        };
+
+        let words = ["alpha", "beta", "gamma delta", "epsilon zeta", "eta", "theta iota kappa"];
+        let mut text = String::new();
+        for index in 0..40 {
+            if index % 9 == 0 {
+                text.push('\n');
+            } else if index % 4 == 0 {
+                text.push_str(&format!(
+                    "paragraph {index} is a good deal longer than the ones near it, long enough \
+                     that it wraps more than once at the width this test lays out at\n"
+                ));
+            } else {
+                text.push_str(&format!("line {index} {}\n", words[index % words.len()]));
+            }
+        }
+
+        let mut document = Document::from_text(&text);
+        document.set_syntax(Color::WHITE, &[(4..9, Color::RED), (20..30, Color::BLUE)]);
+
+        // How many rounds really used a hint, so a change that quietly made every answer `whole`
+        // cannot leave this test passing while measuring nothing.
+        let mut hinted = 0;
+        for round in 0..300 {
+            let before = layout(
+                document.text(),
+                document.chars(),
+                document.paragraphs(),
+                &FixedMetrics::default(),
+                200.0,
+            );
+            let laid_out_at = document.text_revision();
+
+            let what = apply_one_random_edit(&mut document, round % 6, &words, &mut next);
+
+            let touched = document.touched_since(laid_out_at);
+            if !touched.is_whole() {
+                hinted += 1;
+            }
+            let fresh = layout(
+                document.text(),
+                document.chars(),
+                document.paragraphs(),
+                &FixedMetrics::default(),
+                200.0,
+            );
+            let incremental = relayout_touching(
+                before,
+                document.text(),
+                document.chars(),
+                document.paragraphs(),
+                &FixedMetrics::default(),
+                200.0,
+                &Hidden::none(),
+                touched,
+            );
+            assert_eq!(
+                incremental, fresh,
+                "seed {seed:#x} round {round} disagreed after {what}, hint {touched:?}"
+            );
+        }
+        // A third of them, which is what this mix of edits leaves. Two of the six shapes take a
+        // paragraph out and none puts one back, so the document collapses from forty paragraphs to a
+        // couple within the first hundred rounds -- and in a document of two paragraphs an edit
+        // really does touch the first and the last, which is what `whole` says. The assertion is
+        // here so that a change which quietly stopped every edit saying where it was cannot leave
+        // this test passing while measuring nothing.
+        assert!(hinted > 60, "only {hinted} of 300 rounds had a hint at all");
+    }
+
+    /// Several edits in one undo step fold into one answer, and a pane further behind gets `whole`.
+    ///
+    /// `task-1984` C7. This is the arithmetic [`Touched`] exists for, asserted on its own: a rename
+    /// is one revision holding many splices, a pane that missed frames asks about an older revision,
+    /// and a pane further behind than the ring holds has to be told to read the document.
+    #[test]
+    fn what_a_pane_is_told_narrows_with_what_it_missed() {
+        let mut document = Document::from_text("one\ntwo\nthree\nfour\nfive\n");
+        let start = document.text_revision();
+
+        // One edit, in the middle.
+        document.apply(Command::PlaceCaret { offset: 6, extend: false });
+        document.apply(Command::Insert("X".to_owned()));
+        let after_one = document.touched_since(start);
+        assert_eq!(after_one.from, 1, "the first paragraph cannot have changed");
+        assert_eq!(after_one.tail, 4, "nor the four after it");
+
+        // A second edit further down. A pane that saw the first is told about the second alone.
+        let between = document.text_revision();
+        document.apply(Command::PlaceCaret { offset: 16, extend: false });
+        document.apply(Command::Insert("Y".to_owned()));
+        assert_eq!(document.touched_since(between).from, 3, "only the second edit");
+        // A pane that saw neither is told about both, which is the wider answer.
+        let both = document.touched_since(start);
+        assert_eq!(both.from, 1, "as far back as the first edit");
+        assert_eq!(both.tail, 2, "and as far forward as the second");
+
+        // And a pane older than the ring is told to read the document.
+        for _ in 0..crate::TOUCHED_REVISIONS + 2 {
+            document.apply(Command::Insert("z".to_owned()));
+            document.apply(Command::PlaceCaret { offset: 0, extend: false });
+        }
+        assert!(document.touched_since(start).is_whole(), "further behind than the ring holds");
     }
 
     /// A layout kept from a different width is not something to build on, so the whole thing is laid

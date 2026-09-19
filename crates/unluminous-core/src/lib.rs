@@ -31,15 +31,17 @@ pub mod syntax;
 pub use breakpoints::{Breakpoint, Breakpoints};
 pub use completion::{Candidate, Row as CompletionRow, Source as CompletionSource};
 pub use cursor::Selection;
-pub use document::{indentation_for_a_new_line, Command, Document, IndentUnit, UNDO_LIMIT};
+pub use document::{
+    indentation_for_a_new_line, Command, Document, IndentUnit, TOUCHED_REVISIONS, UNDO_LIMIT,
+};
 pub use encoding::{Decoded, Encoding, LineEnding};
 pub use folding::{Folds, Hidden, Kind as FoldKind, Reading as FoldReading, Region as FoldRegion};
 pub use highlights::{Highlight, Highlights, Rgba};
 pub use imports::Context as ImportContext;
 pub use incremental::{Dirt as SyntaxDirt, Tokens as IncrementalTokens};
 pub use layout::{
-    layout, relayout, Anchor, Caret, Layout, LayoutTextView, PlacedCluster, PlacedLine, PlacedRun,
-    Rect,
+    layout, relayout, relayout_touching, Anchor, Caret, Layout, LayoutTextView, PlacedCluster,
+    PlacedLine, PlacedRun, Rect, Touched,
 };
 pub use markdown::{
     CodeHighlighter, Options as PreviewOptions, PanelKind, Preview, PreviewColors, PreviewDiagram,

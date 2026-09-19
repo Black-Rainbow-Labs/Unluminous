@@ -13,7 +13,7 @@ use crate::encoding::{Encoding, LineEnding};
 use crate::folding::Folds;
 use crate::highlights::{Highlights, Rgba};
 use crate::incremental::Dirt;
-use crate::layout::Layout;
+use crate::layout::{Layout, Touched};
 use crate::rope::Rope;
 use crate::style::{
     Align, CharStyle, Color, ParagraphStyle, ParagraphStyles, StyleChange, StyleSpans,
@@ -221,6 +221,14 @@ struct Snapshot {
 
 pub const UNDO_LIMIT: usize = 256;
 
+/// How many text revisions [`Document::touched_since`] can answer about.
+///
+/// `task-1984` C7. A pane lays out on the frame after an edit, so one would nearly always do;
+/// what needs more than one is a pane that was not showing, or a window that dropped frames, and
+/// a pane further behind than this lays the whole document out once. Sixty four is four seconds
+/// of sustained typing.
+pub const TOUCHED_REVISIONS: usize = 64;
+
 /// How much text either side of the caret the movement commands are given to look at.
 ///
 /// **`task-1984` C5.** `line_window` used to hand over the whole line, and the grapheme and word
@@ -299,6 +307,21 @@ pub struct Document {
     /// `Self::splice` that shifts the marks, the folds and the breakpoints, but do not note the
     /// dirt, so those three still colour the file as a whole rather than incrementally.
     syntax_dirt: Dirt,
+    /// Which paragraphs the edit being applied right now has touched so far.
+    ///
+    /// `task-1984` C7. Widened by every path that moves a byte or repaints a colour, and folded into
+    /// [`Self::touched`] by `text_changed` when the edit finishes. Several splices in one undo step --
+    /// a rename, an indent, Replace All -- fold into one answer, which is what [`Touched::and`] is
+    /// for and why it counts from the two ends rather than naming a range.
+    /// `None` until something says, which is what makes saying nothing mean the whole document.
+    touching: Option<Touched>,
+    /// What each of the last few text revisions touched, newest last.
+    ///
+    /// A ring rather than one value, because more than one pane can be showing the same document and
+    /// each asks about the revision **it** last laid out, which are different numbers. A pane that
+    /// has fallen further behind than this holds is told [`Touched::whole`] and lays the document out
+    /// the way every pane did before this existed, so the bound costs correctness nothing.
+    touched: std::collections::VecDeque<(u64, Touched)>,
     /// Bumped only when a block is collapsed or expanded.
     ///
     /// The third counter, and it is the second one's argument made once more. Folding changes the
@@ -374,6 +397,8 @@ impl Document {
             next_history_revision: 2,
             revision: 1,
             text_revision: 1,
+            touching: None,
+            touched: std::collections::VecDeque::new(),
             // A fresh document has nothing coloured, so the first reading is the whole of it.
             syntax_dirt: Dirt::Whole,
             fold_revision: 1,
@@ -751,6 +776,9 @@ impl Document {
         // One call rather than a `set` and a `set_many`, and rebuilding only the spans it touches:
         // see `StyleSpans::set_in` for what the difference is worth.
         self.chars.set_in(from..to, &StyleChange::color(base), &changes);
+        // And the layout only has to look at the paragraphs whose colours moved, which is the same
+        // stretch. `task-1984` C7.
+        self.note_paragraphs(self.text.byte_to_line(from), self.text.byte_to_line(to));
         self.syntax_dirt = Dirt::Clean;
         self.text_changed();
     }
@@ -1159,6 +1187,52 @@ impl Document {
     fn text_changed(&mut self) {
         self.revision += 1;
         self.text_revision += 1;
+        // What this edit touched, closed off and filed under the revision it produced. Anything that
+        // did not say leaves `touching` at `whole`, which is the answer that reads the document.
+        if self.touched.len() == TOUCHED_REVISIONS {
+            self.touched.pop_front();
+        }
+        let touching = self.touching.take().unwrap_or_else(Touched::whole);
+        self.touched.push_back((self.text_revision, touching));
+    }
+
+    /// Record that paragraphs `from` to `through` inclusive have been changed by the edit in hand.
+    ///
+    /// `task-1984` C7. Called after the change, so the indices and the paragraph count are the ones
+    /// the document has now. Saying nothing is always safe and means the whole document; saying more
+    /// than was really touched is safe too, and is what a caller that is unsure should do.
+    fn note_paragraphs(&mut self, from: usize, through: usize) {
+        let count = self.text.len_lines();
+        let one = Touched::between(from, through, count);
+        // The **narrower** of what has been said so far and this, because two edits in one undo step
+        // have between them left unchanged whatever both of them left unchanged. Starting from
+        // `whole` and narrowing would not work: `whole` is `from: 0, tail: 0`, so the narrowing would
+        // answer `whole` for ever -- which is why nothing said yet is `None` rather than `whole`.
+        self.touching = Some(match self.touching {
+            Some(so_far) => so_far.and(one),
+            None => one,
+        });
+    }
+
+    /// Which paragraphs have changed since `revision`, for [`crate::relayout_touching`].
+    ///
+    /// **`task-1984` C7.** A pane that laid the document out at `revision` and is laying it out again
+    /// now needs to know which paragraphs to fingerprint, and reading the whole file to find out was
+    /// 17.2 ms of a 21.7 ms keystroke at 2 MB. Every revision in between is folded together, so a
+    /// pane that missed a few frames gets one answer covering all of them.
+    ///
+    /// [`Touched::whole`] when the pane is further behind than the ring holds, or when any edit in
+    /// between did not say what it touched -- both of which are the reading this replaced, so being
+    /// wrong about it is slow rather than incorrect.
+    pub fn touched_since(&self, revision: u64) -> Touched {
+        let Some((oldest, _)) = self.touched.front() else { return Touched::whole() };
+        if *oldest > revision + 1 {
+            return Touched::whole();
+        }
+        self.touched
+            .iter()
+            .filter(|(at, _)| *at > revision)
+            .fold(Touched { from: usize::MAX, tail: usize::MAX }, |all, (_, one)| all.and(*one))
     }
 
     /// Save the current state unless this edit belongs to the current run of typing.
@@ -1272,9 +1346,10 @@ impl Document {
             self.breakpoints.remove(range.clone());
             self.paragraphs.join(paragraph, last);
         }
+        let mut line_breaks = 0;
         if !text.is_empty() {
             let at = range.start;
-            let line_breaks = text.bytes().filter(|byte| *byte == b'\n').count();
+            line_breaks = text.bytes().filter(|byte| *byte == b'\n').count();
             self.text.insert(at, text);
             self.chars.insert(at, text.len());
             self.highlights.insert(at, text.len());
@@ -1282,6 +1357,12 @@ impl Document {
             self.breakpoints.insert(at, text.len());
             self.paragraphs.split(paragraph, line_breaks);
         }
+        // The seventh thing this one function tells, after the text, the formatting, the marks, the
+        // folds, the breakpoints and the paragraph list: **which paragraphs moved**. A removal
+        // collapses everything it spanned into `paragraph` and an insertion turns `paragraph` into
+        // that many more, so what the edit left is `paragraph` through `paragraph + line_breaks`.
+        // `task-1984` C7.
+        self.note_paragraphs(paragraph, paragraph + line_breaks);
     }
 
     fn insert(&mut self, text: &str) {
@@ -2197,7 +2278,11 @@ impl Document {
         // `set_in` rather than `set`: pressing bold on one word of a coloured file rebuilt every span
         // in it. One call rather than hundreds, so this is the smallest of the three, and it is the
         // same change for the same reason. `task-1984` C6.
-        self.chars.set_in(range, &change, &[]);
+        self.chars.set_in(range.clone(), &change, &[]);
+        self.note_paragraphs(
+            self.text.byte_to_line(range.start),
+            self.text.byte_to_line(range.end),
+        );
         self.mark_changed();
     }
 }
