@@ -618,7 +618,14 @@ function Test-Destination {
     $state = if ($why) { 'NOT THERE' } else { 'ok' }
     $colour = if ($why) { 'Red' } else { 'Green' }
     Write-Host ("  {0,-24} {1,-10} {2}" -f $Name, $state, $why) -ForegroundColor $colour
+    # **Recorded, because printing it in red was not enough (task-1995).** Every check ran, the ones
+    # that failed said NOT THERE, and the script then printed "Unluminous <version> is released" and
+    # exited 0 - so a release that never reached the site looked exactly like one that did. The
+    # whole report is still printed first; the exit code is decided after it.
+    if ($why) { $script:MissedDestinations += "$Name - $why" }
 }
+
+$script:MissedDestinations = @()
 
 Write-Step "What Unluminous $next reached"
 Test-Destination 'GitHub (private)' {
@@ -639,17 +646,38 @@ Test-Destination 'GitHub (public)' {
     $null
 }
 if (-not $SkipSite) {
+    # **Every platform this release ships, checked the same way (task-1995).** The manifest's version
+    # and a HEAD on the macOS zip left the Windows installer unchecked entirely - it could have
+    # failed to copy and this would have said the site was fine. And a 200 says a file is there, not
+    # that it is this release's: the manifest states each artifact's size, so the size the server
+    # actually serves is what decides.
     Test-Destination 'unluminous.com' {
         $manifest = (Invoke-WebRequest -Uri 'https://unluminous.com/releases/latest.json' -UseBasicParsing -TimeoutSec 30).Content | ConvertFrom-Json
         if ($manifest.version -ne $next) { return "the manifest says $($manifest.version)" }
+
+        $platforms = @(@{ Platform = 'Windows'; Url = $manifest.installer; Bytes = $manifest.installerBytes })
+        if ($macosZip) {
+            if (-not $manifest.macos) { return 'this release has a macOS archive and the manifest does not name it' }
+            $platforms += @{ Platform = 'macOS'; Url = $manifest.macos; Bytes = $manifest.macosBytes }
+        }
+
+        foreach ($one in $platforms) {
+            if (-not $one.Url) { return "the manifest has no $($one.Platform) download" }
+            if ($one.Url -notlike "*$next*") { return "the $($one.Platform) download is $($one.Url), which is not $next" }
+            $head = Invoke-WebRequest -Uri $one.Url -Method Head -UseBasicParsing -TimeoutSec 30
+            if ([int] $head.StatusCode -ne 200) { return "$($one.Platform) answered $($head.StatusCode)" }
+            $served = [int64] $head.Headers['Content-Length'][0]
+            if ($served -ne [int64] $one.Bytes) {
+                return "$($one.Platform) is served as $served bytes and the manifest says $($one.Bytes)"
+            }
+        }
         $null
     }
-    if ($macosZip) {
-        Test-Destination 'unluminous.com, macOS' {
-            $head = Invoke-WebRequest -Uri "https://unluminous.com/downloads/Unluminous-$next-macos.zip" -Method Head -UseBasicParsing -TimeoutSec 30
-            if ($head.StatusCode -ne 200) { return "answered $($head.StatusCode)" }
-            $null
-        }
+    Test-Destination 'unluminous.com, page' {
+        $page = (Invoke-WebRequest -Uri 'https://unluminous.com/' -UseBasicParsing -TimeoutSec 30).Content
+        if ($page -notlike "*UnluminousSetup-$next-x64.exe*") { return "the page does not link the $next Windows installer" }
+        if ($macosZip -and $page -notlike "*Unluminous-$next-macos.zip*") { return "the page does not link the $next macOS archive" }
+        $null
     }
 }
 Write-Host ("  {0,-24} {1}" -f 'macOS in this release', $(if ($macosZip) { 'yes, signed and notarised' } else { "no - $macosReason" }))
@@ -662,4 +690,17 @@ if (-not $SkipSite) {
 }
 if (-not $SkipInstall) {
     Write-Host "Installed at $(Join-Path $env:LOCALAPPDATA 'Programs\Unluminous\unluminous.exe')" -ForegroundColor Green
+}
+
+# **The exit code, decided after the whole report is printed (task-1995).** A destination that was
+# not there printed NOT THERE in red and the script carried on to say the release was done and exit
+# 0, so a release that never reached the site was indistinguishable from one that did - to a person
+# skimming, and to anything that runs this and reads its exit code. Every check still runs and every
+# line is still printed; only the ending changes.
+if ($script:MissedDestinations.Count -gt 0) {
+    Write-Host ''
+    Write-Host "Unluminous $next did not reach $($script:MissedDestinations.Count) destination(s):" -ForegroundColor Red
+    $script:MissedDestinations | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+    Write-Host 'The tag and the releases are published; fix these and run the step again.' -ForegroundColor Red
+    exit 1
 }
