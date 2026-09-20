@@ -4920,7 +4920,7 @@ checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
 
 [[package]]
 name = "unluminous-app"
-version = "0.53.1"
+version = "0.54.0"
 dependencies = [
  "ab_glyph",
  "arboard",
@@ -4957,7 +4957,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-chat"
-version = "0.53.1"
+version = "0.54.0"
 dependencies = [
  "serde_json",
  "ureq",
@@ -4965,7 +4965,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-cli"
-version = "0.53.1"
+version = "0.54.0"
 dependencies = [
  "libc",
  "serde_json",
@@ -4974,7 +4974,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-core"
-version = "0.53.1"
+version = "0.54.0"
 dependencies = [
  "unicode-segmentation",
  "unicode-width",
@@ -4982,14 +4982,14 @@ dependencies = [
 
 [[package]]
 name = "unluminous-dap"
-version = "0.53.1"
+version = "0.54.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "unluminous-db"
-version = "0.53.1"
+version = "0.54.0"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
@@ -5003,7 +5003,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-git"
-version = "0.53.1"
+version = "0.54.0"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
@@ -5011,7 +5011,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-terminal"
-version = "0.53.1"
+version = "0.54.0"
 dependencies = [
  "alacritty_terminal",
  "libc",
