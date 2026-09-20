@@ -59,6 +59,11 @@ pub mod update;
 pub mod vello_canvas;
 pub mod wake;
 
+// What Windows says about this window's keyboard focus, which is not always what `winit` says. It is
+// compiled everywhere, because the decision it rests on is a rule with tests over it and only the act
+// needs a platform; `ask` answers `None` where there is no such cache to be behind.
+pub mod windows_focus;
+
 // Letting the desktop show through the window needs a DirectComposition swapchain and a cleared
 // redirection surface on Windows, and nothing at all anywhere else.
 #[cfg(windows)]

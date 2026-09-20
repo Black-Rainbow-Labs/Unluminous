@@ -53,3 +53,10 @@ installer/macos/*.p8
 # reason the .exe and the .dmg above are ignored: it is staged here and uploaded
 # to the GitHub release.
 /releases/*.zip
+
+# An Inillucent database opened or created in the checkout. `app.rdb` is what the
+# Inillucent tools and the Database plugin's own examples default to when nobody
+# names a file, so one appears in the repository root the first time either is
+# driven here. Scratch, and never part of the project.
+/app.rdb
+/app.rdb-wal.*

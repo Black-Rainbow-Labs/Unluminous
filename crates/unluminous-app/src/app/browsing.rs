@@ -182,20 +182,39 @@ impl UnluminousApp {
         }
     }
 
-    /// Whether an egui surface must sit above every native child view in this frame.
-    pub(crate) fn browser_is_occluded(&self, ctx: &egui::Context) -> bool {
-        // A native child view is a window, not a painted rectangle, so nothing egui draws can be on
-        // top of one. `Popup::is_any_open` is what covers the menu bar, every dropdown and every
-        // flyout in one answer; the fields after it are the surfaces Unluminous owns itself.
-        a_modal_has_the_keyboard(ctx)
-            || egui::Popup::is_any_open(ctx)
-            || self.explorer_menu.is_some()
-            || self.panel_menu.is_some()
-            || self.tab_menu.is_some()
-            || self.terminal_menu.is_some()
-            || self.gutter_menu.is_some()
-            || self.text_menu.is_some()
-            || self.completion.is_some()
-            || self.value_tooltip.is_some()
+    /// Where an egui surface will sit above every native child view in this frame.
+    ///
+    /// A native child view is a window rather than a painted rectangle, so nothing egui draws can be
+    /// on top of one: a page under a menu has to be **hidden** while the menu is open. What changed in
+    /// `task-2009` is *which* page. This used to answer yes or no for the whole window — any popup
+    /// anywhere hid every page — so opening the branch picker in the title bar blanked a page in a pane
+    /// at the other end of the window, which is the report: *"When I select a branch, a dropdown comes
+    /// down, and all of a sudden the url tab just shows the background image rather than the page i was
+    /// viewing."* It answers with the rectangles now, and `services::browser::choose` hides a page only
+    /// when one of them is really over it.
+    ///
+    /// **It is read off egui's own layers rather than from a list of Unluminous's menus.** Every popup,
+    /// every dropdown, every flyout, every context menu, the completion list and the value tooltip is
+    /// an `egui::Area` above the background layer, and an area records where it was drawn — so one walk
+    /// covers all of them and covers the next one added with no change here. The background layer is
+    /// left out because that is where the window itself is drawn, and a canvas node's layer is a
+    /// background layer too, which is what makes a page inside a node not occlude itself.
+    ///
+    /// A modal is the one whole-window answer that stays: `egui::Modal` dims everything behind it, so
+    /// there is nowhere on the screen a page could honestly be drawn.
+    pub(crate) fn occluding_rects(&self, ctx: &egui::Context) -> Vec<Rect> {
+        if a_modal_has_the_keyboard(ctx) {
+            return vec![ctx.content_rect()];
+        }
+        ctx.memory(|memory| {
+            memory
+                .areas()
+                .visible_layer_ids()
+                .into_iter()
+                .filter(|layer| layer.order != egui::Order::Background)
+                .filter_map(|layer| memory.area_rect(layer.id))
+                .filter(|rect| rect.is_positive())
+                .collect()
+        })
     }
 }

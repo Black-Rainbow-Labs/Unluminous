@@ -299,6 +299,11 @@ impl UnluminousApp {
                     "url": tab.current_url(),
                     "loading": tab.loading,
                     "showing": self.browser.showing() == Some(tab.id),
+                    // **Whether the page is being drawn right now.** A menu, a dropdown or a modal
+                    // over a page hides it, because a native child view paints above everything egui
+                    // draws — and nothing Unluminous photographs holds a page, so this is the only
+                    // way to ask. `task-2009`.
+                    "covered": self.page_is_covered,
                     "canGoBack": tab.can_go_back(),
                     "canGoForward": tab.can_go_forward(),
                     "problem": tab.problem,

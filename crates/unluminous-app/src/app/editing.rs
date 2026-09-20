@@ -16,7 +16,6 @@ use crate::components::gutter::{self, Gutter};
 use crate::components::scrollbar;
 use crate::components::splitter;
 use crate::components::text_menu;
-use crate::services::file_kind;
 use crate::theme::{self, color, size};
 
 use crate::app::{
@@ -1097,7 +1096,7 @@ impl UnluminousApp {
         input: EditorInput,
     ) -> EditorTyped {
         let EditorInput { has_keyboard, focused, text_width } = input;
-        let formatting = file_kind::formatting_applies(self.files.active().path());
+        let formatting = self.formatting_applies_here();
         // Whether a character reached the document this frame, which is the one thing the automatic
         // trigger fires on. Read before the input is handled, because handling it is what consumes
         // the events. A paste, an undo and a command line edit are all deliberately not typing.

@@ -1000,6 +1000,14 @@ impl UnluminousApp {
             // `BeginResize` is a request the window manager throws away. Until this field there was no
             // way to ask that from outside the window — it had to be found by trying to drag it.
             "focused": ctx.input(|input| input.viewport().focused),
+            // **And what the operating system itself says**, which is a different question and was the
+            // one nothing could ask. `focused` above is `winit`'s cache of two window messages; these
+            // two are `GetForegroundWindow` and `GetFocus` asked afresh. `task-2009` is a window that
+            // was the foreground window with the keyboard while `winit` said it had no focus, and the
+            // only symptom was that the title bar would not move it. `null` off Windows, where there
+            // is no such cache. See `services::windows_focus`.
+            "osForeground": self.os_focus.map(|os| os.foreground),
+            "osKeyboard": self.os_focus.map(|os| os.keyboard),
             "maximised": ctx.input(|input| input.viewport().maximized),
             // **Whether a page has taken the operating system's keyboard**, which is the cause `focused`
             // above is only the symptom of — and the one thing that stops the window asking for a resize.
@@ -1122,6 +1130,9 @@ const STATUS_SECTIONS: &[(&str, &[&str])] = &[
             "focused",
             "maximised",
             "pageHasTheKeyboard",
+            // What Windows itself says, beside `winit`'s cache of it. `task-2009`.
+            "osForeground",
+            "osKeyboard",
             "lastResizeAsked",
         ],
     ),

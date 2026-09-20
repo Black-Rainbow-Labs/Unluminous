@@ -3290,6 +3290,111 @@ rather than in a test.
 size. What is readable is **what the window asked for**: `UnluminousApp::last_resize_asked`, reported by
 `status --section window` and asserted by the tests.
 
+### `winit` keeps a focus cache, and the window asks Windows rather than believing it
+
+`task-2009`: *"On windows, after launch, I can't move the window around by clicking the top bar and
+dragging, unless I first focus another window like Firefox, then focus unluminous."*
+
+The title bar's drag is the one thing in this window behind `Window::has_focus()` — `egui-winit` drops
+`ViewportCommand::StartDrag` when it is false — and on Windows `winit` answers that from `is_active &&
+is_focused`, two flags it keeps from `WM_NCACTIVATE` and `WM_SETFOCUS`. **The workaround is the shape of
+the fault.** Clicking the title bar of a window that is already the active window sends no activation
+message at all, so nothing puts a stale cache right; clicking another application and coming back is a
+real deactivate and a real activate, which is the one thing that does.
+
+`services::windows_focus` asks the operating system the same question — `GetForegroundWindow` and
+`GetFocus` — and sends `winit` the two messages it is waiting for when the two disagree. Nothing is
+invented: what is sent is what Windows already believes. It is narrower than *"is this window
+focused"*: `GetFocus` answers with a browser node's own child window while a page holds the keyboard,
+so `task-1945`'s rule that a page really does take the title bar's drag away is untouched.
+
+**And `status --section window` carries both answers now**, `osForeground` and `osKeyboard` beside
+`focused`. That is the part worth keeping whatever happens to the fix: a cache that has gone stale had
+no symptom at all except a title bar that would not move the window, and finding that from outside the
+window took a day. It is `null` off Windows, where `winit` keeps no such cache.
+
+### A control about prose is absent unless the tab holds a document
+
+`task-2009`: *"I should not see the top right font, preview/split/etc icons when a file is selected
+that doesn't support it. Deeply verify and check code to ensure this doesn't happen again."*
+
+A browser tab, a picture tab and a plugin tab are each a `Document` with **no path** — and
+`file_kind::kind_name(None)` is `Plain text` while `preview_applies(None)` is true, because a document
+nobody has saved yet is a real thing and is what Unluminous opens with. So a web page was read as
+unsaved prose: the `F` button and all three view modes in the title bar, the three modes on the `View`
+menu, and `Plain text · Ln 1, Col 1 · Helvetica · 16 pt` in the status bar.
+
+`showing_a_plugins_tab` had already patched the one kind that had been reported, which is exactly what
+left the browser tab to be the next one found. **So the question is asked of the tab**:
+`OpenFile::is_a_document`, and `UnluminousApp::formatting_applies_here` and `preview_applies_here` are
+the pair every caller uses — the title bar, the `View` menu, the editing area's keyboard and the four
+`editor` commands. `only_a_tab_holding_a_document_has_the_text_tools` walks every kind rather than
+naming one.
+
+### A tab is about a file even when its document is not
+
+`OpenFile::file_on_disk` is the document's path, or — for a rendered tab on a **local** HTML file — the
+file that tab is showing. The explorer follows that, so opening a page selects its file and switching
+tabs moves the selection: `task-2009`'s *"When I have an html file open in browser tab, that file
+should be selected, and should change if I select other tabs."* A tab on a remote address is about no
+file and answers `None`, which is what an unsaved document answers too.
+
+### A page is hidden by what is over it, not by anything being open
+
+`browser_is_occluded` answered yes or no for the whole window: `egui::Popup::is_any_open` is one answer
+for the menu bar, every dropdown and every flyout, and it hid **every** page. So opening the branch
+picker in the title bar blanked a page in a pane at the other end of the window — `task-2009`: *"When
+I select a branch, a dropdown comes down, and all of a sudden the url tab just shows the background
+image rather than the page i was viewing."*
+
+`UnluminousApp::occluding_rects` answers with the rectangles instead, and `services::browser::choose`
+hides a page only when one of them really overlaps its `visible` rectangle. **They are read off egui's
+own layers** rather than from a list of Unluminous's menus: every popup, context menu, completion list
+and tooltip is an `egui::Area` above the background layer and records where it was drawn, so one walk
+covers all of them and covers the next one added with no change. A canvas node's layer is a background
+layer, which is what keeps a page inside a node from occluding itself. A modal is the one whole-window
+answer that stays, because `egui::Modal` dims everything behind it.
+
+**And `browser status` says `covered`**, because a page is a native child view: it is in no screenshot
+Unluminous takes and no other state in the window said whether it was on the screen, so the blanked
+page could only be found by looking at it.
+
+### Where the window is is written when it stops moving
+
+The geometry is part of what a project remembers, and what a project remembers is written the frame it
+changes — so dragging the window rewrote `workspace.conf`, `open-files.txt` and `expanded-folders.txt`
+**sixty times a second**, from inside the message loop that is moving the window. `task-2009`: *"When I
+drag the window around, there is stutter/jerkiness ... it stops moving occasionally."*
+
+`ProjectState::differs_only_in_the_window` is what tells that change apart, and
+`UnluminousApp::window_still_since` waits `WINDOW_SETTLE` for the window to stop. Everything else is
+still written the frame it changes, because everything else is one press rather than a gesture, and
+`on_exit` passes `None` so a geometry that has not settled is written anyway. It is the rule the canvas
+already keeps about a node being dragged and the rule the settings keep about a divider, said about the
+one field that moves on every frame of a gesture.
+
+### Every field has a right click menu, and a path handed to another program is written its way
+
+Two more of `task-2009`, and each is one function that every caller already goes through.
+
+**`controls::field_menu`** is Cut, Copy, Paste and Select All, drawn from `claim_the_field`, so all
+nineteen fields in the window have it rather than the address bar the report named. *"Urls when i open
+an html file should be selectable and copy pasteable"* — the address is a real `egui::TextEdit` and
+always was, so selecting and `Ctrl+C` worked and the menu was what did not exist. Nothing here cuts or
+pastes anything: a row records what was asked for and `app::hold_the_keyboard` turns it into the
+`egui::Event` a `TextEdit` already answers, on the **next** frame, for the reason
+`controls::wants_the_keyboard` is also next frame. The clipboard is read by the window, because the
+window owns it.
+
+**`launcher::reveal_command` writes its path the way Explorer reads one.** Two things, each measured
+against the real Explorer rather than reasoned about. A path with **mixed separators** — which
+`Path::join` makes, and which nothing inside Unluminous notices because `Path`'s own `Eq` compares
+components — makes `explorer /select,…` open the **Desktop**; `paths::plain` and `paths::native` are
+what that path goes through now, which is what `unluminous_terminal::paths` exists for and what
+`task-1794` measured at a debug adapter. And a path with a **space** in it makes it open **Documents**,
+because `Command::arg` escapes what it is given and so puts the quotation mark in front of the switch
+rather than round the path. `raw_arg` is what writes the argument as Explorer needs to read it.
+
 ## A glyph is rasterised at the size it is seen at, in both text engines
 
 `task-1907` made Unluminous's own atlas ask for the composited size — `services::text_renderer::Crispness` —

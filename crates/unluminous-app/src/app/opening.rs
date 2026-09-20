@@ -28,7 +28,7 @@ impl UnluminousApp {
     /// opened one file elsewhere would be a surprise. A project's state is restored when a window opens
     /// on it, which is what `File -> Open Folder` now does.
     pub fn open_folder(&mut self, folder: &Path) {
-        self.remember_the_project();
+        self.remember_the_project(None);
         self.tree = FileTree::new(folder);
         // A fresh tree knows nothing of the settings, and the folder it has just read may be a
         // different repository with a different `.gitignore`.

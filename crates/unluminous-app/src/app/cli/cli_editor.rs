@@ -395,7 +395,7 @@ impl UnluminousApp {
             "viewMode": view_mode_name(self.view_mode()),
             "canUndo": self.document().can_undo(),
             "canRedo": self.document().can_redo(),
-            "previewApplies": file_kind::preview_applies(file.path()),
+            "previewApplies": self.preview_applies_here(),
             // **Whether the gutter is annotated with git blame.** Right clicking the gutter turns it
             // on, and until `task-1922` nothing could be asked whether it was: an agent could see the
             // menu entry and could not see what pressing it did.
@@ -868,7 +868,7 @@ impl UnluminousApp {
                 )
             }
         };
-        if mode != ViewMode::Raw && !file_kind::preview_applies(self.document().path()) {
+        if mode != ViewMode::Raw && !self.preview_applies_here() {
             return no(
                 request,
                 code::NOT_APPLICABLE,
@@ -1426,7 +1426,7 @@ impl UnluminousApp {
     }
 
     fn cli_editor_preview(&mut self, request: &Request, ctx: &egui::Context) -> Outcome {
-        if !file_kind::preview_applies(self.document().path()) {
+        if !self.preview_applies_here() {
             return no(
                 request,
                 code::NOT_APPLICABLE,
@@ -1554,9 +1554,7 @@ impl UnluminousApp {
     /// built first when it has never been drawn, exactly as `editor preview` builds it, because an
     /// offset into a page that does not exist yet has no meaning.
     fn cli_editor_preview_select(&mut self, request: &Request, ctx: &egui::Context) -> Outcome {
-        if !file_kind::preview_applies(self.document().path())
-            || file_kind::is_mermaid(self.document().path())
-        {
+        if !self.preview_applies_here() || file_kind::is_mermaid(self.document().path()) {
             return no(
                 request,
                 code::NOT_APPLICABLE,

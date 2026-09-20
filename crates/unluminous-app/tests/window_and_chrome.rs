@@ -5132,3 +5132,312 @@ fn a_modals_field_keeps_its_size_when_the_interface_is_set_large() {
     steady(&mut harness);
     harness.snapshot(shot("field_go_to_file_large_interface"));
 }
+
+// --------------------------------------------------------- task-2009: a tab that is not a document
+
+/// A project holding one file of every kind a tab can be opened on, plus a plugin that contributes one.
+fn every_kind_of_tab_folder() -> PathBuf {
+    static ROOT: OnceLock<PathBuf> = OnceLock::new();
+    ROOT.get_or_init(|| {
+        let folder = fixture(
+            "unluminous-2009-tab-kinds",
+            &[
+                ("notes.md", "# Notes\n\nProse, which has both the tools and a preview.\n"),
+                ("nested/deep/page.html", "<h1>A page</h1>\n"),
+                ("program.rs", "fn main() {}\n"),
+            ],
+        );
+        write_sample_picture(&folder.join("picture.png"));
+        let plugin = folder.join(".unluminous-settings").join("plugins").join("agent-tasks");
+        std::fs::create_dir_all(&plugin).expect("a plugin folder");
+        std::fs::write(
+            plugin.join("plugin.conf"),
+            "plugin.id = agent-tasks\nplugin.name = Agent-Tasks\nplugin.kind = ui\n\
+             ui.provider = agent-tasks\ntab.id = board\ntab.label = Agent-Tasks\n",
+        )
+        .expect("a manifest that contributes a tab");
+        folder
+    })
+    .clone()
+}
+
+/// The four controls at the right hand end of the title bar that are about prose.
+const THE_TEXT_TOOLS: [&str; 4] =
+    ["Text options", "Raw Markdown", "Side by side", "Markdown preview"];
+
+/// **Every kind of tab is asked, not the one that was reported.** `task-2009`.
+///
+/// *"I should not see the top right font, preview/split/etc icons when a file is selected that
+/// doesn't support it. Deeply verify and check code to ensure this doesn't happen again."*
+///
+/// A browser tab, a picture tab and a plugin tab are each a `Document` with **no path**, and
+/// `services::file_kind` reads a document with no path as an unsaved prose file — which is right for a
+/// new file and wrong for all three. A patch for the plugin tab alone was already here, which is what
+/// left the browser tab to be the next one found; so this walks the list rather than naming a kind, and
+/// a fourth kind added later has to be added to `Kind` below to compile.
+#[test]
+fn only_a_tab_holding_a_document_has_the_text_tools() {
+    let folder = every_kind_of_tab_folder();
+    let mut harness = harness_in(&folder);
+    // The plugin in this project's own settings folder is what contributes a tab, and a window only
+    // reads one when it has been given a store — which the released binary does in `load_settings`
+    // and a test does here, so that no test reads the settings of the person running it.
+    harness
+        .state_mut()
+        .use_store(unluminous_app::services::store::Store::at(folder.join(".unluminous-settings")));
+    for _ in 0..4 {
+        harness.step();
+    }
+
+    // Prose: every tool, which is what makes the absences below mean something.
+    did(&mut harness, "tab open notes.md --permanent");
+    steady(&mut harness);
+    assert!(harness.state().files.active().is_a_document());
+    assert!(harness.state().formatting_applies_here(), "prose has the formatting controls");
+    assert!(harness.state().preview_applies_here(), "and a preview");
+    for tool in THE_TEXT_TOOLS {
+        harness.get_by_label(tool);
+    }
+
+    // A source file: no formatting and no preview, which has been true since `task-1660` and is here
+    // so that the walk covers the kind that works as well as the three that did not.
+    did(&mut harness, "tab open program.rs --permanent");
+    steady(&mut harness);
+    assert!(harness.state().files.active().is_a_document(), "a source file is still a document");
+    assert!(!harness.state().formatting_applies_here());
+    assert!(!harness.state().preview_applies_here());
+
+    // A page. The report's own case.
+    harness.state_mut().open_browser("nested/deep/page.html").expect("open the page");
+    steady(&mut harness);
+    assert!(harness.state().files.active().is_browser());
+    assert!(!harness.state().files.active().is_a_document());
+
+    // A picture.
+    did(&mut harness, "tab open picture.png --permanent");
+    steady(&mut harness);
+    assert!(harness.state().files.active().is_picture());
+    assert!(!harness.state().files.active().is_a_document());
+
+    // And a tab a plugin drew.
+    harness.state_mut().open_the_plugin_tab("agent-tasks/board");
+    steady(&mut harness);
+    assert!(harness.state().files.active().is_a_plugin());
+    assert!(!harness.state().files.active().is_a_document());
+
+    // Each of the three in turn, asserting the same three things about each.
+    for tab in 1..harness.state().files.len() {
+        did(&mut harness, &format!("tab show {tab}"));
+        steady(&mut harness);
+        let name = harness.state().files.active().name();
+        if harness.state().files.active().is_a_document() {
+            continue;
+        }
+        assert!(
+            !harness.state().formatting_applies_here(),
+            "{name} is not a document and must have no formatting controls"
+        );
+        assert!(
+            !harness.state().preview_applies_here(),
+            "{name} is not a document and must have no view modes"
+        );
+        for tool in THE_TEXT_TOOLS {
+            assert!(
+                harness.query_by_label(tool).is_none(),
+                "{tool} is drawn over {name}, which is not a document"
+            );
+        }
+    }
+}
+
+/// The explorer selects the file a rendered tab is about, and follows a change of tab.
+///
+/// `task-2009`: *"When I have an html file open in browser tab, that file should be selected, and
+/// should change if I select other tabs."* A page has no document, so the tab's own `path()` is
+/// `None` and the explorer followed nothing at all.
+#[test]
+fn the_explorer_selects_the_html_file_a_browser_tab_is_showing() {
+    let folder = every_kind_of_tab_folder();
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open notes.md --permanent");
+    steady(&mut harness);
+    assert_eq!(
+        harness.state().files.active().file_on_disk(),
+        Some(folder.join("notes.md").as_path())
+    );
+
+    harness.state_mut().open_browser("nested/deep/page.html").expect("open the page");
+    steady(&mut harness);
+    let page = folder.join("nested").join("deep").join("page.html");
+    assert_eq!(
+        harness.state().files.active().file_on_disk(),
+        Some(page.as_path()),
+        "the tab is about the file it is rendering"
+    );
+    // The folders above it are opened out, which is what makes there be a row to select at all.
+    assert!(
+        harness.state().tree.rows().iter().any(|row| row.entry.path == page),
+        "the explorer opened the folders above the page and drew its row"
+    );
+    // And the row is drawn as the file that is showing. `WidgetInfo::selected` is what the explorer
+    // marks the open file with, so this is the pill a person sees, asked for rather than photographed.
+    // The label is exactly the file's name; the tab beside it is `Tab: page.html`.
+    let row = harness.get_by_label("page.html");
+    assert_eq!(
+        egui_kittest::kittest::NodeT::accesskit_node(&row).toggled(),
+        Some(egui::accesskit::Toggled::True),
+        "the explorer's row for the page is the selected one"
+    );
+
+    // And back: selecting another tab moves the selection with it.
+    did(&mut harness, "tab open notes.md");
+    steady(&mut harness);
+    assert_eq!(
+        harness.state().files.active().file_on_disk(),
+        Some(folder.join("notes.md").as_path())
+    );
+}
+
+/// A rendered tab's own address is nothing the status bar can say a line and a column about.
+///
+/// `task-2009` again, and the same root cause: the status bar read `Plain text · Ln 1, Col 1 ·
+/// Helvetica · 16 pt` over a web page, which is a caret in a document nobody is editing and a font
+/// nothing is set in.
+#[test]
+fn the_status_bar_says_what_a_rendered_tab_really_holds() {
+    let folder = every_kind_of_tab_folder();
+    let mut harness = harness_in(&folder);
+    harness.state_mut().open_browser("nested/deep/page.html").expect("open the page");
+    steady(&mut harness);
+    harness.snapshot(shot("status_bar_browser_tab"));
+}
+
+/// Moving the window writes the project's files once, at the end, rather than on every frame.
+///
+/// `task-2009`: *"When I drag the window around, there is stutter/jerkiness ... it stops moving
+/// occasionally. It should be silky smooth."* Where the window is is part of what a project
+/// remembers, and what a project remembers is written the frame it changes — so a drag of the window
+/// rewrote `workspace.conf`, `open-files.txt` and `expanded-folders.txt` sixty times a second, from
+/// inside the message loop that is moving the window.
+///
+/// A folder of its own, because this test makes the window write into it: `sample_folder` is shared
+/// behind a `OnceLock` by every test that wants a project, which is `task-1654`'s rule.
+#[test]
+fn the_window_moving_writes_where_it_is_once_it_has_stopped() {
+    use unluminous_app::services::project_state;
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-2009-window-place");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().restore_project();
+    steady(&mut harness);
+
+    let place_the_window_at = |harness: &mut Harness<'static, UnluminousApp>, x: f32| {
+        let ids: Vec<egui::ViewportId> = harness.input().viewports.keys().copied().collect();
+        for id in ids {
+            if let Some(viewport) = harness.input_mut().viewports.get_mut(&id) {
+                let at = egui::pos2(x, 200.0);
+                let rect = egui::Rect::from_min_size(at, vec2(WINDOW[0], WINDOW[1]));
+                viewport.outer_rect = Some(rect);
+                viewport.inner_rect = Some(rect);
+            }
+        }
+    };
+    let written =
+        |folder: &std::path::Path| project_state::load(folder).window.map(|place| place.x);
+
+    // Where it starts. A harness frame is a quarter of a second, so four of them is a second of a
+    // window sitting still — well past `WINDOW_SETTLE`, and what "let go of it" means here.
+    place_the_window_at(&mut harness, 100.0);
+    harness.run_steps(4);
+    assert_eq!(
+        harness.state().window_place_for_tests().map(|place| place.x),
+        Some(100.0),
+        "the window noticed where it is"
+    );
+    assert_eq!(written(&folder), Some(100.0), "a window that has stopped records where it is");
+
+    // A drag: one frame at each of three places, and none of them is written.
+    for x in [140.0, 180.0, 220.0] {
+        place_the_window_at(&mut harness, x);
+        harness.step();
+        assert_eq!(
+            written(&folder),
+            Some(100.0),
+            "a frame of a drag must not write the project's files"
+        );
+    }
+
+    // Let go, and it is written once.
+    harness.run_steps(4);
+    assert_eq!(written(&folder), Some(220.0), "and where it was let go of is what is kept");
+
+    // Anything **else** changing is still written the frame it changes, because that is not a gesture:
+    // hiding the explorer is one press and has to survive the window closing a moment later.
+    did(&mut harness, "explorer hide");
+    harness.step();
+    assert!(!project_state::load(&folder).explorer_visible, "everything else is written at once");
+}
+
+/// Every text field has a right click menu, and choosing a row reaches the box that holds the words.
+///
+/// `task-2009`: *"Urls when i open an html file should be selectable and copy pasteable. e.g. right
+/// click to see menu of copy/paste/cut/etc."* The address bar is a real `egui::TextEdit` and always
+/// was, so selecting it and `Ctrl+C` worked; the menu did not exist anywhere in the window.
+///
+/// It is drawn from `controls::claim_the_field`, which all nineteen fields go through, so this is
+/// about the address bar because that is what was reported and about every field because that is
+/// where it lives.
+#[test]
+fn a_fields_right_click_menu_cuts_copies_and_selects() {
+    let folder = every_kind_of_tab_folder();
+    let mut harness = harness_in(&folder);
+    harness.state_mut().open_browser("nested/deep/page.html").expect("open the page");
+    steady(&mut harness);
+
+    let field = harness.get_by_label("Address field").rect();
+    right_click_at(&mut harness, field.center());
+    for row in ["Cut", "Copy", "Paste", "Select All"] {
+        harness.get_by_label(row);
+    }
+
+    // `Select All` reaches the box, which is the half that is not drawing: the row records what was
+    // asked for and `app::hold_the_keyboard` turns it into the event `TextEdit` already answers.
+    harness.get_by_label("Select All").click();
+    steady(&mut harness);
+    let address = harness.state().files.active().typed_address.clone();
+    assert!(!address.is_empty(), "the field is showing the page's address");
+    let id = harness.state().files.active().browser.as_ref().map(|tab| tab.id).expect("a tab");
+    let selected =
+        egui::text_edit::TextEditState::load(&harness.ctx, egui::Id::new(("browser-address", id)))
+            .and_then(|state| state.cursor.char_range())
+            .expect("the box has a cursor");
+    assert_eq!(
+        selected.as_sorted_char_range().end.0 - selected.as_sorted_char_range().start.0,
+        address.chars().count(),
+        "Select All selected the whole address"
+    );
+    // And the menu puts itself away once a row has been chosen.
+    assert!(harness.query_by_label("Select All").is_none());
+
+    // **Opening it again over a selection offers Cut and Copy.** A right click is a press and then a
+    // release, and the press moves the box's caret — so the selection is already gone by the frame
+    // the menu opens on, and what the row is enabled from is the frame before that. See
+    // `controls::what_the_box_had_last_frame`; without it both rows were dimmed over a full
+    // selection, and `Copy` would have copied nothing.
+    right_click_at(&mut harness, field.center());
+    for row in ["Cut", "Copy"] {
+        let node = harness.get_by_label(row);
+        assert!(
+            !egui_kittest::kittest::NodeT::accesskit_node(&node).is_disabled(),
+            "{row} should be live over a selection"
+        );
+    }
+    // `Cut` rather than `Copy`, because what it does is readable: the words it took are the words
+    // that are gone. Both go the same way — the selection is put back and the `egui::Event` the
+    // chord sends is pushed — so this is the whole path.
+    harness.get_by_label("Cut").click();
+    steady(&mut harness);
+    assert!(
+        harness.state().files.active().typed_address.is_empty(),
+        "Cut took the whole address, which is what was selected"
+    );
+}

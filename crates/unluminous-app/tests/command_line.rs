@@ -712,6 +712,19 @@ fn the_window_says_whether_the_operating_system_is_sending_it_the_keys() {
     let window = did(&mut harness, "status --section window");
     assert!(window.get("focused").is_some(), "the window section carries the focus");
     assert!(window.get("maximised").is_some(), "and whether the window is maximised");
+    // **And what the operating system itself says, which is a different question.** `focused` above
+    // is `winit`'s own cache of two window messages, and `task-2009` is a window that was the
+    // foreground window with the keyboard while that cache said it had no focus — with no symptom at
+    // all except that the title bar would not move the window. Both are `null` here, because a test
+    // window has no operating system window behind it to ask about.
+    for asked in ["osForeground", "osKeyboard"] {
+        assert!(window.get(asked).is_some(), "the window section carries {asked}");
+        assert_eq!(
+            window[asked],
+            serde_json::Value::Null,
+            "{asked} has no answer in a test window"
+        );
+    }
 
     let ids: Vec<egui::ViewportId> = harness.input().viewports.keys().copied().collect();
     for id in ids {
@@ -1177,14 +1190,19 @@ fn browser_tabs_open_through_the_shared_cli_and_action_paths() {
     let opened =
         over_the_wire(&mut harness, "browser.open", serde_json::json!({ "address": "index.html" }));
     assert!(opened.ok, "the command opens local HTML: {:?}", opened.error);
-    let first = first.canonicalize().expect("canonical first page");
+    // **Plain, not verbatim.** `BrowserLocation::local` canonicalises and then takes the prefix
+    // Windows puts on a canonical path off again, because a rendered tab's file is compared against
+    // the explorer's own rows and handed to other programs — `task-2009`.
+    let first =
+        unluminous_terminal::paths::plain(&first.canonicalize().expect("canonical first page"));
     assert_eq!(
         harness.state().files.active().browser.as_ref().and_then(|tab| tab.location.source_path()),
         Some(first.as_path())
     );
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::OpenInBrowser(second.clone()), &ctx);
-    let second = second.canonicalize().expect("canonical second page");
+    let second =
+        unluminous_terminal::paths::plain(&second.canonicalize().expect("canonical second page"));
     assert_eq!(
         harness.state().files.active().browser.as_ref().and_then(|tab| tab.location.source_path()),
         Some(second.as_path())

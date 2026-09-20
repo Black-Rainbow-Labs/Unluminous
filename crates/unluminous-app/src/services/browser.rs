@@ -60,13 +60,22 @@ impl BrowserLocation {
     fn local(value: &str, project: &Path) -> Result<Self, String> {
         let given = PathBuf::from(value);
         let candidate = if given.is_absolute() { given } else { project.join(given) };
-        let path = candidate.canonicalize().map_err(|problem| {
-            format!("Unluminous could not open {}: {problem}", candidate.display())
-        })?;
+        // **Plain, because `canonicalize` on Windows answers with a verbatim path.** That form is the
+        // one `unluminous_terminal::paths` exists to stop travelling: nothing inside Unluminous
+        // notices one, so it reaches whatever is handed a path next. `task-2009` measured that at the
+        // explorer — the tree's own rows are plain, so a rendered tab's file never matched a row and
+        // opening a page selected nothing.
+        let path =
+            candidate.canonicalize().map(|path| unluminous_terminal::paths::plain(&path)).map_err(
+                |problem| format!("Unluminous could not open {}: {problem}", candidate.display()),
+            )?;
         if !path.is_file() || !file_kind::is_html(&path) {
             return Err(format!("{} is not an HTML file.", path.display()));
         }
-        let project = project.canonicalize().unwrap_or_else(|_| project.to_path_buf());
+        let project = project
+            .canonicalize()
+            .map(|path| unluminous_terminal::paths::plain(&path))
+            .unwrap_or_else(|_| project.to_path_buf());
         let root = if path.starts_with(&project) {
             project
         } else {
@@ -452,7 +461,7 @@ impl BrowserHost {
         &mut self,
         tabs: &[BrowserTab],
         placements: &[BrowserPlacement],
-        occluded: bool,
+        occluders: &[egui::Rect],
         repaint: egui::Context,
     ) -> Settled {
         let live: HashSet<u64> = tabs.iter().map(|tab| tab.id).collect();
@@ -462,11 +471,14 @@ impl BrowserHost {
             self.showing.store(0, Ordering::Relaxed);
             return Settled::default();
         }
-        let chosen = choose(placements, occluded);
+        let chosen = choose(placements, occluders, CAN_CUT_A_PAGE);
         let Some(placement) = chosen else {
             self.native.hide();
-            return Settled::default();
+            // **A page that is there and is not being drawn**, which is what `browser status` reports
+            // and the only way anything can be asked whether a menu is covering one. `task-2009`.
+            return Settled { covered: !placements.is_empty(), ..Settled::default() };
         };
+        let covered = covers_any_of(occluders, placement.visible);
         let Some(tab) = tabs.iter().find(|tab| tab.id == placement.id) else {
             return Settled::default();
         };
@@ -478,10 +490,11 @@ impl BrowserHost {
             profile: self.profile.clone(),
             resources: self.resources.clone(),
             sender: self.sender.clone(),
+            occluders,
             repaint,
         });
         let pointed_at = (was != self.showing()).then(|| self.showing()).flatten();
-        Settled { problems, pointed_at }
+        Settled { problems, pointed_at, covered }
     }
 
     /// Send the view to an address on behalf of the tab that is showing.
@@ -535,6 +548,12 @@ pub struct Settled {
     pub problems: Vec<(u64, String)>,
     /// The tab the view was pointed at, when that changed this frame.
     pub pointed_at: Option<u64>,
+    /// Whether there is a page to draw and an egui surface is over some of it.
+    ///
+    /// A page is a native child view, so nothing Unluminous photographs holds one and no state in the
+    /// window used to say whether it was on the screen — which is why `task-2009`'s blanked page had
+    /// to be found by looking at it. `browser status` reports this.
+    pub covered: bool,
 }
 
 /// What the one native view is to do about the **operating system's** keyboard focus this frame.
@@ -611,21 +630,66 @@ pub fn the_focus(view_holds_it: bool, wanted: bool) -> TheFocus {
     }
 }
 
+/// Whether this platform can cut the native child around what is drawn over it.
+///
+/// Windows can: `wry` builds the engine inside a container window of its own, and a region set on that
+/// container clips the engine — which is how a browser node hanging off the canvas has shown part of a
+/// page since `task-1914`. macOS has no such container, so there a covered page is hidden instead.
+const CAN_CUT_A_PAGE: bool = cfg!(windows);
+
 /// The one placement the native view goes to: the pane with the keyboard, else the first drawn.
 ///
 /// A second rendered tab beside the first in a split pane cannot have a view of its own — see
 /// [`BrowserHost`] — so it is drawn as a pane that says where its page is.
-fn choose(placements: &[BrowserPlacement], occluded: bool) -> Option<&BrowserPlacement> {
-    if occluded {
-        return None;
-    }
+fn choose<'a>(
+    placements: &'a [BrowserPlacement],
+    occluders: &[egui::Rect],
+    can_cut_the_page_around_them: bool,
+) -> Option<&'a BrowserPlacement> {
     // **The last rather than the first when nothing is focused.** A placement is pushed as its owner is
     // drawn, and both the pane loop and the canvas's node loop draw **back to front** — so the first is the
     // one furthest behind. With two browser nodes overlapping and the keyboard somewhere else entirely, the
     // one underneath took the native view and painted above the one on top of it, because a native child
     // composites over everything egui draws. The Codex Sol review of `task-1905` found it.
-    placements.iter().find(|placement| placement.focused).or_else(|| placements.last())
+    let chosen =
+        placements.iter().find(|placement| placement.focused).or_else(|| placements.last())?;
+    // **A page is hidden only where there is no way to cut it around what is over it.** It used to be
+    // hidden whenever any popup was open anywhere: `egui::Popup::is_any_open` is one answer for the
+    // menu bar, every dropdown and every flyout, and it was read as "take the view off the screen".
+    // So opening the branch picker in the title bar blanked a page at the other end of the window —
+    // `task-2009`: *"When I select a branch, a dropdown comes down, and all of a sudden the url tab
+    // just shows the background image rather than the page i was viewing."*
+    //
+    // On Windows the answer is better than hiding less often: the child is **cut around** the menu,
+    // so the page keeps showing everywhere the menu is not. That is `clip_to_the_visible_part`, which
+    // has cut the child to its pane since `task-1914` and now subtracts what is drawn over it too.
+    // Where the whole page is covered — a modal, which dims the window — the region comes out empty
+    // and the child shows nothing, which is the same answer by the same route.
+    //
+    // macOS has no container of `wry`'s to mask, which `clip_to_the_visible_part` already records, so
+    // there a page really does have to be hidden. `visible` rather than `area`, because the part of a
+    // node hanging off the canvas is not on the screen; and an overlap has to have some area in it,
+    // since `Rect::intersects` is true of two rectangles that merely touch along an edge.
+    if !can_cut_the_page_around_them && covers_any_of(occluders, chosen.visible) {
+        return None;
+    }
+    Some(chosen)
 }
+
+/// Whether any of `occluders` is really over `page`, shadow and all.
+///
+/// **Grown by [`OCCLUDER_SHADOW`] first**, because a popup's shadow is painted outside the rectangle
+/// egui records for it, and a strip of page showing through the gap between the menu and its shadow
+/// reads as a fault rather than as a page.
+pub fn covers_any_of(occluders: &[egui::Rect], page: egui::Rect) -> bool {
+    occluders.iter().any(|over| over.expand(OCCLUDER_SHADOW).intersect(page).is_positive())
+}
+
+/// How far outside its own rectangle a popup is drawn.
+///
+/// egui's default popup shadow is offset `[6, 10]` with a blur of `8`, so it reaches eighteen points
+/// below the rectangle and fourteen to the right of it. Eighteen covers every side of it.
+pub const OCCLUDER_SHADOW: f32 = 18.0;
 
 impl Default for BrowserHost {
     /// Construct the same lazy host as [`BrowserHost::new`].
@@ -905,6 +969,8 @@ mod native {
     pub struct Settle<'a> {
         pub tab: &'a BrowserTab,
         pub placement: &'a BrowserPlacement,
+        /// What egui is drawing over the page this frame, in the window's own points.
+        pub occluders: &'a [egui::Rect],
         pub showing: &'a Arc<AtomicU64>,
         pub profile: Option<PathBuf>,
         pub resources: LocalResourceStore,
@@ -927,12 +993,25 @@ mod native {
         }
     }
 
+    /// What the native child is cut to: its pane, less whatever egui is drawing over it.
+    ///
+    /// Kept whole rather than as a yes or no, because it is what `place` compares a frame against —
+    /// and during a canvas zoom every one of these numbers moves, which is what `task-2004` measured
+    /// `SetWindowRgn` being called sixty times a second for.
+    #[derive(Debug, Clone, PartialEq)]
+    struct Clip {
+        area: egui::Rect,
+        visible: egui::Rect,
+        over: Vec<egui::Rect>,
+    }
+
     struct NativeView {
         webview: WebView,
         bounds: Option<wry::Rect>,
-        /// The last pair [`clip_to_the_visible_part`] was given, so a frame that changed neither costs
-        /// no call into the window manager. `wry::Rect` is not comparable, so this keeps egui's own.
-        clip: Option<(egui::Rect, egui::Rect)>,
+        /// The last answer [`clip_to_the_visible_part`] was given, so a frame that changed none of it
+        /// costs no call into the window manager. `wry::Rect` is not comparable, so this keeps egui's
+        /// own. `None` is no region at all, which is a page with nothing over it inside its own pane.
+        clip: Option<Clip>,
         /// The zoom [`place`] last sent, so a frame that did not move it costs no call into the engine.
         zoom: Option<f64>,
         visible: bool,
@@ -958,9 +1037,13 @@ mod native {
             self.view.is_some()
         }
 
-        /// Whether the page holds the operating system's keyboard focus, from the flag the view keeps.
+        /// Whether the page holds the operating system's keyboard focus.
+        ///
+        /// **Asked of the platform, not of the flag.** `view.has_the_focus` records what Unluminous
+        /// last *did* about the focus, and a `WebView2` takes it on its own the moment it is created
+        /// — see [`the_page_really_has_the_keyboard`]. `task-2009`.
         pub fn page_holds_the_keyboard(&self) -> bool {
-            self.view.as_ref().is_some_and(|view| view.has_the_focus)
+            self.view.as_ref().is_some_and(page_has_it)
         }
 
         /// Take the window's handle while the frame that has one is in scope.
@@ -1010,7 +1093,7 @@ mod native {
                 }
             }
             if let Some(view) = &mut self.view {
-                place(view, request.placement);
+                place(view, request.placement, request.occluders);
             }
             Vec::new()
         }
@@ -1139,7 +1222,7 @@ mod native {
     /// **The bounds are the whole page and the crop is a separate question.** `set_bounds` is the page's
     /// viewport as well as its position, so cutting it is what reflows a responsive page — see
     /// [`clip_to_the_visible_part`], which takes the part that may be painted off the same placement.
-    fn place(view: &mut NativeView, placement: &BrowserPlacement) {
+    fn place(view: &mut NativeView, placement: &BrowserPlacement, occluders: &[egui::Rect]) {
         let bounds = browser_rect(placement.area);
         if view.bounds != Some(bounds) && view.webview.set_bounds(bounds).is_ok() {
             view.bounds = Some(bounds);
@@ -1156,20 +1239,33 @@ mod native {
                 view.zoom = Some(zoom);
             }
         }
-        // **Whether there is a region, not which pair of rectangles produced one.** During a canvas zoom
-        // both rectangles change on every frame, so this was calling `SetWindowRgn(hwnd, …, TRUE)` sixty
+        // **Whether there is a region, not which numbers produced one.** During a canvas zoom every
+        // rectangle here moves on every frame, so this was calling `SetWindowRgn(hwnd, …, TRUE)` sixty
         // times a second — redrawing the child from scratch each time — for a node wholly inside the pane
-        // where the answer is no region at all. `task-2004`.
-        let wanted = match placement.visible.contains_rect(placement.area) {
+        // with nothing over it, where the answer is no region at all. `task-2004`.
+        //
+        // **And what is drawn over the page is subtracted from it**, rather than the whole page being
+        // taken off the screen while a menu is open. `task-2009`: the branch picker hangs over part of a
+        // pane, and a native child paints above everything egui draws, so the page has to come out from
+        // under the menu — but only from under the menu. See `services::browser::choose`.
+        let over: Vec<egui::Rect> = occluders
+            .iter()
+            .map(|rect| rect.expand(super::OCCLUDER_SHADOW))
+            .filter(|rect| rect.intersect(placement.visible).is_positive())
+            .collect();
+        let wanted = match placement.visible.contains_rect(placement.area) && over.is_empty() {
             true => None,
-            false => Some((placement.area, placement.visible)),
+            false => {
+                Some(Clip { area: placement.area, visible: placement.visible, over: over.clone() })
+            }
         };
         if view.clip != wanted {
-            clip_to_the_visible_part(view, placement.area, placement.visible);
+            clip_to_the_visible_part(view, placement.area, placement.visible, &over);
             view.clip = wanted;
         }
         set_visible(view, true);
-        match super::the_focus(view.has_the_focus, placement.focused) {
+        // **What the platform says, not what this last did.** See [`the_page_really_has_the_keyboard`].
+        match super::the_focus(page_has_it(view), placement.focused) {
             super::TheFocus::LeaveIt => {}
             super::TheFocus::GiveItToThePage => {
                 let _ = view.webview.focus();
@@ -1177,6 +1273,58 @@ mod native {
             }
             super::TheFocus::GiveItBackToTheWindow => give_the_focus_back(view),
         }
+    }
+
+    /// Whether the engine's own window holds the operating system's keyboard focus **right now**.
+    ///
+    /// `NativeView::has_the_focus` is what Unluminous last *did* about the focus, and that is not the
+    /// same thing: a `WebView2` calls `SetFocus` on itself when it is created, so a window that opens
+    /// with a rendered tab restored has handed the keyboard to a page nobody asked for it — with
+    /// `has_the_focus` still false, so nothing ever handed it back.
+    ///
+    /// `task-2009`: *"On windows, after launch, I can't move the window around by clicking the top bar
+    /// and dragging, unless I first focus another window like Firefox, then focus unluminous."*
+    /// `egui-winit` drops `ViewportCommand::StartDrag` while `Window::has_focus()` is false, and `winit`
+    /// sets that false on the `WM_KILLFOCUS` the window gets when the child takes `SetFocus`. Clicking
+    /// the title bar does not move the focus back — nothing in `winit` or `egui` calls `SetFocus` on a
+    /// click — so it stays with the page; clicking another application and coming back is a real
+    /// deactivate and activate, and Windows gives the focus to the top-level window that was clicked.
+    /// Measured on the installed build, with a page open and nothing pressed:
+    ///
+    /// ```text
+    /// status --section window  ->  focused: false, osForeground: true, osKeyboard: false
+    /// GetGUIThreadInfo          ->  hwndFocus class = Chrome_WidgetWin_1
+    /// ```
+    ///
+    /// Asked of `GetFocus`, which answers about the calling thread's own queue and is called on the
+    /// window's thread, against the container `wry` builds the engine inside.
+    #[cfg(windows)]
+    fn the_page_really_has_the_keyboard(view: &NativeView) -> bool {
+        use windows_sys::Win32::Foundation::HWND;
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetFocus;
+        use windows_sys::Win32::UI::WindowsAndMessaging::IsChild;
+        use wry::WebViewExtWindows as _;
+
+        let hwnd = view.webview.hwnd().0 as HWND;
+        if hwnd.is_null() {
+            return false;
+        }
+        // SAFETY: `GetFocus` takes nothing, and both handles are windows in this process.
+        unsafe {
+            let focus = GetFocus();
+            !focus.is_null() && (focus == hwnd || IsChild(hwnd, focus) != 0)
+        }
+    }
+
+    /// The same question where there is nothing to ask it of, which leaves the flag as the answer.
+    #[cfg(not(windows))]
+    fn the_page_really_has_the_keyboard(_view: &NativeView) -> bool {
+        false
+    }
+
+    /// Whether the page has the keyboard, by either of the two ways it can come to have it.
+    fn page_has_it(view: &NativeView) -> bool {
+        view.has_the_focus || the_page_really_has_the_keyboard(view)
     }
 
     /// Hand the operating system's keyboard focus back to the window `wry` built this view inside.
@@ -1187,7 +1335,7 @@ mod native {
     /// handles, and because a host that calls `SetFocus` on itself without going back through the
     /// controller is the shape `WebView2` is documented not to restore reliably from.
     fn give_the_focus_back(view: &mut NativeView) {
-        if !view.has_the_focus {
+        if !page_has_it(view) {
             return;
         }
         let _ = view.webview.focus_parent();
@@ -1213,9 +1361,16 @@ mod native {
     /// So the bounds are the whole page there and the part outside the pane is drawn over Unluminous's own
     /// furniture, which is the trade the caller states in `show_a_browser_node`.
     #[cfg(windows)]
-    fn clip_to_the_visible_part(view: &NativeView, area: egui::Rect, visible: egui::Rect) {
+    fn clip_to_the_visible_part(
+        view: &NativeView,
+        area: egui::Rect,
+        visible: egui::Rect,
+        over: &[egui::Rect],
+    ) {
         use windows_sys::Win32::Foundation::HWND;
-        use windows_sys::Win32::Graphics::Gdi::{CreateRectRgn, SetWindowRgn};
+        use windows_sys::Win32::Graphics::Gdi::{
+            CombineRgn, CreateRectRgn, DeleteObject, SetWindowRgn, RGN_DIFF,
+        };
         use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
         use wry::WebViewExtWindows as _;
 
@@ -1226,7 +1381,7 @@ mod native {
         // Whole, so the region comes off entirely rather than being set to the window's own size — a
         // region that happens to match is still a region, and one rounding point of difference would
         // shave a column of pixels off a page nothing is covering.
-        if visible.contains_rect(area) {
+        if visible.contains_rect(area) && over.is_empty() {
             unsafe { SetWindowRgn(hwnd, std::ptr::null_mut(), 1) };
             return;
         }
@@ -1234,14 +1389,31 @@ mod native {
         // `0` is what `GetDpiForWindow` answers for a handle it does not like, and 96 is one physical
         // pixel to one point — which is `wry`'s own fallback in `webview2::util::hwnd_dpi`.
         let scale = f64::from(if dpi == 0 { 96 } else { dpi }) / 96.0;
+        // The child's own top left is the node's, so every rectangle is measured from there.
         let physical = |value: f32| (f64::from(value) * scale).round() as i32;
-        let left = physical(visible.left() - area.left()).max(0);
-        let top = physical(visible.top() - area.top()).max(0);
-        let right = physical(visible.right() - area.left()).max(left);
-        let bottom = physical(visible.bottom() - area.top()).max(top);
-        let region = unsafe { CreateRectRgn(left, top, right, bottom) };
+        let inside = |rect: egui::Rect| {
+            let left = physical(rect.left() - area.left());
+            let top = physical(rect.top() - area.top());
+            let right = physical(rect.right() - area.left()).max(left);
+            let bottom = physical(rect.bottom() - area.top()).max(top);
+            unsafe { CreateRectRgn(left, top, right, bottom) }
+        };
+        let region = inside(visible);
         if region.is_null() {
             return;
+        }
+        // Each thing drawn over the page is cut out of the region, which is what leaves the rest of the
+        // page showing while a menu is open. `RGN_DIFF` writes into the first handle, so the region
+        // being built is both a source and the destination.
+        for rect in over {
+            let hole = inside(*rect);
+            if hole.is_null() {
+                continue;
+            }
+            unsafe {
+                CombineRgn(region, region, hole, RGN_DIFF);
+                DeleteObject(hole as _);
+            }
         }
         // The system owns the region from here and deletes it when the window is destroyed or the next
         // one replaces it, so it is not deleted here even when the call fails — `SetWindowRgn` documents
@@ -1251,7 +1423,13 @@ mod native {
 
     /// The same question on a platform whose native child cannot be cropped. See the Windows half.
     #[cfg(not(windows))]
-    fn clip_to_the_visible_part(_view: &NativeView, _area: egui::Rect, _visible: egui::Rect) {}
+    fn clip_to_the_visible_part(
+        _view: &NativeView,
+        _area: egui::Rect,
+        _visible: egui::Rect,
+        _over: &[egui::Rect],
+    ) {
+    }
 
     /// Show or hide the native child and lower an inactive Windows renderer's memory target.
     fn set_visible(view: &mut NativeView, visible: bool) {
@@ -1294,6 +1472,8 @@ mod native {
     pub struct Settle<'a> {
         pub tab: &'a BrowserTab,
         pub placement: &'a BrowserPlacement,
+        /// What egui is drawing over the page this frame, in the window's own points.
+        pub occluders: &'a [egui::Rect],
         pub showing: &'a Arc<AtomicU64>,
         pub profile: Option<std::path::PathBuf>,
         pub resources: LocalResourceStore,
@@ -1438,13 +1618,41 @@ mod tests {
         };
         // Back to front: 1 was drawn first and 2 is on top.
         let both = [placed(1, false), placed(2, false)];
-        assert_eq!(choose(&both, false).map(|one| one.id), Some(2), "the one on top");
+        assert_eq!(choose(&both, &[], true).map(|one| one.id), Some(2), "the one on top");
         // A focused placement still wins, wherever it is in the order: that is somebody's own choice.
         let focused_behind = [placed(1, true), placed(2, false)];
-        assert_eq!(choose(&focused_behind, false).map(|one| one.id), Some(1));
-        // And nothing renders while a modal, a popup or a menu is over it.
-        assert!(choose(&both, true).is_none());
-        assert!(choose(&[], false).is_none());
+        assert_eq!(choose(&focused_behind, &[], true).map(|one| one.id), Some(1));
+        // A menu over it takes it off the screen **only** where there is no way to cut it around one,
+        // which is macOS: `wry` builds no container there for a region to be set on.
+        let over = egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(20.0, 20.0));
+        assert!(choose(&both, &[over], false).is_none(), "nothing to cut it with");
+        assert_eq!(
+            choose(&both, &[over], true).map(|one| one.id),
+            Some(2),
+            "and where there is, the page stays and the child is cut around the menu"
+        );
+        assert!(choose(&[], &[], true).is_none());
+    }
+
+    /// `task-2009`: what is really over a page, rather than anything being open anywhere.
+    ///
+    /// *"When I select a branch, a dropdown comes down, and all of a sudden the url tab just shows
+    /// the background image rather than the page i was viewing."* This is the question the page is cut
+    /// by on Windows and hidden by on macOS, so it is asked once and tested once.
+    #[test]
+    fn only_what_is_drawn_over_a_page_counts_as_covering_it() {
+        let page = egui::Rect::from_min_max(egui::pos2(300.0, 100.0), egui::pos2(900.0, 700.0));
+        // A dropdown that hangs from the title bar and stops well above the pane.
+        let above = egui::Rect::from_min_max(egui::pos2(120.0, 10.0), egui::pos2(420.0, 60.0));
+        assert!(!covers_any_of(&[above], page), "a dropdown above the pane is not over the page");
+        // One long enough to reach into it.
+        let reaches = egui::Rect::from_min_max(egui::pos2(120.0, 36.0), egui::pos2(420.0, 400.0));
+        assert!(covers_any_of(&[reaches], page));
+        // A menu whose own rectangle stops just above the pane still counts, because its shadow is
+        // painted below it. See `OCCLUDER_SHADOW`.
+        let just_above = egui::Rect::from_min_max(egui::pos2(120.0, 36.0), egui::pos2(420.0, 96.0));
+        assert!(covers_any_of(&[just_above], page), "a popup's shadow is over the page too");
+        assert!(!covers_any_of(&[], page));
     }
 
     /// A unique folder under the process temp directory for one resource test.
@@ -1592,21 +1800,21 @@ mod tests {
         let panes =
             [BrowserPlacement::whole(1, area, false), BrowserPlacement::whole(2, area, true)];
         assert_eq!(
-            choose(&panes, false).map(|placement| placement.id),
+            choose(&panes, &[], true).map(|placement| placement.id),
             Some(2),
             "the focused pane holds the view"
         );
         assert_eq!(
-            choose(&panes[..1], false).map(|placement| placement.id),
+            choose(&panes[..1], &[], true).map(|placement| placement.id),
             Some(1),
             "with no focus, the first drawn"
         );
         assert_eq!(
-            choose(&panes, true),
+            choose(&panes, &[area], false),
             None,
-            "an egui surface over the pane takes the view off the screen"
+            "an egui surface over the pane takes the view off the screen where it cannot be cut"
         );
-        assert_eq!(choose(&[], false), None);
+        assert_eq!(choose(&[], &[], true), None);
     }
 
     /// `task-1756`: a tab switched to ignores the page the shared view is leaving.

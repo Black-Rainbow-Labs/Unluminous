@@ -177,6 +177,9 @@ pub fn field_takes_the_whole_rectangle_at(
 /// Those have the same fault in a milder form — the margin between the drawn frame and the box is
 /// dead — and the same answer. See [`field_takes_the_whole_rectangle`] for what it is for.
 pub fn claim_the_field(ui: &egui::Ui, field: Rect, id: egui::Id, name: &str) -> egui::Response {
+    // Every field has a right click menu, drawn from here so that a field written later has one too.
+    // See [`field_menu`]. `task-2009`.
+    field_menu(ui, field, id);
     let response = ui.interact(field, id.with("field-ground"), Sense::click());
     // **Named, like every other control** (`task-1984` §3.6). It is a widget that takes a press and
     // can be found, and `design/style-guide.md` has required a name on one of those since
@@ -194,6 +197,162 @@ pub fn claim_the_field(ui: &egui::Ui, field: Rect, id: egui::Id, name: &str) -> 
         ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
     }
     response
+}
+
+/// What a field's right click menu asked for, which is applied on the **next** frame.
+///
+/// The four things a person expects from a text box, and every one of them is something
+/// `egui::TextEdit` already does for itself when it has the keyboard and the event arrives — so what
+/// this carries is the *event to send*, not a second implementation of cutting text. See
+/// [`field_menu`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldEdit {
+    Cut,
+    Copy,
+    Paste,
+    SelectAll,
+}
+
+impl FieldEdit {
+    /// The row's name, which is what the menu draws and what a test asks for.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Cut => "Cut",
+            Self::Copy => "Copy",
+            Self::Paste => "Paste",
+            Self::SelectAll => "Select All",
+        }
+    }
+}
+
+/// What a field's menu remembers while it is open: where it was opened, and what was selected then.
+///
+/// **The selection has to be remembered rather than read**, because the right click that opens the
+/// menu is a press inside the box, and a press inside a box moves its caret. A click is reported on
+/// the **release**, which is a frame after the press, so by the time the menu opens the selection is
+/// already gone — [`what_the_box_had_last_frame`] is what keeps it. It is written back into the box
+/// before the event is sent, which is what makes `Copy` copy the words a person had selected rather
+/// than nothing at all. `task-2009`.
+#[derive(Debug, Clone, Copy)]
+pub struct FieldMenu {
+    at: Pos2,
+    selected: Option<egui::text::CCursorRange>,
+}
+
+/// Where a field records what its menu asked for, and which box asked, for the **next** frame.
+///
+/// The next frame for exactly the reason [`wants_the_keyboard`] is: the press that chose the row is a
+/// press outside the box, so egui surrenders the box's focus at the end of that frame — and an event
+/// sent to a box that is about to lose the keyboard is an event nothing reads.
+/// `app::hold_the_keyboard` is where both are acted on, together, because the box has to be given the
+/// keyboard on the same frame the event is pushed.
+pub fn wants_an_edit() -> egui::Id {
+    egui::Id::new("unluminous-field-wants-an-edit")
+}
+
+/// What one asked-for edit carries: the box, the row that was chosen, and what it had selected.
+pub type AskedEdit = (egui::Id, FieldEdit, Option<egui::text::CCursorRange>);
+
+/// The right click menu every text field in Unluminous has: cut, copy, paste, select all.
+///
+/// `task-2009`: *"Urls when i open an html file should be selectable and copy pasteable. e.g. right
+/// click to see menu of copy/paste/cut/etc."* The address bar is a real `egui::TextEdit` and always
+/// was, so selecting and `Ctrl+C` worked; what there was no way to reach at all was the menu.
+///
+/// It is here rather than in the browser's toolbar for the reason [`field_takes_the_whole_rectangle`]
+/// is: nineteen fields in this window are built the same way, and a menu written at one of them would
+/// be a menu the other eighteen do not have. [`claim_the_field`] calls this, so a field added later
+/// gets it without asking.
+///
+/// **The pointer is read rather than a widget's `secondary_clicked`**, because a field is two widgets
+/// — the ground that claims the padding and the box that holds the words — and which of them a right
+/// click lands on depends on where in the field the pointer was. [`pointer_in`] is what makes that
+/// right inside a canvas node as well as in a pane.
+///
+/// Nothing here changes any text. Each row records a [`FieldEdit`] against this field's own id, and
+/// `app::hold_the_keyboard` turns it into the `egui::Event` that `TextEdit` already answers.
+pub fn field_menu(ui: &egui::Ui, field: Rect, id: egui::Id) {
+    let menu = id.with("field-menu");
+    let before = what_the_box_had_last_frame(ui, id);
+    let opened = ui.input(|input| input.pointer.secondary_clicked())
+        && pointer_in(ui).is_some_and(|at| field.contains(at));
+    if opened {
+        if let Some(at) = ui.ctx().pointer_interact_pos() {
+            ui.ctx().data_mut(|data| data.insert_temp(menu, FieldMenu { at, selected: before }));
+        }
+    }
+    let Some(FieldMenu { at, selected }) = ui.ctx().data(|data| data.get_temp::<FieldMenu>(menu))
+    else {
+        return;
+    };
+    // A row is dimmed rather than absent when there is nothing to act on, which is the style guide's
+    // distinction: `Copy` with nothing selected is a control that will apply the moment something is.
+    let selected = selected.filter(|range| !range.is_empty());
+    let has_a_selection = selected.is_some();
+    let rows = [
+        (FieldEdit::Cut, has_a_selection),
+        (FieldEdit::Copy, has_a_selection),
+        (FieldEdit::Paste, true),
+        (FieldEdit::SelectAll, true),
+    ];
+    let mut chosen = None;
+    let popup = egui::Popup::new(menu, ui.ctx().clone(), at, ui.layer_id())
+        .kind(egui::PopupKind::Menu)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .layout(egui::Layout::top_down_justified(egui::Align::Min))
+        .frame(
+            egui::Frame::popup(ui.style())
+                .fill(color::menu())
+                .stroke(Stroke::new(1.0, color::control_border()))
+                .inner_margin(6),
+        )
+        .width(FIELD_MENU_WIDTH);
+    let mut close = false;
+    if let Some(response) = popup.show(|ui| {
+        for (edit, enabled) in rows {
+            if menu_row(ui, edit.name(), "", enabled, false, 0.0) {
+                chosen = Some(edit);
+            }
+        }
+    }) {
+        close = response.response.should_close();
+    }
+    if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+        close = true;
+    }
+    if let Some(edit) = chosen {
+        let asked: AskedEdit = (id, edit, selected);
+        ui.ctx().data_mut(|data| data.insert_temp(wants_an_edit(), asked));
+        ui.ctx().data_mut(|data| data.insert_temp(wants_the_keyboard(), id));
+        close = true;
+    }
+    if close {
+        ui.ctx().data_mut(|data| data.remove::<FieldMenu>(menu));
+    }
+}
+
+/// How wide a field's right click menu is. Four short words, so it is narrower than a context menu.
+const FIELD_MENU_WIDTH: f32 = 180.0;
+
+/// What this box had selected at the end of the frame before this one, and remember what it has now.
+///
+/// **One frame of history, because a right click takes two.** `Response::secondary_clicked` is
+/// reported on the release, and the press a frame earlier already went through the `TextEdit` and
+/// moved its caret — so the state this reads on the frame the menu opens is the state *after* the
+/// selection was thrown away. What was there before it is one frame further back.
+///
+/// Called from [`field_menu`], which runs at the top of [`claim_the_field`] and therefore before the
+/// box is created, so what it reads each frame is where the box was left at the end of the last one.
+fn what_the_box_had_last_frame(ui: &egui::Ui, id: egui::Id) -> Option<egui::text::CCursorRange> {
+    let now = egui::text_edit::TextEditState::load(ui.ctx(), id)
+        .and_then(|state| state.cursor.char_range())
+        .filter(|range| !range.is_empty());
+    let slot = id.with("field-was-selected");
+    ui.ctx().data_mut(|data| {
+        let was = data.get_temp::<Option<egui::text::CCursorRange>>(slot).flatten();
+        data.insert_temp(slot, now);
+        was.or(now)
+    })
 }
 
 /// Where a field records the box it wants the keyboard given to, for the **next** frame.

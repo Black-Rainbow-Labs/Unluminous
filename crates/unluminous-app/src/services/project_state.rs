@@ -214,6 +214,20 @@ impl ProjectState {
     pub fn new() -> Self {
         Self { explorer_visible: true, editor_visible: true, ..Self::default() }
     }
+
+    /// Whether the only thing that changed between these two is where the window is.
+    ///
+    /// **The one change that arrives on every frame of a gesture.** Every other field here moves when
+    /// somebody opens a tab, expands a folder or drags a divider, and is worth the three file writes
+    /// at once; the geometry moves sixty times a second for as long as the window is being dragged.
+    /// `UnluminousApp::window_still_since` is what waits for it and why. `task-2009`.
+    ///
+    /// Written as a comparison against a copy with the other's geometry in it rather than as a list of
+    /// the other twenty fields, because a list is a thing to keep up to date and a field added later
+    /// would be the one it forgot.
+    pub fn differs_only_in_the_window(&self, other: &Self) -> bool {
+        self.window != other.window && Self { window: other.window, ..self.clone() } == *other
+    }
 }
 
 /// Where the state folder for `root` is.
@@ -628,6 +642,35 @@ pub fn absolute(root: &Path, path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `task-2009`: the geometry is the one field that changes on every frame of a gesture, so it is
+    /// the one the window waits for. Everything else is written the frame it changes.
+    #[test]
+    fn a_change_that_is_only_where_the_window_is_is_told_apart_from_every_other_change() {
+        let here = WindowPlace { x: 10.0, y: 20.0, width: 900.0, height: 600.0, maximised: false };
+        let moved = WindowPlace { x: 240.0, ..here };
+        let one = ProjectState { window: Some(here), ..ProjectState::new() };
+        let dragged = ProjectState { window: Some(moved), ..ProjectState::new() };
+        assert!(one.differs_only_in_the_window(&dragged));
+        assert!(dragged.differs_only_in_the_window(&one), "and it reads the same way round");
+
+        let same = ProjectState { window: Some(here), ..ProjectState::new() };
+        assert!(!one.differs_only_in_the_window(&same), "nothing changed at all");
+
+        let and_a_folder = ProjectState {
+            window: Some(moved),
+            expanded_folders: vec![PathBuf::from("chapters")],
+            ..ProjectState::new()
+        };
+        assert!(
+            !one.differs_only_in_the_window(&and_a_folder),
+            "a folder opened out is written at once, whatever the window did"
+        );
+
+        let a_folder_alone =
+            ProjectState { expanded_folders: vec![PathBuf::from("chapters")], ..one.clone() };
+        assert!(!one.differs_only_in_the_window(&a_folder_alone));
+    }
 
     fn project(name: &str) -> PathBuf {
         let root = std::env::temp_dir().join(name);

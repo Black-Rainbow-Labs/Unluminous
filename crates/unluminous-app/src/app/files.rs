@@ -392,6 +392,45 @@ impl OpenFile {
         self.document.path()
     }
 
+    /// True when this tab holds a document somebody is editing, rather than a page, a picture or a
+    /// plugin's own contents.
+    ///
+    /// **The question every control about text has to ask before it draws itself**, and the one
+    /// `services::file_kind` cannot answer: those functions are given a path, and a tab that is not
+    /// a document has none — `OpenFile::browser` and `PluginTab` both start from `Document::new()`.
+    /// `file_kind::kind_name(None)` is `Plain text` and `preview_applies(None)` is true, because an
+    /// unsaved prose file is a real thing and is what Unluminous opens with; so a browser tab and a
+    /// plugin tab were read as one.
+    ///
+    /// `task-2009`: *"I should not see the top right font, preview/split/etc icons when a file is
+    /// selected that doesn't support it."* Measured on a browser tab holding an HTML file, the title
+    /// bar drew the `F` button and all three view mode buttons, the View menu offered the three
+    /// modes, and the status bar said `Plain text · Ln 1, Col 1`. A patch for the plugin tab alone
+    /// was already here — `showing_a_plugins_tab` — which is what made the browser tab the next one
+    /// to find, so this is the question asked of the tab rather than of the one kind that was
+    /// reported.
+    pub fn is_a_document(&self) -> bool {
+        self.browser.is_none() && self.picture.is_none() && self.plugin.is_none()
+    }
+
+    /// The file on disk this tab is about, which is not always its document's own path.
+    ///
+    /// A rendered tab holding a **local** HTML file is a tab about that file: it is what the
+    /// explorer selects, what `Select Opened File` scrolls to, and what a person means when they
+    /// point at the tab. Its document has no path at all, because what the tab holds is a page.
+    ///
+    /// `task-2009`: *"When I have an html file open in browser tab, that file should be selected,
+    /// and should change if I select other tabs."*
+    ///
+    /// A tab on a remote address is about no file and answers `None`, which is the same answer a
+    /// document that has never been saved gives.
+    pub fn file_on_disk(&self) -> Option<&Path> {
+        if let Some(browser) = &self.browser {
+            return browser.location.source_path();
+        }
+        self.document.path()
+    }
+
     /// Git's idea of this file is about the file on disk, so it is thrown away when the file
     /// changes underneath it or a different file takes the tab.
     pub fn forget_git(&mut self) {

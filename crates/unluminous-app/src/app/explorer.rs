@@ -178,7 +178,11 @@ impl UnluminousApp {
     /// eleven of those today and the twelfth, added next month, would be the one that forgot. It
     /// costs one comparison a frame.
     pub(crate) fn follow_the_open_file(&mut self) {
-        let showing = self.files.active().path().map(Path::to_path_buf);
+        // **The file the tab is about, not the document's own path.** A rendered tab holding a local
+        // HTML file has a page rather than a document, so its `path()` is `None` and the explorer
+        // followed nothing at all when one was shown — `task-2009`: *"When I have an html file open in
+        // browser tab, that file should be selected, and should change if I select other tabs."*
+        let showing = self.files.active().file_on_disk().map(Path::to_path_buf);
         if showing == self.revealed {
             return;
         }
@@ -195,7 +199,7 @@ impl UnluminousApp {
     /// Show the explorer, scrolled to the file that is showing. `View -> Select Opened File`.
     pub(crate) fn select_the_open_file(&mut self) {
         self.explorer_visible = true;
-        if let Some(path) = self.files.active().path().map(Path::to_path_buf) {
+        if let Some(path) = self.files.active().file_on_disk().map(Path::to_path_buf) {
             self.tree.expand(&path);
         }
         // The filter box is what the explorer draws instead of the tree, and a file that does not

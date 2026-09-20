@@ -534,6 +534,14 @@ pub const KEYBOARD_HOLDER: &str = "unluminous-keyboard-holder";
 /// counted on, which is why the heartbeat is a delay rather than a thread calling `request_repaint`.
 pub const HEARTBEAT: std::time::Duration = std::time::Duration::from_millis(500);
 
+/// How long the window has to have been still before where it is is written down.
+///
+/// A third of a second: long enough that a drag of the window writes once at the end of it rather
+/// than on every frame, and short enough that a window moved and then closed at once still records
+/// where it was left — and `on_exit` writes whatever is outstanding anyway. See
+/// [`UnluminousApp::window_still_since`] for what the every-frame write cost.
+pub const WINDOW_SETTLE: f64 = 0.35;
+
 /// How often an open plugin is given a turn on the clock.
 ///
 /// Two minutes, which is what the board being replaced runs its watchdog on, and it is the number that
@@ -609,6 +617,9 @@ pub fn hold_the_keyboard(ui: &mut egui::Ui) {
     if let Some(wanted) = wanted {
         ui.memory_mut(|memory| memory.request_focus(wanted));
     }
+    // And what a field's right click menu asked for, on the same terms and on the same frame: the box
+    // has to hold the keyboard before the event is pushed, or nothing reads it. `task-2009`.
+    apply_what_a_fields_menu_asked_for(ui);
     let id = egui::Id::new(KEYBOARD_HOLDER);
     if text_box_has_the_keyboard(ui.ctx()) || a_modal_has_the_keyboard(ui.ctx()) {
         ui.memory_mut(|memory| memory.surrender_focus(id));
@@ -634,6 +645,60 @@ pub fn hold_the_keyboard(ui: &mut egui::Ui) {
             },
         );
     });
+}
+
+/// Turn what a field's right click menu asked for into the event `egui::TextEdit` already answers.
+///
+/// **Nothing here cuts or pastes any text.** A `TextEdit` that holds the keyboard reads `Event::Copy`,
+/// `Event::Cut`, `Event::Paste` and `Cmd/Ctrl+A` for itself, so what the menu asked for is turned into
+/// the event a keyboard would have produced — which is why a row and the chord it stands for cannot
+/// come to different answers about a selection.
+///
+/// **The clipboard is read here, because the window owns it.** `components::controls` draws; it does
+/// not reach the machine. That is the split `app::plugin_panes` already keeps about a paste, and
+/// `arboard` is what `Edit -> Paste` and the picture clipboard already use.
+///
+/// It runs on the frame **after** the row was pressed, in `hold_the_keyboard`, beside the field that
+/// wants the keyboard — see `controls::wants_an_edit`.
+fn apply_what_a_fields_menu_asked_for(ui: &mut egui::Ui) {
+    use crate::components::controls::{AskedEdit, FieldEdit};
+    let slot = crate::components::controls::wants_an_edit();
+    let asked = ui.ctx().data_mut(|data| {
+        let found = data.get_temp::<AskedEdit>(slot);
+        data.remove::<AskedEdit>(slot);
+        found
+    });
+    let Some((id, edit, selected)) = asked else { return };
+    ui.memory_mut(|memory| memory.request_focus(id));
+    // **What was selected when the menu opened is put back first.** The right click that opened it
+    // was a press inside the box, and that moved the caret — so without this, `Copy` would copy
+    // nothing and `Cut` would cut nothing. See `controls::FieldMenu`.
+    if let Some(range) = selected {
+        if let Some(mut state) = egui::text_edit::TextEditState::load(ui.ctx(), id) {
+            state.cursor.set_char_range(Some(range));
+            state.store(ui.ctx(), id);
+        }
+    }
+    let event = match edit {
+        FieldEdit::Cut => egui::Event::Cut,
+        FieldEdit::Copy => egui::Event::Copy,
+        FieldEdit::SelectAll => egui::Event::Key {
+            key: egui::Key::A,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::COMMAND,
+        },
+        // Nothing on the clipboard is not a failure: it is what a paste into an empty clipboard does
+        // everywhere, and a message about it would be a message about nothing.
+        FieldEdit::Paste => {
+            match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.get_text()) {
+                Ok(text) => egui::Event::Paste(text),
+                Err(_) => return,
+            }
+        }
+    };
+    ui.ctx().input_mut(|input| input.events.push(event));
 }
 
 /// The project's definitions, and whether what is indexed is still what is on the disk.
@@ -841,11 +906,37 @@ pub struct UnluminousApp {
     store: Option<Store>,
     /// Set when a setting or a pane size changed and has not been written yet.
     unsaved_settings: bool,
+    /// What Windows last said about this window's foreground and keyboard, when it has an answer.
+    ///
+    /// Reported by `unluminous-cli status --section window` beside `focused`, which is `winit`'s own
+    /// answer: the two are different questions and `task-2009` was a case where they disagreed.
+    /// `None` on every platform but Windows, and in every test, because there is no window to ask.
+    os_focus: Option<crate::services::windows_focus::OsFocus>,
+    /// Whether there is a page open and an egui surface is over it, so it is not being drawn.
+    ///
+    /// Reported by `browser status`. A page is a native child view, so it is in no screenshot and no
+    /// other state in the window says whether it is on the screen — which is what made `task-2009`'s
+    /// blanked page a thing that could only be found by looking at it.
+    page_is_covered: bool,
     /// What was last written to the project's own `.unluminous` folder, so it is written again only when
     /// something has changed. `None` while this window is not remembering the project at all, which is
     /// every window a test builds: the released binary turns it on by calling
     /// [`UnluminousApp::restore_project`], so a test neither reads nor writes a `.unluminous` folder.
     written_project: Option<ProjectState>,
+    /// Where the window was the last time it moved, and when that was.
+    ///
+    /// **What stops a drag of the window writing the project's own files sixty times a second.** The
+    /// geometry is part of what a project remembers, and what a project remembers is written the frame
+    /// it changes — so moving the window rewrote `workspace.conf`, `open-files.txt` and
+    /// `expanded-folders.txt` on every frame of the drag, which on Windows is three file writes and a
+    /// virus scanner's read of each, inside the message loop that is moving the window. `task-2009`:
+    /// *"When I drag the window around, there is stutter/jerkiness ... it stops moving occasionally."*
+    ///
+    /// So a change that is **only** where the window is waits until the window has been still for
+    /// [`WINDOW_SETTLE`], which is the rule the canvas already keeps about a node being dragged and the
+    /// rule the settings keep about a divider. Everything else is still written the frame it changes,
+    /// and `on_exit` writes whatever is outstanding whether it has settled or not.
+    window_still_since: Option<(Option<project_state::WindowPlace>, f64)>,
     /// The shells this project was left with, waiting to be started once a frame has been drawn.
     ///
     /// One entry per tab, holding the name a person gave it or an empty string. See
@@ -1302,7 +1393,10 @@ impl UnluminousApp {
             closing: false,
             store: None,
             unsaved_settings: false,
+            os_focus: None,
+            page_is_covered: false,
             written_project: None,
+            window_still_since: None,
             terminals_to_restore: Vec::new(),
             frames: 0,
             native_menu: None,
@@ -1755,16 +1849,49 @@ impl UnluminousApp {
     ///
     /// Called every frame and writes almost never: the comparison is against what is on disk, so
     /// nothing is written until a tab, a folder or a pane actually changed.
-    fn remember_the_project(&mut self) {
+    ///
+    /// `at` is the time this frame was drawn, and `None` means *this is the last chance* — which is
+    /// what `on_exit` passes, so a geometry that has not settled is still written before the window
+    /// goes. See [`Self::window_still_since`] for why the geometry waits at all.
+    fn remember_the_project(&mut self, at: Option<f64>) {
         if self.written_project.is_none() {
             return;
         }
-        let now = self.project_state();
-        if self.written_project.as_ref() == Some(&now) {
+        let state = self.project_state();
+        if self.written_project.as_ref() == Some(&state) {
             return;
         }
-        project_state::save(self.tree.root(), &now);
-        self.written_project = Some(now);
+        if let Some(at) = at {
+            let only_the_window_moved = self
+                .written_project
+                .as_ref()
+                .is_some_and(|written| written.differs_only_in_the_window(&state));
+            if only_the_window_moved && !self.the_window_has_stopped_moving(state.window, at) {
+                return;
+            }
+        }
+        project_state::save(self.tree.root(), &state);
+        self.written_project = Some(state);
+    }
+
+    /// Whether the window has been where it is for long enough to be worth writing down.
+    ///
+    /// A drag of the window is a run of frames each reporting a different geometry, so the answer is
+    /// no until one of them repeats for [`WINDOW_SETTLE`]. The place is remembered rather than the
+    /// number of frames, because a window that is dragged, let go, and dragged again has to be written
+    /// in between.
+    fn the_window_has_stopped_moving(
+        &mut self,
+        place: Option<project_state::WindowPlace>,
+        at: f64,
+    ) -> bool {
+        match self.window_still_since {
+            Some((was, since)) if was == place => at - since >= WINDOW_SETTLE,
+            _ => {
+                self.window_still_since = Some((place, at));
+                false
+            }
+        }
     }
 
     /// Build the macOS menu bar. Called by the released binary only: a test has no application to attach a
@@ -1785,6 +1912,28 @@ impl UnluminousApp {
 
     pub fn document_mut(&mut self) -> &mut Document {
         &mut self.files.active_mut().document
+    }
+
+    /// Whether the text formatting controls apply to the tab that is showing.
+    ///
+    /// **Two questions, and both have to be true.** `file_kind::formatting_applies` says whether
+    /// *this kind of file* has prose in it, and `OpenFile::is_a_document` says whether the tab holds
+    /// a file at all — because a browser tab, a picture tab and a plugin tab are each a `Document`
+    /// with no path, and a document with no path is what an unsaved prose file looks like.
+    ///
+    /// One function rather than the pair written out at each of the five places that ask, which is
+    /// `file_kind`'s own rule about the menu, the right click menu and the command line never coming
+    /// to different answers about one file. `task-2009`.
+    pub fn formatting_applies_here(&self) -> bool {
+        self.files.active().is_a_document()
+            && file_kind::formatting_applies(self.files.active().path())
+    }
+
+    /// Whether the three view modes apply to the tab that is showing. See
+    /// [`Self::formatting_applies_here`] for why the tab is asked as well as the path.
+    pub fn preview_applies_here(&self) -> bool {
+        self.files.active().is_a_document()
+            && file_kind::preview_applies(self.files.active().path())
     }
 
     /// Which of the three ways of looking at the open file is showing.
@@ -1809,6 +1958,15 @@ impl UnluminousApp {
     /// How opaque the window background is.
     pub fn opacity(&self) -> f32 {
         self.settings.opacity
+    }
+
+    /// Where the window last noticed itself being, which is what a project remembers about it.
+    ///
+    /// Public for a test, for the reason [`Self::remembered_panels_for_tests`] is: whether the window
+    /// *noticed* a move and whether it *wrote it down* are two steps, and a test that could only see
+    /// the second cannot say which of them a failure is. `task-2009`.
+    pub fn window_place_for_tests(&self) -> Option<project_state::WindowPlace> {
+        self.window_place
     }
 
     /// The last resize this window asked the window manager for. See [`Self::last_resize_asked`].
@@ -2108,6 +2266,12 @@ impl eframe::App for UnluminousApp {
         // Nothing on macOS: the compositor there takes the surface's alpha on its own.
         #[cfg(windows)]
         crate::services::windows_transparency::keep_transparent(_frame);
+        // **What Windows says about the keyboard, and `winit` put right when it is behind.** The title
+        // bar's drag is the one thing in this window behind `Window::has_focus()`, which `winit` answers
+        // from a cache of two messages — and a cache that has gone stale is invisible from inside.
+        // `services::windows_focus` says what one costs and what is sent. `task-2009`.
+        let winit_says = ui.ctx().input(|input| input.viewport().focused).unwrap_or(false);
+        self.os_focus = crate::services::windows_focus::settle(_frame, winit_says);
         // The one thing reconciling needs from the frame, taken while there is a frame to ask.
         self.browser.remember_window(_frame);
         UnluminousApp::ui(self, ui);
@@ -2146,7 +2310,9 @@ impl eframe::App for UnluminousApp {
         // there is, and the two second wait exists for a window that is still drawing.
         self.write_the_space_if_it_changed(f64::MAX);
         self.write_settings();
-        self.remember_the_project();
+        // `None`, so a geometry that has not settled is still written: this is the last chance there
+        // is, and the wait exists for a window that is still moving.
+        self.remember_the_project(None);
     }
 }
 

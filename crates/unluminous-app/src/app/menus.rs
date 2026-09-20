@@ -88,8 +88,7 @@ impl UnluminousApp {
             // The same question the text tools ask, so the `View` menu and the title bar cannot come to
             // different answers about the tab that is showing — which is what `file_kind`'s two
             // functions exist to prevent.
-            can_preview: !self.showing_a_plugins_tab()
-                && file_kind::preview_applies(self.document().path()),
+            can_preview: self.preview_applies_here(),
             preview_kind: file_kind::preview_kind(self.document().path()),
             explorer_visible: self.explorer_visible,
             editor_visible: self.editor_visible,
@@ -426,7 +425,7 @@ impl UnluminousApp {
                 if self.may_the_window_close() {
                     self.closing = true;
                     self.write_settings();
-                    self.remember_the_project();
+                    self.remember_the_project(None);
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
             }

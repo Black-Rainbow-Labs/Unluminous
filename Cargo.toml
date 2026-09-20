@@ -143,6 +143,9 @@ windows-sys = { version = "0.61", features = [
     # `GetDpiForWindow`, which is how a browser node's crop is measured in the same physical pixels
     # `wry` places the view in. See `services::browser`'s `clip_to_the_visible_part`.
     "Win32_UI_HiDpi",
+    # `GetFocus`, which is how the window asks whether the keyboard is its own or a native child's
+    # rather than believing `winit`'s cache of it. See `services/windows_focus.rs`.
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
     "std",

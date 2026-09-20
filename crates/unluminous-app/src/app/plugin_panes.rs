@@ -732,10 +732,11 @@ impl UnluminousApp {
 
     /// Whether the tab that is showing belongs to a plugin rather than holding a file.
     ///
-    /// One question, asked by the title bar's text tools and by the `View` menu, so the two cannot
-    /// disagree about it. A plugin tab is a `Document` with no path — the picture precedent, followed
-    /// exactly — and `services::file_kind` reads a document with no path as unsaved prose, which is
-    /// right for a new file and wrong for a board.
+    /// A plugin tab is a `Document` with no path — the picture precedent, followed exactly.
+    /// **The general form of this question is [`crate::app::files::OpenFile::is_a_document`]**, which
+    /// is what the title bar and the `View` menu ask now: a browser tab is a `Document` with no path
+    /// too, and asking about the one kind that had been reported is what left the next kind to find.
+    /// `task-2009`.
     pub fn showing_a_plugins_tab(&self) -> bool {
         self.files.active().plugin.is_some()
     }

@@ -51,24 +51,72 @@ pub fn open_window(folder: &Path) -> Option<u32> {
 ///
 /// Split out from running it for the same reason [`command_for`] is: a test can check what would be
 /// run without a file manager window appearing on the machine running the tests.
+///
+/// **The path is written the way this platform writes one before it is handed over**, which is
+/// `paths::plain` and `paths::native` — the verbatim prefix off, and one separator throughout.
+/// `task-2009`: *"When I right click an html file that's in a nested dir, and select show in
+/// explorer, it opens explorer but doesn't open the correct dir, nor highlight the file in the
+/// correct dir."*
+///
+/// That was measured rather than guessed at. `Path::join` does not normalise, so a project opened
+/// with a forward slash anywhere in its path gives every row under it a path with both separators in
+/// it — and Windows Explorer answers one of those by opening the **Desktop**:
+///
+/// ```text
+/// explorer /select,C:\jason\dev\unluminous\_agent_output/site/nested/deep/page.html
+///     -> file:///C:/Users/jason/Desktop
+/// explorer /select,C:/jason/dev/unluminous/_agent_output/site/nested/deep/page.html
+///     -> file:///C:/Users/jason/Desktop
+/// explorer /select,C:\jason\dev\unluminous\_agent_output\site\nested\deep\page.html
+///     -> file:///C:/jason/dev/unluminous/_agent_output/site/nested/deep   (the file selected)
+/// ```
+///
+/// Nothing inside Unluminous notices a mixed path, because `Path`'s own `Eq` compares components and
+/// the file system accepts both — it is only ever noticed by **another program**, which is exactly
+/// what `unluminous_terminal::paths` exists for and what `task-1794` measured at a debug adapter.
 pub fn reveal_command(path: &Path) -> Command {
-    if cfg!(target_os = "windows") {
-        // `/select,` and the path must be one argument with no space after the comma, which is why
-        // this is built as a single string rather than as two arguments.
-        let mut command = Command::new("explorer");
-        command.arg(format!("/select,{}", path.display()));
-        command
-    } else if cfg!(target_os = "macos") {
-        let mut command = Command::new("open");
-        command.arg("-R").arg(path);
-        command
-    } else {
-        // Every desktop on Linux has its own file manager, and `xdg-open` on a folder is the closest
-        // thing to a common answer. It opens the folder rather than selecting the file in it.
-        let mut command = Command::new("xdg-open");
-        command.arg(path.parent().unwrap_or(path));
-        command
-    }
+    let path = unluminous_terminal::paths::native(&unluminous_terminal::paths::plain(path));
+    reveal_command_for(path.as_path())
+}
+
+/// Windows Explorer, told to open a folder and select one thing in it.
+///
+/// **The quotation marks go round the path, not round the whole argument**, and that is the second
+/// half of the report. `/select,` and the path have to be one argument with no space after the
+/// comma — but `Command::arg` escapes what it is given, so a path with a space in it arrives with the
+/// quotation mark in front of the switch, and Explorer answers that by opening **Documents**.
+/// Measured against the real Explorer:
+///
+/// ```text
+/// "/select,C:\a space here\page.html"   -> file:///C:/Users/jason/Documents
+/// /select,"C:\a space here\page.html"   -> the right folder, with the file selected
+/// ```
+///
+/// `raw_arg` is what puts an argument on the command line as written. Quoting is Windows' own escape
+/// and a Windows path cannot hold a quotation mark, so there is nothing for it to swallow.
+#[cfg(windows)]
+fn reveal_command_for(path: &Path) -> Command {
+    use std::os::windows::process::CommandExt as _;
+    let mut command = Command::new("explorer");
+    command.raw_arg(format!("/select,\"{}\"", path.display()));
+    command
+}
+
+/// The Finder, told to reveal a file.
+#[cfg(target_os = "macos")]
+fn reveal_command_for(path: &Path) -> Command {
+    let mut command = Command::new("open");
+    command.arg("-R").arg(path);
+    command
+}
+
+/// Every desktop on Linux has its own file manager, and `xdg-open` on a folder is the closest thing
+/// to a common answer. It opens the folder rather than selecting the file in it.
+#[cfg(not(any(windows, target_os = "macos")))]
+fn reveal_command_for(path: &Path) -> Command {
+    let mut command = Command::new("xdg-open");
+    command.arg(path.parent().unwrap_or(path));
+    command
 }
 
 /// Show `path` in the platform's file manager.
@@ -113,8 +161,10 @@ mod tests {
         if cfg!(target_os = "windows") {
             assert_eq!(program, "explorer");
             // One argument, with no space after the comma: `explorer` will not select the file if
-            // the switch and the path are separate arguments.
-            assert_eq!(arguments, vec!["/select,/tmp/notes/one.md".to_owned()]);
+            // the switch and the path are separate arguments. Written with this platform's own
+            // separator, and with the quotation marks round the **path** rather than round the whole
+            // argument — see [`reveal_command_for`] for what the other spelling answers with.
+            assert_eq!(arguments, vec![r#"/select,"\tmp\notes\one.md""#.to_owned()]);
         } else if cfg!(target_os = "macos") {
             assert_eq!(program, "open");
             assert_eq!(arguments, vec!["-R".to_owned(), "/tmp/notes/one.md".to_owned()]);
@@ -122,6 +172,56 @@ mod tests {
             assert_eq!(program, "xdg-open");
             assert_eq!(arguments, vec!["/tmp/notes".to_owned()]);
         }
+    }
+
+    /// `task-2009`: a path with both separators in it, which is what every row under a project
+    /// opened with a forward slash anywhere in its path is, made Windows Explorer open the Desktop.
+    /// Measured against the real Explorer; the three commands and their answers are in
+    /// [`reveal_command`]'s own note.
+    #[test]
+    fn a_path_written_with_both_separators_is_handed_over_with_one() {
+        let mixed = if cfg!(windows) {
+            PathBuf::from(r"C:\project\nested").join("deep/page.html")
+        } else {
+            PathBuf::from("/project/nested").join("deep/page.html")
+        };
+        let command = reveal_command(&mixed);
+        let arguments: Vec<String> =
+            command.get_args().map(|arg| arg.to_string_lossy().to_string()).collect();
+        let handed = arguments.last().expect("a path was handed over").clone();
+        if cfg!(windows) {
+            assert!(handed.ends_with(r#"C:\project\nested\deep\page.html""#), "{handed}");
+        } else {
+            assert!(handed.ends_with("/project/nested/deep/page.html"), "{handed}");
+        }
+    }
+
+    /// And a verbatim path — what `std::fs::canonicalize` answers with on Windows — loses its
+    /// prefix, for the reason `unluminous_terminal::paths::plain` exists at all.
+    #[test]
+    fn a_verbatim_path_is_handed_over_plain() {
+        if !cfg!(windows) {
+            return;
+        }
+        let command = reveal_command(Path::new(r"\\?\C:\project\page.html"));
+        let arguments: Vec<String> =
+            command.get_args().map(|arg| arg.to_string_lossy().to_string()).collect();
+        assert_eq!(arguments, vec![r#"/select,"C:\project\page.html""#.to_owned()]);
+    }
+
+    /// `task-2009`: a path with a space in it, which is what `Command::arg`'s own escaping breaks.
+    ///
+    /// Measured against the real Explorer, which answered the escaped form by opening `Documents`.
+    /// See [`reveal_command_for`].
+    #[test]
+    fn a_path_with_a_space_in_it_is_quoted_round_the_path_alone() {
+        if !cfg!(windows) {
+            return;
+        }
+        let command = reveal_command(Path::new(r"C:\a space here\page.html"));
+        let arguments: Vec<String> =
+            command.get_args().map(|arg| arg.to_string_lossy().to_string()).collect();
+        assert_eq!(arguments, vec![r#"/select,"C:\a space here\page.html""#.to_owned()]);
     }
 
     #[test]

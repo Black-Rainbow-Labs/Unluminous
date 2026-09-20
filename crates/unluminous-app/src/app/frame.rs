@@ -291,14 +291,16 @@ impl UnluminousApp {
         // own. How much room they want depends on the open file, and the title bar leaves exactly that
         // much clear — but the bar's own height never changes, so switching from a `.md` file to a
         // `.rs` one no longer moves the tabs and the editing area up and down by forty four points.
-        // **Nothing at all while a plugin's tab is showing.** A plugin tab is a `Document` with no path,
-        // which `file_kind` reads as an unsaved prose file — so the `F` button and the three view modes
-        // were drawn over the Agent-Tasks board, offering the Markdown parser's reading of a document
-        // there is none of. That is the absent-control rule: a control that can never apply to what is
-        // showing is not drawn, and a board has no font, no bold and no preview.
-        let tools_width = match self.showing_a_plugins_tab() {
-            true => 0.0,
-            false => text_tools::width(self.document().path()),
+        // **Nothing at all unless the tab holds a document.** A browser tab, a picture tab and a plugin
+        // tab are each a `Document` with no path, which `file_kind` reads as an unsaved prose file — so
+        // the `F` button and the three view modes were drawn over the Agent-Tasks board and over a page,
+        // offering the Markdown parser's reading of a document there is none of. That is the
+        // absent-control rule: a control that can never apply to what is showing is not drawn, and a
+        // board and a web page each have no font, no bold and no preview. `task-2009`, and
+        // `UnluminousApp::formatting_applies_here` is where the pair of questions lives.
+        let tools_width = match self.files.active().is_a_document() {
+            true => text_tools::width(self.document().path()),
+            false => 0.0,
         };
         // The run widget takes the right hand end and the text tools sit in front of it, so the play
         // and the bug are in the same place whatever file is open — `task-1693`. How much room each
@@ -406,7 +408,7 @@ impl UnluminousApp {
             if self.may_the_window_close() {
                 self.closing = true;
                 self.write_settings();
-                self.remember_the_project();
+                self.remember_the_project(None);
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
@@ -624,7 +626,9 @@ impl UnluminousApp {
         // and one rule for all three panels rather than three. `task-1905`.
         if self.explorer_visible && explorer_rect.width() > 1.0 && explorer_rect.height() > 1.0 {
             let explorer_outcome = {
-                let open = self.files.active().path().map(std::path::Path::to_path_buf);
+                // The file the tab is about, which for a rendered tab holding a local HTML file is
+                // that file rather than its empty document's `None`. See `follow_the_open_file`.
+                let open = self.files.active().file_on_disk().map(std::path::Path::to_path_buf);
                 let unsaved = self.document().is_modified();
                 // True for the two frames after the file that is showing changed, which is when the
                 // list scrolls to it. Counted down rather than left on, because it is a one shot: a
@@ -1276,12 +1280,31 @@ impl UnluminousApp {
         let branch = self.git.as_ref().and_then(|git| git.status_label());
         crate::services::frame_trace::phase("tiles");
         let picture = self.editor_area.size();
+        // **A caret and a font belong to a document, and three kinds of tab have neither.** A picture
+        // already said so; a browser tab and a plugin tab did not, so a page reported
+        // `Plain text · Ln 1, Col 1 · Helvetica · 16 pt` — a caret in a document nobody is editing and
+        // a font nothing is set in. `task-2009`, and it is the same question the title bar's tools ask.
+        // `line_ending_label` has answered `None` for all three since it was written, which is the
+        // shape followed here.
         let (position, detail) = match self.files.active().picture.as_ref() {
             Some(picture_in_the_tab) => (None, picture_in_the_tab.description(picture)),
+            None if !self.files.active().is_a_document() => (None, String::new()),
             None => (
                 Some(self.caret_position()),
                 format!("{} \u{00B7} {:.0} pt", style.family, style.size),
             ),
+        };
+        // What the tab holds. A rendered tab says what the page really is — the HTML file it opened,
+        // or `Web page` for an address — rather than the `Plain text` its empty document reads as.
+        let kind = if self.files.active().is_browser() {
+            match self.files.active().file_on_disk() {
+                Some(path) => file_kind::kind_name(Some(path)),
+                None => "Web page",
+            }
+        } else if self.files.active().is_a_plugin() {
+            "Plugin"
+        } else {
+            file_kind::kind_name(self.document().path())
         };
         let encoding = self.line_ending_label();
         status_bar::show(
@@ -1290,7 +1313,7 @@ impl UnluminousApp {
             &status_bar::Status {
                 name: &self.file_name(),
                 unsaved: self.document().is_modified(),
-                kind: file_kind::kind_name(self.document().path()),
+                kind,
                 encoding: encoding.as_deref(),
                 position,
                 detail: &detail,
@@ -1848,11 +1871,13 @@ impl UnluminousApp {
         // reads the file on the frame after the change, and a person who closes a window half a
         // second after splitting a pane should not lose the split. What a project remembers is
         // written when it changes, which is what the paragraph above says.
-        self.remember_the_project();
+        // The time this frame was drawn, which is what decides whether a change that is only where the
+        // window is has settled. See `UnluminousApp::window_still_since`.
+        let now = ui.input(|input| input.time);
+        self.remember_the_project(Some(now));
         // And the canvas, which says for itself whether anything on it changed - `task-1904`. Written
         // at the end of a frame on which something moved rather than on every frame, or dragging a
         // node would write a file sixty times a second.
-        let now = ui.input(|input| input.time);
         self.write_the_space_if_it_changed(now);
         // And what is marked in its files, on exactly the same terms.
         let settled = !ui.input(|input| input.pointer.any_down());
@@ -2012,7 +2037,7 @@ impl UnluminousApp {
             .filter_map(|file| file.browser.clone())
             .chain(self.space.live.browsers().cloned())
             .collect();
-        let occluded = self.browser_is_occluded(ctx);
+        let occluders = self.occluding_rects(ctx);
         let mut placements = self.browser_placements.clone();
         // **A press that landed on none of the pages hands the operating system's keyboard back, and it
         // stays back until one lands on a page again.** `placement.focused` says only that this node is
@@ -2030,7 +2055,11 @@ impl UnluminousApp {
                 placement.focused = false;
             }
         }
-        let settled = self.browser.reconcile(&tabs, &placements, occluded, ctx.clone());
+        let settled = self.browser.reconcile(&tabs, &placements, &occluders, ctx.clone());
+        // **What a page's own command can be asked about.** A page is a native child view, so nothing
+        // Unluminous photographs holds one and no state in the window said whether it was drawing —
+        // which is why `task-2009`'s blanked page had to be found by looking at the screen.
+        self.page_is_covered = settled.covered;
         if let Some(id) = settled.pointed_at {
             self.change_browser_tab(id, |tab| tab.pointed_at());
             // **A browser node's own zoom is applied again when the one view arrives at its tab**, and
