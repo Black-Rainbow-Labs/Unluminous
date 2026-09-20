@@ -185,6 +185,48 @@ eight more frameworks and zig ships a stub for `libSystem` alone; `installer/REA
 SDK comes from and what Apple's licence says about keeping one there. It is off by default for that
 reason, and `installer/macos/build.sh` is unchanged and still the route on a Mac.
 
+### A release reclaims the build output it just superseded
+
+**Cargo never removes anything from `target`.** Every build writes a fresh hash-suffixed copy of each
+artifact and leaves its predecessor exactly where it is, for ever. `task-2011` measured what that
+costs here: `target` had reached **153.7 GB**, of which **137.8 GB** was copies cargo could no longer
+reach, and C: had gone from 1,075 GB free to 200 GB in six days across this checkout and inillucent's.
+A full C: stops Postgres, which takes the Tasks board down with it, so this is not tidiness.
+
+**The shape of it is this repository's own suite.** The fourteen screenshot-test binaries are about
+220 MB of executable and debug symbols apiece, and each had **twenty copies laid down over 1.6 days**.
+A suite that is fourteen separate binaries writes its own weight in dead artifacts every time it runs.
+`debug/deps` was 79.67 GB of which cargo could reach 2.67.
+
+`tools/prune-target.ps1` and `tools/prune-target.sh` are the answer, and both release scripts call one
+after the suite and the installer have run. A cargo artifact is named `<stem>-<hash>`, cargo reads
+exactly one hash per stem, and **every other hash is unreachable, so removing it costs no rebuild at
+all**. That is what makes this safe at the end of a build and safe in a checkout somebody is working
+in — which is the thing `scripts/prune-build-output.ps1` in ai-service deliberately refuses to do,
+because it deletes whole profile directories and would cost a cold rebuild.
+
+Three rules it keeps, and each was measured rather than assumed:
+
+- **`.fingerprint` and `build` are never pruned.** They are cargo's record of what is already fresh
+  rather than weight. Pruning them by the same rule reclaimed **0.00 GB and 0.22 GB** of a profile and
+  cost a rebuild of **219 crates**, because one package has many fingerprint hashes alive at once —
+  the library, each of the fourteen test targets, the build script, each feature unification — so
+  keeping the newest two per stem throws live entries away and cargo rebuilds a unit whose artifact
+  was sitting there the whole time. `deps`, `examples` and `incremental` hold effectively all of the
+  weight and are the only three pruned.
+- **Two generations are kept, not one.** Cargo picks an artifact by hash and not by age, so toggling
+  between two feature sets, two branches or two toolchains makes the live artifact the older of a
+  pair. Twenty generations down to two is still 90% of it.
+- **A profile whose `.cargo-lock` is held is skipped whole.** Asked of that profile's own lock rather
+  than of the process table, because this machine runs several agents at once and one repository's
+  build is no reason to leave another's dead artifacts on the disk.
+
+Measured after the change: 153.7 GB to **17.2 GB**, a no-op build straight afterwards still finishing
+in **0.5 s** having compiled nothing, and a second prune reclaiming nothing — so running it on every
+build converges rather than oscillating. `tools/prune-target.test.ps1` builds a synthetic target
+directory and checks both halves, the removals and the survivals, with no cargo and no toolchain
+behind it.
+
 ## What the crates are for
 
 | Crate | What is in it | What must never be in it |
@@ -4876,6 +4918,9 @@ trade that away to be a shade nearer a screenshot.
 - `tools/release.sh` and `tools/release.ps1` — the one command that releases, on macOS and Linux and on
   Windows: bump, build, install, tag, push, publish. Run it whenever a change is finished, without
   asking.
+- `tools/prune-target.ps1` and `tools/prune-target.sh` — removes the build output cargo has
+  superseded and can no longer reach. Both release scripts call one after the suite has run. Safe by
+  hand at any time, including in a checkout somebody is working in.
 - `tasks/task-1914-nodes-that-can-be-typed-into-tdd.md` — the QA pass on the canvas: the diagnostic that
   turned four "I cannot type in X" reports from guesswork into measurement, what each of the seven really
   was and which two did not reproduce, the two controls that were drawn at one size inside a box measured

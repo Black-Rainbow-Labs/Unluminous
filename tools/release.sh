@@ -305,6 +305,17 @@ bash "${build[@]}"
 [ -f "$image" ] || die "The disk image was not written to $image."
 echo "Kept $image"
 
+# The suite and the disk image leave the previous build's artifacts behind, so the release takes them
+# back (task-2011). Cargo never removes anything from a target directory: every build writes a fresh
+# hash-suffixed copy of each artifact and leaves its predecessor where it is, for ever. Measured on
+# the Windows checkout, target had reached 153.7 GB of which 137.8 GB was copies cargo could no
+# longer reach, and the shape of it is this script's own suite. Nothing cargo can still reach is
+# removed, so the next build is not slowed by it. A failure here is reported and does not stop the
+# release: the release is about what reaches the person's desktop, and housekeeping is not a reason
+# to abandon a tag that is already built.
+step 'Reclaiming superseded build output'
+"$repo/tools/prune-target.sh" --quiet || echo "  the prune reported a problem -- the release is unaffected"
+
 step "Committing and tagging v$next"
 # Written from the history rather than kept by hand, so it cannot fall behind. See the same step in
 # tools/release.ps1, and tools/changelog.mjs for why it is one script rather than two -- and for why

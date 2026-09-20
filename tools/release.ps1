@@ -511,6 +511,26 @@ if ($doMacos) {
 # that instant. 0.50.0 and 0.51.0 were both cut that way, and `--check` reported each of them one
 # release late, because what it compares is the released history and a version only joins that when it
 # is tagged.
+# **The suite and the installer leave the previous build's artifacts behind, so the release takes
+# them back (`task-2011`).** Cargo never removes anything from a target directory: every build writes
+# a fresh hash-suffixed copy of each artifact and leaves its predecessor exactly where it is, for
+# ever. Measured on this checkout, target had reached 153.7 GB of which 137.8 GB was copies cargo
+# could no longer reach, and the shape of it is this script's own suite -- fourteen screenshot-test
+# binaries at about 220 MB of executable and debug symbols apiece, written afresh every run.
+#
+# A release is the right moment to reclaim them. It is the largest single producer of them, and what
+# it has just built is the newest generation, which is the one kept. Nothing cargo can still reach is
+# removed, so the next build is not slowed by this: measured, a no-op build straight afterwards still
+# finishes in half a second having compiled nothing.
+#
+# A failure here is reported and does not stop the release. The release is about what reaches the
+# person's desktop, and disk housekeeping is not a reason to abandon a tag that is already built.
+Write-Step 'Reclaiming superseded build output'
+& pwsh -NoProfile -File (Join-Path $Repo 'tools\prune-target.ps1') -Quiet
+if ($LASTEXITCODE -ne 0) {
+    Write-Host '  the prune reported a problem -- the release is unaffected' -ForegroundColor Yellow
+}
+
 Write-Step 'Writing CHANGELOG.md'
 & node (Join-Path $Repo 'tools\changelog.mjs') --release $next
 if ($LASTEXITCODE -ne 0) { throw 'tools/changelog.mjs failed.' }
