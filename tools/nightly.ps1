@@ -97,6 +97,19 @@ try {
 }
 
 $passed = $LASTEXITCODE -eq 0
+
+# The run above builds a test binary, and cargo leaves the previous one behind for ever (task-2011).
+# This runs nightly, so it is one of the steady producers of the build output that took target to
+# 153.7 GB. Pruning removes only what cargo can no longer reach, so the next night's run is not
+# slowed by it, and it happens whether the tests passed or failed -- a failing night is still a night
+# that wrote a new binary. Reported and never fatal: a disk that could not be tidied is not a reason
+# to report the tests as failed.
+Write-Host ''
+& pwsh -NoProfile -File (Join-Path $Repo 'tools\prune-target.ps1') -Quiet
+if ($LASTEXITCODE -ne 0) {
+    Write-Host 'The prune reported a problem; the test result below is unaffected.' -ForegroundColor Yellow
+}
+
 Write-Host ''
 if ($passed) {
     Write-Host "The end-to-end agent tests passed. Log: $log" -ForegroundColor Green

@@ -198,8 +198,10 @@ A full C: stops Postgres, which takes the Tasks board down with it, so this is n
 A suite that is fourteen separate binaries writes its own weight in dead artifacts every time it runs.
 `debug/deps` was 79.67 GB of which cargo could reach 2.67.
 
-`tools/prune-target.ps1` and `tools/prune-target.sh` are the answer, and both release scripts call one
-after the suite and the installer have run. A cargo artifact is named `<stem>-<hash>`, cargo reads
+`tools/prune-target.ps1` and `tools/prune-target.sh` are the answer. Both release scripts call one
+after the suite and the installer have run, and `tools/nightly.ps1` calls it after its own run,
+whether the tests passed or failed — a failing night is still a night that wrote a new test binary.
+A cargo artifact is named `<stem>-<hash>`, cargo reads
 exactly one hash per stem, and **every other hash is unreachable, so removing it costs no rebuild at
 all**. That is what makes this safe at the end of a build and safe in a checkout somebody is working
 in — which is the thing `scripts/prune-build-output.ps1` in ai-service deliberately refuses to do,
