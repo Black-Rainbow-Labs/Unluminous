@@ -6,7 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.54.0 — 2026-09-20
+## Unreleased
+
+- A release asks whether the macOS archive is attached rather than filtering the list (`task-2004`)
+- Every platform is checked, and a missed destination fails the release (`task-1995`)
+- The seven reports, each measured against the real window (`task-2009`)
+
+## 0.54.0 — 2026-09-19
 
 - MacOS is part of a release, not a flag, and the release says what it reached (`task-1995`)
 - A divider takes room from whatever is between the sides, and a page gives the keyboard back (`task-2004`)
