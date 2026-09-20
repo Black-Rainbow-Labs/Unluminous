@@ -624,7 +624,13 @@ Write-Step "What Unluminous $next reached"
 Test-Destination 'GitHub (private)' {
     $assets = & $gh release view "v$next" --repo jasonmcaffee/unluminous --json assets --jq '.assets[].name' 2>$null
     if (-not $assets) { return 'no assets' }
-    if ($macosZip -and ($assets -notmatch 'macos')) { return 'the macOS archive is not attached' }
+    # **`-notmatch` against an array filters it**, it does not answer a question: `$assets` holds both
+    # asset names, so `$assets -notmatch 'macos'` is the Windows installer's name — a non-empty array,
+    # which is true — and this said the macOS archive was missing on every release that had one.
+    # Measured on 0.54.0, where both archives were attached to both repositories and this reported
+    # `NOT THERE`. `-not ($assets -match 'macos')` is the question: filter for the ones that match, and
+    # ask whether anything did.
+    if ($macosZip -and -not ($assets -match 'macos')) { return 'the macOS archive is not attached' }
     $null
 }
 Test-Destination 'GitHub (public)' {
