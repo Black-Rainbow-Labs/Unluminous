@@ -6,7 +6,14 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.54.1 — 2026-09-20
+## Unreleased
+
+- A release reclaims the build output it just superseded (`task-2011`)
+- Mark tools/prune-target.sh executable, as release.sh invokes it directly (`task-2011`)
+- The nightly run reclaims the test binary it superseded (`task-2011`)
+- The chat pane queues, selects, and says what a tool call is (`task-2060`)
+
+## 0.54.1 — 2026-09-19
 
 - A release asks whether the macOS archive is attached rather than filtering the list (`task-2004`)
 - Every platform is checked, and a missed destination fails the release (`task-1995`)
