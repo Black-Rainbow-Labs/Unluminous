@@ -6,12 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.54.2 — 2026-09-21
 
 - A release reclaims the build output it just superseded (`task-2011`)
 - Mark tools/prune-target.sh executable, as release.sh invokes it directly (`task-2011`)
 - The nightly run reclaims the test binary it superseded (`task-2011`)
 - The chat pane queues, selects, and says what a tool call is (`task-2060`)
+- Write the changelog out from the history, which the release checks first (`task-2060`)
 
 ## 0.54.1 — 2026-09-19
 
