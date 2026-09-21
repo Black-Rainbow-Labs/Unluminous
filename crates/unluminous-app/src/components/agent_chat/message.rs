@@ -91,6 +91,8 @@ enum Piece {
     Failure {
         body: f32,
     },
+    /// The line under a question that has been sent and is waiting its turn.
+    Queued,
 }
 
 impl Piece {
@@ -101,6 +103,7 @@ impl Piece {
             Self::Picture { height, .. } => height,
             Self::Tool { body, .. } => TOOL_ROW + body,
             Self::Failure { body } => body + PAD_Y * 2.0,
+            Self::Queued => THINKING_ROW,
         }
     }
 }
@@ -115,6 +118,7 @@ fn pieces(
     state: &mut PaneState,
     look: &Look<'_>,
     width: f32,
+    queued: bool,
 ) -> (Vec<Piece>, f32, f32, String) {
     let scale = look.scale();
     let mine = message.role == Role::User;
@@ -191,6 +195,10 @@ fn pieces(
             rendered_height(state, look, &format!("failure-{}", message.id), failure, in_block);
         out.push(Piece::Failure { body });
     }
+    // Under the bubble rather than over it, because it is a note about the question above it.
+    if queued {
+        out.push(Piece::Queued);
+    }
     (out, bubble, block, text)
 }
 
@@ -211,9 +219,19 @@ pub struct Shape {
 }
 
 /// What this row is made of and how tall it is.
-pub fn shape(message: &Message, state: &mut PaneState, look: &Look<'_>, width: f32) -> Shape {
+///
+/// `queued` is a question that has been sent while an answer was still arriving and is waiting its
+/// turn — it is drawn as an ordinary bubble with one quiet line under it saying so. See
+/// [`crate::services::agent_chat::AgentChat::send`].
+pub fn shape(
+    message: &Message,
+    state: &mut PaneState,
+    look: &Look<'_>,
+    width: f32,
+    queued: bool,
+) -> Shape {
     let scale = look.scale();
-    let (pieces, bubble, block, text) = pieces(message, state, look, width);
+    let (pieces, bubble, block, text) = pieces(message, state, look, width, queued);
     let height = pieces.iter().map(|piece| piece.height() * scale).sum::<f32>()
         + (pieces.len().saturating_sub(1) as f32) * 6.0 * scale;
     Shape { pieces, bubble, block, text, height }
@@ -264,41 +282,7 @@ pub fn show(
                         rect.height() - PAD_Y * 2.0 * scale,
                     ),
                 );
-                let key = format!("message-{}", message.id);
-                let code = code_colours(look);
-                let made = rendered(state, look, &key, &said, inside.width());
-                crate::components::markdown_text::show_with(
-                    ui,
-                    inside,
-                    made,
-                    look.renderer,
-                    0.0,
-                    Some(code),
-                );
-                // The copy button, which is `.messageActions`: it appears under the pointer rather
-                // than sitting there, because a column of bubbles each with a permanent button on it
-                // is a column of buttons.
-                let response = ui.interact(
-                    rect,
-                    ui.id().with(("agent-chat-bubble", message.id)),
-                    Sense::hover(),
-                );
-                if response.hovered() {
-                    let at = Rect::from_center_size(
-                        Pos2::new(
-                            match mine {
-                                true => rect.left() - 12.0 * scale,
-                                false => rect.right() + 12.0 * scale,
-                            },
-                            rect.top() + 12.0 * scale,
-                        ),
-                        Vec2::splat(18.0 * scale),
-                    );
-                    if crate::components::controls::icon_button(ui, at, "Copy message", icon::copy)
-                    {
-                        acts.push(Act::Copy(said.clone()));
-                    }
-                }
+                acts.extend(words(message, state, ui, look, rect, inside, &said, mine));
             }
             Piece::Picture { index, .. } => picture(message, state, ui, look, rect, index),
             Piece::Tool { index, body } => {
@@ -307,8 +291,144 @@ pub fn show(
                 }
             }
             Piece::Failure { .. } => failure(message, state, ui, look, rect),
+            Piece::Queued => queued_note(ui, look, rect, mine),
         }
         pen += height + 6.0 * scale;
+    }
+    acts
+}
+
+/// How long the copy button stays up after the pointer has left the message, in seconds.
+///
+/// `task-2060`: *"I cannot actually select copy of a message because it goes away as soon as i hover
+/// off the message. It should stay visible for 2 seconds so I can actually press it."* The button is
+/// drawn *beside* the bubble rather than inside it - that is what keeps a column of answers from
+/// being a column of buttons - so the pointer has to leave the message to reach it, and a button that
+/// went away on the frame it was left could not be pressed at all.
+const COPY_LINGER: f64 = 2.0;
+
+/// The bubble's words: the markdown, the selection over it, and the copy button beside it.
+///
+/// `rect` is the bubble and `inside` is the room its words get. Split out of [`show`] because the
+/// selection, the lingering button and the right click menu each have to know exactly where the
+/// letters were drawn, which is one number - `markdown_text::Rendered::centring` - and three copies
+/// of it would be three chances to disagree about it.
+#[allow(clippy::too_many_arguments)]
+fn words(
+    message: &Message,
+    state: &mut PaneState,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    rect: Rect,
+    inside: Rect,
+    said: &str,
+    mine: bool,
+) -> Vec<Act> {
+    use crate::services::agent_chat::{MessageMenu, Selected};
+
+    let scale = look.scale();
+    let mut acts = Vec::new();
+    let key = format!("message-{}", message.id);
+    let code = code_colours(look);
+    // **The words are selectable**, which is `task-2060`: a message is text to read, and reading
+    // includes taking a copy of a part of it. `click_and_drag` rather than `hover` for the reason
+    // the Markdown preview senses both - see `UnluminousApp::show_markdown_preview`.
+    let response =
+        ui.interact(rect, ui.id().with(("agent-chat-bubble", message.id)), Sense::click_and_drag());
+    // Read out of the state before the rendered markdown is borrowed from it.
+    let was = match state.selection {
+        Some(selected) if selected.message == message.id => Some(selected.range),
+        _ => None,
+    };
+    let picked = {
+        let made = rendered(state, look, &key, said, inside.width());
+        // **Where the letters really start.** A line is taller than its glyphs and all of the extra
+        // leading is added below the baseline, so a block drawn at the top of a box padded equally
+        // above and below sits high - `task-2060`: *"The text in a message isnt perfectly vertically
+        // aligned."* `Rendered::centring` is that difference, halved, and it is read here for the
+        // drawing, for the selection and for the pointer, so the three cannot disagree.
+        let down = made.centring();
+        let origin = Pos2::new(inside.left(), inside.top() + down);
+        let picked = crate::components::editor_view::read_pointer(
+            &response,
+            &made.layout,
+            &made.text,
+            origin,
+            was.unwrap_or_else(|| unluminous_core::Selection::caret(0)),
+        );
+        // What is painted is the selection this frame's drag made rather than the one it started
+        // with, which is `select_in_the_preview`'s own ordering.
+        if let Some(selection) = picked.or(was) {
+            crate::components::editor_view::paint_behind(
+                ui,
+                &made.layout,
+                origin,
+                selection.range(),
+                crate::theme::color::text_selection(),
+                2.0,
+            );
+        }
+        // `show_with` draws at `area.top() - scroll`, so the centring is a negative scroll: the code
+        // panels behind the words move with them rather than being a second answer to one question.
+        crate::components::markdown_text::show_with(
+            ui,
+            inside,
+            made,
+            look.renderer,
+            -down,
+            Some(code),
+        );
+        picked
+    };
+    if let Some(selection) = picked {
+        state.selection = Some(Selected { message: message.id, range: selection });
+    }
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
+    }
+    // The right click menu: copy what is selected, copy the whole message, select all of it. Opened
+    // here and drawn by `components::agent_chat::message_menu` once everything else has been, because
+    // a popup is a layer of its own and this one is opened from inside a scrolling area.
+    if response.secondary_clicked() {
+        // **The window's own points, not the layer's.** A popup is an `egui::Area` and is placed in
+        // screen space, so where it opens is asked of the context rather than of this `Ui` — which is
+        // exactly the split `controls::field_menu` keeps, and the reason a menu opened inside a chat
+        // node on a panned canvas lands under the pointer rather than somewhere else.
+        if let Some(at) = ui.ctx().pointer_interact_pos() {
+            state.menu = Some(MessageMenu { at, message: message.id });
+        }
+    }
+    // The copy button, which is `.messageActions`: it appears under the pointer rather than sitting
+    // there, because a column of bubbles each with a permanent button on it is a column of buttons.
+    // **And it stays up for [`COPY_LINGER`] after the pointer has left**, so it can be reached.
+    let now = ui.input(|input| input.time);
+    if response.contains_pointer() {
+        state.copy_shown = Some((message.id, now));
+    }
+    let up =
+        state.copy_shown.is_some_and(|(id, when)| id == message.id && now - when < COPY_LINGER);
+    if up {
+        let at = Rect::from_center_size(
+            Pos2::new(
+                match mine {
+                    true => rect.left() - 12.0 * scale,
+                    false => rect.right() + 12.0 * scale,
+                },
+                rect.top() + 12.0 * scale,
+            ),
+            Vec2::splat(18.0 * scale),
+        );
+        // The pointer resting on the button keeps it up as surely as the pointer on the message
+        // does - otherwise the two seconds would run out under a pointer that had just arrived.
+        if crate::components::controls::pointer_in(ui).is_some_and(|pointer| at.contains(pointer)) {
+            state.copy_shown = Some((message.id, now));
+        }
+        if crate::components::controls::icon_button(ui, at, "Copy message", icon::copy) {
+            acts.push(Act::Copy(said.to_owned()));
+        }
+        // An idle window draws twice a second, so without this the button would linger for up to
+        // half a second longer than it was asked to. See `app::HEARTBEAT`.
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(120));
     }
     acts
 }
@@ -384,15 +504,16 @@ fn thinking(
         egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Thinking".to_owned())
     });
     let painter = painter_in(ui, rect);
-    icon::disclosure(
+    icon::disclosure_at(
         &painter,
         Pos2::new(head.left() + 6.0 * scale, head.center().y),
         open,
         look.palette.text_faint,
+        scale,
     );
     painter.crisp_text(
-        Pos2::new(head.left() + 16.0 * scale, head.center().y - look.font_size * 0.4),
-        egui::Align2::LEFT_TOP,
+        Pos2::new(head.left() + 16.0 * scale, head.center().y),
+        egui::Align2::LEFT_CENTER,
         "Thinking",
         egui::FontId::proportional(look.font_size * 0.78),
         look.palette.text_faint,
@@ -537,9 +658,67 @@ fn tool_body_height(state: &mut PaneState, look: &Look<'_>, tool: &ToolCall, wid
 
 /// A tool's arguments or its answer, as a fenced block so the markdown renderer sets it in the code
 /// font and puts it in a well.
+///
+/// **JSON is laid out over several lines and fenced as `json`.** `task-2060`: *"The formatting of
+/// the agent commands needs to be improved. Pretty print, better text coloring (keyword highlights,
+/// etc."* A tool call's arguments arrive as one long line of JSON, and a fence with no language
+/// after it names nothing, so the plugin that would colour it is never asked and the whole block
+/// is drawn in the one code colour. Named, the JSON plugin tells its strings, its numbers and its
+/// three literal values apart, exactly as it does in a `.json` file.
+///
+/// Anything that is not JSON is left exactly as it arrived, in a fence naming no language: a shell
+/// command's output is not JSON, and colouring it as though it were would be colouring it wrongly.
 fn fenced(text: &str) -> String {
-    format!("```\n{}\n```", text.trim())
+    let trimmed = text.trim();
+    match laid_out_json(trimmed) {
+        Some(pretty) => format!("```json\n{pretty}\n```"),
+        None => format!("```\n{trimmed}\n```"),
+    }
 }
+
+/// `text` laid out over several lines when it is JSON worth laying out, and [`None`] when it is not.
+///
+/// An object or an array only. A bare string, a number or `null` is JSON too and is already one
+/// line, so laying it out would change nothing and the fence would claim a language for a word.
+///
+/// The limit is not tidiness: this runs whenever the block is rendered again, and a tool can answer
+/// with a great deal. `shorten_for_a_model` cuts what goes back up the wire at eight thousand
+/// characters and this is the same order of size, some way above it.
+fn laid_out_json(text: &str) -> Option<String> {
+    const LIMIT: usize = 64_000;
+    if text.len() > LIMIT || !text.starts_with(['{', '[']) {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    serde_json::to_string_pretty(&value).ok()
+}
+
+/// The line under a question that is waiting its turn behind an answer.
+///
+/// A clock and one quiet word, on the side the question is on. It says the thing a person cannot
+/// otherwise tell: the message is on the screen, and it has **not** been asked yet. `task-2060`.
+fn queued_note(ui: &mut egui::Ui, look: &Look<'_>, rect: Rect, mine: bool) {
+    let scale = look.scale();
+    let painter = painter_in(ui, rect);
+    let font = egui::FontId::proportional(look.font_size * 0.72);
+    let tint = look.palette.text_faint;
+    let width = painter.layout_no_wrap("Queued".to_owned(), font.clone(), tint).size().x;
+    let right = match mine {
+        true => rect.right(),
+        false => rect.left() + width + 16.0 * scale,
+    };
+    painter.crisp_text(
+        Pos2::new(right - width, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        "Queued",
+        font,
+        tint,
+    );
+    icon::clock(&painter, Pos2::new(right - width - 9.0 * scale, rect.center().y), tint);
+}
+
+/// One mark a tool block draws in its ring, at the pane's own scale.
+type Mark = fn(&egui::Painter, Pos2, Color32, f32);
 
 /// One tool call: a well with a round icon, the command's name, how long it took, and a caret.
 ///
@@ -572,9 +751,25 @@ fn tool_block(
         egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Tool: {}", tool.name))
     });
     let painter = painter_in(ui, rect);
-    // The round raised disc, which is `.topicIcon`. Its colour is the state: mint while it runs,
-    // Unluminous's blue when it worked, red when it did not.
+    // The round raised disc, which is `.topicIcon`, with a ring round it in the colour of the state:
+    // the board's blue while it runs, git's added green when it worked, the close button's red when
+    // it did not.
+    //
+    // **A wrench rather than a tick.** `task-2060`: *"The checkbox icon for tool call is not good. it
+    // should be a wrench icon, and green colored outline."* A tick says *ticked off*, and a tool call
+    // is not an item on a checklist - it is the model reaching for a tool. A failure keeps the cross,
+    // because there the mark is the whole report and a wrench would say only what kind of thing had
+    // gone wrong.
     let disc = Pos2::new(head.left() + 14.0 * scale, head.center().y);
+    // **The mark takes the pane's scale, because the ring round it does.** Most icons in this window
+    // are drawn at one size whatever the type is, and that is right where the thing beside them is a
+    // row of the same height at every zoom. Here the ring is `9.0 * scale`, so a mark that did not
+    // scale sat in the middle of it like something that had come loose. `task-2060` drew one at 1.8.
+    let (tint, drawing): (Color32, Mark) = match (tool.is_running(), tool.failed) {
+        (true, _) => (look.palette.board_accent, icon::wrench_at),
+        (false, true) => (crate::theme::color::close(), icon::cross_at),
+        (false, false) => (crate::theme::color::git_added(), icon::wrench_at),
+    };
     if look.chrome.is_recording() {
         look.chrome.raised(
             Rect::from_center_size(disc, Vec2::splat(18.0 * scale)),
@@ -583,27 +778,24 @@ fn tool_block(
             Lift::Small,
         );
     }
-    let (tint, drawing): (Color32, fn(&egui::Painter, Pos2, Color32)) =
-        match (tool.is_running(), tool.failed) {
-            (true, _) => (look.palette.attached, icon::run),
-            (false, true) => (crate::theme::color::close(), icon::cross),
-            (false, false) => (look.palette.board_accent, icon::tick),
-        };
-    drawing(&painter, disc, tint);
-    let mut pen = disc.x + 14.0 * scale;
+    // Drawn whether or not the decoration is recording: the ring is the **state**, and a state that
+    // only appeared with `plugins.chrome` on would be a state half the windows cannot see.
+    painter.circle_stroke(disc, 9.0 * scale, Stroke::new(1.2 * scale, tint));
+    drawing(&painter, disc, tint, scale);
+    let mut pen = disc.x + 16.0 * scale;
+    // **Centred on the row rather than measured up from its middle by a fraction of the font.**
+    // `Align2::LEFT_TOP` with a guessed offset put both of these a point or so high, and a point at
+    // sixteen points is the difference `task-2060` reports beside a mark that really is centred.
+    let name_font = egui::FontId::proportional(look.font_size * 0.82);
     let name_width = painter
-        .layout_no_wrap(
-            tool.name.clone(),
-            egui::FontId::proportional(look.font_size * 0.82),
-            look.palette.text_control,
-        )
+        .layout_no_wrap(tool.name.clone(), name_font.clone(), look.palette.text_control)
         .size()
         .x;
     painter.crisp_text(
-        Pos2::new(pen, head.center().y - look.font_size * 0.42),
-        egui::Align2::LEFT_TOP,
+        Pos2::new(pen, head.center().y),
+        egui::Align2::LEFT_CENTER,
         &tool.name,
-        egui::FontId::proportional(look.font_size * 0.82),
+        name_font,
         look.palette.text_control,
     );
     pen += name_width + 8.0 * scale;
@@ -612,17 +804,18 @@ fn tool_block(
         None => "running".to_owned(),
     };
     painter.crisp_text(
-        Pos2::new(pen, head.center().y - look.font_size * 0.36),
-        egui::Align2::LEFT_TOP,
+        Pos2::new(pen, head.center().y),
+        egui::Align2::LEFT_CENTER,
         said,
         egui::FontId::monospace(look.font_size * 0.68),
         look.palette.text_faint,
     );
-    icon::disclosure(
+    icon::disclosure_at(
         &painter,
         Pos2::new(head.right() - 12.0 * scale, head.center().y),
         open,
         look.palette.text_faint,
+        scale,
     );
     if response.clicked() {
         acts.push(Act::ToggleTool(tool.id.clone()));
@@ -819,7 +1012,7 @@ mod tests {
             settings.font_size = font_size;
             let look = Look::of(&settings, &renderer);
             let mut state = PaneState::default();
-            let (_, bubble, _, _) = pieces(&answer, &mut state, &look, 900.0);
+            let (_, bubble, _, _) = pieces(&answer, &mut state, &look, 900.0, false);
 
             // What `show` will lay the words into, computed the way `show` computes it.
             let inside = bubble - PAD_X * 2.0 * look.scale();
@@ -839,8 +1032,75 @@ mod tests {
         assert_eq!(Piece::Words { body: 10.0 }.height(), 10.0 + PAD_Y * 2.0);
     }
 
+    /// `task-2060`: a tool call's arguments are laid out and fenced as JSON so a plugin colours them.
     #[test]
-    fn a_tools_arguments_are_fenced_so_they_are_set_in_the_code_font() {
-        assert_eq!(fenced("  {\"a\":1} "), "```\n{\"a\":1}\n```");
+    fn a_tools_arguments_are_laid_out_and_named_as_json() {
+        // One long line of JSON becomes several lines, and the fence names the language — which is
+        // what makes the JSON plugin colour its strings, its numbers and its three literals.
+        assert_eq!(fenced("  {\"a\":1} "), "```json\n{\n  \"a\": 1\n}\n```");
+        assert_eq!(fenced("[1,2]"), "```json\n[\n  1,\n  2\n]\n```", "an array is laid out too");
+        // Anything that is not JSON arrives as it is, in a fence naming nothing: a shell command's
+        // output is not JSON and colouring it as though it were would colour it wrongly.
+        assert_eq!(fenced(" total 12\ndrwx "), "```\ntotal 12\ndrwx\n```");
+        assert_eq!(
+            fenced("{\"path\": "),
+            "```\n{\"path\":\n```",
+            "arguments cut off mid-stream are not JSON and are shown as they came"
+        );
+        // A bare string or a number is JSON and is already one line, so it is left alone rather than
+        // fenced as a document of one word.
+        assert_eq!(fenced("\"ok\""), "```\n\"ok\"\n```");
+        assert_eq!(laid_out_json("12"), None);
+    }
+
+    /// A block of words sits in the middle of the room reserved for it, not at the top of it.
+    ///
+    /// `task-2060`: *"The text in a message isnt perfectly vertically aligned."* A line is taller
+    /// than its glyphs and all of the extra leading is added below the baseline, so a block drawn at
+    /// the top of a box padded equally above and below reads as high by half that leading.
+    #[test]
+    fn a_rendered_block_says_how_far_down_to_draw_it_for_its_letters_to_be_centred() {
+        let renderer = crate::services::text_renderer::TextRenderer::new();
+        let colors = crate::components::markdown_text::Colors {
+            text: Color32::WHITE,
+            strong: Color32::WHITE,
+            code: Color32::GREEN,
+            link: Color32::BLUE,
+            quiet: Color32::GRAY,
+            rule: Color32::DARK_GRAY,
+        };
+        let made = crate::components::markdown_text::render(
+            "A line of prose.",
+            &renderer,
+            "sans-serif",
+            14.0,
+            colors,
+            400.0,
+            None,
+        );
+        let (top, bottom) = made.ink();
+        assert!(top >= 0.0 && bottom <= made.height(), "the ink is inside the block");
+        assert!(bottom < made.height(), "a line is taller than the letters on it");
+        assert!(made.centring() > 0.0, "so there is room under them to move into");
+        // And never past halfway, which is what the shift is: half the air that was all at the
+        // bottom, moved to the top.
+        assert!(made.centring() <= (made.height() - bottom), "{}", made.centring());
+    }
+
+    /// A queued question is an ordinary bubble with one quiet line under it. `task-2060`.
+    #[test]
+    fn a_queued_question_carries_one_extra_row_and_nothing_else_moves() {
+        let renderer = crate::services::text_renderer::TextRenderer::new();
+        let settings = crate::settings::Settings::new();
+        let look = Look::of(&settings, &renderer);
+        let mut question = Message::new(1, Role::User);
+        question.parts.push(Part::Text("Are you there?".to_string()));
+
+        let mut state = PaneState::default();
+        let (plain, bubble, _, _) = pieces(&question, &mut state, &look, 400.0, false);
+        let (waiting, waiting_bubble, _, _) = pieces(&question, &mut state, &look, 400.0, true);
+        assert_eq!(waiting.len(), plain.len() + 1);
+        assert_eq!(waiting.last().copied(), Some(Piece::Queued));
+        assert_eq!(bubble, waiting_bubble, "the bubble is the same bubble");
     }
 }

@@ -87,6 +87,8 @@ pub enum Act {
     ToggleTool(String),
     /// Open or close one message's thinking.
     ToggleThinking(u64),
+    /// Select the whole of one message's words, which is what the menu's `Select All` means.
+    SelectAll(u64),
 }
 
 /// Draw the pane, and act on what was pressed.
@@ -109,7 +111,53 @@ pub fn pane(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Req
     if pasting(ui, chat.parts().state.prompt_focused) {
         acts.push(Act::Paste);
     }
+    // **A selection is about the message it was made in, and a press somewhere else ends it.**
+    // Without this, words selected in an answer would go on being what `Ctrl`/`Cmd`+`C` copied for
+    // the rest of the session, including from the editing area beside the pane. Not while the right
+    // click menu is open, because the press that chooses one of its rows is a press outside the pane
+    // and would throw away the very selection the row is about.
+    if chat.ui.menu.is_none() && a_press_landed_outside(ui, area) {
+        chat.ui.selection = None;
+    }
+    if let Some(text) = copying(ui, chat) {
+        acts.push(Act::Copy(text));
+    }
     apply(chat, acts)
+}
+
+/// Whether the primary button went down this frame somewhere that is not this pane.
+///
+/// The pointer through [`controls::pointer_in`], because a chat node on the canvas is drawn into a
+/// layer carrying the camera and the frame's raw position is the window's — the two agree only while
+/// the camera sits at one on the origin, which is where a test leaves it and where nobody leaves a
+/// canvas. `task-2003` wrote that down for the board's own wheel.
+fn a_press_landed_outside(ui: &egui::Ui, area: Rect) -> bool {
+    let pressed = ui.ctx().input(|input| input.pointer.primary_pressed());
+    pressed && controls::pointer_in(ui).is_none_or(|at| !area.contains(at))
+}
+
+/// What `Ctrl`/`Cmd`+`C` should copy out of this pane, taking the event so nothing else copies too.
+///
+/// `task-2060`: *"I should be able to select & copy text in a message. e.g. select/highlight a sub
+/// section, then right click and see copy option, or press Ctrl/CMD+C."* egui delivers a copy as an
+/// `egui::Event::Copy` rather than as a key press — which is why `Copy` is marked in `actions::menus`
+/// as not coming from the keyboard — so the event is what has to be claimed, and removing it from
+/// the frame's input is what stops the editing area copying its own selection a moment later. That
+/// is `UnluminousApp::route_the_preview_copy`'s rule, kept here.
+///
+/// **Not while a text box has the keyboard.** The composer is a text box in this same pane, and a
+/// copy made while the caret is in it is that box's own.
+fn copying(ui: &egui::Ui, chat: &mut AgentChat) -> Option<String> {
+    if crate::app::text_box_has_the_keyboard(ui.ctx()) {
+        return None;
+    }
+    let text = chat.selected_text()?;
+    let took = ui.ctx().input_mut(|input| {
+        let before = input.events.len();
+        input.events.retain(|event| !matches!(event, egui::Event::Copy));
+        before != input.events.len()
+    });
+    took.then_some(text)
 }
 
 /// Everything inside the pane, from a borrow of the conversation.
@@ -168,7 +216,90 @@ fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
             acts.extend(conversation(&mut parts, ui, look, body));
         }
     }
+    // Drawn after the conversation and before the composer takes `parts`. A popup is a layer of its
+    // own, so where it sits in this order decides nothing about what it is drawn over — what it
+    // decides is that the rows are read on the frame after the right click that opened it, which is
+    // `controls::field_menu`'s own shape.
+    acts.extend(message_menu(&mut parts, ui, look));
     acts.extend(composer::show(parts, ui, look, composer_rect));
+    acts
+}
+
+/// How wide a message's right click menu is. Three short rows, so it is a field menu's width.
+const MENU_WIDTH: f32 = 200.0;
+
+/// The right click menu over a message: copy the selection, copy the message, select all of it.
+///
+/// `task-2060` asks for the first of those in as many words. The other two are what a menu opened on
+/// a block of text has to offer beside it: `Copy` is dimmed with nothing selected, which is the style
+/// guide's distinction — a control that will apply the moment something is selected is dimmed, and
+/// one that can never apply is absent.
+///
+/// **What `Copy` copies is the words as they are drawn**, out of the rendered markdown, so a heading
+/// comes back without its hashes. `Copy Message` is the source, which is what the button beside the
+/// bubble has always copied and what somebody pasting an answer back into a file wants.
+fn message_menu(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Act> {
+    let Some(menu) = parts.state.menu else {
+        return Vec::new();
+    };
+    let mut acts = Vec::new();
+    let _ = look;
+    let key = format!("message-{}", menu.message);
+    let selected = parts
+        .state
+        .selection
+        .filter(|one| one.message == menu.message && !one.range.is_empty())
+        .and_then(|one| parts.state.rendered.slice(&key, one.range.range()));
+    // The message's own source, whether it is in the conversation or still waiting in the queue.
+    let source = parts
+        .session
+        .chat
+        .message(menu.message)
+        .or_else(|| parts.queued.iter().find(|one| one.id == menu.message))
+        .map(unluminous_chat::Message::text);
+    let mut close = false;
+    let popup = egui::Popup::new(
+        egui::Id::new("agent-chat-message-menu"),
+        ui.ctx().clone(),
+        menu.at,
+        ui.layer_id(),
+    )
+    .kind(egui::PopupKind::Menu)
+    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+    .layout(egui::Layout::top_down_justified(egui::Align::Min))
+    .frame(
+        egui::Frame::popup(ui.style())
+            .fill(crate::theme::color::menu())
+            .stroke(Stroke::new(1.0, crate::theme::color::control_border()))
+            .inner_margin(6),
+    )
+    .width(MENU_WIDTH);
+    if let Some(response) = popup.show(|ui| {
+        if controls::menu_row(ui, "Copy", "", selected.is_some(), false, 0.0) {
+            if let Some(text) = selected.clone() {
+                acts.push(Act::Copy(text));
+            }
+            close = true;
+        }
+        if controls::menu_row(ui, "Copy Message", "", source.is_some(), false, 0.0) {
+            if let Some(text) = source.clone() {
+                acts.push(Act::Copy(text));
+            }
+            close = true;
+        }
+        if controls::menu_row(ui, "Select All", "", true, false, 0.0) {
+            acts.push(Act::SelectAll(menu.message));
+            close = true;
+        }
+    }) {
+        close |= response.response.should_close();
+    }
+    if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+        close = true;
+    }
+    if close {
+        parts.state.menu = None;
+    }
     acts
 }
 
@@ -326,7 +457,7 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     // Where the list a wheel belongs to is, for the reason `PaneState::list_rect` gives.
     parts.state.list_rect = Some(area);
     let wheel = parts.state.wheel.take();
-    if session.chat.messages.is_empty() {
+    if session.chat.messages.is_empty() && parts.queued.is_empty() {
         parts.state.scrolled = 0.0;
         parts.state.scrollable = 0.0;
         return empty(ui, look, area);
@@ -348,6 +479,10 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
         // up** — which is `ChatPage.tsx`'s own `shouldAutoScroll` rule. egui's own stickiness does
         // exactly that: it follows while the view is already at the bottom and stops when it is not.
         .stick_to_bottom(true)
+        // Nothing is done about dragging the contents to scroll them, and that is deliberate:
+        // `ScrollSource::drag` is `OnTouch` by default, so a drag with a pointer already selects
+        // words rather than scrolling — which is what `task-2060` asks for — and forcing it off
+        // would take scrolling away from a touch screen to fix something that is not broken there.
         .auto_shrink([false, false]);
     if jump {
         // What stickiness will not do is go *back* to the bottom once somebody has scrolled away, and
@@ -380,7 +515,11 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
             );
         }
         let width = area.width();
-        for one in &session.chat.messages {
+        // The conversation, and then whatever was sent while this answer was arriving. A queued
+        // question is **not** in the conversation — see `AgentChat::queued` for why — so it is drawn
+        // after it, in the order it was sent, which is where it will be asked.
+        let queued = parts.queued.iter().map(|one| (one, true));
+        for (one, waiting) in session.chat.messages.iter().map(|one| (one, false)).chain(queued) {
             // A tool result is the copy that goes back up the wire; it is drawn inside the block
             // of the call it answers, so it is not a row of its own.
             if one.role == unluminous_chat::Role::Tool {
@@ -389,7 +528,7 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
             // Worked out once and handed to the drawing, because the height has to be known
             // before the rectangle can be allocated and running it twice built the message's text
             // twice. See `message::Shape`.
-            let shape = message::shape(one, parts.state, look, width);
+            let shape = message::shape(one, parts.state, look, width, waiting);
             let (rect, _) =
                 ui.allocate_exact_size(Vec2::new(width, shape.height), egui::Sense::hover());
             // **Only what can be seen is drawn**, which is `task-1666`'s rule and, here, also what
@@ -809,6 +948,7 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
                 }
                 None => chat.ui.opened_tools.push(id),
             },
+            Act::SelectAll(id) => chat.select_the_whole_message(id),
             Act::ToggleThinking(id) => {
                 match chat.ui.opened_thinking.iter().position(|one| *one == id) {
                     Some(at) => {

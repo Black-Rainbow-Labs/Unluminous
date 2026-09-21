@@ -86,6 +86,35 @@ impl Rendered {
     pub fn height(&self) -> f32 {
         self.layout.lines.last().map(|line| line.y + line.height).unwrap_or(0.0)
     }
+
+    /// The band the letters really occupy, measured from the top of the layout.
+    ///
+    /// **Not `0.0 .. height()`.** A line is taller than the glyphs on it: the baseline sits `ascent`
+    /// from the top of the line and every scrap of extra leading — the font's line gap, the reading
+    /// leading Unluminous adds for prose and the paragraph's own spacing — is added *below* it. That
+    /// is `components::gutter::text_band`'s own sentence, made about a whole block rather than about
+    /// one line.
+    pub fn ink(&self) -> (f32, f32) {
+        match (self.layout.lines.first(), self.layout.lines.last()) {
+            (Some(first), Some(last)) => {
+                (first.y + first.baseline - first.ascent, last.y + last.baseline + last.descent)
+            }
+            _ => (0.0, self.height()),
+        }
+    }
+
+    /// How far down to draw this block for its letters to sit in the middle of the [`height`](Self::height)
+    /// points reserved for it.
+    ///
+    /// A caller that pads a block equally above and below and then draws it at the top has padded the
+    /// *line boxes* rather than the words, so the words sit high — by more the larger the type.
+    /// `task-2060` reported that of a message in the chat pane: *"The text in a message isnt perfectly
+    /// vertically aligned."* Never negative, so a block can only ever be nudged down into the air that
+    /// is already below it.
+    pub fn centring(&self) -> f32 {
+        let (top, bottom) = self.ink();
+        (((self.height() - bottom) - top) / 2.0).max(0.0)
+    }
 }
 
 /// What the rendered text is coloured with, which the caller takes from its own palette.
@@ -314,6 +343,27 @@ impl Cache {
             self.made.insert(key.to_owned(), made);
         }
         self.made.get(key).expect("just rendered")
+    }
+
+    /// What the rendered text for `key` says between `range`, for a caller copying a selection.
+    ///
+    /// **The rendered text rather than the source**, which is the whole of what a selection means
+    /// here: what somebody dragged across is the words as they are drawn, so a heading comes back
+    /// without its hashes and a list item without its dash. Copying the *source* is a separate thing
+    /// and has its own row on the menu.
+    pub fn slice(&self, key: &str, range: std::ops::Range<usize>) -> Option<String> {
+        let made = self.made.get(key)?;
+        let end = range.end.min(made.text.len_bytes());
+        let start = range.start.min(end);
+        match start == end {
+            true => None,
+            false => Some(made.text.byte_slice(start..end)),
+        }
+    }
+
+    /// How many bytes the rendered text for `key` has, which is what Select All selects.
+    pub fn length(&self, key: &str) -> Option<usize> {
+        self.made.get(key).map(|made| made.text.len_bytes())
     }
 
     /// Throw away everything, which is what changing which ticket is open means.

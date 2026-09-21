@@ -103,7 +103,19 @@ impl Session {
         let id = self.chat.next_id().max(message.id);
         let mut message = message;
         message.id = id;
-        self.chat.push(message);
+        self.ask_keeping_the_id(message)
+    }
+
+    /// The same, for a message that already carries an id this conversation gave it.
+    ///
+    /// **The id is kept rather than assigned again**, and that matters for a question that has been
+    /// waiting in a queue: the pane keeps one rendered block per message id and has already drawn
+    /// this one under its own, so a message that changed its number between being shown and being
+    /// sent would be laid out a second time and the block behind it would never be asked for again.
+    /// [`ask`](Self::ask) assigns one because its caller has not asked the conversation for an id at
+    /// all. `task-2060`.
+    pub fn ask_keeping_the_id(&mut self, message: Message) -> u64 {
+        let id = self.chat.push(message);
         self.round = 0;
         self.begin();
         id

@@ -89,6 +89,7 @@ reference was pulled as its own SVG and converted: the viewBox maps onto Unlumin
 | `debug_run` | VS Code `VscDebugAlt` | `microsoft/vscode-codicons` `src/icons/debug-alt.svg` |
 | `bug` | Line Awesome `LiaBugSolid` | `api.iconify.design/la:bug-solid.svg` |
 | `run` | Font Awesome `FaPlay` | `api.iconify.design/fa6-solid:play.svg` |
+| `wrench` | Lucide `LuWrench` | `lucide-icons/lucide` `icons/wrench.svg` (`task-2060`) |
 
 Three of them are **not** what the reference draws, and each is a decision rather than a slip:
 
@@ -104,6 +105,11 @@ Three of them are **not** what the reference draws, and each is a decision rathe
   way first, photographed in the real title bar, and neither half could be made out — so one shape
   carries the mark and the other says what kind of start it is, and the beetle carries it because it
   is the half that differs from the Run button beside it.
+- **The wrench's head is a stroked ring rather than a filled one.** Lucide's `wrench` is one filled
+  path: a solid head with a bite out of it and a solid tapering handle. Every other mark in
+  `theme/icon.rs` is a stroke at twelve points across, and a filled head beside them reads as a blob
+  rather than as a tool. The bite, the diagonal and the proportion of head to handle are the
+  reference's; the fill is not. `task-2060` added it for the tool calls in the chat pane.
 
 ## Looking at one, properly
 

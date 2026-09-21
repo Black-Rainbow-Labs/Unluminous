@@ -2862,6 +2862,94 @@ fn sending_to_an_endpoint_that_cannot_answer_is_refused_before_anything_is_sent(
     );
 }
 
+/// An endpoint that sends to an address and needs no key, pointed at a port nothing answers.
+///
+/// It gets `send` past its own checks. **No test using it ever reaches a request**: each one is
+/// already busy, so what `send` does is queue.
+fn an_endpoint_that_needs_no_key(harness: &mut Harness<'static, UnluminousApp>) {
+    with_the_chat(harness, |chat| {
+        let row = &mut chat.configuration_mut().providers[0];
+        row.name = "stand-in".to_owned();
+        row.wire = unluminous_chat::Wire::OpenAi;
+        row.command = String::new();
+        row.url = "http://127.0.0.1:1/v1/chat/completions".to_owned();
+        row.model = "a-model".to_owned();
+        row.key_env = String::new();
+    });
+    did(harness, "plugins run agent-chat use stand-in");
+}
+
+/// `task-2060`: a question asked while an answer is arriving waits its turn, and is on the screen at
+/// once.
+///
+/// *"I should be able to send new messages that get added to the queue when the agent is working. I
+/// should see my message immediately posted after I send it."*
+#[test]
+fn a_question_sent_while_an_answer_is_arriving_is_queued_and_drawn_at_once() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    steady(&mut harness);
+    an_endpoint_that_needs_no_key(&mut harness);
+    // A turn in flight, driven through the session so nothing is put on a wire.
+    with_the_chat(&mut harness, |chat| {
+        let id = chat.session_mut().chat.next_id();
+        chat.session_mut().ask(unluminous_chat::Message::said(
+            id,
+            unluminous_chat::Role::User,
+            "Why is `relayout` keeping a paragraph it should have thrown away?",
+        ));
+        chat.session_mut().reply(unluminous_chat::Reply::Text("Because the".to_owned()));
+    });
+    let state = did(&mut harness, "plugins run agent-chat state");
+    assert_eq!(state["busy"], true, "{state}");
+
+    let sent = did(&mut harness, "plugins run agent-chat send And the fingerprint?");
+    assert_eq!(sent["queued"], true, "it waits its turn rather than being refused: {sent}");
+    assert_eq!(sent["waiting"], 1);
+    steady(&mut harness);
+
+    // It is a row in the conversation area the moment it is sent, which is the other half of the
+    // ask: the question is on the screen before it has been asked of anything. The picture below is
+    // what says so; `view` is what an agent driving the pane reads.
+    let view = did(&mut harness, "plugins view agent-chat");
+    let queued = view["queued"].as_array().expect("the queue is reported as data");
+    assert_eq!(queued.len(), 1, "{view}");
+    assert_eq!(queued[0]["text"], "And the fingerprint?");
+    assert_eq!(view["draft"], "", "the composer is empty, as it is for a message that went");
+    harness.snapshot(shot("agent_chat_queued").as_str());
+
+    // Stop means stop, including what is waiting — and the words go back where they were typed.
+    did(&mut harness, "plugins run agent-chat stop");
+    steady(&mut harness);
+    let after = did(&mut harness, "plugins view agent-chat");
+    assert_eq!(after["queued"].as_array().map(Vec::len), Some(0), "{after}");
+    assert_eq!(after["draft"], "And the fingerprint?", "nothing somebody typed is thrown away");
+}
+
+/// `task-2060`: the words of a message can be selected and copied.
+///
+/// The drag itself is `unluminous-cli input drag`, which `tasks/task-1914-testing-without-stealing-focus-tdd.md`
+/// exists for; what is asserted here is the half a drag cannot show — that what comes back is the
+/// **rendered** words rather than the markdown source, which is what somebody dragged across.
+#[test]
+fn selecting_a_whole_message_answers_with_the_words_as_they_are_drawn() {
+    let mut harness = a_chat(&[
+        (unluminous_chat::Role::User, "Why?"),
+        (unluminous_chat::Role::Assistant, "## Because\n\nthe fingerprint does not carry it."),
+    ]);
+    steady(&mut harness);
+    let mut selected = None;
+    with_the_chat(&mut harness, |chat| {
+        let id = chat.chat().messages.last().expect("the answer").id;
+        chat.select_the_whole_message(id);
+        selected = chat.selected_text();
+    });
+    let selected = selected.expect("the whole of the answer");
+    assert!(selected.contains("Because"), "{selected}");
+    assert!(selected.contains("the fingerprint does not carry it."), "{selected}");
+    assert!(!selected.contains('#'), "the words as they are drawn, not the markdown: {selected}");
+}
+
 /// Enter sends what has been typed, and Shift+Enter does not.
 ///
 /// Driven through the real field rather than by calling `send`, because what this is about is the key

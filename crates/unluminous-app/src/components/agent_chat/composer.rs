@@ -388,16 +388,33 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         );
     }
     let busy = parts.session.is_busy();
+    let ready_to_send = !parts.draft.trim().is_empty() || !parts.attachments.is_empty();
+    // **Centred in the well, not measured up from its bottom edge.** `task-2060`: *"The send button
+    // is not vertically alighned (its a bit too low)."* It was five points off the bottom of a
+    // sixty-eight point well, which puts a thirty-two point disc thirteen points below the middle.
+    // The box the words are typed into is centred in the same well by `Ui::put` — see
+    // [`prompt_lines`] — so the disc beside it is centred too, and the two agree at one line and at
+    // six.
+    let middle = area.center().y;
     let disc = Rect::from_center_size(
-        Pos2::new(
-            area.right() - (SEND / 2.0 + 5.0) * scale,
-            area.bottom() - (SEND / 2.0 + 5.0) * scale,
-        ),
+        Pos2::new(area.right() - (SEND / 2.0 + 5.0) * scale, middle),
         Vec2::splat(SEND * scale),
     );
+    // **While an answer is arriving there are two things to do, so there are two discs.** Stopping
+    // is the red one at the end, where the one disc has always been; sending is a second one beside
+    // it, and it appears only when there is something to send — which is what makes a queued
+    // question reachable with the pointer as well as with `Enter`. `task-2060`.
+    let second = busy && ready_to_send;
+    let send_disc = match second {
+        true => Rect::from_center_size(
+            Pos2::new(disc.center().x - (SEND + 6.0) * scale, middle),
+            Vec2::splat(SEND * scale),
+        ),
+        false => disc,
+    };
     let field = Rect::from_min_max(
         Pos2::new(area.left() + 12.0 * scale, area.top() + 6.0 * scale),
-        Pos2::new(disc.left() - 8.0 * scale, area.bottom() - 6.0 * scale),
+        Pos2::new(send_disc.left() - 8.0 * scale, area.bottom() - 6.0 * scale),
     );
 
     parts.state.prompt_focused = false;
@@ -464,7 +481,12 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         // The field has already put a new line in the draft by the time this runs, because `TextEdit`
         // reads the frame's events first. That costs nothing: `AgentChat::send` trims the end of what
         // it is given, so the line break the field added never reaches the message.
-        if response.has_focus() && !busy {
+        //
+        // **It sends while an answer is arriving too**, because there it queues rather than being
+        // refused — see `AgentChat::send`. A chord that worked while the pane was idle and silently
+        // did nothing while it was busy would be the one moment somebody most wants to add a
+        // sentence. `task-2060`.
+        if response.has_focus() {
             let send =
                 ui.input(|input| input.key_pressed(egui::Key::Enter) && input.modifiers.is_none());
             if send {
@@ -473,38 +495,72 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         }
     }
 
-    // The one disc: send while there is something to send, stop while an answer is arriving.
-    //
-    // **It senses a click only when it can do something**, which is Unluminous's rule about a control that
-    // cannot apply. It is still *drawn*, because a button that vanished as the field emptied would
-    // make the field jump about while somebody was typing in it — absent here means inert rather than
-    // gone, and it says so by being quiet.
-    let ready = busy || !parts.draft.trim().is_empty() || !parts.attachments.is_empty();
-    let sense = match ready {
+    // The disc at the end of the prompt: stop while an answer is arriving, send otherwise — and
+    // both while an answer is arriving and something has been typed, because then there really are
+    // two things to do and the send one queues.
+    let accent = (look.palette.board_accent, super::darken(look.palette.board_accent, 0.15));
+    let red = (crate::theme::color::close(), crate::theme::color::close().gamma_multiply(0.75));
+    if busy
+        && one_disc(ui, look, area, disc, "agent-chat-stop", "Stop answering", true, red, stop_mark)
+    {
+        acts.push(Act::Stop);
+    }
+    if !busy || second {
+        // Nothing to send: the disc is there but quiet, because a button that vanished as the field
+        // emptied would make the field jump about while somebody was typing in it. **Inert rather
+        // than gone**, which is Unluminous's rule about a control that cannot apply here.
+        let colours = match ready_to_send {
+            true => accent,
+            false => (look.palette.board_card, look.palette.board_card),
+        };
+        if one_disc(
+            ui,
+            look,
+            area,
+            send_disc,
+            "agent-chat-send",
+            "Send",
+            ready_to_send,
+            colours,
+            send_arrow,
+        ) {
+            acts.push(Act::Send);
+        }
+    }
+    acts
+}
+
+/// One of the discs at the end of the prompt: a gradient circle with a mark on it, and whether it
+/// was pressed.
+///
+/// One function rather than two arms of an `if`, because since `task-2060` there can be two of them
+/// on the same row and a second copy of the gradient, the glow and the tint is two places to get the
+/// same button wrong.
+#[allow(clippy::too_many_arguments)]
+fn one_disc(
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    area: Rect,
+    disc: Rect,
+    id: &'static str,
+    name: &'static str,
+    enabled: bool,
+    (start, end): (Color32, Color32),
+    mark: fn(&egui::Painter, Pos2, Color32, f32),
+) -> bool {
+    let scale = look.scale();
+    // **It senses a click only when it can do something**, which is Unluminous's rule about a control
+    // that cannot apply.
+    let sense = match enabled {
         true => Sense::click(),
         false => Sense::hover(),
     };
-    let response = ui.interact(disc, ui.id().with("agent-chat-send"), sense);
-    let name = match busy {
-        true => "Stop answering",
-        false => "Send",
-    };
+    let response = ui.interact(disc, ui.id().with(id), sense);
     response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, ready, name.to_owned())
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name.to_owned())
     });
-    let (start, end) = match (busy, ready) {
-        (true, _) => {
-            (crate::theme::color::close(), crate::theme::color::close().gamma_multiply(0.75))
-        }
-        (false, true) => {
-            (look.palette.board_accent, super::darken(look.palette.board_accent, 0.15))
-        }
-        // Nothing to send: the disc is there but quiet, because a button that vanished as the field
-        // emptied would make the field jump about while somebody was typing in it.
-        (false, false) => (look.palette.board_card, look.palette.board_card),
-    };
     if look.chrome.is_recording() {
-        if ready {
+        if enabled {
             // The blue glow under the primary button, which is the reference's own
             // `4px 4px 12px rgba(29,79,219,0.35)`.
             look.chrome.glow(disc, disc.width() / 2.0, start.gamma_multiply(0.45), 7.0 * scale);
@@ -513,23 +569,19 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
     } else {
         ui.painter().circle_filled(disc.center(), disc.width() / 2.0, start);
     }
-    let tint = match ready {
+    let tint = match enabled {
         // The palette's own white rather than `Color32::WHITE`: the palette is closed, and a colour
         // written out here is a colour no theme can reach.
         true => look.palette.text_strong,
         false => look.palette.text_faint,
     };
-    match busy {
-        true => icon::stop(&ui.painter_at(area), disc.center(), tint),
-        false => send_arrow(&ui.painter_at(area), disc.center(), tint, scale),
-    }
-    if response.clicked() {
-        acts.push(match busy {
-            true => Act::Stop,
-            false => Act::Send,
-        });
-    }
-    acts
+    mark(&ui.painter_at(area), disc.center(), tint, scale);
+    response.clicked()
+}
+
+/// The stop square, at the shape [`one_disc`] hands its mark.
+fn stop_mark(painter: &egui::Painter, centre: Pos2, tint: Color32, _scale: f32) {
+    icon::stop(painter, centre, tint);
 }
 
 /// The arrow on the send button: a shaft and two strokes, drawn rather than lettered.

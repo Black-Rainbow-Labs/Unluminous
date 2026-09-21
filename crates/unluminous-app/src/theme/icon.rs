@@ -313,8 +313,15 @@ pub fn bin(painter: &egui::Painter, centre: Pos2, color: Color32) {
 
 /// Two crossed diagonal lines, for a button that closes something.
 pub fn cross(painter: &egui::Painter, centre: Pos2, color: Color32) {
-    let stroke = Stroke::new(1.5, color);
-    let reach = 4.0;
+    cross_at(painter, centre, color, 1.0);
+}
+
+/// The same, `scale` times as large, which is [`disclosure_at`]'s own reason kept for one more mark:
+/// a ring drawn at the zoom with a mark inside it that is not reads as a mark that has fallen out of
+/// its ring. `task-2060` drew one, at a chat pane zoomed to 1.8.
+pub fn cross_at(painter: &egui::Painter, centre: Pos2, color: Color32, scale: f32) {
+    let stroke = Stroke::new(1.5 * scale, color);
+    let reach = 4.0 * scale;
     painter.line_segment(
         [
             Pos2::new(centre.x - reach, centre.y - reach),
@@ -1329,6 +1336,50 @@ pub fn copy(painter: &egui::Painter, centre: Pos2, color: Color32) {
         CornerRadius::same(2),
         Stroke::new(1.4, color),
         egui::StrokeKind::Inside,
+    );
+}
+
+/// A spanner: a thick open head, and the handle leaving its jaws diagonally.
+///
+/// `task-2060` asks for it against the tool calls in the chat pane, where a tick used to stand: a
+/// tick says *this was ticked off*, and a tool call is not an item on a checklist — it is the model
+/// reaching for a tool. Lucide's `wrench` is the reference.
+///
+/// **The head is a heavy ring with a wide notch, and that is the whole of what makes it a wrench.**
+/// Lucide draws it as one filled path: a thick annulus with a V cut out of its lower left, and a
+/// tapering bar leaving the cut. Drawn thin, the same geometry is a magnifying glass with its handle
+/// on the wrong side — which is what the first version of this was, and `icons_material.png` had it
+/// two cells from `magnifier` where the likeness was impossible to miss. So the ring is as thick as
+/// the handle and the notch is a quarter of it.
+pub fn wrench(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    wrench_at(painter, centre, color, 1.0);
+}
+
+/// The same, `scale` times as large. See [`cross_at`] for why one more mark takes a scale.
+pub fn wrench_at(painter: &egui::Painter, centre: Pos2, color: Color32, scale: f32) {
+    // The jaws face down and to the left, which is where the handle goes.
+    let jaws = std::f32::consts::FRAC_PI_4 * 3.0;
+    // A hundred degrees of it, so the head is a **C** rather than a circle with a nick in it. That is
+    // the one thing that tells this mark from `magnifier` two cells away on the sheet, whose lens is
+    // a closed thin ring; narrower, the two are the same drawing at the fourteen pixels a person sees.
+    let open = 0.9;
+    let weight = 2.2 * scale;
+    let radius = 3.3 * scale;
+    let head = Pos2::new(centre.x + 2.1 * scale, centre.y - 2.1 * scale);
+    let mut ring: Vec<Pos2> = Vec::new();
+    for step in 0..=24 {
+        let angle = jaws + open + step as f32 / 24.0 * (std::f32::consts::TAU - open * 2.0);
+        ring.push(Pos2::new(head.x + radius * angle.cos(), head.y + radius * angle.sin()));
+    }
+    painter.add(egui::Shape::line(ring, Stroke::new(weight, color)));
+    // The handle, out of the jaws and down to the far corner, at the head's own weight so the two
+    // read as one tool rather than as a ring with a scratch beside it.
+    painter.line_segment(
+        [
+            Pos2::new(head.x + radius * jaws.cos(), head.y + radius * jaws.sin()),
+            Pos2::new(centre.x - 4.4 * scale, centre.y + 4.4 * scale),
+        ],
+        Stroke::new(weight, color),
     );
 }
 

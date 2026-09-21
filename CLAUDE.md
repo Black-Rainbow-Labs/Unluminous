@@ -538,6 +538,101 @@ Unluminous ships unchanged (`Provider::is_one_unluminous_ships`), and it is not 
 **Nothing is written** — the file keeps the row, so installing the agent brings it back at the next
 start with no settings to repair.
 
+### A question asked while an answer is arriving waits its turn, and is on the screen at once
+
+`task-2060`: *"I should be able to send new messages that get added to the queue when the agent is
+working. I should see my message immediately posted after I send it."*
+
+**The queue is held on the provider rather than pushed into the conversation**, and that is the whole
+of the design. An answer is written into a message `Session` makes **lazily**, on the first word that
+arrives — so a question pushed into the transcript while one was streaming can land *before* the
+answer it is a reply to, and the transcript is what goes back up the wire. So `AgentChat::queued`
+holds it, `components::agent_chat::conversation` draws it after the conversation with one quiet
+`Queued` line under it, and it is pushed into the conversation at the moment its turn starts.
+`Session::ask_keeping_the_id` is what that push uses: the id comes back from `send` and the pane has
+already drawn a rendered block under it, so a message that changed its number between being shown and
+being sent would be laid out a second time.
+
+**A turn that failed ends the queue rather than pulling the next one through**, and so do Stop and
+switching conversation. In each of those the words still waiting are words a person wrote a moment
+ago, so `give_the_queue_back` puts them in the composer with their pictures attached again — nothing
+typed is thrown away, and sending it again is one key press. `what_the_queue_does_next` is that
+decision as a value, asserted with no transport behind it, which is `services::wake`'s own shape.
+
+**And there are two discs while one is arriving.** The one disc at the end of the prompt has always
+been *stop while busy, send otherwise*; with a queue there are genuinely two things to do, so the red
+stop keeps its place at the end and a blue send appears beside it **only when there is something to
+send**. `Enter` queues as well — a chord that worked while the pane was idle and silently did nothing
+while it was busy would be the one moment somebody most wants to add a sentence.
+
+### The words of a message are selected, and three things had to be right for one copy to work
+
+`task-2060` asks for a message to be selectable and copyable: *"select/highlight a sub section, then
+right click and see copy option, or press Ctrl/CMD+C."*
+
+**It is the Markdown preview's own machinery, unchanged.** A message body is already a
+`markdown_text::Rendered` — a rope and a layout — so `editor_view::read_pointer` works out the
+selection and `editor_view::paint_behind` draws it, exactly as `UnluminousApp::show_markdown_preview`
+does. What is kept is one `PaneState::selection`, naming the message it is in: each message is laid
+out into its own rope, so a range across two of them would be two ranges with nothing to say how the
+gap between them reads.
+
+Three things about the copy, and each was found by driving a real window rather than by reading:
+
+- **`Ctrl`/`Cmd`+`C` is an `egui::Event::Copy` and never a key press**, because `egui-winit`
+  recognises the chord and returns. So `components::agent_chat::copying` claims the event and takes
+  it out of the frame, which is `route_the_preview_copy`'s rule; and it does not claim it at all
+  while a text box has the keyboard, because the composer is a text box in this same pane.
+- **`unluminous-cli input key c --cmd` sent a key press nothing reads**, so the chord could not be
+  driven anywhere in the window — not here, not in the preview, not in a field. `services::input`
+  sends `Event::Copy` and `Event::Cut` for the four chords `egui-winit` recognises now. Paste is
+  deliberately not one of them: that library reads the clipboard's *text* to build its event, and the
+  key going back up is the one report of the chord `pasting` above can read.
+- **A press outside the pane ends the selection**, or words selected in an answer would go on being
+  what a copy took for the rest of the session, including from the editing area beside it. Not while
+  the right click menu is open: the press that chooses one of its rows is a press outside the pane and
+  would throw away the very selection the row is about.
+
+The menu's `Copy` is the **rendered** words, so a heading comes back without its hashes; `Copy
+Message` is the source, which is what the button beside the bubble has always copied.
+
+### A message's words are centred on the glyph band, and the copy button waits to be reached
+
+Two more of `task-2060`, and both are the same kind of fault the gutter already had.
+
+**A line is taller than the letters on it** — the baseline sits `ascent` from the top and every scrap
+of extra leading is added below — so a block drawn at the top of a bubble padded equally above and
+below sits high, by more the larger the type. `components::gutter::text_band` wrote that down for one
+mark in the gutter; `markdown_text::Rendered::centring` is the same sentence about a whole block, and
+`message::words` reads it for the drawing, for the selection and for the pointer, so the three cannot
+disagree about where the letters are.
+
+**The copy button is drawn beside the bubble rather than inside it**, which is what keeps a column of
+answers from being a column of buttons — and it means the pointer has to *leave* the message to reach
+it. It went away on the frame it was left, so it could not be pressed at all. It stays up for
+`message::COPY_LINGER`, and the pointer resting on the button keeps it up as surely as the pointer on
+the message does.
+
+### A tool call is a wrench in a ring, and its arguments are laid out
+
+`task-2060`: *"The checkbox icon for tool call is not good. it should be a wrench icon, and green
+colored outline."* A tick says *ticked off*, and a tool call is not an item on a checklist. The ring
+round the disc is the state — the board's blue while it runs, git's added green when it worked, the
+close button's red when it did not — and it is drawn whether or not the decoration is recording,
+because a state that only appeared with `plugins.chrome` on is a state half the windows cannot see.
+
+**The mark takes the pane's scale, and most marks in this window do not.** A fixed twelve points is
+right where the thing beside a mark is a row of the same height at every zoom; here the ring is
+`9.0 * scale`, so at a pane zoomed to 1.8 the wrench sat loose in the middle of a big circle.
+`icon::wrench_at`, `cross_at` and `disclosure_at` are what the block draws with now.
+
+**And a tool's arguments are laid out over several lines and fenced as `json`.** They arrive as one
+long line, and a fence naming no language is a fence no plugin is asked about — so the whole block was
+drawn in the one code colour. Named, the JSON plugin tells its strings, its numbers and its three
+literal values apart, exactly as it does in a `.json` file. Anything that is not JSON is left exactly
+as it arrived: a shell command's output is not JSON and colouring it as though it were would colour it
+wrongly.
+
 ### Pasting a picture is seen on the key going **up**, and it could never have been seen any other way
 
 `task-1771` reported that pasting a picture into the composer did nothing, and the reason is in

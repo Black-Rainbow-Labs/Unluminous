@@ -260,9 +260,27 @@ pub fn dragged(
 ///
 /// The press and the release are separate frames, which is what a keyboard does and what anything
 /// reading `key_pressed` expects: both in one frame is a key that was never down.
+///
+/// **Except the two clipboard chords, which a real keyboard never delivers as a key press at all.**
+/// `egui-winit` recognises `Cmd`/`Ctrl`+`C` and `Cmd`/`Ctrl`+`X` in `on_keyboard_input`, pushes
+/// `Event::Copy` or `Event::Cut`, and **returns** — so the key press is swallowed and nothing in
+/// Unluminous ever sees one. That is why `Copy` is marked in `actions::menus` as not coming from the
+/// keyboard, and why `UnluminousApp::route_the_preview_copy` claims the event rather than the chord.
+/// Sending the key press here would therefore have been sending something no window receives, and
+/// `unluminous-cli input key c --cmd` copied nothing anywhere in the window. `task-2060` found it
+/// against a selection in a chat message; it was as true of the Markdown preview.
+///
+/// Paste is deliberately **not** one of these. `egui-winit` reads the clipboard's *text* to build
+/// `Event::Paste`, and this has no clipboard; the key going back up is what
+/// `components::agent_chat::pasting` reads for a picture, which is the one report of the chord that
+/// reaches Unluminous at all.
 pub fn pressed(key: egui::Key, modifiers: egui::Modifiers, times: usize) -> Vec<Step> {
     let mut steps = Vec::new();
     for _ in 0..times.clamp(1, REPEATS) {
+        if let Some(event) = the_clipboard_chord(key, modifiers) {
+            steps.push(Step::of(event));
+            continue;
+        }
         steps.push(Step::of(egui::Event::Key {
             key,
             physical_key: Some(key),
@@ -279,6 +297,22 @@ pub fn pressed(key: egui::Key, modifiers: egui::Modifiers, times: usize) -> Vec<
         }));
     }
     steps
+}
+
+/// The event `egui-winit` sends for a clipboard chord, or [`None`] for an ordinary key.
+///
+/// The four shapes it recognises, written out so the two agree: the command key with `C` or `X`, and
+/// the two older spellings — `Ctrl`+`Insert` copies and `Shift`+`Delete` cuts — that Windows has had
+/// since before either of the letters did.
+fn the_clipboard_chord(key: egui::Key, modifiers: egui::Modifiers) -> Option<egui::Event> {
+    let copy =
+        (modifiers.command && key == egui::Key::C) || (modifiers.ctrl && key == egui::Key::Insert);
+    if copy {
+        return Some(egui::Event::Copy);
+    }
+    let cut =
+        (modifiers.command && key == egui::Key::X) || (modifiers.shift && key == egui::Key::Delete);
+    cut.then_some(egui::Event::Cut)
 }
 
 /// Text typed, one character a frame.
@@ -389,6 +423,42 @@ mod tests {
 
     /// A drag is a press, some moves and a release, and the moves are frames of their own — a drag
     /// settled from `Response::drag_delta` is the difference between two frames.
+    /// `task-2060`: a real keyboard never delivers `Cmd`/`Ctrl`+`C` as a key press.
+    ///
+    /// `egui-winit` turns it into `Event::Copy` and returns, swallowing the press — so a window is
+    /// only ever offered the event. Sending the press was sending something nothing in Unluminous
+    /// reads, and `input key c --cmd` therefore copied nothing anywhere: not in a chat message, not
+    /// in the Markdown preview, not in a text field.
+    #[test]
+    fn the_clipboard_chords_are_sent_as_the_events_a_real_keyboard_produces() {
+        let command = egui::Modifiers { command: true, ..Default::default() };
+        let steps = pressed(egui::Key::C, command, 1);
+        assert_eq!(steps.len(), 1, "one event, not a press and a release");
+        assert!(matches!(steps[0].events.as_slice(), [egui::Event::Copy]));
+        assert!(matches!(
+            pressed(egui::Key::X, command, 1)[0].events.as_slice(),
+            [egui::Event::Cut]
+        ));
+        // The older spellings Windows has always had.
+        let control = egui::Modifiers { ctrl: true, ..Default::default() };
+        assert!(matches!(
+            pressed(egui::Key::Insert, control, 1)[0].events.as_slice(),
+            [egui::Event::Copy]
+        ));
+        let shift = egui::Modifiers { shift: true, ..Default::default() };
+        assert!(matches!(
+            pressed(egui::Key::Delete, shift, 1)[0].events.as_slice(),
+            [egui::Event::Cut]
+        ));
+        // **Paste is not one of them**: `egui-winit` reads the clipboard's text to build its event
+        // and this has no clipboard, and the key going back up is the one report of the chord
+        // `components::agent_chat::pasting` can read.
+        let paste = pressed(egui::Key::V, command, 1);
+        assert_eq!(paste.len(), 2, "a press and a release, as for any other key");
+        // And an ordinary letter is untouched.
+        assert_eq!(pressed(egui::Key::C, egui::Modifiers::default(), 1).len(), 2);
+    }
+
     #[test]
     fn a_drag_moves_over_frames_rather_than_all_at_once() {
         let mut queue = Queue::default();
