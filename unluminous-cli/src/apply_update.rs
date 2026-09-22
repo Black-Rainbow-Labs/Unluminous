@@ -256,8 +256,16 @@ mod tests {
         assert!(log.contains("started"), "{log}");
         // `where.exe` with Inno's switches exits non-zero, which the helper reports rather than hides.
         assert!(code == 0 || log.contains("the install failed"), "{log}");
+        // The stand-in that was relaunched may still be running for a moment, and a program that is
+        // running cannot be deleted on Windows, so its file is asked for again until it goes.
         for name in ["setup.exe", "relaunched.exe", "apply-update.log", "setup.log"] {
-            let _ = std::fs::remove_file(folder.join(name));
+            for _ in 0..50 {
+                let path = folder.join(name);
+                if !path.exists() || std::fs::remove_file(&path).is_ok() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
         }
         let _ = std::fs::remove_dir(&folder);
     }
