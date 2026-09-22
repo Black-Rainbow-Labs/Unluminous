@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Install and restart, a daily check, preview zoom, Ctrl+[ and Mermaid that reads (`task-2063`)
+- Drive update install and skip from the command line, accept the redrawn diagrams (`task-2063`)
+- The helper's test waits for its stand-in to exit before deleting it (`task-2063`)
+
 ## 0.54.2 — 2026-09-21
 
 - A release reclaims the build output it just superseded (`task-2011`)
