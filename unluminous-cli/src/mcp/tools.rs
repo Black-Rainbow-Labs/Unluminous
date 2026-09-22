@@ -1617,6 +1617,10 @@ mod tests {
         //            904 errors to 540. Neither was the cause. What found the cause was splitting
         //            the calls by which tool they went to, and seeing the client's own `glob` and
         //            `bash` receiving full arguments in the same sessions.
+        //   24,601   `task-2063` adding `update install`, `update skip` and `update status`, which is
+        //            what makes the notice's two buttons reachable by an agent. Their summaries were
+        //            cut to one sentence each first, which took the figure from 24,730 to this, and
+        //            the ceiling moves to 25,000 for the rest.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
@@ -1624,7 +1628,7 @@ mod tests {
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
         assert!(
-            grouped.len() / 4 < 24_500,
+            grouped.len() / 4 < 25_000,
             "grouped MCP schema exceeded budget: {} bytes",
             grouped.len()
         );

@@ -583,6 +583,51 @@ pub struct RankKey {
     pub file_order: usize,
 }
 
+/// Where a name no definer declares was most likely declared, for `Ctrl`/`Cmd`+Click.
+///
+/// `task-2063`. A parameter, a closure parameter, a `for` variable, a `match` binding and a struct
+/// field have no keyword in front of them, so [`FileSymbols::read`] finds no definition and a click on
+/// one used to say only that there was none. The reference editor goes to the declaration, and in a file read
+/// token by token the place a name is first written is almost always it:
+///
+/// - **A member access**, a name written straight after a `.`, is a field or a method. Its declaration
+///   is the first place in the file the name is written **without** a `.` in front of it, which is
+///   where a struct or a class lists it.
+/// - **Anything else** is a local or a parameter, so it is looked for from the start of the function
+///   the click is in, the nearest function definition above it. The first time the name is written
+///   there is where it was bound: the parameter list, the `let` pattern, or the `for`.
+///
+/// `words` is [`FileSymbols::word_ranges`], in order, and `definitions` is
+/// [`FileSymbols::definitions`]. The answer can be `clicked` itself, which means the click was on the
+/// declaration, and the caller then lists the references as it does for any other definition.
+/// Nothing is the answer when the name is not written anywhere it could have been declared.
+pub fn first_written(
+    text: &str,
+    words: &[Range<usize>],
+    definitions: &[Definition],
+    clicked: Range<usize>,
+) -> Option<Range<usize>> {
+    let name = text.get(clicked.clone())?;
+    let after_a_dot = |range: &Range<usize>| text[..range.start].trim_end().ends_with('.');
+    let named = |range: &&Range<usize>| text.get((*range).clone()) == Some(name);
+    if after_a_dot(&clicked) {
+        return words.iter().filter(named).find(|range| !after_a_dot(range)).cloned();
+    }
+    let scope = definitions
+        .iter()
+        .filter(|definition| definition.kind == SymbolKind::Function)
+        .filter(|definition| definition.name_range.start < clicked.start)
+        .map(|definition| definition.name_range.start)
+        .max()
+        .unwrap_or(0);
+    words
+        .iter()
+        .filter(named)
+        .filter(|range| range.start >= scope && range.start <= clicked.start)
+        .find(|range| !after_a_dot(range))
+        .cloned()
+}
+
 /// The order candidates should be offered in, as indices into `keys`.
 ///
 /// 1. Definitions in the **same file**, the nearest one *above* the point first — which is what
@@ -743,6 +788,32 @@ mod tests {
         // And the end can be the half of it that is wrong.
         let ending_inside = vec![(0..1, "x".to_owned())];
         assert_eq!(applied(text, &ending_inside), text);
+    }
+
+    /// A name no keyword declares goes to where it is first written in its function, and a field goes
+    /// to the first place it is written without a `.` in front of it. `task-2063`.
+    #[test]
+    fn a_name_no_definer_declares_goes_to_where_it_is_first_written() {
+        let text = "struct Pad { items: Vec<u8> }\n\
+                    fn one(count: u8) { let x = count; }\n\
+                    fn two(count: u8) {\n    for item in 0..count { let y = item + count; }\n    self.items.len();\n}\n";
+        let read = FileSymbols::read(text, &rust());
+        let words = read.word_ranges();
+        let definitions = read.definitions();
+        let nth = |needle: &str, n: usize| {
+            let start = text.match_indices(needle).nth(n).expect("in the text").0;
+            start..start + needle.len()
+        };
+        let answer = |clicked| first_written(text, words, definitions, clicked);
+
+        // `count` in `two`'s body goes to `two`'s parameter, not `one`'s.
+        assert_eq!(answer(nth("count", 4)), Some(nth("count", 2)));
+        // A `for` variable goes to the `for`.
+        assert_eq!(answer(nth("item", 2)), Some(nth("item ", 0).start..nth("item ", 0).start + 4));
+        // The parameter itself is its own declaration, which the caller reads as "list the uses".
+        assert_eq!(answer(nth("count", 2)), Some(nth("count", 2)));
+        // A field goes to the struct.
+        assert_eq!(answer(nth("items", 1)), Some(nth("items", 0)));
     }
 
     /// The Rust grammar as the bundled plugin describes it, cut down to what these tests need.

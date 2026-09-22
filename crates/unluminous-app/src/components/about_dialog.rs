@@ -41,6 +41,9 @@ pub struct About {
     /// **The box does not ask on its own**, which is `services::update`'s rule: it shows what a
     /// check found if there has been one, and offers the button either way. `task-1804` §6.
     pub update: Option<String>,
+    /// Whether a newer version can be installed from here, which puts `Install & Restart` in the
+    /// footer. `task-2063`.
+    pub installable: bool,
 }
 
 impl About {
@@ -51,12 +54,18 @@ impl About {
             version: build_info::VERSION.to_owned(),
             built: build_info::BUILD_DATE.to_owned(),
             update: None,
+            installable: false,
         }
     }
 
     /// The same, saying what a check found.
     pub fn with_update(self, update: Option<String>) -> Self {
         Self { update, ..self }
+    }
+
+    /// The same, offering to install what the check found.
+    pub fn installable(self, installable: bool) -> Self {
+        Self { installable, ..self }
     }
 
     /// The lines, in the order they are read. The first has no label of its own, which is why this
@@ -101,12 +110,23 @@ pub fn show(ctx: &egui::Context, about: &About) -> Outcome {
         // one that does the thing"* -- and the thing an About box does is close. Putting the check
         // last took Enter away from Done, which is what `enter_presses_the_button_that_does_the_thing`
         // is there to notice, and it noticed.
-        match modal::footer(ui, area, &[("Check for Updates", true), ("Done", true)]) {
-            Some(0) => {
+        // `Install & Restart` joins them when a check has found something this Unluminous can install.
+        // `task-2063`: *"Check for updates should provide me an option to install & restart"*.
+        let buttons: &[(&str, bool)] = match about.installable {
+            true => &[("Install & Restart", true), ("Check for Updates", true), ("Done", true)],
+            false => &[("Check for Updates", true), ("Done", true)],
+        };
+        let offset = usize::from(about.installable);
+        match modal::footer(ui, area, buttons) {
+            Some(0) if about.installable => {
+                outcome.install = true;
+                false
+            }
+            Some(index) if index == offset => {
                 outcome.check = true;
                 false
             }
-            Some(1) => true,
+            Some(_) => true,
             _ => crossed,
         }
     });
@@ -121,6 +141,8 @@ pub struct Outcome {
     pub close: bool,
     /// Ask the releases page whether there is a newer Unluminous.
     pub check: bool,
+    /// Install the newer version a check found, and start it again.
+    pub install: bool,
 }
 
 /// One line of the box: its label in the ordinary control colour, its value in the strong one.
@@ -156,6 +178,7 @@ mod tests {
             version: "0.2.0".to_owned(),
             built: "2026-08-25 10:45pm".to_owned(),
             update: update.map(str::to_owned),
+            installable: false,
         }
     }
 

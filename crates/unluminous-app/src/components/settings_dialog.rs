@@ -1253,12 +1253,12 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn 
         "The project's own .gitignore is read already; this is a list beside it. The explorer goes on showing everything either way.",
     );
 
-    // `task-1804` §6. Off, and the tick box is how it stops being off -- see `UpdateCheck`.
+    // `task-2063`: once a day by default, and the tick box is how it stops. See `UpdateCheck`.
     pen = section(ui, area, pen + 12.0, "Updates");
     let row = row_at(area, pen);
-    let mut at_start = settings.update_check.at_start();
-    if checkbox(ui, row, "Check for a newer version at startup", &mut at_start) {
-        settings.update_check = if at_start { UpdateCheck::Start } else { UpdateCheck::Off };
+    let mut on = settings.update_check.is_on();
+    if checkbox(ui, row, "Check for a newer version once a day", &mut on) {
+        settings.update_check = if on { UpdateCheck::Daily } else { UpdateCheck::Off };
         changed = true;
     }
     pen += 32.0;
@@ -1266,7 +1266,7 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn 
         ui,
         area,
         pen,
-        "One request to the releases page as the window opens. Off, Unluminous sends nothing at all until you ask: Check for Updates on the Unluminous menu works either way, and nothing is ever installed for you.",
+        "One request to unluminous.com a day, shared by every window. A newer version is offered in a notice with Install & Restart and Don't Ask Again. Off, Unluminous sends nothing until you ask: Check for Updates on the Unluminous menu works either way.",
     );
     drawn(area, pen, changed)
 }

@@ -282,6 +282,7 @@ impl UnluminousApp {
         // The same reckoning `editor caret --line --column` uses, from the same function, so the
         // prompt and the command line cannot land in two different places.
         let offset = crate::app::cli::offset_at(self.document().text(), line, column);
+        self.note_a_jump();
         self.document_mut().apply(Command::PlaceCaret { offset, extend: false });
         self.reveal_caret = true;
         let landed = self.document().text().byte_to_line(offset) + 1;

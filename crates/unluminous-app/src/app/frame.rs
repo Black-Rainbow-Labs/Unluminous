@@ -419,6 +419,10 @@ impl UnluminousApp {
         if outcome.minimise {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
         }
+        if outcome.dragged {
+            let now = ui.input(|input| input.time);
+            self.unlatch.asked(now);
+        }
         if outcome.toggle_maximise {
             let maximised = ui.input(|input| input.viewport().maximized.unwrap_or(false));
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!maximised));
@@ -604,12 +608,22 @@ impl UnluminousApp {
             // belong to that box rather than to the document, and it already does all three itself.
             // The rest of the menu is untouched, so control and S in the filter box still saves.
             let in_a_text_box = text_box_has_the_keyboard(ui.ctx());
+            // **`Ctrl+[` and `Ctrl+]` are the terminal's while a terminal has the keyboard.** In a
+            // terminal the first is `Escape` and the second is how a person detaches from `claude`,
+            // and the menu's use of the pair for going back and forward (`task-2063`) must not take
+            // either away from a program.
+            let in_a_terminal = self.a_terminal_has_the_keyboard();
             *action = ui.input(|input| {
                 let mut found = None;
                 for event in &input.events {
                     if let egui::Event::Key { key, pressed: true, modifiers, .. } = event {
                         if let Some(chosen) = actions::action_for_key(menus, *key, modifiers) {
                             if in_a_text_box && chosen.belongs_to_a_focused_text_box() {
+                                continue;
+                            }
+                            let a_bracket =
+                                matches!(key, egui::Key::OpenBracket | egui::Key::CloseBracket);
+                            if in_a_terminal && a_bracket {
                                 continue;
                             }
                             found = Some(chosen);
@@ -732,10 +746,13 @@ impl UnluminousApp {
             // A single click opens the file and leaves the keyboard here, which is VS Code's own
             // behaviour and is what makes `Down` `Down` `Down` a way to look through a folder. A
             // double click is somebody going to the editor, so the keyboard goes with them.
+            // Each is a jump `Navigate Back` comes back from (`task-2063`).
             if let Some(path) = explorer_outcome.open {
+                self.note_a_jump();
                 let _ = self.open_path(&path);
             }
             if let Some(path) = explorer_outcome.open_permanently {
+                self.note_a_jump();
                 let _ = self.open_path_permanently(&path);
                 self.focus = Focus::Editor;
             }
@@ -1349,6 +1366,12 @@ impl UnluminousApp {
         if self.take_the_update_answer() {
             ui.ctx().request_repaint();
         }
+        // The daily check, when it is due, and how far an install has got. `task-2063`.
+        let now = ui.input(|input| input.time);
+        self.ask_on_a_schedule(now);
+        if self.take_the_install_progress() {
+            ui.ctx().request_repaint();
+        }
     }
 
     /// The text prompt, drawn before the Settings window because a prompt opened from a menu belongs
@@ -1525,6 +1548,7 @@ impl UnluminousApp {
             if let Some(path) = outcome.open {
                 // A tab of its own, not the transient one: choosing a file out of a list of file
                 // names is not glancing at it.
+                self.note_a_jump();
                 if self.open_path_permanently(&path).is_ok() {
                     self.focus = Focus::Editor;
                 }
@@ -1568,6 +1592,7 @@ impl UnluminousApp {
                 find.search_again();
             }
             if let Some((path, range)) = outcome.open {
+                self.note_a_jump();
                 self.open_the_match(&path, range);
             }
             if !outcome.close {
@@ -1587,10 +1612,20 @@ impl UnluminousApp {
         if let Some(about) = self.about.take() {
             // What a check found, read fresh every frame: a check started from the box itself
             // answers while the box is still open, and the line changes under it. `task-1804` §6.
-            let showing = about.clone().with_update(self.update_line());
+            let installable =
+                matches!(&self.update_answer, Some(crate::services::update::Answer::Newer(_)))
+                    && crate::services::update::PLATFORM_FIELD.is_some()
+                    && crate::services::update_install::installed_at().is_ok()
+                    && self.install.as_ref().is_none_or(|install| !install.is_running());
+            let showing = about.clone().with_update(self.update_line()).installable(installable);
             let outcome = about_dialog::show(ui.ctx(), &showing);
             if outcome.check {
                 self.check_for_updates();
+            }
+            if outcome.install {
+                if let Err(problem) = self.install_the_update(true) {
+                    self.toasts.say(problem, crate::components::toast::Kind::Problem);
+                }
             }
             if !outcome.close {
                 self.about = Some(about);
@@ -1813,7 +1848,13 @@ impl UnluminousApp {
         if let Some(dismissed) =
             crate::components::toast::show(ui, full, &self.toasts, self.settings.font_size)
         {
-            self.toasts.dismiss(dismissed);
+            match dismissed {
+                crate::components::toast::Pressed::Dismissed(index) => self.toasts.dismiss(index),
+                crate::components::toast::Pressed::Acted(index, act) => {
+                    self.toasts.dismiss(index);
+                    self.act_on_a_notice(act);
+                }
+            }
         }
     }
 
@@ -1838,7 +1879,15 @@ impl UnluminousApp {
         // divider. Read here because this is after every pane and every panel has been drawn, which is
         // the earliest moment all of them are known — the ordering `settle_the_panel_drag` keeps.
         let dividers = crate::components::splitter::dividers_drawn_this_frame(ui.ctx());
-        let direction = resize_edges::show(ui, full, maximized, &dividers);
+        // **None of egui's grips once Windows answers the hit test itself** (`task-2063`): a press on
+        // an edge is then a press on the window's frame, which never reaches egui, and the grips would
+        // only be eight widgets nothing can press. The dividers are handed to the hit test instead, so
+        // it gives up the same points the grips do. See `services::windows_resize`.
+        crate::services::windows_resize::keep_clear(&dividers, ui.ctx().pixels_per_point());
+        let direction = match self.native_resize {
+            true => None,
+            false => resize_edges::show(ui, full, maximized, &dividers),
+        };
         // **And nothing is asked for while a page holds the operating system's keyboard**, which is the
         // same rule read against the other case the window manager throws a request away in.
         // `egui-winit` already refuses to forward `StartDrag` unless `Window::has_focus()`, and `winit`
@@ -1864,6 +1913,10 @@ impl UnluminousApp {
             self.last_resize_asked = Some(gesture.direction());
             match gesture {
                 resize_edges::Gesture::Begin(direction) => {
+                    // Watched, so a request that starts no size loop cannot leave `winit`'s drag flag
+                    // stuck. See `services::windows_resize::Unlatch`.
+                    let now = ui.input(|input| input.time);
+                    self.unlatch.asked(now);
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::BeginResize(direction));
                 }
                 // **macOS has nothing to hand the drag to, so the window moves its own edge.**

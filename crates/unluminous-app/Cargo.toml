@@ -37,6 +37,9 @@ inillucent-driver.workspace = true
 # two cannot come to disagree about what a command is called. It brings no window with it.
 unluminous-cli.workspace = true
 serde_json.workspace = true
+# The SHA-256 an update's installer is checked against before it is run. Already in the tree through
+# `wry` and `unluminous-db`. See `services/update_install.rs`.
+sha2.workspace = true
 url.workspace = true
 percent-encoding.workspace = true
 mime_guess.workspace = true
@@ -108,6 +111,10 @@ path = "examples/plugin_icon.rs"
 [[example]]
 name = "mermaid_check"
 path = "examples/mermaid_check.rs"
+
+[[example]]
+name = "mermaid_audit"
+path = "examples/mermaid_audit.rs"
 
 [[example]]
 name = "mermaid_texts"

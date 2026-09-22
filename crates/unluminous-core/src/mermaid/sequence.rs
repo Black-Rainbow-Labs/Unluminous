@@ -428,8 +428,11 @@ fn measure_event(event: &Event, options: &Options) -> Label {
         Event::Open { label, .. } | Event::Divide { label } => label.as_str(),
         _ => "",
     };
-    text::measure(words, &style, options.metrics, 200.0)
+    text::measure(words, &style, options.metrics, MESSAGE_WRAP)
 }
+
+/// How wide a message's words may run before they wrap onto another line.
+const MESSAGE_WRAP: f32 = 200.0;
 
 /// Work out where every column and every row goes.
 fn measure_frame(
@@ -449,7 +452,16 @@ fn measure_frame(
             continue;
         };
         let (left, right) = (*from.min(to), *from.max(to));
+        // A message to oneself writes its words to the right of the loop, so the gap on that side has
+        // to hold them, or they run over the next column's lifeline and into its messages.
         if left == right {
+            if let Some(gap) = gaps.get_mut(left) {
+                let wanted = SELF_LOOP_TEXT + messages[index].width + 12.0;
+                let spanned = *gap + (widths[left] + widths[left + 1]) / 2.0;
+                if wanted > spanned {
+                    *gap += wanted - spanned;
+                }
+            }
             continue;
         }
         let wanted = messages[index].width + 24.0;
@@ -479,7 +491,21 @@ fn measure_frame(
     let mut rows = Vec::with_capacity(diagram.events.len());
     let mut y = top + HEAD_HEIGHT + 18.0;
     for (index, event) in diagram.events.iter().enumerate() {
-        let height = row_height(event, &messages[index], options);
+        let label = &messages[index];
+        // **A message's arrow sits under its words**, not in the middle of its row (`task-2063`). The
+        // words are drawn above the arrow, so with the arrow in the middle a message of three or four
+        // lines ran up out of its row: into the heads for the first message, and into the row above for
+        // a message to oneself, whose loop starts ten points higher still.
+        if let Event::Message { from, to, .. } = event {
+            let loop_rise = if from == to { 12.0 } else { 0.0 };
+            let above = (label.height + 12.0 + loop_rise).max(ROW / 2.0);
+            let below = (12.0 + loop_rise).max(ROW / 2.0);
+            y += above;
+            rows.push(y);
+            y += below;
+            continue;
+        }
+        let height = row_height(event, label, options);
         y += height / 2.0;
         rows.push(y);
         y += height / 2.0;
@@ -743,20 +769,43 @@ fn draw_message(
     if label.is_empty() && number.is_none() {
         return;
     }
-    let words = match number {
-        Some(count) => format!("{count}. {text}"),
-        None => text.to_owned(),
-    };
-    let middle = if from == to {
-        Point::new(start + 44.0, y - label.height - 4.0)
-    } else {
-        Point::new((start + finish) / 2.0, y - label.height - 6.0)
+    // **The lines the row was measured for, not one line of the whole text** (`task-2063`). The words
+    // were measured wrapped at `MESSAGE_WRAP`, which is what the gap between the two columns and the
+    // height of the row were sized for, and then drawn as one unwrapped line: a long message ran past
+    // both columns, off the left of the diagram and into the heads, and sat a line or two above its own
+    // arrow because the row had room for the lines it did not draw. A numbered message is measured again
+    // with its number in front, because that is what is drawn.
+    let numbered;
+    let label = match number {
+        Some(count) => {
+            let words = format!("{count}. {text}");
+            numbered =
+                text::measure(&words, &options.style(0.85, false), options.metrics, MESSAGE_WRAP);
+            &numbered
+        }
+        None => label,
     };
     let style = parts::text_style(options, 0.85, false, theme.text);
-    let width = text::width_of(&words, &options.style(0.85, false), options.metrics);
-    let anchor = if from == to { Anchor::Start } else { Anchor::Middle };
-    parts::one_line(scene, &words, middle, &style, anchor, width);
+    match from == to {
+        true => parts::label_at(
+            scene,
+            label,
+            Point::new(start + SELF_LOOP_TEXT, y - 10.0 - label.height - 2.0),
+            &style,
+            Anchor::Start,
+        ),
+        false => parts::label_at(
+            scene,
+            label,
+            Point::new((start + finish) / 2.0, y - label.height - 4.0),
+            &style,
+            Anchor::Middle,
+        ),
+    }
 }
+
+/// How far to the right of its lifeline a message to oneself starts its words: past the loop.
+const SELF_LOOP_TEXT: f32 = 44.0;
 
 /// Draw a note as a small panel beside or over the participants it names.
 #[allow(clippy::too_many_arguments)]
@@ -1064,7 +1113,52 @@ mod tests {
         let text =
             "sequenceDiagram\n A ->> B: a very long message indeed that needs plenty of room\n";
         let scene = check::drawn(text, &options(), &["a very long message"]);
-        assert!(scene.size.width > 400.0, "the columns were pushed apart: {:?}", scene.size);
+        // Wrapped, and drawn wrapped: every line of the message fits between the two columns, which
+        // is to say inside the diagram. `task-2063` found it measured wrapped and drawn on one line.
+        let lines: Vec<&str> = scene
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Text { text, .. } if text.contains("message") || text.contains("room") => {
+                    Some(text.as_str())
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(lines.len() > 1, "the message wraps: {lines:?}");
+        for line in lines {
+            let width = line.chars().count() as f32 * 10.0;
+            assert!(
+                width < scene.size.width - 2.0 * parts::MARGIN,
+                "{line:?} fits in {:?}",
+                scene.size
+            );
+        }
+        assert!(scene.size.width > 200.0, "the columns were pushed apart: {:?}", scene.size);
+    }
+
+    /// A message to oneself writes its words to the right of its loop, so the next column moves out of
+    /// their way. `task-2063`.
+    #[test]
+    fn a_message_to_oneself_has_room_beside_it() {
+        let text = "sequenceDiagram\n participant A\n participant B\n A ->> A: resolveMinimaxH3Mode reference\n A ->> B: go\n";
+        let scene = check::drawn(text, &options(), &["resolveMinimaxH3Mode"]);
+        let head = scene
+            .items
+            .iter()
+            .find_map(|item| match item {
+                Item::Text { at, text, .. } if text == "B" => Some(at.x),
+                _ => None,
+            })
+            .expect("B's head");
+        for item in &scene.items {
+            if let Item::Text { at, text, .. } = item {
+                if text.contains("resolve") || text.contains("reference") {
+                    let end = at.x + text.chars().count() as f32 * 10.0;
+                    assert!(end < head, "{text:?} ends at {end}, before B's lifeline at {head}");
+                }
+            }
+        }
     }
 
     #[test]

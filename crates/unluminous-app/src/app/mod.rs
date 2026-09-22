@@ -61,6 +61,7 @@ mod settings_changes;
 pub mod space;
 pub mod symbols;
 mod terminals;
+mod updating;
 mod zooming;
 
 use std::collections::HashMap;
@@ -857,6 +858,12 @@ pub struct UnluminousApp {
     /// question `task-1945` put a guard on and `task-2004` found was refusing every resize while a browser
     /// node's page held the operating system's keyboard. `status --section window` reports it.
     pub(crate) last_resize_asked: Option<egui::viewport::ResizeDirection>,
+    /// Whether Windows is answering the hit test for the window's edges, which is how the window is
+    /// resized there since `task-2063`. See `services::windows_resize`.
+    pub(crate) native_resize: bool,
+    /// The last drag or resize handed to `winit`, watched so a request that started nothing does not
+    /// leave `winit`'s drag flag stuck. See `services::windows_resize::Unlatch`.
+    pub(crate) unlatch: crate::services::windows_resize::Unlatch,
     /// Where the native browser views were asked to go last frame, for a test.
     ///
     /// **A native child is a real window and nothing Unluminous draws**, so no screenshot holds one and no
@@ -1194,6 +1201,13 @@ pub struct UnluminousApp {
     pub(crate) update: Option<crate::services::update::Check>,
     /// What the last check came to, so the About box can say it without asking again.
     pub(crate) update_answer: Option<crate::services::update::Answer>,
+    /// Whether the check running now was asked for by a person or an agent, rather than the daily one,
+    /// which decides whether "this is the newest" is worth a notice. `task-2063`.
+    pub(crate) update_asked_by_a_person: bool,
+    /// When the window last looked at whether the daily check was due, in seconds of egui's clock.
+    pub(crate) update_looked_at: f64,
+    /// A newer version being downloaded and checked, when `Install & Restart` was pressed.
+    pub(crate) install: Option<crate::services::update_install::Install>,
     /// The Find bar over the file that is showing, when it is open. `task-1804` §3.1.
     ///
     /// A bar rather than a modal, and it holds no thread: the file being searched is already in
@@ -1377,6 +1391,8 @@ impl UnluminousApp {
             page_was_pressed: false,
             wallpaper: crate::services::backgrounds::Wallpaper::default(),
             last_resize_asked: None,
+            native_resize: false,
+            unlatch: crate::services::windows_resize::Unlatch::default(),
             tree,
             renderer,
             settings,
@@ -1458,6 +1474,9 @@ impl UnluminousApp {
             closed_tabs: Vec::new(),
             update: None,
             update_answer: None,
+            update_asked_by_a_person: false,
+            update_looked_at: 0.0,
+            install: None,
             find: None,
             find_in_files: None,
             references: None,
@@ -1591,7 +1610,7 @@ impl UnluminousApp {
         // one place anything is sent without somebody pressing something, and it happens because
         // they turned it on. `task-1804` §6; see `services::update` for the whole of the rule.
         if self.settings.update_check.at_start() {
-            self.check_for_updates();
+            self.check_for_updates_on_its_own();
         }
         store.remember_project(self.tree.root());
         // And that this project has a window open, which is what `task-1693` asks Unluminous to bring
@@ -2286,6 +2305,14 @@ impl eframe::App for UnluminousApp {
         // `services::windows_focus` says what one costs and what is sent. `task-2009`.
         let winit_says = ui.ctx().input(|input| input.viewport().focused).unwrap_or(false);
         self.os_focus = crate::services::windows_focus::settle(_frame, winit_says);
+        // **Windows resizes the window from its edges itself**, once the window answers the hit test
+        // for them, and a drag `winit` was asked for that started nothing is cleared rather than left
+        // to stop every later drag. `task-2063`; see `services::windows_resize`.
+        if !self.native_resize {
+            self.native_resize = crate::services::windows_resize::install(_frame);
+        }
+        let now = ui.ctx().input(|input| input.time);
+        crate::services::windows_resize::settle(_frame, &mut self.unlatch, now);
         // The one thing reconciling needs from the frame, taken while there is a frame to ask.
         self.browser.remember_window(_frame);
         UnluminousApp::ui(self, ui);

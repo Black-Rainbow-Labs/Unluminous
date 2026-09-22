@@ -57,6 +57,43 @@ impl UnluminousApp {
         }
     }
 
+    /// A pinch, or the wheel with the zoom modifier held, over the Markdown preview.
+    ///
+    /// `task-2063`. The size is the editor's own, `appearance.font.size`, because the preview is laid
+    /// out from the source's base style and two sizes would be two numbers meaning one thing. What is
+    /// the preview's own is the point that stays still: the line under the pointer in the page, which
+    /// is what [`Self::anchor_the_preview`] remembers before the size moves. The source beside it, in
+    /// the side by side mode, keeps the top of its view, which `set_the_font_everywhere` already does
+    /// for every view that has no anchor of its own.
+    pub(crate) fn claim_a_zoom_over_the_preview(&mut self, ui: &egui::Ui, area: Rect) {
+        if self.zoom == ZoomClaim::Taken {
+            return;
+        }
+        let Some(at) = ui
+            .input(|input| input.pointer.hover_pos().or_else(|| input.pointer.latest_pos()))
+            .filter(|at| area.contains(*at))
+        else {
+            return;
+        };
+        self.zoom = ZoomClaim::Taken;
+        let steps = self.zoom_steps(ui);
+        if steps == 0 {
+            return;
+        }
+        let top = area.top() + size::EDITOR_PADDING_Y;
+        self.anchor_the_preview((at.y - top).max(0.0));
+        for _ in 0..steps.abs() {
+            self.set_font_size(settings::step_font_size(self.settings.font_size, steps > 0));
+        }
+    }
+
+    /// Remember the text of the preview `above` points below the top of its view.
+    pub(crate) fn anchor_the_preview(&mut self, above: f32) {
+        let file = self.files.active_mut();
+        let at = file.cached.preview_layout.anchor_at_y(file.preview_scroll + above);
+        file.preview_anchor = Some(files::ViewAnchor { at, above });
+    }
+
     /// How many whole steps this frame's gesture is worth, and nothing else.
     ///
     /// Split out from [`Self::zoom_the_text`] because `task-1771` makes **every** pane zoomable and what

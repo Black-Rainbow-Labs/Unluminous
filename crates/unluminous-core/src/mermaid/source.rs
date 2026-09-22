@@ -86,6 +86,8 @@ impl Source {
         let mut named = false;
         let mut in_front_matter = false;
         let mut front_matter_seen = false;
+        // Whether the last line left a quoted label open, so this one is the rest of it.
+        let mut continuing = false;
 
         for (index, raw) in text.split('\n').enumerate() {
             let number = index + 1;
@@ -132,7 +134,18 @@ impl Source {
             if body.starts_with("accDescr") {
                 continue;
             }
+            // **A quoted label left open carries on over the next lines** (`task-2063`), which Mermaid
+            // allows and which a long label is written as: `A["one sentence,` then the rest of it on the
+            // lines under it. Read as separate statements, the first line was a bracket with no end and
+            // the diagram was refused. The lines are joined with a space, as Mermaid shows them.
+            if let Some(open) = source.lines.last_mut().filter(|_| continuing) {
+                open.text.push(' ');
+                open.text.push_str(body);
+                continuing = opens_a_quoted_label(&open.text);
+                continue;
+            }
             source.lines.push(Line { number, text: body.to_owned(), indent: columns(line) });
+            continuing = opens_a_quoted_label(body);
         }
         named.then_some(source)
     }
@@ -141,6 +154,17 @@ impl Source {
     pub fn statements(&self) -> Vec<&Line> {
         self.lines.iter().filter(|line| !line.text.is_empty()).collect()
     }
+}
+
+/// Whether a line leaves a quoted label open: an odd number of `"`, the last of them straight after
+/// the bracket that opens a label. Asked only about a label, so a message in a sequence diagram that
+/// mentions a five inch `5"` screen does not swallow the lines after it.
+fn opens_a_quoted_label(text: &str) -> bool {
+    if text.matches('"').count() % 2 == 0 {
+        return false;
+    }
+    let last = text.rfind('"').unwrap_or(0);
+    text[..last].trim_end().ends_with(['[', '(', '{', '|'])
 }
 
 /// True for a line that is a comment or a directive.
@@ -190,8 +214,16 @@ pub fn unquote(text: &str) -> String {
 /// - the quotes come off, including the backtick pair inside them that marks a markdown string,
 ///   whose `**bold**` is then shown as it was written because a diagram label is set in one style;
 /// - `<br>`, `<br/>` and `<br />` become line breaks;
-/// - `#35;` and `#quot;` style entity codes become the characters they name;
+/// - `#35;` and `#quot;` style entity codes become the characters they name, and so do HTML's own
+///   `&lt;`, `&amp;` and `&#91;`, because Mermaid draws a label as HTML and a person writing one
+///   writes whichever they know (`task-2063`);
+/// - the tags that only change how words look, `<b>`, `<i>`, `<strong>`, `<em>`, `<u>`, `<code>`,
+///   `<small>`, `<sub>`, `<sup>`, `<span>` and `<p>`, come off and leave their words, because a
+///   diagram label is set in one style and the tag written out is worse than the emphasis lost;
 /// - the whitespace at each end goes.
+///
+/// A tag this does not know, such as the placeholder in `GET /jobs/<id>`, is left as it was written.
+/// Mermaid's own sanitiser would remove it, and with it the word the person meant to show.
 pub fn label(text: &str) -> String {
     let text = unquote(text);
     let text = match text.strip_prefix('`').and_then(|rest| rest.strip_suffix('`')) {
@@ -211,6 +243,10 @@ pub fn label(text: &str) -> String {
             rest = after;
             continue;
         }
+        if let Some(after) = strip_formatting_tag(rest) {
+            rest = after;
+            continue;
+        }
         let mut characters = rest.chars();
         match characters.next() {
             Some(character) => out.push(character),
@@ -222,16 +258,41 @@ pub fn label(text: &str) -> String {
 }
 
 /// What follows a `<br>` in any of its three spellings, when one is next.
+///
+/// Compared a byte at a time rather than by slicing the next six bytes, which is what it did: a slice
+/// that ends inside a character is no slice at all, so `<br/>…` and `<br/>·`, where a character of
+/// more than one byte follows the tag, kept the tag as text. `task-2063` found it in a real document.
 fn strip_break(rest: &str) -> Option<&str> {
-    let lower = rest.get(..6).map(str::to_ascii_lowercase);
-    for form in ["<br />", "<br/>", "<br>"] {
-        if let Some(lower) = &lower {
-            if lower.starts_with(form) {
-                return Some(&rest[form.len()..]);
-            }
-        }
+    ["<br />", "<br/>", "<br>"]
+        .into_iter()
+        .find(|form| starts_with_ignoring_case(rest, form))
+        .map(|form| &rest[form.len()..])
+}
+
+/// Whether `text` begins with `prefix`, ignoring ASCII case, without slicing inside a character.
+fn starts_with_ignoring_case(text: &str, prefix: &str) -> bool {
+    text.len() >= prefix.len()
+        && text.as_bytes()[..prefix.len()].eq_ignore_ascii_case(prefix.as_bytes())
+}
+
+/// What follows a tag that only changes how words look, when one is next.
+fn strip_formatting_tag(rest: &str) -> Option<&str> {
+    let body = rest.strip_prefix('<')?;
+    let body = body.strip_prefix('/').unwrap_or(body);
+    let name_end = body.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(body.len());
+    let name = body[..name_end].to_ascii_lowercase();
+    const LOOKS: [&str; 12] =
+        ["b", "i", "u", "em", "strong", "code", "small", "sub", "sup", "span", "p", "mark"];
+    if !LOOKS.contains(&name.as_str()) {
+        return None;
     }
-    None
+    let close = body[name_end..].find('>')?;
+    let between = &body[name_end..name_end + close];
+    // `<b>` and `<span style="...">`, but not `<bold-thing>` or `<b` running on into the text.
+    if !between.is_empty() && !between.starts_with([' ', '/']) {
+        return None;
+    }
+    Some(&body[name_end + close + 1..])
 }
 
 /// The character an entity code names, and what follows it.
@@ -239,7 +300,11 @@ fn strip_break(rest: &str) -> Option<&str> {
 /// `#35;` is a number and `#quot;` is a name, and Mermaid accepts both. A `#` that is not the start
 /// of one is an ordinary character, which is what the `None` is for.
 fn strip_entity(rest: &str) -> Option<(char, &str)> {
-    let body = rest.strip_prefix('#')?;
+    // HTML's spelling, `&lt;` and `&#91;`, is Mermaid's `#lt;` and `#91;` with another mark in front.
+    let body = match rest.strip_prefix('&') {
+        Some(after) => after.strip_prefix('#').unwrap_or(after),
+        None => rest.strip_prefix('#')?,
+    };
     let end = body.find(';')?;
     if end == 0 || end > 8 {
         return None;
@@ -265,6 +330,36 @@ fn strip_entity(rest: &str) -> Option<(char, &str)> {
         }
     };
     Some((character, after))
+}
+
+/// Split on `separator`, but not inside quotes and not inside a node's brackets.
+///
+/// `task-2063`. A flowchart joins nodes with `&`, as in `A & B --> C`, and splitting on every `&`
+/// broke any label with one in it: `[Pages & Components]`, `[ATT&CK]`, and every `&lt;` and `&#91;`
+/// a person wrote to show a bracket. Seven diagrams in the task documents were refused for it. A
+/// bracket of any of the three kinds opens a label, and nothing inside one is a separator.
+pub fn split_outside_brackets(text: &str, separator: char) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+    let mut depth = 0usize;
+    for character in text.chars() {
+        match quote {
+            Some(open) if character == open => quote = None,
+            Some(_) => {}
+            None if character == '"' => quote = Some(character),
+            None if matches!(character, '[' | '(' | '{') => depth += 1,
+            None if matches!(character, ']' | ')' | '}') => depth = depth.saturating_sub(1),
+            None if character == separator && depth == 0 => {
+                parts.push(std::mem::take(&mut current));
+                continue;
+            }
+            None => {}
+        }
+        current.push(character);
+    }
+    parts.push(current);
+    parts.into_iter().map(|part| part.trim().to_owned()).collect()
 }
 
 /// Split on `separator`, but not where it is inside quotes.
@@ -299,6 +394,48 @@ pub fn split_outside_quotes(text: &str, separator: char) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `task-2063`: a quoted label carries on over the lines under it until its quote closes.
+    #[test]
+    fn a_quoted_label_carries_on_over_the_next_lines() {
+        let source = Source::read(
+            "flowchart TB\n  RU[\"one, two,\n      three, four\"]\n  RU --> X\n  Y[\"5\\\" screen\"]\n",
+        )
+        .expect("a diagram");
+        let texts: Vec<&str> = source.statements().iter().map(|line| line.text.as_str()).collect();
+        assert_eq!(texts[0], "RU[\"one, two, three, four\"]");
+        assert_eq!(texts[1], "RU --> X");
+        assert_eq!(texts.len(), 3);
+        assert!(!opens_a_quoted_label("A->>B: a 5\" screen"), "not a label");
+    }
+
+    /// `task-2063`: HTML's entities, a formatting tag, and a `<br/>` with a wide character after it.
+    #[test]
+    fn a_label_reads_the_markup_a_person_writes() {
+        assert_eq!(label("Vec&lt;Theme&gt;"), "Vec<Theme>");
+        assert_eq!(label("Appearance &amp; Icons"), "Appearance & Icons");
+        assert_eq!(label("&quot;look down&quot;"), "\"look down\"");
+        assert_eq!(label("model&#91;1m&#93;"), "model[1m]");
+        assert_eq!(label("<b>Full quality</b>"), "Full quality");
+        assert_eq!(label("<span style=\"color:red\">red</span> text"), "red text");
+        assert_eq!(label("editor()<br/>\u{2026}40 accessors"), "editor()\n\u{2026}40 accessors");
+        assert_eq!(label("one<br/>\u{b7} two"), "one\n\u{b7} two");
+        assert_eq!(label("GET /jobs/<id>"), "GET /jobs/<id>", "a placeholder is kept as written");
+        assert_eq!(label("ATT&CK"), "ATT&CK", "an ampersand that starts no entity is a character");
+    }
+
+    #[test]
+    fn an_ampersand_inside_a_label_does_not_split_the_statement() {
+        assert_eq!(split_outside_brackets("A & B", '&'), vec!["A", "B"]);
+        assert_eq!(
+            split_outside_brackets("P[Pages & Components]", '&'),
+            vec!["P[Pages & Components]"]
+        );
+        assert_eq!(
+            split_outside_brackets("D[driving/&lt;slug&gt;.mp4] & E(x)", '&'),
+            vec!["D[driving/&lt;slug&gt;.mp4]", "E(x)"]
+        );
+    }
 
     #[test]
     fn the_first_real_line_names_the_diagram() {

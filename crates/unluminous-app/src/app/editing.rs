@@ -812,17 +812,19 @@ impl UnluminousApp {
     /// held, and letting go of it forgets what was: an underline that outlived the modifier would be
     /// an affordance promising something the next click would not do.
     ///
-    /// Only the pane with the keyboard is asked. Two panes each resolving a word under one pointer
-    /// would be two underlines, and the pointer is only ever over one of them anyway.
+    /// **Every pane is asked, not only the one with the keyboard** (`task-2063`). The reference editor jumps on
+    /// the first `Ctrl`/`Cmd`+Click in an editor whatever had the keyboard before; here the first
+    /// click after using the explorer or the terminal only moved the keyboard, which read as the
+    /// feature not working. There is one pointer, so only the pane under it has a hover position and
+    /// only that pane draws an underline.
     fn symbol_under_the_pointer(
         &mut self,
         ui: &egui::Ui,
         response: &egui::Response,
         origin: Pos2,
-        focused: bool,
     ) -> editor_view::SymbolPointer {
         let held = ui.input(|input| input.modifiers.command);
-        if !held || !focused || !self.definitions_apply_here() {
+        if !held || !self.definitions_apply_here() {
             self.forget_the_hover();
             return editor_view::SymbolPointer::default();
         }
@@ -980,7 +982,7 @@ impl UnluminousApp {
         // cached against the text revision and the word. Resolve first is VS Code's model and it is
         // what makes the click feel instantaneous: the answer is already in hand, and only a word
         // that really has somewhere to go is underlined.
-        let symbol = self.symbol_under_the_pointer(ui, &response, origin, focused);
+        let symbol = self.symbol_under_the_pointer(ui, &response, origin);
         // The other half of that gesture, and its opposite number: with the modifier **up**, a
         // pointer resting on a name while the program is paused asks the debugger what it holds.
         // Two affordances on one word would be two promises the one click cannot both keep, so

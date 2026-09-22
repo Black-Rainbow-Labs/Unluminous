@@ -375,19 +375,21 @@ fn the_modifier_underlines_the_word_it_would_go_to_and_nothing_else() {
     let mut harness = code_harness("caret.rs");
     let text = harness.state().document().text().to_string();
     let call = text.find("layout.draw()").expect("the call") + "layout.".len() + 1;
-    // A word nothing defines: `layout` is a parameter, and a parameter has no definer keyword in
-    // front of it, so the mechanism honestly knows nothing about where it comes from.
-    let unknown = text.find("layout.draw()").expect("the call") + 1;
+    // `layout` is a parameter, which no definer keyword declares. Since `task-2063` it resolves to
+    // where it is first written in its function, the parameter list, rather than to nothing.
+    let parameter = text.find("layout.draw()").expect("the call") + 1;
 
     assert!(
         harness.state_mut().resolve_under_the_pointer(call).is_some(),
         "`draw` is defined in layout.rs, so it resolves"
     );
     harness.state_mut().forget_the_hover();
-    assert!(
-        harness.state_mut().resolve_under_the_pointer(unknown).is_none(),
-        "`layout` is a parameter, so nothing is underlined and a click places the caret"
-    );
+    let hover = harness
+        .state_mut()
+        .resolve_under_the_pointer(parameter)
+        .expect("`layout` resolves to its parameter");
+    let written = text.find("layout: &Layout").expect("the parameter");
+    assert_eq!(hover.candidates[0].name_range, written..written + "layout".len());
     // A definition of its own still resolves, because the click there means something: it pivots
     // to the references, which is scenario 8.
     harness.state_mut().forget_the_hover();
@@ -802,6 +804,56 @@ fn a_modifier_click_on_a_word_goes_to_its_definition_and_an_ordinary_one_places_
     modifier_click(&mut harness, call);
     assert_eq!(harness.state().files.active().name(), "layout.rs");
     assert_eq!(harness.state().document().selected_text(), "draw");
+}
+
+/// The first modifier-click jumps even when the keyboard was somewhere else. `task-2063`: the reference editor
+/// jumps on the first `Ctrl`/`Cmd`+Click, and here the first click after using the explorer only moved
+/// the keyboard.
+#[test]
+fn a_modifier_click_jumps_even_when_the_keyboard_was_elsewhere() {
+    let mut harness = code_harness("caret.rs");
+    harness.state_mut().focus = unluminous_app::app::Focus::Explorer;
+    steady(&mut harness);
+    let text = harness.state().document().text().to_string();
+    let call = text.find("layout.draw()").expect("the call") + "layout.".len() + 1;
+    modifier_click(&mut harness, call);
+    assert_eq!(harness.state().files.active().name(), "layout.rs", "the first click went there");
+    assert_eq!(harness.state().document().selected_text(), "draw");
+}
+
+/// A parameter has no keyword in front of it, and a click on a use of one goes to where it is written in
+/// the parameter list. `task-2063`.
+#[test]
+fn a_modifier_click_on_a_parameter_goes_to_the_parameter() {
+    let mut harness = code_harness("caret.rs");
+    let text = harness.state().document().text().to_string();
+    let parameter = text.find("layout: &Layout").expect("the parameter");
+    let used = text.find("layout.draw()").expect("a use");
+    modifier_click(&mut harness, used + 2);
+    assert_eq!(harness.state().files.active().name(), "caret.rs");
+    let selection = harness.state().document().selection().range();
+    assert_eq!(selection, parameter..parameter + "layout".len(), "the parameter is selected");
+}
+
+/// `Ctrl`/`Cmd`+`[` goes back to where the caret was before a jump, and `]` forward again. `task-2063`.
+#[test]
+fn the_brackets_walk_back_and_forward_through_the_jumps() {
+    let mut harness = code_harness("caret.rs");
+    let text = harness.state().document().text().to_string();
+    let call = text.find("layout.draw()").expect("the call") + "layout.".len() + 1;
+    harness.state_mut().command(Command::PlaceCaret { offset: call, extend: false });
+    steady(&mut harness);
+    modifier_click(&mut harness, call);
+    assert_eq!(harness.state().files.active().name(), "layout.rs");
+
+    harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::OpenBracket);
+    steady(&mut harness);
+    assert_eq!(harness.state().files.active().name(), "caret.rs", "back to the file");
+    assert_eq!(harness.state().document().selection().head, call, "at the same place in it");
+
+    harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::CloseBracket);
+    steady(&mut harness);
+    assert_eq!(harness.state().files.active().name(), "layout.rs", "and forward again");
 }
 
 #[test]

@@ -87,6 +87,9 @@ pub struct TitleBarOutcome {
     /// `egui::Rect` has no `Default`, deliberately, because an all-zeroes rectangle is a real rectangle
     /// at the origin rather than an absent one.
     pub branch_rect: Rect,
+    /// True on the frame the bar asked the operating system to move the window, so the window can
+    /// check a moment later that `winit` was not left stuck. See `services::windows_resize`.
+    pub dragged: bool,
 }
 
 impl Default for TitleBarOutcome {
@@ -98,6 +101,7 @@ impl Default for TitleBarOutcome {
             toggle_fullscreen: false,
             action: None,
             branch_rect: Rect::NOTHING,
+            dragged: false,
         }
     }
 }
@@ -313,6 +317,7 @@ pub fn show(
         });
         if drag.drag_started() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            outcome.dragged = true;
         }
         if drag.double_clicked() {
             outcome.toggle_maximise = true;

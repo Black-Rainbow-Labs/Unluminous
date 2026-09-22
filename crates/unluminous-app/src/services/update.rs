@@ -98,6 +98,24 @@ pub struct Release {
     pub url: String,
     /// What the release said about itself, cut to something a status bar can hold.
     pub notes: String,
+    /// The file that installs it on this platform, when the source said which one. `task-2063`.
+    ///
+    /// unluminous.com's manifest names the Windows setup program and the macOS zip, each with its size
+    /// and its SHA-256; GitHub's answer names neither, and Linux has no installer at all. `None` is the
+    /// answer for all three, and the offer then opens the download page instead.
+    pub download: Option<Download>,
+}
+
+/// One installer: where it is, how long it is and what its SHA-256 is.
+///
+/// The size and the hash are what make it safe to run: the file is checked against both before
+/// anything is started, and one that does not match is deleted. See `services::update_install`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Download {
+    pub url: String,
+    pub bytes: u64,
+    /// Lower case hexadecimal, sixty four characters.
+    pub sha256: String,
 }
 
 /// What a check came to.
@@ -363,7 +381,85 @@ pub fn read(body: &str) -> Option<Release> {
         .find(|line| !line.is_empty())
         .unwrap_or_default()
         .to_owned();
-    Some(Release { version, url, notes })
+    let download = download_in(&value, PLATFORM_FIELD);
+    Some(Release { version, url, notes, download })
+}
+
+/// Which of the manifest's installers is this platform's: `installer` on Windows, `macos` on macOS,
+/// and nothing anywhere else.
+pub const PLATFORM_FIELD: Option<&str> = if cfg!(windows) {
+    Some("installer")
+} else if cfg!(target_os = "macos") {
+    Some("macos")
+} else {
+    None
+};
+
+/// The installer a manifest names under `field`, with its size and hash, or nothing when any of the
+/// three is missing. An installer that cannot be checked is not one this window will run.
+pub fn download_in(value: &serde_json::Value, field: Option<&str>) -> Option<Download> {
+    let field = field?;
+    let url = value.get(field)?.as_str()?.trim().to_owned();
+    let bytes = value.get(format!("{field}Bytes"))?.as_u64()?;
+    let sha256 = value.get(format!("{field}Sha256"))?.as_str()?.trim().to_ascii_lowercase();
+    let hex = sha256.len() == 64 && sha256.chars().all(|c| c.is_ascii_hexdigit());
+    let secure = url.starts_with("https://") || is_loopback(&url);
+    (secure && bytes > 0 && hex).then_some(Download { url, bytes, sha256 })
+}
+
+/// Whether an address is plain `http` on this machine's own loopback, which is only ever the scripted
+/// server `UNLUMINOUS_RELEASES` points a test at. Everything unluminous.com publishes is `https`.
+fn is_loopback(url: &str) -> bool {
+    ["http://127.0.0.1:", "http://127.0.0.1/", "http://localhost:", "http://localhost/"]
+        .iter()
+        .any(|start| url.starts_with(start))
+}
+
+/// The manifest's own address, which an install asks when the answer it has came from GitHub and so
+/// names no installer.
+pub const MANIFEST: &str = SITE;
+
+/// How long an automatic check waits before asking again. `task-2063`: *"once per day"*.
+pub const DAY: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// Whether an automatic check is due, given when the last one was asked, as seconds since the epoch.
+///
+/// Pure, so the rule is a test with no clock and no file. Nothing written down means never asked,
+/// which is due. A time in the future, which a clock put back can leave behind, is treated as due
+/// rather than as a reason to wait for a day that may be years away.
+pub fn is_due(last: Option<u64>, now: u64) -> bool {
+    match last {
+        None => true,
+        Some(last) if last > now => true,
+        Some(last) => now - last >= DAY.as_secs(),
+    }
+}
+
+/// When the last automatic check was asked, read from `update-checked.txt` in the settings folder.
+///
+/// One file for every window, because each window is a process of its own and a clock held by one
+/// would check once a day per window.
+pub fn last_checked(folder: &std::path::Path) -> Option<u64> {
+    std::fs::read_to_string(folder.join(CHECKED)).ok()?.trim().parse().ok()
+}
+
+/// Write down that an automatic check is being asked now.
+///
+/// Written **before** the request goes, so two windows starting together do not both ask.
+pub fn note_checked(folder: &std::path::Path, now: u64) {
+    let _ =
+        crate::services::store::write_atomically(&folder.join(CHECKED), now.to_string().as_bytes());
+}
+
+/// The file [`last_checked`] reads.
+const CHECKED: &str = "update-checked.txt";
+
+/// Seconds since the epoch, which is what [`is_due`] is asked in.
+pub fn now_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs())
+        .unwrap_or(0)
 }
 
 /// Whether `found` is a later version than `current`.
@@ -574,6 +670,70 @@ mod tests {
             return;
         }
         assert_eq!(releases_endpoints(), SOURCES.to_vec());
+    }
+
+    #[test]
+    fn the_installer_for_this_platform_is_read_with_its_size_and_hash() {
+        let body = r#"{
+            "version": "0.55.0",
+            "installer": "https://unluminous.com/downloads/UnluminousSetup-0.55.0-x64.exe",
+            "installerBytes": 12875680,
+            "installerSha256": "66885379D68932BD94EAF6DA8D4B76CD35A7E49A0D4239C328F7B78A6C5173E6",
+            "macos": "https://unluminous.com/downloads/Unluminous-0.55.0-macos.zip",
+            "macosBytes": 33118584,
+            "macosSha256": "d6507d0d07f747c8cd08b9739972cc132fe091978adec9e921e7a0a65450de74"
+        }"#;
+        let value: serde_json::Value = serde_json::from_str(body).expect("json");
+        let windows = download_in(&value, Some("installer")).expect("the Windows one");
+        assert_eq!(windows.bytes, 12875680);
+        assert!(windows.sha256.starts_with("66885379d6"), "lower case: {}", windows.sha256);
+        let macos = download_in(&value, Some("macos")).expect("the macOS one");
+        assert!(macos.url.ends_with("macos.zip"));
+        assert_eq!(download_in(&value, None), None, "a platform with no installer");
+        // Whatever this platform is, `read` asks the same question.
+        assert_eq!(read(body).expect("it reads").download, download_in(&value, PLATFORM_FIELD));
+    }
+
+    #[test]
+    fn an_installer_that_cannot_be_checked_is_not_offered() {
+        let missing_hash =
+            serde_json::json!({ "installer": "https://x/a.exe", "installerBytes": 3 });
+        assert_eq!(download_in(&missing_hash, Some("installer")), None);
+        let short_hash = serde_json::json!({
+            "installer": "https://x/a.exe", "installerBytes": 3, "installerSha256": "abc"
+        });
+        assert_eq!(download_in(&short_hash, Some("installer")), None);
+        let plain_http = serde_json::json!({
+            "installer": "http://x/a.exe", "installerBytes": 3, "installerSha256": "a".repeat(64)
+        });
+        assert_eq!(download_in(&plain_http, Some("installer")), None, "only https");
+        let loopback = serde_json::json!({
+            "installer": "http://127.0.0.1:5000/a.exe", "installerBytes": 3, "installerSha256": "a".repeat(64)
+        });
+        assert!(
+            download_in(&loopback, Some("installer")).is_some(),
+            "a test's own server on loopback"
+        );
+    }
+
+    #[test]
+    fn a_daily_check_is_due_once_a_day() {
+        let day = DAY.as_secs();
+        assert!(is_due(None, 1_000), "never asked");
+        assert!(!is_due(Some(1_000), 1_000 + day - 1));
+        assert!(is_due(Some(1_000), 1_000 + day));
+        assert!(is_due(Some(5_000), 1_000), "a clock put back does not stop the checks for years");
+    }
+
+    #[test]
+    fn when_a_check_was_asked_is_one_file_every_window_reads() {
+        let folder = std::env::temp_dir().join(format!("unluminous-update-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder");
+        assert_eq!(last_checked(&folder), None);
+        note_checked(&folder, 1234);
+        assert_eq!(last_checked(&folder), Some(1234));
+        let _ = std::fs::remove_file(folder.join(CHECKED));
+        let _ = std::fs::remove_dir(&folder);
     }
 
     #[test]

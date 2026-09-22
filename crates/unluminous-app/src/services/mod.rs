@@ -56,6 +56,7 @@ pub mod symbol_index;
 pub mod text_renderer;
 pub mod text_search;
 pub mod update;
+pub mod update_install;
 pub mod vello_canvas;
 pub mod wake;
 
@@ -63,6 +64,7 @@ pub mod wake;
 // compiled everywhere, because the decision it rests on is a rule with tests over it and only the act
 // needs a platform; `ask` answers `None` where there is no such cache to be behind.
 pub mod windows_focus;
+pub mod windows_resize;
 
 // Letting the desktop show through the window needs a DirectComposition swapchain and a cleared
 // redirection surface on Windows, and nothing at all anywhere else.

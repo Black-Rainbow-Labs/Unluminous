@@ -4939,6 +4939,7 @@ dependencies = [
  "rfd",
  "rusqlite",
  "serde_json",
+ "sha2",
  "unicode-segmentation",
  "unluminous-chat",
  "unluminous-cli",

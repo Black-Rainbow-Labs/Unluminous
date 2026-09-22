@@ -1015,6 +1015,10 @@ impl UnluminousApp {
             // this is the field that says which of the two it is, since a window that is merely in the
             // background also answers `focused: false`.
             "pageHasTheKeyboard": self.browser.page_holds_the_keyboard(),
+            // **Whether Windows is resizing the window from its edges itself**, by the window answering
+            // the hit test for them, rather than egui's grips asking `winit`. `task-2063`; see
+            // `services::windows_resize`.
+            "nativeResize": self.native_resize,
             // The last resize this window asked the window manager for, which is the only thing inside
             // the process that can be read back about one: `BeginResize` hands the drag to the window
             // manager and nothing here sees what it did with it. See `UnluminousApp::last_resize_asked`.
@@ -1130,6 +1134,7 @@ const STATUS_SECTIONS: &[(&str, &[&str])] = &[
             "focused",
             "maximised",
             "pageHasTheKeyboard",
+            "nativeResize",
             // What Windows itself says, beside `winit`'s cache of it. `task-2009`.
             "osForeground",
             "osKeyboard",

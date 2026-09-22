@@ -78,6 +78,13 @@ impl Shape {
 
     /// The size a node of this shape holding a label of `label` needs.
     pub fn size_for(self, label: Size) -> Size {
+        // **A diamond is twice its words and a margin** (`task-2063`). A block of words `w` by `h` fits
+        // inside a diamond `W` by `H` only while `w / W + h / H` stays under one, and a fixed padding
+        // broke that for any label of two lines: the photographed decisions had their words running
+        // out past both points. Twice the words keeps the sum near 0.85 whatever the label is.
+        if self == Shape::Diamond {
+            return Size::new(label.width * 2.0 + 24.0, label.height * 2.0 + 20.0);
+        }
         let padding = self.padding();
         let mut size = Size::new(label.width + padding.width, label.height + padding.height);
         if self.is_round() {
@@ -302,6 +309,21 @@ fn asymmetric(rect: Rect) -> Vec<Point> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The words of a decision fit inside its diamond, for one line and for several. `task-2063`.
+    #[test]
+    fn a_diamond_holds_its_words() {
+        for words in [
+            Size::new(40.0, 18.0),
+            Size::new(190.0, 18.0),
+            Size::new(190.0, 36.0),
+            Size::new(120.0, 54.0),
+        ] {
+            let diamond = Shape::Diamond.size_for(words);
+            let taken = words.width / diamond.width + words.height / diamond.height;
+            assert!(taken < 0.95, "{words:?} in {diamond:?} takes {taken}");
+        }
+    }
 
     #[test]
     fn a_circle_is_as_wide_as_it_is_tall_whatever_its_words() {

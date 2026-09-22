@@ -299,20 +299,23 @@ impl Indent {
     }
 }
 
-/// Whether Unluminous asks the releases page for a newer version when it starts.
+/// Whether Unluminous asks the releases page for a newer version on its own.
 ///
-/// **Off, and that is the whole design rather than a cautious default.** `task-1692` drew the line
-/// the chat pane keeps -- *"there is no discovery, no model list, no telemetry and nothing at
-/// startup"* -- and an editor that phones home the moment it opens is exactly what that rule exists
-/// to prevent. `Unluminous -> Check for Updates` is a person asking, and it works either way; this
-/// is a person saying *ask every time I open it*, once. `task-1804` §6.
+/// **Once a day, by default, since `task-2063`**: *"We should check for updates once per day
+/// automatically, and provide the user a toast prompt."* It was off by default before, from
+/// `task-1804` §6, on `task-1692`'s rule that nothing is sent that nobody asked for; the ticket
+/// reversed that on purpose. What is sent is unchanged: one unauthenticated `GET` that says nothing
+/// about the person or the project — see `services::update`. `off` still sends nothing, and
+/// `Unluminous -> Check for Updates` works whatever this says.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum UpdateCheck {
     /// Nothing is ever sent unless somebody asks.
-    #[default]
     Off,
-    /// Ask once, when the window opens.
+    /// Ask once, whenever a window opens.
     Start,
+    /// Ask at most once a day, counted across every window. See `update::is_due`.
+    #[default]
+    Daily,
 }
 
 impl UpdateCheck {
@@ -321,6 +324,7 @@ impl UpdateCheck {
         match self {
             UpdateCheck::Off => "off",
             UpdateCheck::Start => "start",
+            UpdateCheck::Daily => "daily",
         }
     }
 
@@ -328,14 +332,20 @@ impl UpdateCheck {
     pub fn parse(name: &str) -> Option<Self> {
         match name.trim().to_lowercase().as_str() {
             "off" | "never" => Some(UpdateCheck::Off),
-            "start" | "startup" | "on" => Some(UpdateCheck::Start),
+            "start" | "startup" => Some(UpdateCheck::Start),
+            "daily" | "day" | "on" => Some(UpdateCheck::Daily),
             _ => None,
         }
     }
 
-    /// True when the window should ask as it opens.
+    /// True when the window should ask as it opens, whatever day it is.
     pub fn at_start(self) -> bool {
         self == UpdateCheck::Start
+    }
+
+    /// True when the window asks on its own at all.
+    pub fn is_on(self) -> bool {
+        self != UpdateCheck::Off
     }
 }
 
@@ -857,6 +867,12 @@ settings! {
         /// setting survives the original being moved or deleted, and one person's settings file cannot
         /// point at another person's disk. A name that is not there falls back to the desktop rather than
         /// to a blank window, which is what a picture somebody deleted by hand should do.
+        /// The one release `Don't Ask Again` was pressed on, which a check on its own says nothing about.
+        ///
+        /// `task-2063`: *"Don't Ask Again … to stop asking about the latest version, not all future
+        /// versions"*. One version rather than a list: a later release is a different question, and the
+        /// setting only ever needs to remember the newest one somebody declined.
+        update_skip = String::new() => "update.skip", "a version the daily check does not offer, or empty";
         background_image = String::new() => "appearance.background.image", "a file in Unluminous's backgrounds folder, or empty to let the desktop show through";
     }
 
@@ -931,7 +947,7 @@ settings! {
         /// What line breaks a file is written back with. See [`LineEndings`].
         line_endings: LineEndings = LineEndings::Keep => "editor.line_ending", "keep, lf or crlf";
         /// Whether the window asks for a newer version as it opens. See [`UpdateCheck`].
-        update_check: UpdateCheck = UpdateCheck::Off => "update.check", "off or start";
+        update_check: UpdateCheck = UpdateCheck::Daily => "update.check", "off, start or daily";
         /// Whether the debugger's value tooltip arrives when the pointer rests on a name.
         value_tooltip: ValueTooltip = ValueTooltip::Automatic => "debug.value_tooltip", "automatic or manual";
         /// How many tools the catalogue is cut into for an agent. See `unluminous_cli::mcp::tools`.
@@ -1508,6 +1524,7 @@ mod tests {
             "editor.indent",
             "editor.line_ending",
             "update.check",
+            "update.skip",
             "debug.value_tooltip",
             "mcp.tools",
             "mcp.port",
@@ -1569,6 +1586,7 @@ mod tests {
             suggestions: Suggestions::Manual,
             line_endings: LineEndings::Crlf,
             update_check: UpdateCheck::Start,
+            update_skip: "0.99.0".to_owned(),
             exclude: "dist/, vendor/".to_owned(),
             value_tooltip: ValueTooltip::Manual,
             plugin_chrome: false,

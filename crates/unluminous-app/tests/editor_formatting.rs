@@ -966,6 +966,45 @@ fn a_zoom_keeps_the_markdown_previews_place_too() {
     assert_eq!(at_the_top(harness.state()), was, "the same words should be at the top of the page");
 }
 
+/// A pinch or the modifier wheel over the preview zooms it, about the line under the pointer.
+///
+/// `task-2063`: *"I should be able to zoom in/out from the markdown preview pane. It currently only works
+/// from the code/source."* In the Preview mode no pane claimed the gesture at all, so nothing happened.
+#[test]
+fn a_pinch_over_the_preview_zooms_it_about_the_pointer() {
+    let text: String = (0..120).map(|n| format!("Paragraph {n} of the page.\n\n")).collect();
+    let mut harness = harness(&text);
+    harness.state_mut().set_view_mode(ViewMode::Preview);
+    steady(&mut harness);
+    harness.state_mut().files.active_mut().preview_scroll = 700.0;
+    steady(&mut harness);
+    let area = harness.state().editor_area();
+    let down = 300.0;
+    let under = |app: &UnluminousApp| {
+        let scrolled = app.files.active().preview_scroll;
+        app.preview_layout().offset_at(0.0, scrolled + down)
+    };
+    let was = under(harness.state());
+    let at = egui::pos2(
+        area.center().x,
+        area.top() + unluminous_app::theme::size::EDITOR_PADDING_Y + down,
+    );
+    harness.input_mut().events.push(egui::Event::PointerMoved(at));
+    harness.input_mut().events.push(egui::Event::Zoom(1.2));
+    steady(&mut harness);
+    steady(&mut harness);
+    assert_eq!(harness.state().settings.font_size, 20.0, "one notch over the preview is one size");
+    let now = under(harness.state());
+    let paragraph = |app: &UnluminousApp, offset: usize| {
+        app.files.active().cached.preview.as_ref().expect("a preview").text.byte_to_line(offset)
+    };
+    assert_eq!(
+        paragraph(harness.state(), now),
+        paragraph(harness.state(), was),
+        "the paragraph under the pointer should still be under it"
+    );
+}
+
 #[test]
 fn the_filter_box_puts_its_words_on_the_same_line_as_the_magnifier() {
     // It used to lay them out against the top edge of the box: a `TextEdit` with `Frame::NONE` has

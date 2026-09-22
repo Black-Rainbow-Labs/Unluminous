@@ -22,6 +22,12 @@
 //! after [`LIFE`]. That asymmetry is the whole design, and it is what stops a toast becoming another
 //! thing to ignore.
 //!
+//! **An offer is the third kind** (`task-2063`), a notice with buttons on it: *"Unluminous 0.55.0 is
+//! available"* with `Install & Restart` and `Don't Ask Again`. It stays until it is answered or
+//! dismissed, for a problem's reason: it is waiting on a person. Its edge is the accent, because it is
+//! neither a failure nor a confirmation but a question. A button is reported to the window as an
+//! [`Act`], and the window does it; this file only draws the card and says which button was pressed.
+//!
 //! **No new colour.** The palette is closed. A problem's edge is `color::close`, the red the window's own
 //! close button is drawn in, and a confirmation's is `color::git_added`, the green a new file is counted
 //! in — both already sampled from the design.
@@ -59,6 +65,28 @@ pub enum Kind {
     Problem,
     /// Something did. Fades after [`LIFE`].
     Done,
+    /// A question with buttons on it. Stays until it is answered or dismissed.
+    Offer,
+}
+
+/// What a button on an offer asks the window to do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Act {
+    /// Download this version, check it, install it and start it again. `task-2063`.
+    InstallUpdate(String),
+    /// Stop offering this version. A later one is offered again.
+    SkipUpdate(String),
+    /// Open a page in the person's own browser, for a platform with nothing to install.
+    OpenPage(String),
+}
+
+/// What a person did to the stack this frame.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pressed {
+    /// The cross on the notice at this index.
+    Dismissed(usize),
+    /// A button on the offer at this index.
+    Acted(usize, Act),
 }
 
 impl Kind {
@@ -67,6 +95,7 @@ impl Kind {
         match self {
             Kind::Problem => "problem",
             Kind::Done => "done",
+            Kind::Offer => "offer",
         }
     }
 
@@ -74,6 +103,7 @@ impl Kind {
         match name {
             "problem" | "error" | "failed" => Some(Kind::Problem),
             "done" | "ok" | "success" => Some(Kind::Done),
+            "offer" => Some(Kind::Offer),
             _ => None,
         }
     }
@@ -82,6 +112,7 @@ impl Kind {
         match self {
             Kind::Problem => color::close(),
             Kind::Done => color::git_added(),
+            Kind::Offer => color::accent(),
         }
     }
 
@@ -101,6 +132,9 @@ pub struct Notice {
     /// When it was raised, which is what [`LIFE`] is measured from. `None` in a test that is asserting on
     /// the list rather than on time.
     pub at: Option<std::time::Instant>,
+    /// The buttons along the bottom of an offer, each a label and what it asks for. Empty on the
+    /// other two kinds.
+    pub actions: Vec<(String, Act)>,
 }
 
 /// The notices the window is holding, newest last.
@@ -136,9 +170,44 @@ impl Toasts {
             same.at = Some(std::time::Instant::now());
             return;
         }
-        self.notices.push(Notice { text, kind, count: 1, at: Some(std::time::Instant::now()) });
+        self.notices.push(Notice {
+            text,
+            kind,
+            count: 1,
+            at: Some(std::time::Instant::now()),
+            actions: Vec::new(),
+        });
+        self.keep_to_the_limit();
+    }
+
+    /// Raise an offer: a sentence with buttons. The same sentence already showing is not raised twice.
+    pub fn offer(&mut self, text: impl Into<String>, actions: Vec<(String, Act)>) {
+        let text = text.into();
+        if self.notices.iter().any(|notice| notice.kind == Kind::Offer && notice.text == text) {
+            return;
+        }
+        self.notices.push(Notice {
+            text,
+            kind: Kind::Offer,
+            count: 1,
+            at: Some(std::time::Instant::now()),
+            actions,
+        });
+        self.keep_to_the_limit();
+    }
+
+    /// Take away every offer, which is what answering one does to the others about the same thing.
+    pub fn withdraw_the_offers(&mut self) {
+        self.notices.retain(|notice| notice.kind != Kind::Offer);
+    }
+
+    /// The oldest go when there are more than [`LIMIT`], but never an offer while anything else can go
+    /// instead: a question pushed off the screen by a later confirmation would never be answered.
+    fn keep_to_the_limit(&mut self) {
         while self.notices.len() > LIMIT {
-            self.notices.remove(0);
+            let oldest =
+                self.notices.iter().position(|notice| notice.kind != Kind::Offer).unwrap_or(0);
+            self.notices.remove(oldest);
         }
     }
 
@@ -190,7 +259,7 @@ impl Toasts {
 /// Added to the `Ui` **after every pane**, for the reason the module comment gives. The stack grows
 /// upwards from just above the status bar, so a new notice appears nearest the place a person is looking
 /// and the older ones move away.
-pub fn show(ui: &mut egui::Ui, area: Rect, toasts: &Toasts, look_font: f32) -> Option<usize> {
+pub fn show(ui: &mut egui::Ui, area: Rect, toasts: &Toasts, look_font: f32) -> Option<Pressed> {
     if toasts.is_empty() {
         return None;
     }
@@ -207,16 +276,27 @@ pub fn show(ui: &mut egui::Ui, area: Rect, toasts: &Toasts, look_font: f32) -> O
             0 | 1 => notice.text.clone(),
             many => format!("{}  × {many}", notice.text),
         };
+        // An offer is as wide as its row of buttons needs, and never narrower than any other notice:
+        // at a large font the two buttons are wider than the card, and they ran out of both sides of
+        // it (`task-2063`).
+        let font = FontId::proportional(look_font - 1.0);
+        let row = button_row(&painter, notice, &font);
+        let width = WIDTH.max(row.width + PAD * 2.0 + EDGE).min(area.width() - MARGIN * 2.0);
         let wrapped = painter.layout(
             said,
-            FontId::proportional(look_font - 1.0),
+            font.clone(),
             color::text(),
-            WIDTH - PAD * 2.0 - EDGE - CROSS - 6.0,
+            width - PAD * 2.0 - EDGE - CROSS - 6.0,
         );
-        let height = (wrapped.size().y + PAD * 2.0).max(36.0);
+        // An offer has a row of buttons under its sentence.
+        let buttons = match notice.actions.is_empty() {
+            true => 0.0,
+            false => row.height + PAD,
+        };
+        let height = (wrapped.size().y + PAD * 2.0 + buttons).max(36.0);
         let card = Rect::from_min_size(
-            Pos2::new(area.right() - MARGIN - WIDTH, bottom - height),
-            Vec2::new(WIDTH, height),
+            Pos2::new(area.right() - MARGIN - width, bottom - height),
+            Vec2::new(width, height),
         );
         // Off the top of the window rather than drawn over the tabs: with the limit at four this only
         // happens in a window shorter than about two hundred points.
@@ -262,12 +342,83 @@ pub fn show(ui: &mut egui::Ui, area: Rect, toasts: &Toasts, look_font: f32) -> O
             egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone())
         });
         if response.clicked() {
-            dismissed = Some(index);
+            dismissed = Some(Pressed::Dismissed(index));
+        }
+        if let Some(act) = offer_buttons(ui, card, notice, index, look_font) {
+            dismissed = Some(Pressed::Acted(index, act));
         }
 
         bottom = card.top() - 8.0;
     }
     dismissed
+}
+
+/// How much wider and taller a button on an offer is than its words.
+const BUTTON_PAD: Vec2 = Vec2::new(20.0, 10.0);
+/// The gap between two buttons.
+const BUTTON_GAP: f32 = 6.0;
+
+/// How much room an offer's row of buttons takes at `font`.
+struct Row {
+    width: f32,
+    height: f32,
+}
+
+fn button_row(painter: &egui::Painter, notice: &Notice, font: &FontId) -> Row {
+    let sizes: Vec<Vec2> = notice
+        .actions
+        .iter()
+        .map(|(label, _)| painter.layout_no_wrap(label.clone(), font.clone(), color::text()).size())
+        .collect();
+    let width = sizes.iter().map(|size| size.x + BUTTON_PAD.x).sum::<f32>()
+        + BUTTON_GAP * sizes.len().saturating_sub(1) as f32;
+    let height = sizes.iter().map(|size| size.y).fold(0.0, f32::max) + BUTTON_PAD.y;
+    Row { width, height }
+}
+
+/// Draw an offer's buttons along the bottom of its card, right aligned, with the last one filled in the
+/// accent, which is the rule `components::modal::footer` keeps for the button that does the thing.
+/// Answers the act of the one pressed.
+fn offer_buttons(
+    ui: &mut egui::Ui,
+    card: Rect,
+    notice: &Notice,
+    index: usize,
+    look_font: f32,
+) -> Option<Act> {
+    let font = FontId::proportional(look_font - 1.0);
+    let row = button_row(ui.painter(), notice, &font);
+    let mut right = card.right() - PAD;
+    let top = card.bottom() - PAD - row.height;
+    let mut pressed = None;
+    let last = notice.actions.len().saturating_sub(1);
+    for (position, (label, act)) in notice.actions.iter().enumerate().rev() {
+        let primary = position == last;
+        let ink = match primary {
+            true => color::text_strong(),
+            false => color::text(),
+        };
+        let words = ui.painter().layout_no_wrap(label.clone(), font.clone(), ink);
+        let width = words.size().x + BUTTON_PAD.x;
+        let at = Rect::from_min_size(Pos2::new(right - width, top), Vec2::new(width, row.height));
+        let id = ui.id().with(("toast-button", index, position));
+        let response = ui.interact(at, id, Sense::click());
+        let fill = match (primary, response.hovered()) {
+            (true, _) => color::accent(),
+            (false, true) => color::selected_row(),
+            (false, false) => color::control(),
+        };
+        ui.painter().rect_filled(at, CornerRadius::same(crate::theme::size::CONTROL_CORNER), fill);
+        ui.painter().galley(at.center() - words.size() / 2.0, words, ink);
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label.clone())
+        });
+        if response.clicked() {
+            pressed = Some(act.clone());
+        }
+        right = at.left() - BUTTON_GAP;
+    }
+    pressed
 }
 
 #[cfg(test)]
@@ -276,7 +427,7 @@ mod tests {
 
     /// A notice with no instant, so a test asserting on the list is not asserting on the clock.
     fn timeless(text: &str, kind: Kind) -> Notice {
-        Notice { text: text.to_owned(), kind, count: 1, at: None }
+        Notice { text: text.to_owned(), kind, count: 1, at: None, actions: Vec::new() }
     }
 
     #[test]
@@ -286,6 +437,7 @@ mod tests {
             text: "could not send".to_owned(),
             kind: Kind::Problem,
             count: 1,
+            actions: Vec::new(),
             // Long past its life, which a `Done` notice would be dropped for.
             at: Some(std::time::Instant::now() - LIFE - std::time::Duration::from_secs(1)),
         });
@@ -294,6 +446,7 @@ mod tests {
             kind: Kind::Done,
             count: 1,
             at: Some(std::time::Instant::now() - LIFE - std::time::Duration::from_secs(1)),
+            actions: Vec::new(),
         });
         toasts.forget_the_stale_ones();
         assert_eq!(toasts.len(), 1, "the confirmation faded and the problem did not");
@@ -336,6 +489,7 @@ mod tests {
             kind: Kind::Done,
             count: 1,
             at: Some(std::time::Instant::now() - LIFE - std::time::Duration::from_secs(1)),
+            actions: Vec::new(),
         });
         // Saying it again is a fresh event: it should not vanish the instant it is raised.
         toasts.say("saved", Kind::Done);
@@ -385,9 +539,37 @@ mod tests {
         assert_eq!(toasts.len(), 2);
     }
 
+    /// An offer stays until it is answered, is not raised twice, and is never the one the limit takes.
+    /// `task-2063`.
+    #[test]
+    fn an_offer_waits_for_an_answer_and_is_kept_over_the_others() {
+        let mut toasts = Toasts::default();
+        let buttons = vec![
+            ("Don't Ask Again".to_owned(), Act::SkipUpdate("9.9.9".to_owned())),
+            ("Install & Restart".to_owned(), Act::InstallUpdate("9.9.9".to_owned())),
+        ];
+        toasts.offer("Unluminous 9.9.9 is available.", buttons.clone());
+        toasts.offer("Unluminous 9.9.9 is available.", buttons);
+        assert_eq!(toasts.len(), 1, "the same offer twice is one");
+        toasts.notices[0].at =
+            Some(std::time::Instant::now() - LIFE - std::time::Duration::from_secs(1));
+        toasts.forget_the_stale_ones();
+        assert_eq!(toasts.len(), 1, "an offer does not fade");
+        for index in 0..LIMIT + 1 {
+            toasts.say(format!("saved {index}"), Kind::Done);
+        }
+        assert_eq!(toasts.len(), LIMIT);
+        assert!(
+            toasts.notices().iter().any(|notice| notice.kind == Kind::Offer),
+            "a later confirmation does not push the question off the screen"
+        );
+        toasts.withdraw_the_offers();
+        assert!(toasts.notices().iter().all(|notice| notice.kind != Kind::Offer));
+    }
+
     #[test]
     fn the_two_kinds_are_named_and_read_back() {
-        for kind in [Kind::Problem, Kind::Done] {
+        for kind in [Kind::Problem, Kind::Done, Kind::Offer] {
             assert_eq!(Kind::parse(kind.name()), Some(kind));
         }
         // The spellings a command line caller might use.

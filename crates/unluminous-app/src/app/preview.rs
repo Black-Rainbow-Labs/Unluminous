@@ -476,9 +476,25 @@ impl UnluminousApp {
         let response = ui.interact(area, ui.id().with("preview"), egui::Sense::click_and_drag());
         let text_width = (area.width() - size::EDITOR_PADDING_X * 2.0).max(50.0);
         let ctx = ui.ctx().clone();
+        // **A pinch or the modifier wheel over the page zooms the page** (`task-2063`: *"I should be
+        // able to zoom in/out from the markdown preview pane. It currently only works from the
+        // code/source."*). The preview claimed nothing, so in the Preview mode no pane took the gesture
+        // at all. Claimed **before** the page is built for this frame: a change of size throws the
+        // built page away, and the anchor is read off the layout the pointer is looking at.
+        self.claim_a_zoom_over_the_preview(ui, area);
         self.refresh_preview(&ctx, text_width);
         let view_height = area.height() - size::EDITOR_PADDING_Y * 2.0;
         self.keep_the_previews_place_through_a_zoom(view_height);
+        // **A press in the page gives the editing area the keyboard**, so `Ctrl`/`Cmd` with plus and
+        // minus zoom the page being read rather than whichever panel had the keys before. The source
+        // is still what a key press types into, because the preview has no caret: Focus::Editor means
+        // the editing area, and `reading_preview` says which half a copy and a zoom are about.
+        let pressed =
+            ui.input(|input| input.pointer.primary_pressed() || input.pointer.secondary_pressed());
+        if pressed && response.contains_pointer() {
+            self.focus = Focus::Editor;
+            self.reading_preview = true;
+        }
 
         let was = self.files.active().preview_scroll;
         // The bar down the right, taken hold of before the wheel is read so that it wins the pointer

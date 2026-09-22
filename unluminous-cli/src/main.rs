@@ -69,6 +69,11 @@ fn run(words: &[String]) -> i32 {
     if let Some((file, program, args)) = unluminous_cli::restore::asked_for(words) {
         return unluminous_cli::restore::run(&file, &program, &args);
     }
+    // **The helper that installs an update once the window has closed** (`task-2063`), for the same
+    // reason: it is not a command, and a window that is closing cannot be asked anything.
+    if let Some(plan) = unluminous_cli::apply_update::asked_for(words) {
+        return unluminous_cli::apply_update::run(&plan);
+    }
     let typed = match parse::parse(words) {
         Ok(typed) => typed,
         Err(problem) => {

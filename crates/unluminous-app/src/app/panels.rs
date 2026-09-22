@@ -418,6 +418,20 @@ impl UnluminousApp {
     /// writing down. The three tiles share `terminal.font.size` and are one strip at a time, so it does not
     /// matter which of them `Focus::Terminal` meant. And a plugin showing as a **tab** is in the editing
     /// area, so it is not a panel and the keys are the editing area's; only a contributed **pane** answers.
+    /// Whether the keys are going to a program in a terminal: the terminal tile, the run tile, the
+    /// debug tile's console, or a terminal node on the canvas.
+    pub(crate) fn a_terminal_has_the_keyboard(&self) -> bool {
+        match self.focus {
+            Focus::Terminal => true,
+            Focus::Space => self
+                .space
+                .chosen()
+                .and_then(|id| self.space.space.current().node(id))
+                .is_some_and(|node| node.kind() == crate::services::space::Kind::Terminal),
+            _ => false,
+        }
+    }
+
     pub(crate) fn the_pane_the_keys_hold(&self) -> Option<dock::Panel> {
         match self.focus {
             Focus::Editor => None,

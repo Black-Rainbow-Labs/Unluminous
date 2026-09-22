@@ -156,7 +156,7 @@ fn read_statement(chart: &mut Chart, line: &Line, group: Option<usize>) -> Resul
     let pieces = split_into_links(&line.text);
     if pieces.links.is_empty() {
         // No link on the line, so it is a node being introduced or relabelled on its own.
-        for part in source::split_outside_quotes(&pieces.parts[0], '&') {
+        for part in source::split_outside_brackets(&pieces.parts[0], '&') {
             if !part.trim().is_empty() {
                 node_of(chart, part.trim(), group, line)?;
             }
@@ -165,7 +165,7 @@ fn read_statement(chart: &mut Chart, line: &Line, group: Option<usize>) -> Resul
     }
     let mut previous: Vec<usize> = Vec::new();
     for (index, part) in pieces.parts.iter().enumerate() {
-        let here: Vec<usize> = source::split_outside_quotes(part, '&')
+        let here: Vec<usize> = source::split_outside_brackets(part, '&')
             .iter()
             .filter(|piece| !piece.trim().is_empty())
             .map(|piece| node_of(chart, piece.trim(), group, line))
@@ -726,7 +726,13 @@ fn draw_links(
             theme.line,
             theme.node_fill,
         );
-        draw_link_label(scene, &labels[index], &path, options);
+        let at = placed.labels[index];
+        draw_link_label(
+            scene,
+            &labels[index],
+            Point::new(at.x + origin.x, at.y + origin.y),
+            options,
+        );
     }
 }
 
@@ -771,11 +777,13 @@ fn self_loop(chart: &Chart, placed: &layered::Placed, origin: Point, node: usize
 }
 
 /// Draw a link's label, on a small panel so the line behind it does not run through the words.
-fn draw_link_label(scene: &mut Scene, label: &Label, path: &[Point], options: &Options) {
+///
+/// At the place the layout kept for it (`task-2063`), rather than the middle of the line, which is
+/// where two edges between neighbouring nodes both put theirs.
+fn draw_link_label(scene: &mut Scene, label: &Label, at: Point, options: &Options) {
     if label.is_empty() {
         return;
     }
-    let at = middle_of(path);
     let panel = Rect::around(at, Size::new(label.width + 8.0, label.height + 2.0));
     scene.add(Item::Rect {
         rect: panel,
@@ -789,20 +797,6 @@ fn draw_link_label(scene: &mut Scene, label: &Label, path: &[Point], options: &O
         panel,
         &parts::text_style(options, 0.85, false, options.theme.dim),
     );
-}
-
-/// The middle of a polyline, measured along it.
-fn middle_of(path: &[Point]) -> Point {
-    let total: f32 = path.windows(2).map(|pair| pair[0].distance(pair[1])).sum();
-    let mut walked = 0.0;
-    for pair in path.windows(2) {
-        let length = pair[0].distance(pair[1]);
-        if walked + length >= total / 2.0 && length > 0.0 {
-            return pair[0].towards(pair[1], (total / 2.0 - walked) / length);
-        }
-        walked += length;
-    }
-    path[path.len() / 2]
 }
 
 #[cfg(test)]

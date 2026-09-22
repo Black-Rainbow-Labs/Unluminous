@@ -4585,6 +4585,93 @@ painted its first frame, so the fill lands before Windows has allocated the surf
 `tasks/unluminous-technical-design-document.md` records how each was measured and what was rejected;
 `design/verification/live-window-over-desktop-windows.png` is what it should look like.
 
+## A newer version is offered once a day, and installed by a helper that outlives the window
+
+`task-2063`: *"Check for updates should provide me an option to install & restart … We should check for
+updates once per day automatically, and provide the user a toast prompt. Install & Restart option 1,
+Don't Ask Again option 2 (to stop asking about the latest version, not all future versions)."*
+
+**`update.check` is `daily` by default, and that reverses `task-1804` §6 on purpose.** That ticket made
+the check off by default on `task-1692`'s rule that nothing is sent nobody asked for; this ticket asked for
+the opposite. What is sent is unchanged: one unauthenticated `GET` that says nothing about the person or
+the project. `off` still sends nothing, and `start` still asks every time a window opens. The day is
+counted across windows in `update-checked.txt` in the settings folder, written **before** the request goes
+so two windows starting together do not both ask, because each window is a process and a clock held by
+one would check once a day per window.
+
+**`Don't Ask Again` is one version**, `update.skip`. The daily check says nothing about that version and
+offers a later one. `Check for Updates` and `unluminous-cli update check` always show what they found,
+because somebody who asks wants the answer.
+
+**A toast can carry buttons now.** `components::toast::Kind::Offer` does not fade and is never the one the
+limit pushes off the screen, because a question pushed away by a later confirmation would never be
+answered. A button reports a `toast::Act` and the window carries it out, which is the rule every component
+keeps.
+
+**Installing is download, check, hand over, and nothing unchecked is ever run.** unluminous.com's
+manifest names the installer for each platform with its size and its SHA-256; `services::update_install`
+downloads it into `unluminous-update-<version>` in the temporary folder and compares both, and a file that
+does not match is deleted before the refusal is returned. Then the window starts `unluminous-cli
+--apply-update` **from a copy in the download folder**, because the installer replaces
+`unluminous-cli.exe` in the install folder and cannot replace a program that is running, and closes itself
+the ordinary way so `on_exit` writes what the project remembers. The helper waits for the window's process
+to end, runs Inno Setup with `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS`, adding
+`/ALLUSERS` when Unluminous lives under `Program Files`, and starts the new `unluminous.exe` with no
+arguments from its own folder, which is what makes `starting_folder` reopen the last session's windows.
+It writes `apply-update.log` beside the installer, because it has no window and no console. On macOS it
+unzips with `ditto` and swaps the bundles. A build that no installer put where it is gets `Open Download
+Page` instead of `Install & Restart`: installing from `target/release` would install somewhere else and
+start that one.
+
+`unluminous-cli update install | skip | status` is the agent's half, and `update status` is the only way
+anything outside the window can see the notice and its buttons.
+
+## On Windows the window answers its own hit test, so Windows resizes it
+
+`task-2063`: *"I still have issues resizing the window from time to time. e.g. can resize from left
+side."* The eight egui grips sent `ViewportCommand::BeginResize` once egui decided a drag had **started**,
+which is after the pointer has moved past egui's threshold with the button held. A quick flick has
+already let go by the time `winit` posts `WM_NCLBUTTONDOWN`, that starts no size loop, and `winit`'s
+private `dragging` flag, which only `WM_EXITSIZEMOVE` clears, is then stuck for the life of the process:
+every later resize **and every title bar drag** does nothing.
+
+`services::windows_resize` does what Chromium, Electron, Windows Terminal and Tauri do for a window with
+no frame: a `SetWindowSubclass` procedure answers `WM_NCHITTEST` with `HTLEFT`, `HTTOPLEFT` and the rest
+for the `resize_edges::EDGE` points nearest each edge, at the window's own DPI, and passes every other
+message on. Windows then shows the arrow, starts the size loop on the press itself and offers Aero Snap,
+and nothing about a resize goes through egui or through `winit` any more. The egui grips are not added
+once it is installed, and remain the answer on macOS and Linux. `status --section window` says
+`nativeResize`.
+
+**The title bar's drag still goes through `winit`**, because egui has to see a double click on the bar,
+so `Unlatch` watches every drag the window asks for: a moment later, with no move or size loop running
+(`GetGUIThreadInfo`, `GUI_INMOVESIZE`) and the button up, it posts `WM_EXITSIZEMOVE` to the window, which
+is the one message `winit` clears the flag on.
+
+## A labelled edge's words take room in the layout, and Ctrl+Click and Ctrl+[ work like IntelliJ's
+
+Three smaller rules from `task-2063`, each written where it is kept.
+
+**Mermaid.** `layered.rs` gives a labelled edge's middle dummy the size of its label, with every edge
+spanning twice the ranks, which is dagre's answer and took the photographed overlaps from 499 pairs to
+23. An edge into a subgraph enters along a straight run from the side with nothing in the way rather than
+through the frame. `source::label` reads HTML's entities and drops the tags that only change how words
+look. `examples/mermaid_audit.rs` counts all of it across a folder of Markdown files, and
+`_agent_output/task-2063-improvements-seven/mermaid-findings.md` has the before and after.
+
+**Go to definition.** `Ctrl`/`Cmd`+Click jumps in whichever pane is under the pointer, not only the one
+with the keyboard, and a name no definer declares, which is a parameter, a local or a field, goes to where
+it is first written in its function, or for a field to the first place it is written without a `.` in front
+of it (`symbols::first_written`).
+
+**Back and forward** are `Ctrl`/`Cmd`+`[` and `]`, with the old `Ctrl`/`Cmd`+`Alt`+arrows kept in
+`actions::SECOND_CHORDS`. The brackets are never taken from a terminal, where `Ctrl+[` is `Escape` and
+`Ctrl+]` detaches from `claude`. Opening a file, `Go to File`, `Go to Line` and a search hit all record a
+place now, through `note_a_jump`, and a place a few lines from the last one replaces it.
+
+**And the Markdown preview claims the zoom gesture** over itself, anchored at the pointer, and a press in
+it gives the editing area the keyboard so the zoom keys reach it.
+
 ## Shipping it is a folder of its own
 
 `installer/` turns the built binary into something a person can install, and it does not reach into the
@@ -5116,6 +5203,9 @@ trade that away to be a shade nearer a screenshot.
   turned four "I cannot type in X" reports from guesswork into measurement, what each of the seven really
   was and which two did not reproduce, the two controls that were drawn at one size inside a box measured
   at another, and the three faults the visual sweep found that nobody had reported.
+- `tasks/task-2063-improvements-seven-tdd.md` — installing an update and restarting, the daily check and
+  the toast with buttons, zooming the preview, Ctrl+Click and Ctrl+[, what photographing every Mermaid
+  diagram in the task documents found, and why the window now answers its own hit test on Windows.
 - `tasks/task-2004-issues-five-tdd.md` — eight reports and what each one really is: the resize guard
   that was refusing every resize rather than the one it was written for, the three causes behind a pane
   that shrinks and will not grow, the field whose text was the interface's size inside a fixed box, the

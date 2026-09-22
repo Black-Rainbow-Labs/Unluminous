@@ -1222,9 +1222,9 @@ Undo a navigate-back. Cleared by any new jump, exactly as a browser's forward bu
 unluminous-cli editor navigate-forward
 ```
 
-## update — whether a newer Unluminous has been released
+## update — whether a newer Unluminous has been released, and installing it
 
-One request to unluminous.com, which is where the installer is, and to the public GitHub releases only if the site does not answer. Made only when this is run or when a person asks in the window: Unluminous sends nothing at startup unless the `update.check` setting says to, and this reports the version rather than installing anything.
+One request to unluminous.com, which is where the installer is, and to the public GitHub releases only if the site does not answer. The window asks once a day on its own unless the `update.check` setting is `off`, and offers a newer version in a notice with Install & Restart and Don't Ask Again. `update install` is that button: the installer is checked against the size and SHA-256 unluminous.com publishes before anything is run.
 
 ### update check
 
@@ -1232,12 +1232,53 @@ One request to unluminous.com, which is where the installer is, and to the publi
 unluminous-cli update check [--timeout <milliseconds>]
 ```
 
-Whether a newer Unluminous has been released, and what this one is. One request to unluminous.com, falling back to the public GitHub releases when the site does not answer, made only when this is run or when a person asks in the window - Unluminous sends nothing at startup unless the update.check setting says to. It reports the version and never installs anything.
+Whether a newer Unluminous has been released. One request to unluminous.com, then the public GitHub releases if the site does not answer. Reports; `update install` installs.
 
 - `--timeout <milliseconds>` — How long to wait for the answer. 15000 by default.
 
 ```sh
 unluminous-cli update check --json
+```
+
+### update install
+
+```
+unluminous-cli update install [--no-restart]
+```
+
+Install & Restart: download the newer version the last check found, check its size and SHA-256, install it, and reopen. Answers at once; `update status` says how far it got.
+
+- `--no-restart` — Download and check it, and install nothing.
+
+```sh
+unluminous-cli update install
+unluminous-cli update install --no-restart --json
+```
+
+### update skip
+
+```
+unluminous-cli update skip [version]
+```
+
+Don't Ask Again: the daily check stops offering this version. A later one is offered.
+
+- `version` (optional) — The version. The one the last check found when left out.
+
+```sh
+unluminous-cli update skip 0.55.0
+```
+
+### update status
+
+```
+unluminous-cli update status
+```
+
+The last check's answer, an install's progress, the declined version, and the offer showing with its buttons.
+
+```sh
+unluminous-cli update status --json
 ```
 
 ## highlight — the passages marked in the project's files

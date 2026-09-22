@@ -20,6 +20,17 @@
 //!    neighbours and keeping the result only when it crosses fewer edges.
 //! 5. **Place**, then **route**.
 //!
+//! ## An edge's label takes room of its own
+//!
+//! `task-2063` photographed the Mermaid in the task documents and counted five hundred pairs of words
+//! drawn over each other, nearly all of them edge labels: two edges between neighbouring nodes each put
+//! their label at the middle of their own line, and the two middles were the same place. `dagre` answers
+//! this, and so Mermaid's own pictures do not have it: when a diagram has labelled edges, every edge
+//! spans twice as many ranks, and a labelled edge's dummy on the middle rank is **the size of its
+//! label**. The ordering and the placement then keep labels apart from each other and from every node
+//! exactly as they keep nodes apart, because to them a label is a node. The gap between ranks is halved
+//! at the same time, so a diagram whose labels are small is no taller than it was.
+//!
 //! ## Two rules this keeps, and why they matter more here than usual
 //!
 //! **No randomness, and a fixed number of passes.** Every sweep count in this file is a constant. A
@@ -176,15 +187,184 @@ pub fn layout(graph: &Graph) -> Placed {
 /// nodes this changes nothing, so it is one pass over all of them rather than a special case.
 fn attach_to_real_nodes(graph: &Graph, placed: &mut Placed) {
     for (index, edge) in graph.edges.iter().enumerate() {
-        let path = &mut placed.edges[index];
+        let mut path = placed.edges[index].clone();
         if path.len() < 2 {
             continue;
         }
         let last = path.len() - 1;
-        path[0] = placed.nodes[edge.from].centre();
-        path[last] = placed.nodes[edge.to].centre();
-        placed.labels[index] = midpoint(path);
+        let (from, to) = (placed.nodes[edge.from].centre(), placed.nodes[edge.to].centre());
+        // Only an edge whose ends moved has a label to move. One between two ordinary nodes keeps the
+        // place the layout gave it, which since `task-2063` is a slot of its own.
+        let moved = path[0].distance(from) > 0.5 || path[last].distance(to) > 0.5;
+        // **Into a subgraph along a clear line, not straight through it** (`task-2063`). The edge was
+        // laid out to the subgraph's frame, and joining the frame's point to the real node with one
+        // straight segment cut across the frame and through whatever else was inside it: the
+        // photographed diagrams had lines running through three boxes to reach the fourth. Each end
+        // inside a subgraph the other end is not in now comes to a point just outside the frame and runs
+        // in to its node in a straight line, from the side with nothing else on the way.
+        let into = enter(graph, placed, edge.to, edge.from, path[last - 1]);
+        let out_of = enter(graph, placed, edge.from, edge.to, path[1]);
+        path[0] = from;
+        path[last] = to;
+        if let Some(entry) = into {
+            path.truncate(last);
+            path.extend(entry.into_iter().rev());
+        }
+        if let Some(mut exit) = out_of {
+            path.remove(0);
+            exit.extend(path);
+            path = exit;
+        }
+        // A label with a slot of its own is on one of the bends, which are kept, so it stays where the
+        // layout put it; only a straight edge with no bends has its label worked out again.
+        if moved && last == 1 {
+            placed.labels[index] = midpoint(&path);
+        }
+        placed.edges[index] = path;
     }
+}
+
+/// How far outside a subgraph's frame an edge turns before it runs in to its node.
+const ENTRY_GAP: f32 = 10.0;
+
+/// The way into `node` from outside the outermost subgraph it is in that `other` is not, as points
+/// from the node's centre outwards: the centre, the point just outside the frame, and a corner when the
+/// edge has to go round the frame to reach that point. Nothing when `node` is in no such subgraph.
+///
+/// `towards` is the point the edge comes from, which decides the side tried first.
+fn enter(
+    graph: &Graph,
+    placed: &Placed,
+    node: usize,
+    other: usize,
+    towards: Point,
+) -> Option<Vec<Point>> {
+    let group = outermost_group_apart(graph, node, other)?;
+    let frame = placed.groups[group];
+    let rect = placed.nodes[node];
+    let centre = rect.centre();
+    let sides = sides_facing(frame, towards);
+    let clear = |side: Side| {
+        let (from, to) = match side {
+            Side::Top => (Point::new(centre.x, frame.y - ENTRY_GAP), Point::new(centre.x, rect.y)),
+            Side::Bottom => (
+                Point::new(centre.x, rect.bottom()),
+                Point::new(centre.x, frame.bottom() + ENTRY_GAP),
+            ),
+            Side::Left => (Point::new(frame.x - ENTRY_GAP, centre.y), Point::new(rect.x, centre.y)),
+            Side::Right => (
+                Point::new(rect.right(), centre.y),
+                Point::new(frame.right() + ENTRY_GAP, centre.y),
+            ),
+        };
+        let others =
+            (0..graph.nodes.len()).filter(|&other| other != node).map(|other| placed.nodes[other]);
+        let frames = (0..graph.groups.len())
+            .filter(|&inner| inner != group && !inside(graph, graph.nodes[node].group, inner))
+            .map(|inner| placed.groups[inner]);
+        !others.chain(frames).any(|obstacle| crosses(from, to, obstacle))
+    };
+    let side = sides.iter().copied().find(|side| clear(*side)).unwrap_or(sides[0]);
+    let outside = match side {
+        Side::Top => Point::new(centre.x, frame.y - ENTRY_GAP),
+        Side::Bottom => Point::new(centre.x, frame.bottom() + ENTRY_GAP),
+        Side::Left => Point::new(frame.x - ENTRY_GAP, centre.y),
+        Side::Right => Point::new(frame.right() + ENTRY_GAP, centre.y),
+    };
+    let mut points = vec![centre, outside];
+    // A corner outside the frame when the edge comes from beside the side it enters by, so it goes
+    // round the frame rather than across it.
+    let facing = match side {
+        Side::Top => towards.y <= outside.y,
+        Side::Bottom => towards.y >= outside.y,
+        Side::Left => towards.x <= outside.x,
+        Side::Right => towards.x >= outside.x,
+    };
+    if !facing {
+        points.extend(round_the_frame(frame, side, outside, towards));
+    }
+    Some(points)
+}
+
+/// The corners an edge coming from `towards` turns at to reach `outside` without crossing `frame`,
+/// nearest `outside` first.
+///
+/// One corner when the edge can run straight along the outside of the frame to the side it enters by;
+/// two when that straight run would cross the frame, in which case it goes round whichever end of the
+/// frame is nearer.
+fn round_the_frame(frame: Rect, side: Side, outside: Point, towards: Point) -> Vec<Point> {
+    match side {
+        Side::Top | Side::Bottom => {
+            if towards.x < frame.x || towards.x > frame.right() {
+                return vec![Point::new(towards.x, outside.y)];
+            }
+            let left = frame.x - ENTRY_GAP;
+            let right = frame.right() + ENTRY_GAP;
+            let x =
+                if (towards.x - left).abs() <= (right - towards.x).abs() { left } else { right };
+            vec![Point::new(x, outside.y), Point::new(x, towards.y)]
+        }
+        Side::Left | Side::Right => {
+            if towards.y < frame.y || towards.y > frame.bottom() {
+                return vec![Point::new(outside.x, towards.y)];
+            }
+            let top = frame.y - ENTRY_GAP;
+            let bottom = frame.bottom() + ENTRY_GAP;
+            let y =
+                if (towards.y - top).abs() <= (bottom - towards.y).abs() { top } else { bottom };
+            vec![Point::new(outside.x, y), Point::new(towards.x, y)]
+        }
+    }
+}
+
+/// A side of a rectangle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+/// The four sides of `frame`, the one facing `towards` first and then the rest in a fixed order.
+fn sides_facing(frame: Rect, towards: Point) -> Vec<Side> {
+    let first = if towards.y < frame.y {
+        Side::Top
+    } else if towards.y > frame.bottom() {
+        Side::Bottom
+    } else if towards.x < frame.x {
+        Side::Left
+    } else {
+        Side::Right
+    };
+    let mut sides = vec![first];
+    sides.extend(
+        [Side::Top, Side::Bottom, Side::Left, Side::Right]
+            .into_iter()
+            .filter(|side| *side != first),
+    );
+    sides
+}
+
+/// The outermost subgraph `node` is inside that `other` is not.
+fn outermost_group_apart(graph: &Graph, node: usize, other: usize) -> Option<usize> {
+    let mut found = None;
+    let mut at = graph.nodes[node].group;
+    for _ in 0..=graph.groups.len() {
+        let Some(group) = at else { break };
+        if !inside(graph, graph.nodes[other].group, group) {
+            found = Some(group);
+        }
+        at = graph.groups[group].parent;
+    }
+    found
+}
+
+/// Whether an axis-aligned segment from `from` to `to` passes through the inside of `rect`.
+fn crosses(from: Point, to: Point, rect: Rect) -> bool {
+    let (left, right) = (from.x.min(to.x), from.x.max(to.x));
+    let (top, bottom) = (from.y.min(to.y), from.y.max(to.y));
+    left < rect.right() && right > rect.x && top < rect.bottom() && bottom > rect.y
 }
 
 /// One box of the layout: the top level, or the inside of one subgraph.
@@ -366,13 +546,54 @@ fn arrange(sizes: &[Size], edges: &[Lifted]) -> Arranged {
     if sizes.is_empty() {
         return Arranged { entities: Vec::new(), paths: Vec::new(), size: Size::default() };
     }
+    // Twice the ranks when anything carries a label, so each label has a rank of its own to sit in.
+    // See the module comment.
+    let labelled = edges.iter().any(has_a_label);
+    let doubled: Vec<Lifted>;
+    let edges: &[Lifted] = match labelled {
+        true => {
+            doubled = edges.iter().map(|edge| Lifted { span: edge.span * 2, ..*edge }).collect();
+            &doubled
+        }
+        false => edges,
+    };
     let reversed = back_edges(sizes.len(), edges);
     let ranks = rank(sizes.len(), edges, &reversed);
     let (layers, chains) = insert_dummies(sizes, edges, &reversed, &ranks);
+    let labels = label_slots(edges, &chains);
     let joins = build_joins(&chains, edges, &reversed);
     let order = order_layers(&layers, &joins);
-    let placed = position(sizes, &order, &joins, edges);
-    route(edges, &reversed, &chains, &placed)
+    let placed = position(sizes, &order, &joins, edges, &labels, labelled);
+    route(edges, &reversed, &chains, &placed, &labels)
+}
+
+/// Whether an edge has a label that takes any room.
+fn has_a_label(edge: &Lifted) -> bool {
+    edge.label.width > 0.0 && edge.label.height > 0.0
+}
+
+/// Where each labelled edge's label sits: the dummy on the middle rank of its chain, and how much room
+/// that dummy takes.
+///
+/// Keyed like a slot, so the placement asks one map. The room is the label's panel, which
+/// `flowchart::draw_link_label` draws eight points wider and two taller than the words, and a little
+/// more so two panels in one rank do not touch.
+type LabelSlots = HashMap<SlotKey, Size>;
+
+fn label_slots(edges: &[Lifted], chains: &Chains) -> LabelSlots {
+    edges
+        .iter()
+        .enumerate()
+        .filter(|(index, edge)| has_a_label(edge) && !chains[*index].is_empty())
+        .map(|(index, edge)| {
+            let chain = &chains[index];
+            let rank = chain[chain.len() / 2];
+            (
+                key(Slot::Dummy(index), rank),
+                Size::new(edge.label.width + 12.0, edge.label.height + 4.0),
+            )
+        })
+        .collect()
 }
 
 /// Which edges point backwards, found by a depth-first walk.
@@ -678,16 +899,28 @@ struct Positions {
 
 /// Give every slot a position: down the page by rank, across it by relaxation towards its
 /// neighbours.
-fn position(sizes: &[Size], order: &[Vec<Slot>], joins: &Joins, edges: &[Lifted]) -> Positions {
-    let widths = slot_widths(sizes, order);
+fn position(
+    sizes: &[Size],
+    order: &[Vec<Slot>],
+    joins: &Joins,
+    edges: &[Lifted],
+    labels: &LabelSlots,
+    labelled: bool,
+) -> Positions {
+    let widths = slot_widths(sizes, order, labels);
     let mut across = initial_across(&widths);
     for sweep in 0..POSITION_SWEEPS {
         relax(&mut across, &widths, joins, order, sweep % 2 == 0);
     }
     normalise(&mut across, &widths);
 
-    let heights = rank_heights(sizes, order);
-    let gap = rank_gap(edges);
+    let heights = rank_heights(sizes, order, labels);
+    // Half the gap between twice the ranks, so the distance from one node to the next is what it was
+    // and a label's own height is what is added to it.
+    let gap = match labelled {
+        true => RANK_GAP / 2.0,
+        false => rank_gap(edges),
+    };
     let mut centres: Vec<Vec<Point>> = Vec::with_capacity(order.len());
     let mut top = 0.0;
     for (rank, layer) in order.iter().enumerate() {
@@ -708,20 +941,30 @@ fn position(sizes: &[Size], order: &[Vec<Slot>], joins: &Joins, edges: &[Lifted]
             }
         }
     }
-    let size = extent(&entities, &centres);
+    let mut size = extent(&entities, &centres);
+    for (rank, layer) in order.iter().enumerate() {
+        for (at, slot) in layer.iter().enumerate() {
+            if let Some(room) = labels.get(&key(*slot, rank)) {
+                let panel = Rect::around(centres[rank][at], *room);
+                size.width = size.width.max(panel.right());
+                size.height = size.height.max(panel.bottom());
+            }
+        }
+    }
     Positions { centres, layers: order.to_vec(), entities, size }
 }
 
 /// How wide every slot is, rank by rank.
-fn slot_widths(sizes: &[Size], order: &[Vec<Slot>]) -> Vec<Vec<f32>> {
+fn slot_widths(sizes: &[Size], order: &[Vec<Slot>], labels: &LabelSlots) -> Vec<Vec<f32>> {
     order
         .iter()
-        .map(|layer| {
+        .enumerate()
+        .map(|(rank, layer)| {
             layer
                 .iter()
                 .map(|slot| match slot {
                     Slot::Entity(index) => sizes[*index].width,
-                    Slot::Dummy(_) => LANE,
+                    Slot::Dummy(_) => labels.get(&key(*slot, rank)).map_or(LANE, |room| room.width),
                 })
                 .collect()
         })
@@ -858,15 +1101,16 @@ fn normalise(across: &mut [Vec<f32>], widths: &[Vec<f32>]) {
 }
 
 /// How tall each rank is: the tallest thing in it.
-fn rank_heights(sizes: &[Size], order: &[Vec<Slot>]) -> Vec<f32> {
+fn rank_heights(sizes: &[Size], order: &[Vec<Slot>], labels: &LabelSlots) -> Vec<f32> {
     order
         .iter()
-        .map(|layer| {
+        .enumerate()
+        .map(|(rank, layer)| {
             layer
                 .iter()
                 .map(|slot| match slot {
                     Slot::Entity(index) => sizes[*index].height,
-                    Slot::Dummy(_) => 0.0,
+                    Slot::Dummy(_) => labels.get(&key(*slot, rank)).map_or(0.0, |room| room.height),
                 })
                 .fold(0.0_f32, f32::max)
         })
@@ -899,7 +1143,13 @@ fn extent(entities: &[Rect], centres: &[Vec<Point>]) -> Size {
 }
 
 /// Turn the placed slots into one polyline an edge, and say where its label goes.
-fn route(edges: &[Lifted], reversed: &[bool], chains: &Chains, placed: &Positions) -> Arranged {
+fn route(
+    edges: &[Lifted],
+    reversed: &[bool],
+    chains: &Chains,
+    placed: &Positions,
+    labels: &LabelSlots,
+) -> Arranged {
     let mut where_is: HashMap<SlotKey, Point> = HashMap::new();
     for (rank, layer) in placed.layers.iter().enumerate() {
         for (at, slot) in layer.iter().enumerate() {
@@ -921,7 +1171,13 @@ fn route(edges: &[Lifted], reversed: &[bool], chains: &Chains, placed: &Position
         }
         points.extend(middle);
         points.push(placed.entities[edge.to].centre());
-        let label = midpoint(&points);
+        // The label's own slot when it has one, which is a point on the line by construction.
+        let label = chains[index]
+            .iter()
+            .map(|&rank| (1, index, rank))
+            .find(|slot| labels.contains_key(slot))
+            .and_then(|slot| where_is.get(&slot).copied())
+            .unwrap_or_else(|| midpoint(&points));
         paths.push((edge.edge, Path { points, label }));
     }
     Arranged { entities: placed.entities.clone(), paths, size: placed.size }
@@ -1003,6 +1259,47 @@ mod tests {
             graph.edges.push(EdgeSpec::new(index - 1, index));
         }
         graph
+    }
+
+    /// Whether a polyline passes through the inside of `rect`, sampled finely enough for a box of forty
+    /// points.
+    fn runs_through(path: &[Point], rect: Rect) -> bool {
+        let inner = Rect::new(rect.x + 1.0, rect.y + 1.0, rect.width - 2.0, rect.height - 2.0);
+        path.windows(2).any(|pair| {
+            (0..=100).any(|step| {
+                let at = pair[0].towards(pair[1], step as f32 / 100.0);
+                at.x > inner.x && at.x < inner.right() && at.y > inner.y && at.y < inner.bottom()
+            })
+        })
+    }
+
+    /// An edge from outside a subgraph to the last of three stacked nodes inside it reaches that node
+    /// without running through the two above it or across the frame. `task-2063` photographed lines
+    /// running through three boxes to reach a fourth.
+    #[test]
+    fn an_edge_into_a_subgraph_does_not_run_through_the_nodes_inside_it() {
+        let mut graph = Graph::default();
+        graph.groups.push(GroupSpec { title: Size::new(60.0, 18.0), parent: None });
+        let a = graph.add_node(Size::new(120.0, 40.0), Some(0));
+        let b = graph.add_node(Size::new(120.0, 40.0), Some(0));
+        let c = graph.add_node(Size::new(120.0, 40.0), Some(0));
+        let outside = graph.add_node(Size::new(120.0, 40.0), None);
+        graph.edges.push(EdgeSpec::new(a, b));
+        graph.edges.push(EdgeSpec::new(b, c));
+        graph.edges.push(EdgeSpec::new(outside, c));
+        let placed = layout(&graph);
+        let path = &placed.edges[2];
+        for blocker in [a, b] {
+            assert!(
+                !runs_through(path, placed.nodes[blocker]),
+                "{path:?} runs through node {blocker}"
+            );
+        }
+        assert_eq!(
+            *path.last().expect("an end"),
+            placed.nodes[c].centre(),
+            "and it ends on the node"
+        );
     }
 
     #[test]

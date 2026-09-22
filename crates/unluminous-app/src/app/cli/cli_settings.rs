@@ -96,8 +96,51 @@ impl UnluminousApp {
     /// The answer is also kept on the window, so opening the About box after running this shows what
     /// it found -- one place a check's answer lives, which is `run_cli`'s rule.
     pub(crate) fn cli_update(&mut self, request: &Request, verb: &str) -> Outcome {
-        if verb != "check" {
-            return unknown(request);
+        match verb {
+            "check" => {}
+            "install" => {
+                let restart = !request.switch("no-restart");
+                return Outcome::Reply(match self.install_the_update(restart) {
+                    Ok(said) => Reply::done(&request.command, said, self.update_status_value()),
+                    Err(problem) => Reply::failed(&request.command, code::REFUSED, problem),
+                });
+            }
+            "skip" => {
+                let named = request.text("version");
+                let found = match &self.update_answer {
+                    Some(crate::services::update::Answer::Newer(release)) => {
+                        Some(release.version.clone())
+                    }
+                    _ => None,
+                };
+                let Some(version) = named.or(found) else {
+                    return Outcome::Reply(Reply::failed(
+                        &request.command,
+                        code::USAGE,
+                        "Name the version to stop offering; no check has found a newer one.",
+                    ));
+                };
+                self.skip_the_update(&version);
+                let said = self.message.clone().unwrap_or_default();
+                return Outcome::Reply(Reply::done(
+                    &request.command,
+                    said,
+                    self.update_status_value(),
+                ));
+            }
+            "status" => {
+                let said = match (&self.install, &self.update_answer) {
+                    (Some(install), _) => install.progress().sentence(&install.version),
+                    (None, Some(answer)) => answer.sentence(),
+                    (None, None) => "No check has been made in this window yet.".to_owned(),
+                };
+                return Outcome::Reply(Reply::done(
+                    &request.command,
+                    said,
+                    self.update_status_value(),
+                ));
+            }
+            _ => return unknown(request),
         }
         let until = waits_for(request, "timeout", crate::services::update::TIMEOUT);
         // The check itself is given the same budget, so the request that is still in flight when the
@@ -105,6 +148,8 @@ impl UnluminousApp {
         let asking = until.saturating_duration_since(Instant::now());
         self.update = Some(crate::services::update::Check::start_for(asking, self.thread_waker()));
         self.update_answer = None;
+        // An agent asking is somebody asking, so what it finds is offered in the window as well.
+        self.update_asked_by_a_person = true;
         Outcome::Hold(Waiting::UpdateCheck { until })
     }
 
@@ -460,6 +505,7 @@ impl UnluminousApp {
             "editor.suggestions" => self.settings.suggestions.name().to_owned(),
             "editor.line_ending" => self.settings.line_endings.name().to_owned(),
             "update.check" => self.settings.update_check.name().to_owned(),
+            "update.skip" => self.settings.update_skip.clone(),
             "editor.exclude" => self.settings.exclude.clone(),
             "debug.value_tooltip" => self.settings.value_tooltip.name().to_owned(),
             "plugins.chrome" => self.settings.plugin_chrome.to_string(),
@@ -599,6 +645,9 @@ impl UnluminousApp {
             // nothing. A pattern that will not parse at all is skipped by the reader with the rest
             // of the line kept, which is what a `.gitignore` comment does.
             "editor.exclude" => settings.exclude = value.trim().to_owned(),
+            // A version, or empty to offer every version again. Not checked against the releases,
+            // because declining a version that has not been published yet is harmless.
+            "update.skip" => settings.update_skip = value.trim().trim_start_matches('v').to_owned(),
             // Not checked against the machine, for `terminal.shell`'s reason: a path may name
             // something installed a moment from now, and when it is wrong the status bar says so in
             // the adapter's own words, which is a better message than one made up here.
@@ -1171,7 +1220,11 @@ const SETTINGS: &[SettingKey] = &[
     },
     SettingKey {
         name: "update.check",
-        help: "Whether Unluminous asks unluminous.com for a newer version when it opens, falling back to the public GitHub releases when the site does not answer. Off, and it asks nothing until somebody presses Check for Updates or runs `update check`. It never installs anything either way.",
+        help: "Whether Unluminous asks unluminous.com for a newer version on its own: `daily`, the default, asks at most once a day across every window; `start` asks whenever a window opens; `off` asks nothing until somebody presses Check for Updates or runs `update check`. A newer version is offered in a notice with Install & Restart and Don't Ask Again, and nothing is installed until that is pressed.",
+    },
+    SettingKey {
+        name: "update.skip",
+        help: "The one version Don't Ask Again declined, which the daily check does not offer. A later version is offered again. Empty offers every version.",
     },
     SettingKey {
         name: "editor.exclude",
@@ -1253,6 +1306,7 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "editor.suggestions" => fresh.suggestions.name().to_owned(),
         "editor.line_ending" => fresh.line_endings.name().to_owned(),
         "update.check" => fresh.update_check.name().to_owned(),
+        "update.skip" => fresh.update_skip.clone(),
         "editor.exclude" => fresh.exclude.clone(),
         "debug.value_tooltip" => fresh.value_tooltip.name().to_owned(),
         "plugins.chrome" => fresh.plugin_chrome.to_string(),

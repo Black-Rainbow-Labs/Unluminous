@@ -43,6 +43,9 @@ use crate::services::text_search::Hit;
 /// and bounded so that a long session cannot grow it without limit.
 const HISTORY: usize = 64;
 
+/// How many lines apart two places in one file have to be to count as two places.
+const NEAR: usize = 3;
+
 /// Somewhere the caret has been, so it can be gone back to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Place {
@@ -306,7 +309,53 @@ impl UnluminousApp {
                 });
             }
         }
+        if candidates.is_empty() {
+            candidates.extend(self.where_it_is_first_written(name, asked_in, asked_at));
+        }
         self.rank_candidates(candidates, asked_in, asked_at)
+    }
+
+    /// For a name no definer declares, where it is first written in the file it was asked about.
+    ///
+    /// `task-2063`: a click on a parameter, a local or a field said there was no definition, because
+    /// none of them has a keyword in front of it. `unluminous_core::symbols::first_written` is the
+    /// reading; this is only which tab to read. `Likely`, because it is a guess about scope, and a name
+    /// the language itself provides — `Some`, `String`, `console` — is never guessed at.
+    fn where_it_is_first_written(
+        &mut self,
+        name: &str,
+        asked_in: Option<&Path>,
+        asked_at: usize,
+    ) -> Option<Candidate> {
+        let path = asked_in?.to_path_buf();
+        let index =
+            (0..self.files.len()).find(|index| self.files.at(*index).path() == Some(&path))?;
+        let grammar = self.grammar_for(Some(&path))?;
+        if grammar.builtins.iter().chain(&grammar.types).any(|known| known == name) {
+            return None;
+        }
+        let text = self.files.at(index).document.text().to_string();
+        let read = &self.tab_symbols(index).read;
+        let clicked = read.identifier_at(asked_at)?;
+        let found =
+            symbols::first_written(&text, read.word_ranges(), read.definitions(), clicked.clone())?;
+        // A name written once, and clicked on there, declares nothing anybody uses: there are no
+        // references to list, so it is not offered as its own declaration.
+        let written = read
+            .word_ranges()
+            .iter()
+            .filter(|range| text.get((*range).clone()) == Some(name))
+            .count();
+        if found == clicked && written < 2 {
+            return None;
+        }
+        Some(Candidate {
+            path,
+            name_range: found,
+            kind: SymbolKind::Variable,
+            confidence: Confidence::Likely,
+            open: true,
+        })
     }
 
     /// Put candidates in the order they should be offered. The order itself is
@@ -434,8 +483,7 @@ impl UnluminousApp {
             ));
             return;
         };
-        self.remember_where_we_are();
-        self.forward.clear();
+        self.note_a_jump();
         self.open_the_match(&candidate.path.clone(), range);
     }
 
@@ -456,6 +504,14 @@ impl UnluminousApp {
             .map(|definition| document_range(&text, definition.name_range))
     }
 
+    /// Where the caret is now goes on the back stack, and the forward stack is thrown away, because a
+    /// jump is a new branch of the history. What every jump calls: a definition, a reference, a
+    /// search hit, `Go to Line`, `Go to File` and a file opened from the explorer (`task-2063`).
+    pub(crate) fn note_a_jump(&mut self) {
+        self.remember_where_we_are();
+        self.forward.clear();
+    }
+
     /// Put where the caret is now on the back stack.
     pub(crate) fn remember_where_we_are(&mut self) {
         let Some(path) = self.files.active().path().map(Path::to_path_buf) else {
@@ -463,7 +519,18 @@ impl UnluminousApp {
         };
         let offset = self.document().selection().head;
         let place = Place { path, offset };
-        if self.back.last() == Some(&place) {
+        // **A place a few lines from the last one is the last one, moved** (`task-2063`), which is
+        // the reference editor's rule: going back should skip to where somebody was working, not step through
+        // every line they touched on the way.
+        let near = self.back.last().is_some_and(|last| {
+            let text = self.document().text();
+            let line_of = |offset: usize| text.byte_to_line(offset.min(text.len_bytes()));
+            last.path == place.path && line_of(last.offset).abs_diff(line_of(offset)) <= NEAR
+        });
+        if near {
+            if let Some(last) = self.back.last_mut() {
+                last.offset = offset;
+            }
             return;
         }
         self.back.push(place);
@@ -895,8 +962,7 @@ impl UnluminousApp {
             return; // the modal is dropped, because the list it was showing describes the old name
         }
         if let Some((path, range)) = outcome.open {
-            self.remember_where_we_are();
-            self.forward.clear();
+            self.note_a_jump();
             self.open_the_match(&path, range);
         }
         if !outcome.close {

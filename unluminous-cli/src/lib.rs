@@ -11,6 +11,7 @@
 //! window, no graphics card and no fonts behind it — and what keeps the dependency pointing one
 //! way, so the two can never disagree about what `tab.open` is called.
 
+pub mod apply_update;
 pub mod catalogue;
 pub mod client;
 pub mod help;

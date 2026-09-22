@@ -833,6 +833,10 @@ pub fn key_name(key: egui::Key) -> &'static str {
         // the row under it `Ctrl+Shift+Period`. egui's own name for it is the word.
         egui::Key::Period => ".",
         egui::Key::Backtick => "`",
+        // `Navigate Back` and `Navigate Forward` (`task-2063`), which read `Ctrl+OpenBracket` in a menu
+        // two rows above `Ctrl+,`.
+        egui::Key::OpenBracket => "[",
+        egui::Key::CloseBracket => "]",
         egui::Key::Num0 => "0",
         egui::Key::Num1 => "1",
         egui::Key::Num2 => "2",
@@ -1745,22 +1749,47 @@ pub fn completion_entries(state: &MenuState) -> Vec<Entry> {
 ///
 /// Always there, dimmed when there is nowhere to go: they are about the window's own history rather
 /// than about the file, so they do not change shape depending on what is open.
+///
+/// **`Ctrl`/`Cmd`+`[` and `]`**, which `task-2063` asks for and which is the reference editor's own chord on macOS.
+/// The chord they had before, `Ctrl`/`Cmd`+`Alt`+`Left` and `Right`, still works: it is in
+/// [`SECOND_CHORDS`], because somebody who learned it should not find it gone.
 pub fn navigation_entries(state: &MenuState) -> Vec<Entry> {
     vec![
         Entry::with_shortcut(
             "Navigate Back",
             Action::NavigateBack,
-            Shortcut { alt: true, ..Shortcut::command(egui::Key::ArrowLeft) },
+            Shortcut::command(egui::Key::OpenBracket),
         )
         .enabled(state.can_go_back),
         Entry::with_shortcut(
             "Navigate Forward",
             Action::NavigateForward,
-            Shortcut { alt: true, ..Shortcut::command(egui::Key::ArrowRight) },
+            Shortcut::command(egui::Key::CloseBracket),
         )
         .enabled(state.can_go_forward),
     ]
 }
+
+/// Chords that do what a menu entry does without being the one the menu shows.
+///
+/// A menu row shows one shortcut. These are the ones a person may already have in their fingers from
+/// before a row's chord changed, and each still has to find its entry enabled to do anything.
+pub const SECOND_CHORDS: [(Shortcut, Action); 2] = [
+    (
+        Shortcut { key: egui::Key::ArrowLeft, command: true, shift: false, alt: true, ctrl: false },
+        Action::NavigateBack,
+    ),
+    (
+        Shortcut {
+            key: egui::Key::ArrowRight,
+            command: true,
+            shift: false,
+            alt: true,
+            ctrl: false,
+        },
+        Action::NavigateForward,
+    ),
+];
 
 /// The line editing entries, in the order the `Edit` menu holds them. `task-1922` WP4.
 ///
@@ -2605,12 +2634,55 @@ pub fn action_for_key(
         }
         None
     }
-    menus.iter().find_map(|menu| search(&menu.entries, key, modifiers))
+    menus.iter().find_map(|menu| search(&menu.entries, key, modifiers)).or_else(|| {
+        let (_, action) = SECOND_CHORDS.iter().find(|(chord, _)| chord.matches(key, modifiers))?;
+        is_enabled(menus, action).then(|| action.clone())
+    })
+}
+
+/// Whether some menu offers `action` and it can be done just now.
+fn is_enabled(menus: &[Menu], action: &Action) -> bool {
+    fn search(entries: &[Entry], wanted: &Action) -> bool {
+        entries.iter().any(|entry| match entry {
+            Entry::Item { action, enabled, .. } => *enabled && action == wanted,
+            Entry::Submenu { entries, .. } => search(entries, wanted),
+            Entry::Separator => false,
+        })
+    }
+    menus.iter().any(|menu| search(&menu.entries, action))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `Ctrl`/`Cmd`+`[` and `]` walk the places the caret has been, and the chord they had before
+    /// still does. `task-2063`.
+    #[test]
+    fn the_brackets_navigate_and_the_old_chord_still_does() {
+        let state = MenuState { can_go_back: true, can_go_forward: true, ..MenuState::default() };
+        let command = egui::Modifiers { command: true, ctrl: true, ..Default::default() };
+        let with_alt = egui::Modifiers { alt: true, ..command };
+        let menus = menus(&state);
+        assert_eq!(
+            action_for_key(&menus, egui::Key::OpenBracket, &command),
+            Some(Action::NavigateBack)
+        );
+        assert_eq!(
+            action_for_key(&menus, egui::Key::CloseBracket, &command),
+            Some(Action::NavigateForward)
+        );
+        assert_eq!(
+            action_for_key(&menus, egui::Key::ArrowLeft, &with_alt),
+            Some(Action::NavigateBack)
+        );
+        let nowhere = super::menus(&MenuState::default());
+        assert_eq!(
+            action_for_key(&nowhere, egui::Key::ArrowLeft, &with_alt),
+            None,
+            "a second chord still needs its entry to be enabled"
+        );
+    }
 
     fn names(entries: &[Entry]) -> Vec<String> {
         entries

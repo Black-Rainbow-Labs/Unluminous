@@ -1131,8 +1131,9 @@ fn opening_the_about_box_shuts_whatever_else_was_open() {
 ///
 /// `task-1804` §6. **The assertion that matters is the second one**: a test can watch a button
 /// appear, and what this feature has to be right about is that opening the window, opening the
-/// About box and reading it send nothing at all. `update.check` is off in a fresh Unluminous, and
-/// `UnluminousApp::update` is `None` until somebody asks -- so `None` is the evidence.
+/// About box and reading it send nothing at all. A window with no settings folder, which is every test
+/// window, never runs the daily check, and `UnluminousApp::update` is `None` until somebody asks -- so
+/// `None` is the evidence.
 #[test]
 fn the_about_box_offers_a_check_and_nothing_is_asked_until_it_is_pressed() {
     let mut harness = harness("");
@@ -1154,11 +1155,12 @@ fn the_about_box_offers_a_check_and_nothing_is_asked_until_it_is_pressed() {
     harness.snapshot(shot("about_updates"));
 }
 
-/// The setting is what makes the window ask as it opens, and it is off unless it is set.
+/// The setting is what makes the window ask on its own, and since `task-2063` it asks once a day
+/// unless it is told not to.
 #[test]
-fn the_update_setting_is_read_and_written_and_is_off_until_it_is_set() {
+fn the_update_setting_is_read_and_written_and_is_daily_until_it_is_set() {
     let mut harness = harness("");
-    assert_eq!(did(&mut harness, "settings get update.check")["value"], serde_json::json!("off"));
+    assert_eq!(did(&mut harness, "settings get update.check")["value"], serde_json::json!("daily"));
     did(&mut harness, "settings set update.check start");
     assert!(harness.state().settings.update_check.at_start());
     assert_eq!(did(&mut harness, "settings get update.check")["value"], serde_json::json!("start"));
@@ -1166,7 +1168,9 @@ fn the_update_setting_is_read_and_written_and_is_off_until_it_is_set() {
     // as "off" -- which would be a settings file that quietly stopped meaning what it said.
     assert_eq!(refused(&mut harness, "settings set update.check weekly"), "usage");
     did(&mut harness, "settings set update.check off");
-    assert!(!harness.state().settings.update_check.at_start());
+    assert!(!harness.state().settings.update_check.is_on());
+    did(&mut harness, "settings set update.skip v0.99.0");
+    assert_eq!(harness.state().settings.update_skip, "0.99.0", "the v comes off");
 }
 
 // task-1804 §4.2: the two newest plugins are configurable by an agent as well as by a person.

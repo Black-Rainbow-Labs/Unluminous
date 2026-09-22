@@ -26,6 +26,7 @@ impl UnluminousApp {
             return;
         }
         self.message = Some("Asking whether there is a newer Unluminous...".to_owned());
+        self.update_asked_by_a_person = true;
         self.update = Some(crate::services::update::Check::start(self.thread_waker()));
     }
 
@@ -41,12 +42,17 @@ impl UnluminousApp {
             return false;
         };
         self.message = Some(answer.sentence());
+        // The notice with `Install & Restart` and `Don't Ask Again` on it. `task-2063`.
+        self.offer_what_the_check_found(&answer);
         self.update_answer = Some(answer);
         true
     }
 
     /// What the About box says about updates: the answer, or that it is still asking, or nothing.
     pub fn update_line(&self) -> Option<String> {
+        if let Some(install) = &self.install {
+            return Some(install.progress().sentence(&install.version));
+        }
         if self.update.as_ref().is_some_and(|check| check.is_asking()) {
             return Some("Checking...".to_owned());
         }
