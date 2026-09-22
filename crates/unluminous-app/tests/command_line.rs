@@ -2765,11 +2765,13 @@ fn a_newer_version_is_offered_and_dont_ask_again_declines_that_version() {
     std::env::set_var("UNLUMINOUS_RELEASES", format!("http://127.0.0.1:{port}/releases/latest"));
     let mut harness = harness("# a file\n");
     let ctx = harness.ctx.clone();
+    // Before any check there is nothing to decline and nothing to install, and both say so.
+    assert_eq!(refused(&mut harness, "update skip"), "usage");
+    assert_eq!(refused(&mut harness, "update install --no-restart"), "refused");
     assert!(harness.state_mut().run_command_line("update check --timeout 20000", &ctx).is_none());
     settle(&mut harness, "the releases page to answer", |app| {
         app.update_line().is_some_and(|line| line != "Checking...")
     });
-    std::env::remove_var("UNLUMINOUS_RELEASES");
     let _ = served.join();
     steady(&mut harness);
 
@@ -2791,6 +2793,15 @@ fn a_newer_version_is_offered_and_dont_ask_again_declines_that_version() {
     // And nothing can be installed from a window no installer put here, which says why.
     let refusal = refused(&mut harness, "update install");
     assert_eq!(refusal, "refused");
+    // Downloading and checking without installing needs no installer behind the window. The scripted
+    // server has answered its one request, so the download itself fails later, on a thread; what is
+    // asserted is that the command took it on.
+    let started = did(&mut harness, "update install --no-restart");
+    assert_eq!(started["install"]["restart"], serde_json::json!(false), "{started}");
+    std::env::remove_var("UNLUMINOUS_RELEASES");
+    // And a version can be declined by name.
+    did(&mut harness, "update skip v97.0.0");
+    assert_eq!(harness.state().settings.update_skip, "97.0.0");
 }
 
 /// Every command the catalogue says is answered on a later frame really is.

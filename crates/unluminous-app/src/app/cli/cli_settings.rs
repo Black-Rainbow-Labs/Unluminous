@@ -106,7 +106,9 @@ impl UnluminousApp {
                 });
             }
             "skip" => {
-                let named = request.text("version");
+                let named = request
+                    .text("version")
+                    .map(|version| version.trim().trim_start_matches('v').to_owned());
                 let found = match &self.update_answer {
                     Some(crate::services::update::Answer::Newer(release)) => {
                         Some(release.version.clone())

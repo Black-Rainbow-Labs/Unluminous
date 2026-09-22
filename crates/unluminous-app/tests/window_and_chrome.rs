@@ -1077,6 +1077,7 @@ fn a_fixed_about() -> About {
         built: "2026-08-25 10:45pm".to_owned(),
         // Nothing has been asked, which is what a fresh window has. `task-1804` §6.
         update: None,
+        installable: false,
     }
 }
 
