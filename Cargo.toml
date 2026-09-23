@@ -69,6 +69,11 @@ native-tls = "0.2"
 # from whatever a sibling folder happens to hold on one machine is not a release —
 # `tasks/task-1814-inillucent-data-source-tdd.md` §1.
 inillucent-driver = { git = "https://github.com/jasonmcaffee/inillucent.git", rev = "6eaa12d1fc24c89d5dfb2173c2906512722fbe83" }
+# Black Rainbow Labs' component library, for the controls Unluminous takes from it rather than drawing a
+# second copy: the Agent-Chat model selector is its `Select` (`task-2096`). It is built on the same egui
+# 0.36 and the same `vello_cpu` with the same features, so it adds no second renderer. Pinned to a commit
+# for the reason `inillucent-driver` is.
+rux = { git = "https://github.com/Black-Rainbow-Labs/black-rainbow-labs-rux.git", rev = "dbaa1c4c079c799b46035ac821a7e8244593befa" }
 url = "2.5"
 percent-encoding = "2.3"
 mime_guess = "2.0"

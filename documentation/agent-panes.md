@@ -61,10 +61,11 @@ command line reads — never a second list. A call goes back through the one pla
 a change, so a tool call and a person pressing the same menu entry are the same thing. For a
 **program** there are none, because the agent has its own.
 
-It is **off** unless somebody says so, and `chat.tool_limit` bounds a turn at eight rounds because a
-model that decides to list every file should stop being funded by a pane nobody is watching. A command
-that *waits* is refused with a sentence: a tool call that never returned would leave the conversation
-stopped with nothing on the screen to say why.
+It is **off** unless somebody says so, and `chat.tool_limit` bounds a turn at thirty rounds because a
+model that decides to list every file should stop being funded by a pane nobody is watching. A call
+that *asks to wait*, with a flag such as `--wait-for`, is refused with a sentence. A command that answers
+on a later frame, such as `window screenshot`, is held and answered when it is ready or when its own
+deadline passes.
 
 **A command that runs a program of the model's choosing is behind a second switch.** The catalogue
 includes `terminal send`, `run add`, `run start`, `run rerun`, `debug install` and `launch`, which

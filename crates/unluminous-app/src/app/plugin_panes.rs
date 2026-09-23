@@ -437,7 +437,9 @@ impl UnluminousApp {
             // `.sql` one. `Look::colouring_with` had no caller at all until now, so both were drawing
             // in one flat colour: the seam was built and never plugged in.
             let highlighter = PluginHighlighter { plugins: &self.plugins };
+            let follows = self.plugin_ui.provider(&plugin).is_none_or(|one| one.follows_the_editor_font());
             let look = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer)
+                .following_the_editor_font(follows)
                 .zoomed_by(self.panes.zoom_of(panel))
                 .holding_the_keyboard(matches!(self.focus, Focus::Plugin))
                 .colouring_with(&highlighter)
@@ -532,7 +534,9 @@ impl UnluminousApp {
             // `.sql` one. `Look::colouring_with` had no caller at all until now, so both were drawing
             // in one flat colour: the seam was built and never plugged in.
             let highlighter = PluginHighlighter { plugins: &self.plugins };
+            let follows = self.plugin_ui.provider(&plugin).is_none_or(|one| one.follows_the_editor_font());
             let look = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer)
+                .following_the_editor_font(follows)
                 .holding_the_keyboard(matches!(self.focus, Focus::Plugin))
                 .colouring_with(&highlighter)
                 .drawing_into(&chrome);
@@ -599,10 +603,8 @@ impl UnluminousApp {
             }
             Request::RunCommand { id, command, arguments } => {
                 let request = unluminous_cli::protocol::Request::new("", &command, arguments);
-                let answer = self.run_cli_for_a_plugin(&request, ctx);
-                if let Some(provider) = self.plugin_ui.provider(plugin) {
-                    provider.answered(&id, answer);
-                }
+                let caller = crate::app::cli::ToolCaller::Plugin(plugin.to_owned());
+                self.run_cli_for_a_plugin(caller, id, request, ctx);
             }
             Request::Message(said) => self.message = Some(said),
             // The status bar as well as the toast, so a notice is still in the one place a person looks

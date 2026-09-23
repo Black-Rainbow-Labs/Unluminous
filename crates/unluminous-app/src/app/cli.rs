@@ -177,6 +177,25 @@ pub enum Waiting {
     UpdateCheck { until: Instant },
 }
 
+/// Who asked for a tool call to be run, which is who its answer goes back to.
+pub(crate) enum ToolCaller {
+    /// A plugin's pane or tab, by the plugin's id.
+    Plugin(String),
+    /// A chat node on the canvas, which holds a chat of its own.
+    Node(crate::services::space::NodeId),
+}
+
+/// A tool call whose command answers on a later frame. `task-2096`.
+///
+/// The tool call's own form of a `(Pending, Waiting)` in `cli_waiting`: the same [`Waiting`] and the
+/// same readiness check, with the caller and the call's `id` in place of a socket to answer down.
+pub(crate) struct HeldToolCall {
+    caller: ToolCaller,
+    id: String,
+    request: Request,
+    waiting: Waiting,
+}
+
 /// A rename a command asked for, waiting for the search that will find what it changes.
 pub struct CliRename {
     to: String,
@@ -343,7 +362,7 @@ impl UnluminousApp {
             let outcome = self.run_cli(&pending.request, ctx);
             self.settle(pending, outcome);
         }
-        if !self.cli_waiting.is_empty() {
+        if !self.cli_waiting.is_empty() || !self.tool_waiting.is_empty() {
             // Something is being waited for, so keep drawing: a window that has gone to sleep is a
             // request that is never answered.
             ctx.request_repaint_after(Duration::from_millis(30));
@@ -360,7 +379,7 @@ impl UnluminousApp {
 
     /// Look at everything that is waiting, and answer what is ready or out of time.
     fn finish_waiting(&mut self, ctx: &egui::Context) {
-        if self.cli_waiting.is_empty() {
+        if self.cli_waiting.is_empty() && self.tool_waiting.is_empty() {
             return;
         }
         let picture = screenshot_from(ctx);
@@ -375,6 +394,34 @@ impl UnluminousApp {
             }
         }
         self.cli_waiting = still_waiting;
+        self.finish_the_waiting_tool_calls(ctx, picture.as_ref());
+    }
+
+    /// The same for the tool calls a chat is waiting on, answered back to the chat that asked.
+    ///
+    /// One picture a frame serves both lists: egui hands a screenshot to the frame after it was
+    /// asked for, and a command line request and a tool call waiting on the same frame are both
+    /// answered by it.
+    fn finish_the_waiting_tool_calls(
+        &mut self,
+        ctx: &egui::Context,
+        picture: Option<&egui::ColorImage>,
+    ) {
+        let mut still_waiting = Vec::new();
+        for mut held in std::mem::take(&mut self.tool_waiting) {
+            let reply = match self.ready(&held.request, &mut held.waiting, ctx, picture) {
+                Some(reply) => reply,
+                None if Instant::now() >= held.waiting.until() => self.timed_out(&held.waiting),
+                None => {
+                    still_waiting.push(held);
+                    continue;
+                }
+            };
+            self.answer_a_tool_call(&held.caller, &held.id, reply);
+        }
+        // Anything held while those answers were given is kept too, rather than overwritten.
+        still_waiting.append(&mut self.tool_waiting);
+        self.tool_waiting = still_waiting;
     }
 
     /// The reply for something that was waiting, if it is ready.
@@ -694,35 +741,58 @@ impl UnluminousApp {
         }
     }
 
-    /// Run one command on behalf of a plugin's tool call, and answer with what it said.
+    /// Run one command on behalf of a plugin's tool call, and hand the answer back to whoever asked.
     ///
     /// **The same `run_cli` an `unluminous-cli` request goes down**, so a model calling a tool and a person
     /// pressing the same menu entry are the same thing rather than two paths that agree today. That is
     /// the whole reason `plugin_ui::Request::RunCommand` names a catalogue command rather than
     /// carrying a closure.
     ///
-    /// A command that **waits** answers `Outcome::Hold`, and here that is a refusal rather than a
-    /// wait: the caller is a chat turn, and a tool call that never returned would leave the
-    /// conversation stopped with nothing on the screen to say why. `agent_chat::tools::resolve`
-    /// refuses the waiting commands before they reach this, so this is the backstop rather than the
-    /// gate.
-    pub fn run_cli_for_a_plugin(
+    /// A command that answers on a later frame — `window screenshot` waits for a frame to be painted —
+    /// is kept in `tool_waiting` and answered by [`Self::finish_waiting`] exactly as a held command
+    /// line request is. It used to be refused, which is `task-2096`'s *"waits for something to
+    /// happen"*: a chat could not take a picture of the window it was in. Every held command has a
+    /// deadline, so the call is answered either way, and the provider already matches an answer to
+    /// its call by `id` because answers do not arrive in order. A call that *asks* to wait with a
+    /// flag is still refused by `agent_chat::tools::resolve` before it reaches here.
+    pub(crate) fn run_cli_for_a_plugin(
         &mut self,
-        request: &Request,
+        caller: ToolCaller,
+        id: String,
+        request: Request,
         ctx: &egui::Context,
-    ) -> Result<serde_json::Value, String> {
-        match self.run_cli(request, ctx) {
-            Outcome::Reply(reply) if reply.ok => Ok(match reply.result.is_null() {
+    ) {
+        match self.run_cli(&request, ctx) {
+            Outcome::Reply(reply) => self.answer_a_tool_call(&caller, &id, reply),
+            Outcome::Hold(waiting) => {
+                ctx.request_repaint();
+                self.tool_waiting.push(HeldToolCall { caller, id, request, waiting });
+            }
+        }
+    }
+
+    /// Give a tool call's answer to the plugin or the chat node that asked for it.
+    fn answer_a_tool_call(&mut self, caller: &ToolCaller, id: &str, reply: Reply) {
+        let answer = match reply.ok {
+            true => Ok(match reply.result.is_null() {
                 // A command that changed something and returned no data still said a sentence, and the
                 // sentence is what a model needs to read.
                 true => serde_json::Value::String(reply.message),
                 false => reply.result,
             }),
-            Outcome::Reply(reply) => Err(reply.message),
-            Outcome::Hold(_) => Err(format!(
-                "`{}` waits for something to happen, and a tool call cannot wait.",
-                request.command
-            )),
+            false => Err(reply.message),
+        };
+        match caller {
+            ToolCaller::Plugin(plugin) => {
+                if let Some(provider) = self.plugin_ui.provider(plugin) {
+                    provider.answered(id, answer);
+                }
+            }
+            ToolCaller::Node(node) => {
+                if let Some(chat) = self.space.live.chat_mut(*node) {
+                    crate::services::plugin_ui::UiProvider::answered(chat, id, answer);
+                }
+            }
         }
     }
 

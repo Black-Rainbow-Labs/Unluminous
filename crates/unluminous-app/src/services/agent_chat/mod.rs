@@ -36,7 +36,13 @@ use crate::services::store::Values;
 use store::{Store, Summary};
 
 /// How many rounds of tools one turn may take before the pane stops asking.
-pub const DEFAULT_TOOL_LIMIT: u32 = 8;
+///
+/// Thirty since `task-2096`, which asks for it. It was eight, and eight rounds ends a turn that reads a
+/// few files, searches and opens a tab before the work it was asked for is done.
+pub const DEFAULT_TOOL_LIMIT: u32 = 30;
+
+/// The limit every settings file written before `task-2096` holds, because the code wrote it there.
+const OLD_DEFAULT_TOOL_LIMIT: u32 = 8;
 
 /// How many conversations are kept.
 pub const DEFAULT_HISTORY: usize = 20;
@@ -131,7 +137,9 @@ impl Configuration {
     /// **1 is the first**, written from `task-2003` onwards; a file with no `version` at all was
     /// written before it. See the migration in [`Configuration::of`], and the reason there is one: a
     /// file that is rewritten on every change carries the old default as though it were a choice.
-    const VERSION: f64 = 1.0;
+    ///
+    /// **2** from `task-2096`, when the tool limit's default moved from eight to thirty.
+    const VERSION: f64 = 2.0;
 
     /// Read the configuration out of the plugin's folder, or the defaults when there is no file.
     ///
@@ -173,6 +181,13 @@ impl Configuration {
         }
         if let Some(limit) = values.number("tool-limit") {
             configuration.tool_limit = limit.clamp(1.0, 32.0) as u32;
+        }
+        // The same reasoning as the permission below: a file written before version 2 holds eight
+        // because the code wrote eight there, so eight in such a file is the old default and not a
+        // choice. Any other number in it was chosen and is kept.
+        let written_before_version_2 = values.number("version").is_none_or(|version| version < 2.0);
+        if written_before_version_2 && configuration.tool_limit == OLD_DEFAULT_TOOL_LIMIT {
+            configuration.tool_limit = DEFAULT_TOOL_LIMIT;
         }
         // **A file written before `task-2003` does not get to keep the old default.** `full` is what
         // the ticket asks for — *"Agent chat should have full by default"* — and a default alone would
@@ -398,8 +413,8 @@ pub struct PaneState {
     pub jump_to_bottom: bool,
     /// Whether the history list is open over the conversation.
     pub history_open: bool,
-    /// Whether the endpoint list is open.
-    pub providers_open: bool,
+    /// The model selector in the header, made the first time it is drawn. `task-2096`.
+    pub model_select: Option<ModelSelect>,
     /// The tool blocks somebody has opened by hand, by their call id.
     pub opened_tools: Vec<String>,
     /// Which message's thinking has been opened.
@@ -482,6 +497,34 @@ pub struct PaneState {
     pub menu: Option<MessageMenu>,
 }
 
+/// The model selector: `rux`'s `Select` and what it keeps between frames.
+///
+/// `rux` keeps its own decoration canvases and icon marks in a `RuxState`, and the select's open flag in
+/// a `SelectState`; both belong to the caller, so each chat, a pane or a canvas node, has its own.
+pub struct ModelSelect {
+    pub rux: rux::RuxState,
+    pub menu: rux::components::SelectState,
+}
+
+impl ModelSelect {
+    /// Drawn in `rux`'s dark theme, which is the ai-service dark neumorphism this pane is modelled on.
+    ///
+    /// **Deterministic**, meaning its canvases rasterise at the SIMD level every machine of this target
+    /// has, for the reason `UnluminousApp::draw_deterministically` gives: a screenshot of this pane must
+    /// be the same picture on every machine. The trigger is a few hundred points of decoration, so the
+    /// slower level costs nothing anybody can measure.
+    pub fn new() -> Self {
+        let theme = rux::Theme::named("dark-neumorphic").unwrap_or_else(rux::theme::dark);
+        Self { rux: rux::RuxState::deterministic(theme), menu: Default::default() }
+    }
+}
+
+impl Default for ModelSelect {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A selection inside one message's rendered words.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Selected {
@@ -555,7 +598,7 @@ impl std::fmt::Debug for PaneState {
         out.debug_struct("PaneState")
             .field("jump_to_bottom", &self.jump_to_bottom)
             .field("history_open", &self.history_open)
-            .field("providers_open", &self.providers_open)
+            .field("model_select_open", &self.model_select.as_ref().is_some_and(|one| one.menu.open))
             .field("opened_tools", &self.opened_tools)
             .field("pictures", &self.pictures.len())
             .finish()
@@ -1631,6 +1674,12 @@ impl UiProvider for AgentChat {
         true
     }
 
+    /// Zooming a file does not resize the chat. `task-2096`: *"Zoom on an open file must not change
+    /// the agent chat zoom."* The chat's size is its own pane zoom, `panel zoom agent-chat/chat`.
+    fn follows_the_editor_font(&self) -> bool {
+        false
+    }
+
     fn pane(&mut self, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {
         crate::components::agent_chat::pane(self, ui, look)
     }
@@ -1925,6 +1974,22 @@ mod tests_task_2003 {
 
         let written = std::fs::read_to_string(folder.join("settings.conf")).expect("it is there");
         assert!(written.contains("version"), "and the version is written down: {written}");
+    }
+
+    /// Thirty rounds a turn is the default, and a file holding the old default of eight takes it once.
+    ///
+    /// `task-2096`. A file written by version 1 says `tool-limit = 8` because the code wrote eight;
+    /// any other number in it was chosen and is kept, and once version 2 has written the file an
+    /// eight in it is a choice too.
+    #[test]
+    fn thirty_rounds_is_the_default_and_a_file_holding_the_old_eight_takes_it_once() {
+        assert_eq!(Configuration::default().tool_limit, 30);
+
+        let old = |text: &str| Configuration::of(&Values::parse(text)).0.tool_limit;
+        assert_eq!(old("tool-limit = 8\n"), 30, "no version: eight is the old default");
+        assert_eq!(old("tool-limit = 8\nversion = 1\n"), 30, "version 1: eight is the old default");
+        assert_eq!(old("tool-limit = 12\nversion = 1\n"), 12, "a number somebody chose is kept");
+        assert_eq!(old("tool-limit = 8\nversion = 2\n"), 8, "written by version 2, eight was chosen");
     }
 
     /// A row Unluminous ships for an agent that is not here is not offered, and nothing is written.

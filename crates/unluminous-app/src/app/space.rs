@@ -1108,7 +1108,10 @@ impl UnluminousApp {
         let zoom = node_zoom_of(node);
         let asked = {
             let highlighter = crate::app::PluginHighlighter { plugins: &self.plugins };
+            // A chat node's size is the canvas's zoom and nothing else, as the chat pane's is its own
+            // zoom: zooming a file does not resize it. `task-2096`.
             let look = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer)
+                .following_the_editor_font(false)
                 .zoomed_by(zoom)
                 .holding_the_keyboard(focused)
                 .colouring_with(&highlighter)
@@ -1274,10 +1277,8 @@ impl UnluminousApp {
             Request::RunCommand { id, command, arguments } => {
                 let arguments = self.what_a_chat_node_is_asking_about(node, &command, arguments);
                 let asked = unluminous_cli::protocol::Request::new("", &command, arguments);
-                let answer = self.run_cli_for_a_plugin(&asked, ctx);
-                if let Some(chat) = self.space.live.chat_mut(node) {
-                    UiProvider::answered(chat, &id, answer);
-                }
+                let caller = crate::app::cli::ToolCaller::Node(node);
+                self.run_cli_for_a_plugin(caller, id, asked, ctx);
             }
             Request::TakeTheKeyboard(taking) => {
                 match taking {

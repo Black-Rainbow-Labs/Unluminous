@@ -431,10 +431,11 @@ catalogue** — and for a program there are none, because the agent has its own.
 second list. A call goes back through `UnluminousApp::run_cli`, **the one place a command turns into a
 change**, so a tool call and a person pressing the same menu entry are the same thing. It is **off**
 unless somebody says so, which is the precedent the page this pane copies already set with its own
-robot button, and `chat.tool_limit` bounds a turn at eight rounds because a model that decides to list
-every file should stop being funded by a pane nobody is watching. A command that *waits* is refused
-with a sentence: a tool call that never returned would leave the conversation stopped with nothing on
-the screen to say why.
+robot button, and `chat.tool_limit` bounds a turn at thirty rounds because a model that decides to list
+every file should stop being funded by a pane nobody is watching. A call that *asks to wait*, with a
+flag such as `--wait-for`, is refused with a sentence. A command that answers on a later frame, such
+as `window screenshot`, is held and answered when it is ready or when its own deadline passes, the way a
+held command line request is — `task-2096`, and `UnluminousApp::run_cli_for_a_plugin`.
 
 **And a command that runs a program of the model's choosing is behind a second switch.** Unluminous's
 catalogue includes `terminal send`, `run add`, `run start`, `run rerun`, `debug install` and `launch`,
@@ -623,7 +624,8 @@ because a state that only appeared with `plugins.chrome` on is a state half the 
 
 **The mark takes the pane's scale, and most marks in this window do not.** A fixed twelve points is
 right where the thing beside a mark is a row of the same height at every zoom; here the ring is
-`9.0 * scale`, so at a pane zoomed to 1.8 the wrench sat loose in the middle of a big circle.
+`TOOL_RING * scale`, so at a pane zoomed to 1.8 the wrench sat loose in the middle of a big circle.
+`TOOL_RING` is 4.5 since `task-2096` halved the disc, the ring and the mark together.
 `icon::wrench_at`, `cross_at` and `disclosure_at` are what the block draws with now.
 
 **And a tool's arguments are laid out over several lines and fenced as `json`.** They arrive as one
@@ -633,6 +635,28 @@ literal values apart, exactly as it does in a `.json` file. Anything that is not
 as it arrived: a shell command's output is not JSON and colouring it as though it were would colour it
 wrongly.
 
+### The model selector is `rux`'s `Select`, and zooming a file leaves the chat alone
+
+`task-2096`: *"The model selector at the top right of agent chat is badly formatted when open. Make it a
+dropdown menu, and use a component from the black-rainbow-labs-rux project."* The header's endpoint chip
+opened a list drawn over the whole conversation. It is now `rux::components::Select`, the dropdown from
+Black Rainbow Labs' component library, which opens under the trigger on a foreground layer of its own.
+
+**`rux` is a git dependency pinned to a commit**, for the reason `inillucent-driver` is. It is built on
+the same egui 0.36 and the same `vello_cpu` with the same features, so it added one crate and `kurbo`
+and no second renderer. What it keeps between frames, its canvases and whether the menu is open, is the
+caller's, so it lives in `PaneState::model_select` and each chat, a pane or a canvas node, has its own.
+
+**Its fonts are Unluminous's.** `rux` sets text in seven named families, `rux-sans-500` and the rest, and
+egui panics on a family nobody bound. `rux::text::install` binds them by replacing every font in the
+context, which would change the whole window's typeface, so `theme::install_fonts` binds the seven names
+to the interface's own faces instead. A `rux` control drawn anywhere in Unluminous needs nothing more.
+
+**And a pane can decline to follow the editor's font.** A plugin's `Look` is built from
+`appearance.font.size`, which is the setting zooming a file walks, so zooming a file resized the chat.
+`UiProvider::follows_the_editor_font` is true by default, because the board's cards are meant to grow
+with a large editor font, and Agent-Chat answers false: its size is its own pane zoom, and a chat node's
+is the canvas's, and nothing else.
 ### Pasting a picture is seen on the key going **up**, and it could never have been seen any other way
 
 `task-1771` reported that pasting a picture into the composer did nothing, and the reason is in
@@ -1054,10 +1078,8 @@ fresh canvas and stopped the moment it was panned; dragging a card missed for th
 `Context::layer_transform_to_global`, and answers the pointer unchanged in a pane, so one call is right
 in both places and a component does not have to know which it is drawing in.
 
-And the chat pane's **endpoint list** scrolls now, which it never did anywhere: it laid its rows down
-the pane and stopped at the first one that would not fit, so a short pane — or enough endpoints — had
-rows that could not be reached at all. The ticket's rule is that anything with more in it than there is
-room for scrolls, and that is as true of five rows as of a conversation.
+The chat pane's endpoint list, which this paragraph used to be about, is gone: `task-2096` replaced it
+with a dropdown. See the section on the model selector.
 
 ### A page's zoom travels on its placement, beside the bounds
 

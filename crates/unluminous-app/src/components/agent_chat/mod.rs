@@ -27,7 +27,7 @@ pub mod settings_page;
 use egui::{Color32, CornerRadius, Pos2, Rect, Stroke, Vec2};
 
 use crate::components::controls;
-use crate::services::agent_chat::{AgentChat, Parts};
+use crate::services::agent_chat::{AgentChat, ModelSelect, Parts};
 use crate::services::plugin_ui::{Look, Request};
 use crate::services::vello_canvas::{Fill, Lift};
 use crate::theme::crisp::CrispPainter;
@@ -61,6 +61,11 @@ pub const GAP: f32 = 14.0;
 /// clipped by the card.
 pub const LIST_INSET: f32 = 2.0;
 
+/// How tall the model selector's trigger is. It fits inside [`HEADER`] with room above and below.
+pub const MODEL_SELECT_HEIGHT: f32 = 24.0;
+/// The most the model selector's trigger may take across the header.
+const MODEL_SELECT_WIDEST: f32 = 180.0;
+
 /// What the drawing reported, applied by [`pane`] once everything has been drawn.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Act {
@@ -82,7 +87,6 @@ pub enum Act {
     Detach(u64),
     Copy(String),
     ShowHistory(bool),
-    ShowProviders(bool),
     /// Open or close one tool block, by its call id.
     ToggleTool(String),
     /// Open or close one message's thinking.
@@ -186,7 +190,7 @@ fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
     }
 
     let header_rect = Rect::from_min_size(inner.min, Vec2::new(inner.width(), HEADER * scale));
-    acts.extend(header(&parts, ui, look, header_rect));
+    acts.extend(header(&mut parts, ui, look, header_rect));
 
     let composer_height = composer::height(&parts, look, inner.width());
     let composer_rect = Rect::from_min_size(
@@ -210,8 +214,6 @@ fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
         // would be a pane whose history is unreachable at the moment somebody wants it.
         if parts.state.history_open {
             acts.extend(history_list(&mut parts, ui, look, body));
-        } else if parts.state.providers_open {
-            acts.extend(provider_list(&mut parts, ui, look, body));
         } else {
             acts.extend(conversation(&mut parts, ui, look, body));
         }
@@ -303,8 +305,8 @@ fn message_menu(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
     acts
 }
 
-/// The header: the state dot, the conversation's name, the endpoint chip, history and new.
-fn header(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
+/// The header: the state dot, the conversation's name, the model selector, history and new.
+fn header(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
     let painter = ui.painter_at(area);
@@ -330,10 +332,10 @@ fn header(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> 
 
     let name = parts.session.chat.display_name();
     let mut pen = dot.x + 10.0 * scale;
-    // How much room the name may take: whatever the two buttons and the chip leave it.
-    let chip_width =
-        (parts.configuration.provider().map(|one| one.name.len()).unwrap_or(0) as f32 * 5.6 + 16.0)
-            * scale;
+    // How much room the name may take: whatever the two buttons and the model selector leave it.
+    let names: Vec<String> =
+        parts.configuration.providers.iter().map(|one| one.name.clone()).collect();
+    let chip_width = model_select_width(&painter, &names);
     let buttons = 56.0 * scale;
     let room = (area.right() - pen - chip_width - buttons - 12.0 * scale).max(24.0);
     // **Laid out without wrapping and then clipped**, because a conversation named after a long first
@@ -357,51 +359,31 @@ fn header(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> 
         );
     pen += cut + 10.0 * scale;
 
-    // The endpoint's own chip, which is `ChatHeader.module.css`'s datasource chip: a pressed well in
-    // mono, uppercase. Pressing it opens the list of endpoints.
-    if let Some(provider) = parts.configuration.provider() {
-        let chip = Rect::from_min_size(
-            Pos2::new(area.right() - buttons - chip_width, middle - 9.0 * scale),
-            Vec2::new(chip_width, 18.0 * scale),
-        );
-        if chip.left() > pen {
-            let response =
-                ui.interact(chip, ui.id().with("agent-chat-provider"), egui::Sense::click());
-            response.widget_info(|| {
-                egui::WidgetInfo::labeled(
-                    egui::WidgetType::Button,
-                    true,
-                    format!("Endpoint: {}", provider.name),
-                )
-            });
-            if look.chrome.is_recording() {
-                look.chrome.sunken(chip, 9.0 * scale, look.palette.board_well, Lift::Small);
-            } else {
-                painter.rect_filled(
-                    chip,
-                    CornerRadius::same((9.0 * scale) as u8),
-                    look.palette.board_well,
-                );
-            }
-            let tint = match response.hovered() {
-                true => look.palette.text_strong,
-                false => look.palette.attached,
-            };
-            let words = provider.name.to_uppercase();
-            let width = painter
-                .layout_no_wrap(words.clone(), egui::FontId::monospace(look.font_size * 0.62), tint)
-                .size()
-                .x;
-            painter.crisp_text(
-                Pos2::new(chip.center().x - width / 2.0, chip.center().y - look.font_size * 0.4),
-                egui::Align2::LEFT_TOP,
-                words,
-                egui::FontId::monospace(look.font_size * 0.62),
-                tint,
-            );
-            if response.clicked() {
-                acts.push(Act::ShowProviders(!parts.state.providers_open));
-            }
+    // **The model selector is `rux`'s `Select`**, the dropdown from Black Rainbow Labs' component
+    // library. `task-2096` asks for a dropdown menu from that library rather than a new one: the chip
+    // this replaces opened a list drawn over the whole conversation. The menu opens under the trigger on
+    // a foreground layer of its own, and a press anywhere else closes it.
+    let chosen = parts
+        .configuration
+        .provider()
+        .and_then(|chosen| names.iter().position(|name| *name == chosen.name));
+    let chip = Rect::from_min_size(
+        Pos2::new(area.right() - buttons - chip_width, middle - MODEL_SELECT_HEIGHT / 2.0),
+        Vec2::new(chip_width, MODEL_SELECT_HEIGHT),
+    );
+    if !names.is_empty() && chip.left() > pen {
+        let select = parts.state.model_select.get_or_insert_with(ModelSelect::new);
+        let id = ui.id().with("agent-chat-model-select");
+        // The layer is the trigger and room round it for its shadow. The menu opens a layer of its own.
+        let outcome = rux::layer(ui, &select.rux, id, chip.expand(24.0), |rux| {
+            rux::components::Select::new(&names, chosen)
+                .label("Model")
+                .placeholder("No endpoint")
+                .show(rux, chip, &mut select.menu)
+        });
+        select.rux.end_frame();
+        if let Some(name) = outcome.chosen.and_then(|index| names.get(index)) {
+            acts.push(Act::Choose(name.clone()));
         }
     }
 
@@ -433,6 +415,22 @@ fn header(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> 
     );
     let _ = said;
     acts
+}
+
+/// How wide the model selector's trigger is: the widest endpoint name, plus the select's own padding
+/// and chevron.
+///
+/// The widest rather than the chosen one, so the trigger stays the same width when a different endpoint
+/// is chosen and nothing beside it moves. The words are measured at the size `rux::Style::CONTROL`
+/// sets them in.
+fn model_select_width(painter: &egui::Painter, names: &[String]) -> f32 {
+    let style = rux::Style::CONTROL;
+    let widest = names
+        .iter()
+        .map(|name| rux::text::measure(painter, style, name).x)
+        .fold(0.0_f32, f32::max);
+    // `padding: 9px 12px`, an eight point gap and the thirteen point chevron: `Select::measure`.
+    (widest + 12.0 * 2.0 + 8.0 + 13.0).min(MODEL_SELECT_WIDEST)
 }
 
 /// The colour of the state dot, and the word for it.
@@ -737,119 +735,6 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     acts
 }
 
-/// The endpoints, drawn over the conversation area.
-///
-/// **It scrolls**, which it did not until `task-2003`: the rows were laid out down the pane and the loop
-/// stopped at the first one that would not fit, so a pane short enough — or a person with enough
-/// endpoints — had rows that could not be reached at all. The ticket's rule is that anything with more
-/// in it than there is room for scrolls, and that is as true of a list of five rows as of a
-/// conversation. It is drawn at absolute positions rather than allocated, like everything else on this
-/// pane, so the offset is this pane's own number rather than `egui`'s — which is also what lets the
-/// window hand it a wheel on a canvas node. See [`crate::services::agent_chat::PaneState::scrolled`].
-fn provider_list(
-    parts: &mut Parts<'_>,
-    ui: &mut egui::Ui,
-    look: &Look<'_>,
-    area: Rect,
-) -> Vec<Act> {
-    let mut acts = Vec::new();
-    let scale = look.scale();
-    let row = look.row_height * scale + 12.0 * scale;
-    let step = row + 4.0 * scale;
-    let content = 4.0 * scale + parts.configuration.providers.len() as f32 * step;
-    let most = (content - area.height()).max(0.0);
-    parts.state.list_rect = Some(area);
-    // The wheel the pane itself can take, which is what happens in a panel; a canvas node has none to
-    // give here because `rect_contains_pointer` is false inside its layer, and the window hands one over
-    // through `AgentChat::scroll_at` instead. Both end at the same number.
-    let mut down = parts.state.scroll_to.take().unwrap_or(parts.state.scrolled);
-    if let Some(wheel) = parts.state.wheel.take() {
-        down -= wheel;
-    } else if most > 0.0 && ui.rect_contains_pointer(area) {
-        down -= ui.input(|input| input.smooth_scroll_delta.y);
-    }
-    let down = down.clamp(0.0, most);
-    parts.state.scrolled = down;
-    parts.state.scrollable = most;
-    let mut pen = area.top() + 4.0 * scale - down;
-    // **Cut to the list, in both the things that draw.** A child `Ui` carries the clip, so a row scrolled
-    // half out of view is cut and takes no click outside the list — `Ui::interact` cuts an interact
-    // rectangle by the clip the same way a painter is cut. And `Decor::Clip` is the only thing that can
-    // reach the decoration's canvas, which records absolute rectangles into one texture covering the whole
-    // pane: without it a half-scrolled row's shadow is painted over the header above. Both are the rules
-    // `conversation` already keeps.
-    let mut body = ui.new_child(egui::UiBuilder::new().max_rect(area));
-    body.set_clip_rect(area.intersect(ui.clip_rect()));
-    let ui = &mut body;
-    look.chrome.clip(area, 0.0);
-    for (index, provider) in parts.configuration.providers.iter().enumerate() {
-        let rect = Rect::from_min_size(Pos2::new(area.left(), pen), Vec2::new(area.width(), row));
-        pen += step;
-        if rect.bottom() < area.top() || rect.top() > area.bottom() {
-            continue;
-        }
-        let chosen = parts.configuration.provider().is_some_and(|one| one.name == provider.name);
-        let response = ui.interact(
-            rect,
-            ui.id().with(("agent-chat-endpoint", &provider.name)),
-            egui::Sense::click(),
-        );
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(
-                egui::WidgetType::Button,
-                true,
-                format!("Talk to {}", provider.name),
-            )
-        });
-        let painter = ui.painter_at(rect);
-        let ground = match chosen {
-            true => look.palette.selected_row,
-            false => look.palette.board_card,
-        };
-        if chosen || response.hovered() {
-            if look.chrome.is_recording() {
-                look.chrome.raised(
-                    rect.shrink(2.0),
-                    10.0 * scale,
-                    Fill::Solid(ground),
-                    Lift::Small,
-                );
-            } else {
-                painter.rect_filled(rect.shrink(2.0), CornerRadius::same(10), ground);
-            }
-        }
-        painter.crisp_text(
-            Pos2::new(rect.left() + 10.0 * scale, rect.top() + 6.0 * scale),
-            egui::Align2::LEFT_TOP,
-            &provider.name,
-            egui::FontId::proportional(look.font_size * 0.9),
-            look.palette.text_strong,
-        );
-        // What is wrong with it, if anything, rather than a row that silently will not work when it
-        // is pressed. The same sentence the composer shows, and it is **handed over** rather than asked
-        // for here: `Provider::why_not` walks `PATH` for a row that runs a program, and since
-        // `task-1905` it also reads the shell profile — neither of which is a component's to do once a
-        // row once a frame. See `Parts::readiness`.
-        let (said, tint) = match parts.readiness.get(index).cloned().flatten() {
-            Some(why) => (why, crate::theme::color::close()),
-            None => {
-                (format!("{} · {}", provider.model, provider.wire.name()), look.palette.text_dim)
-            }
-        };
-        painter.with_clip_rect(rect).crisp_text(
-            Pos2::new(rect.left() + 10.0 * scale, rect.top() + 6.0 * scale + look.font_size),
-            egui::Align2::LEFT_TOP,
-            said,
-            egui::FontId::proportional(look.font_size * 0.72),
-            tint,
-        );
-        if response.clicked() {
-            acts.push(Act::Choose(provider.name.clone()));
-        }
-    }
-    look.chrome.unclip();
-    acts
-}
 
 /// Do what the drawing reported, and answer what the window has to do.
 fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
@@ -907,7 +792,6 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
                 if let Err(problem) = chat.save_the_configuration() {
                     requests.push(Request::Message(problem));
                 }
-                chat.ui.providers_open = false;
             }
             Act::ToggleStream => {
                 let now = !chat.configuration().stream;
@@ -936,11 +820,6 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
             Act::Copy(_) => {}
             Act::ShowHistory(open) => {
                 chat.ui.history_open = open;
-                chat.ui.providers_open = false;
-            }
-            Act::ShowProviders(open) => {
-                chat.ui.providers_open = open;
-                chat.ui.history_open = false;
             }
             Act::ToggleTool(id) => match chat.ui.opened_tools.iter().position(|one| *one == id) {
                 Some(at) => {

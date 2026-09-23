@@ -20,11 +20,11 @@
 //!
 //! ## What is refused, and why refusing is the honest answer
 //!
-//! A command that **waits** — `terminal read --wait-for`, a git action that holds the window — is
-//! refused with a sentence naming it. `UnluminousApp::run_cli` answers such a command with `Outcome::Hold`
-//! and the answer arrives whenever it arrives; a tool call that never returned would wedge the
-//! conversation with nothing on the screen to say why. The refusal goes back up as the tool's result,
-//! so the model reads it and picks something else.
+//! A call that **asks to wait** — `terminal read --wait-for` — is refused with a sentence naming the
+//! flag. The refusal goes back up as the tool's result, so the model reads it and picks something
+//! else. A command that holds the window for a frame or a worker, such as `window screenshot`, is
+//! not refused: the window answers it when it is ready, within the command's own deadline. See
+//! `UnluminousApp::run_cli_for_a_plugin`.
 
 use serde_json::{Map, Value};
 
@@ -143,10 +143,10 @@ pub fn resolve(name: &str, arguments: &Value, shell: bool) -> Result<Resolved, S
 /// model that only wanted to read something — the opposite of `task-1695`'s own finding, that a
 /// command an agent cannot reach is a command it works round with its own tools.
 ///
-/// A command that holds the window for a reason of its own — a screenshot waiting for the window to
-/// settle, a git action waiting for the worker — is caught by `UnluminousApp::run_cli_for_a_plugin`
-/// instead, which refuses an `Outcome::Hold` with the same kind of sentence. This is the gate and
-/// that is the backstop.
+/// A command that holds the window for a reason of its own — a screenshot waiting for a frame to be
+/// painted, a git action waiting for the worker — is not refused. `UnluminousApp::run_cli_for_a_plugin`
+/// keeps it and answers it when it is ready or when its deadline passes, since `task-2096`. What
+/// this refuses is a wait the model chose, whose length only the model decided.
 fn asks_to_wait(arguments: &Map<String, Value>) -> Option<&str> {
     arguments
         .iter()

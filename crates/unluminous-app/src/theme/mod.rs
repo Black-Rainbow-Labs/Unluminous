@@ -665,10 +665,39 @@ pub fn install_fonts(
         }
     }
     if !bold_stack.is_empty() {
-        fonts.families.insert(egui::FontFamily::Name(BOLD_FAMILY.into()), bold_stack);
+        fonts.families.insert(egui::FontFamily::Name(BOLD_FAMILY.into()), bold_stack.clone());
     }
+    name_the_rux_families(&mut fonts, &bold_stack);
     let _ = family;
     ctx.set_fonts(fonts);
+}
+
+/// Bind the seven family names `rux` sets its text in to the faces Unluminous already has.
+///
+/// `rux`'s components ask for `FontFamily::Name("rux-sans-500")` and the like, and egui panics on a
+/// family nobody bound. `rux::text::install` binds them to the sans and monospace faces it carries, but it does
+/// that by replacing every font in the context, which would change the typeface of the whole window. So
+/// the names are bound here to the interface's own regular and bold faces and to egui's monospace, and a
+/// `rux` control in Unluminous is set in Unluminous's typeface. `task-2096`, for the model selector.
+fn name_the_rux_families(fonts: &mut egui::FontDefinitions, bold_stack: &[String]) {
+    let regular = fonts.families.get(&egui::FontFamily::Proportional).cloned().unwrap_or_default();
+    let bold = match bold_stack.is_empty() {
+        true => regular.clone(),
+        false => bold_stack.to_vec(),
+    };
+    let mono = fonts.families.get(&egui::FontFamily::Monospace).cloned().unwrap_or_default();
+    let names = [
+        ("rux-sans-400", &regular),
+        ("rux-sans-500", &regular),
+        ("rux-sans-600", &bold),
+        ("rux-sans-700", &bold),
+        ("rux-mono-400", &mono),
+        ("rux-mono-500", &mono),
+        ("rux-mono-600", &mono),
+    ];
+    for (name, faces) in names {
+        fonts.families.insert(egui::FontFamily::Name(name.into()), faces.clone());
+    }
 }
 
 /// Apply the opacity setting to a background colour.

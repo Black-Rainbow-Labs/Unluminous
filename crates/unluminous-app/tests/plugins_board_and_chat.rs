@@ -2435,6 +2435,146 @@ fn a_tool_the_model_asked_for_is_run_by_the_window_and_its_answer_comes_back() {
     );
 }
 
+/// Press and let go at one point, the way a person clicks something with no name to find it by.
+fn click_at(harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2) {
+    let modifiers = egui::Modifiers::default();
+    harness.input_mut().events.push(egui::Event::PointerMoved(at));
+    harness.step();
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers,
+        });
+        harness.step();
+    }
+    steady(harness);
+}
+
+/// The model selector at the top right of the chat is `rux`'s dropdown, and choosing a row in it
+/// chooses that endpoint. `task-2096`.
+///
+/// The rows of a `rux` menu carry no names, so the row is found by where `rux` puts it: six points
+/// under the trigger, six points of padding, and one row height per row above it.
+#[test]
+fn the_model_selector_is_a_dropdown_and_a_row_in_it_chooses_that_endpoint() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    with_the_chat(&mut harness, |chat| {
+        let mut second = chat.configuration().providers[0].clone();
+        second.name = "second".to_owned();
+        chat.configuration_mut().providers.push(second);
+    });
+    steady(&mut harness);
+    let names: Vec<String> = {
+        let mut names = Vec::new();
+        with_the_chat(&mut harness, |chat| {
+            names = chat.configuration().providers.iter().map(|one| one.name.clone()).collect();
+        });
+        names
+    };
+    let trigger = harness.get_by_label("Model").rect();
+    harness.get_by_label("Model").click();
+    steady(&mut harness);
+    let row = {
+        let painter = egui::Painter::new(
+            harness.ctx.clone(),
+            egui::LayerId::background(),
+            egui::Rect::EVERYTHING,
+        );
+        rux::text::measure(&painter, rux::Style::CONTROL, "Ag").y + 16.0
+    };
+    let last = names.len() - 1;
+    let at = egui::pos2(
+        trigger.center().x,
+        trigger.bottom() + 6.0 + 6.0 + row * (last as f32 + 0.5),
+    );
+    click_at(&mut harness, at);
+    let mut chosen = String::new();
+    with_the_chat(&mut harness, |chat| {
+        chosen = chat.provider().map(|one| one.name.clone()).unwrap_or_default();
+    });
+    assert_eq!(chosen, "second", "the last row of the dropdown was pressed; the rows are {names:?}");
+}
+
+/// Zooming a file does not resize the chat pane. `task-2096`.
+///
+/// Zooming a file walks `appearance.font.size`, and the chat used to take its size from that, so every
+/// notch over the file grew the chat's composer and its answers too. The composer's height is measured
+/// before and after the editor's font is made twice as large.
+#[test]
+fn zooming_a_file_leaves_the_chat_pane_the_size_it_was() {
+    let mut harness = harness("Some prose.");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    steady(&mut harness);
+    let before = harness.get_by_label("Message").rect();
+    did(&mut harness, "settings set appearance.font.size 32");
+    steady(&mut harness);
+    let after = harness.get_by_label("Message").rect();
+    assert_eq!(before.height(), after.height(), "the composer changed size with the editor's font");
+
+    // The chat's own zoom still works.
+    did(&mut harness, "panel zoom agent-chat/chat 1.5");
+    steady(&mut harness);
+    let zoomed = harness.get_by_label("Message").rect();
+    assert!(zoomed.height() > after.height(), "{zoomed:?} against {after:?}");
+}
+
+/// A tool call can take a picture of the window, which answers on a later frame.
+///
+/// `task-2096`: a screenshot used to come back as *"waits for something to happen, and a tool call
+/// cannot wait"*, because `window screenshot` is answered once a frame has been painted and the tool
+/// call path refused anything that was not answered at once. It is held now and answered when the
+/// picture has been written.
+#[test]
+fn a_tool_call_can_take_a_screenshot_of_the_window() {
+    let mut harness = harness("Some prose.");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    did(&mut harness, "plugins run agent-chat use local");
+    did(&mut harness, "plugins run agent-chat tools on");
+    let picture = std::env::temp_dir()
+        .join(format!("unluminous-tool-screenshot-{}.png", std::process::id()));
+    let _ = std::fs::remove_file(&picture);
+    let arguments = serde_json::json!({
+        "command": "screenshot",
+        "arguments": { "file": picture.to_string_lossy() },
+    })
+    .to_string();
+    with_the_chat(&mut harness, |chat| {
+        chat.configuration_mut().tool_limit = 1;
+        chat.session_mut().ask(unluminous_chat::Message::said(
+            0,
+            unluminous_chat::Role::User,
+            "What does the window look like?",
+        ));
+        chat.session_mut().reply(unluminous_chat::Reply::ToolCall {
+            id: "t1".to_owned(),
+            name: "unluminous_window".to_owned(),
+            arguments,
+        });
+        chat.session_mut()
+            .reply(unluminous_chat::Reply::Finished { reason: "tool_use".to_owned() });
+    });
+    // The picture settles for a quarter of a second before it is asked for, so this waits in real
+    // time rather than counting frames.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let tool = loop {
+        harness.step();
+        let view = did(&mut harness, "plugins view agent-chat");
+        let tool = view["conversation"]["messages"][1]["tools"][0].clone();
+        if tool["answer"].is_string() {
+            break tool;
+        }
+        assert!(std::time::Instant::now() < deadline, "the call was never answered: {view}");
+        std::thread::sleep(std::time::Duration::from_millis(30));
+    };
+    assert_eq!(tool["failed"], false, "the screenshot was refused: {tool}");
+    assert!(!tool["answer"].as_str().unwrap_or("").contains("waits for something"), "{tool}");
+    assert!(picture.is_file(), "the picture was written: {tool}");
+    let _ = std::fs::remove_file(&picture);
+}
+
 /// A tool call while it is running, and the same call once it has been answered.
 ///
 /// **Built rather than driven.** Answering the last outstanding tool is what sends the next request,

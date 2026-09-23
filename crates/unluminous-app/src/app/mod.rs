@@ -1336,6 +1336,9 @@ pub struct UnluminousApp {
     /// Commands that have been accepted and are waiting for something — a painted frame, a shell, a
     /// search, git. See `app::cli`.
     pub(crate) cli_waiting: Vec<(control::Pending, cli::Waiting)>,
+    /// Tool calls a chat asked for whose command answers on a later frame, such as a screenshot.
+    /// See `UnluminousApp::run_cli_for_a_plugin`.
+    pub(crate) tool_waiting: Vec<cli::HeldToolCall>,
     /// The completion popup, when one is open. One at most, because it belongs to the pane with the
     /// keyboard — the same reasoning as the one `hover` and the one `references` modal. See
     /// `app::completion`.
@@ -1508,6 +1511,7 @@ impl UnluminousApp {
             control: None,
             mcp: None,
             cli_waiting: Vec::new(),
+            tool_waiting: Vec::new(),
             completion: None,
             completion_anchor: None,
             value_tooltip: None,

@@ -717,6 +717,12 @@ fn queued_note(ui: &mut egui::Ui, look: &Look<'_>, rect: Rect, mine: bool) {
     icon::clock(&painter, Pos2::new(right - width - 9.0 * scale, rect.center().y), tint);
 }
 
+/// How far the ring round a tool call's mark reaches from its centre, at a scale of one.
+///
+/// 4.5 since `task-2096`: *"The icon to the left of a tool call in agent chat is too big. halve it."*
+/// It was 9, and the disc, the ring and the mark inside it are all halved together.
+const TOOL_RING: f32 = 4.5;
+
 /// One mark a tool block draws in its ring, at the pane's own scale.
 type Mark = fn(&egui::Painter, Pos2, Color32, f32);
 
@@ -760,10 +766,11 @@ fn tool_block(
     // is not an item on a checklist - it is the model reaching for a tool. A failure keeps the cross,
     // because there the mark is the whole report and a wrench would say only what kind of thing had
     // gone wrong.
-    let disc = Pos2::new(head.left() + 14.0 * scale, head.center().y);
+    // Five points of margin before the ring, as there were when it was twice the size.
+    let disc = Pos2::new(head.left() + (5.0 + TOOL_RING) * scale, head.center().y);
     // **The mark takes the pane's scale, because the ring round it does.** Most icons in this window
     // are drawn at one size whatever the type is, and that is right where the thing beside them is a
-    // row of the same height at every zoom. Here the ring is `9.0 * scale`, so a mark that did not
+    // row of the same height at every zoom. Here the ring is `TOOL_RING * scale`, so a mark that did not
     // scale sat in the middle of it like something that had come loose. `task-2060` drew one at 1.8.
     let (tint, drawing): (Color32, Mark) = match (tool.is_running(), tool.failed) {
         (true, _) => (look.palette.board_accent, icon::wrench_at),
@@ -772,17 +779,19 @@ fn tool_block(
     };
     if look.chrome.is_recording() {
         look.chrome.raised(
-            Rect::from_center_size(disc, Vec2::splat(18.0 * scale)),
-            9.0 * scale,
+            Rect::from_center_size(disc, Vec2::splat(TOOL_RING * 2.0 * scale)),
+            TOOL_RING * scale,
             Fill::Solid(look.palette.board_card),
             Lift::Small,
         );
     }
     // Drawn whether or not the decoration is recording: the ring is the **state**, and a state that
     // only appeared with `plugins.chrome` on would be a state half the windows cannot see.
-    painter.circle_stroke(disc, 9.0 * scale, Stroke::new(1.2 * scale, tint));
-    drawing(&painter, disc, tint, scale);
-    let mut pen = disc.x + 16.0 * scale;
+    painter.circle_stroke(disc, TOOL_RING * scale, Stroke::new(1.0 * scale, tint));
+    // The mark is drawn for a ring of nine, so it is drawn at half the scale inside a ring of 4.5.
+    drawing(&painter, disc, tint, scale * TOOL_RING / 9.0);
+    // Seven points between the ring and the name, as before.
+    let mut pen = disc.x + (TOOL_RING + 7.0) * scale;
     // **Centred on the row rather than measured up from its middle by a fraction of the font.**
     // `Align2::LEFT_TOP` with a guessed offset put both of these a point or so high, and a point at
     // sixteen points is the difference `task-2060` reports beside a mark that really is centred.

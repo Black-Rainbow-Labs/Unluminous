@@ -196,6 +196,17 @@ impl<'a> Look<'a> {
         }
     }
 
+    /// The same look, sized from the default point size rather than the editor's when `follows` is false.
+    ///
+    /// Any zoom already applied is kept, so it can be called before or after [`Look::zoomed_by`]. See
+    /// `UiProvider::follows_the_editor_font`.
+    pub fn following_the_editor_font(self, follows: bool) -> Self {
+        match follows {
+            true => self,
+            false => Self { font_size: crate::settings::DEFAULT_FONT_SIZE * self.zoom, ..self },
+        }
+    }
+
     /// The same look, colouring fenced code with the window's own plugins.
     pub fn colouring_with<'b: 'c, 'c>(
         self,
@@ -527,6 +538,15 @@ pub trait UiProvider: std::fmt::Debug {
     /// well, so there are three ways to say no and one to say yes.
     fn draws_chrome(&self) -> bool {
         false
+    }
+
+    /// Whether this provider's text is sized from the editor's font, so zooming a file resizes it.
+    ///
+    /// True by default, which is what a board wants: `Look::scale` exists so a person who reads code at
+    /// 48 points gets cards tall enough for it. Agent-Chat answers false, because `task-2096` asks that
+    /// zooming a file leaves the chat alone. Its size is then its own pane zoom and nothing else.
+    fn follows_the_editor_font(&self) -> bool {
+        true
     }
 
     /// Draw the pane. Called once a frame while the pane is showing.
@@ -1020,5 +1040,27 @@ mod scale_tests {
                 "at {size} point a card is {card} points and needs at least {needed}"
             );
         }
+    }
+
+    #[test]
+    fn a_pane_that_does_not_follow_the_editor_font_is_sized_by_its_own_zoom_alone() {
+        // `task-2096`: zooming a file walks the editor's font size, and the chat pane must not move with
+        // it. Its own zoom still applies, before or after.
+        let renderer = crate::services::text_renderer::TextRenderer::new();
+        let mut settings = Settings::default();
+        settings.font_size = 32.0;
+        let own = Look::of(&settings, &renderer).following_the_editor_font(false);
+        assert_eq!(own.font_size, crate::settings::DEFAULT_FONT_SIZE);
+        assert_eq!(own.scale(), 1.0, "the editor's 32 points reach nothing in it");
+
+        let zoomed = Look::of(&settings, &renderer).following_the_editor_font(false).zoomed_by(1.5);
+        let other_order =
+            Look::of(&settings, &renderer).zoomed_by(1.5).following_the_editor_font(false);
+        assert_eq!(zoomed.font_size, crate::settings::DEFAULT_FONT_SIZE * 1.5);
+        assert_eq!(other_order.font_size, zoomed.font_size, "the order does not matter");
+        assert_eq!(zoomed.scale(), 1.5);
+
+        let board = Look::of(&settings, &renderer).following_the_editor_font(true);
+        assert_eq!(board.font_size, 32.0, "a board still follows the editor's font");
     }
 }
