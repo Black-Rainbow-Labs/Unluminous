@@ -1259,6 +1259,100 @@ depth because `lay_a_strip_out` equalises it, and writing that back gave the ter
 height and kept it after the canvas was hidden. Nothing is written at all until the drag is known to move
 something, because a drag that turns out to be clamped to nothing used to rewrite every stored size.
 
+### macOS has no window manager drag to hand a resize to, so the window moves its own edge
+
+`task-2062`: *"There are times on mac where I can't resize the window for the editor, and when I can't
+resize a pane. The arrows show up on hover, but when I click and drag, nothing happens."*
+
+**Two faults wearing one symptom, and the first is three lines of `winit`.** Its macOS
+`WindowDelegate::drag_resize_window` returns `NotSupported` for every one of the eight directions, and
+`egui-winit` logs that at `warn` and carries on — so `ViewportCommand::BeginResize` had never once
+resized this window on macOS. Everything `components::resize_edges` recorded before this is about
+Windows *refusing* a resize; here there was nothing to refuse it. Measured with
+`status --section window`: `lastResizeAsked` said `east` and the width stood at 1778.
+
+So on macOS a grip reports `Gesture::Move`, the pointer's movement this frame, and
+`resize_edges::Edges::moved_by` turns it into a position and a size sent as
+`ViewportCommand::OuterPosition` and `InnerSize` — the two commands `unluminous-cli window size` and
+`window position` already drive this window with, rather than a second mechanism. Two rules in that
+arithmetic, and both are what makes a drag feel like a drag. **A far edge never travels**: dragging the
+left edge means a window whose x moves by the same amount its width loses, so the right edge stays where
+it is. And **the smallest size is applied before the position**, or an edge pushed past the floor would
+slide the whole window down the screen while its height stood still.
+
+`SMALLEST_WINDOW` is that floor and it is one number now. It was 640 by 400 in the `ViewportBuilder` and
+320 by 240 in `unluminous-cli window size`, so the command line answered `ok` to a size the window then
+refused to become.
+
+**The second fault is that a grip and a pane divider set the same cursor.** The eight grips are added
+last and take the outermost `EDGE` points, and `EDGE_CURSORS` is `ResizeHorizontal` — which is exactly
+what `components::splitter` sets. So where a divider reached the window's edge the two controls were
+indistinguishable and the one on top was the dead one, which is the *"can't resize a pane"* half.
+Measured before the fix: a strip divider 2 and 5 points in from the window's right edge moved nothing,
+while the same divider 7 points in moved 47 points.
+
+`resize_edges::without` is the answer. **A grip gives up the points a divider wants** rather than
+covering them, so an edge becomes the pieces between the dividers crossing it, and a piece shorter than
+`splitter::GRAB` is dropped entirely — a grip nobody can hit is a rectangle that takes the cursor off
+whatever is underneath it and then does nothing, which is this fault in a smaller size. **A corner keeps
+its whole square**: a corner is the one place the window resizes in both directions at once, and cutting
+those as well left a window with a panel reaching a corner unable to be resized diagonally at all.
+
+**A piece is a control of its own, so it takes its own id and its own name**, and forgetting the first
+half wrote the original fault back in a new place: `egui` identifies a widget by its id, so pieces
+sharing one id are one widget wearing several rectangles and the last `interact` wins. Measured on the
+installed build — with the terminal along the bottom, the right edge resized *below* the terminal's
+divider and did nothing above it. The second half is `no_two_controls_share_a_name`, which is a real
+test and caught it: an edge nothing crosses keeps its plain name, and every piece of a cut one is
+numbered.
+
+The dividers are collected by `splitter::show` itself, into egui's own per-frame data, and read where
+the grips are added — after every pane and panel, which is `settle_the_panel_drag`'s own ordering. That
+is `follow_the_open_file`'s rule: a list of the places that have to say "I drew a divider here" is a
+list whose next entry is the one that forgets, and there are eight callers of `show` today.
+
+## A file another program changed is read again, and a folder nobody opened is still searched
+
+`task-2062`, and the two halves are one sentence apart: *"if an agent changes a file, eg a md file, the
+change isn't immediately shown in the file editor. And if the agent creates a new file, like a new
+tasks/example.md it doesn't show in Go to file."*
+
+**`reread_if_the_file_changed` already existed and had both its callers on the command line.** It was
+written for `task-1661`'s rule that the disk-owned side is re-checked at the moment of use, and nothing
+on a frame called it — so `editor text` answered with the new words while the window went on drawing the
+old ones. That is the one thing this repository's own rule says must never differ: a person and an agent
+looking at one file were shown different things. `reread_the_showing_tabs_that_changed` runs it off the
+watch that already ticks at `WATCH_INTERVAL`, for **the tabs that are showing only** — one per editing
+pane and one per File Editor node — because a hidden tab is re-read when it is next shown and walking
+every open tab twice a second is the shape of the fault `task-1805` found in the explorer's footer.
+
+Two rules it keeps. **A tab with unsaved changes is untouched**, which is
+`the_file_changed_underneath`'s own answer rather than a second rule here. And **the reading position is
+given back**, which an explicit `Reload from Disk` deliberately does not do: those are different
+gestures, and somebody reading the end of a document an agent is appending to would otherwise be thrown
+to the top of it twice a second for as long as the agent kept writing.
+
+**The second half is which folders are watched.** `FileTree::changed_on_disk` asked about the root plus
+each row opened out, which answers *"has anything I can see changed"* — and the tree answers a larger
+question than that, because `all_files` comes from `walk_files` and is what `Go to File`, `Find in
+Files`, the filter box and the completion sources all read. So `tasks/example.md`, written into a folder
+nobody had clicked on, changed no watched folder and could not be found anywhere while being plainly on
+the disk. The watched set is the **searched** set now, recorded by the walk that decides what is
+searchable, so the two cannot disagree about which folders matter.
+
+It is bounded by the same `SEARCH_DEPTH` and `.gitignore` rules as the walk, which is what keeps it
+cheap: 564 folders in this repository, one `metadata` call each, **0.54 ms a pass**. Measured on the
+installed build through `UNLUMINOUS_FRAME_TRACE`, the `watch` phase costs **0.59 ms median and 1.11 ms
+at worst** on the frames it fires on, so `task-1805`'s idle figure stands.
+
+**And a re-read does not walk the project**, which `reload_from_disk` does. That is right for somebody
+who pressed `Reload from Disk` — they are asking about the folder as much as about the file — and wrong
+on a timer that has just decided the folder did not change. With an agent appending to the open file once
+a second the frame that re-read it cost **88 ms**, because a folder's modification time does not move
+when a file inside it is *written*: the tree was correctly left alone and then walked anyway.
+`reread_the_tab_only` is that function without the walk, and it took the worst watch frame from 88.44 ms
+to **1.11**.
+
 ## A colour is a question, and the list of names is still closed
 
 `task-1776` asks for themes, and the thing in the way was that `theme::color` was forty `const`s read

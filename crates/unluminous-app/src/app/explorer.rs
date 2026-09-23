@@ -231,6 +231,14 @@ impl UnluminousApp {
         if self.tree.changed_on_disk() {
             self.tree.reload();
         }
+        // And the tabs that are showing, on the same timer and for the same reason. `task-2062`: an agent
+        // changed a Markdown file and the window went on drawing what it had — the tab is owned by its
+        // `Document` and Unluminous watches nothing, which is right while Unluminous is the only writer.
+        // `reread_if_the_file_changed` existed for exactly this and was called from the two command line
+        // paths alone, so a caller that asked `editor text` was handed the new words and the person
+        // looking at the window was not. One `metadata` call per pane, beside the handful the tree above
+        // already makes.
+        self.reread_the_showing_tabs_that_changed();
         // And the project's own state, on the same timer and for the same reason. `task-1794`: a
         // `git checkout` under a running window put `.unluminous/breakpoints.conf` back and the window
         // went on holding what it had. One `metadata` call, beside the handful the tree already
@@ -242,5 +250,167 @@ impl UnluminousApp {
                 self.send_every_breakpoint();
             }
         }
+    }
+
+    /// Read the tabs a person can see again when their files have changed underneath them.
+    ///
+    /// `task-2062` reported that an agent's change to a Markdown file was not shown. A tab is owned by
+    /// its `Document` and Unluminous watches nothing, which is the right rule while Unluminous is the
+    /// only writer and the wrong answer the moment anything else writes — and
+    /// `UnluminousApp::reread_if_the_file_changed` had existed for that since `task-1661` with its two
+    /// callers both on the command line. So `editor text` was fresh and the window was stale, which is
+    /// the one thing this repository's own rule says must never differ: a person and an agent looking
+    /// at one file were shown different things.
+    ///
+    /// **Only the tabs that are showing**, which is one per editing pane and one per File Editor node on
+    /// the canvas. A hidden tab is read again when it is next shown, because `reread_if_the_file_changed`
+    /// asks at the moment of use and showing a tab is a use; walking every open tab here would be one
+    /// `metadata` call per tab twice a second for files nobody is looking at, which is the shape of the
+    /// fault `task-1805` found in the explorer's own footer.
+    ///
+    /// **A tab with unsaved changes is never touched**, which is `the_file_changed_underneath`'s own
+    /// answer rather than a second rule here: those belong to the person and losing them has no undo.
+    pub(crate) fn reread_the_showing_tabs_that_changed(&mut self) {
+        // The homes there are, asked of the files rather than of the panes, so a File Editor node on the
+        // canvas is covered by the same walk. Collected first because reading a file changes the list.
+        let mut homes: Vec<crate::app::files::Home> = Vec::new();
+        for home in self.files.iter().map(|file| file.home) {
+            if !homes.contains(&home) {
+                homes.push(home);
+            }
+        }
+
+        // The path and where it was being read, because the second is given back afterwards. See below.
+        let showing: Vec<(PathBuf, f32)> = homes
+            .into_iter()
+            .filter_map(|home| self.files.showing_at(home))
+            .filter_map(|index| self.files.get(index))
+            .filter(|file| file.the_file_changed_underneath())
+            .filter_map(|file| {
+                file.document.path().map(Path::to_path_buf).map(|at| (at, file.scroll))
+            })
+            .collect();
+        for (path, scroll) in showing {
+            // Through the one function that reads a file into a tab, so a reload from the timer, from
+            // the explorer's own menu and from `tab reload` are the same thing. It never discards.
+            //
+            // **`reload_from_disk` walks the project as well**, and on this timer that walk has either
+            // just happened above or was not needed. Measured on the installed build with an agent
+            // appending to the open file once a second, this frame cost **88 ms** — the watch phase's
+            // median is 0.59 — because a folder's modification time does not move when a file in it is
+            // *written*, so the tree above was correctly left alone and this walked all 564 folders
+            // anyway. `reread_the_tab_only` is that function without the walk.
+            if !self.reread_the_tab_only(&path) {
+                continue;
+            }
+            // **But the reading position is given back, which an explicit reload does not do.** The two
+            // are different gestures: somebody who chose `Reload from Disk` asked to start again at the
+            // top, and nobody asked for this one at all — so a person reading the end of a document an
+            // agent appends to would be thrown to the top of it, twice a second, for as long as the
+            // agent kept writing. The scroll is clamped by the layout on the next frame, so a file that
+            // has become shorter than where they were is handled where that is already handled.
+            if let Some(index) = self.files.index_of(&path) {
+                if let Some(file) = self.files.get_mut(index) {
+                    file.scroll = scroll;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests_task_2062 {
+    use crate::app::UnluminousApp;
+
+    /// A project with one file in it, and a window with that file open.
+    fn a_window(name: &str) -> (std::path::PathBuf, UnluminousApp) {
+        let folder = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("make the folder");
+        std::fs::write(folder.join("notes.md"), "# before\n").expect("write notes.md");
+        let mut app = UnluminousApp::new(&folder);
+        app.open_path_permanently(&folder.join("notes.md")).expect("the file opens");
+        (folder, app)
+    }
+
+    /// Let the timer come round, which is what a frame does every `crate::app::WATCH_INTERVAL`.
+    ///
+    /// Waiting the interval out rather than reaching in and moving the clock, so what is exercised is
+    /// the real gate a frame goes through.
+    fn let_the_watch_run(app: &mut UnluminousApp) {
+        std::thread::sleep(crate::app::WATCH_INTERVAL + std::time::Duration::from_millis(50));
+        app.notice_what_changed_on_disk();
+    }
+
+    /// **The window draws what is in the file, not what it read when the tab was opened.**
+    ///
+    /// `task-2062`: an agent changed a Markdown file and the editor went on showing the old words.
+    /// `reread_if_the_file_changed` had existed since `task-1661` with both its callers on the command
+    /// line, so `editor text` was fresh while the window was stale — which is the one thing this
+    /// repository's rule says must never differ.
+    #[test]
+    fn a_file_another_program_changed_is_read_again_without_anybody_asking() {
+        let (folder, mut app) = a_window("unluminous-agent-edit-shown");
+        assert_eq!(app.document().text().to_string(), "# before\n");
+
+        // A folder's modification time has whole-second resolution on some file systems, and
+        // `DiskStamp` carries the length as well — so a change of length is seen whatever the clock
+        // says. This one changes both.
+        std::fs::write(folder.join("notes.md"), "# after, and longer\n").expect("the agent writes");
+        let_the_watch_run(&mut app);
+        assert_eq!(
+            app.document().text().to_string(),
+            "# after, and longer\n",
+            "the window is still showing what it read when the tab was opened"
+        );
+
+        std::fs::remove_dir_all(&folder).ok();
+    }
+
+    /// **Unsaved changes are never thrown away by the watch.** They belong to the person, losing them
+    /// has no undo, and `tab reload --discard` is how somebody says they mean it. This is
+    /// `the_file_changed_underneath`'s own answer rather than a second rule, and it is asserted here
+    /// because the watch is the one caller nobody asked for.
+    #[test]
+    fn a_tab_with_unsaved_changes_is_left_exactly_as_it_is() {
+        let (folder, mut app) = a_window("unluminous-agent-edit-unsaved");
+        app.document_mut().apply(unluminous_core::Command::PlaceCaret { offset: 0, extend: false });
+        app.document_mut().apply(unluminous_core::Command::Insert("mine".to_owned()));
+        assert!(
+            app.document().is_modified(),
+            "the tab is not modified, so this test is about nothing"
+        );
+
+        std::fs::write(folder.join("notes.md"), "# theirs\n").expect("the agent writes");
+        let_the_watch_run(&mut app);
+        assert!(
+            app.document().text().to_string().starts_with("mine"),
+            "the watch threw away what somebody had typed: {:?}",
+            app.document().text().to_string()
+        );
+        assert!(app.document().is_modified(), "and it cleared the unsaved marker");
+
+        std::fs::remove_dir_all(&folder).ok();
+    }
+
+    /// The reading position survives a re-read nobody asked for, so a person reading the end of a
+    /// document an agent is appending to is not thrown to the top of it twice a second.
+    #[test]
+    fn a_re_read_nobody_asked_for_keeps_the_place_it_was_being_read_at() {
+        let (folder, mut app) = a_window("unluminous-agent-edit-scroll");
+        let index = app.files.active_index();
+        app.files.at_mut(index).scroll = 420.0;
+
+        std::fs::write(folder.join("notes.md"), "# a longer document than before\n")
+            .expect("the agent writes");
+        let_the_watch_run(&mut app);
+        assert_eq!(app.document().text().to_string(), "# a longer document than before\n");
+        assert_eq!(
+            app.files.at(app.files.active_index()).scroll,
+            420.0,
+            "the reader was thrown back to the top of the file"
+        );
+
+        std::fs::remove_dir_all(&folder).ok();
     }
 }

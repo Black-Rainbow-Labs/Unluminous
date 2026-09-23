@@ -25,6 +25,7 @@ use egui_kittest::Harness;
 use unluminous_app::app::actions::Action;
 use unluminous_app::app::ViewMode;
 use unluminous_app::components::about_dialog::About;
+use unluminous_app::components::resize_edges;
 use unluminous_app::components::title_bar::MenuPlacement;
 use unluminous_app::theme::size;
 use unluminous_app::UnluminousApp;
@@ -1635,12 +1636,12 @@ fn a_window_in_the_background_still_asks_for_a_resize() {
     };
 
     assert!(
-        asked(&mut focused, Some(true)).iter().any(|command| command.contains("BeginResize")),
+        asked(&mut focused, Some(true)).iter().any(a_resize),
         "a focused window resizes from its top edge"
     );
     let mut second = harness("");
     assert!(
-        asked(&mut second, Some(false)).iter().any(|command| command.contains("BeginResize")),
+        asked(&mut second, Some(false)).iter().any(a_resize),
         "and so does one in the background: no page has taken the operating system's keyboard, which          is the only thing the window manager throws a resize away for"
     );
     assert!(
@@ -1652,10 +1653,25 @@ fn a_window_in_the_background_still_asks_for_a_resize() {
     assert!(second.state().last_resize_request().is_some(), "and the window recorded the request");
 }
 
-/// The commands a frame sent that move or resize the window, including `BeginResize`.
+/// Whether a command a grip sent is this platform's way of resizing the window.
 ///
-/// `window_commands` below deliberately leaves `BeginResize` out — it is about the three buttons and
-/// the keyboard walking onto them. This one is about the grips.
+/// **Two shapes, because two platforms have a window manager drag to hand the gesture to and one has
+/// not.** `winit`'s macOS `drag_resize_window` returns `NotSupported` for every direction, so a grip
+/// there moves the window's own edge with `OuterPosition` and `InnerSize` instead — see
+/// `components::resize_edges` and `task-2062`. What both shapes mean is the same thing, which is why
+/// this is one function rather than a `cfg` at each assertion: the window really asked to be resized.
+fn a_resize(command: &String) -> bool {
+    match resize_edges::HANDS_THE_DRAG_OVER {
+        true => command.contains("BeginResize"),
+        false => command.contains("InnerSize") || command.contains("OuterPosition"),
+    }
+}
+
+/// The commands a frame sent that move or resize the window, including the ones a grip sends.
+///
+/// `window_commands` below deliberately leaves those out — it is about the three buttons and the
+/// keyboard walking onto them. This one is about the grips, so it carries both shapes [`a_resize`]
+/// knows about.
 fn window_commands_including_resize(harness: &Harness<'static, UnluminousApp>) -> Vec<String> {
     harness
         .output()
@@ -1663,7 +1679,12 @@ fn window_commands_including_resize(harness: &Harness<'static, UnluminousApp>) -
         .values()
         .flat_map(|viewport| viewport.commands.iter())
         .map(|command| format!("{command:?}"))
-        .filter(|text| text.contains("BeginResize") || text.contains("StartDrag"))
+        .filter(|text| {
+            text.contains("BeginResize")
+                || text.contains("StartDrag")
+                || text.contains("InnerSize")
+                || text.contains("OuterPosition")
+        })
         .collect()
 }
 

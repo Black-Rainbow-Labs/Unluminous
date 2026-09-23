@@ -95,12 +95,22 @@ pub struct FileTree {
     exclude: String,
     /// The last error from reading a directory, so the window can say why a folder looks empty.
     pub last_error: Option<String>,
-    /// When each folder that is **showing** was last written to, as the disk said at the moment it
-    /// was read. The root and every folder that is opened out.
+    /// When each folder the search walk went into was last written to, as the disk said at the moment
+    /// it was read.
     ///
     /// This is what makes a file another program made appear without anybody asking. See
     /// [`FileTree::changed_on_disk`].
     folder_times: Vec<(PathBuf, Option<std::time::SystemTime>)>,
+    /// Every folder [`walk_files`] went into, which is the set [`FileTree::changed_on_disk`] asks about.
+    ///
+    /// **The searchable folders, not the ones opened out.** It was the root plus each expanded row until
+    /// `task-2062`, which is what makes a change *visible in the tree* — and the wrong set for everything
+    /// else the tree feeds. A file written into a collapsed folder changed no watched folder, so
+    /// `all_files` went on without it and `Go to File`, `Find in Files`, the filter box and the
+    /// completion sources could not find a file that was plainly on the disk. Bounded by the same
+    /// `SEARCH_DEPTH` and `.gitignore` rules as the walk itself, so a `target` folder is not watched any
+    /// more than it is searched.
+    searched_folders: Vec<PathBuf>,
     /// Bumped whenever the rows change: a reload, a folder opened or shut, a new root.
     ///
     /// **What a cache over the rows is keyed on** (`task-1984` A5 and S16). The explorer works out a
@@ -125,6 +135,7 @@ impl FileTree {
             exclude: String::new(),
             last_error: None,
             folder_times: Vec::new(),
+            searched_folders: Vec::new(),
             revision: 0,
         };
         tree.reload();
@@ -183,33 +194,44 @@ impl FileTree {
         let walked = walk_files(&self.root, SEARCH_DEPTH, &self.ignores);
         self.all_files = walked.files;
         self.openable_files = walked.openable;
+        self.searched_folders = walked.folders;
         self.folder_times = self.read_folder_times();
     }
 
-    /// True when a folder that is showing has been written to since the tree was last read.
+    /// True when a folder the search walk covers has been written to since the tree was last read.
     ///
     /// `task-1693`: a file or a folder made by something other than Unluminous — an agent, a build, a
     /// terminal in the tile below — never appeared, because the tree is only read when Unluminous is told
     /// to read it. Creating, deleting or renaming an entry changes the modification time of the
-    /// folder it is in, on Windows and on macOS both, so the root plus each folder that is opened out
-    /// is the complete set of places a change anybody can *see* could happen.
+    /// folder it is in, on Windows and on macOS both, so a folder's own modification time is the whole
+    /// of what has to be asked about.
     ///
-    /// One `metadata` call per open folder, which for a tree with twenty folders open at the rate the
-    /// window asks is a few dozen calls a second and nothing measurable. Watching the tree properly
-    /// would be a dependency, a thread, a channel and a debounce — and a debounce is needed because
-    /// `ReadDirectoryChangesW` on a `target` folder during a build produces thousands of events a
-    /// second, each of which would cost a walk. Unluminous does not need to watch a tree; it needs to
-    /// notice that one of a few dozen visible folders has changed.
+    /// **Which folders is the searched set, not the expanded rows**, and `task-2062` is why. Asking only
+    /// about the root and the rows opened out answers the question *"has anything I can see changed"*,
+    /// and the tree answers a larger question than that: `all_files` comes from [`walk_files`] and is
+    /// what `Go to File`, `Find in Files`, the filter box and the completion sources read. So a file
+    /// written into a collapsed folder — `tasks/example.md`, which is the report — changed no watched
+    /// folder and was missing from all of them, while being plainly on the disk. See
+    /// [`Walked::folders`].
+    ///
+    /// One `metadata` call per searched folder, which on this repository is 618 files in about 90
+    /// folders — a few dozen calls a second at [`crate::app::WATCH_INTERVAL`] and nothing measurable,
+    /// because it is bounded by the same `SEARCH_DEPTH` and `.gitignore` rules as the walk. Watching the
+    /// tree properly would be a dependency, a thread, a channel and a debounce — and a debounce is
+    /// needed because `ReadDirectoryChangesW` on a `target` folder during a build produces thousands of
+    /// events a second, each of which would cost a walk. Unluminous does not need to watch a tree.
     pub fn changed_on_disk(&self) -> bool {
         self.read_folder_times() != self.folder_times
     }
 
-    /// The root and every folder that is opened out, each with the time the disk says it was last
-    /// written to. A folder that cannot be read at all answers `None`, which is a change if it used
-    /// to answer with a time.
+    /// Every folder the search walk went into, each with the time the disk says it was last written to.
+    ///
+    /// A folder that cannot be read at all answers `None`, which is a change if it used to answer with
+    /// a time. The root is included whether or not the walk reached anything, because a project whose
+    /// root is empty is still a project a file can be made in.
     fn read_folder_times(&self) -> Vec<(PathBuf, Option<std::time::SystemTime>)> {
         let mut folders = vec![self.root.clone()];
-        folders.extend(self.expanded_paths());
+        folders.extend(self.searched_folders.iter().filter(|at| *at != &self.root).cloned());
         folders
             .into_iter()
             .map(|folder| {
@@ -318,8 +340,11 @@ impl FileTree {
             self.last_error = error;
         }
         self.revision += 1;
-        // The set of folders that are showing has just changed, so what is being watched has too.
-        // Without this, opening a folder would look like a change on disk on the very next tick.
+        // Read again because opening a folder reads it, and reading a folder is one of the things that
+        // can move a modification time — an empty folder opened for the first time would otherwise look
+        // like a change on disk on the very next tick. Since `task-2062` the watched set is the searched
+        // one rather than the expanded rows, so opening a row no longer changes *which* folders are
+        // watched; what this keeps is the times being current as of now.
         self.folder_times = self.read_folder_times();
     }
 
@@ -418,6 +443,15 @@ impl FileTree {
 struct Walked {
     files: Vec<PathBuf>,
     openable: usize,
+    /// Every folder the walk went into, which is what [`FileTree::changed_on_disk`] asks about.
+    ///
+    /// **Collected here because this is the walk that decides what is searchable.** `all_files` is what
+    /// `Go to File`, `Find in Files`, the filter box and the completion sources all read, and it comes
+    /// from this walk rather than from the rows the explorer has been opened out to — so the set of
+    /// folders a new file can appear in and be *found* is exactly the set this walk visited. Watching
+    /// the expanded rows instead is what `task-2062` reported: a file written into a collapsed folder
+    /// was in none of them until something else happened to reload the tree.
+    folders: Vec<PathBuf>,
 }
 
 /// Every file under `root`, to a depth of `depth`, folders before files and both by name.
@@ -433,6 +467,9 @@ fn walk_files(root: &Path, depth: usize, ignores: &Ignores) -> Walked {
         let Ok(entries) = read_directory(directory) else {
             return;
         };
+        // Recorded after the read succeeded, so a folder that cannot be read is not one the watch will
+        // ask about for ever. See [`Walked::folders`].
+        out.folders.push(directory.to_path_buf());
         for entry in entries {
             let relative = match entry.path.strip_prefix(root) {
                 Ok(relative) => relative.to_string_lossy().replace('\\', "/"),
@@ -698,10 +735,17 @@ mod tests_task_1693 {
         assert!(tree.changed_on_disk(), "the root was written to, so the tree is out of date");
     }
 
-    /// And a folder that is opened out is watched too, because a file made inside one is a file
-    /// somebody can see.
+    /// **A folder that has never been opened out is watched too**, and `task-2062` is why that had to
+    /// change. It used to be the root plus the expanded rows, which answers *"has anything I can see
+    /// changed"* — and the tree answers a larger question than that, because `all_files` comes from
+    /// [`walk_files`] and is what `Go to File`, `Find in Files`, the filter box and the completion
+    /// sources read. So `tasks/example.md`, written by an agent into a folder nobody had clicked on,
+    /// changed no watched folder and could not be found anywhere, while being plainly on the disk.
+    ///
+    /// The name of this test is the old rule with `not` in it, kept so that a change back would have to
+    /// be deliberate.
     #[test]
-    fn a_folder_that_is_open_is_watched_and_one_that_is_shut_is_not() {
+    fn a_folder_that_is_shut_is_watched_as_well_as_one_that_is_open() {
         let root = std::env::temp_dir().join("unluminous-tree-watch-open-folder");
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("open")).expect("make the open folder");
@@ -713,11 +757,48 @@ mod tests_task_1693 {
         std::thread::sleep(std::time::Duration::from_millis(1100));
         std::fs::write(root.join("shut/hidden.txt"), "x").expect("write into the shut folder");
         assert!(
-            !tree.changed_on_disk(),
-            "nothing that is showing has changed, so nothing needs reading again"
+            tree.changed_on_disk(),
+            "a file in a folder nobody has opened is still a file Go to File has to offer"
         );
+        // And the reload really does pick it up, which is the half a person sees.
+        tree.reload();
+        assert!(!tree.changed_on_disk(), "the reload did not take the new times");
+        assert!(
+            tree.all_files().iter().any(|path| path.ends_with("hidden.txt")),
+            "the file is still missing from what every search reads"
+        );
+
+        std::thread::sleep(std::time::Duration::from_millis(1100));
         std::fs::write(root.join("open/seen.txt"), "x").expect("write into the open folder");
         assert!(tree.changed_on_disk(), "a folder that is showing gained a file");
+    }
+
+    /// What is watched is bounded by the same rules as what is searched, so a `target` folder is no
+    /// more watched than it is walked. That is what keeps the cost of the change above to a handful of
+    /// `metadata` calls rather than one per folder on the disk.
+    #[test]
+    fn what_is_watched_is_what_is_searched_and_no_more() {
+        let root = std::env::temp_dir().join("unluminous-tree-watch-bounds");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src")).expect("make src");
+        std::fs::create_dir_all(root.join("target/debug/deps")).expect("make target");
+        std::fs::write(root.join(".gitignore"), "/target\n").expect("write .gitignore");
+        std::fs::write(root.join("src/main.rs"), "fn main() {}").expect("write main.rs");
+        let tree = FileTree::new(&root);
+
+        let watched: Vec<&Path> =
+            tree.folder_times.iter().map(|(folder, _)| folder.as_path()).collect();
+        assert!(watched.contains(&root.as_path()), "the root is always watched");
+        assert!(watched.iter().any(|at| at.ends_with("src")), "a searched folder is watched");
+        assert!(
+            !watched.iter().any(|at| at.to_string_lossy().contains("target")),
+            "an ignored folder is watched: {watched:?}"
+        );
+        // One entry per folder, so the same folder is never asked about twice.
+        let mut once = watched.clone();
+        once.sort();
+        once.dedup();
+        assert_eq!(once.len(), watched.len(), "a folder is watched more than once: {watched:?}");
     }
 }
 

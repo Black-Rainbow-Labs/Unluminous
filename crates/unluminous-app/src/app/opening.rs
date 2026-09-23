@@ -365,6 +365,24 @@ impl UnluminousApp {
 
     pub fn reload_from_disk(&mut self, path: &Path, discard: bool) -> bool {
         self.tree.reload();
+        self.reread_a_tab(path, discard)
+    }
+
+    /// Read one tab's file again and leave the tree alone.
+    ///
+    /// **The half of [`Self::reload_from_disk`] that is about the tab.** That function walks the whole
+    /// project first, which is right for somebody who pressed `Reload from Disk` — they are asking about
+    /// the folder as much as the file — and wrong on a timer that has just decided the folder did not
+    /// change. Measured on the installed build with an agent appending to the open file once a second,
+    /// the frame that re-read it cost **88 ms** against a median watch of 0.59: a folder's modification
+    /// time does not move when a file inside it is *written*, so the tree was correctly left alone and
+    /// then walked anyway. `task-2062`.
+    pub fn reread_the_tab_only(&mut self, path: &Path) -> bool {
+        self.reread_a_tab(path, false)
+    }
+
+    /// One tab, read again from the disk. Both of the two above are this plus a decision about the tree.
+    fn reread_a_tab(&mut self, path: &Path, discard: bool) -> bool {
         let Some(index) = self.files.index_of(path) else {
             self.message = Some(format!("Reloaded {}", path.display()));
             return true;

@@ -569,6 +569,20 @@ pub const ADAPTER_SEARCH_TTL: std::time::Duration = std::time::Duration::from_se
 /// is a frame: an idle window still draws twice a second.
 pub const WATCH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(750);
 
+/// The smallest the window may be made, in points.
+///
+/// **One number, read by everything that resizes the window.** `main.rs` builds the window with it as
+/// `with_min_inner_size`, `unluminous-cli window size` clamps to it, and the resize grips stop an edge
+/// at it on the platform where the window moves its own edge rather than handing the drag to a window
+/// manager. It was three numbers before `task-2062` — 640 by 400 in the builder and 320 by 240 in the
+/// command line — so a caller could set a size the window itself refused to open at, and a grip had no
+/// floor at all to stop at.
+///
+/// What it is: wide enough for the explorer at its own minimum beside an editing pane at
+/// `size::EDITOR_PANE_MIN`, and tall enough for the title bar, a tab strip, some lines and the status
+/// bar. Below that the window draws controls on top of one another.
+pub const SMALLEST_WINDOW: egui::Vec2 = egui::vec2(640.0, 400.0);
+
 /// Keep egui's keyboard focus on a widget of Unluminous's own, so that pressing `Tab` or an arrow key
 /// cannot hand the keyboard to a button.
 ///

@@ -32,6 +32,41 @@ pub struct Drag {
     pub reset: bool,
 }
 
+/// Every divider drawn this frame, by the rectangle it can be grabbed over.
+///
+/// **What the window's own resize grips are cut against.** The grips are added last and take the
+/// outermost few points of the window, so a divider that reaches an edge was underneath one — and both
+/// set the same double headed cursor, so a person aiming at the divider got the window's dead edge
+/// instead. `task-2062`, and `components::resize_edges::without` is the other half.
+///
+/// **Recorded by [`show`] itself rather than worked out again where the grips are added.** That is
+/// `follow_the_open_file`'s rule: a list of the places that have to say "I drew a divider here" is a
+/// list whose next entry is the one that forgets, and there are eight callers of `show` today. It rides
+/// egui's own per-frame data rather than a field on the window, so a divider drawn by a component that
+/// has never heard of `UnluminousApp` — the ones inside the references modal and Find in Files — is in
+/// the list for nothing.
+#[derive(Debug, Default, Clone)]
+struct Grabbed(Vec<Rect>);
+
+/// Where the list lives for the length of one frame.
+fn grabbed_id() -> egui::Id {
+    egui::Id::new("splitter-grabbed")
+}
+
+/// Forget the dividers of the frame before, which the window does at the top of each frame.
+pub fn forget_last_frames_dividers(ctx: &egui::Context) {
+    ctx.data_mut(|data| data.remove::<Grabbed>(grabbed_id()));
+}
+
+/// Where every divider drawn so far this frame can be grabbed.
+///
+/// Read after every panel and pane has been drawn, which is where the resize grips are added, so by
+/// then this is all of them. It is the same ordering rule the panel drag and the tab drag are settled
+/// under: the earliest moment anything knows where all of them are.
+pub fn dividers_drawn_this_frame(ctx: &egui::Context) -> Vec<Rect> {
+    ctx.data(|data| data.get_temp::<Grabbed>(grabbed_id()).map(|held| held.0).unwrap_or_default())
+}
+
 /// Draw a divider and report the drag.
 ///
 /// `line` is the one pixel line to draw: for an upright divider a rectangle one point wide running the
@@ -48,6 +83,9 @@ pub fn show(ui: &mut egui::Ui, line: Rect, id: &str, axis: Axis) -> Drag {
             Pos2::new(line.right(), line.center().y + GRAB / 2.0),
         ),
     };
+    // Recorded before anything else, so that a divider is in the list whatever this function goes on to
+    // do with it. The window's own resize grips are cut against these — see [`Grabbed`].
+    ui.ctx().data_mut(|data| data.get_temp_mut_or_default::<Grabbed>(grabbed_id()).0.push(hit));
     let response = ui.interact(hit, ui.id().with(("splitter", id)), Sense::click_and_drag());
     let active = response.hovered() || response.dragged();
     if active {

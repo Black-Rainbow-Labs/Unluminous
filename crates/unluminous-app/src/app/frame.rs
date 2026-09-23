@@ -145,6 +145,10 @@ impl UnluminousApp {
         crate::services::frame_trace::begin();
         self.receive_browser_events();
         self.browser_placements.clear();
+        // The dividers of the frame before, forgotten here beside the other frame locals and for the
+        // same reason: the window's resize grips are cut against this frame's, and a stale rectangle
+        // would leave a piece of the window's edge dead after the divider had moved away from it.
+        crate::components::splitter::forget_last_frames_dividers(ui.ctx());
         if self
             .files
             .iter()
@@ -1828,7 +1832,13 @@ impl UnluminousApp {
         // manager will refuse ever being sent. `components::resize_edges` records what one of those
         // costs: it wedges every later move and resize as well.
         let maximized = ui.ctx().input(|input| input.viewport().maximized.unwrap_or(false));
-        let direction = resize_edges::show(ui, full, maximized);
+        // **The grips give up the points every pane divider wants**, which is the other half of
+        // `task-2062`: a divider that reaches the window's edge was under a grip, and both set the same
+        // double headed cursor, so the arrows appeared and the drag went to the window rather than to the
+        // divider. Read here because this is after every pane and every panel has been drawn, which is
+        // the earliest moment all of them are known — the ordering `settle_the_panel_drag` keeps.
+        let dividers = crate::components::splitter::dividers_drawn_this_frame(ui.ctx());
+        let direction = resize_edges::show(ui, full, maximized, &dividers);
         // **And nothing is asked for while a page holds the operating system's keyboard**, which is the
         // same rule read against the other case the window manager throws a request away in.
         // `egui-winit` already refuses to forward `StartDrag` unless `Window::has_focus()`, and `winit`
@@ -1845,14 +1855,69 @@ impl UnluminousApp {
         // `settle_the_native_views_before_the_pass` — but `winit` cannot know that until it has had its
         // `WM_SETFOCUS`, which is a frame later than the press this drag started on.
         let page_has_it = self.browser.page_holds_the_keyboard();
-        if let Some(direction) = resize_edges::ask_for_it(direction, page_has_it) {
+        if let Some(gesture) = resize_edges::ask_for_it(direction, page_has_it) {
             // **Written down as well as sent**, because `BeginResize` goes to the window manager and
             // nothing inside this process can watch a window change size. What a test — and
             // `status --section window` — can read back is what the window *asked for*, which is the one
             // thing this file decides. It is the last request rather than this frame's, for the same
             // reason: a drag is asserted on some frame after the one it started on.
-            self.last_resize_asked = Some(direction);
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::BeginResize(direction));
+            self.last_resize_asked = Some(gesture.direction());
+            match gesture {
+                resize_edges::Gesture::Begin(direction) => {
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::BeginResize(direction));
+                }
+                // **macOS has nothing to hand the drag to, so the window moves its own edge.**
+                // `winit`'s `drag_resize_window` is `NotSupported` there for all eight directions, so
+                // every grip on this platform sent a request that had never resized anything — see
+                // `components::resize_edges`. The two commands used are the ones
+                // `unluminous-cli window size` and `window position` already drive this window with,
+                // rather than a second mechanism, and the position goes **first**: a window whose top
+                // left is about to move is a window whose size and origin change together, and asking
+                // for the size first draws one frame with the far edge in the wrong place.
+                resize_edges::Gesture::Move { direction, by } => {
+                    self.move_the_windows_own_edge(ui.ctx(), direction, by);
+                }
+            }
+        }
+    }
+
+    /// Move one edge of the window by `by`, for the platform with no window manager drag to hand a
+    /// resize to.
+    ///
+    /// The **position** is the outer rectangle's and the **size** the inner one's, which is the pair the
+    /// `ViewportBuilder` takes back and the pair `note_where_the_window_is` writes down.
+    ///
+    /// **Where egui has reported no position, the size is still changed.** Only a west or a north drag
+    /// needs to know where the window is — those move it as well as resize it — so a window whose
+    /// position is unknown can still be made larger or smaller from its right or bottom edge. Returning
+    /// early on the whole thing instead left every grip dead in a window that had not been told its own
+    /// position yet, which is what `egui_kittest` is and is where this was caught.
+    fn move_the_windows_own_edge(
+        &mut self,
+        ctx: &egui::Context,
+        direction: egui::viewport::ResizeDirection,
+        by: egui::Vec2,
+    ) {
+        let (position, inner) = ctx.input(|input| {
+            let viewport = input.viewport();
+            (
+                viewport.outer_rect.map(|outer| outer.min),
+                viewport.inner_rect.map(|inner| inner.size()),
+            )
+        });
+        // The size the window is now. `content_rect` is what the frame was drawn into and is the honest
+        // fallback: it is what `unluminous-cli window size` reports and reads back.
+        let was = inner.unwrap_or_else(|| ctx.content_rect().size());
+        let whole = egui::Rect::from_min_size(position.unwrap_or_default(), was);
+        let (at, size) =
+            resize_edges::Edges::of(direction).moved_by(whole, by, crate::app::SMALLEST_WINDOW);
+        // The position is only sent where it is really known and the edge being dragged really moves it.
+        // Sent from a guessed origin, a west drag would fling the window to the top left of the screen.
+        if position.is_some() && at != whole.min {
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(at));
+        }
+        if size != was {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
         }
     }
 

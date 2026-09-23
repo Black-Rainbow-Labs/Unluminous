@@ -247,7 +247,9 @@ fn main() -> eframe::Result {
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Unluminous")
         .with_inner_size([1100.0, 720.0])
-        .with_min_inner_size([640.0, 400.0]);
+        // One number, shared with `unluminous-cli window size` and with the resize grips, so that a
+        // size the window refuses to open at cannot be asked for from anywhere else.
+        .with_min_inner_size(unluminous_app::app::SMALLEST_WINDOW);
     if let Some(place) = place.filter(|place| place.is_sensible()) {
         viewport = viewport
             .with_position([place.x, place.y])

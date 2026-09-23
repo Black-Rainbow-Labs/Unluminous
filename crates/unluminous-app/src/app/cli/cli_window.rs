@@ -233,9 +233,13 @@ impl UnluminousApp {
                 json!({ "width": screen.width(), "height": screen.height() }),
             );
         }
+        // Clamped to the size the window is *built* with rather than to a second, smaller pair of
+        // numbers: `main.rs` names `SMALLEST_WINDOW` as the minimum inner size, so a request under it
+        // was answered `ok` with a number the window then refused to become. `task-2062`.
+        let smallest = crate::app::SMALLEST_WINDOW;
         let wanted = egui::Vec2::new(
-            width.unwrap_or(screen.width()).max(320.0),
-            height.unwrap_or(screen.height()).max(240.0),
+            width.unwrap_or(screen.width()).max(smallest.x),
+            height.unwrap_or(screen.height()).max(smallest.y),
         );
         ctx.send_viewport_cmd(ViewportCommand::InnerSize(wanted));
         ok(
