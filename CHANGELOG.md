@@ -8,9 +8,12 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 ## Unreleased
 
+- The window and its panes resize on macOS, and an agent's file changes are shown (`task-2062`)
 - Install and restart, a daily check, preview zoom, Ctrl+[ and Mermaid that reads (`task-2063`)
 - Drive update install and skip from the command line, accept the redrawn diagrams (`task-2063`)
 - The helper's test waits for its stand-in to exit before deleting it (`task-2063`)
+- Write the changelog out from the history, which the release checks first (`task-2063`)
+- Take a string slice in the resize test helper, which clippy refuses as a &String (`task-2063`)
 
 ## 0.54.2 — 2026-09-21
 
