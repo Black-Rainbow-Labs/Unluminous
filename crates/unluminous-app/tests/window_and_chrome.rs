@@ -1641,12 +1641,12 @@ fn a_window_in_the_background_still_asks_for_a_resize() {
     };
 
     assert!(
-        asked(&mut focused, Some(true)).iter().any(a_resize),
+        asked(&mut focused, Some(true)).iter().any(|command| a_resize(command)),
         "a focused window resizes from its top edge"
     );
     let mut second = harness("");
     assert!(
-        asked(&mut second, Some(false)).iter().any(a_resize),
+        asked(&mut second, Some(false)).iter().any(|command| a_resize(command)),
         "and so does one in the background: no page has taken the operating system's keyboard, which          is the only thing the window manager throws a resize away for"
     );
     assert!(
@@ -1665,7 +1665,7 @@ fn a_window_in_the_background_still_asks_for_a_resize() {
 /// there moves the window's own edge with `OuterPosition` and `InnerSize` instead — see
 /// `components::resize_edges` and `task-2062`. What both shapes mean is the same thing, which is why
 /// this is one function rather than a `cfg` at each assertion: the window really asked to be resized.
-fn a_resize(command: &String) -> bool {
+fn a_resize(command: &str) -> bool {
     match resize_edges::HANDS_THE_DRAG_OVER {
         true => command.contains("BeginResize"),
         false => command.contains("InnerSize") || command.contains("OuterPosition"),
