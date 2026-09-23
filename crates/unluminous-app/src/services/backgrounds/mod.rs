@@ -18,8 +18,15 @@
 //! **Removing one deletes the copy.** That is a file this application made, in a folder this
 //! application owns, which is the one kind of deletion it does.
 //!
-//! **Nothing is fetched.** A picture is read from the disk somebody pointed at and from nowhere else,
-//! which is the rule the Markdown preview already keeps.
+//! **Nothing is fetched.** A picture is read from the disk somebody pointed at, or out of the binary
+//! itself, and from nowhere else — which is the rule the Markdown preview already keeps.
+//!
+//! **Five pictures ship inside the binary** and are written into the folder the first time it is made,
+//! so a fresh Unluminous has something to choose from rather than an empty grid and a file dialog.
+//! [`bundled`] is that list and the reasoning; once written they are ordinary files, so removing one
+//! removes it for good.
+
+pub mod bundled;
 
 use std::path::{Path, PathBuf};
 
@@ -29,7 +36,17 @@ use std::path::{Path, PathBuf};
 /// a choice about their window rather than about a project — the line `task-1697` drew for where the
 /// panels are, and the same one `appearance.theme` keeps.
 pub fn folder() -> PathBuf {
-    crate::services::store::folder_for_this_person().join("backgrounds")
+    folder_in(&crate::services::store::folder_for_this_person())
+}
+
+/// The backgrounds folder inside a named settings folder.
+///
+/// **What a test uses, and what `UnluminousApp::use_store` uses.** The window is handed a `Store` — which
+/// a test points at a folder of its own — so asking [`folder`] there would write the bundled pictures
+/// into the settings of whoever is running the tests. That is the rule the whole suite keeps: a test must
+/// not read or write the settings of the person running it.
+pub fn folder_in(settings: &Path) -> PathBuf {
+    settings.join("backgrounds")
 }
 
 /// The extensions a picture may have, which is what `services::picture` can decode.

@@ -60,3 +60,8 @@ installer/macos/*.p8
 # driven here. Scratch, and never part of the project.
 /app.rdb
 /app.rdb-wal.*
+
+# What the macOS Finder leaves in any folder somebody has looked at, which is per machine rather than
+# part of the project. One appeared in `design/` the moment that folder was opened to add the background
+# pictures.
+.DS_Store

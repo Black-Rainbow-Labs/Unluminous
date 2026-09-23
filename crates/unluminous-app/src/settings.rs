@@ -97,9 +97,15 @@ pub const SPACE_WIDTH_MIN: f32 = 320.0;
 /// rather than a document, its own tests pin that number, and nothing in the ticket asks for it to change.
 pub const PANEL_MAX_WIDTH: f32 = 8192.0;
 
-/// How opaque the background is when Unluminous starts. Not fully opaque, so the transparency is visible
-/// without opening the settings. The design shows 83 per cent.
-pub const DEFAULT_OPACITY: f32 = 0.83;
+/// How opaque the background is when Unluminous starts.
+///
+/// **86 per cent, which is the opacity the bundled forest picture is meant to be read through** — see
+/// `services::backgrounds::bundled::DEFAULT_OPACITY`, which is the same number and is where the reason
+/// lives. It was 83, the number the design shows for a window with the *desktop* behind it; a fresh
+/// Unluminous is drawn on a photograph now, and a photograph carries more detail than a desktop does.
+///
+/// Not fully opaque either way, so the transparency is visible without opening the settings.
+pub const DEFAULT_OPACITY: f32 = 0.86;
 /// The lowest the opacity can be set to. Above zero, so the window cannot be lost entirely.
 pub const MIN_OPACITY: f32 = 0.05;
 

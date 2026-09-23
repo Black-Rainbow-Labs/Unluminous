@@ -1653,6 +1653,47 @@ clothes: a person and an agent looking at one row were shown different things.
 Neither had a failing test, and neither would have got one: both were only visible by starting the
 installed binary and reading what came back. That is what the release step is for.
 
+## Five backgrounds ship in the binary, and a fresh Unluminous is drawn on one of them
+
+`task-2063`: the pictures in `design/background-images/` are the default backgrounds, with the forest one
+chosen at 86% opacity. `services::backgrounds::bundled` is the list and the reasoning, and it is
+`services::plugins::bundled`'s argument made about pictures: they are in the binary so that an Unluminous
+somebody has just installed has something to choose from with no network involved and nothing to find on
+their disk.
+
+**The folder is still the whole of the state**, which is what `services::backgrounds` already said. So
+shipping a background means **writing it into that folder**, once, and after that it is an ordinary file:
+the grid lists what is there, and removing one removes it for good. `write_into` is called on every start
+and writes only what is missing, so a person who deleted `moab.jpg` does not get it back.
+
+**They are JPEG rather than PNG, and that was measured.** The five are 1920 by 1088; as PNG they are
+**13 MB**, which on a 33 MB binary is a 39% increase to carry pictures nobody may use. At quality 82 they
+are **2.3 MB**, and the binary went from 33 MB to 36. A background is drawn at 86% behind a window full of
+text, which is the one place a compression artefact cannot be seen. `design/background-images/` keeps the
+PNG originals, which is what a better encoding would be made from.
+
+**The default is chosen in `use_store`, not as the `Settings` default**, and that is the one thing here
+that needed care rather than typing. An empty `appearance.background.image` means *"let the desktop show
+through"* and is a first class choice on the grid — and `Settings::write_into` clears a setting that is at
+its default out of the file. So a default of `forest-1.jpg` would have read somebody's deliberate choice
+of the desktop as "never chosen" and put the picture back at every start, for ever. What decides is
+whether the **settings file** exists: no file is a fresh Unluminous, and it is asked before anything
+writes one. The opacity needs no such care, because a number is always written to the file — so
+`DEFAULT_OPACITY` moving from 0.83 to 0.86 changes a fresh install and nobody else.
+
+**A picture already there under another extension is not written again.** `write_into` compares file
+*stems*, and `default_in` answers with the copy that is really in the folder rather than the name this
+binary would have written. Both are for the same case, and it was the machine this was built for: it
+already held four of the five as PNG, added by hand. Without the first, the grid showed those photographs
+twice in cells nobody could tell apart; without the second, a fresh Unluminous would have named
+`forest-1.jpg`, which `write_into` deliberately did not write — and a name that is not there falls back to
+the desktop, so it would have come up on no picture at all.
+
+**`backgrounds::folder_in` is what the window uses**, because `folder()` reads the person's real settings
+folder and a test points a `Store` at a folder of its own. In the shipped binary the two are the same
+answer; in the suite the difference is the rule that a test must not write the settings of whoever is
+running it.
+
 ## The look is written down, and a new control is measured against it
 
 `design/style-guide.md` says what a control in Unluminous is built from: the palette is closed, a list row

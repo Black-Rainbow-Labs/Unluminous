@@ -1593,10 +1593,41 @@ impl UnluminousApp {
     /// The same, against a named folder, which is what a test that wants to check the settings uses.
     pub fn use_store(&mut self, store: Store) {
         self.browser.set_profile(store.folder().join("browser"));
+        // **Whether this is a fresh Unluminous, asked before anything is written.** The five bundled
+        // pictures are put in the backgrounds folder either way, because a person who deleted one should
+        // not get it back; what only happens on a fresh install is *choosing* one, and the question has
+        // to be asked here because the first `write_settings` makes the file.
+        //
+        // The settings file rather than the backgrounds folder, because the folder is made by the first
+        // picture somebody adds and would then answer "not fresh" for an Unluminous that had never had a
+        // settings file at all. See `services::backgrounds::bundled`.
+        //
+        // **Written into this store's own folder rather than into `backgrounds::folder()`**, which reads
+        // the person's real settings folder: a test points a `Store` at a folder of its own, and the
+        // suite's rule is that a test must not write the settings of whoever is running it.
+        let fresh = !store.settings_path().exists();
+        let backgrounds = crate::services::backgrounds::folder_in(store.folder());
+        crate::services::backgrounds::bundled::write_into(&backgrounds);
         let (settings, panes) = settings::load(&store);
         // A settings file written before this system had the family in it, or with no family at all, falls
         // back to one this system has.
         self.settings = settings;
+        // **A fresh Unluminous is drawn on the forest picture**, which is what `task-2063` asks for. It is
+        // done here rather than as the `Settings` default because an *empty*
+        // `appearance.background.image` means "let the desktop show through" and is a first class choice
+        // on the grid — and `Settings::write_into` clears a setting that is at its default out of the
+        // file. A default of `forest-1.jpg` would therefore have read somebody's deliberate choice of the
+        // desktop as "never chosen" and put the picture back at the next start, for ever.
+        //
+        // `default_in` rather than `DEFAULT`, because the folder may already hold that picture under
+        // another extension — in which case `write_into` deliberately did not write the bundled copy, and
+        // naming it would name a file that is not there. A name that is not there falls back to the
+        // desktop, so a fresh Unluminous would have come up on nothing at all.
+        if fresh {
+            self.settings.background_image =
+                crate::services::backgrounds::bundled::default_in(&backgrounds);
+            self.unsaved_settings = true;
+        }
         if self.settings.font_family.is_empty()
             || !self.renderer.families().contains(&self.settings.font_family)
         {
@@ -2422,5 +2453,84 @@ impl unluminous_core::CodeHighlighter for PluginHighlighter<'_> {
         // The fence's reader walks the spans in order and stops at the first past its line.
         spans.sort_by_key(|(range, _)| range.start);
         spans
+    }
+}
+
+#[cfg(test)]
+mod tests_task_2063 {
+    use crate::app::UnluminousApp;
+    use crate::services::backgrounds;
+    use crate::services::store::Store;
+
+    /// A window on an empty project, and a settings folder of its own for it to read.
+    ///
+    /// Two folders rather than one, because the settings folder is what `use_store` is pointed at and a
+    /// test must never be pointed at the settings of the person running it.
+    fn a_window(name: &str) -> (std::path::PathBuf, std::path::PathBuf, UnluminousApp) {
+        let root = std::env::temp_dir().join("unluminous-default-background").join(name);
+        let _ = std::fs::remove_dir_all(&root);
+        let project = root.join("project");
+        let settings = root.join("settings");
+        std::fs::create_dir_all(&project).expect("make the project");
+        std::fs::create_dir_all(&settings).expect("make the settings folder");
+        let app = UnluminousApp::new(&project);
+        (root, settings, app)
+    }
+
+    /// **A fresh Unluminous is drawn on the forest picture at 86%**, which is what `task-2063` asks for.
+    #[test]
+    fn a_fresh_unluminous_is_drawn_on_the_bundled_forest_picture() {
+        let (root, settings, mut app) = a_window("fresh");
+        app.use_store(Store::at(&settings));
+
+        assert_eq!(app.settings.background_image, "forest-1.jpg");
+        assert!(
+            (app.settings.opacity - 0.86).abs() < 0.0005,
+            "the opacity is {}",
+            app.settings.opacity
+        );
+        // And the picture it names is really there to be drawn, in this store's own folder.
+        let folder = backgrounds::folder_in(&settings);
+        assert!(folder.join("forest-1.jpg").is_file(), "the picture was not written");
+        assert_eq!(
+            backgrounds::list_in(&folder).len(),
+            backgrounds::bundled::ALL.len(),
+            "the grid has something to show"
+        );
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// **Somebody who chose the desktop keeps the desktop.** This is the whole reason the choice is made
+    /// in `use_store` rather than as the `Settings` default: an empty `appearance.background.image` means
+    /// "let the desktop show through", and `Settings::write_into` clears a setting that is at its default
+    /// out of the file — so a default of `forest-1.jpg` would have read a deliberate choice of the
+    /// desktop as "never chosen" and put the picture back at every start, for ever.
+    #[test]
+    fn a_settings_file_that_chose_the_desktop_is_left_on_the_desktop() {
+        let (root, settings, mut app) = a_window("chose-the-desktop");
+        // A settings file with no `appearance.background.image` line in it, which is exactly what
+        // choosing the desktop writes.
+        std::fs::write(settings.join("settings.conf"), "appearance.background.opacity = 0.830\n")
+            .expect("write a settings file");
+
+        app.use_store(Store::at(&settings));
+        assert_eq!(app.settings.background_image, "", "the picture was forced back on");
+        assert!((app.settings.opacity - 0.83).abs() < 0.0005, "and their opacity was changed");
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// And a settings file that names a different picture keeps that one.
+    #[test]
+    fn a_settings_file_that_named_a_picture_keeps_it() {
+        let (root, settings, mut app) = a_window("chose-a-picture");
+        std::fs::write(settings.join("settings.conf"), "appearance.background.image = moab.jpg\n")
+            .expect("write a settings file");
+
+        app.use_store(Store::at(&settings));
+        assert_eq!(app.settings.background_image, "moab.jpg");
+
+        std::fs::remove_dir_all(&root).ok();
     }
 }
