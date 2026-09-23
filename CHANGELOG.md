@@ -6,7 +6,7 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.55.0 — 2026-09-23
 
 - The window and its panes resize on macOS, and an agent's file changes are shown (`task-2062`)
 - Install and restart, a daily check, preview zoom, Ctrl+[ and Mermaid that reads (`task-2063`)
@@ -14,6 +14,8 @@ bumps the release script makes are left out, because they are the boundaries rat
 - The helper's test waits for its stand-in to exit before deleting it (`task-2063`)
 - Write the changelog out from the history, which the release checks first (`task-2063`)
 - Take a string slice in the resize test helper, which clippy refuses as a &String (`task-2063`)
+- Write the changelog out again after rebasing onto task-2062 (`task-2063`)
+- The documentation tests read the reference with its line endings made plain (`task-2063`)
 
 ## 0.54.2 — 2026-09-21
 
