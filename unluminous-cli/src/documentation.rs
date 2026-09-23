@@ -11,10 +11,17 @@
 use crate::catalogue::{self, Command};
 
 /// Read the written reference. It sits beside this crate, so its path is relative to the manifest.
+///
+/// **With its line endings made plain**, because `.gitattributes` leaves Markdown to `text=auto` and a
+/// Windows checkout therefore has a carriage return before every line feed, while every heading this
+/// file looks for ends in a bare line feed. The tests passed only in a checkout where the reference
+/// had just been regenerated, which writes bare line feeds: `task-2063`'s release stopped on it in a
+/// fresh worktree.
 fn reference() -> String {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/commands.md");
     std::fs::read_to_string(&path)
         .unwrap_or_else(|problem| panic!("could not read {}: {problem}", path.display()))
+        .replace("\r\n", "\n")
 }
 
 /// Read the protocol document, the same way.
@@ -22,6 +29,7 @@ fn protocol() -> String {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/protocol.md");
     std::fs::read_to_string(&path)
         .unwrap_or_else(|problem| panic!("could not read {}: {problem}", path.display()))
+        .replace("\r\n", "\n")
 }
 
 /// Every command the window answers on a **later frame** than the one it arrived on.
