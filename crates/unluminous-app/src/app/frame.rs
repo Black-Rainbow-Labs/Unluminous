@@ -1484,7 +1484,7 @@ impl UnluminousApp {
                     "Pictures",
                     &["png", "jpg", "jpeg", "webp", "bmp", "gif", "tif", "tiff"],
                 )
-                .set_directory(&start)
+                .set_directory(start)
                 .pick_file()
             {
                 match crate::services::backgrounds::add_into(start, &chosen) {

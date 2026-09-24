@@ -6,7 +6,19 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.56.0 — 2026-09-24
+## Unreleased
+
+- Publishing the open source leaves a tag the public repository already has alone (`task-2096`)
+- Draw the four panel_docking arrangements with a detached terminal tab rather than a real shell (`task-2097`)
+- Accept the four resize pictures with a detached terminal tab in them (`task-2097`)
+- The model selector is as wide as its menu's rows need (`task-2096`)
+- Accept the chat pane pictures with the wider model selector (`task-2096`)
+- Window test binaries from every checkout take turns at the temp fixtures (`task-2100`)
+- A window's backgrounds are in the store it was given, and nowhere else (`task-2105`)
+- Accept the pictures a fresh store now draws on its own forest picture (`task-2105`)
+- Format the background changes with rustfmt (`task-2105`)
+
+## 0.56.0 — 2026-09-23
 
 - Five backgrounds ship in the binary, and a fresh Unluminous is drawn on the forest one (`task-2063`)
 - Agent chat tool limit, zoom, screenshots, model selector and tool icon (`task-2096`)

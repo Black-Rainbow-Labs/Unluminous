@@ -44,6 +44,12 @@ pub fn take_the_machines_turn() {
 }
 
 /// Wait for the lock file, then record which process holds it.
+///
+/// `File::try_lock` is stable from Rust 1.89 and the workspace declares `rust-version = "1.85"`, so
+/// clippy's `incompatible_msrv` refuses it. The allowance is for this test harness only: the window
+/// tests are built with the toolchain `rust-toolchain.toml` pins, which is 1.95, and nothing shipped
+/// calls this. The shipped crates still keep to 1.85.
+#[allow(clippy::incompatible_msrv)]
 fn wait_for_the_turn() -> std::fs::File {
     let lock = std::env::temp_dir().join("unluminous-window-tests.lock");
     let file = std::fs::OpenOptions::new()
