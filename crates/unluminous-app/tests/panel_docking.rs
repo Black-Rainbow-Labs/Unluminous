@@ -1149,10 +1149,19 @@ fn drag_a_divider(
 
 /// A window with the canvas docked to `side`, the terminal along the bottom, and the editing area
 /// showing or not.
+///
+/// **The terminal tab is detached and fed fixed bytes before `terminal show`**, so `open_terminal_tab`
+/// finds a tab already there and starts no shell. `task-2097`: with a real `pwsh.exe` behind the tile,
+/// `resize_terminal_grown_under_a_canvas_column` varied between runs, because the shell's banner and
+/// prompt reached the picture whenever the shell got to them, and the drag before that picture gives it
+/// more frames to arrive in and resizes the pseudoconsole, which makes the console host draw again.
+/// `terminal show` is still what shows the tile, so the tile arrives by the same path it did before.
 fn arranged(side: &str, editor: bool) -> Harness<'static, UnluminousApp> {
     let mut harness = harness("");
     did(&mut harness, "space show");
     steady(&mut harness);
+    harness.state_mut().new_detached_terminal_tab(8, 60);
+    feed(&mut harness, b"$ ");
     did(&mut harness, "terminal show");
     steady(&mut harness);
     did(&mut harness, &format!("panel dock space {side}"));
