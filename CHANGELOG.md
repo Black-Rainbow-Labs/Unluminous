@@ -6,11 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.57.1 — 2026-09-24
 
 - A terminal test that finds no tab says whether the shell failed to start or stopped (`task-2110`)
 - Write the changelog out from the history, which the release checks first (`task-2110`)
 - The control round trip test waits thirty seconds for its request, not two (`task-2110`)
+- Write the changelog out from the history (`task-2110`)
 
 ## 0.57.0 — 2026-09-23
 
