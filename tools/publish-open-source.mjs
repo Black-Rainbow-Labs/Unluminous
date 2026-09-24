@@ -269,7 +269,20 @@ function main() {
     return;
   }
 
-  const refspecs = [`${map.get(head)}:refs/heads/main`, ...moved.map(([refname, object]) => `${object}:${refname}`)];
+  // **A tag the public repository already has is left alone.** A push without force refuses to move
+  // one anyway, and a single refusal fails the whole release. `task-2096` found `v0.55.0` there as a
+  // lightweight tag on the right commit, which `gh release create` makes when it gets there first,
+  // while the rewrite builds an annotated one: same commit, different object, and every later
+  // release stopped on it.
+  const published = new Set(
+    execFileSync('git', ['ls-remote', '--tags', options.remote], { encoding: 'utf8' })
+      .split('\n')
+      .map((row) => row.split('\t')[1])
+      .filter((refname) => refname && !refname.endsWith('^{}')),
+  );
+  const fresh = moved.filter(([refname]) => !published.has(refname));
+  console.log(`tags       ${fresh.length} not yet on ${options.remote}`);
+  const refspecs = [`${map.get(head)}:refs/heads/main`, ...fresh.map(([refname, object]) => `${object}:${refname}`)];
   execFileSync('git', ['-C', mirror, 'push', options.remote, ...refspecs], { stdio: 'inherit' });
   console.log(`\npushed to ${options.remote}`);
 }
