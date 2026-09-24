@@ -6,7 +6,14 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.55.0 — 2026-09-23
+## Unreleased
+
+- Five backgrounds ship in the binary, and a fresh Unluminous is drawn on the forest one (`task-2063`)
+- Agent chat tool limit, zoom, screenshots, model selector and tool icon (`task-2096`)
+- Accept the window suite's pictures (`task-2096`)
+- Accept the resize picture that two runs in a row drew the same way (`task-2096`)
+
+## 0.55.0 — 2026-09-22
 
 - The window and its panes resize on macOS, and an agent's file changes are shown (`task-2062`)
 - Install and restart, a daily check, preview zoom, Ctrl+[ and Mermaid that reads (`task-2063`)
