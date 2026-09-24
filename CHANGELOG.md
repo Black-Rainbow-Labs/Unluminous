@@ -6,12 +6,15 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.56.0 — 2026-09-24
 
 - Five backgrounds ship in the binary, and a fresh Unluminous is drawn on the forest one (`task-2063`)
 - Agent chat tool limit, zoom, screenshots, model selector and tool icon (`task-2096`)
 - Accept the window suite's pictures (`task-2096`)
 - Accept the resize picture that two runs in a row drew the same way (`task-2096`)
+- Write the changelog out from the history, which the release checks first (`task-2096`)
+- Format the ticket's own code the way cargo fmt writes it (`task-2096`)
+- Build the test's settings in one expression, which clippy asks for (`task-2096`)
 
 ## 0.55.0 — 2026-09-22
 
