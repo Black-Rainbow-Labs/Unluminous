@@ -227,7 +227,7 @@ impl UnluminousApp {
             "background" => {
                 self.close_every_modal();
                 self.background_grid = Some(None);
-                let pictures = crate::services::backgrounds::list();
+                let pictures = self.background_names();
                 ok(
                     request,
                     format!("Background is open with {} pictures", pictures.len()),

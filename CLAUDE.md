@@ -1711,10 +1711,18 @@ twice in cells nobody could tell apart; without the second, a fresh Unluminous w
 `forest-1.jpg`, which `write_into` deliberately did not write — and a name that is not there falls back to
 the desktop, so it would have come up on no picture at all.
 
-**`backgrounds::folder_in` is what the window uses**, because `folder()` reads the person's real settings
-folder and a test points a `Store` at a folder of its own. In the shipped binary the two are the same
-answer; in the suite the difference is the rule that a test must not write the settings of whoever is
-running it.
+**A window's pictures are in the store it was given, and nowhere else.** `UnluminousApp::use_store`
+records `backgrounds::folder_in(store.folder())`, and `UnluminousApp::backgrounds_folder` is the one
+answer the wallpaper, the grid and the `background` commands all read. `services::backgrounds` has no
+function that names the person's own settings folder, and a test fails if one is added.
+
+`task-2105` is why. The bundled pictures were written into the store's folder, and then the wallpaper
+was read from the person's real one. So a test pointed at a temporary store drew whatever `forest-1.jpg`
+the machine running it had, and the same commit passed or failed depending on whether that machine had
+ever started 0.56.0. The command line walk had the same fault in another shape: with no store it added
+a picture to the person's backgrounds folder and deleted it again. A window nobody gave a store to now
+has no backgrounds folder at all, so it draws no picture and refuses to add or remove one. In the shipped
+binary `load_settings` gives it the person's store, so nothing a person sees changed.
 
 ## The look is written down, and a new control is measured against it
 

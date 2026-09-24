@@ -848,6 +848,11 @@ pub struct UnluminousApp {
     pub(crate) page_was_pressed: bool,
     /// The picture behind the window, decoded once and kept. See `services::backgrounds`.
     pub wallpaper: crate::services::backgrounds::Wallpaper,
+    /// The backgrounds folder of the store this window was given, or nothing before `use_store`.
+    ///
+    /// Every picture the window lists, draws, adds or removes is in here, and nowhere else. A window
+    /// nobody gave a store to has no pictures at all rather than the person's own. `task-2105`.
+    backgrounds: Option<std::path::PathBuf>,
     /// Browser child rectangles reported by the panes in this frame.
     browser_placements: Vec<BrowserPlacement>,
     /// The last resize this window asked the window manager for, and nothing if it has asked for none.
@@ -1393,6 +1398,7 @@ impl UnluminousApp {
             browser_placements: Vec::new(),
             page_was_pressed: false,
             wallpaper: crate::services::backgrounds::Wallpaper::default(),
+            backgrounds: None,
             last_resize_asked: None,
             native_resize: false,
             unlatch: crate::services::windows_resize::Unlatch::default(),
@@ -1594,6 +1600,23 @@ impl UnluminousApp {
         }
     }
 
+    /// The backgrounds folder of the store this window was given, or `None` before it was given one.
+    ///
+    /// The one place the window asks where its pictures are. See the field for why there is no
+    /// fallback to the person's own settings folder.
+    pub fn backgrounds_folder(&self) -> Option<&std::path::Path> {
+        self.backgrounds.as_deref()
+    }
+
+    /// The pictures in this window's backgrounds folder, by name. None before a store is given.
+    pub(crate) fn background_names(&self) -> Vec<String> {
+        self.backgrounds_folder().map(crate::services::backgrounds::list_in).unwrap_or_default()
+    }
+
+    /// The sentence a background command answers with when the window has no store to keep one in.
+    pub(crate) const NO_BACKGROUNDS_FOLDER: &'static str =
+        "This window was given no settings folder, so it has nowhere to keep a background.";
+
     /// The same, against a named folder, which is what a test that wants to check the settings uses.
     pub fn use_store(&mut self, store: Store) {
         self.browser.set_profile(store.folder().join("browser"));
@@ -1606,12 +1629,15 @@ impl UnluminousApp {
         // picture somebody adds and would then answer "not fresh" for an Unluminous that had never had a
         // settings file at all. See `services::backgrounds::bundled`.
         //
-        // **Written into this store's own folder rather than into `backgrounds::folder()`**, which reads
-        // the person's real settings folder: a test points a `Store` at a folder of its own, and the
-        // suite's rule is that a test must not write the settings of whoever is running it.
+        // **Written into this store's own folder, and read from it afterwards.** A test points a
+        // `Store` at a folder of its own, and the suite's rule is that a test must not read or write the
+        // settings of whoever is running it. `backgrounds_folder` is the one answer every picture the
+        // window draws, lists, adds or removes goes through, so the folder the pictures are written
+        // into is the folder they are drawn from. `task-2105`.
         let fresh = !store.settings_path().exists();
         let backgrounds = crate::services::backgrounds::folder_in(store.folder());
         crate::services::backgrounds::bundled::write_into(&backgrounds);
+        self.backgrounds = Some(backgrounds.clone());
         let (settings, panes) = settings::load(&store);
         // A settings file written before this system had the family in it, or with no family at all, falls
         // back to one this system has.
@@ -2522,6 +2548,49 @@ mod tests_task_2063 {
         assert_eq!(app.settings.background_image, "", "the picture was forced back on");
         assert!((app.settings.opacity - 0.83).abs() < 0.0005, "and their opacity was changed");
 
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// **A window given a store draws its pictures from that store and from nowhere else.** `task-2105`:
+    /// the pictures were written into the store's folder and then drawn from the person's own settings
+    /// folder, so a test pointed at a temporary store drew whatever `forest-1.jpg` the machine running it
+    /// happened to have.
+    ///
+    /// The store here is given the bundled pictures and then loses `forest-1.jpg`, which the settings
+    /// still name. Drawing must find nothing. Before the fix it found the person's copy on any machine
+    /// that had started 0.56.0, which is every machine this was measured on.
+    #[test]
+    fn a_window_given_a_store_draws_only_pictures_in_that_store() {
+        let (root, settings, mut app) = a_window("store-scoped-drawing");
+        app.use_store(Store::at(&settings));
+        let folder = backgrounds::folder_in(&settings);
+        assert_eq!(app.backgrounds_folder(), Some(folder.as_path()));
+        assert_eq!(app.settings.background_image, "forest-1.jpg");
+
+        let ctx = egui::Context::default();
+        let given = app.backgrounds_folder().map(|folder| folder.to_owned());
+        let drawn = app.wallpaper.texture(&ctx, given.as_deref(), "forest-1.jpg");
+        assert!(drawn.is_some(), "the store's own copy of the picture was not drawn");
+
+        std::fs::remove_file(folder.join("forest-1.jpg")).expect("take the picture out of the store");
+        let mut fresh = backgrounds::Wallpaper::default();
+        let drawn = fresh.texture(&ctx, given.as_deref(), "forest-1.jpg");
+        assert!(drawn.is_none(), "a picture the store does not have was drawn from somewhere else");
+        assert!(!app.background_names().contains(&"forest-1.jpg".to_owned()));
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// **A window nobody gave a store to has no pictures**, rather than the person's own. It draws
+    /// nothing whatever the setting names, and it cannot add or remove one.
+    #[test]
+    fn a_window_with_no_store_has_no_backgrounds_folder() {
+        let (root, _settings, app) = a_window("no-store");
+        assert_eq!(app.backgrounds_folder(), None);
+        assert!(app.background_names().is_empty());
+        let ctx = egui::Context::default();
+        let mut wallpaper = backgrounds::Wallpaper::default();
+        assert!(wallpaper.texture(&ctx, app.backgrounds_folder(), "forest-1.jpg").is_none());
         std::fs::remove_dir_all(&root).ok();
     }
 

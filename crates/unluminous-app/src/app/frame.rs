@@ -1438,22 +1438,22 @@ impl UnluminousApp {
             self.background_thumbnails.clear();
             return;
         };
-        let names = crate::services::backgrounds::list();
+        let names = self.background_names();
+        let folder = self.backgrounds_folder().map(|folder| folder.to_owned());
         // **Decoded before the dialog is drawn rather than inside it**, so the closure it is handed only
         // reads a map. A picture is decoded once while the grid is open and forgotten when it closes.
         for name in &names {
-            if !self.background_thumbnails.contains_key(name) {
-                let decoded =
-                    crate::services::picture::decode(&crate::services::backgrounds::path_of(name))
-                        .ok()
-                        .map(|image| {
-                            crate::services::picture::upload(
-                                ui.ctx(),
-                                format!("unluminous-background-cell-{name}"),
-                                image,
-                                egui::TextureOptions::LINEAR,
-                            )
-                        });
+            if let (false, Some(folder)) = (self.background_thumbnails.contains_key(name), &folder) {
+                let decoded = crate::services::picture::decode(&folder.join(name))
+                    .ok()
+                    .map(|image| {
+                        crate::services::picture::upload(
+                            ui.ctx(),
+                            format!("unluminous-background-cell-{name}"),
+                            image,
+                            egui::TextureOptions::LINEAR,
+                        )
+                    });
                 self.background_thumbnails.insert(name.clone(), decoded);
             }
         }
@@ -1474,8 +1474,10 @@ impl UnluminousApp {
             self.unsaved_settings = true;
             problem = None;
         }
-        if outcome.add {
-            let start = crate::services::backgrounds::folder();
+        if let (true, None) = (outcome.add, &folder) {
+            problem = Some(Self::NO_BACKGROUNDS_FOLDER.to_owned());
+        }
+        if let (true, Some(start)) = (outcome.add, &folder) {
             if let Some(chosen) = rfd::FileDialog::new()
                 .set_title("Choose a background")
                 .add_filter(
@@ -1485,7 +1487,7 @@ impl UnluminousApp {
                 .set_directory(&start)
                 .pick_file()
             {
-                match crate::services::backgrounds::add(&chosen) {
+                match crate::services::backgrounds::add_into(start, &chosen) {
                     // Chosen as well as added, because somebody who picked a picture meant to use it.
                     Ok(name) => {
                         self.settings.background_image = name;
@@ -1496,8 +1498,8 @@ impl UnluminousApp {
                 }
             }
         }
-        if let Some(name) = outcome.remove {
-            match crate::services::backgrounds::remove(&name) {
+        if let (Some(name), Some(folder)) = (outcome.remove, &folder) {
+            match crate::services::backgrounds::remove_from(folder, &name) {
                 Ok(()) => {
                     self.background_thumbnails.remove(&name);
                     // The one that was showing has gone, so the window goes back to the desktop rather
@@ -1815,7 +1817,11 @@ impl UnluminousApp {
     /// through, which is what `appearance.background.image` says by being empty and what a picture
     /// somebody deleted by hand should fall back to.
     fn paint_the_background(&mut self, ui: &mut egui::Ui, full: Rect) {
-        let Some(texture) = self.wallpaper.texture(ui.ctx(), &self.settings.background_image)
+        let Some(texture) = self.wallpaper.texture(
+            ui.ctx(),
+            self.backgrounds.as_deref(),
+            &self.settings.background_image,
+        )
         else {
             return;
         };

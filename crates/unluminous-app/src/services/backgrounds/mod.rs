@@ -30,21 +30,21 @@ pub mod bundled;
 
 use std::path::{Path, PathBuf};
 
-/// The folder the pictures live in, made when something is first put in it.
+/// The backgrounds folder inside a settings folder, made when something is first put in it.
 ///
-/// Beside `settings.conf` and `recent.txt` in the person's own settings folder, because a background is
-/// a choice about their window rather than about a project — the line `task-1697` drew for where the
-/// panels are, and the same one `appearance.theme` keeps.
-pub fn folder() -> PathBuf {
-    folder_in(&crate::services::store::folder_for_this_person())
-}
-
-/// The backgrounds folder inside a named settings folder.
+/// Beside `settings.conf` and `recent.txt`, because a background is a choice about a person's window
+/// rather than about a project — the line `task-1697` drew for where the panels are, and the same one
+/// `appearance.theme` keeps.
 ///
-/// **What a test uses, and what `UnluminousApp::use_store` uses.** The window is handed a `Store` — which
-/// a test points at a folder of its own — so asking [`folder`] there would write the bundled pictures
-/// into the settings of whoever is running the tests. That is the rule the whole suite keeps: a test must
-/// not read or write the settings of the person running it.
+/// **There is no function here that answers with the person's own folder, and that is deliberate.**
+/// Every question this module answers takes the folder it is about, and the window asks with the folder
+/// of the `Store` it was given — `UnluminousApp::backgrounds_folder`. `task-2105` is why: `folder()` used
+/// to answer with the person's own settings folder and `path_of` was built on it, so a window a test had
+/// pointed at a temporary store wrote the bundled pictures into that store and then *drew* whatever
+/// picture of the same name was in the settings folder of whoever was running the tests. The suite
+/// passed or failed depending on whether that machine had ever started a build that wrote
+/// `forest-1.jpg` there. With no such function, a store's window cannot reach any folder but its
+/// store's.
 pub fn folder_in(settings: &Path) -> PathBuf {
     settings.join("backgrounds")
 }
@@ -65,11 +65,6 @@ pub fn is_a_picture(path: &Path) -> bool {
 /// Sorted by name rather than by when they were added: a grid whose cells move about between openings
 /// is a grid nobody can point at twice. A folder that is not there is no pictures, which is what a
 /// fresh Unluminous has and is not a fault.
-pub fn list() -> Vec<String> {
-    list_in(&folder())
-}
-
-/// The same, in a named folder, so a test needs no settings folder of its own.
 pub fn list_in(folder: &Path) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(folder) else {
         return Vec::new();
@@ -84,22 +79,12 @@ pub fn list_in(folder: &Path) -> Vec<String> {
     names
 }
 
-/// Where a picture of this name is, whether or not it is there.
-pub fn path_of(name: &str) -> PathBuf {
-    folder().join(name)
-}
-
 /// Copy a picture into the folder and answer with the name it was given.
 ///
 /// The name is the file's own, with ` (2)`, ` (3)` and so on added while that name is taken — which is
 /// what every file manager does and is the one shape nobody has to be told about. A file that is
 /// already *in* the folder is left where it is and answered with its own name, so choosing one from the
 /// grid's own folder does not make a second copy of it.
-pub fn add(source: &Path) -> Result<String, String> {
-    add_into(&folder(), source)
-}
-
-/// The same, into a named folder.
 pub fn add_into(folder: &Path, source: &Path) -> Result<String, String> {
     if !source.is_file() {
         return Err(format!("There is no file at {}", source.display()));
@@ -149,11 +134,6 @@ fn free_name(folder: &Path, source: &Path) -> String {
 /// can be reached by asking for one: a name with a separator in it, or one that climbs, is refused
 /// before anything is opened. That is the same rule `services::browser`'s local root keeps about a page
 /// asking for a file.
-pub fn remove(name: &str) -> Result<(), String> {
-    remove_from(&folder(), name)
-}
-
-/// The same, in a named folder.
 pub fn remove_from(folder: &Path, name: &str) -> Result<(), String> {
     if name.trim().is_empty() || name.contains('/') || name.contains('\\') || name.contains("..") {
         return Err(format!("{name} is not the name of a background."));
@@ -231,6 +211,20 @@ mod tests {
         assert!(list_in(&holding).is_empty());
     }
 
+    /// **Nothing in this module can name the person's own settings folder.** Every function takes the
+    /// folder it is about, so a window pointed at a temporary store cannot read or write anybody's real
+    /// pictures through here. `task-2105` is what it cost when one function could: the suite drew
+    /// whatever wallpaper the machine running it had. The name is split so this test does not find
+    /// itself.
+    #[test]
+    fn no_function_here_reaches_the_persons_settings_folder() {
+        let source = [include_str!("mod.rs"), include_str!("bundled.rs")];
+        let forbidden = ["folder_for_", "this_person"].concat();
+        for text in source {
+            assert!(!text.contains(&forbidden), "a background is being read from the person's folder");
+        }
+    }
+
     #[test]
     fn a_folder_that_is_not_there_holds_no_pictures_and_that_is_not_a_fault() {
         let missing = std::env::temp_dir().join("unluminous-backgrounds").join("never-made");
@@ -256,6 +250,8 @@ mod tests {
 #[derive(Default)]
 pub struct Wallpaper {
     name: String,
+    /// The file the texture was decoded from, so a window given a different store reads again.
+    path: PathBuf,
     stamp: Option<std::time::SystemTime>,
     texture: Option<egui::TextureHandle>,
     looked: Option<std::time::Instant>,
@@ -265,27 +261,35 @@ impl Wallpaper {
     /// How often the file behind the picture is asked whether it has changed.
     const CHECK: std::time::Duration = std::time::Duration::from_millis(1500);
 
-    /// The texture for `name`, decoding it when the name or the file has changed.
+    /// The texture for `name` in `folder`, decoding it when the name or the file has changed.
     ///
     /// An empty name is no picture, which is the setting saying the desktop shows through. A name that
     /// is not there, or a file that will not decode, is also no picture — a window drawn on nothing at
     /// all would be worse than the desktop, and it is what a picture somebody deleted by hand should do.
-    pub fn texture(&mut self, ctx: &egui::Context, name: &str) -> Option<egui::TextureHandle> {
-        if name.trim().is_empty() {
+    /// **No folder is no picture too**: a window nobody has given a store to has no settings folder, and
+    /// reaching for the person's own one instead is the fault `task-2105` removed.
+    pub fn texture(
+        &mut self,
+        ctx: &egui::Context,
+        folder: Option<&Path>,
+        name: &str,
+    ) -> Option<egui::TextureHandle> {
+        let Some(folder) = folder.filter(|_| !name.trim().is_empty()) else {
             self.forget();
             return None;
-        }
+        };
         let due = self.looked.is_none_or(|at| at.elapsed() >= Self::CHECK);
-        if name == self.name && !due {
+        let path = folder.join(name);
+        if name == self.name && self.path == path && !due {
             return self.texture.clone();
         }
-        let path = path_of(name);
         let stamp = std::fs::metadata(&path).ok().and_then(|found| found.modified().ok());
         self.looked = Some(std::time::Instant::now());
-        if name == self.name && stamp == self.stamp {
+        if name == self.name && stamp == self.stamp && self.path == path {
             return self.texture.clone();
         }
         self.name = name.to_owned();
+        self.path = path.clone();
         self.stamp = stamp;
         self.texture = crate::services::picture::decode(&path).ok().map(|image| {
             crate::services::picture::upload(
@@ -303,6 +307,7 @@ impl Wallpaper {
     /// Drop what is held, which is what choosing the desktop means.
     fn forget(&mut self) {
         self.name.clear();
+        self.path = PathBuf::new();
         self.stamp = None;
         self.texture = None;
         self.looked = None;

@@ -869,7 +869,8 @@ settings! {
         /// the application rather than pointed at wherever it happened to be.
         ///
         /// **A file name, not a path.** What it names is a file in
-        /// `services::backgrounds::folder`, which a picture is copied into when it is chosen — so the
+        /// the `backgrounds` folder beside the settings file (`services::backgrounds::folder_in`), which a
+        /// picture is copied into when it is chosen — so the
         /// setting survives the original being moved or deleted, and one person's settings file cannot
         /// point at another person's disk. A name that is not there falls back to the desktop rather than
         /// to a blank window, which is what a picture somebody deleted by hand should do.

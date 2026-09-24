@@ -743,7 +743,7 @@ impl UnluminousApp {
         use crate::services::backgrounds;
         match verb {
             "list" => {
-                let names = backgrounds::list();
+                let names = self.background_names();
                 let showing = self.settings.background_image.clone();
                 let rows: Vec<String> = names
                     .iter()
@@ -763,7 +763,7 @@ impl UnluminousApp {
                     json!({
                         "pictures": names,
                         "showing": showing,
-                        "folder": backgrounds::folder().to_string_lossy(),
+                        "folder": self.backgrounds_folder().map(|folder| folder.to_string_lossy()),
                     }),
                 )
             }
@@ -771,7 +771,10 @@ impl UnluminousApp {
                 let Some(file) = self.cli_path_argument(request, "file") else {
                     return no(request, code::USAGE, "Say which picture to add.");
                 };
-                match backgrounds::add(&file) {
+                let Some(folder) = self.backgrounds_folder().map(|folder| folder.to_owned()) else {
+                    return no(request, code::NOT_APPLICABLE, Self::NO_BACKGROUNDS_FOLDER);
+                };
+                match backgrounds::add_into(&folder, &file) {
                     Ok(name) => {
                         let using = !request.switch("keep");
                         if using {
@@ -803,7 +806,7 @@ impl UnluminousApp {
                         json!({ "showing": "" }),
                     );
                 }
-                if !backgrounds::list().contains(&wanted) {
+                if !self.background_names().contains(&wanted) {
                     return no(
                         request,
                         code::NOT_FOUND,
@@ -824,7 +827,10 @@ impl UnluminousApp {
                 let Some(name) = request.text("name") else {
                     return no(request, code::USAGE, "Say which background to remove.");
                 };
-                match backgrounds::remove(&name) {
+                let Some(folder) = self.backgrounds_folder().map(|folder| folder.to_owned()) else {
+                    return no(request, code::NOT_APPLICABLE, Self::NO_BACKGROUNDS_FOLDER);
+                };
+                match backgrounds::remove_from(&folder, &name) {
                     Ok(()) => {
                         self.background_thumbnails.remove(&name);
                         let was_showing = self.settings.background_image == name;
