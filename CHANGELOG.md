@@ -9,6 +9,8 @@ bumps the release script makes are left out, because they are the boundaries rat
 ## Unreleased
 
 - A terminal test that finds no tab says whether the shell failed to start or stopped (`task-2110`)
+- Write the changelog out from the history, which the release checks first (`task-2110`)
+- The control round trip test waits thirty seconds for its request, not two (`task-2110`)
 
 ## 0.57.0 — 2026-09-23
 
