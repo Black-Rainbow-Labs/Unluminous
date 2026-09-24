@@ -437,7 +437,8 @@ impl UnluminousApp {
             // `.sql` one. `Look::colouring_with` had no caller at all until now, so both were drawing
             // in one flat colour: the seam was built and never plugged in.
             let highlighter = PluginHighlighter { plugins: &self.plugins };
-            let follows = self.plugin_ui.provider(&plugin).is_none_or(|one| one.follows_the_editor_font());
+            let follows =
+                self.plugin_ui.provider(&plugin).is_none_or(|one| one.follows_the_editor_font());
             let look = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer)
                 .following_the_editor_font(follows)
                 .zoomed_by(self.panes.zoom_of(panel))
@@ -534,7 +535,8 @@ impl UnluminousApp {
             // `.sql` one. `Look::colouring_with` had no caller at all until now, so both were drawing
             // in one flat colour: the seam was built and never plugged in.
             let highlighter = PluginHighlighter { plugins: &self.plugins };
-            let follows = self.plugin_ui.provider(&plugin).is_none_or(|one| one.follows_the_editor_font());
+            let follows =
+                self.plugin_ui.provider(&plugin).is_none_or(|one| one.follows_the_editor_font());
             let look = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer)
                 .following_the_editor_font(follows)
                 .holding_the_keyboard(matches!(self.focus, Focus::Plugin))

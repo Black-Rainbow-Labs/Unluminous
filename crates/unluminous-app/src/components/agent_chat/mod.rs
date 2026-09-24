@@ -425,10 +425,8 @@ fn header(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
 /// sets them in.
 fn model_select_width(painter: &egui::Painter, names: &[String]) -> f32 {
     let style = rux::Style::CONTROL;
-    let widest = names
-        .iter()
-        .map(|name| rux::text::measure(painter, style, name).x)
-        .fold(0.0_f32, f32::max);
+    let widest =
+        names.iter().map(|name| rux::text::measure(painter, style, name).x).fold(0.0_f32, f32::max);
     // `padding: 9px 12px`, an eight point gap and the thirteen point chevron: `Select::measure`.
     (widest + 12.0 * 2.0 + 8.0 + 13.0).min(MODEL_SELECT_WIDEST)
 }
@@ -734,7 +732,6 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     parts.state.scrollable = (scrolled.content_size.y - area.height()).max(0.0);
     acts
 }
-
 
 /// Do what the drawing reported, and answer what the window has to do.
 fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {

@@ -598,7 +598,10 @@ impl std::fmt::Debug for PaneState {
         out.debug_struct("PaneState")
             .field("jump_to_bottom", &self.jump_to_bottom)
             .field("history_open", &self.history_open)
-            .field("model_select_open", &self.model_select.as_ref().is_some_and(|one| one.menu.open))
+            .field(
+                "model_select_open",
+                &self.model_select.as_ref().is_some_and(|one| one.menu.open),
+            )
             .field("opened_tools", &self.opened_tools)
             .field("pictures", &self.pictures.len())
             .finish()
@@ -1989,7 +1992,11 @@ mod tests_task_2003 {
         assert_eq!(old("tool-limit = 8\n"), 30, "no version: eight is the old default");
         assert_eq!(old("tool-limit = 8\nversion = 1\n"), 30, "version 1: eight is the old default");
         assert_eq!(old("tool-limit = 12\nversion = 1\n"), 12, "a number somebody chose is kept");
-        assert_eq!(old("tool-limit = 8\nversion = 2\n"), 8, "written by version 2, eight was chosen");
+        assert_eq!(
+            old("tool-limit = 8\nversion = 2\n"),
+            8,
+            "written by version 2, eight was chosen"
+        );
     }
 
     /// A row Unluminous ships for an agent that is not here is not offered, and nothing is written.

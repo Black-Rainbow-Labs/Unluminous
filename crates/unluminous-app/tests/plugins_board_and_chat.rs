@@ -2486,16 +2486,17 @@ fn the_model_selector_is_a_dropdown_and_a_row_in_it_chooses_that_endpoint() {
         rux::text::measure(&painter, rux::Style::CONTROL, "Ag").y + 16.0
     };
     let last = names.len() - 1;
-    let at = egui::pos2(
-        trigger.center().x,
-        trigger.bottom() + 6.0 + 6.0 + row * (last as f32 + 0.5),
-    );
+    let at =
+        egui::pos2(trigger.center().x, trigger.bottom() + 6.0 + 6.0 + row * (last as f32 + 0.5));
     click_at(&mut harness, at);
     let mut chosen = String::new();
     with_the_chat(&mut harness, |chat| {
         chosen = chat.provider().map(|one| one.name.clone()).unwrap_or_default();
     });
-    assert_eq!(chosen, "second", "the last row of the dropdown was pressed; the rows are {names:?}");
+    assert_eq!(
+        chosen, "second",
+        "the last row of the dropdown was pressed; the rows are {names:?}"
+    );
 }
 
 /// Zooming a file does not resize the chat pane. `task-2096`.
@@ -2533,8 +2534,8 @@ fn a_tool_call_can_take_a_screenshot_of_the_window() {
     did(&mut harness, "plugins pane agent-chat/chat --show");
     did(&mut harness, "plugins run agent-chat use local");
     did(&mut harness, "plugins run agent-chat tools on");
-    let picture = std::env::temp_dir()
-        .join(format!("unluminous-tool-screenshot-{}.png", std::process::id()));
+    let picture =
+        std::env::temp_dir().join(format!("unluminous-tool-screenshot-{}.png", std::process::id()));
     let _ = std::fs::remove_file(&picture);
     let arguments = serde_json::json!({
         "command": "screenshot",
