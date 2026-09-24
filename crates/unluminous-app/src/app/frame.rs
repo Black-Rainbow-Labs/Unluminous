@@ -1443,10 +1443,10 @@ impl UnluminousApp {
         // **Decoded before the dialog is drawn rather than inside it**, so the closure it is handed only
         // reads a map. A picture is decoded once while the grid is open and forgotten when it closes.
         for name in &names {
-            if let (false, Some(folder)) = (self.background_thumbnails.contains_key(name), &folder) {
-                let decoded = crate::services::picture::decode(&folder.join(name))
-                    .ok()
-                    .map(|image| {
+            if let (false, Some(folder)) = (self.background_thumbnails.contains_key(name), &folder)
+            {
+                let decoded =
+                    crate::services::picture::decode(&folder.join(name)).ok().map(|image| {
                         crate::services::picture::upload(
                             ui.ctx(),
                             format!("unluminous-background-cell-{name}"),
@@ -1821,8 +1821,7 @@ impl UnluminousApp {
             ui.ctx(),
             self.backgrounds.as_deref(),
             &self.settings.background_image,
-        )
-        else {
+        ) else {
             return;
         };
         let taken = crate::services::backgrounds::cover(texture.size_vec2(), full.size());

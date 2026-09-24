@@ -2572,7 +2572,8 @@ mod tests_task_2063 {
         let drawn = app.wallpaper.texture(&ctx, given.as_deref(), "forest-1.jpg");
         assert!(drawn.is_some(), "the store's own copy of the picture was not drawn");
 
-        std::fs::remove_file(folder.join("forest-1.jpg")).expect("take the picture out of the store");
+        std::fs::remove_file(folder.join("forest-1.jpg"))
+            .expect("take the picture out of the store");
         let mut fresh = backgrounds::Wallpaper::default();
         let drawn = fresh.texture(&ctx, given.as_deref(), "forest-1.jpg");
         assert!(drawn.is_none(), "a picture the store does not have was drawn from somewhere else");

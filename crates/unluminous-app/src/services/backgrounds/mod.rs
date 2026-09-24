@@ -221,7 +221,10 @@ mod tests {
         let source = [include_str!("mod.rs"), include_str!("bundled.rs")];
         let forbidden = ["folder_for_", "this_person"].concat();
         for text in source {
-            assert!(!text.contains(&forbidden), "a background is being read from the person's folder");
+            assert!(
+                !text.contains(&forbidden),
+                "a background is being read from the person's folder"
+            );
         }
     }
 

@@ -2038,8 +2038,8 @@ fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
     // A settings folder of its own, because `background add` and `background remove` write pictures
     // into the settings folder of the store the window was given. Before `task-2105` this walk had no
     // store, and the two commands wrote into and deleted from the person's own backgrounds folder.
-    let settings = std::env::temp_dir()
-        .join(format!("unluminous-dispatch-settings-{}", std::process::id()));
+    let settings =
+        std::env::temp_dir().join(format!("unluminous-dispatch-settings-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&settings);
     std::fs::create_dir_all(&settings).expect("make the settings folder");
     harness.state_mut().use_store(unluminous_app::services::store::Store::at(&settings));
