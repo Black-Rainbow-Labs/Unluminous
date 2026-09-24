@@ -19,6 +19,7 @@
 #![allow(dead_code)]
 
 pub mod receipt;
+pub mod turn;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -94,6 +95,7 @@ pub fn shared_render_state() -> RenderState {
 /// test added later cannot go back to a device of its own without meaning to. See
 /// [`shared_render_state`].
 pub fn builder<State>() -> egui_kittest::HarnessBuilder<State> {
+    turn::take_the_machines_turn();
     receipt::note_this_binary_started();
     egui_kittest::HarnessBuilder::default()
         .renderer(WgpuTestRenderer::from_render_state(shared_render_state()))
@@ -117,6 +119,7 @@ pub fn builder<State>() -> egui_kittest::HarnessBuilder<State> {
 /// was: not a fault in the explorer, a fixture being written out from underneath it. The lock builds
 /// the folder once and everyone else waits for it and then reads a file nobody is writing.
 pub fn sample_folder() -> std::path::PathBuf {
+    turn::take_the_machines_turn();
     static FOLDER: OnceLock<std::path::PathBuf> = OnceLock::new();
     FOLDER.get_or_init(build_sample_folder).clone()
 }
@@ -133,8 +136,10 @@ pub fn sample_folder() -> std::path::PathBuf {
 /// `repository(name)` already keep about a fixture a test writes to.
 ///
 /// **The `OnceLock` is per test binary**, so each of the twelve files beside this module builds
-/// this folder once. That is still one writer, because `cargo test` runs one test binary at a
-/// time; two running at once would clear each other's folder, since this begins by removing it.
+/// this folder once. Two binaries running at once would clear each other's folder, since this begins
+/// by removing it, and one checkout's `cargo test` runs one binary at a time but two worktrees' do
+/// not. [`turn::take_the_machines_turn`] is what makes it one writer on the machine, and `task-2100`
+/// is what it cost before it existed.
 ///
 /// **Not [`fixture`], because two of these are not text**: `picture.png` is drawn pixel by pixel
 /// and `bundle.zip` is written as bytes.
@@ -323,6 +328,7 @@ pub fn report(results: SnapshotResults) {
 /// something different depending on what is uncommitted at the time, which is not a difference in
 /// Unluminous.
 pub fn copy_out_of_the_repository(source: &std::path::Path, name: &str) -> std::path::PathBuf {
+    turn::take_the_machines_turn();
     let target = std::env::temp_dir().join(name);
     std::fs::remove_dir_all(&target).ok();
     fn walk(from: &std::path::Path, to: &std::path::Path) {
@@ -350,6 +356,7 @@ pub fn copy_out_of_the_repository(source: &std::path::Path, name: &str) -> std::
 /// **Not [`fixture`], because the files are only half of it**: this runs the machine's real `git`
 /// to make the commits, the second author and the two dates blame colours by.
 pub fn git_folder(name: &str) -> std::path::PathBuf {
+    turn::take_the_machines_turn();
     let root = std::env::temp_dir().join("unluminous-screenshot-repository").join(name);
     std::fs::remove_dir_all(&root).ok();
     std::fs::create_dir_all(&root).expect("make the folder");
@@ -1045,9 +1052,10 @@ pub fn drove(harness: &mut Harness<'static, UnluminousApp>, line: &str) {
 /// registry, so the clearing runs before any test has the path.
 ///
 /// The registry is per **binary**, so each of the twelve test files builds the fixtures it uses.
-/// Two binaries running at once would clear each other's folders — `cargo test` runs one test binary
-/// at a time, which is what makes that safe, and is the same thing [`sample_folder`] relies on.
+/// Two binaries running at once would clear each other's folders, and two worktrees' `cargo test`
+/// do run at once, so this takes [`turn::take_the_machines_turn`] as [`sample_folder`] does.
 pub fn fixture(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
+    turn::take_the_machines_turn();
     static BUILT: OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = OnceLock::new();
     let built = BUILT.get_or_init(Default::default);
     let root = std::env::temp_dir().join(name);

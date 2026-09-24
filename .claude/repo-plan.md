@@ -39,6 +39,17 @@ node tools/window-suite.mjs --check
 Running the suite before the commit leaves a receipt at the previous commit, and the release then
 tells you every file that has changed since it.
 
+## Window test binaries from every checkout take turns
+
+The window tests' fixtures are folders under `%TEMP%` with fixed names, because the name
+`unluminous-screenshot-folder` is drawn in hundreds of accepted pictures, and each binary clears
+them before writing. Two worktrees running the suite at once used to rewrite each other's folders
+mid-test: `task-2100` measured the picture showing `Reloaded ...readme.md` in the status bar and the
+explorer row moved. `tests/common/turn.rs` makes each binary hold `%TEMP%\unluminous-window-tests.lock`
+for its lifetime, so a suite running beside another ticket's is slower rather than wrong. A binary
+that is waiting prints `waiting for another window test binary to finish: process N running ...`.
+That is not a hang. It is somebody else's suite, and it names the process.
+
 ## Two builds of this repository cannot share a target directory
 
 Each worktree gets its own under `D:/agent-worktrees/cargo-target/...`, written by a
