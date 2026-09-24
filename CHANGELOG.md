@@ -6,7 +6,7 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.57.0 — 2026-09-24
 
 - Publishing the open source leaves a tag the public repository already has alone (`task-2096`)
 - Draw the four panel_docking arrangements with a detached terminal tab rather than a real shell (`task-2097`)
@@ -17,6 +17,7 @@ bumps the release script makes are left out, because they are the boundaries rat
 - A window's backgrounds are in the store it was given, and nowhere else (`task-2105`)
 - Accept the pictures a fresh store now draws on its own forest picture (`task-2105`)
 - Format the background changes with rustfmt (`task-2105`)
+- Clear the release's clippy and changelog checks (`task-2105`)
 
 ## 0.56.0 — 2026-09-23
 
