@@ -13,24 +13,46 @@ pub struct Tabs {
     pub settings: SessionSettings,
     /// The last error from starting a shell, so the tile can say why there is no terminal.
     pub last_error: Option<String>,
+    /// Which program last stopped and took its tab with it, and the exit code it stopped with.
+    ///
+    /// **A tab that goes away leaves no other trace** (`task-2110`). Two window tests failed in one
+    /// suite run finding no terminal at all, and nothing could say whether the shell had failed to
+    /// start or had started and ended at once: `last_error` covers the first, and this the second.
+    pub last_ended: Option<String>,
+    /// How long the last shell took to start, or to fail to. Kept apart from `last_error`, which the tile
+    /// draws, so a picture of the tile does not change with the machine's speed.
+    pub last_start_took: Option<std::time::Duration>,
 }
 
 impl Tabs {
     pub fn new(settings: SessionSettings) -> Self {
-        Self { sessions: Vec::new(), active: 0, settings, last_error: None }
+        Self {
+            sessions: Vec::new(),
+            active: 0,
+            settings,
+            last_error: None,
+            last_ended: None,
+            last_start_took: None,
+        }
     }
 
     /// Start another terminal and show it. Returns false when the shell could not be started, in which case
     /// [`Self::last_error`] says why.
     pub fn open(&mut self, size: Size, waker: Waker) -> bool {
+        // Timed, so a start that hung can be told from one that failed at once (`task-2110`): in the one
+        // suite run where two window tests found no terminal, all three tests that start a shell had been
+        // running for over a minute.
+        let started = std::time::Instant::now();
         match Session::spawn(&self.settings, size, waker) {
             Ok(session) => {
+                self.last_start_took = Some(started.elapsed());
                 self.sessions.push(session);
                 self.active = self.sessions.len() - 1;
                 self.last_error = None;
                 true
             }
             Err(problem) => {
+                self.last_start_took = Some(started.elapsed());
                 self.last_error = Some(format!(
                     "Unluminous could not start {}: {problem}",
                     self.settings.shell.clone().unwrap_or_else(|| "a shell".to_owned())
@@ -182,6 +204,12 @@ impl Tabs {
             session.pump();
         }
         let before = self.sessions.len();
+        if let Some(ended) = self.sessions.iter().rev().find(|session| !session.is_running()) {
+            self.last_ended = Some(match ended.exit_code() {
+                Some(code) => format!("{} stopped with exit code {code} ({code:#x})", ended.name()),
+                None => format!("{} stopped without an exit code", ended.name()),
+            });
+        }
         // A detached session never stops, so this only affects tabs with a shell behind them.
         self.sessions.retain(|session| session.is_running());
         if self.sessions.len() != before && self.active >= self.sessions.len() {
@@ -204,6 +232,32 @@ mod tests {
 
     fn tabs() -> Tabs {
         Tabs::new(SessionSettings::default())
+    }
+
+    /// A tab whose program stopped goes away, and says which program it was and the code it stopped
+    /// with, so a strip that is empty can say why (`task-2110`).
+    #[test]
+    fn a_tab_whose_program_stopped_says_what_it_stopped_with() {
+        let (shell, flag) = match cfg!(target_os = "windows") {
+            true => (std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_owned()), "/c"),
+            false => ("/bin/sh".to_owned(), "-c"),
+        };
+        let settings = SessionSettings {
+            shell: Some(shell),
+            args: vec![flag.to_owned(), "exit 7".to_owned()],
+            ..SessionSettings::default()
+        };
+        let mut tabs = Tabs::new(settings);
+        assert!(tabs.open(Size::new(8, 40), std::sync::Arc::new(|| {})), "{:?}", tabs.last_error);
+        assert!(tabs.last_ended.is_none());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while !tabs.is_empty() && std::time::Instant::now() < deadline {
+            tabs.pump();
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        assert!(tabs.is_empty(), "the tab goes with its program");
+        let ended = tabs.last_ended.expect("the tab that went says why");
+        assert!(ended.contains("exit code 7"), "{ended}");
     }
 
     #[test]

@@ -345,6 +345,19 @@ fn the_terminal_font_size_changes_the_size_of_the_grid() {
     harness.snapshot(shot("terminal_large_font"));
 }
 
+/// Why the terminal has no tab, as far as the terminal can say.
+///
+/// **`task-2110`.** Both tests below once failed in a full suite run finding no tab at all, and the
+/// failure said only that: a shell that could not be started and a shell that started and stopped at
+/// once both leave an empty strip, and they call for different things to go and look at.
+fn why_there_is_no_tab(harness: &Harness<'static, UnluminousApp>) -> String {
+    let tabs = &harness.state().terminal.tabs;
+    format!(
+        "the shell's start said {:?} after {:?}, and the last tab to stop said {:?}",
+        tabs.last_error, tabs.last_start_took, tabs.last_ended
+    )
+}
+
 #[test]
 fn the_view_menu_shows_and_hides_the_terminal() {
     let mut harness = harness("");
@@ -356,7 +369,12 @@ fn the_view_menu_shows_and_hides_the_terminal() {
     harness.state_mut().run_action(Action::ToggleTerminal, &ctx);
     steady(&mut harness);
     assert!(harness.state().terminal.visible, "the terminal should have opened");
-    assert_eq!(harness.state().terminal.tabs.count(), 1, "with a shell in it");
+    assert_eq!(
+        harness.state().terminal.tabs.count(),
+        1,
+        "with a shell in it; {}",
+        why_there_is_no_tab(&harness)
+    );
     assert_eq!(
         harness.state().focus,
         unluminous_app::app::Focus::Terminal,
@@ -416,8 +434,9 @@ fn typing_in_the_terminal_reaches_the_shell_and_not_the_document() {
         }
         assert!(
             std::time::Instant::now() < deadline,
-            "the shell did not answer in thirty seconds, the terminal holds {:?}",
-            harness.state().terminal.tabs.active().map(|session| session.snapshot().text())
+            "the shell did not answer in thirty seconds, the terminal holds {:?}; {}",
+            harness.state().terminal.tabs.active().map(|session| session.snapshot().text()),
+            why_there_is_no_tab(&harness)
         );
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
