@@ -1047,8 +1047,7 @@ mod scale_tests {
         // `task-2096`: zooming a file walks the editor's font size, and the chat pane must not move with
         // it. Its own zoom still applies, before or after.
         let renderer = crate::services::text_renderer::TextRenderer::new();
-        let mut settings = Settings::default();
-        settings.font_size = 32.0;
+        let settings = Settings { font_size: 32.0, ..Settings::default() };
         let own = Look::of(&settings, &renderer).following_the_editor_font(false);
         assert_eq!(own.font_size, crate::settings::DEFAULT_FONT_SIZE);
         assert_eq!(own.scale(), 1.0, "the editor's 32 points reach nothing in it");
