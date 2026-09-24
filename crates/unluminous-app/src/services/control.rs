@@ -805,8 +805,14 @@ mod tests {
             send(port, &format!("{{\"token\":\"{token}\",\"command\":\"status\"}}"))
         });
         // Stand in for the window's frame loop: wait for the request, answer it.
+        //
+        // **Up to thirty seconds, not two (task-2110).** This waited 200 times 10 ms, and on a
+        // machine running another build the caller's thread did not get its request onto the
+        // socket inside two seconds, so the release refused to run on a test of nothing but load.
+        // A request that arrives answers at once, so the budget costs nothing when it passes.
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
         let mut answered = false;
-        for _ in 0..200 {
+        while std::time::Instant::now() < deadline {
             for pending in server.take() {
                 assert_eq!(pending.command(), "status");
                 pending.answer(Reply::done("status", "All well", serde_json::json!({ "a": 1 })));
