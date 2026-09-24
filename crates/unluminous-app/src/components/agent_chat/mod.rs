@@ -417,8 +417,8 @@ fn header(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
     acts
 }
 
-/// How wide the model selector's trigger is: the widest endpoint name, plus the select's own padding
-/// and chevron.
+/// How wide the model selector's trigger is: the widest endpoint name, plus what the trigger and the
+/// menu under it each take round the words, whichever is more.
 ///
 /// The widest rather than the chosen one, so the trigger stays the same width when a different endpoint
 /// is chosen and nothing beside it moves. The words are measured at the size `rux::Style::CONTROL`
@@ -427,8 +427,14 @@ fn model_select_width(painter: &egui::Painter, names: &[String]) -> f32 {
     let style = rux::Style::CONTROL;
     let widest =
         names.iter().map(|name| rux::text::measure(painter, style, name).x).fold(0.0_f32, f32::max);
-    // `padding: 9px 12px`, an eight point gap and the thirteen point chevron: `Select::measure`.
-    (widest + 12.0 * 2.0 + 8.0 + 13.0).min(MODEL_SELECT_WIDEST)
+    // **Wide enough for the menu's rows, not only for the trigger's words.** `rux` draws the menu
+    // exactly as wide as its trigger, and a row gives its words that width less six points each side
+    // of the menu, twelve each side of the row and eighteen for the tick. Sized for the trigger alone,
+    // which needs only `padding: 9px 12px`, an eight point gap and the thirteen point chevron, every
+    // row was cut to three letters: `cla…`, `cod…`, `loc…`, seen on the installed 0.56.0.
+    let trigger = widest + 12.0 * 2.0 + 8.0 + 13.0;
+    let row = widest + 6.0 * 2.0 + 12.0 * 2.0 + 18.0 + 4.0;
+    trigger.max(row).min(MODEL_SELECT_WIDEST)
 }
 
 /// The colour of the state dot, and the word for it.
