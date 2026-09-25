@@ -114,10 +114,13 @@ $PublicRepository = 'Black-Rainbow-Labs/Unluminous'
 # version out of unluminous.com's manifest rather than out of a repository, which is what `task-1993`
 # gave it in place of the private repository that answered 404 and left it saying v0.37.1 for fifteen
 # releases.
+#
+# Both sites live in the black-rainbow-labs-sites repository since task-2128, and each publish script
+# now deploys to Cloudflare as well as the origin on this machine.
 $SiteRepo = $env:UNLUMINOUS_SITE_REPO
-if (-not $SiteRepo) { $SiteRepo = 'C:/jason/dev/unluminous-site' }
+if (-not $SiteRepo) { $SiteRepo = 'C:/jason/dev/black-rainbow-labs-sites/sites/unluminous' }
 $ParentSiteRepo = $env:BLACK_RAINBOW_LABS_REPO
-if (-not $ParentSiteRepo) { $ParentSiteRepo = 'C:/jason/dev/blackrainbowlabs' }
+if (-not $ParentSiteRepo) { $ParentSiteRepo = 'C:/jason/dev/black-rainbow-labs-sites/sites/blackrainbowlabs' }
 $SitePublishers = @(
     @{ Name = 'unluminous.com'; Script = (Join-Path $SiteRepo 'scripts/publish.ps1'); Versioned = $true },
     @{ Name = 'blackrainbowlabs.com'; Script = (Join-Path $ParentSiteRepo 'scripts/publish.ps1'); Versioned = $false }

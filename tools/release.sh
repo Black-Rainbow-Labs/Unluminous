@@ -389,9 +389,9 @@ echo "Unluminous $next is released: $page"
 echo "Public source and release:   $public_page"
 [ "$skip_install" = 1 ] || echo "Installed at /Applications/Unluminous.app"
 echo
-# **The site is not published from here, and saying so is the point.** `unluminous-site` hosts the
+# **The site is not published from here, and saying so is the point.** unluminous.com hosts the
 # Windows installer and the manifest `update check` reads, and both are built on the Windows machine;
 # `tools/release.ps1` runs `scripts/publish.ps1` there. Until that has happened the site, and so every
 # window's update check, answers with the version before this one.
 echo "unluminous.com is NOT published by this script. On the Windows machine, run:"
-echo "  pwsh C:/jason/dev/unluminous-site/scripts/publish.ps1 -Version $next"
+echo "  pwsh C:/jason/dev/black-rainbow-labs-sites/sites/unluminous/scripts/publish.ps1 -Version $next"
