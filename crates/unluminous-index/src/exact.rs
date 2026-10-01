@@ -245,7 +245,7 @@ pub struct ExactRequest<'a> {
 }
 
 /// The in-memory exact index of one root.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Exact {
     /// Files by id; a tombstoned id holds None.
     pub files: Vec<Option<FileRecord>>,
@@ -254,6 +254,9 @@ pub struct Exact {
     /// The posting lists.
     pub postings: Postings,
     tombstones: usize,
+    /// Counts every insert and removal, so a copy taken for compaction can tell whether the index it
+    /// was taken from changed while it was being rebuilt.
+    pub generation: u64,
 }
 
 impl Exact {
@@ -271,6 +274,19 @@ impl Exact {
         exact
     }
 
+    /// A fresh index of the given files, numbered from zero with no tombstones: what compaction builds.
+    /// Each file's trigrams are taken again from its bytes, in parallel.
+    ///
+    /// @param records - the live files
+    pub fn from_records(records: Vec<FileRecord>) -> Exact {
+        let read: Vec<(FileRecord, Vec<Vec<u32>>)> = records.into_par_iter().map(|r| FileRecord::from_bytes(r.rel.clone(), r.mtime_ns, &r.bytes())).collect();
+        let mut exact = Exact::default();
+        for (record, trigrams) in read {
+            exact.insert(record, &trigrams);
+        }
+        exact
+    }
+
     /// An index put back together from what the store held.
     ///
     /// @param files - records by id, None for a tombstone
@@ -278,7 +294,7 @@ impl Exact {
     pub fn restore(files: Vec<Option<FileRecord>>, postings: Postings) -> Exact {
         let by_path = files.iter().enumerate().filter_map(|(id, f)| f.as_ref().map(|f| (f.rel.clone(), id as u32))).collect();
         let tombstones = files.iter().filter(|f| f.is_none()).count();
-        Exact { files, by_path, postings, tombstones }
+        Exact { files, by_path, postings, tombstones, generation: 0 }
     }
 
     /// Adds a file under the next id, tombstoning any older copy of the same path.
@@ -287,6 +303,7 @@ impl Exact {
     /// @param trigrams - its trigrams
     pub fn insert(&mut self, record: FileRecord, trigrams: &[Vec<u32>]) {
         self.remove(&record.rel);
+        self.generation += 1;
         let id = self.files.len() as u32;
         for (block, tris) in trigrams.iter().enumerate() {
             self.postings.add(block_id(id, block), tris);
@@ -302,6 +319,7 @@ impl Exact {
         if let Some(id) = self.by_path.remove(rel) {
             self.files[id as usize] = None;
             self.tombstones += 1;
+            self.generation += 1;
         }
     }
 

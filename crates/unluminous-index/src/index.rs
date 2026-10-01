@@ -24,7 +24,8 @@ use crate::symbols::{self, SymbolTable};
 /// A job for the store thread.
 enum StoreJob {
     Changes { changed: Vec<(u32, FileRecord, Vec<Vec<u32>>)>, removed: Vec<u32>, removed_paths: Vec<String>, next_id: usize },
-    Full { removed_paths: Vec<String>, changed: Vec<FileRecord> },
+    /// A whole index to write, made by compaction, so the store thread writes it without any lock.
+    Full { index: Box<Exact> },
     Search { question: String, k: usize, kind: Option<String>, reply: Sender<Result<Vec<PassageHit>, String>> },
 }
 
@@ -59,6 +60,7 @@ pub struct Index {
     freshness: Freshness,
     gate_lock: Mutex<()>,
     last_gate: Mutex<Duration>,
+    compacting: Arc<std::sync::atomic::AtomicBool>,
     store: Sender<StoreJob>,
     status: Arc<Mutex<Status>>,
 }
@@ -98,7 +100,7 @@ impl Index {
             .spawn(move || store_thread(&thread_root, &thread_exact, &thread_symbols, &thread_status, rx))
             .expect("the store thread starts");
         freshness.mark_everything();
-        Index { root, exact, symbols, freshness, gate_lock: Mutex::new(()), last_gate: Mutex::new(Duration::ZERO), store: tx, status }
+        Index { root, exact, symbols, freshness, gate_lock: Mutex::new(()), last_gate: Mutex::new(Duration::ZERO), compacting: Arc::new(std::sync::atomic::AtomicBool::new(false)), store: tx, status }
     }
 
     /// The root this index covers.
@@ -142,12 +144,10 @@ impl Index {
         }
         if !report.changed.is_empty() || !report.removed.is_empty() {
             let next_id = exact.files.len();
-            let job = if exact.tombstones() > exact.live() / 4 + 1000 {
-                StoreJob::Full { removed_paths: report.removed_paths.clone(), changed: report.changed.iter().map(|c| c.1.clone()).collect() }
-            } else {
-                StoreJob::Changes { changed: report.changed.clone(), removed: report.removed.clone(), removed_paths: report.removed_paths.clone(), next_id }
-            };
-            let _ = self.store.send(job);
+            let _ = self.store.send(StoreJob::Changes { changed: report.changed.clone(), removed: report.removed.clone(), removed_paths: report.removed_paths.clone(), next_id });
+            if exact.tombstones() > exact.live() / 2 + 1000 && !self.compacting.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                self.compact_in_background();
+            }
         }
         let mut status = self.status.lock().expect("status");
         status.gates += 1;
@@ -176,6 +176,29 @@ impl Index {
     /// How long the last exact search's gate took, which `search find` reports beside the search time.
     pub fn last_gate(&self) -> Duration {
         *self.last_gate.lock().expect("last gate")
+    }
+
+    /// Rebuilds the index without its tombstones on a thread of its own. The live files are copied under
+    /// a short read lock, the new index is built with no lock held, and it replaces the old one only if no
+    /// gate changed the old one meanwhile; otherwise the work is thrown away and a later gate tries again.
+    /// The store is then sent the whole new index to write, so no save ever holds a lock either.
+    fn compact_in_background(&self) {
+        let (exact, store, compacting) = (Arc::clone(&self.exact), self.store.clone(), Arc::clone(&self.compacting));
+        let _ = std::thread::Builder::new().name("unluminous-index-compact".into()).spawn(move || {
+            let taken = exact.read().expect("exact").as_ref().map(|e| (e.files.iter().flatten().cloned().collect::<Vec<_>>(), e.generation));
+            if let Some((records, generation)) = taken {
+                let mut fresh = Exact::from_records(records);
+                let copy = fresh.clone();
+                let mut guard = exact.write().expect("exact");
+                if guard.as_ref().is_some_and(|e| e.generation == generation) {
+                    fresh.generation = generation;
+                    *guard = Some(fresh);
+                    drop(guard);
+                    let _ = store.send(StoreJob::Full { index: Box::new(copy) });
+                }
+            }
+            compacting.store(false, std::sync::atomic::Ordering::SeqCst);
+        });
     }
 
     /// The chunks that best answer a question, best first, after the gate. Answered on the store thread,
@@ -258,13 +281,7 @@ fn store_thread(root: &Path, exact: &RwLock<Option<Exact>>, symbol_table: &RwLoc
                 let records: Vec<&FileRecord> = changed.iter().map(|c| &c.1).collect();
                 store.save_changes(&changed, &removed, next_id).and_then(|()| passages::update(&store.session(), &removed_paths, &records))
             }
-            StoreJob::Full { removed_paths, changed } => match exact.read().expect("exact").as_ref() {
-                Some(index) => {
-                    let records: Vec<&FileRecord> = changed.iter().collect();
-                    store.save_exact(index, root).and_then(|()| passages::update(&store.session(), &removed_paths, &records))
-                }
-                None => Ok(()),
-            },
+            StoreJob::Full { index } => store.save_exact(&index, root),
             StoreJob::Search { question, k, kind, reply } => {
                 let _ = reply.send(passages::search(&store.session(), &question, k, kind.as_deref()));
                 Ok(())

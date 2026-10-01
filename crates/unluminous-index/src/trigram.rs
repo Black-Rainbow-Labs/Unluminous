@@ -141,7 +141,7 @@ impl Posting {
 }
 
 /// Every trigram's posting list.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Postings {
     lists: HashMap<Trigram, Posting>,
 }
