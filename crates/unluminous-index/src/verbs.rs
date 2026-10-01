@@ -90,6 +90,8 @@ fn looks_like_regex(query: &str) -> bool {
 /// @param verb - the verb, such as `find`
 /// @param args - the request's arguments
 pub fn answer(index: &Index, verb: &str, args: &Map<String, Value>) -> Result<Value, Refusal> {
+    let (resolved, note) = resolve_path(index, args);
+    let args = &resolved;
     let mut value = match verb {
         "find" => find(index, args),
         "files" => files(index, args),
@@ -105,7 +107,64 @@ pub fn answer(index: &Index, verb: &str, args: &Map<String, Value>) -> Result<Va
     if switch(args, "structured") || verb == "status" {
         value["structured"] = Value::Bool(true);
     }
+    if let Some(note) = note {
+        let text = value["text"].as_str().unwrap_or_default().to_owned();
+        value["text"] = Value::String(format!("{note}\n{text}"));
+    }
     Ok(value)
+}
+
+/// A `path` that names no folder or file at the root, read as the one folder or file in the project
+/// whose path ends with it, such as `components` for `crates/unluminous-app/src/components`. In the
+/// fifth dev agent run an agent asked `files` under `components` three times and was told three times
+/// that no file matched. When several end with it, the path is left as it is and the note names them.
+///
+/// @param index - the index
+/// @param args - the call's arguments
+fn resolve_path(index: &Index, args: &Map<String, Value>) -> (Map<String, Value>, Option<String>) {
+    let mut out = args.clone();
+    let Some(given) = text(args, "path").map(crate::files::normalise).filter(|g| !g.is_empty() && !g.contains("..")) else { return (out, None) };
+    if index.root().join(&given).exists() || std::path::Path::new(&given).is_absolute() {
+        return (out, None);
+    }
+    let paths = index.with_exact(|exact| exact.by_path.keys().cloned().collect::<Vec<_>>()).unwrap_or_default();
+    let suffix = format!("/{given}");
+    let mut found: Vec<String> = Vec::new();
+    for path in &paths {
+        let mut at = path.as_str();
+        loop {
+            if (at == given || at.ends_with(&suffix)) && !found.iter().any(|f| f == at) {
+                found.push(at.to_owned());
+            }
+            match at.rfind('/') {
+                Some(cut) => at = &at[..cut],
+                None => break,
+            }
+        }
+        if found.len() > 5 {
+            break;
+        }
+    }
+    // Of several, the one that holds code is what a search of code means: `components` is both the
+    // window's components and a folder of design pictures.
+    // Of several, one that holds three times as many files as any other is the one meant: `components`
+    // is both the window's components and a small folder of design pictures.
+    if found.len() > 1 {
+        let holds = |folder: &str| paths.iter().filter(|p| p.starts_with(&format!("{folder}/"))).count();
+        let mut counted: Vec<(usize, String)> = found.iter().map(|f| (holds(f), f.clone())).collect();
+        counted.sort_by(|a, b| b.0.cmp(&a.0));
+        if counted[0].0 > 0 && counted[0].0 >= 3 * counted[1].0 {
+            found = vec![counted[0].1.clone()];
+        }
+    }
+    match found.as_slice() {
+        [only] => {
+            out.insert("path".into(), Value::String(only.clone()));
+            (out, Some(format!("(path `{given}` read as `{only}`)")))
+        }
+        [] => (out, None),
+        several => (out, Some(format!("(no `{given}` at the root; did you mean {}?)", several.iter().map(|p| format!("`{p}`")).collect::<Vec<_>>().join(", ")))),
+    }
 }
 
 /// What `search find` was asked, read out of its arguments.
@@ -237,7 +296,20 @@ pub fn scan_without_index(root: &std::path::Path, args: &Map<String, Value>) -> 
 /// @param gate - how long the freshness gate took
 fn found_value(asked: &FindRequest, found: &crate::exact::ExactAnswer, engine: &str, took: std::time::Duration, gate: std::time::Duration) -> Value {
     let needle = if asked.regex { "" } else { asked.query.as_str() };
-    let shaped = shape::shape(&found.hits, needle, asked.budget);
+    // Code before tests before documents, so a budget cuts the documents first. In path order a broad
+    // pattern led with `.claude/repo-plan.md`, because a dot sorts first. Left alone when the caller
+    // asks for every hit, which is also the case the speed runs time.
+    let ordered;
+    let hits = if asked.budget == 0 {
+        &found.hits
+    } else {
+        let order = |path: &str| match crate::passages::kind_of(path) { "code" => 0, "test" => 1, _ => 2 };
+        let mut sorted = found.hits.clone();
+        sorted.sort_by_key(|h| order(&h.path));
+        ordered = sorted;
+        &ordered
+    };
+    let shaped = shape::shape(hits, needle, asked.budget);
     let files: std::collections::BTreeSet<&str> = found.hits.iter().map(|h| h.path.as_str()).collect();
     json!({
         "index": engine,
