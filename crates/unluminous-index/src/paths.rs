@@ -36,8 +36,20 @@ fn by_glob(paths: &[String], glob: &str, limit: usize) -> Vec<String> {
         return Vec::new();
     };
     let mut found: Vec<&String> = paths.iter().filter(|p| matcher.is_match(p.as_str())).collect();
-    found.sort_by(|a, b| a.matches('/').count().cmp(&b.matches('/').count()).then(a.len().cmp(&b.len())).then(a.cmp(b)));
+    found.sort_by(|a, b| {
+        a.matches('/').count().cmp(&b.matches('/').count()).then(is_entry_point(b).cmp(&is_entry_point(a))).then(a.len().cmp(&b.len())).then(a.cmp(b))
+    });
     found.into_iter().take(limit).cloned().collect()
+}
+
+/// Whether a file is the entry point of its folder: `lib`, `main`, `mod` or `index` with any extension,
+/// or `__init__.py`. Among files at one depth that a glob matches, these are the ones read first.
+///
+/// @param path - the path
+fn is_entry_point(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
+    let stem = name.split('.').next().unwrap_or(&name);
+    matches!(stem, "lib" | "main" | "mod" | "index") || name == "__init__.py"
 }
 
 /// How well a path matches a fragment, or None when it does not match at all.

@@ -79,10 +79,10 @@ export function indexCallFor(query) {
     const pattern = query.fixed ? query.pattern.replace(/[\\^$.|?*+()[\]{}]/g, '\\$&') : query.pattern;
     return ['find', { query: query.word ? `\\b(?:${pattern})\\b` : pattern, mode: 'regex', path: query.path || '', glob: (query.globs || []).join(' '), type: (query.types || [])[0] || '', 'ignore-case': !!query.ignoreCase, budget: 0 }];
   }
-  if (query.family === 'F1' || query.family === 'F3') {
-    return ['find', { query: `\\b${query.name.replace(/[\\^$.|?*+()[\]{}]/g, '\\$&')}\\b`, mode: 'regex', budget: 0 }];
-  }
-  if (query.family === 'F4') return ['files', { query: query.pattern, limit: 100 }];
+  // F1 asks where a name is defined and F3 asks for every use: the two verbs that answer exactly that.
+  if (query.family === 'F1') return ['def', { name: query.name, limit: 10 }];
+  if (query.family === 'F3') return ['refs', { name: query.name, budget: 0 }];
+  if (query.family === 'F4') return ['files', { query: query.pattern, path: query.path || '', limit: 100 }];
   throw new Error(`no index call for ${query.family}`);
 }
 
@@ -97,8 +97,31 @@ export function indexAnswer(query, message) {
   const value = result.structuredContent || {};
   const text = result.content?.map((c) => c.text || '').join('\n') || '';
   if (query.family === 'F4') return { hits: [], files: value.files || [], empty: !(value.files || []).length, text };
+  if (query.family === 'F1') {
+    const defs = (value.definitions || []).map((d) => ({ path: d.path, line: d.line, text: d.signature }));
+    return { hits: defs, files: [...new Set(defs.map((h) => h.path))], empty: defs.length === 0, text };
+  }
   const hits = (value.hits || []).map(([p, line, t]) => ({ path: p, line, text: t }));
   return { hits, files: [...new Set(hits.map((h) => h.path))], empty: hits.length === 0, text, index: value.index, work: value.work };
+}
+
+/**
+ * Starts an MCP server in a folder and waits until its index is ready, and its passage table too when
+ * asked; a warm up search follows so the first timed call is not the first call.
+ * @param dir - the corpus folder
+ * @param passages - whether to wait for the passage table as well
+ */
+export async function openServer(dir, passages = false) {
+  const server = new McpServer(dir);
+  await server.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'search-eval', version: '1' } });
+  for (let i = 0; i < 4800; i++) {
+    const { message } = await server.call('status', {});
+    const st = message.result?.structuredContent;
+    if (st?.ready && (!passages || st.passagesReady)) break;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  await server.call('find', { query: 'warm', budget: 1 });
+  return server;
 }
 
 /**
@@ -108,17 +131,8 @@ export function indexAnswer(query, message) {
 export function indexArm(name) {
   const servers = new Map();
   const serverFor = async (dir) => {
-    if (servers.has(dir)) return servers.get(dir);
-    const server = new McpServer(dir);
-    await server.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'search-eval', version: '1' } });
-    for (let i = 0; i < 1200; i++) {
-      const { message } = await server.call('status', {});
-      if (message.result?.structuredContent?.ready) break;
-      await new Promise((r) => setTimeout(r, 250));
-    }
-    await server.call('find', { query: 'warm', budget: 1 });
-    servers.set(dir, server);
-    return server;
+    if (!servers.has(dir)) servers.set(dir, await openServer(dir));
+    return servers.get(dir);
   };
   if (name === 'index-cli') {
     return {

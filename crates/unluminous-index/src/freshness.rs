@@ -67,6 +67,8 @@ pub struct GateReport {
     pub changed: Vec<(u32, FileRecord, Vec<Vec<u32>>)>,
     /// Ids tombstoned.
     pub removed: Vec<u32>,
+    /// Paths that are no longer in the set at all.
+    pub removed_paths: Vec<String>,
     /// Whether the whole tree was reconciled.
     pub reconciled_all: bool,
     /// Whether the fence's event arrived in time.
@@ -190,6 +192,7 @@ fn reconcile(root: &Path, start: &Path, depth: Option<usize>, exact: &mut Exact,
         if !listed_paths.contains(rel.as_str()) {
             exact.remove(rel);
             report.removed.push(*id);
+            report.removed_paths.push(rel.clone());
         }
     }
     for found in &listed {

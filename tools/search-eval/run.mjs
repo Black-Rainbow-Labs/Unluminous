@@ -19,7 +19,9 @@ import { approxTokens, scoreExact, scoreFiles, scoreIdentifier, scoreReferences 
 import { scorecardMarkdown } from './lib/scorecard.mjs';
 import { median } from './lib/stats.mjs';
 
-const QUERIES = path.join(HERE, 'queries');
+// `SEARCH_EVAL_QUERIES` points the run at another copy of the sets, which is how the harness's own
+// tests show that a changed set is refused (test-harness.mjs). A measured run never sets it.
+const QUERIES = process.env.SEARCH_EVAL_QUERIES || path.join(HERE, 'queries');
 const FILES = { F1: 'F1-identifier.jsonl', F2: 'F2-exact.jsonl', F3: 'F3-references.jsonl', F4: 'F4-files.jsonl' };
 
 /**
@@ -57,6 +59,8 @@ async function loadArms(names) {
   const arms = [];
   for (const name of names) {
     if (name === 'rg') arms.push(rgArm);
+    // An arm that fails every call, for the harness's own test that a crashed arm is a failure row.
+    else if (name === 'crash') arms.push({ name, async time() { throw new Error('the arm crashed'); }, async order() { throw new Error('the arm crashed'); } });
     else arms.push((await import('./lib/index-arm.mjs')).indexArm(name));
   }
   return arms;

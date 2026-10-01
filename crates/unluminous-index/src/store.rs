@@ -89,7 +89,7 @@ impl Store {
     }
 
     /// A connection for one unit of work.
-    fn session(&self) -> Connection<'_> {
+    pub fn session(&self) -> Connection<'_> {
         self.database.session()
     }
 
@@ -99,6 +99,14 @@ impl Store {
     pub fn meta(&self, key: &str) -> Option<String> {
         let rows = self.session().query("SELECT value FROM meta WHERE key = ?1", &[Value::Text(key.into())], 1).ok()?;
         rows.value(0, 0).and_then(Value::text).map(str::to_owned)
+    }
+
+    /// Writes one value of `meta`.
+    ///
+    /// @param key - the key
+    /// @param value - the value
+    pub fn set_meta(&self, key: &str, value: &str) -> Result<(), String> {
+        self.session().execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)", &[Value::Text(key.into()), Value::Text(value.into())]).map(|_| ()).map_err(|e| e.to_string())
     }
 
     /// Whether the stored trigram index was written by this version and can be loaded.

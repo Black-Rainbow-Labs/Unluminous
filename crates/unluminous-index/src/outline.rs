@@ -71,6 +71,15 @@ pub struct Outline {
     pub chunks: Vec<Chunk>,
 }
 
+/// Whether a definition is one worth listing and looking up by name: anything at the top level, and
+/// anything nested that is not a variable. A `let` inside a function body is a definition to the
+/// tokeniser and nothing an agent asks for by name.
+///
+/// @param d - the definition
+pub fn is_listed(d: &Definition) -> bool {
+    d.depth == 0 || d.kind != "variable"
+}
+
 /// Whether a line, trimmed, is a comment or an attribute that belongs to the definition under it.
 ///
 /// @param line - the line

@@ -17,12 +17,15 @@ use std::time::{Duration, Instant};
 use crate::direct;
 use crate::exact::{Exact, ExactAnswer, ExactRequest, FileRecord};
 use crate::freshness::{Freshness, GateReport};
+use crate::passages::{self, PassageHit};
 use crate::store::{self, Store};
+use crate::symbols::{self, SymbolTable};
 
 /// A job for the store thread.
 enum StoreJob {
-    Changes { changed: Vec<(u32, FileRecord, Vec<Vec<u32>>)>, removed: Vec<u32>, next_id: usize },
-    Full,
+    Changes { changed: Vec<(u32, FileRecord, Vec<Vec<u32>>)>, removed: Vec<u32>, removed_paths: Vec<String>, next_id: usize },
+    Full { removed_paths: Vec<String>, changed: Vec<FileRecord> },
+    Search { question: String, k: usize, kind: Option<String>, reply: Sender<Result<Vec<PassageHit>, String>> },
 }
 
 /// What `search status` reports.
@@ -40,6 +43,10 @@ pub struct Status {
     pub reindexed: u64,
     /// The last store error, if any.
     pub store_error: Option<String>,
+    /// How many chunks the passage table holds, once it is built.
+    pub passages: usize,
+    /// Whether the passage table is built, so passage search can answer.
+    pub passages_ready: bool,
     /// The index file.
     pub file: PathBuf,
 }
@@ -48,6 +55,7 @@ pub struct Status {
 pub struct Index {
     root: PathBuf,
     exact: Arc<RwLock<Option<Exact>>>,
+    symbols: Arc<RwLock<Option<SymbolTable>>>,
     freshness: Freshness,
     gate_lock: Mutex<()>,
     last_gate: Mutex<Duration>,
@@ -82,14 +90,15 @@ impl Index {
         let freshness = Freshness::start(&root);
         let exact = Arc::new(RwLock::new(None));
         let status = Arc::new(Mutex::new(Status { origin: "building".into(), file: store::index_folder(&root).join("index.rdb"), ..Status::default() }));
+        let symbols = Arc::new(RwLock::new(None));
         let (tx, rx) = channel::<StoreJob>();
-        let (thread_root, thread_exact, thread_status) = (root.clone(), Arc::clone(&exact), Arc::clone(&status));
+        let (thread_root, thread_exact, thread_status, thread_symbols) = (root.clone(), Arc::clone(&exact), Arc::clone(&status), Arc::clone(&symbols));
         std::thread::Builder::new()
             .name("unluminous-index-store".into())
-            .spawn(move || store_thread(&thread_root, &thread_exact, &thread_status, rx))
+            .spawn(move || store_thread(&thread_root, &thread_exact, &thread_symbols, &thread_status, rx))
             .expect("the store thread starts");
         freshness.mark_everything();
-        Index { root, exact, freshness, gate_lock: Mutex::new(()), last_gate: Mutex::new(Duration::ZERO), store: tx, status }
+        Index { root, exact, symbols, freshness, gate_lock: Mutex::new(()), last_gate: Mutex::new(Duration::ZERO), store: tx, status }
     }
 
     /// The root this index covers.
@@ -123,10 +132,20 @@ impl Index {
         let mut guard = self.exact.write().expect("exact");
         let exact = guard.as_mut()?;
         let report = self.freshness.gate(exact);
+        if let Some(table) = self.symbols.write().expect("symbols").as_mut() {
+            for path in &report.removed_paths {
+                table.remove_file(path);
+            }
+            for (_, record, _) in &report.changed {
+                table.set_file(&record.rel, symbols::definitions_of(record).unwrap_or_default());
+            }
+        }
         if !report.changed.is_empty() || !report.removed.is_empty() {
             let next_id = exact.files.len();
-            let job = if exact.tombstones() > exact.live() / 4 + 1000 { StoreJob::Full } else {
-                StoreJob::Changes { changed: report.changed.clone(), removed: report.removed.clone(), next_id }
+            let job = if exact.tombstones() > exact.live() / 4 + 1000 {
+                StoreJob::Full { removed_paths: report.removed_paths.clone(), changed: report.changed.iter().map(|c| c.1.clone()).collect() }
+            } else {
+                StoreJob::Changes { changed: report.changed.clone(), removed: report.removed.clone(), removed_paths: report.removed_paths.clone(), next_id }
             };
             let _ = self.store.send(job);
         }
@@ -159,6 +178,32 @@ impl Index {
         *self.last_gate.lock().expect("last gate")
     }
 
+    /// The chunks that best answer a question, best first, after the gate. Answered on the store thread,
+    /// which owns the passage table.
+    ///
+    /// @param question - the question
+    /// @param k - how many to retrieve
+    /// @param kind - only chunks of this kind, if given
+    pub fn passages(&self, question: &str, k: usize, kind: Option<&str>) -> Result<Vec<PassageHit>, String> {
+        if self.gate().is_none() {
+            return Err("the index is still being built".into());
+        }
+        let (tx, rx) = channel();
+        self.store.send(StoreJob::Search { question: question.to_owned(), k, kind: kind.map(str::to_owned), reply: tx }).map_err(|_| "the index's store has stopped".to_owned())?;
+        rx.recv_timeout(Duration::from_secs(30)).map_err(|_| "the passage search did not answer".to_owned())?
+    }
+
+    /// Runs a closure over the symbol table and the exact index, after the gate. None while either is
+    /// not built yet.
+    ///
+    /// @param work - what to do with them
+    pub fn with_symbols<T>(&self, work: impl FnOnce(&SymbolTable, &Exact) -> T) -> Option<T> {
+        self.gate()?;
+        let exact = self.exact.read().expect("exact");
+        let symbols = self.symbols.read().expect("symbols");
+        Some(work(symbols.as_ref()?, exact.as_ref()?))
+    }
+
     /// Runs a closure over the loaded exact index, after the gate. None while it is not loaded.
     ///
     /// @param work - what to do with the index
@@ -173,9 +218,10 @@ impl Index {
 ///
 /// @param root - the root
 /// @param exact - where the loaded index goes
+/// @param symbol_table - where the symbol table built from it goes
 /// @param status - the status to update
 /// @param jobs - batches of changes from the gates
-fn store_thread(root: &Path, exact: &RwLock<Option<Exact>>, status: &Mutex<Status>, jobs: std::sync::mpsc::Receiver<StoreJob>) {
+fn store_thread(root: &Path, exact: &RwLock<Option<Exact>>, symbol_table: &RwLock<Option<SymbolTable>>, status: &Mutex<Status>, jobs: std::sync::mpsc::Receiver<StoreJob>) {
     let started = Instant::now();
     let store = Store::open(&store::index_folder(root));
     let (index, origin) = match &store {
@@ -192,7 +238,9 @@ fn store_thread(root: &Path, exact: &RwLock<Option<Exact>>, status: &Mutex<Statu
             }
         }
     }
+    let table = SymbolTable::build(&index);
     *exact.write().expect("exact") = Some(index);
+    *symbol_table.write().expect("symbols") = Some(table);
     {
         let mut st = status.lock().expect("status");
         st.ready = true;
@@ -203,17 +251,61 @@ fn store_thread(root: &Path, exact: &RwLock<Option<Exact>>, status: &Mutex<Statu
         }
     }
     let Ok(store) = store else { return };
+    build_passages(&store, exact, status, origin == "built");
     for job in jobs {
         let result = match job {
-            StoreJob::Changes { changed, removed, next_id } => store.save_changes(&changed, &removed, next_id),
-            StoreJob::Full => match exact.read().expect("exact").as_ref() {
-                Some(index) => store.save_exact(index, root),
+            StoreJob::Changes { changed, removed, removed_paths, next_id } => {
+                let records: Vec<&FileRecord> = changed.iter().map(|c| &c.1).collect();
+                store.save_changes(&changed, &removed, next_id).and_then(|()| passages::update(&store.session(), &removed_paths, &records))
+            }
+            StoreJob::Full { removed_paths, changed } => match exact.read().expect("exact").as_ref() {
+                Some(index) => {
+                    let records: Vec<&FileRecord> = changed.iter().collect();
+                    store.save_exact(index, root).and_then(|()| passages::update(&store.session(), &removed_paths, &records))
+                }
                 None => Ok(()),
             },
+            StoreJob::Search { question, k, kind, reply } => {
+                let _ = reply.send(passages::search(&store.session(), &question, k, kind.as_deref()));
+                Ok(())
+            }
         };
         if let Err(e) = result {
             status.lock().expect("status").store_error = Some(e);
         }
+    }
+}
+
+/// Builds the passage table when it was never built, was built by another version, or the exact index
+/// was just built from scratch; otherwise keeps the one in the file.
+///
+/// @param store - the store
+/// @param exact - the exact index
+/// @param status - the status to update
+/// @param rebuilt - whether the exact index was just built rather than loaded
+fn build_passages(store: &Store, exact: &RwLock<Option<Exact>>, status: &Mutex<Status>, rebuilt: bool) {
+    let current = store.meta("passage_version").as_deref() == Some(passages::PASSAGE_VERSION);
+    let session = store.session();
+    let built = if current && !rebuilt {
+        passages::create(&session).and_then(|()| {
+            let rows = session.query("SELECT count(*) FROM chunk", &[], 1).map_err(|e| e.to_string())?;
+            Ok(match rows.value(0, 0) { Some(inillucent_driver::Value::Integer(n)) => *n as usize, _ => 0 })
+        })
+    } else {
+        let guard = exact.read().expect("exact");
+        match guard.as_ref() {
+            Some(index) => passages::rebuild(&session, index),
+            None => Ok(0),
+        }
+    };
+    let mut st = status.lock().expect("status");
+    match built {
+        Ok(count) => {
+            st.passages = count;
+            st.passages_ready = true;
+            let _ = store.set_meta("passage_version", passages::PASSAGE_VERSION);
+        }
+        Err(e) => st.store_error = Some(format!("the passage table: {e}")),
     }
 }
 

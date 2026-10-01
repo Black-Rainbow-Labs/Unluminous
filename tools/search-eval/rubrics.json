@@ -1,0 +1,25 @@
+{
+  "note": "The agent level instruments of TDD section 7.5, frozen and hashed into queries/agent-manifest.json before the first agent run. Never edited to move a score.",
+  "instructions": {
+    "F5": "You are looking at a software repository in the current folder. A ticket was filed against it:\n\nTitle: {title}\n\n{description}\n\nDo not change any files and do not try to do the ticket. Find the source files, and the functions in them, that would have to change to do it. Use {tools} to look through the code.\n\nWhen you are done, end your reply with one JSON block, and nothing after it:\n```json\n{\"files\": [\"path/relative/to/the/repository\", \"...\"], \"locations\": [\"path:line\", \"...\"], \"answer\": \"one short paragraph saying what would change and why\"}\n```\nList at most 8 files, the most important first.",
+    "F6": "You are looking at a software repository in the current folder. Answer this question about it:\n\n{question}\n\nFind the code that answers it. Use {tools} to look through the code. Do not change any files.\n\nWhen you are done, end your reply with one JSON block, and nothing after it:\n```json\n{\"files\": [\"path/relative/to/the/repository\", \"...\"], \"locations\": [\"path:line\", \"...\"], \"answer\": \"the answer in two or three sentences\"}\n```\nCite the code that answers it in locations, the best first."
+  },
+  "tools": {
+    "rg": "the Grep, Glob and Read tools",
+    "index": "the unluminous_search tool (its find, def, refs, fragment, outline and files commands) and the Read tool"
+  },
+  "success": {
+    "F5": "Success when at least half of the ticket's gold files are among the first five files the agent names. Paths are compared relative to the repository, case insensitive, with forward slashes.",
+    "F6": "Success when one of the first three locations the agent cites is in the gold file, at a line inside the gold span or within 5 lines of it, AND the grader says the answer is correct."
+  },
+  "grader": {
+    "model": "sonnet",
+    "prompt": "You are grading an answer to a question about a codebase. You are shown the question, the code that answers it (the reference), and the answer to grade. You do not know who wrote the answer.\n\nQuestion: {question}\n\nReference code ({file}, lines {start} to {end}):\n```\n{code}\n```\n\nAnswer to grade:\n{answer}\n\nIs the answer correct about what the reference code does, in the way the question asks? Minor omissions are fine; a wrong claim about the behaviour is not. Reply with one JSON object and nothing else: {\"correct\": true|false, \"why\": \"one sentence\"}."
+  },
+  "subset": {
+    "note": "The inner loop runs a fixed subset of the dev split; the gate runs the whole held out split with 3 draws per task per arm.",
+    "devF5": 20,
+    "devF6": 20,
+    "seed": 20260925
+  }
+}

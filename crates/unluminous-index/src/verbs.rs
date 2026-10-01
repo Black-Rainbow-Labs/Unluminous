@@ -93,6 +93,10 @@ pub fn answer(index: &Index, verb: &str, args: &Map<String, Value>) -> Result<Va
     match verb {
         "find" => find(index, args),
         "files" => files(index, args),
+        "def" => def(index, args),
+        "refs" => refs(index, args),
+        "outline" => outline(index, args),
+        "fragment" => fragment(index, args),
         "status" => Ok(status(index)),
         other => Err(Refusal { code: "unknown-command", message: format!("There is no search verb called `{other}`.") }),
     }
@@ -101,6 +105,8 @@ pub fn answer(index: &Index, verb: &str, args: &Map<String, Value>) -> Result<Va
 /// What `search find` was asked, read out of its arguments.
 struct FindRequest {
     query: String,
+    auto: bool,
+    semantic: bool,
     regex: bool,
     pattern: String,
     scope: Scope,
@@ -113,30 +119,51 @@ struct FindRequest {
 /// @param root - the root, which a path and globs are relative to
 /// @param args - query, mode, path, glob, type, ignore-case, budget
 fn read_find(root: &std::path::Path, args: &Map<String, Value>) -> Result<FindRequest, Refusal> {
-    let query = text(args, "query").ok_or_else(|| usage("search find needs a query."))?.to_owned();
-    let regex = match text(args, "mode").unwrap_or("auto") {
+    // The query exactly as given: a pattern's leading or trailing space is part of what it matches, so
+    // `url ` and `url` are different searches (two F2 queries end in a space).
+    let query = args
+        .get("query")
+        .and_then(Value::as_str)
+        .filter(|q| !q.trim().is_empty())
+        .ok_or_else(|| usage("search find needs a query."))?
+        .to_owned();
+    let mode = text(args, "mode").unwrap_or("auto");
+    let regex = match mode {
         "regex" => true,
-        "literal" => false,
+        "literal" | "semantic" | "symbol" => false,
         "auto" => looks_like_regex(&query),
-        other => return Err(usage(format!("`{other}` is not a mode this version has: auto, literal or regex."))),
+        other => return Err(usage(format!("`{other}` is not a mode this version has: auto, literal, regex, symbol or semantic."))),
     };
     let pattern = if regex { query.clone() } else { regex::escape(&query) };
     let globs = text(args, "glob").map(split_globs).unwrap_or_default();
     let types: Vec<String> = text(args, "type").map(|t| vec![t.to_owned()]).unwrap_or_default();
     let scope = Scope::new(root, text(args, "path").unwrap_or(""), &globs, &types).map_err(usage)?;
     let budget = whole(args, "budget").unwrap_or(DEFAULT_BUDGET);
-    Ok(FindRequest { query, regex, pattern, scope, budget, case_insensitive: switch(args, "ignore-case") })
+    Ok(FindRequest { auto: mode == "auto", semantic: mode == "semantic", query, regex, pattern, scope, budget, case_insensitive: switch(args, "ignore-case") })
 }
 
-/// `search find`: an exact search, literal or regex, through the gate.
+/// `search find`: an exact search, literal or regex, through the gate. In `auto` mode one identifier
+/// that the symbol table knows is answered with its definitions first and then its uses.
 ///
 /// @param index - the index
 /// @param args - query, mode, path, glob, type, ignore-case, budget
 fn find(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
     let asked = read_find(index.root(), args)?;
+    if asked.semantic || (asked.auto && is_sentence(&asked.query)) {
+        return semantic(index, &asked);
+    }
+    if (asked.auto || text(args, "mode") == Some("symbol")) && !asked.case_insensitive && is_identifier(&asked.query) {
+        if let Some(value) = find_symbol(index, &asked)? {
+            return Ok(value);
+        }
+    }
     let request = ExactRequest { pattern: &asked.pattern, case_insensitive: asked.case_insensitive, scope: &asked.scope };
     let started = std::time::Instant::now();
     let (found, engine) = index.exact(&request).map_err(|e| usage(format!("The pattern was refused: {e}")))?;
+    // Words that are not a regex and are not in the code literally are a question about meaning.
+    if asked.auto && !asked.regex && found.hits.is_empty() && asked.query.split_whitespace().count() > 1 {
+        return semantic(index, &asked);
+    }
     Ok(found_value(&asked, &found, engine, started.elapsed(), index.last_gate()))
 }
 
@@ -185,7 +212,12 @@ fn files(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
     let paths = index.with_exact(|exact| exact.by_path.keys().cloned().collect::<Vec<_>>()).unwrap_or_else(|| {
         crate::files::walk(index.root()).into_iter().map(|f| f.rel).collect()
     });
-    let ranked = crate::paths::rank(&paths, query, limit);
+    // A folder narrows the search the way the Glob tool's `path` does: the glob is matched against paths
+    // relative to that folder, and the answers are given relative to the project again.
+    let folder = text(args, "path").map(crate::files::normalise).unwrap_or_default();
+    let prefix = if folder.is_empty() { String::new() } else { format!("{folder}/") };
+    let within: Vec<String> = paths.iter().filter_map(|p| p.strip_prefix(prefix.as_str()).map(str::to_owned)).collect();
+    let ranked: Vec<String> = crate::paths::rank(&within, query, limit).into_iter().map(|p| format!("{prefix}{p}")).collect();
     let text = if ranked.is_empty() { "no files match\n".to_owned() } else { ranked.iter().map(|p| format!("{p}\n")).collect() };
     Ok(json!({ "files": ranked, "total": ranked.len(), "text": text }))
 }
@@ -217,9 +249,325 @@ fn status(index: &Index) -> Value {
         "memoryBytes": bytes,
         "gates": st.gates,
         "reindexed": st.reindexed,
+        "passages": st.passages,
+        "passagesReady": st.passages_ready,
         "storeError": st.store_error,
         "indexFile": st.file.to_string_lossy(),
         "versions": { "schema": crate::store::SCHEMA_VERSION, "trigram": crate::store::TRIGRAM_VERSION },
         "text": text,
     })
+}
+
+/// Whether a query reads as a question or a sentence rather than as text to find: four words or more,
+/// or a question mark at the end.
+///
+/// @param query - the query
+fn is_sentence(query: &str) -> bool {
+    !looks_like_regex(query.trim_end_matches('?')) && (query.split_whitespace().count() >= 4 || query.trim_end().ends_with('?'))
+}
+
+/// Whether a query is one identifier, which `auto` mode answers with its definitions and its uses.
+///
+/// @param query - the query
+fn is_identifier(query: &str) -> bool {
+    let mut chars = query.chars();
+    chars.next().is_some_and(|c| c.is_alphabetic() || c == '_') && chars.all(|c| c.is_alphanumeric() || c == '_')
+}
+
+/// One definition as a row of the reply: path, line, end, kind and signature.
+///
+/// @param d - the definition
+fn definition_value(d: &crate::symbols::Defined) -> Value {
+    json!({ "path": d.path, "line": d.definition.line, "end": d.definition.end, "kind": d.definition.kind, "name": d.definition.name, "signature": d.definition.signature })
+}
+
+/// `search def`: where a name is defined, best first, with each definition's signature line.
+///
+/// @param index - the index
+/// @param args - name, limit, path
+fn def(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
+    let name = text(args, "name").ok_or_else(|| usage("search def needs a name."))?.to_owned();
+    let limit = whole(args, "limit").unwrap_or(10);
+    let within = text(args, "path").map(crate::files::normalise);
+    let found = index
+        .with_symbols(|table, _| table.lookup(&name, limit * 4))
+        .ok_or_else(|| Refusal { code: "not-applicable", message: "The index is still being built; ask again in a moment.".into() })?;
+    let found: Vec<_> = found.into_iter().filter(|d| within.as_ref().is_none_or(|w| w.is_empty() || d.path.starts_with(w.as_str()))).take(limit).collect();
+    let mut text = String::new();
+    for d in &found {
+        text.push_str(&format!("{}:{}: {}\n", d.path, d.definition.line, shape::trim_line(&d.definition.signature, &name)));
+    }
+    if found.is_empty() {
+        text.push_str(&format!("no definition of `{name}` found; try `find {name}` for every use\n"));
+    }
+    Ok(json!({ "name": name, "definitions": found.iter().map(definition_value).collect::<Vec<_>>(), "total": found.len(), "text": text }))
+}
+
+/// The uses of a name: a whole word search, with the lines that define it taken out and the project's
+/// own source before tests and generated files.
+///
+/// @param index - the index
+/// @param name - the name
+/// @param scope - where to look
+fn uses(index: &Index, name: &str, scope: &Scope) -> Result<Vec<crate::exact::Hit>, Refusal> {
+    let pattern = format!(r"\b{}\b", regex::escape(name));
+    let request = ExactRequest { pattern: &pattern, case_insensitive: false, scope };
+    let (found, _) = index.exact(&request).map_err(|e| usage(format!("The name was refused: {e}")))?;
+    let defined: std::collections::HashSet<(String, u64)> = index
+        .with_symbols(|table, _| table.lookup(name, 50).into_iter().filter(|d| d.definition.name == name).map(|d| (d.path, u64::from(d.definition.line))).collect())
+        .unwrap_or_default();
+    let mut hits: Vec<_> = found.hits.into_iter().filter(|h| !defined.contains(&(h.path.clone(), h.line))).collect();
+    let order = |path: &str| match crate::passages::kind_of(path) { "code" => 0, "test" => 1, _ => 2 };
+    hits.sort_by(|a, b| order(&a.path).cmp(&order(&b.path)).then(a.path.cmp(&b.path)).then(a.line.cmp(&b.line)));
+    Ok(hits)
+}
+
+/// `search refs`: every use of a name, grouped by file, definitions left out, within the budget.
+///
+/// @param index - the index
+/// @param args - name, path, glob, budget
+fn refs(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
+    let name = text(args, "name").ok_or_else(|| usage("search refs needs a name."))?.to_owned();
+    let globs = text(args, "glob").map(split_globs).unwrap_or_default();
+    let scope = Scope::new(index.root(), text(args, "path").unwrap_or(""), &globs, &[]).map_err(usage)?;
+    let budget = whole(args, "budget").unwrap_or(DEFAULT_BUDGET);
+    let hits = uses(index, &name, &scope)?;
+    let shaped = shape::shape(&hits, &name, budget);
+    let files: std::collections::BTreeSet<&str> = hits.iter().map(|h| h.path.as_str()).collect();
+    Ok(json!({
+        "name": name,
+        "total": hits.len(),
+        "files": files.len(),
+        "omitted": { "hits": shaped.omitted_hits, "files": shaped.omitted_files },
+        "hits": shaped.shown.iter().map(|h| json!([h.path, h.line, h.text])).collect::<Vec<_>>(),
+        "text": shaped.text,
+    }))
+}
+
+/// `find` in auto mode for one identifier: its definitions first, then its uses, in one budget.
+///
+/// @param index - the index
+/// @param asked - the request
+fn find_symbol(index: &Index, asked: &FindRequest) -> Result<Option<Value>, Refusal> {
+    let Some(defs) = index.with_symbols(|table, _| table.lookup(&asked.query, 5)) else { return Ok(None) };
+    let defs: Vec<_> = defs.into_iter().filter(|d| d.definition.name == asked.query || d.definition.name.eq_ignore_ascii_case(&asked.query)).collect();
+    if defs.is_empty() {
+        return Ok(None);
+    }
+    let mut text = String::from("defined at:\n");
+    for d in &defs {
+        text.push_str(&format!("  {}:{}: {}\n", d.path, d.definition.line, shape::trim_line(&d.definition.signature, &asked.query)));
+    }
+    let hits = uses(index, &asked.query, &asked.scope)?;
+    let budget = asked.budget.saturating_sub(shape::tokens(&text));
+    let shaped = shape::shape(&hits, &asked.query, if asked.budget == 0 { 0 } else { budget.max(200) });
+    text.push_str(&format!("used in {} places:\n", hits.len()));
+    text.push_str(&shaped.text);
+    Ok(Some(json!({
+        "index": "symbol",
+        "mode": "symbol",
+        "definitions": defs.iter().map(definition_value).collect::<Vec<_>>(),
+        "total": hits.len(),
+        "omitted": { "hits": shaped.omitted_hits, "files": shaped.omitted_files },
+        "hits": shaped.shown.iter().map(|h| json!([h.path, h.line, h.text])).collect::<Vec<_>>(),
+        "text": text,
+    })))
+}
+
+/// A file's text as the index holds it, or as it is on disk when the index does not hold it.
+///
+/// @param index - the index
+/// @param rel - the path, relative to the root
+fn file_text(index: &Index, rel: &str) -> Option<String> {
+    let held = index.with_exact(|exact| exact.by_path.get(rel).and_then(|&id| exact.files[id as usize].as_ref()).map(|r| r.bytes())).flatten();
+    let bytes = held.or_else(|| std::fs::read(index.root().join(rel)).ok())?;
+    Some(String::from_utf8_lossy(&crate::exact::searched_text(&bytes)).into_owned())
+}
+
+/// Splits `path:line` into its two halves; a bare path has no line.
+///
+/// @param target - what was given
+fn path_and_line(target: &str) -> (String, Option<u32>) {
+    match target.rsplit_once(':') {
+        Some((path, line)) if !path.is_empty() && line.chars().all(|c| c.is_ascii_digit()) && !line.is_empty() && !(path.len() == 1 && cfg!(windows)) => (crate::files::normalise(path), line.parse().ok()),
+        _ => (crate::files::normalise(target), None),
+    }
+}
+
+/// A path given absolute, or relative to the working folder, made relative to the root.
+///
+/// @param index - the index
+/// @param path - the path as given
+fn relative_to_root(index: &Index, path: &str) -> String {
+    let candidate = std::path::Path::new(path);
+    if candidate.is_absolute() {
+        if let Some(rel) = crate::files::relative(index.root(), candidate) {
+            return rel;
+        }
+    }
+    crate::files::normalise(path)
+}
+
+/// `search outline`: a file's definitions, one line each, indented by how deep they sit.
+///
+/// @param index - the index
+/// @param args - path
+fn outline(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
+    let given = text(args, "path").ok_or_else(|| usage("search outline needs a file."))?;
+    let rel = relative_to_root(index, &path_and_line(given).0);
+    let content = file_text(index, &rel).ok_or_else(|| Refusal { code: "not-found", message: format!("There is no file `{rel}` in this project.") })?;
+    let read = crate::outline::read(&rel, &content, crate::outline::CHUNK_BUDGET);
+    let mut text = format!("{rel} ({} lines)\n", content.lines().count());
+    let rows: Vec<Value> = if read.definitions.is_empty() {
+        read.chunks.iter().filter(|c| c.kind == "section").map(|c| {
+            let heading = c.body.lines().next().unwrap_or_default().trim().to_owned();
+            text.push_str(&format!("  {}: {}\n", c.start, heading));
+            json!({ "line": c.start, "end": c.end, "kind": "section", "signature": heading })
+        }).collect()
+    } else {
+        read.definitions.iter().filter(|d| crate::outline::is_listed(d)).map(|d| {
+            text.push_str(&format!("{}{}-{}: {}\n", "  ".repeat(d.depth as usize + 1), d.line, d.end, shape::trim_line(&d.signature, "")));
+            json!({ "line": d.line, "end": d.end, "kind": d.kind, "name": d.name, "signature": d.signature, "depth": d.depth })
+        }).collect()
+    };
+    if rows.is_empty() {
+        text.push_str("  no definitions or headings found\n");
+    }
+    Ok(json!({ "path": rel, "definitions": rows, "text": text }))
+}
+
+/// The longest definition `fragment` returns whole, in lines; a longer one is shown a chunk at a time.
+pub const FRAGMENT_LINES: u32 = 300;
+
+/// `search fragment`: the chunk around a line, with line numbers and its header, so a function can be
+/// read without reading its file.
+///
+/// @param index - the index
+/// @param args - target (`path:line`), line, context
+fn fragment(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
+    let target = text(args, "target").ok_or_else(|| usage("search fragment needs a path and a line, such as src/main.rs:42."))?;
+    let (path, line) = path_and_line(target);
+    let line = whole(args, "line").map(|l| l as u32).or(line).unwrap_or(1).max(1);
+    let rel = relative_to_root(index, &path);
+    let context = whole(args, "context").unwrap_or(0) as u32;
+    let content = file_text(index, &rel).ok_or_else(|| Refusal { code: "not-found", message: format!("There is no file `{rel}` in this project.") })?;
+    let read = crate::outline::read(&rel, &content, crate::outline::CHUNK_BUDGET);
+    let lines: Vec<&str> = content.split('\n').collect();
+    // The innermost definition around the line, from its doc comment to its end, when it is short
+    // enough to read whole; otherwise the chunk around the line.
+    let definition = read
+        .definitions
+        .iter()
+        .filter(|d| d.start <= line && line <= d.end && d.end > d.line && d.end - d.start < FRAGMENT_LINES)
+        .min_by_key(|d| d.end - d.start);
+    let chunk = read.chunks.iter().find(|c| c.start <= line && line <= c.end).or_else(|| read.chunks.last());
+    let (start, end, header) = match (definition, chunk) {
+        (Some(d), _) => {
+            let enclosing: Vec<&str> = read.definitions.iter().filter(|o| o.line < d.line && o.end >= d.end).map(|o| o.signature.as_str()).collect();
+            let header = if enclosing.is_empty() { rel.clone() } else { format!("{rel} | {}", enclosing.join(" ; ")) };
+            (d.start.saturating_sub(context).max(1), (d.end + context).min(lines.len() as u32), header)
+        }
+        (None, Some(c)) => (c.start.saturating_sub(context).max(1), (c.end + context).min(lines.len() as u32), c.header.clone()),
+        (None, None) => (1, (lines.len() as u32).min(40), rel.clone()),
+    };
+    let mut text = format!("{header}\n");
+    for n in start..=end {
+        text.push_str(&format!("{n:>5}  {}\n", lines.get(n as usize - 1).map_or("", |l| l.trim_end_matches('\r'))));
+    }
+    if end < lines.len() as u32 {
+        text.push_str(&format!("  … {} more lines in the file\n", lines.len() as u32 - end));
+    }
+    Ok(json!({ "path": rel, "start": start, "end": end, "header": header, "text": text }))
+}
+
+/// The share of a question's words a chunk must hold before passage search will answer with it. Below
+/// it the answer is empty, with the nearest definitions as hints, because a chunk that shares one word
+/// with a question is not an answer to it (R8: without vectors, `confidence()` cannot separate an
+/// answerable question from one that is not).
+pub const ABSTAIN_BELOW: f64 = 0.5;
+
+/// How many words of a question a text holds, as a share of the question's words.
+///
+/// @param question_words - the question's words, lower case
+/// @param text - the chunk's header and body
+fn coverage(question_words: &[String], text: &str) -> f64 {
+    if question_words.is_empty() {
+        return 0.0;
+    }
+    let lower = format!("{} {}", text.to_lowercase(), crate::words::search_words(text));
+    let held = question_words.iter().filter(|w| lower.contains(w.as_str())).count();
+    held as f64 / question_words.len() as f64
+}
+
+/// `find --mode semantic`: the chunks that best answer a question written in plain English, each as its
+/// file, its line range, its header and the lines holding the question's words, within the budget.
+///
+/// @param index - the index
+/// @param asked - the request
+fn semantic(index: &Index, asked: &FindRequest) -> Result<Value, Refusal> {
+    let started = std::time::Instant::now();
+    let found = index.passages(&asked.query, 30, None).map_err(|e| Refusal { code: "not-applicable", message: e })?;
+    let question_words = crate::words::query_words(&asked.query);
+    let mut chosen = Vec::new();
+    let mut text = String::new();
+    let mut used = 0usize;
+    let budget = if asked.budget == 0 { usize::MAX } else { asked.budget };
+    for hit in found.iter().filter(|h| asked.scope.is_everything() || asked.scope.contains(&h.path)) {
+        let Some(content) = file_text(index, &hit.path) else { continue };
+        let lines: Vec<&str> = content.split('\n').collect();
+        let body = lines.get(hit.start as usize - 1..(hit.end as usize).min(lines.len())).map(|l| l.join("\n")).unwrap_or_default();
+        let share = coverage(&question_words, &format!("{}\n{}", hit.header, body));
+        if chosen.is_empty() && share < ABSTAIN_BELOW {
+            break;
+        }
+        // The header starts with the path, so only what follows it is printed.
+        let signatures = hit.header.strip_prefix(hit.path.as_str()).map(|s| s.trim_start_matches(" | ")).unwrap_or(&hit.header);
+        let mut block = format!("{}:{}-{} {}\n", hit.path, hit.start, hit.end, shape::trim_line(signatures, "")).replace(" \n", "\n");
+        let mut shown = 0;
+        for (i, line) in lines.iter().enumerate().take(hit.end as usize).skip(hit.start as usize - 1) {
+            let lower = line.to_lowercase();
+            if shown < 3 && question_words.iter().any(|w| lower.contains(w.as_str())) {
+                block.push_str(&format!("  {}: {}\n", i + 1, shape::trim_line(line, "")));
+                shown += 1;
+            }
+        }
+        if used + shape::tokens(&block) > budget && !chosen.is_empty() {
+            break;
+        }
+        used += shape::tokens(&block);
+        text.push_str(&block);
+        chosen.push((hit.clone(), share));
+        if chosen.len() >= 10 {
+            break;
+        }
+    }
+    if chosen.is_empty() {
+        let hints = index
+            .with_symbols(|table, _| question_words.iter().flat_map(|w| table.lookup(w, 2)).take(5).map(|d| format!("{}:{} {}", d.path, d.definition.line, d.definition.name)).collect::<Vec<_>>())
+            .unwrap_or_default();
+        text.push_str("no confident match in this project\n");
+        if !hints.is_empty() {
+            text.push_str(&format!("nearest names: {}\n", hints.join(", ")));
+        }
+    } else {
+        text.push_str("read one with `fragment path:line`\n");
+    }
+    let files: Vec<&str> = {
+        let mut seen = Vec::new();
+        for (h, _) in &chosen {
+            if !seen.contains(&h.path.as_str()) {
+                seen.push(h.path.as_str());
+            }
+        }
+        seen
+    };
+    Ok(json!({
+        "index": "passage",
+        "mode": "semantic",
+        "total": chosen.len(),
+        "files": files,
+        "hits": chosen.iter().map(|(h, share)| json!([h.path, h.start, h.header, h.end, h.score, (share * 1000.0).round() / 1000.0])).collect::<Vec<_>>(),
+        "work": { "micros": started.elapsed().as_micros() as u64, "retrieved": found.len() },
+        "text": text,
+    }))
 }
