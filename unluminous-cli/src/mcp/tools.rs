@@ -119,6 +119,10 @@ impl Tool {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Areas(Vec<String>);
 
+/// The areas answered without a window, by the code index host. Equipped with only these, an agent is
+/// not offered the window's own tool (`Areas::includes`).
+pub const WINDOWLESS_AREAS: &[&str] = &["search"];
+
 impl Areas {
     /// Everything the catalogue has, which is what naming none means.
     pub fn all() -> Self {
@@ -161,8 +165,14 @@ impl Areas {
     /// `catalogue::in_area("")` holds -- are **always** offered, however narrow the equipment.
     /// They are how an agent finds out what it is looking at and how it reaches the window at all,
     /// and an agent that cannot ask `status` cannot use any of the others.
+    ///
+    /// **Except when every area named needs no window** (`task-2139`). `search` is answered by the
+    /// index host, so an agent equipped with `--areas search` has nothing to ask a window; offering
+    /// `status` and `launch` anyway cost about 660 tokens on every turn, and in the code index's first
+    /// agent run Claude Haiku 4.5 spent turns asking `status` of three windows it had no use for.
     pub fn includes(&self, area: &str) -> bool {
-        area.is_empty() || self.0.is_empty() || self.0.iter().any(|chosen| chosen == area)
+        let windowless = !self.0.is_empty() && self.0.iter().all(|chosen| WINDOWLESS_AREAS.contains(&chosen.as_str()));
+        (area.is_empty() && !windowless) || self.0.is_empty() || self.0.iter().any(|chosen| chosen == area)
     }
 
     /// What was named, for a reply that says what it was equipped with.
@@ -697,9 +707,32 @@ pub fn resolve_in(
                 true => None,
                 false => given.get("timeout").cloned(),
             };
+            // **Keys put beside `command` rather than inside `arguments` are the command's too**
+            // (`task-2139`). A model reads the schema's `arguments` object and still writes
+            // `{"command":"find","query":"…"}`: measured in the code index's first agent run, Claude
+            // Haiku 4.5 made every one of 104 calls that way, and every one was refused as having no
+            // query, so the agent searched for nothing and guessed paths instead. A key this command
+            // names is moved into `arguments` unless `arguments` already has it; any other key is
+            // reported back as ignored, so a caller who meant it finds out.
+            let mut beside = Vec::new();
+            let loose: Map<String, Value> = given
+                .iter()
+                .filter(|(key, _)| !matches!(key.as_str(), "command" | "arguments" | "instance" | "timeout"))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect();
+            for (key, value) in catalogue::normalise_arguments(loose) {
+                let named = command.arguments.iter().any(|argument| argument.name == key) || command.flag(&key).is_some();
+                match named {
+                    true => {
+                        arguments.entry(key).or_insert(value);
+                    }
+                    false => beside.push(key),
+                }
+            }
             // The two names the tool used for itself, put back to what the command calls them.
             unrename(&mut arguments);
-            let ignored = sibling_keys(area, command, &mut arguments);
+            let mut ignored = sibling_keys(area, command, &mut arguments);
+            ignored.extend(beside);
             if let Some(timeout) = own_timeout {
                 arguments.insert("timeout".to_owned(), timeout);
             }
@@ -1346,6 +1379,19 @@ mod tests {
         assert!(Areas::parse("").expect("empty is fine").is_everything());
         assert_eq!(tools_in(Shape::Grouped, &Areas::all()).len(), tools(Shape::Grouped).len());
         assert_eq!(tools_in(Shape::Every, &Areas::all()).len(), tools(Shape::Every).len());
+    }
+
+    /// An agent equipped only with areas that need no window is not offered the window's own tool.
+    #[test]
+    fn a_search_only_agent_is_offered_the_search_tool_alone() {
+        let search = Areas::parse("search").expect("an area");
+        let names: Vec<String> = tools_in(Shape::Grouped, &search).into_iter().map(|tool| tool.name).collect();
+        assert_eq!(names, ["unluminous_search"]);
+        let mut given = Map::new();
+        given.insert("command".into(), json!("find"));
+        given.insert("query".into(), json!("x "));
+        let call = resolve_in(Shape::Grouped, &search, "unluminous_search", &given).expect("resolved");
+        assert_eq!(call.arguments.get("query"), Some(&json!("x ")), "a key beside `command` is the command's own");
     }
 
     #[test]
