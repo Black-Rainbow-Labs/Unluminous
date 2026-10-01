@@ -137,7 +137,7 @@ fn find(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
     let request = ExactRequest { pattern: &asked.pattern, case_insensitive: asked.case_insensitive, scope: &asked.scope };
     let started = std::time::Instant::now();
     let (found, engine) = index.exact(&request).map_err(|e| usage(format!("The pattern was refused: {e}")))?;
-    Ok(found_value(&asked, &found, engine, started.elapsed()))
+    Ok(found_value(&asked, &found, engine, started.elapsed(), index.last_gate()))
 }
 
 /// `search find` with no index at all, by scanning the files, for a caller that could reach no host.
@@ -149,7 +149,7 @@ pub fn scan_without_index(root: &std::path::Path, args: &Map<String, Value>) -> 
     let request = ExactRequest { pattern: &asked.pattern, case_insensitive: asked.case_insensitive, scope: &asked.scope };
     let started = std::time::Instant::now();
     let found = crate::direct::scan(root, &request).map_err(|e| usage(format!("The pattern was refused: {e}")))?;
-    Ok(found_value(&asked, &found, "none", started.elapsed()))
+    Ok(found_value(&asked, &found, "none", started.elapsed(), std::time::Duration::ZERO))
 }
 
 /// The reply of an exact search: counts, the hits shown, the work done, and the shaped text.
@@ -157,8 +157,9 @@ pub fn scan_without_index(root: &std::path::Path, args: &Map<String, Value>) -> 
 /// @param asked - the request
 /// @param found - what the search found
 /// @param engine - which engine answered
-/// @param took - how long the search took
-fn found_value(asked: &FindRequest, found: &crate::exact::ExactAnswer, engine: &str, took: std::time::Duration) -> Value {
+/// @param took - how long the search took, the gate included
+/// @param gate - how long the freshness gate took
+fn found_value(asked: &FindRequest, found: &crate::exact::ExactAnswer, engine: &str, took: std::time::Duration, gate: std::time::Duration) -> Value {
     let needle = if asked.regex { "" } else { asked.query.as_str() };
     let shaped = shape::shape(&found.hits, needle, asked.budget);
     let files: std::collections::BTreeSet<&str> = found.hits.iter().map(|h| h.path.as_str()).collect();
@@ -169,7 +170,7 @@ fn found_value(asked: &FindRequest, found: &crate::exact::ExactAnswer, engine: &
         "files": files.len(),
         "omitted": { "hits": shaped.omitted_hits, "files": shaped.omitted_files },
         "hits": shaped.shown.iter().map(|h| json!([h.path, h.line, h.text])).collect::<Vec<_>>(),
-        "work": { "inScope": found.in_scope, "candidates": found.candidates, "verified": found.verified, "unbounded": found.unbounded, "micros": took.as_micros() as u64 },
+        "work": { "inScope": found.in_scope, "candidates": found.candidates, "verified": found.verified, "unbounded": found.unbounded, "micros": took.as_micros() as u64, "gateMicros": gate.as_micros() as u64 },
         "text": shaped.text,
     })
 }

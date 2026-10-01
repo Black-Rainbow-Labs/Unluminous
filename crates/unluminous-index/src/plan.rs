@@ -192,6 +192,10 @@ fn class_info(class: &Class) -> Info {
 fn concat(parts: impl Iterator<Item = Info>) -> Info {
     let mut current: Option<BTreeSet<Vec<u8>>> = Some(BTreeSet::from([Vec::new()]));
     let mut queries = Vec::new();
+    // Whether `current` still describes the whole concatenation from its first part. Once a part
+    // that is not exact has been passed, or a product has been given up, `current` describes only
+    // what comes after it, so it can say what a match must contain but not what a match is.
+    let mut whole = true;
     for part in parts {
         queries.push(part.query.clone());
         match (current.take(), part.exact) {
@@ -209,16 +213,24 @@ fn concat(parts: impl Iterator<Item = Info>) -> Info {
             (Some(left), Some(right)) => {
                 queries.push(Info::exact(left).to_query());
                 current = Some(right);
+                whole = false;
             }
             (Some(left), None) => {
                 queries.push(Info::exact(left).to_query());
                 current = None;
+                whole = false;
             }
             (None, Some(right)) => current = Some(right),
             (None, None) => {}
         }
     }
-    Info { exact: current, query: Query::and(queries) }
+    if whole {
+        return Info { exact: current, query: Query::and(queries) };
+    }
+    if let Some(rest) = current {
+        queries.push(Info::exact(rest).to_query());
+    }
+    Info { exact: None, query: Query::and(queries) }
 }
 
 /// An alternation: the union of exact sets when every branch has one and the union is small,
@@ -265,6 +277,17 @@ mod tests {
     #[test]
     fn case_insensitive_folds_to_the_same_trigrams() {
         assert_eq!(plan("ABCD", true).unwrap(), plan("abcd", false).unwrap());
+    }
+
+    /// `qwen38|qwen-3.8|qwen 3.8` is parsed with `qwen` factored out of the alternation, and the two
+    /// branches with a `.` in them end with the exact set `{"8"}`, which describes only what follows
+    /// the dot. Treated as the whole branch, it made the query ask for `qwen8` and lost every file
+    /// holding "Qwen 3.8" (found by the F2 parity run on ai-service).
+    #[test]
+    fn what_follows_a_wildcard_is_never_glued_to_what_came_before_it() {
+        let q = plan("qwen38|qwen-3.8|qwen 3.8", true).unwrap();
+        let text = format!("{q:?}");
+        assert!(!text.contains(&format!("{:?}", tri("en8"))), "{text}");
     }
 
     #[test]

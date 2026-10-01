@@ -98,7 +98,7 @@ export function indexAnswer(query, message) {
   const text = result.content?.map((c) => c.text || '').join('\n') || '';
   if (query.family === 'F4') return { hits: [], files: value.files || [], empty: !(value.files || []).length, text };
   const hits = (value.hits || []).map(([p, line, t]) => ({ path: p, line, text: t }));
-  return { hits, files: [...new Set(hits.map((h) => h.path))], empty: hits.length === 0, text, index: value.index };
+  return { hits, files: [...new Set(hits.map((h) => h.path))], empty: hits.length === 0, text, index: value.index, work: value.work };
 }
 
 /**

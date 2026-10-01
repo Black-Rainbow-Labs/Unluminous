@@ -21,7 +21,7 @@ use crate::store::{self, Store};
 
 /// A job for the store thread.
 enum StoreJob {
-    Changes { changed: Vec<(u32, FileRecord, Vec<u32>)>, removed: Vec<u32>, next_id: usize },
+    Changes { changed: Vec<(u32, FileRecord, Vec<Vec<u32>>)>, removed: Vec<u32>, next_id: usize },
     Full,
 }
 
@@ -50,6 +50,7 @@ pub struct Index {
     exact: Arc<RwLock<Option<Exact>>>,
     freshness: Freshness,
     gate_lock: Mutex<()>,
+    last_gate: Mutex<Duration>,
     store: Sender<StoreJob>,
     status: Arc<Mutex<Status>>,
 }
@@ -88,7 +89,7 @@ impl Index {
             .spawn(move || store_thread(&thread_root, &thread_exact, &thread_status, rx))
             .expect("the store thread starts");
         freshness.mark_everything();
-        Index { root, exact, freshness, gate_lock: Mutex::new(()), store: tx, status }
+        Index { root, exact, freshness, gate_lock: Mutex::new(()), last_gate: Mutex::new(Duration::ZERO), store: tx, status }
     }
 
     /// The root this index covers.
@@ -140,7 +141,10 @@ impl Index {
     ///
     /// @param request - the pattern, case and scope
     pub fn exact(&self, request: &ExactRequest) -> Result<(ExactAnswer, &'static str), String> {
-        if self.gate().is_none() {
+        let gate_started = Instant::now();
+        let gated = self.gate();
+        *self.last_gate.lock().expect("last gate") = gate_started.elapsed();
+        if gated.is_none() {
             return direct::scan(&self.root, request).map(|a| (a, "none"));
         }
         let guard = self.exact.read().expect("exact");
@@ -148,6 +152,11 @@ impl Index {
             Some(exact) => exact.search(&self.root, request).map(|a| (a, "trigram")),
             None => direct::scan(&self.root, request).map(|a| (a, "none")),
         }
+    }
+
+    /// How long the last exact search's gate took, which `search find` reports beside the search time.
+    pub fn last_gate(&self) -> Duration {
+        *self.last_gate.lock().expect("last gate")
     }
 
     /// Runs a closure over the loaded exact index, after the gate. None while it is not loaded.

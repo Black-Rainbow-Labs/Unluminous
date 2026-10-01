@@ -13,11 +13,11 @@ use std::path::{Path, PathBuf};
 
 use inillucent_driver::{Connection, Database, OpenOptions, Value};
 
-use crate::exact::{Exact, FileRecord};
+use crate::exact::{block_id, pack_blocks, unpack_blocks, Exact, FileRecord};
 use crate::trigram::{Posting, Postings};
 
 /// The schema version of the tables this module writes. A different number rebuilds everything.
-pub const SCHEMA_VERSION: &str = "1";
+pub const SCHEMA_VERSION: &str = "2";
 /// The trigram engine's version: how bytes are folded and which trigrams are kept.
 pub const TRIGRAM_VERSION: &str = "1";
 
@@ -121,7 +121,7 @@ impl Store {
             let Some(record) = record else { continue };
             write_file_row(&tx, id as u32, record)?;
             if blobs.insert(record.hash) {
-                tx.execute("INSERT INTO blob (content_hash, bytes) VALUES (?1, ?2)", &[Value::Blob(record.hash.to_vec()), Value::Blob(record.packed.clone())])
+                tx.execute("INSERT INTO blob (content_hash, bytes) VALUES (?1, ?2)", &[Value::Blob(record.hash.to_vec()), Value::Blob(pack_blocks(&record.blocks))])
                     .map_err(|e| e.to_string())?;
             }
         }
@@ -142,7 +142,7 @@ impl Store {
     /// @param changed - `(id, record, trigrams)` for each file added or rewritten
     /// @param removed - ids tombstoned
     /// @param next_id - the next id the in-memory index will hand out
-    pub fn save_changes(&self, changed: &[(u32, FileRecord, Vec<u32>)], removed: &[u32], next_id: usize) -> Result<(), String> {
+    pub fn save_changes(&self, changed: &[(u32, FileRecord, Vec<Vec<u32>>)], removed: &[u32], next_id: usize) -> Result<(), String> {
         let session = self.session();
         let tx = session.begin().map_err(|e| e.to_string())?;
         for &id in removed {
@@ -152,8 +152,8 @@ impl Store {
         for (id, record, trigrams) in changed {
             tx.execute("DELETE FROM file WHERE path = ?1", &[Value::Text(record.rel.clone())]).map_err(|e| e.to_string())?;
             write_file_row(&tx, *id, record)?;
-            tx.execute("INSERT OR IGNORE INTO blob (content_hash, bytes) VALUES (?1, ?2)", &[Value::Blob(record.hash.to_vec()), Value::Blob(record.packed.clone())]).map_err(|e| e.to_string())?;
-            let tris: Vec<u8> = trigrams.iter().flat_map(|t| t.to_le_bytes()).collect();
+            tx.execute("INSERT OR IGNORE INTO blob (content_hash, bytes) VALUES (?1, ?2)", &[Value::Blob(record.hash.to_vec()), Value::Blob(pack_blocks(&record.blocks))]).map_err(|e| e.to_string())?;
+            let tris = pack_trigrams(trigrams);
             tx.execute("INSERT OR REPLACE INTO trigram_delta (file_id, tris, tombstone) VALUES (?1, ?2, 0)", &[Value::Integer(i64::from(*id)), Value::Blob(tris)]).map_err(|e| e.to_string())?;
         }
         tx.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('next_id', ?1)", &[Value::Text(next_id.to_string())]).map_err(|e| e.to_string())?;
@@ -175,8 +175,9 @@ impl Store {
         let deltas = session.query_all("SELECT file_id, tris FROM trigram_delta WHERE tombstone = 0 ORDER BY file_id", &[]).map_err(|e| e.to_string())?;
         for row in &deltas.rows {
             if let (Some(Value::Integer(id)), Some(bytes)) = (row.first(), row.get(1).and_then(Value::bytes)) {
-                let tris: Vec<u32> = bytes.chunks_exact(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
-                postings.add(*id as u32, &tris);
+                for (block, tris) in unpack_trigrams(bytes).iter().enumerate() {
+                    postings.add(block_id(*id as u32, block), tris);
+                }
             }
         }
         let rows = session
@@ -196,7 +197,7 @@ impl Store {
                 size: int(2) as u64,
                 mtime_ns: int(3),
                 hash,
-                packed: row.get(7).and_then(Value::bytes).unwrap_or_default().to_vec(),
+                blocks: unpack_blocks(row.get(7).and_then(Value::bytes).unwrap_or_default()),
                 binary: int(5) != 0,
                 lines: int(6) as u32,
             });
@@ -226,6 +227,38 @@ fn write_file_row(tx: &inillucent_driver::Transaction<'_>, id: u32, record: &Fil
     )
     .map(|_| ())
     .map_err(|e| e.to_string())
+}
+
+/// One file's trigrams, block by block, as a blob: the block count, then each block's count and its
+/// trigrams as four little endian bytes each.
+///
+/// @param trigrams - the trigrams of each block
+fn pack_trigrams(trigrams: &[Vec<u32>]) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(&(trigrams.len() as u32).to_le_bytes());
+    for block in trigrams {
+        out.extend_from_slice(&(block.len() as u32).to_le_bytes());
+        for t in block {
+            out.extend_from_slice(&t.to_le_bytes());
+        }
+    }
+    out
+}
+
+/// The trigrams a blob from `pack_trigrams` holds, block by block.
+///
+/// @param bytes - the blob
+fn unpack_trigrams(bytes: &[u8]) -> Vec<Vec<u32>> {
+    let word = |at: usize| bytes.get(at..at + 4).map_or(0, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+    let mut out = Vec::new();
+    let mut at = 4;
+    for _ in 0..word(0) {
+        let count = word(at) as usize;
+        at += 4;
+        out.push((0..count).map(|i| word(at + i * 4)).collect());
+        at += count * 4;
+    }
+    out
 }
 
 /// A file's extension, lower case, which is the language key until a plugin names one.

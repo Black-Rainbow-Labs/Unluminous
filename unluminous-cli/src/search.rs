@@ -245,6 +245,7 @@ fn spawn_host(root: &Path) -> bool {
         // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW: the host outlives this command
         // and never opens a console of its own.
         command.creation_flags(0x0000_0008 | 0x0000_0200 | 0x0800_0000);
+        keep_standard_handles_to_ourselves();
     }
     if command.spawn().is_err() {
         return false;
@@ -259,6 +260,29 @@ fn spawn_host(root: &Path) -> bool {
         std::thread::sleep(Duration::from_millis(25));
     }
     false
+}
+
+/// Marks this process's standard input, output and error as not inheritable, before it starts a host.
+///
+/// Windows hands a new process every inheritable handle its parent holds, not only the three it is
+/// given. A command run from a shell or from Claude Code's Bash tool writes to a pipe, and the shell
+/// waits for that pipe to close; a host that inherited it would hold it open for as long as the host
+/// runs, so the command would look as if it never finished. Measured: `unluminous-cli search find ... |
+/// node` printed its answer and then waited until it was stopped.
+#[cfg(windows)]
+fn keep_standard_handles_to_ourselves() {
+    use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE};
+    for which in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+        // SAFETY: GetStdHandle returns this process's own handle or null, and SetHandleInformation only
+        // changes the inherit flag of a handle this process holds.
+        unsafe {
+            let handle = GetStdHandle(which);
+            if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
+                SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0);
+            }
+        }
+    }
 }
 
 /// Answers a `search` command for a root: through this process's host, another process's host, a host

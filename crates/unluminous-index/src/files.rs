@@ -168,6 +168,11 @@ impl Scope {
         Ok(Scope { path, explicit_file, globs, types })
     }
 
+    /// Whether nothing narrows this scope, so every file of the set is in it.
+    pub fn is_everything(&self) -> bool {
+        self.path.is_empty() && !self.explicit_file && self.globs.is_none() && self.types.is_none()
+    }
+
     /// Whether a file of the set is inside this scope.
     ///
     /// @param rel - the file's path relative to the root

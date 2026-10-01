@@ -64,7 +64,7 @@ pub struct Freshness {
 #[derive(Debug, Default)]
 pub struct GateReport {
     /// Files read again and added or replaced: `(new id, record, trigrams)`.
-    pub changed: Vec<(u32, FileRecord, Vec<u32>)>,
+    pub changed: Vec<(u32, FileRecord, Vec<Vec<u32>>)>,
     /// Ids tombstoned.
     pub removed: Vec<u32>,
     /// Whether the whole tree was reconciled.

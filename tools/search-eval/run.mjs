@@ -32,6 +32,7 @@ function options(argv) {
     arms: get('arms', 'rg').split(','), split: get('split', 'dev'), families: get('families', 'F1,F2,F3,F4').split(','),
     corpora: get('corpora', CORPORA.map((c) => c.name).join(',')).split(','), reps: Number(get('reps', 5)), warmup: Number(get('warmup', 1)),
     label: get('label', ''), recordQuiet: argv.includes('--record-quiet'), quietCheck: !argv.includes('--no-quiet-check'),
+    max: Number(get('max', 0)),
   };
 }
 
@@ -88,14 +89,34 @@ async function runOne(arm, query, dir, opts) {
     for (let i = 0; i < opts.warmup; i++) await arm.time(query, dir);
     const times = [];
     let failure = null;
+    let status = null;
     for (let i = 0; i < opts.reps; i++) {
       const t = await arm.time(query, dir);
+      status = t.status ?? null;
       if (query.family === 'F2' && digestOf(t.answer.hits) !== query.gold.digest) failure = `result digest ${digestOf(t.answer.hits)} is not the gold ${query.gold.digest}`;
       times.push(t.ms);
     }
-    return { ms: median(times), times, score: score(query, ordered), tokens: approxTokens(ordered.text), hits: ordered.hits.length, files: ordered.files.length, failure };
+    return { ms: median(times), times, score: score(query, ordered), tokens: approxTokens(ordered.text), hits: ordered.hits.length, files: ordered.files.length, failure, status };
   } catch (error) {
     return { failure: String(error.message || error), score: { primary: 0 } };
+  }
+}
+
+/**
+ * An F2 pattern ripgrep refuses (exit 2 with no lines, such as `
+` without `--multiline`) and the
+ * index also refuses is the same outcome: both answer with no lines. The frozen gold for such a query
+ * is the empty set, so the index's refusal is scored as equal to ripgrep's rather than as a failure.
+ * It applies only when the rg arm refused in this same run.
+ * @param row - one query's row, changed in place
+ */
+function bothRefused(row) {
+  if (row.family !== 'F2' || !row.arms.rg) return;
+  const rg = row.arms.rg;
+  if (rg.status !== 2 || rg.hits !== 0) return;
+  for (const [name, arm] of Object.entries(row.arms)) {
+    if (name === 'rg' || !arm.failure || !/refused|not allowed|parse/i.test(arm.failure)) continue;
+    row.arms[name] = { ...arm, failure: null, score: { primary: 1 }, note: `both refused the pattern: ${arm.failure}` };
   }
 }
 
@@ -132,9 +153,12 @@ const rows = [];
 for (const corpusName of opts.corpora) {
   const corpus = CORPORA.find((c) => c.name === corpusName);
   for (const family of opts.families) {
-    for (const query of sets[family].filter((q) => q.repo === corpusName && q.split === opts.split)) {
+    const chosen = sets[family].filter((q) => q.repo === corpusName && q.split === opts.split);
+    // --max takes the first N of each family, for a smoke run; its scorecard says so in the manifest.
+    for (const query of opts.max ? chosen.slice(0, opts.max) : chosen) {
       const row = { id: query.id, family, repo: corpusName, arms: {} };
       for (const arm of arms) row.arms[arm.name] = await runOne(arm, query, snapshotDir(corpus), opts);
+      bothRefused(row);
       rows.push(row);
     }
     process.stdout.write(`${corpusName} ${family}: ${rows.filter((r) => r.repo === corpusName && r.family === family).length} queries\n`);
@@ -142,7 +166,7 @@ for (const corpusName of opts.corpora) {
 }
 for (const arm of arms) await arm.close?.();
 const runManifest = { runId, label: opts.label, split: opts.split, at: new Date().toISOString(), unluminousSha: sha, arms: opts.arms, families: opts.families, corpora: opts.corpora, reps: opts.reps, warmup: opts.warmup,
-  querySets: manifest.sets, corporaShas: manifest.corpora, machine: machine(), affinity, quietReference: { thisRunMs: quiet, referenceMs: busy.reference, ratio: busy.ratio } };
+  max: opts.max || null, querySets: manifest.sets, corporaShas: manifest.corpora, machine: machine(), affinity, quietReference: { thisRunMs: quiet, referenceMs: busy.reference, ratio: busy.ratio } };
 fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(runManifest, null, 2));
 // Held out rows are kept sealed: written for the record, never printed (TDD section 8.1).
 fs.writeFileSync(path.join(dir, opts.split === 'heldout' ? 'per-query.sealed.jsonl' : 'per-query.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
