@@ -194,6 +194,11 @@ pub fn vector_counts(conn: &Connection<'_>) -> (usize, usize) {
 /// checkout, an earlier edit or another repository already embedded the same text. Returns how many
 /// chunks were given a vector, so the caller knows when there is nothing left.
 ///
+/// The model runs first, with no transaction open, so a search is never kept waiting while it works.
+/// The vectors are then written in one transaction, and the new ones go into the cache in one more.
+/// Writing each row as its own commit cost two commits a chunk and held the hosts at about four
+/// chunks a second with the card nearly idle.
+///
 /// @param conn - a connection on the store thread
 /// @param cache - the shared embedding cache, if it could be opened
 /// @param batch - how many chunks at most
@@ -201,28 +206,65 @@ pub fn embed_pending(conn: &Connection<'_>, cache: Option<&Connection<'_>>, batc
     let rows = conn
         .query("SELECT c.id, c.chunk_hash, p.header, p.body FROM chunk c JOIN passage p ON p.rowid = c.id WHERE c.embedded = 0 LIMIT ?1", &[Value::Integer(batch as i64)], batch)
         .map_err(|e| e.to_string())?;
-    let mut done = 0;
+    let mut made: Vec<(i64, Vec<u8>, Vec<u8>, bool)> = Vec::new();
     for row in &rows.rows {
         let (Some(Value::Integer(id)), Some(hash)) = (row.first(), row.get(1).and_then(Value::bytes)) else { continue };
-        let cached = cache.and_then(|c| c.query("SELECT vector FROM emb WHERE hash = ?1 AND model = ?2", &[Value::Blob(hash.to_vec()), Value::Text(MODEL.into())], 1).ok()).and_then(|r| r.value(0, 0).and_then(Value::bytes).map(<[u8]>::to_vec));
-        let vector = match cached {
-            Some(v) => v,
-            None => {
-                let text = format!("search_document: {}
-{}", row.get(2).and_then(Value::text).unwrap_or_default(), row.get(3).and_then(Value::text).unwrap_or_default());
-                let made = conn.query("SELECT embed(?1)", &[Value::Text(text.chars().take(6000).collect())], 1).map_err(|e| e.to_string())?;
-                let Some(v) = made.value(0, 0).and_then(Value::bytes).map(<[u8]>::to_vec) else { continue };
-                if let Some(c) = cache {
-                    let _ = c.execute("INSERT OR REPLACE INTO emb (hash, model, vector) VALUES (?1, ?2, ?3)", &[Value::Blob(hash.to_vec()), Value::Text(MODEL.into()), Value::Blob(v.clone())]);
-                }
-                v
-            }
-        };
-        conn.execute("UPDATE passage SET vector = ?1 WHERE rowid = ?2", &[Value::Blob(vector), Value::Integer(*id)]).map_err(|e| e.to_string())?;
-        conn.execute("UPDATE chunk SET embedded = 1 WHERE id = ?1", &[Value::Integer(*id)]).map_err(|e| e.to_string())?;
-        done += 1;
+        if let Some(vector) = cached_vector(cache, hash) {
+            made.push((*id, hash.to_vec(), vector, false));
+            continue;
+        }
+        let text = format!("search_document: {}\n{}", row.get(2).and_then(Value::text).unwrap_or_default(), row.get(3).and_then(Value::text).unwrap_or_default());
+        let answer = conn.query("SELECT embed(?1)", &[Value::Text(text.chars().take(6000).collect())], 1).map_err(|e| e.to_string())?;
+        if let Some(vector) = answer.value(0, 0).and_then(Value::bytes) {
+            made.push((*id, hash.to_vec(), vector.to_vec(), true));
+        }
     }
-    Ok(done)
+    write_vectors(conn, &made)?;
+    if let Some(cache) = cache {
+        remember_vectors(cache, &made);
+    }
+    Ok(made.len())
+}
+
+/// The vector the shared cache holds for a chunk's text, if any.
+///
+/// @param cache - the shared embedding cache, if it could be opened
+/// @param hash - the chunk's hash
+fn cached_vector(cache: Option<&Connection<'_>>, hash: &[u8]) -> Option<Vec<u8>> {
+    let rows = cache?.query("SELECT vector FROM emb WHERE hash = ?1 AND model = ?2", &[Value::Blob(hash.to_vec()), Value::Text(MODEL.into())], 1).ok()?;
+    rows.value(0, 0).and_then(Value::bytes).map(<[u8]>::to_vec)
+}
+
+/// Writes a batch of vectors into the passage table and marks their chunks embedded, in one transaction.
+///
+/// @param conn - a connection on the store thread
+/// @param made - (chunk id, hash, vector, newly made) for each chunk
+fn write_vectors(conn: &Connection<'_>, made: &[(i64, Vec<u8>, Vec<u8>, bool)]) -> Result<(), String> {
+    if made.is_empty() {
+        return Ok(());
+    }
+    let tx = conn.begin().map_err(|e| e.to_string())?;
+    for (id, _, vector, _) in made {
+        tx.execute("UPDATE passage SET vector = ?1 WHERE rowid = ?2", &[Value::Blob(vector.clone()), Value::Integer(*id)]).map_err(|e| e.to_string())?;
+        tx.execute("UPDATE chunk SET embedded = 1 WHERE id = ?1", &[Value::Integer(*id)]).map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
+/// Puts the vectors this batch made into the shared cache, in one transaction. A failure here costs a
+/// later checkout an embedding and nothing else, so it is not reported.
+///
+/// @param cache - the shared embedding cache
+/// @param made - (chunk id, hash, vector, newly made) for each chunk
+fn remember_vectors(cache: &Connection<'_>, made: &[(i64, Vec<u8>, Vec<u8>, bool)]) {
+    if !made.iter().any(|m| m.3) {
+        return;
+    }
+    let Ok(tx) = cache.begin() else { return };
+    for (_, hash, vector, _) in made.iter().filter(|m| m.3) {
+        let _ = tx.execute("INSERT OR REPLACE INTO emb (hash, model, vector) VALUES (?1, ?2, ?3)", &[Value::Blob(hash.clone()), Value::Text(MODEL.into()), Value::Blob(vector.clone())]);
+    }
+    let _ = tx.commit();
 }
 
 /// The words of a question as an engine query: each word quoted, any of them may match, so a chunk
