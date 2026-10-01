@@ -353,11 +353,12 @@ fn definition_value(d: &crate::symbols::Defined) -> Value {
 /// @param index - the index
 /// @param args - name, limit, path
 fn def(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
-    let name = text(args, "name").ok_or_else(|| usage("search def needs a name."))?.to_owned();
+    let asked = text(args, "name").ok_or_else(|| usage("search def needs a name."))?.to_owned();
     let limit = whole(args, "limit").unwrap_or(10);
     let within = text(args, "path").map(crate::files::normalise);
+    let (qualifier, name) = split_qualified(&asked);
     let found = index
-        .with_symbols(|table, _| table.lookup(&name, limit * 4))
+        .with_symbols(|table, _| qualified_lookup(table, qualifier, &name, limit * 4))
         .ok_or_else(|| Refusal { code: "not-applicable", message: "The index is still being built; ask again in a moment.".into() })?;
     let found: Vec<_> = found.into_iter().filter(|d| within.as_ref().is_none_or(|w| w.is_empty() || d.path.starts_with(w.as_str()))).take(limit).collect();
     let mut text = String::new();
@@ -374,6 +375,45 @@ fn def(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
         }
     }
     Ok(json!({ "name": name, "definitions": found.iter().map(definition_value).collect::<Vec<_>>(), "total": found.len(), "text": text }))
+}
+
+/// A name as an agent writes it, `Shell::open` or `Database.open`, split into the type it is asked
+/// about and the name itself. In the third dev agent run, two `def` calls for `Shell::open` and
+/// `Database::open` found nothing and cost the agent a turn each.
+///
+/// @param asked - the name as given
+fn split_qualified(asked: &str) -> (Option<&str>, String) {
+    let cut = asked.rfind("::").map(|at| (at, 2)).or_else(|| asked.rfind('.').map(|at| (at, 1)));
+    match cut {
+        Some((at, width)) if at > 0 && at + width < asked.len() => {
+            let qualifier = &asked[..at];
+            let last = qualifier.rsplit(['.', ':']).next().unwrap_or(qualifier);
+            (Some(last), asked[at + width..].to_owned())
+        }
+        _ => (None, asked.to_owned()),
+    }
+}
+
+/// The definitions of a name, those inside a definition of the qualifier first, when there is one.
+///
+/// @param table - the symbol table
+/// @param qualifier - the type the name was asked about, if any
+/// @param name - the name
+/// @param limit - how many to return
+fn qualified_lookup(table: &crate::symbols::SymbolTable, qualifier: Option<&str>, name: &str, limit: usize) -> Vec<crate::symbols::Defined> {
+    let mut found = table.lookup(name, if qualifier.is_some() { limit * 4 } else { limit });
+    if let Some(qualifier) = qualifier {
+        let containers: Vec<_> = table.lookup(qualifier, 50).into_iter().filter(|c| c.definition.name.eq_ignore_ascii_case(qualifier)).collect();
+        let inside = |d: &crate::symbols::Defined| containers.iter().any(|c| c.path == d.path && c.definition.line <= d.definition.line && d.definition.line <= c.definition.end && c.definition.end > c.definition.line);
+        // A method of `impl Shell` is not inside the `struct Shell` definition, so two weaker signs
+        // follow: the signature names the type, and the file is named after it.
+        let word = regex::Regex::new(&format!(r"(?i)\b{}\b", regex::escape(qualifier))).ok();
+        let names_it = |d: &crate::symbols::Defined| word.as_ref().is_some_and(|w| w.is_match(&d.definition.signature));
+        let named_after = |d: &crate::symbols::Defined| std::path::Path::new(&d.path).file_stem().is_some_and(|s| s.to_string_lossy().replace(['_', '-'], "").eq_ignore_ascii_case(qualifier));
+        found.sort_by_key(|d| (!inside(d), !names_it(d), !named_after(d)));
+    }
+    found.truncate(limit);
+    found
 }
 
 /// The uses of a name: a whole word search, with the lines that define it taken out and the project's
@@ -678,4 +718,20 @@ fn semantic(index: &Index, asked: &FindRequest) -> Result<Value, Refusal> {
         "work": { "micros": started.elapsed().as_micros() as u64, "retrieved": found.len() },
         "text": text,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_qualified;
+
+    #[test]
+    fn a_qualified_name_is_split_into_its_type_and_its_name() {
+        assert_eq!(split_qualified("Shell::open"), (Some("Shell"), "open".to_owned()));
+        assert_eq!(split_qualified("Database.open"), (Some("Database"), "open".to_owned()));
+        assert_eq!(split_qualified("crate::engine::Database::open"), (Some("Database"), "open".to_owned()));
+        assert_eq!(split_qualified("open"), (None, "open".to_owned()));
+        // A leading or trailing separator is not a qualifier.
+        assert_eq!(split_qualified("::open"), (None, "::open".to_owned()));
+        assert_eq!(split_qualified("open."), (None, "open.".to_owned()));
+    }
 }
