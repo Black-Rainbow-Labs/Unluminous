@@ -1,3 +1,4 @@
 # The frozen query sets are hashed byte for byte (queries/manifest.json), so git must never change
 # their line endings on checkout.
 queries/** -text
+rubrics.json -text
