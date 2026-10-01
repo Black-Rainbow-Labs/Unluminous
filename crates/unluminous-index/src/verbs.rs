@@ -494,11 +494,12 @@ fn fragment(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> 
     Ok(json!({ "path": rel, "start": start, "end": end, "header": header, "text": text }))
 }
 
-/// The share of a question's words a chunk must hold before passage search will answer with it. Below
-/// it the answer is empty, with the nearest definitions as hints, because a chunk that shares one word
-/// with a question is not an answer to it (R8: without vectors, `confidence()` cannot separate an
-/// answerable question from one that is not).
-pub const ABSTAIN_BELOW: f64 = 0.5;
+/// The share of a question's words the best chunk must hold before passage search will answer with
+/// it. Below it the answer is empty, with the nearest definitions as hints, because a chunk that shares
+/// one word with a question is not an answer to it. Measured on the dev split with vectors (lever 8):
+/// at 0.30 a third of the questions with no answer in the code are turned away for a fifth of the
+/// answerable ones, which scored best of the values tried. It applies with vectors as well as without.
+pub const ABSTAIN_BELOW: f64 = 0.30;
 
 /// The abstention threshold in force: `ABSTAIN_BELOW`, or `UNLUMINOUS_SEARCH_ABSTAIN` when the
 /// evaluation's improvement loop is trying another value (TDD §8.3, lever 8).
@@ -506,10 +507,11 @@ fn abstain_below() -> f64 {
     std::env::var("UNLUMINOUS_SEARCH_ABSTAIN").ok().and_then(|v| v.parse().ok()).unwrap_or(ABSTAIN_BELOW)
 }
 
-/// The confidence below which a hybrid passage search answers with nothing. R8 measured answerable
-/// questions at or above 0.332 and the others at or below 0.235 with a vector weight of 0.5, on
-/// Inillucent's own corpus; the improvement loop measures it here (lever 8).
-pub const CONFIDENCE_BELOW: f64 = 0.28;
+/// The confidence below which a hybrid passage search answers with nothing, off by default. R8
+/// measured a clean split on Inillucent's own corpus, but on code it does not hold: a ticket's whole
+/// text scores near 0.001 and a one line question between 0.3 and 0.4 whether or not the code answers
+/// it, so any cutoff turned every ticket away before it turned a question with no answer away.
+pub const CONFIDENCE_BELOW: f64 = 0.0;
 
 /// The confidence threshold in force: `CONFIDENCE_BELOW`, or `UNLUMINOUS_SEARCH_CONFIDENCE` while the
 /// improvement loop tries another value.
@@ -549,9 +551,9 @@ fn semantic(index: &Index, asked: &FindRequest) -> Result<Value, Refusal> {
         let lines: Vec<&str> = content.split('\n').collect();
         let body = lines.get(hit.start as usize - 1..(hit.end as usize).min(lines.len())).map(|l| l.join("\n")).unwrap_or_default();
         let share = coverage(&question_words, &format!("{}\n{}", hit.header, body));
-        // With vectors the engine's confidence decides whether the best chunk answers the question at
-        // all (R8); without them, whether it holds enough of the question's words.
-        let unsure = if with_vectors { hit.confidence < confidence_below() } else { share < abstain_below() };
+        // Whether the best chunk answers the question at all is decided by how many of its words it
+        // holds, and, when a confidence cutoff is set, by the engine's confidence as well.
+        let unsure = share < abstain_below() || (with_vectors && hit.confidence < confidence_below());
         if chosen.is_empty() && unsure {
             break;
         }
