@@ -1,0 +1,91 @@
+{
+  "frozenAt": "2026-10-01T13:11:16.572Z",
+  "seed": 20260925,
+  "heldOutShare": 0.3,
+  "corpora": [
+    {
+      "name": "unluminous",
+      "tier": "small",
+      "sha": "3eddcb6c303999c4502312e57ecf3139c2bee269",
+      "ref": null
+    },
+    {
+      "name": "ai-service",
+      "tier": "medium",
+      "sha": "d8df63eb5d4e1a3be9befebee6bd8137ec3ca7bd",
+      "ref": null
+    },
+    {
+      "name": "inillucent",
+      "tier": "medium",
+      "sha": "e6aa248e3f88c5cdd4e3410461d4cbeb8f7be139",
+      "ref": null
+    },
+    {
+      "name": "linux",
+      "tier": "large",
+      "sha": null,
+      "ref": "v6.16"
+    }
+  ],
+  "sets": {
+    "F1": {
+      "file": "F1-identifier.jsonl",
+      "count": 480,
+      "heldout": 150,
+      "sha256": "aa99db99599e3170c198a12e6dc5842e38a3be0de1d46ad300a4e7c4ee0a82d5"
+    },
+    "F2": {
+      "file": "F2-exact.jsonl",
+      "count": 1200,
+      "heldout": 348,
+      "sha256": "08bd12f92ee2164b3b6ef373883ae832734351356028076055e15f12a77e0290"
+    },
+    "F3": {
+      "file": "F3-references.jsonl",
+      "count": 416,
+      "heldout": 120,
+      "sha256": "ed974330cf643a742d6196cf0ef08eb0985f89d2449b2c8c07c432689acfd02f"
+    },
+    "F4": {
+      "file": "F4-files.jsonl",
+      "count": 72,
+      "heldout": 30,
+      "sha256": "73188d9162eeb6f5bf09e0f6b6ec0cf5c07692fdb9e2fe067a4874faf1c052a0"
+    },
+    "F5": {
+      "file": "F5-localisation.jsonl",
+      "count": 135,
+      "heldout": 46,
+      "sha256": "ad6cf168d611f910c22d483051b8675e033a69f3555d828ba4953537d280f528"
+    },
+    "F6": {
+      "file": "F6-concept.jsonl",
+      "count": 203,
+      "heldout": 75,
+      "sha256": "2c40ddf53cf91084e0ab29ad446a1d883666fc4ab240e42965abeaabd1b9c684"
+    },
+    "F8": {
+      "file": "F8-unanswerable.jsonl",
+      "count": 114,
+      "heldout": 34,
+      "sha256": "42bcb155df7bbc3aa6a8c4606a5d02c02783d4cca5b027ca74f0c44bd3c32583"
+    }
+  },
+  "weights": {
+    "F1": 0.043,
+    "F2": 0.5433,
+    "F3": 0.0053,
+    "F4": 0.1084,
+    "F5": 0.15,
+    "F6": 0.1,
+    "F8": 0.05
+  },
+  "transcriptCounts": {
+    "F1": 679,
+    "F2": 8571,
+    "F3": 83,
+    "F4": 1710
+  },
+  "note": "F7 (freshness) is a scripted sequence in run-freshness.mjs, so it has no query file."
+}

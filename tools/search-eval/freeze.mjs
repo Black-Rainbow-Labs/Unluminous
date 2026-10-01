@@ -90,7 +90,11 @@ function exactGold(query, dir) {
   if (goldCache.has(key)) return goldCache.get(key);
   const r = runRgSync(grepArgs(query), dir);
   let gold = null;
-  if (r.status === 0 || r.status === 1) {
+  // Exit 2 means ripgrep met an error, which is either a pattern it refused or a file it could not
+  // read (Linux's symlinked folders on Windows); the second still gives a full answer over everything
+  // readable, which is what both arms search, so only the first drops the query.
+  const refused = r.status === 2 && /regex parse error|error parsing|unrecognized/i.test(r.stderr);
+  if (r.status === 0 || r.status === 1 || (r.status === 2 && !refused && !r.tooLarge)) {
     const set = exactSet(readJsonMatches(r.stdout));
     // An answer of more than MAX_HITS lines is not a search anybody reads, and timing it measures the
     // printing. Such a query is dropped, on every corpus alike.
