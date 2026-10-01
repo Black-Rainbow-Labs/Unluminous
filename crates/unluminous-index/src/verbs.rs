@@ -223,7 +223,14 @@ fn files(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
     let folder = text(args, "path").map(crate::files::normalise).unwrap_or_default();
     let prefix = if folder.is_empty() { String::new() } else { format!("{folder}/") };
     let within: Vec<String> = paths.iter().filter_map(|p| p.strip_prefix(prefix.as_str()).map(str::to_owned)).collect();
-    let ranked: Vec<String> = crate::paths::rank(&within, query, limit).into_iter().map(|p| format!("{prefix}{p}")).collect();
+    let mut ranked: Vec<String> = crate::paths::rank(&within, query, limit).into_iter().map(|p| format!("{prefix}{p}")).collect();
+    // A name that is part of the folder's own path, such as `backend/scripts` asked inside
+    // `backend/scripts`, matches nothing once the folder is taken off, so it is asked again of the
+    // folder's files by their whole path. An agent made exactly that call and was told no file matched.
+    if ranked.is_empty() && !prefix.is_empty() {
+        let whole_paths: Vec<String> = within.iter().map(|p| format!("{prefix}{p}")).collect();
+        ranked = crate::paths::rank(&whole_paths, query, limit);
+    }
     let text = if ranked.is_empty() { "no files match\n".to_owned() } else { ranked.iter().map(|p| format!("{p}\n")).collect() };
     Ok(json!({ "files": ranked, "total": ranked.len(), "text": text }))
 }

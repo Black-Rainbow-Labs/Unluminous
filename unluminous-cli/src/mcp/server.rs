@@ -195,7 +195,20 @@ impl<D: Driver> Server<D> {
     /// Turn what the window said into what an agent reads.
     fn tool_result(&self, command: &'static Command, reply: &Reply, ignored: &[String]) -> Value {
         if let Some(failure) = &reply.error {
-            return refused(format!("{}: {}", failure.code, failure.message));
+            // A refusal names the keys that were taken out too, with the command's own usage line
+            // (`task-2139`). Claude Haiku gave `search outline` its file as `target`, which is
+            // `fragment`'s name for it; the key was taken out as another verb's, and the agent read
+            // only "needs a file", with nothing to say the file it had given was never seen.
+            let mut said = format!("{}: {}", failure.code, failure.message);
+            if !ignored.is_empty() {
+                said.push_str(&format!(
+                    "\n\nIgnored {}: not a key of `{}`. It takes: {}",
+                    ignored.join(", "),
+                    command.typed(),
+                    command.usage(),
+                ));
+            }
+            return refused(said);
         }
         let mut said = spoken(reply);
         // **Named rather than dropped in silence.** `tools::sibling_keys` takes out the keys the
