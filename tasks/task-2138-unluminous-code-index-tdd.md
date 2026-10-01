@@ -9,10 +9,33 @@ way the LoRA work was, until three goals are met on a held out query set.
 |---|---|
 | Ticket | task-2138 (this design). The implementation ticket is linked in the task comments. |
 | Code goes in | `C:/jason/dev/unluminous` (new crate `unluminous-index`, CLI area `search`, eval harness `tools/search-eval/`) |
-| Database | Inillucent, through the `inillucent-driver` dependency Unluminous already pins |
-| Written | 2026-09-25 |
+| Database | Inillucent 2.0.2, through `inillucent-driver = "2.0.2"` from crates.io with the `embed` feature (R1) |
+| Written | 2026-09-25, revised 2026-10-01 for Inillucent 2.0.2 (section 0) |
 
 ---
+
+## 0. Revision of 2026-10-01: Inillucent 2.0.2 and the Labs page
+
+The design above section 1 was written against `inillucent-driver` at git rev 6eaa12d, which had no
+`embed()`, no facets and no blend weights. Inillucent 2.0.2 is released and installed on this machine,
+so the design was checked against its docs (`C:/jason/dev/inillucent/docs`, tag `v2.0.2`) and against
+how Claude Code really calls ripgrep. These are the changes. Each is also written into the section it
+affects.
+
+| # | What changed | Where | Effect on the design |
+|---|---|---|---|
+| R1 | The driver is on crates.io as `inillucent-driver = "2.0.2"`, with one feature, `embed`, that loads ONNX Runtime at run time (`load-dynamic`), so nothing is linked at build time | §6.1 | Unluminous moves from the git pin to the crates.io release, with `embed` on. The Database plugin moves with it, and its tests are the check that nothing it uses changed. |
+| R2 | `inillucent_search` now takes `FACET` columns, `fusion = adaptive\|rrf\|weighted`, `vector_weight`, `rerank_depth`, a hidden `vector` column, `confidence()`, `score()` and `origin()` | §6.2 | The `passage` table is written in the 2.0.2 syntax. Facets are filters inside the search, so `lang`, `kind` and `path_prefix` filters do not cut results after ranking. |
+| R3 | The `porter` tokenizer splits and keeps `snake_case` words, but does not split `camelCase` and has no prefix queries | §6.6 | The index still writes the split identifier words itself, into a `words` column. Only `camelCase`, `PascalCase`, digits and kebab names need splitting, because the engine splits snake case. |
+| R4 | There is still no trigram tokenizer and no substring index; `LIKE '%x%'` is a full scan | §6.7 | Unchanged: the trigram posting lists are the index's own table and its own memory. |
+| R5 | `snippet()` and `highlight()` do not exist on `inillucent_search` | §6.9 | Lines and fragments are cut in Rust from the stored blobs, which the design already did. |
+| R6 | `embed()` serves `nomic-embed-text-v1.5` only (768 dims). A code model would need vectors made outside SQL. The model, the reranker `gte-reranker-modernbert-base` and the ONNX Runtime GPU build are all installed on this machine | §8.3 levers 8 to 10 | Lever 9 becomes "nomic against no vectors". Code models are recorded as out of reach for this ticket, because Unluminous would need its own ONNX runner. The reranker (lever 10) is measured with its latency beside it. On the CPU it costs 3 to 11 s a query, which no interactive search can spend, so it can only be kept if it runs on a GPU the person has, and only as an option that is off by default. |
+| R7 | Embedding on the CPU through SQL runs at about 11 rows a second (`docs/embeddings.md`) | §6.4, §2.2 | Embedding is a background job after the exact, symbol and word indexes are ready, keyed by chunk hash so it is paid once per chunk across edits and worktrees. The 60 second cold build budget is for the index without vectors, as it always was. The host answers with `"vectors":"partial"` until embedding finishes. |
+| R8 | `confidence()` does not separate answerable from unanswerable questions on keyword hits alone. It does at `vector_weight = 0.5` (answerable at or above 0.332, others at or below 0.235, rag-agent corpus) | §6.8, F8 | The F8 abstention rule is a loop lever measured with and without vectors. Without vectors, abstention falls back to "no chunk holds most of the query words". |
+| R9 | A reader in another process waits for a writer, and there are no snapshot reads (roadmap item 3) | §4 | The one host per checkout design stands. The host does all reads and writes on one thread. Reindex batches are kept short so a query waits for at most one batch. |
+| R10 | Claude Code's Grep tool does not use ripgrep's defaults. It runs the `rg` built into `claude.exe` (14.1.1, started with program name `rg` and `--no-config`) with `--hidden`, `--glob !.git` (and `.svn`, `.hg`, `.bzr`, `.jj`, `.sl`), `--max-columns 500`, and in content mode `--json -n`. Its default mode lists matching files, newest first, capped at 250 by `head_limit` | §6.3, §7.4 | The index's file set is Claude Code's: hidden files included, those six folders excluded, `.gitignore` honoured. The rg arm runs exactly that command. The F2 gold is that command's output. |
+| R11 | `claude --bare` cannot use the OAuth login this machine has | §7.5 | Agent level runs use `--setting-sources ""`, `--strict-mcp-config` with an explicit `--mcp-config`, and `--tools` to fix the tool list. The harness checks the first turn's input tokens are equal in both arms before a run counts, so neither arm is carrying a `CLAUDE.md` the other is not. |
+| R12 | The research is to be published as a Labs page in ai-service | §7.7 | `tools/search-eval/publish.mjs` writes `page.json` and `findings.json` into `ai-service/_supervised-learning/unluminous-code-index-study/published/`, served by the existing research media route. The page is a study in `ui/src/app/labs/page.tsx`, built like the RAG Techniques study (task-2157). Once deployed, each new run shows on prod without another deploy. |
 
 ## 1. Introduction
 
@@ -179,7 +202,8 @@ Condensed from the research notes in §13.
 | `tools/search-eval/` | The evaluation harness (§7) and the loop's records (§8). Its outputs go to the gitignored `_search-eval/` root. |
 | `claude-settings` repo, skill `code-search` | The instructions that tell agents to use the index (§6.11). |
 
-New dependencies: `ignore` and `grep-searcher` / `grep-regex` (the crates ripgrep itself is built from,
+The `inillucent-driver` git pin is replaced by `inillucent-driver = { version = "2.0.2", features =
+["embed"] }` (R1). New dependencies: `ignore` and `grep-searcher` / `grep-regex` (the crates ripgrep itself is built from,
 which is what makes exact parity achievable), `regex-syntax` (to turn a regex into a trigram query),
 `notify` (file events: `ReadDirectoryChangesW` on Windows, FSEvents on macOS), `blake3`.
 
@@ -202,7 +226,8 @@ CREATE TABLE symbol    (id INTEGER PRIMARY KEY, name TEXT, name_lower TEXT, kind
 CREATE INDEX symbol_name ON symbol(name_lower);
 CREATE TABLE trigram   (tri INTEGER PRIMARY KEY, postings BLOB);     -- delta+varint file ids, base segment
 CREATE TABLE trigram_delta (file_id INTEGER PRIMARY KEY, tris BLOB, tombstone INTEGER); -- changed since last merge
-CREATE VIRTUAL TABLE passage USING inillucent_search(header, body, lang FACET, kind FACET, path_prefix FACET, dims=768);
+CREATE VIRTUAL TABLE passage USING inillucent_search(header, body, words, lang FACET, kind FACET, path_prefix FACET,
+                        dims = 768, fusion = 'adaptive', tokenize = 'porter');   -- 2.0.2 syntax (R2); vector is the hidden column
 CREATE TABLE embedding_cache (chunk_hash BLOB PRIMARY KEY, model TEXT, vector BLOB);  -- reused across edits and worktrees
 ```
 
@@ -221,8 +246,10 @@ CREATE TABLE embedding_cache (chunk_hash BLOB PRIMARY KEY, model TEXT, vector BL
 
 ### 6.3 Discovering files and detecting change
 
-1. **The file set is exactly ripgrep's**: the `ignore` crate with ripgrep's defaults (`.gitignore`,
-   `.git/info/exclude`, `.ignore`, `.rgignore`, hidden files skipped, binary detection by NUL byte).
+1. **The file set is exactly the one Claude Code's Grep tool searches** (R10): the `ignore` crate with
+   ripgrep's ignore rules (`.gitignore`, `.git/info/exclude`, `.ignore`, `.rgignore`, binary detection
+   by NUL byte), hidden files **included**, and `.git`, `.svn`, `.hg`, `.bzr`, `.jj` and `.sl` excluded,
+   which is what `rg --hidden --glob !.git ...` gives.
    Nested git worktrees under a project are excluded by `.git/info/exclude` on this machine already, and
    the ripgrep arm in the harness searches the same set.
 2. **Change detection is by stat, then content.** `(size, mtime)` unchanged means unchanged. Otherwise
@@ -298,6 +325,10 @@ Each chunk's `body` is written with every identifier kept whole **and** split in
 `resolveSkipToken` gives `resolveskiptoken resolve skip token`; `MAX_RETRY_COUNT` gives
 `max_retry_count max retry count`; `unluminous-cli` gives `unluminous-cli unluminous cli`. Queries are
 split the same way. Whole identifiers are matched first. Numbers and paths stay as written.
+
+At 2.0.2 (R3) the `porter` tokenizer already splits `snake_case` and keeps the whole word, but leaves
+`camelCase` whole and has no prefix queries. So the split words go into their own `words` column, and
+only the splits the engine does not make are written there: case changes, digits and hyphens.
 
 ### 6.7 The exact engine (literal and regex, same results as ripgrep)
 
@@ -449,7 +480,7 @@ Arms, all against the same snapshot and the same file set:
 
 | Arm | How it is called |
 |---|---|
-| `rg` | the ripgrep binary Claude Code bundles, spawned with Claude Code's Grep flags. For F5, F6 and F8, the rg arm is the **replay of the Grep calls a baseline agent actually made** for that question in the agent level runs, so it is the real behaviour and not an invented keyword strategy. |
+| `rg` | the ripgrep inside `claude.exe`, started with program name `rg` and `--no-config`, with Claude Code's Grep flags (R10): `--hidden`, the six version control folder exclusions, `--max-columns 500`, and `--json -n` in content mode. F2 timings use content mode, because that is the mode that returns the lines the index returns. For F5, F6 and F8, the rg arm is the **replay of the Grep calls a baseline agent actually made** for that question in the agent level runs, so it is the real behaviour and not an invented keyword strategy. |
 | `index-mcp` | `tools/call` over stdio to a running host (primary) |
 | `index-cli` | `unluminous-cli search ...` spawned per call (reported, not gated) |
 | `index-noembed` | the MCP arm with embeddings off, so the value of the model is known |
@@ -501,6 +532,20 @@ query set hashes, config hash, machine, quiet reference), `per-query.jsonl`, `sc
 goals with intervals, the per family table, absolutes) and the agent transcripts for agent level runs.
 `scorecard.md` of the latest gate run is copied to `tools/search-eval/SCORECARD.md` and committed, so the
 repository always shows the current state of the three goals.
+
+**The Labs page (R12).** `tools/search-eval/publish.mjs` writes two files into
+`C:/jason/dev/ai-service/_supervised-learning/unluminous-code-index-study/published/`:
+
+- `page.json` holds the numbers, all of them read out of run folders: the ripgrep baseline per family and
+  corpus, the three goals with both arms' absolutes and intervals, the per family table, and every row of
+  `progression.md`.
+- `findings.json` holds the written conclusions, kept apart so the words can change without a new run.
+
+The ai-service backend serves both through `GET /research/unluminous-code-index/media?path=...`, after one
+entry is added to the `STUDIES` map in `backend/src/services/research.service.ts`. The UI study is
+`ui/src/components/research/CodeIndexGallery.tsx`, registered in `ui/src/app/labs/page.tsx`, and it holds
+no literal numbers. Publishing runs after every kept change and every gate run, so the page shows the loop
+as it goes.
 
 ## 8. The improvement loop
 
