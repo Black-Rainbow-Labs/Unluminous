@@ -170,7 +170,41 @@ fn find(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
     if asked.auto && !asked.regex && found.hits.is_empty() && asked.query.split_whitespace().count() > 1 {
         return semantic(index, &asked);
     }
-    Ok(found_value(&asked, &found, engine, started.elapsed(), index.last_gate()))
+    let mut value = found_value(&asked, &found, engine, started.elapsed(), index.last_gate());
+    let files: std::collections::BTreeSet<&str> = found.hits.iter().map(|h| h.path.as_str()).collect();
+    if asked.budget > 0 && !found.hits.is_empty() && found.hits.len() <= INLINE_HITS && files.len() <= 2 {
+        let first = &found.hits[0];
+        let shown = value["text"].as_str().unwrap_or_default().to_owned();
+        if let Some(code) = inline_code(index, &first.path, first.line as u32, asked.budget.saturating_sub(shape::tokens(&shown))) {
+            value["text"] = Value::String(format!("{shown}\nthe code around {}:{}:\n{code}", first.path, first.line));
+            value["inlined"] = json!([first.path, first.line]);
+        }
+    }
+    Ok(value)
+}
+
+/// The most hits an exact answer may have and still carry the code around its first one.
+const INLINE_HITS: usize = 5;
+
+/// The longest definition an answer carries whole, in lines.
+const INLINE_LINES: u32 = 60;
+
+/// The code around a line, as `fragment` gives it, when it is at most `INLINE_LINES` long and fits in
+/// the tokens left. Measured on the dev agent run: 154 of the index arm's 290 Read calls opened a file
+/// the search just before them had named, 93 of them straight after a `find`, to see the code around a
+/// hit. When the answer is small, it carries that code, and the turn and the Read are not needed.
+///
+/// @param index - the index
+/// @param rel - the file, relative to the root
+/// @param line - the line
+/// @param room - the tokens left in the answer's budget
+fn inline_code(index: &Index, rel: &str, line: u32, room: usize) -> Option<String> {
+    let mut args = Map::new();
+    args.insert("target".into(), Value::String(format!("{rel}:{line}")));
+    let around = fragment(index, &args).ok()?;
+    let (start, end) = (around["start"].as_u64()?, around["end"].as_u64()?);
+    let text = around["text"].as_str()?;
+    (end + 1 - start <= u64::from(INLINE_LINES) && shape::tokens(text) <= room).then(|| text.to_owned())
 }
 
 /// `search find` with no index at all, by scanning the files, for a caller that could reach no host.
@@ -315,6 +349,12 @@ fn def(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
     if found.is_empty() {
         text.push_str(&format!("no definition of `{name}` found; try `find {name}` for every use\n"));
     }
+    if let [only] = found.as_slice() {
+        if let Some(code) = inline_code(index, &only.path, only.definition.line, DEFAULT_BUDGET) {
+            text.push('\n');
+            text.push_str(&code);
+        }
+    }
     Ok(json!({ "name": name, "definitions": found.iter().map(definition_value).collect::<Vec<_>>(), "total": found.len(), "text": text }))
 }
 
@@ -378,6 +418,11 @@ fn find_symbol(index: &Index, asked: &FindRequest) -> Result<Option<Value>, Refu
     let mut text = String::from("defined at:\n");
     for d in &defs {
         text.push_str(&format!("  {}:{}: {}\n", d.path, d.definition.line, shape::trim_line(&d.definition.signature, &asked.query)));
+    }
+    if let ([only], true) = (defs.as_slice(), asked.budget > 0) {
+        if let Some(code) = inline_code(index, &only.path, only.definition.line, asked.budget / 2) {
+            text.push_str(&code);
+        }
     }
     let hits = uses(index, &asked.query, &asked.scope)?;
     let budget = asked.budget.saturating_sub(shape::tokens(&text));
@@ -503,10 +548,11 @@ fn fragment(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> 
 
 /// The share of a question's words the best chunk must hold before passage search will answer with
 /// it. Below it the answer is empty, with the nearest definitions as hints, because a chunk that shares
-/// one word with a question is not an answer to it. Measured on the dev split with vectors (lever 8):
-/// at 0.30 a third of the questions with no answer in the code are turned away for a fifth of the
-/// answerable ones, which scored best of the values tried. It applies with vectors as well as without.
-pub const ABSTAIN_BELOW: f64 = 0.30;
+/// one word with a question is not an answer to it. Measured on the dev split with vectors and code
+/// ranked before documents (lever 8): at 0.31 F6 scored 0.116 and F8 0.554. A higher cutoff scores more
+/// on the weighted metric only by turning answerable questions away, and a lower one lets most
+/// questions with no answer in the code through. It applies with vectors as well as without.
+pub const ABSTAIN_BELOW: f64 = 0.31;
 
 /// The abstention threshold in force: `ABSTAIN_BELOW`, or `UNLUMINOUS_SEARCH_ABSTAIN` when the
 /// evaluation's improvement loop is trying another value (TDD §8.3, lever 8).

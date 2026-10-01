@@ -305,9 +305,8 @@ pub fn match_query(question: &str) -> Option<String> {
 ///
 /// With no kind given, code and tests come before documents. A question asked in English shares far
 /// more words with a design document than with the code it describes, so on the dev split a search
-/// over every kind put `tasks/*.md` above the function being asked about in most answers. So the
-/// table is searched once for each kind, code and tests are merged by score, and documents follow.
-/// The question is embedded once and the vector is bound to each search.
+/// over every kind put `tasks/*.md` above the function being asked about in most answers. So code
+/// and tests come first, in the engine's order, and documents follow them.
 ///
 /// @param conn - a connection on the store thread
 /// @param question - the question
@@ -316,21 +315,20 @@ pub fn match_query(question: &str) -> Option<String> {
 /// @param vectors - whether the table has vectors, so the search is hybrid
 pub fn search(conn: &Connection<'_>, question: &str, k: usize, kind: Option<&str>, vectors: bool) -> Result<Vec<PassageHit>, String> {
     let Some(query) = match_query(question) else { return Ok(Vec::new()) };
-    let vector = match vectors {
-        true => {
-            let made = conn.query("SELECT embed(?1)", &[Value::Text(format!("search_query: {question}"))], 1).map_err(|e| e.to_string())?;
-            made.value(0, 0).and_then(Value::bytes).map(|b| Value::Blob(b.to_vec()))
-        }
-        false => None,
-    };
+    // The question as the model is asked it. Embedded once and bound as bytes, the vector was taken
+    // as something other than a query vector and every search fell back to its words (F6 went from
+    // 0.15 to 0.02 on the dev split), so each search embeds it in its own statement.
+    let vector = vectors.then(|| Value::Text(format!("search_query: {question}")));
     if let Some(kind) = kind {
         return search_kind(conn, &query, vector.as_ref(), k, Some(kind));
     }
-    let mut first = search_kind(conn, &query, vector.as_ref(), k, Some("code"))?;
-    first.extend(search_kind(conn, &query, vector.as_ref(), k, Some("test"))?);
-    first.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    // One search over every kind, with documents moved after code and tests here. Filtering on the
+    // `kind` facet in a hybrid search returned the same few large files for every question, the
+    // ranking of the words alone (F6 0.15 to 0.04 on the dev split), so the facet is not used for this.
+    let found = search_kind(conn, &query, vector.as_ref(), k * 2, None)?;
+    let (mut first, docs): (Vec<_>, Vec<_>) = found.into_iter().partition(|hit| kind_of(&hit.path) != "docs");
     first.truncate(k);
-    first.extend(search_kind(conn, &query, vector.as_ref(), k.min(10), Some("docs"))?);
+    first.extend(docs.into_iter().take(10));
     Ok(first)
 }
 
@@ -338,7 +336,7 @@ pub fn search(conn: &Connection<'_>, question: &str, k: usize, kind: Option<&str
 ///
 /// @param conn - a connection on the store thread
 /// @param query - the words as an engine query
-/// @param vector - the question's vector, if the search is hybrid
+/// @param vector - the question as the model is asked it, if the search is hybrid
 /// @param k - how many to retrieve
 /// @param kind - only chunks of this kind, if given
 fn search_kind(conn: &Connection<'_>, query: &str, vector: Option<&Value>, k: usize, kind: Option<&str>) -> Result<Vec<PassageHit>, String> {
@@ -346,13 +344,13 @@ fn search_kind(conn: &Connection<'_>, query: &str, vector: Option<&Value>, k: us
     let mut filter = String::new();
     if let Some(kind) = kind {
         params.push(Value::Text(kind.to_owned()));
-        filter.push_str(&format!(" AND kind = ?{}", params.len()));
+        filter.push_str(&format!(" AND p.kind = ?{}", params.len()));
     }
     // With a vector the search is hybrid and the engine blends the two rankings (R2, R8). Without one
     // it is the words alone.
     if let Some(vector) = vector {
         params.push(vector.clone());
-        filter.push_str(&format!(" AND vector = ?{}", params.len()));
+        filter.push_str(&format!(" AND vector = embed(?{})", params.len()));
     }
     let sql = format!(
         "SELECT p.rowid, score(passage), confidence(passage), c.path, c.start_line, c.end_line, c.header FROM passage p JOIN chunk c ON c.id = p.rowid WHERE passage MATCH ?1 AND k = ?2{filter} ORDER BY rank"
