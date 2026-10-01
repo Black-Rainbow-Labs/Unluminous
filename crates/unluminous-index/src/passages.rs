@@ -303,23 +303,56 @@ pub fn match_query(question: &str) -> Option<String> {
 
 /// The chunks that best answer a question, best first.
 ///
+/// With no kind given, code and tests come before documents. A question asked in English shares far
+/// more words with a design document than with the code it describes, so on the dev split a search
+/// over every kind put `tasks/*.md` above the function being asked about in most answers. So the
+/// table is searched once for each kind, code and tests are merged by score, and documents follow.
+/// The question is embedded once and the vector is bound to each search.
+///
 /// @param conn - a connection on the store thread
 /// @param question - the question
 /// @param k - how many to retrieve
 /// @param kind - only chunks of this kind, if given
+/// @param vectors - whether the table has vectors, so the search is hybrid
 pub fn search(conn: &Connection<'_>, question: &str, k: usize, kind: Option<&str>, vectors: bool) -> Result<Vec<PassageHit>, String> {
     let Some(query) = match_query(question) else { return Ok(Vec::new()) };
-    let mut params = vec![Value::Text(query), Value::Integer(k as i64)];
+    let vector = match vectors {
+        true => {
+            let made = conn.query("SELECT embed(?1)", &[Value::Text(format!("search_query: {question}"))], 1).map_err(|e| e.to_string())?;
+            made.value(0, 0).and_then(Value::bytes).map(|b| Value::Blob(b.to_vec()))
+        }
+        false => None,
+    };
+    if let Some(kind) = kind {
+        return search_kind(conn, &query, vector.as_ref(), k, Some(kind));
+    }
+    let mut first = search_kind(conn, &query, vector.as_ref(), k, Some("code"))?;
+    first.extend(search_kind(conn, &query, vector.as_ref(), k, Some("test"))?);
+    first.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    first.truncate(k);
+    first.extend(search_kind(conn, &query, vector.as_ref(), k.min(10), Some("docs"))?);
+    Ok(first)
+}
+
+/// One search of the passage table: the words, and the question's vector when there is one.
+///
+/// @param conn - a connection on the store thread
+/// @param query - the words as an engine query
+/// @param vector - the question's vector, if the search is hybrid
+/// @param k - how many to retrieve
+/// @param kind - only chunks of this kind, if given
+fn search_kind(conn: &Connection<'_>, query: &str, vector: Option<&Value>, k: usize, kind: Option<&str>) -> Result<Vec<PassageHit>, String> {
+    let mut params = vec![Value::Text(query.to_owned()), Value::Integer(k as i64)];
     let mut filter = String::new();
     if let Some(kind) = kind {
         params.push(Value::Text(kind.to_owned()));
         filter.push_str(&format!(" AND kind = ?{}", params.len()));
     }
-    // With vectors the search is hybrid: the question is embedded as a query and the engine blends the
-    // two rankings (R2, R8). Without them it is the words alone.
-    if vectors {
-        params.push(Value::Text(format!("search_query: {question}")));
-        filter.push_str(&format!(" AND vector = embed(?{})", params.len()));
+    // With a vector the search is hybrid and the engine blends the two rankings (R2, R8). Without one
+    // it is the words alone.
+    if let Some(vector) = vector {
+        params.push(vector.clone());
+        filter.push_str(&format!(" AND vector = ?{}", params.len()));
     }
     let sql = format!(
         "SELECT p.rowid, score(passage), confidence(passage), c.path, c.start_line, c.end_line, c.header FROM passage p JOIN chunk c ON c.id = p.rowid WHERE passage MATCH ?1 AND k = ?2{filter} ORDER BY rank"
