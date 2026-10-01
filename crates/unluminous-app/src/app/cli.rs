@@ -84,6 +84,7 @@ mod cli_modal;
 mod cli_panel;
 mod cli_plugins;
 mod cli_run;
+mod cli_search;
 mod cli_settings;
 mod cli_space;
 mod cli_tab;
@@ -834,6 +835,7 @@ impl UnluminousApp {
             "project" => self.cli_project(request, verb),
             "mcp" => self.cli_mcp(request, verb),
             "update" => self.cli_update(request, verb),
+            "search" => self.cli_search(request, verb),
             _ => no(
                 request,
                 code::UNKNOWN_COMMAND,

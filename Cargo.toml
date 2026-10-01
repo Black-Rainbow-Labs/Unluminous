@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/unluminous-core", "crates/unluminous-chat", "crates/unluminous-db", "crates/unluminous-dap", "crates/unluminous-git", "crates/unluminous-terminal", "crates/unluminous-app", "unluminous-cli"]
+members = ["crates/unluminous-core", "crates/unluminous-chat", "crates/unluminous-db", "crates/unluminous-dap", "crates/unluminous-git", "crates/unluminous-terminal", "crates/unluminous-app", "crates/unluminous-index", "unluminous-cli"]
 
 [workspace.package]
 version = "0.57.1"
@@ -15,6 +15,7 @@ unluminous-db = { path = "crates/unluminous-db" }
 unluminous-dap = { path = "crates/unluminous-dap" }
 unluminous-git = { path = "crates/unluminous-git" }
 unluminous-terminal = { path = "crates/unluminous-terminal" }
+unluminous-index = { path = "crates/unluminous-index" }
 # The command catalogue and the wire format the CLI and the window share. It lives beside the client
 # it belongs to rather than under `crates`, because `unluminous-cli/` holds the CLI's documentation as
 # well as its code and the two are read together.

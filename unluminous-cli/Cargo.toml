@@ -22,6 +22,11 @@ path = "src/main.rs"
 
 [dependencies]
 serde_json.workspace = true
+# The code index, for `search serve` and for hosting it inside an MCP server
+# (`tasks/task-2138-unluminous-code-index-tdd.md`). It has no user interface dependency, so the client
+# still has no window, graphics card or fonts behind it.
+unluminous-index.workspace = true
+blake3 = "1.5"
 
 # Asking the operating system whether a process is still running, which is how a window that was
 # killed rather than closed is told from one that is there. It is one call — `kill(pid, 0)` on Unix

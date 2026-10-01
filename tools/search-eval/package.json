@@ -1,0 +1,10 @@
+{
+  "name": "unluminous-search-eval",
+  "private": true,
+  "type": "module",
+  "description": "The evaluation harness for the code index: ripgrep against the index on frozen query sets (tasks/task-2138-unluminous-code-index-tdd.md section 7).",
+  "dependencies": {
+    "@sourcegraph/scip-typescript": "^0.4.0",
+    "protobufjs": "^7.5.0"
+  }
+}

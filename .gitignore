@@ -65,3 +65,8 @@ installer/macos/*.p8
 # part of the project. One appeared in `design/` the moment that folder was opened to add the background
 # pictures.
 .DS_Store
+
+# The search evaluation harness installs its own two packages, and writes its runs outside the repository
+# (tools/search-eval/lib/config.mjs evalRoot).
+/tools/search-eval/node_modules/
+/_search-eval/

@@ -1,0 +1,44 @@
+[package]
+name = "unluminous-index"
+description = "The code index: the file set, trigram exact search with ripgrep's results, symbols, chunks and passage search, kept in one Inillucent file per checkout."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+unluminous-core.workspace = true
+# The one file per checkout everything is kept in. See `tasks/task-2138-unluminous-code-index-tdd.md`
+# section 6.2 for the schema and R1 for why this is the crates.io release with `embed`.
+inillucent-driver.workspace = true
+serde_json.workspace = true
+# The crates ripgrep is built from. Walking the tree with `ignore` and verifying candidates with
+# `grep-searcher` and `grep-regex` is what makes the exact family give the same `(path, line)` set as
+# `rg`: the same ignore rules, the same binary detection, the same encoding sniffing and the same regex
+# engine, rather than a second implementation of each that is nearly the same.
+ignore = "0.4"
+grep-searcher = "0.1"
+grep-regex = "0.1"
+grep-matcher = "0.1"
+# The parser ripgrep's regex engine uses, to turn a pattern into a trigram query.
+regex-syntax = "0.8"
+regex = "1.11"
+# Content is held compressed in memory and in the index file; lz4 is fast enough to decompress
+# candidates inside a search's budget.
+lz4_flex = { version = "0.11", default-features = false, features = ["safe-encode", "safe-decode", "frame"] }
+# The content hash a file, a chunk and an embedding are keyed by.
+blake3 = "1.5"
+# File events: ReadDirectoryChangesW on Windows, FSEvents on macOS, inotify on Linux.
+notify = "8"
+rayon = "1.10"
+# The Glob tool's globs, for `search files`. Already in the tree under `ignore`.
+globset = "0.4"
+memchr = "2.7"
+# A file with a UTF-16 byte order mark is searched by ripgrep as the text it decodes to, so its trigrams
+# are taken from that text. Already in the tree under grep-searcher.
+encoding_rs = "0.8"
+crossbeam-channel = "0.5"
+
+[dev-dependencies]
+tempfile = "3"
+sha2.workspace = true

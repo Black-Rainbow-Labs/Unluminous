@@ -3831,5 +3831,81 @@ unluminous-cli mcp tools --count --areas editor,git
 
 Answered by the CLI itself; no Unluminous needs to be running.
 
+## search — the code index: find text, definitions, uses and files without ripgrep
+
+Use this instead of Grep, Glob and grep in a shell. `find` gives the lines ripgrep would, grouped by file and cut to a token budget, and it says how many hits were left out. `files` finds a file by name or glob. The index is kept current as files change, so a file you just wrote is searched as it now is. Needs no window.
+
+### search find
+
+```
+unluminous-cli search find <query> [--mode <auto|literal|regex>] [--path <path>] [--glob <glob>] [--type <name>] [--ignore-case] [--budget <tokens>] [--root <folder>]
+```
+
+Search the code: the same lines ripgrep would print for a literal or a regex, already grouped by file and cut to a token budget, from an index kept current as files change.
+
+- `query` — What to look for: text, or a regex when it has regex characters in it or --mode regex is given. Everything after it on the line belongs to it.
+
+- `--mode <auto|literal|regex>` — How to read the query. `auto` by default: a regex when it has regex characters, plain text otherwise.
+- `--path <path>` — A folder or file inside the project to search, instead of all of it.
+- `--glob <glob>` — Only files matching these globs, as the Grep tool takes them: `*.rs`, `!*.test.ts`, `src/**`.
+- `--type <name>` — Only files of this ripgrep type, such as `rust`, `ts` or `py`.
+- `--ignore-case` — Match regardless of case.
+- `--budget <tokens>` — How much text to answer with, in tokens. 1500 by default; 0 for every line.
+- `--root <folder>` — The checkout to search. The git checkout above the working folder by default.
+
+```sh
+unluminous-cli search find resolveSkipToken
+unluminous-cli search find "fn \w+_token" --mode regex --glob *.rs
+unluminous-cli search find watchdog --ignore-case --path backend --json
+```
+
+### search files
+
+```
+unluminous-cli search files <query> [--limit <number>] [--root <folder>]
+```
+
+Files whose path matches a name, a fragment of one, or a glob, best match first. Use it instead of Glob or find.
+
+- `query` — A file name, part of one, or a glob such as `**/*.test.ts`. Everything after it on the line belongs to it.
+
+- `--limit <number>` — How many to list. 20 by default.
+- `--root <folder>` — The checkout to search. The git checkout above the working folder by default.
+
+```sh
+unluminous-cli search files layout.rs
+unluminous-cli search files "*.test.ts" --limit 50
+```
+
+### search status
+
+```
+unluminous-cli search status [--root <folder>]
+```
+
+Whether the index of this checkout is ready, how many files it holds, how much memory it uses, where its file is and which process hosts it.
+
+- `--root <folder>` — The checkout. The git checkout above the working folder by default.
+
+```sh
+unluminous-cli search status
+unluminous-cli search status --json
+```
+
+### search serve
+
+```
+unluminous-cli search serve [--root <folder>]
+```
+
+Run the index host for a checkout without a window. A search starts one on its own when none is running, so this is only needed to start it ahead of time.
+
+- `--root <folder>` — The checkout. The git checkout above the working folder by default.
+
+```sh
+unluminous-cli search serve
+unluminous-cli search serve --root C:/code/project
+```
+
 
 <!-- end generated reference -->

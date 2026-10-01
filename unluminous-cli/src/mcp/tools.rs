@@ -1621,6 +1621,11 @@ mod tests {
         //            what makes the notice's two buttons reachable by an agent. Their summaries were
         //            cut to one sentence each first, which took the figure from 24,730 to this, and
         //            the ceiling moves to 25,000 for the rest.
+        //   25,241   `task-2139` adding the `search` area's first four verbs, `find`, `files`,
+        //            `status` and `serve`: the code index agents use instead of Grep and Glob. The
+        //            ceiling moves to 27,000, because the area's other verbs (`def`, `refs`,
+        //            `fragment`, `outline`) follow in the same ticket and are recorded below when
+        //            they land.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
@@ -1628,7 +1633,7 @@ mod tests {
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
         assert!(
-            grouped.len() / 4 < 25_000,
+            grouped.len() / 4 < 27_000,
             "grouped MCP schema exceeded budget: {} bytes",
             grouped.len()
         );

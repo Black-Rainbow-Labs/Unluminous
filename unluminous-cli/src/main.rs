@@ -101,10 +101,26 @@ fn run(words: &[String]) -> i32 {
     if typed.global.dry_run {
         return explain(command, &typed);
     }
+    // The code index is answered by its own host process, never by a window (`search`).
+    if command.area == "search" {
+        return searched(command, &typed);
+    }
     if command.local {
         return locally(command, &typed);
     }
     remotely(command, typed)
+}
+
+/// A `search` command: run the index host for `search serve`, and otherwise ask the host of the
+/// checkout, starting one when none is running, so the next command finds it warm.
+fn searched(command: &'static Command, typed: &Typed) -> i32 {
+    let root = unluminous_cli::search::project_root(typed.arguments.get("root").and_then(Value::as_str));
+    if command.verb == "serve" {
+        return unluminous_cli::search::serve(&root);
+    }
+    let timeout = client_timeout(typed);
+    let reply = unluminous_cli::search::ask(&root, &command.wire(), &typed.arguments, timeout, unluminous_cli::search::Hosting::Spawn);
+    report(&reply, &typed.global)
 }
 
 /// The version, in whichever form was asked for.

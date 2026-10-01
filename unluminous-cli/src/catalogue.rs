@@ -563,6 +563,7 @@ pub fn area_title(area: &'static str) -> &'static str {
         "action" => "action — every menu entry there is",
         "project" => "project — the folder this window is showing",
         "mcp" => "mcp — the server an AI agent drives Unluminous through",
+        "search" => "search — the code index: find text, definitions, uses and files without ripgrep",
         other => other,
     }
 }
@@ -595,6 +596,7 @@ pub fn area_note(area: &'static str) -> &'static str {
         "action" => "The escape hatch, and the guarantee: every entry on every menu has a name here, and the list is built by walking the real menus, so a menu entry added to Unluminous tomorrow can be run from the command line tomorrow.",
         "project" => "A project is a window. Opening a second project is `unluminous-cli launch <folder>`, which starts a second Unluminous; `project open` changes the folder this window is showing.",
         "mcp" => "The Model Context Protocol server, which is how an AI agent discovers and drives Unluminous without being handed a document first. Its tools are generated from this same catalogue, so a command added to Unluminous is a tool the day it is added.",
+        "search" => "Use this instead of Grep, Glob and grep in a shell. `find` gives the lines ripgrep would, grouped by file and cut to a token budget, and it says how many hits were left out. `files` finds a file by name or glob. The index is kept current as files change, so a file you just wrote is searched as it now is. Needs no window.",
         _ => "",
     }
 }
@@ -3251,6 +3253,57 @@ pub const COMMANDS: &[Command] = &[
             "unluminous-cli mcp tools --count --areas editor,git",
         ],
         local: true,
+    },
+    Command {
+        area: "search",
+        verb: "find",
+        summary: "Search the code: the same lines ripgrep would print for a literal or a regex, already grouped by file and cut to a token budget, from an index kept current as files change.",
+        arguments: &[rest("query", true, "What to look for: text, or a regex when it has regex characters in it or --mode regex is given.")],
+        flags: &[
+            option("mode", "auto|literal|regex", "How to read the query. `auto` by default: a regex when it has regex characters, plain text otherwise."),
+            option("path", "path", "A folder or file inside the project to search, instead of all of it."),
+            option("glob", "glob", "Only files matching these globs, as the Grep tool takes them: `*.rs`, `!*.test.ts`, `src/**`."),
+            option("type", "name", "Only files of this ripgrep type, such as `rust`, `ts` or `py`."),
+            switch("ignore-case", "Match regardless of case."),
+            whole_option("budget", "tokens", "How much text to answer with, in tokens. 1500 by default; 0 for every line."),
+            option("root", "folder", "The checkout to search. The git checkout above the working folder by default."),
+        ],
+        examples: &[
+            "unluminous-cli search find resolveSkipToken",
+            "unluminous-cli search find \"fn \\w+_token\" --mode regex --glob *.rs",
+            "unluminous-cli search find watchdog --ignore-case --path backend --json",
+        ],
+        local: false,
+    },
+    Command {
+        area: "search",
+        verb: "files",
+        summary: "Files whose path matches a name, a fragment of one, or a glob, best match first. Use it instead of Glob or find.",
+        arguments: &[rest("query", true, "A file name, part of one, or a glob such as `**/*.test.ts`.")],
+        flags: &[
+            whole_option("limit", "number", "How many to list. 20 by default."),
+            option("root", "folder", "The checkout to search. The git checkout above the working folder by default."),
+        ],
+        examples: &["unluminous-cli search files layout.rs", "unluminous-cli search files \"*.test.ts\" --limit 50"],
+        local: false,
+    },
+    Command {
+        area: "search",
+        verb: "status",
+        summary: "Whether the index of this checkout is ready, how many files it holds, how much memory it uses, where its file is and which process hosts it.",
+        arguments: NO_ARGUMENTS,
+        flags: &[option("root", "folder", "The checkout. The git checkout above the working folder by default.")],
+        examples: &["unluminous-cli search status", "unluminous-cli search status --json"],
+        local: false,
+    },
+    Command {
+        area: "search",
+        verb: "serve",
+        summary: "Run the index host for a checkout without a window. A search starts one on its own when none is running, so this is only needed to start it ahead of time.",
+        arguments: NO_ARGUMENTS,
+        flags: &[option("root", "folder", "The checkout. The git checkout above the working folder by default.")],
+        examples: &["unluminous-cli search serve", "unluminous-cli search serve --root C:/code/project"],
+        local: false,
     },
 ];
 
