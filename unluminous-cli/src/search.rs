@@ -236,7 +236,11 @@ fn ask_running(root: &Path, command: &str, arguments: &Map<String, Value>, timeo
 /// @param root - the root
 fn spawn_host(root: &Path) -> bool {
     let Ok(exe) = std::env::current_exe() else { return false };
-    let exe = if exe.file_stem().is_some_and(|s| s == "unluminous-cli") { exe } else { exe.with_file_name(if cfg!(windows) { "unluminous-cli.exe" } else { "unluminous-cli" }) };
+    // This program when it is the CLI under any name that starts with its own (a copy such as
+    // `unluminous-cli-acf5c46.exe` is how the evaluation runs it), and the CLI beside it when this is the
+    // window or a test.
+    let is_cli = exe.file_stem().is_some_and(|s| s.to_string_lossy().starts_with("unluminous-cli"));
+    let exe = if is_cli { exe } else { exe.with_file_name(if cfg!(windows) { "unluminous-cli.exe" } else { "unluminous-cli" }) };
     let mut command = std::process::Command::new(exe);
     command.args(["search", "serve", "--root"]).arg(root).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     #[cfg(windows)]
