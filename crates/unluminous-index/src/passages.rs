@@ -16,7 +16,7 @@
 
 use inillucent_driver::{Connection, Value};
 
-use crate::exact::{Exact, FileRecord};
+use crate::exact::FileRecord;
 use crate::outline::{self, CHUNK_BUDGET};
 use crate::symbols::is_secondary;
 use crate::words;
@@ -102,15 +102,15 @@ pub fn create(conn: &Connection<'_>) -> Result<(), String> {
 /// Writes every chunk of every passage source, replacing what the tables held, in one transaction.
 ///
 /// @param conn - a connection on the store thread
-/// @param exact - the exact index
-pub fn rebuild(conn: &Connection<'_>, exact: &Exact) -> Result<usize, String> {
+/// @param records - the files, copied out of the index so no lock is held while this runs
+pub fn rebuild(conn: &Connection<'_>, records: &[FileRecord]) -> Result<usize, String> {
     // Dropped rather than emptied, because a version change can change the table's own declaration.
     let _ = conn.execute("DROP TABLE IF EXISTS passage", &[]);
     let _ = conn.execute("DROP TABLE IF EXISTS chunk", &[]);
     create(conn)?;
     let tx = conn.begin().map_err(|e| e.to_string())?;
     let mut next = 1i64;
-    for record in exact.files.iter().flatten().filter(|r| is_passage_source(r)) {
+    for record in records.iter().filter(|r| is_passage_source(r)) {
         next = write_file(&tx, record, next)?;
     }
     tx.commit().map_err(|e| e.to_string())?;

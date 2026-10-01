@@ -390,11 +390,10 @@ fn build_passages(store: &Store, exact: &RwLock<Option<Exact>>, status: &Mutex<S
             Ok(match rows.value(0, 0) { Some(inillucent_driver::Value::Integer(n)) => *n as usize, _ => 0 })
         })
     } else {
-        let guard = exact.read().expect("exact");
-        match guard.as_ref() {
-            Some(index) => passages::rebuild(&session, index),
-            None => Ok(0),
-        }
+        // The passage sources are copied under a short read lock and written with none held, so a
+        // query is never kept waiting by a rebuild (on ai-service one takes minutes).
+        let records: Vec<FileRecord> = exact.read().expect("exact").as_ref().map(|index| index.files.iter().flatten().filter(|r| passages::is_passage_source(r)).cloned().collect()).unwrap_or_default();
+        passages::rebuild(&session, &records)
     };
     let mut st = status.lock().expect("status");
     match built {
