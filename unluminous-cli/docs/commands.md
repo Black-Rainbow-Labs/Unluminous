@@ -3738,7 +3738,7 @@ The Model Context Protocol server, which is how an AI agent discovers and drives
 ### mcp serve
 
 ```
-unluminous-cli mcp serve [--transport <stdio|http>] [--port <number>] [--tools <grouped|every>] [--instance <which>]
+unluminous-cli mcp serve [--transport <stdio|http>] [--port <number>] [--tools <grouped|every>] [--areas <list>] [--instance <which>]
 ```
 
 Run the Model Context Protocol server, which is how an AI agent drives Unluminous. Over stdin and stdout by default, which is what an agent that launches it wants; over HTTP with `--transport http`.
@@ -3746,11 +3746,13 @@ Run the Model Context Protocol server, which is how an AI agent drives Unluminou
 - `--transport <stdio|http>` — How the client talks to it. `stdio` by default.
 - `--port <number>` — Which port to listen on, for `--transport http`. 7345 by default.
 - `--tools <grouped|every>` — One tool per area, or one tool per command. `grouped` by default.
+- `--areas <list>` — Offer only these areas' tools, separated by commas, such as `search`. All of them by default.
 - `--instance <which>` — Which running Unluminous to drive, when several are running.
 
 ```sh
 unluminous-cli mcp serve
 unluminous-cli mcp serve --transport http --port 7345
+unluminous-cli mcp serve --areas search
 ```
 
 Answered by the CLI itself; no Unluminous needs to be running.

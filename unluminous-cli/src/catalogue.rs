@@ -3195,9 +3195,10 @@ pub const COMMANDS: &[Command] = &[
             option("transport", "stdio|http", "How the client talks to it. `stdio` by default."),
             whole_option("port", "number", "Which port to listen on, for `--transport http`. 7345 by default."),
             option("tools", "grouped|every", "One tool per area, or one tool per command. `grouped` by default."),
+            option("areas", "list", "Offer only these areas' tools, separated by commas, such as `search`. All of them by default."),
             option("instance", "which", "Which running Unluminous to drive, when several are running."),
         ],
-        examples: &["unluminous-cli mcp serve", "unluminous-cli mcp serve --transport http --port 7345"],
+        examples: &["unluminous-cli mcp serve", "unluminous-cli mcp serve --transport http --port 7345", "unluminous-cli mcp serve --areas search"],
         local: true,
     },
     Command {
