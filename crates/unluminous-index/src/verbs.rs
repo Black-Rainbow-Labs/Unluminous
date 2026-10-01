@@ -90,7 +90,7 @@ fn looks_like_regex(query: &str) -> bool {
 /// @param verb - the verb, such as `find`
 /// @param args - the request's arguments
 pub fn answer(index: &Index, verb: &str, args: &Map<String, Value>) -> Result<Value, Refusal> {
-    match verb {
+    let mut value = match verb {
         "find" => find(index, args),
         "files" => files(index, args),
         "def" => def(index, args),
@@ -99,7 +99,13 @@ pub fn answer(index: &Index, verb: &str, args: &Map<String, Value>) -> Result<Va
         "fragment" => fragment(index, args),
         "status" => Ok(status(index)),
         other => Err(Refusal { code: "unknown-command", message: format!("There is no search verb called `{other}`.") }),
+    }?;
+    // Says the caller asked for the structured result, which the MCP server only sends when asked:
+    // an agent is shown the text, a program asks for the fields (`mcp::server::tool_result`).
+    if switch(args, "structured") || verb == "status" {
+        value["structured"] = Value::Bool(true);
     }
+    Ok(value)
 }
 
 /// What `search find` was asked, read out of its arguments.

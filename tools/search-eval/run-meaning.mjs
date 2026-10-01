@@ -73,7 +73,7 @@ function questionOf(query) {
  * @param budget - the token budget
  */
 async function indexAnswer(server, query, budget) {
-  const { message, ms } = await server.call('find', { query: questionOf(query), mode: 'semantic', budget });
+  const { message, ms } = await server.call('find', { query: questionOf(query), mode: 'semantic', budget, structured: true });
   const value = message.result?.structuredContent || {};
   const hits = (value.hits || []).map(([p, start, header, end]) => ({ path: p, line: start, end, header }));
   return { ms, hits, files: value.files || [...new Set(hits.map((h) => h.path))], empty: hits.length === 0, text: message.result?.content?.map((c) => c.text).join('\n') || '' };

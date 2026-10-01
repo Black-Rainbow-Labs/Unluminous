@@ -3267,6 +3267,7 @@ pub const COMMANDS: &[Command] = &[
             option("type", "name", "Only files of this ripgrep type, such as `rust`, `ts` or `py`."),
             switch("ignore-case", "Match regardless of case."),
             whole_option("budget", "tokens", "How much text to answer with, in tokens. 1500 by default; 0 for every line."),
+            switch("structured", "Also answer with the fields behind the text, for a program rather than an agent."),
             option("root", "folder", "The checkout to search. The git checkout above the working folder by default."),
         ],
         examples: &[
@@ -3284,6 +3285,7 @@ pub const COMMANDS: &[Command] = &[
         flags: &[
             whole_option("limit", "number", "How many definitions to list. 10 by default."),
             option("path", "path", "Only definitions under this folder."),
+            switch("structured", "Also answer with the fields behind the text, for a program rather than an agent."),
             option("root", "folder", "The checkout to search. The git checkout above the working folder by default."),
         ],
         examples: &["unluminous-cli search def resolveSkipToken", "unluminous-cli search def Layout --path crates/unluminous-core --json"],
@@ -3298,6 +3300,7 @@ pub const COMMANDS: &[Command] = &[
             option("path", "path", "Only uses under this folder or in this file."),
             option("glob", "glob", "Only files matching these globs."),
             whole_option("budget", "tokens", "How much text to answer with, in tokens. 1500 by default; 0 for every use."),
+            switch("structured", "Also answer with the fields behind the text, for a program rather than an agent."),
             option("root", "folder", "The checkout to search. The git checkout above the working folder by default."),
         ],
         examples: &["unluminous-cli search refs resolveSkipToken", "unluminous-cli search refs relayout --path crates --budget 0 --json"],
@@ -3311,6 +3314,7 @@ pub const COMMANDS: &[Command] = &[
         flags: &[
             whole_option("line", "number", "The line, when the target is a file alone."),
             whole_option("context", "lines", "Extra lines before and after it. None by default."),
+            switch("structured", "Also answer with the fields behind the text, for a program rather than an agent."),
             option("root", "folder", "The checkout. The git checkout above the working folder by default."),
         ],
         examples: &["unluminous-cli search fragment crates/unluminous-core/src/layout.rs:386", "unluminous-cli search fragment backend/src/main.ts --line 40 --context 5"],
@@ -3333,6 +3337,8 @@ pub const COMMANDS: &[Command] = &[
         flags: &[
             whole_option("limit", "number", "How many to list. 20 by default."),
             option("path", "folder", "Only files under this folder; a glob is matched relative to it, as the Glob tool's path is."),
+            switch("structured", "Also answer with the fields behind the text, for a program rather than an agent."),
+            switch("structured", "Also answer with the fields behind the text, for a program rather than an agent."),
             option("root", "folder", "The checkout to search. The git checkout above the working folder by default."),
         ],
         examples: &["unluminous-cli search files layout.rs", "unluminous-cli search files \"*.test.ts\" --limit 50", "unluminous-cli search files \"*.rs\" --path crates/unluminous-core"],

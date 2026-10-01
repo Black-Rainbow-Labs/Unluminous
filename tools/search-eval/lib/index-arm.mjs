@@ -7,10 +7,21 @@
 // cost budget of section 2.2, reported separately.
 
 import { spawn, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { REPO, evalRoot } from './config.mjs';
 
-export const CLI = process.env.SEARCH_EVAL_CLI || path.join(REPO, 'target', 'release', process.platform === 'win32' ? 'unluminous-cli.exe' : 'unluminous-cli');
+/**
+ * The CLI the runs use: `SEARCH_EVAL_CLI`, or the copy `stage.mjs` last put in the eval root, or the
+ * release build when nothing has been staged.
+ */
+function stagedCli() {
+  if (process.env.SEARCH_EVAL_CLI) return process.env.SEARCH_EVAL_CLI;
+  const current = path.join(evalRoot(), 'bin', 'current.txt');
+  if (fs.existsSync(current)) return fs.readFileSync(current, 'utf8').trim();
+  return path.join(REPO, 'target', 'release', process.platform === 'win32' ? 'unluminous-cli.exe' : 'unluminous-cli');
+}
+export const CLI = stagedCli();
 const CACHE = () => path.join(evalRoot(), 'index-cache');
 
 /**
@@ -155,7 +166,7 @@ export function indexArm(name) {
     async time(query, dir) {
       const server = await serverFor(dir);
       const [verb, args] = indexCallFor(query);
-      const { message, ms } = await server.call(verb, args);
+      const { message, ms } = await server.call(verb, { ...args, structured: true });
       return { ms, answer: indexAnswer(query, message) };
     },
     async order(query, dir) { return (await this.time(query, dir)).answer; },

@@ -221,7 +221,13 @@ impl<D: Driver> Server<D> {
             content.push(picture);
         }
         let mut answer = json!({ "content": content, "isError": false });
-        if !reply.result.is_null() {
+        // **A search's structured result goes out only when the call asks for it** (`task-2139`).
+        // Claude Code shows the model `structuredContent` rather than the text when both are sent,
+        // so an agent searching the code read every answer twice, the hits as JSON and again as the
+        // text: measured, one `find` was 13,149 characters of JSON. The text is what the search
+        // area shapes to a token budget; a program asks for the rest with `structured`.
+        let wanted = command.area != "search" || reply.result.get("structured").and_then(Value::as_bool).unwrap_or(false);
+        if !reply.result.is_null() && wanted {
             answer["structuredContent"] = reply.result.clone();
         }
         answer

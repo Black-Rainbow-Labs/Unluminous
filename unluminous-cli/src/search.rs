@@ -330,7 +330,12 @@ fn without_a_host(root: &Path, command: &str, arguments: &Map<String, Value>) ->
         return Reply::failed(command, code::NOT_RUNNING, "No index host could be started for this folder, and only `search find` can be answered without one.");
     }
     match verbs::scan_without_index(root, arguments) {
-        Ok(value) => Reply::done(command, "", value),
+        Ok(mut value) => {
+            if arguments.get("structured").and_then(Value::as_bool).unwrap_or(false) {
+                value["structured"] = Value::Bool(true);
+            }
+            Reply::done(command, "", value)
+        }
         Err(refusal) => Reply::failed(command, refusal.code, refusal.message),
     }
 }

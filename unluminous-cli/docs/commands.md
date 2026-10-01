@@ -3840,7 +3840,7 @@ Use this instead of Grep, Glob, grep in a shell, and reading whole files. `find`
 ### search find
 
 ```
-unluminous-cli search find <query> [--mode <auto|literal|regex|symbol|semantic>] [--path <path>] [--glob <glob>] [--type <name>] [--ignore-case] [--budget <tokens>] [--root <folder>]
+unluminous-cli search find <query> [--mode <auto|literal|regex|symbol|semantic>] [--path <path>] [--glob <glob>] [--type <name>] [--ignore-case] [--budget <tokens>] [--structured] [--root <folder>]
 ```
 
 Search the code: the same lines ripgrep would print for a literal or a regex, already grouped by file and cut to a token budget, from an index kept current as files change.
@@ -3853,6 +3853,7 @@ Search the code: the same lines ripgrep would print for a literal or a regex, al
 - `--type <name>` — Only files of this ripgrep type, such as `rust`, `ts` or `py`.
 - `--ignore-case` — Match regardless of case.
 - `--budget <tokens>` — How much text to answer with, in tokens. 1500 by default; 0 for every line.
+- `--structured` — Also answer with the fields behind the text, for a program rather than an agent.
 - `--root <folder>` — The checkout to search. The git checkout above the working folder by default.
 
 ```sh
@@ -3864,7 +3865,7 @@ unluminous-cli search find watchdog --ignore-case --path backend --json
 ### search def
 
 ```
-unluminous-cli search def <name> [--limit <number>] [--path <path>] [--root <folder>]
+unluminous-cli search def <name> [--limit <number>] [--path <path>] [--structured] [--root <folder>]
 ```
 
 Where a name is defined: each definition's path, line and signature line, the likeliest first.
@@ -3873,6 +3874,7 @@ Where a name is defined: each definition's path, line and signature line, the li
 
 - `--limit <number>` — How many definitions to list. 10 by default.
 - `--path <path>` — Only definitions under this folder.
+- `--structured` — Also answer with the fields behind the text, for a program rather than an agent.
 - `--root <folder>` — The checkout to search. The git checkout above the working folder by default.
 
 ```sh
@@ -3883,7 +3885,7 @@ unluminous-cli search def Layout --path crates/unluminous-core --json
 ### search refs
 
 ```
-unluminous-cli search refs <name> [--path <path>] [--glob <glob>] [--budget <tokens>] [--root <folder>]
+unluminous-cli search refs <name> [--path <path>] [--glob <glob>] [--budget <tokens>] [--structured] [--root <folder>]
 ```
 
 Every use of a name, grouped by file, the project's own source before tests and docs, and in each file the lines that define it first.
@@ -3893,6 +3895,7 @@ Every use of a name, grouped by file, the project's own source before tests and 
 - `--path <path>` — Only uses under this folder or in this file.
 - `--glob <glob>` — Only files matching these globs.
 - `--budget <tokens>` — How much text to answer with, in tokens. 1500 by default; 0 for every use.
+- `--structured` — Also answer with the fields behind the text, for a program rather than an agent.
 - `--root <folder>` — The checkout to search. The git checkout above the working folder by default.
 
 ```sh
@@ -3903,7 +3906,7 @@ unluminous-cli search refs relayout --path crates --budget 0 --json
 ### search fragment
 
 ```
-unluminous-cli search fragment <target> [--line <number>] [--context <lines>] [--root <folder>]
+unluminous-cli search fragment <target> [--line <number>] [--context <lines>] [--structured] [--root <folder>]
 ```
 
 The function or section around a line, with line numbers and the signatures that enclose it, so you can read it without reading the whole file.
@@ -3912,6 +3915,7 @@ The function or section around a line, with line numbers and the signatures that
 
 - `--line <number>` — The line, when the target is a file alone.
 - `--context <lines>` — Extra lines before and after it. None by default.
+- `--structured` — Also answer with the fields behind the text, for a program rather than an agent.
 - `--root <folder>` — The checkout. The git checkout above the working folder by default.
 
 ```sh
@@ -3939,7 +3943,7 @@ unluminous-cli search outline README.md --json
 ### search files
 
 ```
-unluminous-cli search files <query> [--limit <number>] [--path <folder>] [--root <folder>]
+unluminous-cli search files <query> [--limit <number>] [--path <folder>] [--structured] [--structured] [--root <folder>]
 ```
 
 Files whose path matches a name, a fragment of one, or a glob, best match first. Use it instead of Glob or find.
@@ -3948,6 +3952,8 @@ Files whose path matches a name, a fragment of one, or a glob, best match first.
 
 - `--limit <number>` — How many to list. 20 by default.
 - `--path <folder>` — Only files under this folder; a glob is matched relative to it, as the Glob tool's path is.
+- `--structured` — Also answer with the fields behind the text, for a program rather than an agent.
+- `--structured` — Also answer with the fields behind the text, for a program rather than an agent.
 - `--root <folder>` — The checkout to search. The git checkout above the working folder by default.
 
 ```sh
