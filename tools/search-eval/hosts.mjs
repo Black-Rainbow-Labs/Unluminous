@@ -23,7 +23,9 @@ for (;;) {
   for (const corpus of CORPORA.filter((c) => c.name !== 'linux')) {
     const s = statusOf(corpus);
     console.log(`${corpus.name}: ready ${s?.ready}, passages ${s?.passages} (${s?.passagesReady ? 'built' : 'building'}), vectors ${s?.vectors}, can embed ${s?.canEmbed}${s?.storeError ? `, error ${s.storeError}` : ''}`);
-    if (!s || !s.passagesReady || (s.canEmbed && s.vectors < s.passages)) pending = true;
+    // A host that has just started can report no vectors and no embedding for a moment, so a corpus is
+    // only finished when it holds a vector for every passage. Every evaluation host can embed.
+    if (!s || !s.passagesReady || s.vectors < s.passages) pending = true;
   }
   if (!wait || !pending) break;
   await new Promise((r) => setTimeout(r, 60_000));
