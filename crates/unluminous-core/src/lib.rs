@@ -19,6 +19,7 @@ pub mod highlights;
 pub mod imports;
 pub mod incremental;
 pub mod layout;
+pub mod manifest;
 pub mod markdown;
 pub mod mermaid;
 pub mod metrics;

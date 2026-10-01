@@ -6,8 +6,8 @@
 //! are one feature — a misspelt key refused by name — and belong beside the parser whose keys they
 //! check.
 
-use unluminous_core::symbols::SymbolKind;
-use unluminous_core::syntax::{Grammar, ImportStyle, PathRoot, Token};
+
+use unluminous_core::syntax::Token;
 use unluminous_core::Color;
 
 use super::registries::{
@@ -20,6 +20,10 @@ use super::types::{
     RailGroup, SyntaxTheme, TabContribution,
 };
 use crate::services::store::Values;
+// The language half of a manifest is read in `unluminous-core`, which the code index shares. These are
+// the helpers the rest of this file and `theme` read their own keys with.
+pub(super) use unluminous_core::manifest::list;
+use unluminous_core::manifest::word;
 
 /// Turn a manifest into a plugin.
 pub fn parse(values: &Values, bundled: bool) -> Result<Plugin, String> {
@@ -67,60 +71,7 @@ pub fn parse(values: &Values, bundled: bool) -> Result<Plugin, String> {
             None => None,
         };
     let name = values.text("plugin.name").unwrap_or(&id).to_owned();
-    let grammar = Grammar {
-        language: name.clone(),
-        keywords: list(values, "language.keywords"),
-        builtins: list(values, "language.builtins"),
-        types: list(values, "language.types"),
-        line_comment: values.text("language.line_comment").map(str::to_owned),
-        block_comment: pair(values, "language.block_comment"),
-        strings: values
-            .text("language.strings")
-            .unwrap_or("\", '")
-            .split(',')
-            .filter_map(|quote| quote.trim().chars().next())
-            .collect(),
-        escapes: values.flag("language.escapes").unwrap_or(true),
-        operators: values.text("language.operators").unwrap_or_default().chars().collect(),
-        numbers: values.flag("language.numbers").unwrap_or(true),
-        // Comma separated single characters, the way `language.strings` names its quotes. Empty for
-        // every language but CSS, where a hyphen is a letter.
-        word_characters: values
-            .text("language.word_characters")
-            .unwrap_or_default()
-            .split(',')
-            .filter_map(|character| character.trim().chars().next())
-            .collect(),
-        hex_colors: values.flag("language.hex_colors").unwrap_or(false),
-        // The two `task-1675` added, both off unless a language asks for them, which is the rule
-        // every key added since `task-1671` has followed and which
-        // `the_older_plugins_ask_for_none_of_what_the_symbols_added` keeps.
-        definers: definers(values)?,
-        brace_definitions: values.flag("language.brace_definitions").unwrap_or(false),
-        // The nine `task-1680` added, and the same rule again: a plugin that names none of them
-        // behaves exactly as it did before, which
-        // `the_older_plugins_ask_for_none_of_what_the_imports_added` keeps.
-        export_keyword: word(values, "language.export_keyword"),
-        imports: import_style(values)?,
-        import_keywords: list(values, "language.import_keywords"),
-        import_extensions: list(values, "language.import_extensions")
-            .into_iter()
-            .map(|extension| match extension.starts_with('.') {
-                true => extension,
-                false => format!(".{extension}"),
-            })
-            .collect(),
-        import_index: list(values, "language.import_index"),
-        import_omit_extension: values.flag("language.import_omit_extension").unwrap_or(false),
-        path_separator: word(values, "language.path_separator"),
-        source_roots: list(values, "language.source_roots"),
-        path_roots: path_roots(values)?,
-        // The two `task-1694` added, and the same rule a sixth time: a language that names neither
-        // is read by exactly the code that read it before, which
-        // `the_older_plugins_ask_for_none_of_what_the_markup_added` keeps.
-        markup: values.flag("language.markup").unwrap_or(false),
-        raw_text: raw_text(values)?,
-    };
+    let grammar = unluminous_core::manifest::language_grammar(values, &name)?;
     // A `theme` plugin's `theme.` keys are its themes, one group each, so the flat scheme a language
     // carries is not read for it — `theme.dracula.syntax.keyword` is not `theme.keyword`, and reading both
     // out of one prefix would be one namespace meaning two things.
@@ -600,164 +551,6 @@ fn debug_adapter(values: &Values) -> Result<Option<String>, String> {
     optional_registry_entry(word(values, "debug.adapter"), "debug.adapter", DEBUGGERS, "drives")
 }
 
-/// `language.definers`: a comma list of `keyword=kind` saying which keyword makes the word after
-/// it a definition, and of what.
-///
-/// The kind is checked against what `unluminous_core::symbols` actually has, for the same reason
-/// `plugin.kind` and `language.renders` are checked: a manifest asking for something this version
-/// does not know should say so plainly rather than load as a language whose declarations are
-/// quietly never found. An entry that is not a pair is refused for the same reason — silently
-/// dropping it would leave a language half able to answer.
-fn definers(values: &Values) -> Result<Vec<(String, SymbolKind)>, String> {
-    let mut found = Vec::new();
-    for (keyword, kind) in pairs(values, "language.definers") {
-        let Some(kind) = kind else {
-            return Err(format!(
-                "language.definers holds `{keyword}`, which is not `keyword=kind`"
-            ));
-        };
-        let Some(parsed) = SymbolKind::parse(&kind) else {
-            let known: Vec<&str> = SymbolKind::ALL.iter().map(|kind| kind.name()).collect();
-            return Err(format!(
-                "language.definers says `{keyword}={kind}`, and a definition in Unluminous is one of {}",
-                known.join(", ")
-            ));
-        };
-        if keyword.is_empty() {
-            return Err(format!(
-                "language.definers holds `{keyword}={kind}`, which names no keyword"
-            ));
-        }
-        found.push((keyword, parsed));
-    }
-    Ok(found)
-}
-
-/// `language.imports`: which of the two shapes of import this language writes.
-///
-/// Checked against what this version can actually read, for the same reason `plugin.kind`,
-/// `language.renders` and `language.definers` are: a manifest asking for a third shape should say
-/// so plainly rather than load as a language whose imports quietly never complete.
-fn import_style(values: &Values) -> Result<Option<ImportStyle>, String> {
-    let Some(named) = word(values, "language.imports") else {
-        return Ok(None);
-    };
-    match ImportStyle::parse(&named) {
-        Some(style) => Ok(Some(style)),
-        None => {
-            let known: Vec<&str> = ImportStyle::ALL.iter().map(|style| style.name()).collect();
-            Err(format!(
-                "language.imports is `{named}`, and an import in Unluminous is written {}",
-                known.join(" or ")
-            ))
-        }
-    }
-}
-
-/// `language.path_roots`: a comma list of `word=meaning` naming the segments of a module path that
-/// are not module names — `crate=package, self=module, super=parent`.
-fn path_roots(values: &Values) -> Result<Vec<(String, PathRoot)>, String> {
-    let mut found = Vec::new();
-    for (word, meaning) in pairs(values, "language.path_roots") {
-        let Some(meaning) = meaning else {
-            return Err(format!("language.path_roots holds `{word}`, which is not `word=meaning`"));
-        };
-        let Some(parsed) = PathRoot::parse(&meaning) else {
-            let known: Vec<&str> = PathRoot::ALL.iter().map(|root| root.name()).collect();
-            return Err(format!(
-                "language.path_roots says `{word}={meaning}`, and a root in Unluminous is one of {}",
-                known.join(", ")
-            ));
-        };
-        if word.is_empty() {
-            return Err(format!(
-                "language.path_roots holds `{word}={meaning}`, which names no word"
-            ));
-        }
-        found.push((word, parsed));
-    }
-    Ok(found)
-}
-
-/// `language.raw_text`: a comma list of `element` or `element=language`, the elements of a markup
-/// language whose contents are not markup — `script=javascript, style=css, textarea, title`.
-///
-/// The right hand side is a language name and it is **not** checked here, which is the one
-/// registry-shaped key in Unluminous that is not validated against a list: the name is resolved by
-/// `Plugins::for_language` at the moment of use, the same function a fence in a Markdown document
-/// is resolved by, which already answers with nothing for a language nothing claims. Checking it
-/// would mean a plugin refusing to load because another plugin was switched off. An entry that
-/// names a language is a raw text element and one that names none is an escapable raw text one,
-/// which is the HTML Standard's own distinction and is derived rather than written down twice.
-fn raw_text(values: &Values) -> Result<Vec<(String, Option<String>)>, String> {
-    let mut found = Vec::new();
-    for (element, language) in pairs(values, "language.raw_text") {
-        if element.is_empty() {
-            let entry = match &language {
-                Some(language) => format!("{element}={language}"),
-                None => element.clone(),
-            };
-            return Err(format!("language.raw_text holds `{entry}`, which names no element"));
-        }
-        // A bare element (no `=` at all) has no language, and that is an escapable one rather
-        // than a mistake — `language` is `None` for it. An `=` with nothing, or only spaces,
-        // after it is the mistake: it named an element and asked for a language it did not name.
-        if language.as_deref().is_some_and(str::is_empty) {
-            return Err(format!(
-                "language.raw_text holds `{element}=`, which names an element and no language"
-            ));
-        }
-        found.push((element, language));
-    }
-    Ok(found)
-}
-
-/// One trimmed word, or nothing when the manifest left the key out or left it empty.
-fn word(values: &Values, name: &str) -> Option<String> {
-    values.text(name).map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
-}
-
-/// A comma separated value as a list, with the spaces trimmed and the empty entries dropped.
-///
-/// `pub(super)` because `theme::themes` reads the plugin's `themes` line the same way this reads
-/// every other comma list.
-pub(super) fn list(values: &Values, name: &str) -> Vec<String> {
-    values
-        .text(name)
-        .unwrap_or_default()
-        .split(',')
-        .map(str::trim)
-        .filter(|part| !part.is_empty())
-        .map(str::to_owned)
-        .collect()
-}
-
-/// Two comma separated values, which is what a block comment's opener and terminator are.
-fn pair(values: &Values, name: &str) -> Option<(String, String)> {
-    let parts = list(values, name);
-    match parts.as_slice() {
-        [open, close] => Some((open.clone(), close.clone())),
-        _ => None,
-    }
-}
-
-/// `list(values, name)`, with each entry split on its first `=` into a left and right half.
-///
-/// `language.definers`, `language.path_roots` and `language.raw_text` each read a comma list of
-/// `a=b` pairs by hand, with three near identical splits and three near identical "that is not
-/// `a=b`" refusals. This is the split the three of them share: an entry with no `=` at all comes
-/// back with no right side, which is what `language.raw_text` means by a bare, escapable element
-/// and what the other two treat as a name with nothing after it, to refuse in their own words.
-pub(super) fn pairs(values: &Values, name: &str) -> Vec<(String, Option<String>)> {
-    list(values, name)
-        .into_iter()
-        .map(|entry| match entry.split_once('=') {
-            Some((left, right)) => (left.trim().to_owned(), Some(right.trim().to_owned())),
-            None => (entry, None),
-        })
-        .collect()
-}
-
 /// `#RRGGBB`, or `RRGGBB`.
 pub fn colour(text: &str) -> Option<Color> {
     let text = text.trim().trim_start_matches('#');
@@ -773,6 +566,7 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+    use unluminous_core::syntax::PathRoot;
 
     fn manifest() -> String {
         [

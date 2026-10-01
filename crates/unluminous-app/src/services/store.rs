@@ -8,7 +8,7 @@
 //! A file that cannot be read is treated as a file that is not there. Unluminous starting with its defaults is
 //! better than Unluminous refusing to start because a settings file has a stray line in it.
 
-use std::collections::BTreeMap;
+
 use std::path::{Path, PathBuf};
 
 /// Write `bytes` to `path` through a temporary and a rename, so a crash cannot truncate the file.
@@ -123,150 +123,10 @@ const SESSION_FILE: &str = "session.txt";
 /// hand falls off the list after a week of ordinary work. See [`Store::open_windows`].
 pub const SESSION_LIMIT: usize = 8;
 
-/// Named values read from or written to the settings file.
-///
-/// The store knows nothing about what the names mean; `crate::settings` owns that. Keeping the two apart
-/// means the settings can grow a value without the file handling changing at all.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct Values(BTreeMap<String, String>);
-
-impl Values {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn set(&mut self, name: &str, value: impl Into<String>) {
-        self.0.insert(name.to_owned(), value.into());
-    }
-
-    /// Take a name out, so the file no longer holds it.
-    ///
-    /// **What a setting that has gone back to its default needs**, and it is not the same as setting it
-    /// to an empty string: several settings here mean "whatever this Unluminous's own default is" by having
-    /// no line at all — `terminal.shell`, `appearance.theme`, `appearance.icons` — and an empty line
-    /// would read as a shell called nothing. Saving merges over the file that is already there
-    /// (`settings::save_with`), so without this a value that was cleared would stay in the file and come
-    /// back at the next start. See [`Values::set_or_clear`].
-    pub fn remove(&mut self, name: &str) {
-        self.0.remove(name);
-    }
-
-    /// Write a value, or take the name out when it is empty.
-    ///
-    /// One function rather than an `if` at each of the seven places that mean "empty is the default", so
-    /// a later one cannot forget the second half and leave a setting that cannot be un-chosen.
-    pub fn set_or_clear(&mut self, name: &str, value: &str) {
-        match value.is_empty() {
-            true => self.remove(name),
-            false => self.set(name, value.to_owned()),
-        }
-    }
-
-    pub fn text(&self, name: &str) -> Option<&str> {
-        self.0.get(name).map(String::as_str)
-    }
-
-    /// Every name that begins with `prefix`, with the prefix removed, in name order.
-    ///
-    /// What reads a family of keys whose names are not known in advance, which is what a plugin's
-    /// submenus are: `menu.submenu.new` and `menu.submenu.new.entries` are two members of one family
-    /// and nothing in Unluminous knows the word `new` until the manifest is read. The order is the map's
-    /// order, so a family read twice is read the same way both times and a menu built from one is the
-    /// same shape every time.
-    pub fn starting_with(&self, prefix: &str) -> Vec<(String, String)> {
-        self.0
-            .iter()
-            .filter_map(|(name, value)| {
-                name.strip_prefix(prefix).map(|rest| (rest.to_owned(), value.clone()))
-            })
-            .collect()
-    }
-
-    pub fn number(&self, name: &str) -> Option<f32> {
-        self.text(name).and_then(|value| value.trim().parse().ok())
-    }
-
-    pub fn flag(&self, name: &str) -> Option<bool> {
-        match self.text(name)?.trim() {
-            "true" | "yes" | "1" => Some(true),
-            "false" | "no" | "0" => Some(false),
-            _ => None,
-        }
-    }
-
-    /// Read `name = value` lines. A line without an `=` is ignored rather than making the whole file
-    /// unreadable.
-    ///
-    /// A `#` starts a comment **when it is followed by a space or ends the line**. That rule is a
-    /// little more particular than "everything after a hash", and it is that way because of colours:
-    /// a plugin's colour scheme is written `theme.keyword = #FF79C6`, and the plain rule ate the
-    /// value and left the plugin with no colours at all. Writing the hash is what anybody would do,
-    /// so the format accommodates it rather than making it a trap. `size = 20  # after the value`
-    /// still reads as a comment, because that hash is followed by a space.
-    pub fn parse(text: &str) -> Self {
-        let mut values = Self::new();
-        for line in text.lines() {
-            let line = match Self::comment_at(line) {
-                Some(at) => &line[..at],
-                None => line,
-            };
-            let Some((name, value)) = line.split_once('=') else {
-                continue;
-            };
-            let name = name.trim();
-            if name.is_empty() {
-                continue;
-            }
-            values.set(name, value.trim().to_owned());
-        }
-        values
-    }
-
-    /// Where the comment starts on this line, if it has one.
-    ///
-    /// A `#` opens a comment when what follows it is whitespace **and there is something after that
-    /// whitespace**. A `#` that is the last thing on the line is part of the value.
-    ///
-    /// **That second half is a fix rather than a nicety.** `task-1922`: without it
-    /// `language.line_comment = #` parses to the *empty string*, and an empty line comment is worse
-    /// than none at all, because `rest.starts_with("")` is true at every byte — every file of that
-    /// language would be drawn as one comment from its first character. It is not hypothetical for
-    /// a value either: `plugins/rust/plugin.conf` and `plugins/css/plugin.conf` have both ended
-    /// `language.operators` with `#` since they were written, and both have been silently losing it,
-    /// so Rust's attribute character and CSS's hash have never been coloured as operators.
-    ///
-    /// An inline comment still works, because a comment somebody wrote has words in it. A line
-    /// ending `value #` with nothing after the hash now keeps the hash, which is the one thing this
-    /// gives up and is not something anybody writes on purpose.
-    fn comment_at(line: &str) -> Option<usize> {
-        line.char_indices()
-            .find(|(at, character)| {
-                *character == '#'
-                    && line[at + 1..].chars().next().map(char::is_whitespace).unwrap_or(true)
-                    && !line[at + 1..].trim().is_empty()
-            })
-            .map(|(at, _)| at)
-    }
-
-    pub fn to_text(&self) -> String {
-        self.to_text_headed(
-            "# Unluminous settings. Written by Unluminous, and safe to edit by hand.",
-        )
-    }
-
-    /// The same, under a heading of the caller's own. The project state is written in this format too
-    /// and is not the settings, so it says so at the top of its own file.
-    pub fn to_text_headed(&self, heading: &str) -> String {
-        let mut out = format!("{heading}\n");
-        for (name, value) in &self.0 {
-            out.push_str(name);
-            out.push_str(" = ");
-            out.push_str(value);
-            out.push('\n');
-        }
-        out
-    }
-}
+/// Named values read from or written to the settings file. The type lives in `unluminous-core`
+/// beside the plugin manifest reading it is shared with, so the code index reads a `plugin.conf` the
+/// way the window does; see `unluminous_core::manifest`.
+pub use unluminous_core::manifest::Values;
 
 /// The folder Unluminous keeps its settings in, and the two files inside it.
 #[derive(Debug, Clone)]
