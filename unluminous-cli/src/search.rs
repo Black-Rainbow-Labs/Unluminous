@@ -298,6 +298,11 @@ fn keep_standard_handles_to_ourselves() {
 /// @param timeout - how long to wait for another process
 /// @param hosting - whether this process may host
 pub fn ask(root: &Path, command: &str, arguments: &Map<String, Value>, timeout: Duration, hosting: Hosting) -> Reply {
+    // A folder that is not there would otherwise be given a host and an empty index, and every
+    // answer about it would look like a project with nothing in it.
+    if !root.is_dir() {
+        return Reply::failed(command, code::NOT_FOUND, &format!("There is no folder at {}.", root.display()));
+    }
     if let Some(host) = hosts().lock().expect("hosts").get(root).cloned() {
         return host.answer(command, arguments);
     }

@@ -2906,3 +2906,63 @@ fn new_project_folder() -> std::path::PathBuf {
     std::fs::create_dir_all(&folder).expect("make the folder");
     folder
 }
+
+/// Every `search` verb answers from the window, through the same function the command line and the
+/// MCP server use, and the window becomes the project's index host when no other process is one.
+///
+/// The index is written under a cache folder of the test's own, never the person's.
+#[test]
+fn every_search_verb_answers_from_the_window() {
+    let folder = std::env::temp_dir().join(format!("unluminous-search-drive-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(folder.join("src")).expect("make the folder");
+    std::fs::create_dir_all(folder.join(".git")).expect("mark it a checkout");
+    std::fs::write(
+        folder.join("src").join("lib.rs"),
+        "/// Adds two numbers.\npub fn add_numbers(a: u32, b: u32) -> u32 {\n    a + b\n}\n\npub fn twice(a: u32) -> u32 {\n    add_numbers(a, a)\n}\n",
+    )
+    .expect("write a source file");
+    std::env::set_var("UNLUMINOUS_INDEX_CACHE", folder.join("index-cache"));
+    let mut harness = harness_in(&folder);
+
+    // A search during the first build is answered by scanning the files, so this asks until the index
+    // is built, which takes well under a second for one file.
+    let found = did(&mut harness, "search find --mode literal a + b");
+    assert!(found["text"].as_str().unwrap_or_default().contains("src/lib.rs"), "{found}");
+    let started = std::time::Instant::now();
+    let mut status = did(&mut harness, "search status");
+    while status["ready"] != serde_json::json!(true) && started.elapsed() < std::time::Duration::from_secs(30) {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        status = did(&mut harness, "search status");
+    }
+    assert!(status["files"].as_u64().unwrap_or_default() >= 1, "{status}");
+    let defined = did(&mut harness, "search def add_numbers");
+    assert!(defined["text"].as_str().unwrap_or_default().contains("src/lib.rs:2"), "{defined}");
+    let used = did(&mut harness, "search refs add_numbers");
+    assert!(used["text"].as_str().unwrap_or_default().contains("add_numbers(a, a)"), "{used}");
+    let around = did(&mut harness, "search fragment src/lib.rs:3");
+    assert!(around["text"].as_str().unwrap_or_default().contains("a + b"), "{around}");
+    let outline = did(&mut harness, "search outline src/lib.rs");
+    assert!(outline["text"].as_str().unwrap_or_default().contains("twice"), "{outline}");
+    let files = did(&mut harness, "search files lib.rs");
+    assert!(files["text"].as_str().unwrap_or_default().contains("src/lib.rs"), "{files}");
+    // The window is already this project's host, so asking it to serve says so.
+    let served = did(&mut harness, "search serve");
+    assert!(served["text"].as_str().unwrap_or_default().contains("already running"), "{served}");
+
+    // A folder that is not there has no host and no files, and every verb says so.
+    let missing = folder.join("not-here");
+    let root = missing.to_string_lossy();
+    for line in [
+        format!("search status --root {root}"),
+        format!("search def add_numbers --root {root}"),
+        format!("search refs add_numbers --root {root}"),
+        format!("search fragment src/lib.rs:3 --root {root}"),
+        format!("search outline src/lib.rs --root {root}"),
+        format!("search files lib.rs --root {root}"),
+        format!("search serve --root {root}"),
+    ] {
+        refused(&mut harness, &line);
+    }
+    refused(&mut harness, "search find --mode sideways a + b");
+}
