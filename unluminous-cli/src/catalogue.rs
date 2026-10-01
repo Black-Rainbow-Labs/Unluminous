@@ -3325,7 +3325,10 @@ pub const COMMANDS: &[Command] = &[
         verb: "outline",
         summary: "A file's definitions, or a Markdown file's headings, one line each with their line ranges.",
         arguments: &[argument("path", true, "The file.")],
-        flags: &[option("root", "folder", "The checkout. The git checkout above the working folder by default.")],
+        flags: &[
+            switch("structured", "Also answer with the fields behind the text, for a program rather than an agent."),
+            option("root", "folder", "The checkout. The git checkout above the working folder by default."),
+        ],
         examples: &["unluminous-cli search outline crates/unluminous-core/src/layout.rs", "unluminous-cli search outline README.md --json"],
         local: false,
     },
@@ -3337,7 +3340,6 @@ pub const COMMANDS: &[Command] = &[
         flags: &[
             whole_option("limit", "number", "How many to list. 20 by default."),
             option("path", "folder", "Only files under this folder; a glob is matched relative to it, as the Glob tool's path is."),
-            switch("structured", "Also answer with the fields behind the text, for a program rather than an agent."),
             switch("structured", "Also answer with the fields behind the text, for a program rather than an agent."),
             option("root", "folder", "The checkout to search. The git checkout above the working folder by default."),
         ],

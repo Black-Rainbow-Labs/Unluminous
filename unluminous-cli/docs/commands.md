@@ -3926,13 +3926,14 @@ unluminous-cli search fragment backend/src/main.ts --line 40 --context 5
 ### search outline
 
 ```
-unluminous-cli search outline <path> [--root <folder>]
+unluminous-cli search outline <path> [--structured] [--root <folder>]
 ```
 
 A file's definitions, or a Markdown file's headings, one line each with their line ranges.
 
 - `path` — The file.
 
+- `--structured` — Also answer with the fields behind the text, for a program rather than an agent.
 - `--root <folder>` — The checkout. The git checkout above the working folder by default.
 
 ```sh
@@ -3943,7 +3944,7 @@ unluminous-cli search outline README.md --json
 ### search files
 
 ```
-unluminous-cli search files <query> [--limit <number>] [--path <folder>] [--structured] [--structured] [--root <folder>]
+unluminous-cli search files <query> [--limit <number>] [--path <folder>] [--structured] [--root <folder>]
 ```
 
 Files whose path matches a name, a fragment of one, or a glob, best match first. Use it instead of Glob or find.
@@ -3952,7 +3953,6 @@ Files whose path matches a name, a fragment of one, or a glob, best match first.
 
 - `--limit <number>` — How many to list. 20 by default.
 - `--path <folder>` — Only files under this folder; a glob is matched relative to it, as the Glob tool's path is.
-- `--structured` — Also answer with the fields behind the text, for a program rather than an agent.
 - `--structured` — Also answer with the fields behind the text, for a program rather than an agent.
 - `--root <folder>` — The checkout to search. The git checkout above the working folder by default.
 
