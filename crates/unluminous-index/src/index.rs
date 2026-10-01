@@ -19,6 +19,7 @@ use crate::exact::{Exact, ExactAnswer, ExactRequest, FileRecord};
 use crate::freshness::{Freshness, GateReport};
 use crate::passages::{self, PassageHit};
 use crate::store::{self, Store};
+use inillucent_driver::Database;
 use crate::symbols::{self, SymbolTable};
 
 /// A job for the store thread.
@@ -48,6 +49,10 @@ pub struct Status {
     pub passages: usize,
     /// Whether the passage table is built, so passage search can answer.
     pub passages_ready: bool,
+    /// How many chunks have a vector.
+    pub vectors: usize,
+    /// Whether `embed()` can run on this machine.
+    pub can_embed: bool,
     /// The index file.
     pub file: PathBuf,
 }
@@ -275,7 +280,29 @@ fn store_thread(root: &Path, exact: &RwLock<Option<Exact>>, symbol_table: &RwLoc
     }
     let Ok(store) = store else { return };
     build_passages(&store, exact, status, origin == "built");
-    for job in jobs {
+    let mut embedder = Embedder::open(&store, status);
+    loop {
+        // Embedding is done a small batch at a time, only when no other job is waiting, so a query
+        // never waits behind more than one batch.
+        let job = match embedder.as_ref().filter(|e| e.pending) {
+            Some(_) => match jobs.try_recv() {
+                Ok(job) => job,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    if let Some(e) = embedder.as_mut() {
+                        e.step(&store, status);
+                    }
+                    continue;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+            },
+            None => match jobs.recv() {
+                Ok(job) => job,
+                Err(_) => return,
+            },
+        };
+        if let (Some(e), StoreJob::Changes { .. }) = (embedder.as_mut(), &job) {
+            e.pending = true;
+        }
         let result = match job {
             StoreJob::Changes { changed, removed, removed_paths, next_id } => {
                 let records: Vec<&FileRecord> = changed.iter().map(|c| &c.1).collect();
@@ -283,13 +310,67 @@ fn store_thread(root: &Path, exact: &RwLock<Option<Exact>>, symbol_table: &RwLoc
             }
             StoreJob::Full { index } => store.save_exact(&index, root),
             StoreJob::Search { question, k, kind, reply } => {
-                let _ = reply.send(passages::search(&store.session(), &question, k, kind.as_deref()));
+                let vectors = status.lock().expect("status").vectors > 0;
+                let _ = reply.send(passages::search(&store.session(), &question, k, kind.as_deref(), vectors));
                 Ok(())
             }
         };
         if let Err(e) = result {
             status.lock().expect("status").store_error = Some(e);
         }
+    }
+}
+
+/// The background embedder: whether `embed()` works here, the shared cache of vectors by chunk hash,
+/// and whether chunks are still waiting for a vector.
+struct Embedder {
+    cache: Option<Database>,
+    pending: bool,
+    batch: usize,
+}
+
+impl Embedder {
+    /// Opens the embedder when `embed()` can run, with the shared cache beside the indexes.
+    ///
+    /// @param store - the store
+    /// @param status - the status to update
+    fn open(store: &Store, status: &Mutex<Status>) -> Option<Embedder> {
+        let session = store.session();
+        let able = passages::can_embed(&session);
+        let (vectors, _) = passages::vector_counts(&session);
+        {
+            let mut st = status.lock().expect("status");
+            st.can_embed = able;
+            st.vectors = vectors;
+        }
+        if !able {
+            return None;
+        }
+        let folder = store::cache_folder().join("unluminous").join("embeddings");
+        let cache = std::fs::create_dir_all(&folder).ok().and_then(|_| Database::open(folder.join("embeddings.rdb")).ok());
+        if let Some(c) = &cache {
+            let _ = c.session().execute_batch("CREATE TABLE IF NOT EXISTS emb (hash BLOB PRIMARY KEY, model TEXT, vector BLOB);");
+        }
+        let batch = std::env::var("UNLUMINOUS_EMBED_BATCH").ok().and_then(|b| b.parse().ok()).unwrap_or(4);
+        Some(Embedder { cache, pending: true, batch })
+    }
+
+    /// Embeds one batch and records how many chunks now have a vector.
+    ///
+    /// @param store - the store
+    /// @param status - the status to update
+    fn step(&mut self, store: &Store, status: &Mutex<Status>) {
+        let session = store.session();
+        let cache = self.cache.as_ref().map(Database::session);
+        match passages::embed_pending(&session, cache.as_ref(), self.batch) {
+            Ok(0) => self.pending = false,
+            Ok(_) => {}
+            Err(e) => {
+                self.pending = false;
+                status.lock().expect("status").store_error = Some(format!("embedding: {e}"));
+            }
+        }
+        status.lock().expect("status").vectors = passages::vector_counts(&session).0;
     }
 }
 

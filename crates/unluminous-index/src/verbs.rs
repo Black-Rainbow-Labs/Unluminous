@@ -257,6 +257,8 @@ fn status(index: &Index) -> Value {
         "reindexed": st.reindexed,
         "passages": st.passages,
         "passagesReady": st.passages_ready,
+        "vectors": st.vectors,
+        "canEmbed": st.can_embed,
         "storeError": st.store_error,
         "indexFile": st.file.to_string_lossy(),
         "versions": { "schema": crate::store::SCHEMA_VERSION, "trigram": crate::store::TRIGRAM_VERSION },
@@ -498,6 +500,23 @@ fn fragment(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> 
 /// answerable question from one that is not).
 pub const ABSTAIN_BELOW: f64 = 0.5;
 
+/// The abstention threshold in force: `ABSTAIN_BELOW`, or `UNLUMINOUS_SEARCH_ABSTAIN` when the
+/// evaluation's improvement loop is trying another value (TDD §8.3, lever 8).
+fn abstain_below() -> f64 {
+    std::env::var("UNLUMINOUS_SEARCH_ABSTAIN").ok().and_then(|v| v.parse().ok()).unwrap_or(ABSTAIN_BELOW)
+}
+
+/// The confidence below which a hybrid passage search answers with nothing. R8 measured answerable
+/// questions at or above 0.332 and the others at or below 0.235 with a vector weight of 0.5, on
+/// Inillucent's own corpus; the improvement loop measures it here (lever 8).
+pub const CONFIDENCE_BELOW: f64 = 0.28;
+
+/// The confidence threshold in force: `CONFIDENCE_BELOW`, or `UNLUMINOUS_SEARCH_CONFIDENCE` while the
+/// improvement loop tries another value.
+fn confidence_below() -> f64 {
+    std::env::var("UNLUMINOUS_SEARCH_CONFIDENCE").ok().and_then(|v| v.parse().ok()).unwrap_or(CONFIDENCE_BELOW)
+}
+
 /// How many words of a question a text holds, as a share of the question's words.
 ///
 /// @param question_words - the question's words, lower case
@@ -519,6 +538,7 @@ fn coverage(question_words: &[String], text: &str) -> f64 {
 fn semantic(index: &Index, asked: &FindRequest) -> Result<Value, Refusal> {
     let started = std::time::Instant::now();
     let found = index.passages(&asked.query, 30, None).map_err(|e| Refusal { code: "not-applicable", message: e })?;
+    let with_vectors = index.status().vectors > 0;
     let question_words = crate::words::query_words(&asked.query);
     let mut chosen = Vec::new();
     let mut text = String::new();
@@ -529,7 +549,10 @@ fn semantic(index: &Index, asked: &FindRequest) -> Result<Value, Refusal> {
         let lines: Vec<&str> = content.split('\n').collect();
         let body = lines.get(hit.start as usize - 1..(hit.end as usize).min(lines.len())).map(|l| l.join("\n")).unwrap_or_default();
         let share = coverage(&question_words, &format!("{}\n{}", hit.header, body));
-        if chosen.is_empty() && share < ABSTAIN_BELOW {
+        // With vectors the engine's confidence decides whether the best chunk answers the question at
+        // all (R8); without them, whether it holds enough of the question's words.
+        let unsure = if with_vectors { hit.confidence < confidence_below() } else { share < abstain_below() };
+        if chosen.is_empty() && unsure {
             break;
         }
         // The header starts with the path, so only what follows it is printed.

@@ -22,12 +22,18 @@ use crate::symbols::is_secondary;
 use crate::words;
 
 /// The version of how chunks are cut and what a row holds. A different value rebuilds the table.
-pub const PASSAGE_VERSION: &str = "1";
+pub const PASSAGE_VERSION: &str = "2";
+
+/// The embedding model's width: `nomic-embed-text-v1.5`, the one model `embed()` serves (R6).
+pub const DIMENSIONS: usize = 768;
+/// The model a cached vector was made by, so a change of model never reuses a vector.
+pub const MODEL: &str = "nomic-embed-text-v1.5";
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS chunk (id INTEGER PRIMARY KEY, path TEXT, start_line INTEGER, end_line INTEGER,
-    kind TEXT, symbol TEXT, header TEXT, chunk_hash BLOB);
+    kind TEXT, symbol TEXT, header TEXT, chunk_hash BLOB, embedded INTEGER DEFAULT 0);
 CREATE INDEX IF NOT EXISTS chunk_path ON chunk(path);
+CREATE INDEX IF NOT EXISTS chunk_embedded ON chunk(embedded);
 ";
 
 /// One chunk a passage search found.
@@ -87,7 +93,7 @@ pub fn create(conn: &Connection<'_>) -> Result<(), String> {
     conn.execute_batch(SCHEMA).map_err(|e| e.to_string())?;
     let exists = conn.query("SELECT name FROM sqlite_schema WHERE name = 'passage'", &[], 1).map_err(|e| e.to_string())?;
     if exists.rows.is_empty() {
-        conn.execute("CREATE VIRTUAL TABLE passage USING inillucent_search(header, body, words, lang FACET, kind FACET, path_prefix FACET, tokenize = 'porter')", &[])
+        conn.execute(&format!("CREATE VIRTUAL TABLE passage USING inillucent_search(header, body, words, lang FACET, kind FACET, path_prefix FACET, dims = {DIMENSIONS}, fusion = 'weighted', vector_weight = 0.5, tokenize = 'porter')"), &[])
             .map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -98,10 +104,11 @@ pub fn create(conn: &Connection<'_>) -> Result<(), String> {
 /// @param conn - a connection on the store thread
 /// @param exact - the exact index
 pub fn rebuild(conn: &Connection<'_>, exact: &Exact) -> Result<usize, String> {
+    // Dropped rather than emptied, because a version change can change the table's own declaration.
+    let _ = conn.execute("DROP TABLE IF EXISTS passage", &[]);
+    let _ = conn.execute("DROP TABLE IF EXISTS chunk", &[]);
     create(conn)?;
     let tx = conn.begin().map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM passage", &[]).map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM chunk", &[]).map_err(|e| e.to_string())?;
     let mut next = 1i64;
     for record in exact.files.iter().flatten().filter(|r| is_passage_source(r)) {
         next = write_file(&tx, record, next)?;
@@ -167,6 +174,57 @@ fn write_file(tx: &inillucent_driver::Transaction<'_>, record: &FileRecord, firs
     Ok(id)
 }
 
+/// Whether `embed()` can run here: the engine was built with it and the person installed the model.
+/// Unluminous never downloads one (R6).
+///
+/// @param conn - a connection on the store thread
+pub fn can_embed(conn: &Connection<'_>) -> bool {
+    conn.query("SELECT length(embed('search_query: ready'))", &[], 1).is_ok_and(|rows| matches!(rows.value(0, 0), Some(Value::Integer(n)) if *n as usize == DIMENSIONS * 4))
+}
+
+/// How many chunks have a vector, and how many there are.
+///
+/// @param conn - a connection on the store thread
+pub fn vector_counts(conn: &Connection<'_>) -> (usize, usize) {
+    let count = |sql: &str| conn.query(sql, &[], 1).ok().and_then(|r| match r.value(0, 0) { Some(Value::Integer(n)) => Some(*n as usize), _ => None }).unwrap_or(0);
+    (count("SELECT count(*) FROM chunk WHERE embedded = 1"), count("SELECT count(*) FROM chunk"))
+}
+
+/// Embeds up to `batch` chunks that have no vector yet, taking each from the shared cache when another
+/// checkout, an earlier edit or another repository already embedded the same text. Returns how many
+/// chunks were given a vector, so the caller knows when there is nothing left.
+///
+/// @param conn - a connection on the store thread
+/// @param cache - the shared embedding cache, if it could be opened
+/// @param batch - how many chunks at most
+pub fn embed_pending(conn: &Connection<'_>, cache: Option<&Connection<'_>>, batch: usize) -> Result<usize, String> {
+    let rows = conn
+        .query("SELECT c.id, c.chunk_hash, p.header, p.body FROM chunk c JOIN passage p ON p.rowid = c.id WHERE c.embedded = 0 LIMIT ?1", &[Value::Integer(batch as i64)], batch)
+        .map_err(|e| e.to_string())?;
+    let mut done = 0;
+    for row in &rows.rows {
+        let (Some(Value::Integer(id)), Some(hash)) = (row.first(), row.get(1).and_then(Value::bytes)) else { continue };
+        let cached = cache.and_then(|c| c.query("SELECT vector FROM emb WHERE hash = ?1 AND model = ?2", &[Value::Blob(hash.to_vec()), Value::Text(MODEL.into())], 1).ok()).and_then(|r| r.value(0, 0).and_then(Value::bytes).map(<[u8]>::to_vec));
+        let vector = match cached {
+            Some(v) => v,
+            None => {
+                let text = format!("search_document: {}
+{}", row.get(2).and_then(Value::text).unwrap_or_default(), row.get(3).and_then(Value::text).unwrap_or_default());
+                let made = conn.query("SELECT embed(?1)", &[Value::Text(text.chars().take(6000).collect())], 1).map_err(|e| e.to_string())?;
+                let Some(v) = made.value(0, 0).and_then(Value::bytes).map(<[u8]>::to_vec) else { continue };
+                if let Some(c) = cache {
+                    let _ = c.execute("INSERT OR REPLACE INTO emb (hash, model, vector) VALUES (?1, ?2, ?3)", &[Value::Blob(hash.to_vec()), Value::Text(MODEL.into()), Value::Blob(v.clone())]);
+                }
+                v
+            }
+        };
+        conn.execute("UPDATE passage SET vector = ?1 WHERE rowid = ?2", &[Value::Blob(vector), Value::Integer(*id)]).map_err(|e| e.to_string())?;
+        conn.execute("UPDATE chunk SET embedded = 1 WHERE id = ?1", &[Value::Integer(*id)]).map_err(|e| e.to_string())?;
+        done += 1;
+    }
+    Ok(done)
+}
+
 /// The words of a question as an engine query: each word quoted, any of them may match, so a chunk
 /// holding more of them ranks higher.
 ///
@@ -185,12 +243,20 @@ pub fn match_query(question: &str) -> Option<String> {
 /// @param question - the question
 /// @param k - how many to retrieve
 /// @param kind - only chunks of this kind, if given
-pub fn search(conn: &Connection<'_>, question: &str, k: usize, kind: Option<&str>) -> Result<Vec<PassageHit>, String> {
+pub fn search(conn: &Connection<'_>, question: &str, k: usize, kind: Option<&str>, vectors: bool) -> Result<Vec<PassageHit>, String> {
     let Some(query) = match_query(question) else { return Ok(Vec::new()) };
-    let (filter, params) = match kind {
-        Some(kind) => (" AND kind = ?3", vec![Value::Text(query), Value::Integer(k as i64), Value::Text(kind.to_owned())]),
-        None => ("", vec![Value::Text(query), Value::Integer(k as i64)]),
-    };
+    let mut params = vec![Value::Text(query), Value::Integer(k as i64)];
+    let mut filter = String::new();
+    if let Some(kind) = kind {
+        params.push(Value::Text(kind.to_owned()));
+        filter.push_str(&format!(" AND kind = ?{}", params.len()));
+    }
+    // With vectors the search is hybrid: the question is embedded as a query and the engine blends the
+    // two rankings (R2, R8). Without them it is the words alone.
+    if vectors {
+        params.push(Value::Text(format!("search_query: {question}")));
+        filter.push_str(&format!(" AND vector = embed(?{})", params.len()));
+    }
     let sql = format!(
         "SELECT p.rowid, score(passage), confidence(passage), c.path, c.start_line, c.end_line, c.header FROM passage p JOIN chunk c ON c.id = p.rowid WHERE passage MATCH ?1 AND k = ?2{filter} ORDER BY rank"
     );
