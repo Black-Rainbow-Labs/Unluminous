@@ -3886,7 +3886,7 @@ unluminous-cli search def Layout --path crates/unluminous-core --json
 unluminous-cli search refs <name> [--path <path>] [--glob <glob>] [--budget <tokens>] [--root <folder>]
 ```
 
-Every use of a name, grouped by file, its definitions left out and the project's own source before tests.
+Every use of a name, grouped by file, the project's own source before tests and docs, and in each file the lines that define it first.
 
 - `name` — The name.
 

@@ -3292,7 +3292,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "search",
         verb: "refs",
-        summary: "Every use of a name, grouped by file, its definitions left out and the project's own source before tests.",
+        summary: "Every use of a name, grouped by file, the project's own source before tests and docs, and in each file the lines that define it first.",
         arguments: &[argument("name", true, "The name.")],
         flags: &[
             option("path", "path", "Only uses under this folder or in this file."),

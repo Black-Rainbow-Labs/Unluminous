@@ -316,9 +316,15 @@ fn uses(index: &Index, name: &str, scope: &Scope) -> Result<Vec<crate::exact::Hi
     let defined: std::collections::HashSet<(String, u64)> = index
         .with_symbols(|table, _| table.lookup(name, 50).into_iter().filter(|d| d.definition.name == name).map(|d| (d.path, u64::from(d.definition.line))).collect())
         .unwrap_or_default();
-    let mut hits: Vec<_> = found.hits.into_iter().filter(|h| !defined.contains(&(h.path.clone(), h.line))).collect();
+    // Definition lines are kept and put first in their file. A line that defines a name very often uses
+    // it too, an `impl` method's line is a use of the trait method it implements, and
+    // `let untracked = entry.untracked()` defines one thing and uses another; leaving such lines out lost
+    // uses ripgrep finds (F3 recall fell below rg's on all three corpora).
+    let mut hits = found.hits;
     let order = |path: &str| match crate::passages::kind_of(path) { "code" => 0, "test" => 1, _ => 2 };
-    hits.sort_by(|a, b| order(&a.path).cmp(&order(&b.path)).then(a.path.cmp(&b.path)).then(a.line.cmp(&b.line)));
+    hits.sort_by(|a, b| {
+        order(&a.path).cmp(&order(&b.path)).then(a.path.cmp(&b.path)).then((!defined.contains(&(a.path.clone(), a.line))).cmp(&!defined.contains(&(b.path.clone(), b.line)))).then(a.line.cmp(&b.line))
+    });
     Ok(hits)
 }
 
