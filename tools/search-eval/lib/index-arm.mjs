@@ -22,7 +22,9 @@ function stagedCli() {
   return path.join(REPO, 'target', 'release', process.platform === 'win32' ? 'unluminous-cli.exe' : 'unluminous-cli');
 }
 export const CLI = stagedCli();
-const CACHE = () => path.join(evalRoot(), 'index-cache');
+// The index cache the arm asks: the evaluation's own, unless the run names another, as a comparison
+// of index settings does so that it never touches the hosts another run is using.
+const CACHE = () => process.env.UNLUMINOUS_INDEX_CACHE || path.join(evalRoot(), 'index-cache');
 
 /**
  * One MCP server over stdio, with requests matched to responses by id.
