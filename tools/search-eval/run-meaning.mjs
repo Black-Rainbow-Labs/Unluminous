@@ -75,8 +75,8 @@ function questionOf(query) {
 async function indexAnswer(server, query, budget) {
   const { message, ms } = await server.call('find', { query: questionOf(query), mode: 'semantic', budget, structured: true });
   const value = message.result?.structuredContent || {};
-  const hits = (value.hits || []).map(([p, start, header, end]) => ({ path: p, line: start, end, header }));
-  return { ms, hits, files: value.files || [...new Set(hits.map((h) => h.path))], empty: hits.length === 0, text: message.result?.content?.map((c) => c.text).join('\n') || '' };
+  const hits = (value.hits || []).map(([p, start, header, end, score, share, confidence]) => ({ path: p, line: start, end, header, score, share, confidence }));
+  return { ms, hits, top: hits[0] ? { score: hits[0].score, share: hits[0].share, confidence: hits[0].confidence } : null, files: value.files || [...new Set(hits.map((h) => h.path))], empty: hits.length === 0, text: message.result?.content?.map((c) => c.text).join('\n') || '' };
 }
 
 /**
@@ -125,7 +125,7 @@ for (const family of opts.families) {
     const dir = folderOf(query);
     if (!servers.has(dir)) servers.set(dir, await openServer(dir, true));
     const ix = await indexAnswer(servers.get(dir), query, opts.budget);
-    const row = { id: query.id, family, repo: query.repo, arms: { 'index-mcp': { ms: ix.ms, score: scoreOf(query, ix), files: ix.files.slice(0, 5), empty: ix.empty, tokens: Math.ceil(ix.text.length / 3.6) } } };
+    const row = { id: query.id, family, repo: query.repo, arms: { 'index-mcp': { ms: ix.ms, score: scoreOf(query, ix), files: ix.files.slice(0, 5), empty: ix.empty, top: ix.top, tokens: Math.ceil(ix.text.length / 3.6) } } };
     if (opts.replay) {
       const rg = rgReplay(opts.replay, query, dir);
       if (rg) row.arms.rg = { score: scoreOf(query, rg), files: rg.files.slice(0, 5), empty: rg.empty, calls: rg.calls };

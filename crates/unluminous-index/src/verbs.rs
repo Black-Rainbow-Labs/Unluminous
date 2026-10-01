@@ -601,7 +601,7 @@ fn semantic(index: &Index, asked: &FindRequest) -> Result<Value, Refusal> {
         "mode": "semantic",
         "total": chosen.len(),
         "files": files,
-        "hits": chosen.iter().map(|(h, share)| json!([h.path, h.start, h.header, h.end, h.score, (share * 1000.0).round() / 1000.0])).collect::<Vec<_>>(),
+        "hits": chosen.iter().map(|(h, share)| json!([h.path, h.start, h.header, h.end, h.score, (share * 1000.0).round() / 1000.0, h.confidence])).collect::<Vec<_>>(),
         "work": { "micros": started.elapsed().as_micros() as u64, "retrieved": found.len() },
         "text": text,
     }))

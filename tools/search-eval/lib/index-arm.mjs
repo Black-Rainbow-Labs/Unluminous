@@ -128,7 +128,9 @@ export async function openServer(dir, passages = false) {
   for (let i = 0; i < 4800; i++) {
     const { message } = await server.call('status', {});
     const st = message.result?.structuredContent;
-    if (st?.ready && (!passages || st.passagesReady)) break;
+    // A question in plain English is answered from the vectors once they exist, so a host that can
+    // embed is asked only after every chunk has one: an agent working in a checkout meets it warm.
+    if (st?.ready && (!passages || (st.passagesReady && (!st.canEmbed || st.vectors >= st.passages)))) break;
     await new Promise((r) => setTimeout(r, 250));
   }
   await server.call('find', { query: 'warm', budget: 1 });
