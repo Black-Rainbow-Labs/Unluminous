@@ -382,7 +382,7 @@ impl Embedder {
 /// @param status - the status to update
 /// @param rebuilt - whether the exact index was just built rather than loaded
 fn build_passages(store: &Store, exact: &RwLock<Option<Exact>>, status: &Mutex<Status>, rebuilt: bool) {
-    let current = store.meta("passage_version").as_deref() == Some(passages::PASSAGE_VERSION);
+    let current = store.meta("passage_version") == Some(passages::passage_version());
     let session = store.session();
     let built = if current && !rebuilt {
         passages::create(&session).and_then(|()| {
@@ -400,7 +400,7 @@ fn build_passages(store: &Store, exact: &RwLock<Option<Exact>>, status: &Mutex<S
         Ok(count) => {
             st.passages = count;
             st.passages_ready = true;
-            let _ = store.set_meta("passage_version", passages::PASSAGE_VERSION);
+            let _ = store.set_meta("passage_version", &passages::passage_version());
         }
         Err(e) => st.store_error = Some(format!("the passage table: {e}")),
     }

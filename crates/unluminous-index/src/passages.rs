@@ -24,6 +24,28 @@ use crate::words;
 /// The version of how chunks are cut and what a row holds. A different value rebuilds the table.
 pub const PASSAGE_VERSION: &str = "2";
 
+/// How the passage table combines its word ranking with its vector ranking, as the words of its
+/// declaration. A fixed weight of 0.5 by default (R8). `UNLUMINOUS_PASSAGE_FUSION` names another while
+/// the improvement loop compares them (lever 7): `adaptive`, `rrf` or `weighted:<weight>`. The vectors
+/// are cached by chunk hash, so trying one rebuilds the table and embeds nothing.
+pub fn fusion() -> String {
+    match std::env::var("UNLUMINOUS_PASSAGE_FUSION").ok().as_deref().map(str::trim) {
+        Some("adaptive") => String::new(),
+        Some("rrf") => ", fusion = 'rrf'".to_owned(),
+        Some(other) if other.starts_with("weighted:") => match other["weighted:".len()..].parse::<f64>() {
+            Ok(weight) if (0.0..=1.0).contains(&weight) => format!(", fusion = 'weighted', vector_weight = {weight}"),
+            _ => ", fusion = 'weighted', vector_weight = 0.5".to_owned(),
+        },
+        _ => ", fusion = 'weighted', vector_weight = 0.5".to_owned(),
+    }
+}
+
+/// The passage version written beside the table: `PASSAGE_VERSION` and the fusion it was made with,
+/// so a change of either rebuilds it.
+pub fn passage_version() -> String {
+    format!("{PASSAGE_VERSION}{}", fusion())
+}
+
 /// The embedding model's width: `nomic-embed-text-v1.5`, the one model `embed()` serves (R6).
 pub const DIMENSIONS: usize = 768;
 /// The model a cached vector was made by, so a change of model never reuses a vector.
@@ -93,7 +115,7 @@ pub fn create(conn: &Connection<'_>) -> Result<(), String> {
     conn.execute_batch(SCHEMA).map_err(|e| e.to_string())?;
     let exists = conn.query("SELECT name FROM sqlite_schema WHERE name = 'passage'", &[], 1).map_err(|e| e.to_string())?;
     if exists.rows.is_empty() {
-        conn.execute(&format!("CREATE VIRTUAL TABLE passage USING inillucent_search(header, body, words, lang FACET, kind FACET, path_prefix FACET, dims = {DIMENSIONS}, fusion = 'weighted', vector_weight = 0.5, tokenize = 'porter')"), &[])
+        conn.execute(&format!("CREATE VIRTUAL TABLE passage USING inillucent_search(header, body, words, lang FACET, kind FACET, path_prefix FACET, dims = {DIMENSIONS}{}, tokenize = 'porter')", fusion()), &[])
             .map_err(|e| e.to_string())?;
     }
     Ok(())
