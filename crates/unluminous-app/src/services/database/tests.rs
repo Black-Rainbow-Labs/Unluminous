@@ -650,7 +650,7 @@ fn an_inillucent_database(name: &str) -> PathBuf {
     let _ = std::fs::remove_file(&file);
     let _ = std::fs::remove_file(folder.join("sources.conf"));
     let database = inillucent_driver::Database::open(&file).expect("a database");
-    let connection = database.connect();
+    let connection = database.session();
     connection
         .execute_batch(
             "create table member (id integer primary key, name text not null, note text);
@@ -876,7 +876,9 @@ fn the_engine_reports_what_it_cannot_do_rather_than_leaving_it_to_be_discovered(
     let rows = reported["capabilities"].as_array().cloned().unwrap_or_default();
     assert!(rows.len() > 20, "the whole table: {}", rows.len());
     let cancel = rows.iter().find(|row| row["name"] == serde_json::json!("cancel"));
-    assert_eq!(cancel.map(|row| row["support"].clone()), Some(serde_json::json!("no")));
+    // `no` until Inillucent 2.0.2 and `partial` since; the Stop button is drawn only for `yes`.
+    let support = cancel.map(|row| row["support"].clone());
+    assert!(support.is_some() && support != Some(serde_json::json!("yes")), "{support:?}");
     // Every row carries a sentence, because a column of yes and no with nothing to read is a table
     // that gets copied into a comment and goes stale.
     assert!(rows.iter().all(|row| !row["note"].as_str().unwrap_or_default().is_empty()));

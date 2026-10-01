@@ -115,6 +115,7 @@ impl Session {
             // Off, and deliberately: the driver's diagnostic text may carry a file-system path or a
             // bound value, and this window puts a failure in front of a person and into a transcript.
             diagnostics: false,
+            ..OpenOptions::default()
         };
         let database = Database::open_with(file, options).map_err(said)?;
         Ok(Session { database, file: file.to_path_buf(), read_only })
@@ -153,7 +154,7 @@ impl Session {
     /// `DELETE` that should have been refused succeeding is the fault that makes it worth the pragma
     /// on every connection.
     fn connect(&self) -> inillucent_driver::Connection<'_> {
-        let connection = self.database.connect();
+        let connection = self.database.session();
         if !self.read_only {
             // A failure here is not worth refusing the caller's own work over: it would mean this
             // build has no such pragma, in which case foreign keys are off and the engine says so in
@@ -233,8 +234,8 @@ impl Session {
         let mut table = Table { schema: String::new(), name: name.to_owned(), ..Table::default() };
         for (at, column) in described.columns.iter().enumerate() {
             let mut into = Column::new(&column.name, &column.declared_type);
-            into.not_null = described.column_not_null(at);
-            into.in_key = described.column_in_key(&column.name);
+            into.not_null = described.not_null.get(at).copied().unwrap_or(false);
+            into.in_key = described.key.iter().any(|key| key.eq_ignore_ascii_case(&column.name));
             table.columns.push(into);
         }
         table.key = described.key.clone();

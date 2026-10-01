@@ -199,7 +199,10 @@ pub fn kind_of(item: &inillucent_driver::Item, declarations: &Declarations) -> K
 /// @param table - the columns as they were read
 pub fn vector_columns(name: &str, declarations: &Declarations, table: &Table) -> Vec<String> {
     let holds = |column: &str| table.columns.iter().any(|had| had.name == column);
-    if declarations.is_search(name) && holds(VECTOR_COLUMN) {
+    // A search table's `vector` is a hidden column. From Inillucent 2.0.2 `table_info` leaves hidden
+    // columns out, as SQLite's does, and only `table_xinfo` lists them, so the declaration is what says
+    // the column is there.
+    if declarations.is_search(name) {
         return vec![VECTOR_COLUMN.to_owned()];
     }
     let is_content = declarations.owner_of(name).is_some_and(|_| name.ends_with("_content"));

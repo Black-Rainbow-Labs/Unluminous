@@ -1592,9 +1592,11 @@ pub fn select_for(grid: &Grid, engine: Engine, limit: usize, at: usize) -> Strin
     // title and the body of a row whose whole point is the embedding beside them. Measured against
     // the engine: `select * from docs` answers `["title", "body"]`, and naming the column is what puts
     // it back. This is the one line that decides whether the ticket's "ways to see our vectors" is
-    // true of the grid at all.
+    // true of the grid at all. From Inillucent 2.0.2 `table_info` leaves hidden columns out, so the
+    // hidden `vector` is not in the column list and is named here; a vector column that is an ordinary
+    // column, such as `v` of a `%_content` shadow, is already in `*` and is not named twice.
     for column in &grid.table.vector_columns {
-        if grid.table.columns.iter().any(|had| had.name == *column) {
+        if !grid.table.columns.iter().any(|had| had.name == *column) {
             columns.push_str(&format!(", {}", unluminous_db::catalog::quoted(column, '"')));
         }
     }

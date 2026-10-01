@@ -137,7 +137,7 @@ fn build_one() -> std::path::PathBuf {
     let file = folder.join("notes.rdb");
     let _ = std::fs::remove_file(&file);
     let database = inillucent_driver::Database::open(&file).expect("a database");
-    let connection = database.connect();
+    let connection = database.session();
     connection
         .execute_batch(
             "create table member (id integer primary key, name text not null, joined text);

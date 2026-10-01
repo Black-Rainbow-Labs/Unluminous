@@ -22,7 +22,7 @@ fn a_database(name: &str) -> PathBuf {
     let file = folder.join("test.rdb");
     let _ = std::fs::remove_file(&file);
     let database = inillucent_driver::Database::open(&file).expect("a database");
-    let connection = database.connect();
+    let connection = database.session();
     connection
         .execute_batch(
             "create table member (id integer primary key, name text not null, note text);
@@ -368,12 +368,14 @@ fn a_read_only_source_is_refused_by_the_driver_rather_than_by_unluminous() {
 fn what_the_engine_has_not_built_keeps_its_own_words_and_its_own_code() {
     // The distinction the driver exists to make: *this engine cannot do that yet* is a different
     // answer from *check your spelling*, and an explorer that folded them together would have thrown
-    // the design away. If a later phase builds VACUUM, this test says so by failing.
+    // the design away. VACUUM was the example until Inillucent 2.0.2 built it; the trigram tokenizer is
+    // the example now. If a later phase builds that too, this test says so by failing.
     let mut session = Session::open(&a_database("gaps"), false).expect("opened");
-    let refused = session.run("VACUUM", &[], 0).expect_err("refused");
+    let refused = session
+        .run("CREATE VIRTUAL TABLE grams USING fts5(body, tokenize = 'trigram')", &[], 0)
+        .expect_err("refused");
     assert_eq!(refused.code, "unsupported", "{refused}");
-    assert!(refused.detail.contains("has not built this yet"), "{refused}");
-    assert!(refused.detail.contains("VACUUM"), "the engine's own word for it: {refused}");
+    assert!(refused.detail.contains("trigram"), "the engine's own word for it: {refused}");
 
     // And a typo is still a typo, with a different code.
     let missing = session.run("select * from nope", &[], 0).expect_err("refused");

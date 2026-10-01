@@ -794,7 +794,7 @@ fn an_inillucent_file(name: &str) -> std::path::PathBuf {
     let file = folder.join("notes.rdb");
     let _ = std::fs::remove_file(&file);
     let database = inillucent_driver::Database::open(&file).expect("a database");
-    let connection = database.connect();
+    let connection = database.session();
     connection
         .execute_batch(
             "create table member (id integer primary key, name text not null, joined text);
@@ -884,7 +884,9 @@ fn the_database_tree_says_what_a_search_index_declared() {
         .iter()
         .find(|row| row["name"] == serde_json::json!("cancel"))
         .expect("the cancel row");
-    assert_eq!(cancel["support"], "no");
+    // `no` until Inillucent 2.0.2, `partial` since. The Stop button is drawn only for `yes`
+    // (`unluminous_db::inillucent`), so it is still absent.
+    assert_ne!(cancel["support"], "yes", "{cancel}");
     harness.snapshot(shot("database_inillucent_tree").as_str());
 }
 
