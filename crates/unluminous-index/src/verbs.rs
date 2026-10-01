@@ -321,6 +321,7 @@ fn status(index: &Index) -> Value {
         "passagesReady": st.passages_ready,
         "vectors": st.vectors,
         "canEmbed": st.can_embed,
+        "notEmbedding": st.not_embedding,
         "storeError": st.store_error,
         "indexFile": st.file.to_string_lossy(),
         "versions": { "schema": crate::store::SCHEMA_VERSION, "trigram": crate::store::TRIGRAM_VERSION },

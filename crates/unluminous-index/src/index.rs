@@ -53,6 +53,8 @@ pub struct Status {
     pub vectors: usize,
     /// Whether `embed()` can run on this machine.
     pub can_embed: bool,
+    /// Why the vectors are not being made although `embed()` can run, when that is so.
+    pub not_embedding: Option<String>,
     /// The index file.
     pub file: PathBuf,
 }
@@ -329,6 +331,24 @@ struct Embedder {
     batch: usize,
 }
 
+/// The most chunks a host embeds on the processor. On the processor a host makes about ten vectors a
+/// second, so the Linux kernel's chunks would keep a core busy for days, and every search in that time
+/// waits behind a batch. Past this a repository is searched by its words alone unless a card is named.
+pub const PROCESSOR_CHUNK_LIMIT: usize = 100_000;
+
+/// Why a host that could embed should not, if it should not: `UNLUMINOUS_EMBED=off`, which an
+/// evaluation run sets so that nothing embeds while it is being timed, or a repository too large to
+/// embed on the processor when `INILLUCENT_EMBED_DEVICE` names no card.
+///
+/// @param chunks - how many chunks the passage table holds
+fn why_not_embed(chunks: usize) -> Option<String> {
+    if std::env::var("UNLUMINOUS_EMBED").is_ok_and(|v| v.trim().eq_ignore_ascii_case("off")) {
+        return Some("UNLUMINOUS_EMBED is off".into());
+    }
+    let on_a_card = std::env::var("INILLUCENT_EMBED_DEVICE").is_ok_and(|d| d.trim().to_ascii_lowercase().starts_with("cuda"));
+    (!on_a_card && chunks > PROCESSOR_CHUNK_LIMIT).then(|| format!("{chunks} chunks is more than the {PROCESSOR_CHUNK_LIMIT} embedded on the processor; set INILLUCENT_EMBED_DEVICE to a card to embed them"))
+}
+
 impl Embedder {
     /// Opens the embedder when `embed()` can run, with the shared cache beside the indexes.
     ///
@@ -344,6 +364,10 @@ impl Embedder {
             st.vectors = vectors;
         }
         if !able {
+            return None;
+        }
+        if let Some(reason) = why_not_embed(passages::vector_counts(&session).1) {
+            status.lock().expect("status").not_embedding = Some(reason);
             return None;
         }
         let folder = store::cache_folder().join("unluminous").join("embeddings");
