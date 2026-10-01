@@ -183,6 +183,9 @@ fn find(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
     Ok(value)
 }
 
+/// How many chunks a plain English answer shows as text.
+const SEMANTIC_SHOWN: usize = 5;
+
 /// The most files a `files` answer may list and still carry the best one's outline.
 const FILES_OUTLINED: usize = 3;
 
@@ -674,7 +677,7 @@ fn semantic(index: &Index, asked: &FindRequest) -> Result<Value, Refusal> {
         let mut shown = 0;
         for (i, line) in lines.iter().enumerate().take(hit.end as usize).skip(hit.start as usize - 1) {
             let lower = line.to_lowercase();
-            if shown < 3 && question_words.iter().any(|w| lower.contains(w.as_str())) {
+            if shown < 2 && question_words.iter().any(|w| lower.contains(w.as_str())) {
                 block.push_str(&format!("  {}: {}\n", i + 1, shape::trim_line(line, "")));
                 shown += 1;
             }
@@ -682,8 +685,13 @@ fn semantic(index: &Index, asked: &FindRequest) -> Result<Value, Refusal> {
         if used + shape::tokens(&block) > budget && !chosen.is_empty() {
             break;
         }
-        used += shape::tokens(&block);
-        text.push_str(&block);
+        // The text shows the first SEMANTIC_SHOWN chunks and the fields hold up to ten. In the fourth
+        // dev agent run a plain English `find` cost about 3,000 characters a call against 60 to 850
+        // for a Grep that listed files, and every turn after it read those characters again.
+        if chosen.len() < SEMANTIC_SHOWN {
+            used += shape::tokens(&block);
+            text.push_str(&block);
+        }
         chosen.push((hit.clone(), share));
         if chosen.len() >= 10 {
             break;
@@ -698,7 +706,12 @@ fn semantic(index: &Index, asked: &FindRequest) -> Result<Value, Refusal> {
             text.push_str(&format!("nearest names: {}\n", hints.join(", ")));
         }
     } else {
-        text.push_str("read one with `fragment path:line`\n");
+        // The best chunk is shown whole when it is short, which is the read an agent makes next.
+        let (best, _) = &chosen[0];
+        if let Some(code) = inline_code(index, &best.path, best.start.max(1), DEFAULT_BUDGET.saturating_sub(used)) {
+            text.push_str(&format!("\nthe code at {}:{}:\n{code}", best.path, best.start));
+        }
+        text.push_str("read another with `fragment path:line`\n");
     }
     let files: Vec<&str> = {
         let mut seen = Vec::new();
