@@ -4089,6 +4089,62 @@ selection** — left behind it would swallow the next press too — nothing sele
 `Ctrl+Shift+C` always copies, and `Ctrl+X` reaches the program as `0x18`, because nothing in a
 terminal can be cut and that is how a person leaves `nano`.
 
+## The code index answers what ripgrep would, from memory, and it is measured rather than assumed
+
+`task-2139` built `crates/unluminous-index` and the `search` area: `find`, `def`, `refs`, `fragment`,
+`outline`, `files`, `status` and `serve`, reached by the window, the command line and the MCP tool
+`unluminous_search` through one function, `unluminous_cli::search::ask`.
+`tasks/task-2138-unluminous-code-index-tdd.md` is the design, `tools/search-eval/` is the harness that
+measures it against the ripgrep inside Claude Code, and `tools/search-eval/SCORECARD.md` is the result.
+
+**`find` gives the lines ripgrep gives, and that is a test.** The file set is the Grep tool's: hidden
+files included, six version control folders left out, `.gitignore` obeyed. A trigram index picks the
+candidate blocks of 64 KB and `grep-searcher` verifies them, so the lines are ripgrep's own decision;
+UTF-16 with a byte order mark is decoded and a binary file named outright keeps its real line numbers,
+as ripgrep does. `tests/parity.rs` compares against a real ripgrep. Every frozen F2 query matched rg
+exactly on all four corpora, Linux included.
+
+**One host per checkout, and nothing waits behind it.** The index lives in
+`<cache>/unluminous/index/<blake3 of the root>/`, never in the project, with a lock file that makes
+one process the host: the window, `mcp serve`, or a detached `search serve` that a one off command
+starts. Answers come from memory; the Inillucent file is written on a store thread from copies taken
+under a short lock, because a full save under the read lock once made a query wait 19 seconds.
+
+**A watcher and a fence file keep it fresh, and F7 is the proof.** A change on disk is in the next
+answer: writing, editing, renaming, deleting, a 5,000 file burst and a branch switch gave zero stale or
+missing results against ripgrep on all three local corpora.
+
+**Questions in plain English go to the passage table.** Chunks come from the plugins' own definitions
+and folding, identifiers are split into words, and Inillucent's `inillucent_search` ranks them, with
+`nomic-embed-text` vectors when the model is installed (`inillucent setup-embeddings`). Nothing is
+downloaded. Four rules came out of measuring it, and each is a constant with its reason beside it:
+
+- **Code before documents.** A design document shares more words with a question than the code it
+  describes does. One search is made and documents are moved after code here; filtering the `kind`
+  facet inside a hybrid search gave the words alone ranking.
+- **An answer is turned away by word coverage** (`ABSTAIN_BELOW`, 0.31). Inillucent's `confidence()`
+  cannot do it on code: a ticket's whole text scores near 0.001 and a one line question 0.3 to 0.4
+  whether or not the code answers it.
+- **Vectors are written a batch per transaction.** One commit a row held a host at four vectors a
+  second with the card idle.
+- **The processor embeds at most `PROCESSOR_CHUNK_LIMIT` chunks** (100,000). Past that a repository is
+  searched by its words unless `INILLUCENT_EMBED_DEVICE` names a card. `UNLUMINOUS_EMBED=off` stops
+  embedding, which a speed run sets.
+
+**An answer an agent reads is short and saves it a turn.** Every answer is cut to a token budget and
+says what was left out. A small `find`, a `def` with one definition and a plain English answer carry
+the code around their best hit; a short `files` answer carries the best file's outline; a `path` that
+names no folder at the root is read as the one folder that ends with it; `def` takes `Type::name`.
+Each of these came from reading the agent transcripts, and the progression in `SCORECARD.md` says which
+run found it.
+
+**What the measurement says** (the held out split): `find` is 27x to 36x faster than ripgrep on the
+three local corpora and about 130x on Linux, from a cold host, with the same lines. The token goal,
+half of ripgrep's tokens for the whole agent session, is not reachable by construction: Sonnet finishes
+these tasks in four to seven turns either way, and most of a session is the instructions and tool
+definitions sent on every turn. A change that adds tokens to an answer to save a turn is the kind that
+helps; one that only trims an answer does not move the total.
+
 ## Git runs the `git` program, on a thread
 
 `unluminous-git` shells out to `git` rather than using a library, and the reason is what the machine's own
