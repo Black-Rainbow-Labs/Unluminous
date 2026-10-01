@@ -3835,7 +3835,7 @@ Answered by the CLI itself; no Unluminous needs to be running.
 
 ## search — the code index: find text, definitions, uses and files without ripgrep
 
-Use this instead of Grep, Glob, grep in a shell, and reading whole files. `find` gives the lines ripgrep would, grouped by file within a token budget; one identifier gets its definitions first. `def` and `refs` find where a name is defined and used. `fragment path:line` shows just the function around a line, so read that rather than the file; `outline` lists a file's definitions. `files` finds a file by name or glob. Kept current as files change.
+Use this instead of Grep, Glob, grep in a shell, and reading whole files. `find` gives the lines ripgrep would, grouped by file within a token budget; one identifier gets its definitions first. `def` and `refs` find where a name is defined and used. `fragment path:line` shows just the function around a line, so read that rather than the file; `outline` lists a file's definitions with their line ranges, and a Read of more than that should take an offset and a limit from them. Small answers already include the code around the hit. `files` finds a file by name or glob. Kept current as files change.
 
 ### search find
 

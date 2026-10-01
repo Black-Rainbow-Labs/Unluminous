@@ -183,6 +183,12 @@ fn find(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
     Ok(value)
 }
 
+/// The most files a `files` answer may list and still carry the best one's outline.
+const FILES_OUTLINED: usize = 3;
+
+/// The largest outline a `files` answer carries, in tokens.
+const OUTLINE_TOKENS: usize = 800;
+
 /// The most hits an exact answer may have and still carry the code around its first one.
 const INLINE_HITS: usize = 5;
 
@@ -265,7 +271,19 @@ fn files(index: &Index, args: &Map<String, Value>) -> Result<Value, Refusal> {
         let whole_paths: Vec<String> = within.iter().map(|p| format!("{prefix}{p}")).collect();
         ranked = crate::paths::rank(&whole_paths, query, limit);
     }
-    let text = if ranked.is_empty() { "no files match\n".to_owned() } else { ranked.iter().map(|p| format!("{p}\n")).collect() };
+    let mut text = if ranked.is_empty() { "no files match\n".to_owned() } else { ranked.iter().map(|p| format!("{p}\n")).collect() };
+    // A short answer carries the best file's outline. In the second dev agent run 37 reads came
+    // straight after `files`, most of them of the whole file; with the outline in hand an agent can
+    // ask for one function with `fragment` instead.
+    if let (true, Some(best)) = (ranked.len() <= FILES_OUTLINED, ranked.first()) {
+        let mut args = Map::new();
+        args.insert("path".into(), Value::String(best.clone()));
+        if let Some(shown) = outline(index, &args).ok().and_then(|v| v["text"].as_str().map(str::to_owned)) {
+            if shape::tokens(&shown) <= OUTLINE_TOKENS {
+                text.push_str(&format!("\noutline of {shown}read one with `fragment path:line`\n"));
+            }
+        }
+    }
     Ok(json!({ "files": ranked, "total": ranked.len(), "text": text }))
 }
 
