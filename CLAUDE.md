@@ -4143,7 +4143,10 @@ three local corpora and about 130x on Linux, from a cold host, with the same lin
 half of ripgrep's tokens for the whole agent session, is not reachable by construction: Sonnet finishes
 these tasks in four to seven turns either way, and most of a session is the instructions and tool
 definitions sent on every turn. A change that adds tokens to an answer to save a turn is the kind that
-helps; one that only trims an answer does not move the total.
+helps; one that only trims an answer does not move the total. Accuracy is ripgrep's, not better: on
+121 held out tasks Sonnet succeeded 0.689 of the time with the index and 0.678 with ripgrep, and one
+plain English search from a ticket's words finds the right file less often than the Grep calls an
+agent writes after reading the code. That search is the part of this design with the most room left.
 
 ## Git runs the `git` program, on a thread
 
