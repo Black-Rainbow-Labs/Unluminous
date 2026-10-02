@@ -7,7 +7,7 @@
 //! indexed**: ripgrep stops searching a file at its first NUL, so nothing there can ever match.
 //!
 //! A list is the delta of each file id from the one before, as a variable length integer, which is
-//! what Zoekt and IntelliJ's `TrigramIndex` keep too. Ids are handed out in increasing order, so a
+//! what Zoekt and the reference editor's trigram index keep too. Ids are handed out in increasing order, so a
 //! changed file is appended to the lists with a new id and its old id is tombstoned; the lists are
 //! rebuilt when tombstones pile up.
 
