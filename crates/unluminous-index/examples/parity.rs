@@ -17,7 +17,8 @@ use unluminous_index::files::Scope;
 /// @param query - the frozen query
 fn pattern_of(query: &serde_json::Value) -> String {
     let raw = query["pattern"].as_str().unwrap_or_default();
-    let mut pattern = if query["fixed"].as_bool().unwrap_or(false) { regex::escape(raw) } else { raw.to_owned() };
+    let mut pattern =
+        if query["fixed"].as_bool().unwrap_or(false) { regex::escape(raw) } else { raw.to_owned() };
     if query["word"].as_bool().unwrap_or(false) {
         pattern = format!(r"\b(?:{pattern})\b");
     }
@@ -47,24 +48,54 @@ fn main() {
             continue;
         }
         let strings = |key: &str| -> Vec<String> {
-            query[key].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default()
+            query[key]
+                .as_array()
+                .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
+                .unwrap_or_default()
         };
-        let scope = match Scope::new(root, query["path"].as_str().unwrap_or_default(), &strings("globs"), &strings("types")) {
+        let scope = match Scope::new(
+            root,
+            query["path"].as_str().unwrap_or_default(),
+            &strings("globs"),
+            &strings("types"),
+        ) {
             Ok(scope) => scope,
-            Err(e) => { println!("{} scope refused: {e}", query["id"]); differ += 1; continue; }
+            Err(e) => {
+                println!("{} scope refused: {e}", query["id"]);
+                differ += 1;
+                continue;
+            }
         };
         let pattern = pattern_of(&query);
-        let request = ExactRequest { pattern: &pattern, case_insensitive: query["ignoreCase"].as_bool().unwrap_or(false), scope: &scope };
+        let request = ExactRequest {
+            pattern: &pattern,
+            case_insensitive: query["ignoreCase"].as_bool().unwrap_or(false),
+            scope: &scope,
+        };
         let answer = match index.search(root, &request) {
             Ok(answer) => answer,
-            Err(e) => { println!("{} refused: {e}", query["id"]); differ += 1; continue; }
+            Err(e) => {
+                println!("{} refused: {e}", query["id"]);
+                differ += 1;
+                continue;
+            }
         };
-        let set: BTreeSet<String> = answer.hits.iter().map(|h| format!("{}:{}", h.path, h.line)).collect();
+        let set: BTreeSet<String> =
+            answer.hits.iter().map(|h| format!("{}:{}", h.path, h.line)).collect();
         if digest(&set) == query["gold"]["digest"].as_str().unwrap_or_default() {
             same += 1;
         } else {
             differ += 1;
-            println!("{} differs: index {} hits, rg {} hits; pattern {:?} path {:?} globs {:?} i={}", query["id"], set.len(), query["gold"]["hits"], pattern, query["path"], strings("globs"), request.case_insensitive);
+            println!(
+                "{} differs: index {} hits, rg {} hits; pattern {:?} path {:?} globs {:?} i={}",
+                query["id"],
+                set.len(),
+                query["gold"]["hits"],
+                pattern,
+                query["path"],
+                strings("globs"),
+                request.case_insensitive
+            );
         }
     }
     println!("{corpus}: {same} the same, {differ} different");

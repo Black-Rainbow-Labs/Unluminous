@@ -2913,7 +2913,8 @@ fn new_project_folder() -> std::path::PathBuf {
 /// The index is written under a cache folder of the test's own, never the person's.
 #[test]
 fn every_search_verb_answers_from_the_window() {
-    let folder = std::env::temp_dir().join(format!("unluminous-search-drive-{}", std::process::id()));
+    let folder =
+        std::env::temp_dir().join(format!("unluminous-search-drive-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(folder.join("src")).expect("make the folder");
     std::fs::create_dir_all(folder.join(".git")).expect("mark it a checkout");
@@ -2931,7 +2932,9 @@ fn every_search_verb_answers_from_the_window() {
     assert!(found["text"].as_str().unwrap_or_default().contains("src/lib.rs"), "{found}");
     let started = std::time::Instant::now();
     let mut status = did(&mut harness, "search status");
-    while status["ready"] != serde_json::json!(true) && started.elapsed() < std::time::Duration::from_secs(30) {
+    while status["ready"] != serde_json::json!(true)
+        && started.elapsed() < std::time::Duration::from_secs(30)
+    {
         std::thread::sleep(std::time::Duration::from_millis(100));
         status = did(&mut harness, "search status");
     }

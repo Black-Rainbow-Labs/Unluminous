@@ -13,7 +13,8 @@ impl UnluminousApp {
     /// @param request - the command and its arguments
     /// @param verb - the verb after `search.`
     pub(crate) fn cli_search(&mut self, request: &Request, _verb: &str) -> Outcome {
-        let given = request.text("root").unwrap_or_else(|| self.tree.root().to_string_lossy().into_owned());
+        let given =
+            request.text("root").unwrap_or_else(|| self.tree.root().to_string_lossy().into_owned());
         let root = unluminous_cli::search::project_root(Some(&given));
         Outcome::Reply(unluminous_cli::search::ask(
             &root,

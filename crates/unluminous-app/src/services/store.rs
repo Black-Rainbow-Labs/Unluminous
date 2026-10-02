@@ -8,7 +8,6 @@
 //! A file that cannot be read is treated as a file that is not there. Unluminous starting with its defaults is
 //! better than Unluminous refusing to start because a settings file has a stray line in it.
 
-
 use std::path::{Path, PathBuf};
 
 /// Write `bytes` to `path` through a temporary and a rename, so a crash cannot truncate the file.

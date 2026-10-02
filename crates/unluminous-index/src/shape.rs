@@ -35,7 +35,11 @@ pub fn trim_line(text: &str, needle: &str) -> String {
         return text.to_owned();
     }
     let lower = text.to_lowercase();
-    let at = if needle.is_empty() { 0 } else { lower.find(&needle.to_lowercase()).map_or(0, |b| text[..b.min(text.len())].chars().count()) };
+    let at = if needle.is_empty() {
+        0
+    } else {
+        lower.find(&needle.to_lowercase()).map_or(0, |b| text[..b.min(text.len())].chars().count())
+    };
     let start = at.saturating_sub(LINE_WIDTH / 3).min(chars.len() - LINE_WIDTH);
     let mut out: String = chars[start..start + LINE_WIDTH].iter().collect();
     if start > 0 {
@@ -77,15 +81,13 @@ pub fn shape(hits: &[Hit], needle: &str, budget: usize) -> Shaped {
     let mut text = String::new();
     let mut shown = Vec::new();
     let mut used = 0usize;
-    let mut files_shown = 0usize;
-    'files: for path in &order {
+    'files: for (files_shown, path) in order.iter().enumerate() {
         let header = format!("{path}\n");
         if budget > 0 && used + tokens(&header) > budget && files_shown > 0 {
             break;
         }
         text.push_str(&header);
         used += tokens(&header);
-        files_shown += 1;
         for hit in &by_file[path] {
             let row = format!("  {}: {}\n", hit.line, trim_line(&hit.text, needle));
             if budget > 0 && used + tokens(&row) > budget {
@@ -102,7 +104,10 @@ pub fn shape(hits: &[Hit], needle: &str, budget: usize) -> Shaped {
         *shown_per_file.entry(hit.path.as_str()).or_default() += 1;
     }
     // Every file with at least one hit left out, whether or not some of its hits were shown.
-    let files_with_omissions = order.iter().filter(|p| shown_per_file.get(*p).copied().unwrap_or(0) < by_file[*p].len()).count();
+    let files_with_omissions = order
+        .iter()
+        .filter(|p| shown_per_file.get(*p).copied().unwrap_or(0) < by_file[*p].len())
+        .count();
     let omitted_files = order.iter().filter(|p| !shown_per_file.contains_key(*p)).count();
     if omitted_hits > 0 {
         text.push_str(&format!("+{omitted_hits} hits in {files_with_omissions} files not shown; narrow with path= or glob=, or raise budget=\n"));

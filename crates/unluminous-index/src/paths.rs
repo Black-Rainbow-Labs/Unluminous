@@ -19,7 +19,8 @@ pub fn rank(paths: &[String], query: &str, limit: usize) -> Vec<String> {
         return by_glob(paths, &query, limit);
     }
     let needle = query.to_lowercase();
-    let mut scored: Vec<(u32, usize, &String)> = paths.iter().filter_map(|p| score(p, &needle).map(|s| (s, p.len(), p))).collect();
+    let mut scored: Vec<(u32, usize, &String)> =
+        paths.iter().filter_map(|p| score(p, &needle).map(|s| (s, p.len(), p))).collect();
     scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)).then(a.2.cmp(b.2)));
     scored.into_iter().take(limit).map(|(_, _, p)| p.clone()).collect()
 }
@@ -31,13 +32,27 @@ pub fn rank(paths: &[String], query: &str, limit: usize) -> Vec<String> {
 /// @param glob - the glob
 /// @param limit - how many to return
 fn by_glob(paths: &[String], glob: &str, limit: usize) -> Vec<String> {
-    let pattern = if glob.contains('/') { glob.trim_start_matches("./").to_owned() } else { format!("**/{glob}") };
-    let Ok(matcher) = GlobBuilder::new(&pattern).case_insensitive(true).literal_separator(true).build().map(|g| g.compile_matcher()) else {
+    let pattern = if glob.contains('/') {
+        glob.trim_start_matches("./").to_owned()
+    } else {
+        format!("**/{glob}")
+    };
+    let Ok(matcher) = GlobBuilder::new(&pattern)
+        .case_insensitive(true)
+        .literal_separator(true)
+        .build()
+        .map(|g| g.compile_matcher())
+    else {
         return Vec::new();
     };
     let mut found: Vec<&String> = paths.iter().filter(|p| matcher.is_match(p.as_str())).collect();
     found.sort_by(|a, b| {
-        a.matches('/').count().cmp(&b.matches('/').count()).then(is_entry_point(b).cmp(&is_entry_point(a))).then(a.len().cmp(&b.len())).then(a.cmp(b))
+        a.matches('/')
+            .count()
+            .cmp(&b.matches('/').count())
+            .then(is_entry_point(b).cmp(&is_entry_point(a)))
+            .then(a.len().cmp(&b.len()))
+            .then(a.cmp(b))
     });
     found.into_iter().take(limit).cloned().collect()
 }
@@ -88,7 +103,11 @@ mod tests {
 
     #[test]
     fn a_files_own_name_beats_a_folder_with_the_name() {
-        let paths = vec!["src/layout/mod.rs".to_owned(), "src/layout.rs".to_owned(), "docs/layout-notes.md".to_owned()];
+        let paths = vec![
+            "src/layout/mod.rs".to_owned(),
+            "src/layout.rs".to_owned(),
+            "docs/layout-notes.md".to_owned(),
+        ];
         assert_eq!(rank(&paths, "layout", 3)[0], "src/layout.rs");
         assert_eq!(rank(&paths, "*.md", 3), ["docs/layout-notes.md"]);
     }

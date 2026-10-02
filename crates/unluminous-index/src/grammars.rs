@@ -68,7 +68,10 @@ mod tests {
 
     #[test]
     fn every_bundled_language_reads_and_rust_defines_symbols() {
-        assert_eq!(by_extension().values().map(|l| l.id).collect::<std::collections::HashSet<_>>().len(), BUNDLED.len());
+        assert_eq!(
+            by_extension().values().map(|l| l.id).collect::<std::collections::HashSet<_>>().len(),
+            BUNDLED.len()
+        );
         let rust = for_path("src/main.rs").expect("rust");
         assert!(rust.grammar.defines_symbols());
         assert!(for_path("README.md").is_none());

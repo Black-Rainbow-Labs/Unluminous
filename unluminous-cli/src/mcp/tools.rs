@@ -171,8 +171,11 @@ impl Areas {
     /// `status` and `launch` anyway cost about 660 tokens on every turn, and in the code index's first
     /// agent run Claude Haiku 4.5 spent turns asking `status` of three windows it had no use for.
     pub fn includes(&self, area: &str) -> bool {
-        let windowless = !self.0.is_empty() && self.0.iter().all(|chosen| WINDOWLESS_AREAS.contains(&chosen.as_str()));
-        (area.is_empty() && !windowless) || self.0.is_empty() || self.0.iter().any(|chosen| chosen == area)
+        let windowless = !self.0.is_empty()
+            && self.0.iter().all(|chosen| WINDOWLESS_AREAS.contains(&chosen.as_str()));
+        (area.is_empty() && !windowless)
+            || self.0.is_empty()
+            || self.0.iter().any(|chosen| chosen == area)
     }
 
     /// What was named, for a reply that says what it was equipped with.
@@ -717,11 +720,14 @@ pub fn resolve_in(
             let mut beside = Vec::new();
             let loose: Map<String, Value> = given
                 .iter()
-                .filter(|(key, _)| !matches!(key.as_str(), "command" | "arguments" | "instance" | "timeout"))
+                .filter(|(key, _)| {
+                    !matches!(key.as_str(), "command" | "arguments" | "instance" | "timeout")
+                })
                 .map(|(key, value)| (key.clone(), value.clone()))
                 .collect();
             for (key, value) in catalogue::normalise_arguments(loose) {
-                let named = command.arguments.iter().any(|argument| argument.name == key) || command.flag(&key).is_some();
+                let named = command.arguments.iter().any(|argument| argument.name == key)
+                    || command.flag(&key).is_some();
                 match named {
                     true => {
                         arguments.entry(key).or_insert(value);
@@ -1385,13 +1391,19 @@ mod tests {
     #[test]
     fn a_search_only_agent_is_offered_the_search_tool_alone() {
         let search = Areas::parse("search").expect("an area");
-        let names: Vec<String> = tools_in(Shape::Grouped, &search).into_iter().map(|tool| tool.name).collect();
+        let names: Vec<String> =
+            tools_in(Shape::Grouped, &search).into_iter().map(|tool| tool.name).collect();
         assert_eq!(names, ["unluminous_search"]);
         let mut given = Map::new();
         given.insert("command".into(), json!("find"));
         given.insert("query".into(), json!("x "));
-        let call = resolve_in(Shape::Grouped, &search, "unluminous_search", &given).expect("resolved");
-        assert_eq!(call.arguments.get("query"), Some(&json!("x ")), "a key beside `command` is the command's own");
+        let call =
+            resolve_in(Shape::Grouped, &search, "unluminous_search", &given).expect("resolved");
+        assert_eq!(
+            call.arguments.get("query"),
+            Some(&json!("x ")),
+            "a key beside `command` is the command's own"
+        );
     }
 
     #[test]

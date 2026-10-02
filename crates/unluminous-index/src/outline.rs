@@ -85,7 +85,13 @@ pub fn is_listed(d: &Definition) -> bool {
 /// @param line - the line
 fn is_preamble(line: &str) -> bool {
     let t = line.trim_start();
-    t.starts_with("///") || t.starts_with("//") || t.starts_with("/*") || t.starts_with('*') || t.starts_with("#[") || t.starts_with('@') || (t.starts_with('#') && !t.starts_with("#!"))
+    t.starts_with("///")
+        || t.starts_with("//")
+        || t.starts_with("/*")
+        || t.starts_with('*')
+        || t.starts_with("#[")
+        || t.starts_with('@')
+        || (t.starts_with('#') && !t.starts_with("#!"))
 }
 
 /// The characters of a line that are not white space.
@@ -104,7 +110,9 @@ pub fn read(rel: &str, text: &str, budget: usize) -> Outline {
     let lines: Vec<&str> = text.split('\n').map(|l| l.trim_end_matches('\r')).collect();
     let language = grammars::for_path(rel);
     let definitions = match &language {
-        Some(language) if language.grammar.defines_symbols() => definitions(text, &lines, &language.grammar),
+        Some(language) if language.grammar.defines_symbols() => {
+            definitions(text, &lines, &language.grammar)
+        }
         _ => Vec::new(),
     };
     let units = match &language {
@@ -121,16 +129,25 @@ pub fn read(rel: &str, text: &str, budget: usize) -> Outline {
 /// @param text - the file's text
 /// @param lines - its lines
 /// @param grammar - its language
-fn definitions(text: &str, lines: &[&str], grammar: &unluminous_core::syntax::Grammar) -> Vec<Definition> {
+fn definitions(
+    text: &str,
+    lines: &[&str],
+    grammar: &unluminous_core::syntax::Grammar,
+) -> Vec<Definition> {
     let symbols = FileSymbols::read(text, grammar);
     let regions = folding::regions(text, Reading::Code(grammar));
-    let line_starts: Vec<usize> = std::iter::once(0).chain(text.match_indices('\n').map(|(i, _)| i + 1)).collect();
+    let line_starts: Vec<usize> =
+        std::iter::once(0).chain(text.match_indices('\n').map(|(i, _)| i + 1)).collect();
     let mut out: Vec<Definition> = Vec::new();
     for d in symbols.definitions() {
         let line0 = line_starts.partition_point(|&s| s <= d.name_range.start).saturating_sub(1);
         let end0 = regions
             .iter()
-            .filter(|r| matches!(r.kind, Kind::Block | Kind::Indent) && r.head >= line0 && r.head <= line0 + 2)
+            .filter(|r| {
+                matches!(r.kind, Kind::Block | Kind::Indent)
+                    && r.head >= line0
+                    && r.head <= line0 + 2
+            })
             .map(|r| r.last())
             .next()
             .unwrap_or(line0);
@@ -144,7 +161,10 @@ fn definitions(text: &str, lines: &[&str], grammar: &unluminous_core::syntax::Gr
             line: line0 as u32 + 1,
             end: end0.max(line0) as u32 + 1,
             start: start0 as u32 + 1,
-            signature: lines.get(line0).map(|l| l.trim().chars().take(200).collect()).unwrap_or_default(),
+            signature: lines
+                .get(line0)
+                .map(|l| l.trim().chars().take(200).collect())
+                .unwrap_or_default(),
             likely: d.confidence == Confidence::Likely,
             exported: d.exported,
             depth: 0,
@@ -153,7 +173,9 @@ fn definitions(text: &str, lines: &[&str], grammar: &unluminous_core::syntax::Gr
     out.sort_by_key(|d| (d.line, std::cmp::Reverse(d.end)));
     for i in 0..out.len() {
         let (line, end) = (out[i].line, out[i].end);
-        out[i].depth = out[..i].iter().filter(|o| o.line < line && o.end >= end && o.end > o.line).count() as u32;
+        out[i].depth =
+            out[..i].iter().filter(|o| o.line < line && o.end >= end && o.end > o.line).count()
+                as u32;
     }
     out
 }
@@ -241,8 +263,16 @@ fn paragraph_units(lines: &[&str]) -> Vec<Unit> {
 /// @param units - the units in line order
 /// @param definitions - its definitions, for headers and split points
 /// @param budget - the budget
-fn merge(rel: &str, lines: &[&str], units: &[Unit], definitions: &[Definition], budget: usize) -> Vec<Chunk> {
-    let weight_of = |s: usize, e: usize| lines[s..=e.min(lines.len() - 1)].iter().map(|l| weight(l)).sum::<usize>();
+fn merge(
+    rel: &str,
+    lines: &[&str],
+    units: &[Unit],
+    definitions: &[Definition],
+    budget: usize,
+) -> Vec<Chunk> {
+    let weight_of = |s: usize, e: usize| {
+        lines[s..=e.min(lines.len() - 1)].iter().map(|l| weight(l)).sum::<usize>()
+    };
     let mut pieces: Vec<Unit> = Vec::new();
     for unit in units {
         if weight_of(unit.start, unit.end) <= budget {
@@ -255,9 +285,11 @@ fn merge(rel: &str, lines: &[&str], units: &[Unit], definitions: &[Definition], 
     let mut current: Option<Unit> = None;
     for piece in pieces {
         current = match current {
-            Some(c) if weight_of(c.start, piece.end) <= budget => {
-                Some(Unit { start: c.start, end: piece.end, kind: if c.kind == "other" { piece.kind } else { c.kind } })
-            }
+            Some(c) if weight_of(c.start, piece.end) <= budget => Some(Unit {
+                start: c.start,
+                end: piece.end,
+                kind: if c.kind == "other" { piece.kind } else { c.kind },
+            }),
             Some(c) => {
                 chunks.push(make_chunk(rel, lines, &c, definitions));
                 Some(piece)
@@ -281,7 +313,10 @@ fn merge(rel: &str, lines: &[&str], units: &[Unit], definitions: &[Definition], 
 /// @param budget - the budget
 fn split(lines: &[&str], unit: &Unit, definitions: &[Definition], budget: usize) -> Vec<Unit> {
     let cuts: Vec<usize> = (unit.start + 1..=unit.end)
-        .filter(|&i| lines[i].trim().is_empty() || definitions.iter().any(|d| d.start as usize - 1 == i && d.depth > 0))
+        .filter(|&i| {
+            lines[i].trim().is_empty()
+                || definitions.iter().any(|d| d.start as usize - 1 == i && d.depth > 0)
+        })
         .collect();
     let mut out = Vec::new();
     let mut start = unit.start;
@@ -309,11 +344,23 @@ fn split(lines: &[&str], unit: &Unit, definitions: &[Definition], budget: usize)
 /// @param definitions - the file's definitions
 fn make_chunk(rel: &str, lines: &[&str], unit: &Unit, definitions: &[Definition]) -> Chunk {
     let (s, e) = (unit.start as u32 + 1, unit.end as u32 + 1);
-    let inside: Vec<&Definition> = definitions.iter().filter(|d| d.line >= s && d.line <= e).collect();
-    let enclosing: Vec<&Definition> = definitions.iter().filter(|d| d.line < s && d.end >= s).collect();
+    let inside: Vec<&Definition> =
+        definitions.iter().filter(|d| d.line >= s && d.line <= e).collect();
+    let enclosing: Vec<&Definition> =
+        definitions.iter().filter(|d| d.line < s && d.end >= s).collect();
     let mut signatures: Vec<String> = enclosing.iter().map(|d| d.signature.clone()).collect();
-    signatures.extend(inside.iter().filter(|d| d.depth == 0 || enclosing.is_empty()).take(4).map(|d| d.signature.clone()));
-    let header = if signatures.is_empty() { rel.to_owned() } else { format!("{rel} | {}", signatures.join(" ; ")) };
+    signatures.extend(
+        inside
+            .iter()
+            .filter(|d| d.depth == 0 || enclosing.is_empty())
+            .take(4)
+            .map(|d| d.signature.clone()),
+    );
+    let header = if signatures.is_empty() {
+        rel.to_owned()
+    } else {
+        format!("{rel} | {}", signatures.join(" ; "))
+    };
     Chunk {
         start: s,
         end: e,

@@ -32,10 +32,14 @@ pub fn fusion() -> String {
     match std::env::var("UNLUMINOUS_PASSAGE_FUSION").ok().as_deref().map(str::trim) {
         Some("adaptive") => String::new(),
         Some("rrf") => ", fusion = 'rrf'".to_owned(),
-        Some(other) if other.starts_with("weighted:") => match other["weighted:".len()..].parse::<f64>() {
-            Ok(weight) if (0.0..=1.0).contains(&weight) => format!(", fusion = 'weighted', vector_weight = {weight}"),
-            _ => ", fusion = 'weighted', vector_weight = 0.5".to_owned(),
-        },
+        Some(other) if other.starts_with("weighted:") => {
+            match other["weighted:".len()..].parse::<f64>() {
+                Ok(weight) if (0.0..=1.0).contains(&weight) => {
+                    format!(", fusion = 'weighted', vector_weight = {weight}")
+                }
+                _ => ", fusion = 'weighted', vector_weight = 0.5".to_owned(),
+            }
+        }
         _ => ", fusion = 'weighted', vector_weight = 0.5".to_owned(),
     }
 }
@@ -81,9 +85,17 @@ pub struct PassageHit {
 pub fn is_passage_source(record: &FileRecord) -> bool {
     let lower = record.rel.to_ascii_lowercase();
     let name = lower.rsplit('/').next().unwrap_or(&lower);
-    let generated = name.ends_with(".lock") || name.contains(".min.") || name == "package-lock.json" || name.ends_with(".map");
-    let secret = name.starts_with(".env") || name.ends_with(".pem") || name.ends_with(".key") || name.starts_with("id_");
-    let readable = crate::grammars::for_path(&record.rel).is_some() || name.ends_with(".md") || name.ends_with(".txt");
+    let generated = name.ends_with(".lock")
+        || name.contains(".min.")
+        || name == "package-lock.json"
+        || name.ends_with(".map");
+    let secret = name.starts_with(".env")
+        || name.ends_with(".pem")
+        || name.ends_with(".key")
+        || name.starts_with("id_");
+    let readable = crate::grammars::for_path(&record.rel).is_some()
+        || name.ends_with(".md")
+        || name.ends_with(".txt");
     !record.binary && record.size <= 1_048_576 && !generated && !secret && readable
 }
 
@@ -113,7 +125,9 @@ pub fn prefix_of(path: &str) -> &str {
 /// @param conn - a connection on the store thread
 pub fn create(conn: &Connection<'_>) -> Result<(), String> {
     conn.execute_batch(SCHEMA).map_err(|e| e.to_string())?;
-    let exists = conn.query("SELECT name FROM sqlite_schema WHERE name = 'passage'", &[], 1).map_err(|e| e.to_string())?;
+    let exists = conn
+        .query("SELECT name FROM sqlite_schema WHERE name = 'passage'", &[], 1)
+        .map_err(|e| e.to_string())?;
     if exists.rows.is_empty() {
         conn.execute(&format!("CREATE VIRTUAL TABLE passage USING inillucent_search(header, body, words, lang FACET, kind FACET, path_prefix FACET, dims = {DIMENSIONS}{}, tokenize = 'porter')", fusion()), &[])
             .map_err(|e| e.to_string())?;
@@ -145,20 +159,34 @@ pub fn rebuild(conn: &Connection<'_>, records: &[FileRecord]) -> Result<usize, S
 /// @param conn - a connection on the store thread
 /// @param removed - paths gone from the set
 /// @param changed - files read again
-pub fn update(conn: &Connection<'_>, removed: &[String], changed: &[&FileRecord]) -> Result<(), String> {
+pub fn update(
+    conn: &Connection<'_>,
+    removed: &[String],
+    changed: &[&FileRecord],
+) -> Result<(), String> {
     let tx = conn.begin().map_err(|e| e.to_string())?;
-    let next = match tx.query("SELECT max(id) FROM chunk", &[], 1).map_err(|e| e.to_string())?.value(0, 0) {
-        Some(Value::Integer(n)) => n + 1,
-        _ => 1,
-    };
+    let next =
+        match tx.query("SELECT max(id) FROM chunk", &[], 1).map_err(|e| e.to_string())?.value(0, 0)
+        {
+            Some(Value::Integer(n)) => n + 1,
+            _ => 1,
+        };
     for path in removed.iter().map(String::as_str).chain(changed.iter().map(|r| r.rel.as_str())) {
-        let ids = tx.query("SELECT id FROM chunk WHERE path = ?1", &[Value::Text(path.to_owned())], usize::MAX).map_err(|e| e.to_string())?;
+        let ids = tx
+            .query(
+                "SELECT id FROM chunk WHERE path = ?1",
+                &[Value::Text(path.to_owned())],
+                usize::MAX,
+            )
+            .map_err(|e| e.to_string())?;
         for row in &ids.rows {
             if let Some(Value::Integer(id)) = row.first() {
-                tx.execute("DELETE FROM passage WHERE rowid = ?1", &[Value::Integer(*id)]).map_err(|e| e.to_string())?;
+                tx.execute("DELETE FROM passage WHERE rowid = ?1", &[Value::Integer(*id)])
+                    .map_err(|e| e.to_string())?;
             }
         }
-        tx.execute("DELETE FROM chunk WHERE path = ?1", &[Value::Text(path.to_owned())]).map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM chunk WHERE path = ?1", &[Value::Text(path.to_owned())])
+            .map_err(|e| e.to_string())?;
     }
     let mut next = next;
     for record in changed.iter().filter(|r| is_passage_source(r)) {
@@ -172,12 +200,20 @@ pub fn update(conn: &Connection<'_>, removed: &[String], changed: &[&FileRecord]
 /// @param tx - the open transaction
 /// @param record - the file
 /// @param first - the first id to use
-fn write_file(tx: &inillucent_driver::Transaction<'_>, record: &FileRecord, first: i64) -> Result<i64, String> {
+fn write_file(
+    tx: &inillucent_driver::Transaction<'_>,
+    record: &FileRecord,
+    first: i64,
+) -> Result<i64, String> {
     let bytes = record.bytes();
     let text = String::from_utf8_lossy(&bytes);
     let read = outline::read(&record.rel, &text, CHUNK_BUDGET);
     let mut id = first;
-    let (lang, kind, prefix) = (crate::store::extension(&record.rel), kind_of(&record.rel), prefix_of(&record.rel).to_owned());
+    let (lang, kind, prefix) = (
+        crate::store::extension(&record.rel),
+        kind_of(&record.rel),
+        prefix_of(&record.rel).to_owned(),
+    );
     for chunk in &read.chunks {
         let hash = blake3::hash(format!("{}\n{}", chunk.header, chunk.body).as_bytes());
         tx.execute(
@@ -185,7 +221,8 @@ fn write_file(tx: &inillucent_driver::Transaction<'_>, record: &FileRecord, firs
             &[Value::Integer(id), Value::Text(record.rel.clone()), Value::Integer(i64::from(chunk.start)), Value::Integer(i64::from(chunk.end)), Value::Text(chunk.kind.into()), chunk.symbol.clone().map_or(Value::Null, Value::Text), Value::Text(chunk.header.clone()), Value::Blob(hash.as_bytes().to_vec())],
         )
         .map_err(|e| e.to_string())?;
-        let searched_words = format!("{} {}", words::search_words(&chunk.header), words::search_words(&chunk.body));
+        let searched_words =
+            format!("{} {}", words::search_words(&chunk.header), words::search_words(&chunk.body));
         tx.execute(
             "INSERT INTO passage (rowid, header, body, words, lang, kind, path_prefix) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             &[Value::Integer(id), Value::Text(chunk.header.clone()), Value::Text(chunk.body.clone()), Value::Text(searched_words), Value::Text(lang.clone()), Value::Text(kind.into()), Value::Text(prefix.clone())],
@@ -201,14 +238,24 @@ fn write_file(tx: &inillucent_driver::Transaction<'_>, record: &FileRecord, firs
 ///
 /// @param conn - a connection on the store thread
 pub fn can_embed(conn: &Connection<'_>) -> bool {
-    conn.query("SELECT length(embed('search_query: ready'))", &[], 1).is_ok_and(|rows| matches!(rows.value(0, 0), Some(Value::Integer(n)) if *n as usize == DIMENSIONS * 4))
+    conn.query("SELECT length(embed('search_query: ready'))", &[], 1).is_ok_and(
+        |rows| matches!(rows.value(0, 0), Some(Value::Integer(n)) if *n as usize == DIMENSIONS * 4),
+    )
 }
 
 /// How many chunks have a vector, and how many there are.
 ///
 /// @param conn - a connection on the store thread
 pub fn vector_counts(conn: &Connection<'_>) -> (usize, usize) {
-    let count = |sql: &str| conn.query(sql, &[], 1).ok().and_then(|r| match r.value(0, 0) { Some(Value::Integer(n)) => Some(*n as usize), _ => None }).unwrap_or(0);
+    let count = |sql: &str| {
+        conn.query(sql, &[], 1)
+            .ok()
+            .and_then(|r| match r.value(0, 0) {
+                Some(Value::Integer(n)) => Some(*n as usize),
+                _ => None,
+            })
+            .unwrap_or(0)
+    };
     (count("SELECT count(*) FROM chunk WHERE embedded = 1"), count("SELECT count(*) FROM chunk"))
 }
 
@@ -224,19 +271,33 @@ pub fn vector_counts(conn: &Connection<'_>) -> (usize, usize) {
 /// @param conn - a connection on the store thread
 /// @param cache - the shared embedding cache, if it could be opened
 /// @param batch - how many chunks at most
-pub fn embed_pending(conn: &Connection<'_>, cache: Option<&Connection<'_>>, batch: usize) -> Result<usize, String> {
+pub fn embed_pending(
+    conn: &Connection<'_>,
+    cache: Option<&Connection<'_>>,
+    batch: usize,
+) -> Result<usize, String> {
     let rows = conn
         .query("SELECT c.id, c.chunk_hash, p.header, p.body FROM chunk c JOIN passage p ON p.rowid = c.id WHERE c.embedded = 0 LIMIT ?1", &[Value::Integer(batch as i64)], batch)
         .map_err(|e| e.to_string())?;
     let mut made: Vec<(i64, Vec<u8>, Vec<u8>, bool)> = Vec::new();
     for row in &rows.rows {
-        let (Some(Value::Integer(id)), Some(hash)) = (row.first(), row.get(1).and_then(Value::bytes)) else { continue };
+        let (Some(Value::Integer(id)), Some(hash)) =
+            (row.first(), row.get(1).and_then(Value::bytes))
+        else {
+            continue;
+        };
         if let Some(vector) = cached_vector(cache, hash) {
             made.push((*id, hash.to_vec(), vector, false));
             continue;
         }
-        let text = format!("search_document: {}\n{}", row.get(2).and_then(Value::text).unwrap_or_default(), row.get(3).and_then(Value::text).unwrap_or_default());
-        let answer = conn.query("SELECT embed(?1)", &[Value::Text(text.chars().take(6000).collect())], 1).map_err(|e| e.to_string())?;
+        let text = format!(
+            "search_document: {}\n{}",
+            row.get(2).and_then(Value::text).unwrap_or_default(),
+            row.get(3).and_then(Value::text).unwrap_or_default()
+        );
+        let answer = conn
+            .query("SELECT embed(?1)", &[Value::Text(text.chars().take(6000).collect())], 1)
+            .map_err(|e| e.to_string())?;
         if let Some(vector) = answer.value(0, 0).and_then(Value::bytes) {
             made.push((*id, hash.to_vec(), vector.to_vec(), true));
         }
@@ -253,7 +314,13 @@ pub fn embed_pending(conn: &Connection<'_>, cache: Option<&Connection<'_>>, batc
 /// @param cache - the shared embedding cache, if it could be opened
 /// @param hash - the chunk's hash
 fn cached_vector(cache: Option<&Connection<'_>>, hash: &[u8]) -> Option<Vec<u8>> {
-    let rows = cache?.query("SELECT vector FROM emb WHERE hash = ?1 AND model = ?2", &[Value::Blob(hash.to_vec()), Value::Text(MODEL.into())], 1).ok()?;
+    let rows = cache?
+        .query(
+            "SELECT vector FROM emb WHERE hash = ?1 AND model = ?2",
+            &[Value::Blob(hash.to_vec()), Value::Text(MODEL.into())],
+            1,
+        )
+        .ok()?;
     rows.value(0, 0).and_then(Value::bytes).map(<[u8]>::to_vec)
 }
 
@@ -261,14 +328,22 @@ fn cached_vector(cache: Option<&Connection<'_>>, hash: &[u8]) -> Option<Vec<u8>>
 ///
 /// @param conn - a connection on the store thread
 /// @param made - (chunk id, hash, vector, newly made) for each chunk
-fn write_vectors(conn: &Connection<'_>, made: &[(i64, Vec<u8>, Vec<u8>, bool)]) -> Result<(), String> {
+fn write_vectors(
+    conn: &Connection<'_>,
+    made: &[(i64, Vec<u8>, Vec<u8>, bool)],
+) -> Result<(), String> {
     if made.is_empty() {
         return Ok(());
     }
     let tx = conn.begin().map_err(|e| e.to_string())?;
     for (id, _, vector, _) in made {
-        tx.execute("UPDATE passage SET vector = ?1 WHERE rowid = ?2", &[Value::Blob(vector.clone()), Value::Integer(*id)]).map_err(|e| e.to_string())?;
-        tx.execute("UPDATE chunk SET embedded = 1 WHERE id = ?1", &[Value::Integer(*id)]).map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE passage SET vector = ?1 WHERE rowid = ?2",
+            &[Value::Blob(vector.clone()), Value::Integer(*id)],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute("UPDATE chunk SET embedded = 1 WHERE id = ?1", &[Value::Integer(*id)])
+            .map_err(|e| e.to_string())?;
     }
     tx.commit().map_err(|e| e.to_string())
 }
@@ -284,7 +359,10 @@ fn remember_vectors(cache: &Connection<'_>, made: &[(i64, Vec<u8>, Vec<u8>, bool
     }
     let Ok(tx) = cache.begin() else { return };
     for (_, hash, vector, _) in made.iter().filter(|m| m.3) {
-        let _ = tx.execute("INSERT OR REPLACE INTO emb (hash, model, vector) VALUES (?1, ?2, ?3)", &[Value::Blob(hash.clone()), Value::Text(MODEL.into()), Value::Blob(vector.clone())]);
+        let _ = tx.execute(
+            "INSERT OR REPLACE INTO emb (hash, model, vector) VALUES (?1, ?2, ?3)",
+            &[Value::Blob(hash.clone()), Value::Text(MODEL.into()), Value::Blob(vector.clone())],
+        );
     }
     let _ = tx.commit();
 }
@@ -298,7 +376,13 @@ pub fn match_query(question: &str) -> Option<String> {
     if terms.is_empty() {
         return None;
     }
-    Some(terms.iter().map(|t| format!("\"{}\"", t.replace('"', ""))).collect::<Vec<_>>().join(" OR "))
+    Some(
+        terms
+            .iter()
+            .map(|t| format!("\"{}\"", t.replace('"', "")))
+            .collect::<Vec<_>>()
+            .join(" OR "),
+    )
 }
 
 /// The chunks that best answer a question, best first.
@@ -313,7 +397,13 @@ pub fn match_query(question: &str) -> Option<String> {
 /// @param k - how many to retrieve
 /// @param kind - only chunks of this kind, if given
 /// @param vectors - whether the table has vectors, so the search is hybrid
-pub fn search(conn: &Connection<'_>, question: &str, k: usize, kind: Option<&str>, vectors: bool) -> Result<Vec<PassageHit>, String> {
+pub fn search(
+    conn: &Connection<'_>,
+    question: &str,
+    k: usize,
+    kind: Option<&str>,
+    vectors: bool,
+) -> Result<Vec<PassageHit>, String> {
     let Some(query) = match_query(question) else { return Ok(Vec::new()) };
     // The question as the model is asked it. Embedded once and bound as bytes, the vector was taken
     // as something other than a query vector and every search fell back to its words (F6 went from
@@ -326,7 +416,8 @@ pub fn search(conn: &Connection<'_>, question: &str, k: usize, kind: Option<&str
     // `kind` facet in a hybrid search returned the same few large files for every question, the
     // ranking of the words alone (F6 0.15 to 0.04 on the dev split), so the facet is not used for this.
     let found = search_kind(conn, &query, vector.as_ref(), k * 2, None)?;
-    let (mut first, docs): (Vec<_>, Vec<_>) = found.into_iter().partition(|hit| kind_of(&hit.path) != "docs");
+    let (mut first, docs): (Vec<_>, Vec<_>) =
+        found.into_iter().partition(|hit| kind_of(&hit.path) != "docs");
     first.truncate(k);
     first.extend(docs.into_iter().take(10));
     Ok(first)
@@ -339,7 +430,13 @@ pub fn search(conn: &Connection<'_>, question: &str, k: usize, kind: Option<&str
 /// @param vector - the question as the model is asked it, if the search is hybrid
 /// @param k - how many to retrieve
 /// @param kind - only chunks of this kind, if given
-fn search_kind(conn: &Connection<'_>, query: &str, vector: Option<&Value>, k: usize, kind: Option<&str>) -> Result<Vec<PassageHit>, String> {
+fn search_kind(
+    conn: &Connection<'_>,
+    query: &str,
+    vector: Option<&Value>,
+    k: usize,
+    kind: Option<&str>,
+) -> Result<Vec<PassageHit>, String> {
     let mut params = vec![Value::Text(query.to_owned()), Value::Integer(k as i64)];
     let mut filter = String::new();
     if let Some(kind) = kind {

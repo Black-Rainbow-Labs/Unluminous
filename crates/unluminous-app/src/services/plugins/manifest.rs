@@ -6,7 +6,6 @@
 //! are one feature — a misspelt key refused by name — and belong beside the parser whose keys they
 //! check.
 
-
 use unluminous_core::syntax::Token;
 use unluminous_core::Color;
 

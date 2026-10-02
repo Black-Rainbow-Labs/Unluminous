@@ -26,8 +26,17 @@ pub fn parts(word: &str) -> Vec<String> {
         let next = chars.get(i + 1).copied();
         let boundary = match previous {
             Some(p) if p.is_lowercase() && c.is_uppercase() => true,
-            Some(p) if p.is_uppercase() && c.is_uppercase() && next.is_some_and(char::is_lowercase) => true,
-            Some(p) if p.is_ascii_digit() != c.is_ascii_digit() && (p.is_alphanumeric() && c.is_alphanumeric()) => true,
+            Some(p)
+                if p.is_uppercase() && c.is_uppercase() && next.is_some_and(char::is_lowercase) =>
+            {
+                true
+            }
+            Some(p)
+                if p.is_ascii_digit() != c.is_ascii_digit()
+                    && (p.is_alphanumeric() && c.is_alphanumeric()) =>
+            {
+                true
+            }
             _ => false,
         };
         if boundary && !current.is_empty() {
@@ -47,7 +56,11 @@ pub fn parts(word: &str) -> Vec<String> {
 /// @param word - the identifier
 fn needs_splitting(word: &str) -> bool {
     let chars: Vec<char> = word.chars().collect();
-    word.contains('-') || chars.windows(2).any(|w| (w[0].is_lowercase() && w[1].is_uppercase()) || (w[0].is_ascii_digit() != w[1].is_ascii_digit()))
+    word.contains('-')
+        || chars.windows(2).any(|w| {
+            (w[0].is_lowercase() && w[1].is_uppercase())
+                || (w[0].is_ascii_digit() != w[1].is_ascii_digit())
+        })
 }
 
 /// The extra search words for a text: each identifier that needs splitting, whole and in parts, once.
@@ -83,7 +96,13 @@ pub fn identifiers(text: &str) -> impl Iterator<Item = &str> {
             if b.is_ascii_alphabetic() || b == b'_' {
                 let start = at;
                 at += 1;
-                while at < bytes.len() && (bytes[at].is_ascii_alphanumeric() || bytes[at] == b'_' || (bytes[at] == b'-' && at + 1 < bytes.len() && bytes[at + 1].is_ascii_alphabetic())) {
+                while at < bytes.len()
+                    && (bytes[at].is_ascii_alphanumeric()
+                        || bytes[at] == b'_'
+                        || (bytes[at] == b'-'
+                            && at + 1 < bytes.len()
+                            && bytes[at + 1].is_ascii_alphabetic()))
+                {
                     at += 1;
                 }
                 return Some(&text[start..at]);
@@ -99,7 +118,11 @@ pub fn identifiers(text: &str) -> impl Iterator<Item = &str> {
 ///
 /// @param question - the question
 pub fn query_words(question: &str) -> Vec<String> {
-    const COMMON: &[&str] = &["the", "a", "an", "of", "to", "in", "is", "it", "and", "or", "for", "on", "with", "where", "what", "how", "do", "does", "we", "our", "which", "when", "that", "this", "be", "by", "from", "are", "as", "at", "get", "gets", "code", "function", "file", "there"];
+    const COMMON: &[&str] = &[
+        "the", "a", "an", "of", "to", "in", "is", "it", "and", "or", "for", "on", "with", "where",
+        "what", "how", "do", "does", "we", "our", "which", "when", "that", "this", "be", "by",
+        "from", "are", "as", "at", "get", "gets", "code", "function", "file", "there",
+    ];
     let mut out: Vec<String> = Vec::new();
     let mut push = |w: String| {
         if w.len() > 1 && !COMMON.contains(&w.as_str()) && !out.contains(&w) {
@@ -127,12 +150,18 @@ mod tests {
         assert_eq!(parts("HTTPServer"), ["http", "server"]);
         assert_eq!(parts("utf16Decode"), ["utf", "16", "decode"]);
         assert_eq!(parts("unluminous-cli"), ["unluminous", "cli"]);
-        assert_eq!(search_words("let x = resolveSkipToken(a);"), "resolveskiptoken resolve skip token ");
+        assert_eq!(
+            search_words("let x = resolveSkipToken(a);"),
+            "resolveskiptoken resolve skip token "
+        );
         assert_eq!(search_words("max_retry_count"), "", "the engine splits snake case itself");
     }
 
     #[test]
     fn a_question_keeps_its_content_words() {
-        assert_eq!(query_words("Where do we retry a failed board write?"), ["retry", "failed", "board", "write"]);
+        assert_eq!(
+            query_words("Where do we retry a failed board write?"),
+            ["retry", "failed", "board", "write"]
+        );
     }
 }

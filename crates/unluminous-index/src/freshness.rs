@@ -91,7 +91,14 @@ impl Freshness {
         if watcher.is_none() {
             dirty.lock().expect("dirty").overflow = true;
         }
-        Freshness { root: root.to_path_buf(), dirty, fence, fence_folder, next_fence: AtomicU64::new(1), _watcher: watcher }
+        Freshness {
+            root: root.to_path_buf(),
+            dirty,
+            fence,
+            fence_folder,
+            next_fence: AtomicU64::new(1),
+            _watcher: watcher,
+        }
     }
 
     /// Whether anything is waiting to be reconciled.
@@ -140,10 +147,26 @@ impl Freshness {
             report.reconciled_all = true;
         } else {
             for tree in &dirty.trees {
-                reconcile(&self.root, &self.root.join(tree), None, exact, &dirty.files, &mut report);
+                reconcile(
+                    &self.root,
+                    &self.root.join(tree),
+                    None,
+                    exact,
+                    &dirty.files,
+                    &mut report,
+                );
             }
-            for folder in dirty.folders.iter().filter(|f| !dirty.trees.iter().any(|t| is_under(f, t))) {
-                reconcile(&self.root, &self.root.join(folder), Some(1), exact, &dirty.files, &mut report);
+            for folder in
+                dirty.folders.iter().filter(|f| !dirty.trees.iter().any(|t| is_under(f, t)))
+            {
+                reconcile(
+                    &self.root,
+                    &self.root.join(folder),
+                    Some(1),
+                    exact,
+                    &dirty.files,
+                    &mut report,
+                );
             }
         }
         report.took = started.elapsed();
@@ -156,7 +179,9 @@ impl Freshness {
 /// @param path - a relative path
 /// @param tree - a relative folder, empty for the root
 fn is_under(path: &str, tree: &str) -> bool {
-    tree.is_empty() || path == tree || (path.starts_with(tree) && path.as_bytes().get(tree.len()) == Some(&b'/'))
+    tree.is_empty()
+        || path == tree
+        || (path.starts_with(tree) && path.as_bytes().get(tree.len()) == Some(&b'/'))
 }
 
 /// Lists a folder (to a depth) with the index's walk and makes the index agree with it: files gone are
@@ -169,7 +194,14 @@ fn is_under(path: &str, tree: &str) -> bool {
 /// @param exact - the index
 /// @param named - files an event named
 /// @param report - what changed is added here
-fn reconcile(root: &Path, start: &Path, depth: Option<usize>, exact: &mut Exact, named: &HashSet<String>, report: &mut GateReport) {
+fn reconcile(
+    root: &Path,
+    start: &Path,
+    depth: Option<usize>,
+    exact: &mut Exact,
+    named: &HashSet<String>,
+    report: &mut GateReport,
+) {
     let prefix = files::relative(root, start).unwrap_or_default();
     // A path that is a file now (an editor saving by rename reports a removal and a creation) is listed
     // through its folder, so the ignore rules still decide whether it belongs to the set.
@@ -185,7 +217,10 @@ fn reconcile(root: &Path, start: &Path, depth: Option<usize>, exact: &mut Exact,
     let held: Vec<(String, u32)> = exact
         .by_path
         .iter()
-        .filter(|(rel, _)| is_under(rel, &prefix) && (depth.is_none() || !rel[prefix.len()..].trim_start_matches('/').contains('/')))
+        .filter(|(rel, _)| {
+            is_under(rel, &prefix)
+                && (depth.is_none() || !rel[prefix.len()..].trim_start_matches('/').contains('/'))
+        })
         .map(|(rel, &id)| (rel.clone(), id))
         .collect();
     for (rel, id) in &held {
@@ -196,8 +231,10 @@ fn reconcile(root: &Path, start: &Path, depth: Option<usize>, exact: &mut Exact,
         }
     }
     for found in &listed {
-        let current = exact.by_path.get(&found.rel).and_then(|&id| exact.files[id as usize].as_ref());
-        let stat_changed = current.is_none_or(|r| r.size != found.size || r.mtime_ns != found.mtime_ns);
+        let current =
+            exact.by_path.get(&found.rel).and_then(|&id| exact.files[id as usize].as_ref());
+        let stat_changed =
+            current.is_none_or(|r| r.size != found.size || r.mtime_ns != found.mtime_ns);
         if !stat_changed && !named.contains(&found.rel) {
             continue;
         }
@@ -219,7 +256,11 @@ fn reconcile(root: &Path, start: &Path, depth: Option<usize>, exact: &mut Exact,
 /// @param root - the root
 /// @param dirty - where events are recorded
 /// @param fence - where fence events are recorded
-fn watch(root: &Path, dirty: Arc<Mutex<Dirty>>, fence: Arc<FenceSeen>) -> Option<RecommendedWatcher> {
+fn watch(
+    root: &Path,
+    dirty: Arc<Mutex<Dirty>>,
+    fence: Arc<FenceSeen>,
+) -> Option<RecommendedWatcher> {
     let base = root.to_path_buf();
     let mut watcher = notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
         let Ok(event) = result else {
@@ -259,8 +300,18 @@ fn record_event(root: &Path, event: &notify::Event, dirty: &Mutex<Dirty>, fence:
             continue;
         }
         let parent = rel.rsplit_once('/').map(|(p, _)| p.to_owned()).unwrap_or_default();
-        let is_folder = path.is_dir() || matches!(event.kind, EventKind::Create(notify::event::CreateKind::Folder) | EventKind::Remove(notify::event::RemoveKind::Folder));
-        if is_folder || matches!(event.kind, EventKind::Modify(notify::event::ModifyKind::Name(_)) | EventKind::Remove(_)) {
+        let is_folder = path.is_dir()
+            || matches!(
+                event.kind,
+                EventKind::Create(notify::event::CreateKind::Folder)
+                    | EventKind::Remove(notify::event::RemoveKind::Folder)
+            );
+        if is_folder
+            || matches!(
+                event.kind,
+                EventKind::Modify(notify::event::ModifyKind::Name(_)) | EventKind::Remove(_)
+            )
+        {
             d.trees.insert(rel.clone());
         }
         d.files.insert(rel);

@@ -91,7 +91,9 @@ pub fn project_root(given: Option<&str>) -> PathBuf {
 ///
 /// @param path - the folder
 fn canonical(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).map(|p| unluminous_index::index::strip_verbatim(&p)).unwrap_or_else(|_| path.to_path_buf())
+    std::fs::canonicalize(path)
+        .map(|p| unluminous_index::index::strip_verbatim(&p))
+        .unwrap_or_else(|_| path.to_path_buf())
 }
 
 /// A token nobody else can guess: the hash of the time, the process and the root.
@@ -108,8 +110,43 @@ fn new_token(root: &Path) -> String {
 /// @param root - the root
 pub fn read_host_file(root: &Path) -> Option<HostFile> {
     let text = std::fs::read_to_string(index_folder(root).join("host.conf")).ok()?;
-    let get = |name: &str| text.lines().find_map(|l| l.strip_prefix(&format!("{name} = ")).map(str::trim).map(str::to_owned));
-    Some(HostFile { pid: get("pid")?.parse().ok()?, port: get("port")?.parse().ok()?, token: get("token")?, root: get("root").unwrap_or_default() })
+    let get = |name: &str| {
+        text.lines()
+            .find_map(|l| l.strip_prefix(&format!("{name} = ")).map(str::trim).map(str::to_owned))
+    };
+    Some(HostFile {
+        pid: get("pid")?.parse().ok()?,
+        port: get("port")?.parse().ok()?,
+        token: get("token")?,
+        root: get("root").unwrap_or_default(),
+    })
+}
+
+/// Opens the host's lock file and holds it, or answers `None` when another process holds it. The lock
+/// lasts as long as the returned file is open, which is the life of the host. `File::try_lock` would
+/// do this in one call and needs Rust 1.89, newer than the workspace's `rust-version`, so each platform
+/// takes it its own way: on Windows the file is opened with no sharing, so a second open fails while
+/// the first is held; on Unix it is `flock` with `LOCK_EX | LOCK_NB`.
+///
+/// @param path - the lock file
+fn take_the_lock(path: &Path) -> Option<File> {
+    let mut options = File::options();
+    options.create(true).truncate(false).write(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.share_mode(0);
+    }
+    let file = options.open(path).ok()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+        // SAFETY: the descriptor belongs to `file`, which is open for the whole call.
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+            return None;
+        }
+    }
+    Some(file)
 }
 
 impl Host {
@@ -119,18 +156,33 @@ impl Host {
     /// @param root - the root
     pub fn start(root: &Path) -> Result<Arc<Host>, String> {
         let folder = index_folder(root);
-        std::fs::create_dir_all(&folder).map_err(|e| format!("cannot create {}: {e}", folder.display()))?;
-        let lock = File::options().create(true).truncate(false).write(true).open(folder.join("host.lock")).map_err(|e| e.to_string())?;
-        lock.try_lock().map_err(|_| "another process is already the index host for this folder".to_owned())?;
+        std::fs::create_dir_all(&folder)
+            .map_err(|e| format!("cannot create {}: {e}", folder.display()))?;
+        let lock = take_the_lock(&folder.join("host.lock")).ok_or_else(|| {
+            "another process is already the index host for this folder".to_owned()
+        })?;
         let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| e.to_string())?;
         let port = listener.local_addr().map_err(|e| e.to_string())?.port();
         let token = new_token(root);
         let index = Index::open(root);
-        let host = Arc::new(Host { index, port, token: token.clone(), last_request: Arc::new(Mutex::new(Instant::now())), _lock: lock });
-        let file = format!("pid = {}\nport = {port}\ntoken = {token}\nroot = {}\n", std::process::id(), root.display());
+        let host = Arc::new(Host {
+            index,
+            port,
+            token: token.clone(),
+            last_request: Arc::new(Mutex::new(Instant::now())),
+            _lock: lock,
+        });
+        let file = format!(
+            "pid = {}\nport = {port}\ntoken = {token}\nroot = {}\n",
+            std::process::id(),
+            root.display()
+        );
         std::fs::write(folder.join("host.conf"), file).map_err(|e| e.to_string())?;
         let serving = Arc::clone(&host);
-        std::thread::Builder::new().name("unluminous-index-listen".into()).spawn(move || serving.listen(listener)).map_err(|e| e.to_string())?;
+        std::thread::Builder::new()
+            .name("unluminous-index-listen".into())
+            .spawn(move || serving.listen(listener))
+            .map_err(|e| e.to_string())?;
         Ok(host)
     }
 
@@ -140,7 +192,9 @@ impl Host {
     fn listen(self: Arc<Self>, listener: TcpListener) {
         for stream in listener.incoming().flatten() {
             let host = Arc::clone(&self);
-            let _ = std::thread::Builder::new().name("unluminous-index-call".into()).spawn(move || host.serve_one(stream));
+            let _ = std::thread::Builder::new()
+                .name("unluminous-index-call".into())
+                .spawn(move || host.serve_one(stream));
         }
     }
 
@@ -153,9 +207,19 @@ impl Host {
         if BufReader::new(stream).read_line(&mut line).is_err() {
             return;
         }
-        let reply = match serde_json::from_str::<Value>(line.trim()).ok().as_ref().and_then(Request::from_json) {
-            Some(request) if request.token == self.token => self.answer(&request.command, &request.arguments),
-            Some(request) => Reply::failed(&request.command, code::REFUSED, "The token does not match this index host."),
+        let reply = match serde_json::from_str::<Value>(line.trim())
+            .ok()
+            .as_ref()
+            .and_then(Request::from_json)
+        {
+            Some(request) if request.token == self.token => {
+                self.answer(&request.command, &request.arguments)
+            }
+            Some(request) => Reply::failed(
+                &request.command,
+                code::REFUSED,
+                "The token does not match this index host.",
+            ),
             None => Reply::failed("", code::USAGE, "That was not a request."),
         };
         let _ = writeln!(writer, "{}", reply.to_json());
@@ -170,7 +234,11 @@ impl Host {
         *self.last_request.lock().expect("idle clock") = Instant::now();
         let verb = command.strip_prefix("search.").unwrap_or(command);
         match verb {
-            "serve" => Reply::done(command, "", json!({ "host": self.describe(), "text": format!("the index host is already running on port {}\n", self.port) })),
+            "serve" => Reply::done(
+                command,
+                "",
+                json!({ "host": self.describe(), "text": format!("the index host is already running on port {}\n", self.port) }),
+            ),
             "status" => match verbs::answer(&self.index, "status", arguments) {
                 Ok(mut value) => {
                     value["host"] = self.describe();
@@ -222,7 +290,12 @@ fn in_process(root: &Path) -> Option<Arc<Host>> {
 /// @param command - the wire name
 /// @param arguments - the arguments
 /// @param timeout - how long to wait
-fn ask_running(root: &Path, command: &str, arguments: &Map<String, Value>, timeout: Duration) -> Option<Reply> {
+fn ask_running(
+    root: &Path,
+    command: &str,
+    arguments: &Map<String, Value>,
+    timeout: Duration,
+) -> Option<Reply> {
     let file = read_host_file(root)?;
     if file.pid == std::process::id() {
         return None;
@@ -240,9 +313,18 @@ fn spawn_host(root: &Path) -> bool {
     // `unluminous-cli-acf5c46.exe` is how the evaluation runs it), and the CLI beside it when this is the
     // window or a test.
     let is_cli = exe.file_stem().is_some_and(|s| s.to_string_lossy().starts_with("unluminous-cli"));
-    let exe = if is_cli { exe } else { exe.with_file_name(if cfg!(windows) { "unluminous-cli.exe" } else { "unluminous-cli" }) };
+    let exe = if is_cli {
+        exe
+    } else {
+        exe.with_file_name(if cfg!(windows) { "unluminous-cli.exe" } else { "unluminous-cli" })
+    };
     let mut command = std::process::Command::new(exe);
-    command.args(["search", "serve", "--root"]).arg(root).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    command
+        .args(["search", "serve", "--root"])
+        .arg(root)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -257,7 +339,12 @@ fn spawn_host(root: &Path) -> bool {
     let deadline = Instant::now() + START_WAIT;
     while Instant::now() < deadline {
         if let Some(file) = read_host_file(root) {
-            if TcpStream::connect_timeout(&std::net::SocketAddr::from(([127, 0, 0, 1], file.port)), Duration::from_millis(200)).is_ok() {
+            if TcpStream::connect_timeout(
+                &std::net::SocketAddr::from(([127, 0, 0, 1], file.port)),
+                Duration::from_millis(200),
+            )
+            .is_ok()
+            {
                 return true;
             }
         }
@@ -275,8 +362,12 @@ fn spawn_host(root: &Path) -> bool {
 /// node` printed its answer and then waited until it was stopped.
 #[cfg(windows)]
 fn keep_standard_handles_to_ourselves() {
-    use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE};
-    use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE};
+    use windows_sys::Win32::Foundation::{
+        SetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
+    };
+    use windows_sys::Win32::System::Console::{
+        GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+    };
     for which in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
         // SAFETY: GetStdHandle returns this process's own handle or null, and SetHandleInformation only
         // changes the inherit flag of a handle this process holds.
@@ -297,11 +388,21 @@ fn keep_standard_handles_to_ourselves() {
 /// @param arguments - the arguments
 /// @param timeout - how long to wait for another process
 /// @param hosting - whether this process may host
-pub fn ask(root: &Path, command: &str, arguments: &Map<String, Value>, timeout: Duration, hosting: Hosting) -> Reply {
+pub fn ask(
+    root: &Path,
+    command: &str,
+    arguments: &Map<String, Value>,
+    timeout: Duration,
+    hosting: Hosting,
+) -> Reply {
     // A folder that is not there would otherwise be given a host and an empty index, and every
     // answer about it would look like a project with nothing in it.
     if !root.is_dir() {
-        return Reply::failed(command, code::NOT_FOUND, &format!("There is no folder at {}.", root.display()));
+        return Reply::failed(
+            command,
+            code::NOT_FOUND,
+            format!("There is no folder at {}.", root.display()),
+        );
     }
     if let Some(host) = hosts().lock().expect("hosts").get(root).cloned() {
         return host.answer(command, arguments);

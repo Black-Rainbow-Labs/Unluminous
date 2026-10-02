@@ -137,7 +137,9 @@ pub fn plan(pattern: &str, case_insensitive: bool) -> Result<Query, String> {
 fn analyse(hir: &Hir) -> Info {
     match hir.kind() {
         HirKind::Empty | HirKind::Look(_) => Info::exact(BTreeSet::from([Vec::new()])),
-        HirKind::Literal(lit) => Info::exact(BTreeSet::from([lit.0.iter().map(|&b| fold(b)).collect()])),
+        HirKind::Literal(lit) => {
+            Info::exact(BTreeSet::from([lit.0.iter().map(|&b| fold(b)).collect()]))
+        }
         HirKind::Class(class) => class_info(class),
         HirKind::Capture(cap) => analyse(&cap.sub),
         HirKind::Repetition(rep) => {
@@ -159,7 +161,8 @@ fn class_info(class: &Class) -> Info {
     let mut set = BTreeSet::new();
     match class {
         Class::Unicode(c) => {
-            let size: u32 = c.ranges().iter().map(|r| u32::from(r.end()) - u32::from(r.start()) + 1).sum();
+            let size: u32 =
+                c.ranges().iter().map(|r| u32::from(r.end()) - u32::from(r.start()) + 1).sum();
             if size > MAX_CLASS {
                 return Info::anything();
             }
@@ -171,7 +174,8 @@ fn class_info(class: &Class) -> Info {
             }
         }
         Class::Bytes(c) => {
-            let size: u32 = c.ranges().iter().map(|r| u32::from(r.end()) - u32::from(r.start()) + 1).sum();
+            let size: u32 =
+                c.ranges().iter().map(|r| u32::from(r.end()) - u32::from(r.start()) + 1).sum();
             if size > MAX_CLASS {
                 return Info::anything();
             }
@@ -239,7 +243,8 @@ fn concat(parts: impl Iterator<Item = Info>) -> Info {
 /// @param branches - the analysed branches
 fn alternation(branches: Vec<Info>) -> Info {
     if branches.iter().all(|b| b.exact.is_some() && b.query == Query::All) {
-        let union: BTreeSet<Vec<u8>> = branches.iter().flat_map(|b| b.exact.clone().unwrap_or_default()).collect();
+        let union: BTreeSet<Vec<u8>> =
+            branches.iter().flat_map(|b| b.exact.clone().unwrap_or_default()).collect();
         if union.len() <= MAX_EXACT {
             return Info::exact(union);
         }
@@ -294,6 +299,10 @@ mod tests {
     fn a_wildcard_between_two_literals_keeps_both() {
         let q = plan("fn relayout.*width", false).unwrap();
         let text = format!("{q:?}");
-        assert!(text.contains(&format!("{:?}", tri("rel"))) && text.contains(&format!("{:?}", tri("wid"))), "{text}");
+        assert!(
+            text.contains(&format!("{:?}", tri("rel")))
+                && text.contains(&format!("{:?}", tri("wid"))),
+            "{text}"
+        );
     }
 }

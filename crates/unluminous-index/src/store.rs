@@ -67,7 +67,9 @@ pub fn cache_folder() -> PathBuf {
     if let Some(dir) = std::env::var_os("XDG_CACHE_HOME") {
         return PathBuf::from(dir);
     }
-    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")).unwrap_or_else(std::env::temp_dir)
+    std::env::var_os("HOME")
+        .map(|h| PathBuf::from(h).join(".cache"))
+        .unwrap_or_else(std::env::temp_dir)
 }
 
 impl Store {
@@ -75,7 +77,8 @@ impl Store {
     ///
     /// @param folder - the index folder of one checkout
     pub fn open(folder: &Path) -> Result<Store, String> {
-        std::fs::create_dir_all(folder).map_err(|e| format!("cannot create {}: {e}", folder.display()))?;
+        std::fs::create_dir_all(folder)
+            .map_err(|e| format!("cannot create {}: {e}", folder.display()))?;
         let path = folder.join("index.rdb");
         let options = OpenOptions { create: true, ..OpenOptions::default() };
         let database = Database::open_with(&path, options).map_err(|e| e.to_string())?;
@@ -97,7 +100,10 @@ impl Store {
     ///
     /// @param key - the key
     pub fn meta(&self, key: &str) -> Option<String> {
-        let rows = self.session().query("SELECT value FROM meta WHERE key = ?1", &[Value::Text(key.into())], 1).ok()?;
+        let rows = self
+            .session()
+            .query("SELECT value FROM meta WHERE key = ?1", &[Value::Text(key.into())], 1)
+            .ok()?;
         rows.value(0, 0).and_then(Value::text).map(str::to_owned)
     }
 
@@ -106,12 +112,19 @@ impl Store {
     /// @param key - the key
     /// @param value - the value
     pub fn set_meta(&self, key: &str, value: &str) -> Result<(), String> {
-        self.session().execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)", &[Value::Text(key.into()), Value::Text(value.into())]).map(|_| ()).map_err(|e| e.to_string())
+        self.session()
+            .execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
+                &[Value::Text(key.into()), Value::Text(value.into())],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 
     /// Whether the stored trigram index was written by this version and can be loaded.
     pub fn exact_is_current(&self) -> bool {
-        self.meta("schema_version").as_deref() == Some(SCHEMA_VERSION) && self.meta("trigram_version").as_deref() == Some(TRIGRAM_VERSION)
+        self.meta("schema_version").as_deref() == Some(SCHEMA_VERSION)
+            && self.meta("trigram_version").as_deref() == Some(TRIGRAM_VERSION)
     }
 
     /// Writes the whole exact index, replacing what was there, in one transaction.
@@ -129,16 +142,31 @@ impl Store {
             let Some(record) = record else { continue };
             write_file_row(&tx, id as u32, record)?;
             if blobs.insert(record.hash) {
-                tx.execute("INSERT INTO blob (content_hash, bytes) VALUES (?1, ?2)", &[Value::Blob(record.hash.to_vec()), Value::Blob(pack_blocks(&record.blocks))])
-                    .map_err(|e| e.to_string())?;
+                tx.execute(
+                    "INSERT INTO blob (content_hash, bytes) VALUES (?1, ?2)",
+                    &[Value::Blob(record.hash.to_vec()), Value::Blob(pack_blocks(&record.blocks))],
+                )
+                .map_err(|e| e.to_string())?;
             }
         }
         for (tri, posting) in exact.postings.iter() {
-            tx.execute("INSERT INTO trigram (tri, postings) VALUES (?1, ?2)", &[Value::Integer(i64::from(*tri)), Value::Blob(posting.as_bytes().to_vec())])
-                .map_err(|e| e.to_string())?;
+            tx.execute(
+                "INSERT INTO trigram (tri, postings) VALUES (?1, ?2)",
+                &[Value::Integer(i64::from(*tri)), Value::Blob(posting.as_bytes().to_vec())],
+            )
+            .map_err(|e| e.to_string())?;
         }
-        for (key, value) in [("schema_version", SCHEMA_VERSION), ("trigram_version", TRIGRAM_VERSION), ("next_id", &exact.files.len().to_string()), ("root", &root.to_string_lossy())] {
-            tx.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)", &[Value::Text(key.into()), Value::Text(value.into())]).map_err(|e| e.to_string())?;
+        for (key, value) in [
+            ("schema_version", SCHEMA_VERSION),
+            ("trigram_version", TRIGRAM_VERSION),
+            ("next_id", &exact.files.len().to_string()),
+            ("root", &root.to_string_lossy()),
+        ] {
+            tx.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
+                &[Value::Text(key.into()), Value::Text(value.into())],
+            )
+            .map_err(|e| e.to_string())?;
         }
         tx.commit().map_err(|e| e.to_string())
     }
@@ -150,21 +178,36 @@ impl Store {
     /// @param changed - `(id, record, trigrams)` for each file added or rewritten
     /// @param removed - ids tombstoned
     /// @param next_id - the next id the in-memory index will hand out
-    pub fn save_changes(&self, changed: &[(u32, FileRecord, Vec<Vec<u32>>)], removed: &[u32], next_id: usize) -> Result<(), String> {
+    pub fn save_changes(
+        &self,
+        changed: &[(u32, FileRecord, Vec<Vec<u32>>)],
+        removed: &[u32],
+        next_id: usize,
+    ) -> Result<(), String> {
         let session = self.session();
         let tx = session.begin().map_err(|e| e.to_string())?;
         for &id in removed {
-            tx.execute("DELETE FROM file WHERE id = ?1", &[Value::Integer(i64::from(id))]).map_err(|e| e.to_string())?;
+            tx.execute("DELETE FROM file WHERE id = ?1", &[Value::Integer(i64::from(id))])
+                .map_err(|e| e.to_string())?;
             tx.execute("INSERT OR REPLACE INTO trigram_delta (file_id, tris, tombstone) VALUES (?1, NULL, 1)", &[Value::Integer(i64::from(id))]).map_err(|e| e.to_string())?;
         }
         for (id, record, trigrams) in changed {
-            tx.execute("DELETE FROM file WHERE path = ?1", &[Value::Text(record.rel.clone())]).map_err(|e| e.to_string())?;
+            tx.execute("DELETE FROM file WHERE path = ?1", &[Value::Text(record.rel.clone())])
+                .map_err(|e| e.to_string())?;
             write_file_row(&tx, *id, record)?;
-            tx.execute("INSERT OR IGNORE INTO blob (content_hash, bytes) VALUES (?1, ?2)", &[Value::Blob(record.hash.to_vec()), Value::Blob(pack_blocks(&record.blocks))]).map_err(|e| e.to_string())?;
+            tx.execute(
+                "INSERT OR IGNORE INTO blob (content_hash, bytes) VALUES (?1, ?2)",
+                &[Value::Blob(record.hash.to_vec()), Value::Blob(pack_blocks(&record.blocks))],
+            )
+            .map_err(|e| e.to_string())?;
             let tris = pack_trigrams(trigrams);
             tx.execute("INSERT OR REPLACE INTO trigram_delta (file_id, tris, tombstone) VALUES (?1, ?2, 0)", &[Value::Integer(i64::from(*id)), Value::Blob(tris)]).map_err(|e| e.to_string())?;
         }
-        tx.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('next_id', ?1)", &[Value::Text(next_id.to_string())]).map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('next_id', ?1)",
+            &[Value::Text(next_id.to_string())],
+        )
+        .map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())
     }
 
@@ -174,15 +217,26 @@ impl Store {
         let session = self.session();
         let next_id: usize = self.meta("next_id").and_then(|v| v.parse().ok()).unwrap_or(0);
         let mut postings = Postings::default();
-        let base = session.query_all("SELECT tri, postings FROM trigram", &[]).map_err(|e| e.to_string())?;
+        let base = session
+            .query_all("SELECT tri, postings FROM trigram", &[])
+            .map_err(|e| e.to_string())?;
         for row in &base.rows {
-            if let (Some(Value::Integer(tri)), Some(bytes)) = (row.first(), row.get(1).and_then(Value::bytes)) {
+            if let (Some(Value::Integer(tri)), Some(bytes)) =
+                (row.first(), row.get(1).and_then(Value::bytes))
+            {
                 postings.insert(*tri as u32, Posting::from_bytes(bytes.to_vec()));
             }
         }
-        let deltas = session.query_all("SELECT file_id, tris FROM trigram_delta WHERE tombstone = 0 ORDER BY file_id", &[]).map_err(|e| e.to_string())?;
+        let deltas = session
+            .query_all(
+                "SELECT file_id, tris FROM trigram_delta WHERE tombstone = 0 ORDER BY file_id",
+                &[],
+            )
+            .map_err(|e| e.to_string())?;
         for row in &deltas.rows {
-            if let (Some(Value::Integer(id)), Some(bytes)) = (row.first(), row.get(1).and_then(Value::bytes)) {
+            if let (Some(Value::Integer(id)), Some(bytes)) =
+                (row.first(), row.get(1).and_then(Value::bytes))
+            {
                 for (block, tris) in unpack_trigrams(bytes).iter().enumerate() {
                     postings.add(block_id(*id as u32, block), tris);
                 }
@@ -193,13 +247,18 @@ impl Store {
             .map_err(|e| e.to_string())?;
         let mut files: Vec<Option<FileRecord>> = vec![None; next_id];
         for row in &rows.rows {
-            let int = |i: usize| match row.get(i) { Some(Value::Integer(v)) => *v, _ => 0 };
+            let int = |i: usize| match row.get(i) {
+                Some(Value::Integer(v)) => *v,
+                _ => 0,
+            };
             let id = int(0) as usize;
             if id >= files.len() {
                 files.resize(id + 1, None);
             }
             let mut hash = [0u8; 32];
-            hash.copy_from_slice(row.get(4).and_then(Value::bytes).unwrap_or(&[0; 32]).get(..32).unwrap_or(&[0; 32]));
+            hash.copy_from_slice(
+                row.get(4).and_then(Value::bytes).unwrap_or(&[0; 32]).get(..32).unwrap_or(&[0; 32]),
+            );
             files[id] = Some(FileRecord {
                 rel: row.get(1).and_then(Value::text).unwrap_or_default().to_owned(),
                 size: int(2) as u64,
@@ -219,7 +278,11 @@ impl Store {
 /// @param tx - the open transaction
 /// @param id - the file id
 /// @param record - the file
-fn write_file_row(tx: &inillucent_driver::Transaction<'_>, id: u32, record: &FileRecord) -> Result<(), String> {
+fn write_file_row(
+    tx: &inillucent_driver::Transaction<'_>,
+    id: u32,
+    record: &FileRecord,
+) -> Result<(), String> {
     tx.execute(
         "INSERT INTO file (id, path, lang, size, mtime_ns, content_hash, generation, is_binary, is_generated, line_count) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, 0, ?8)",
         &[
@@ -257,7 +320,9 @@ fn pack_trigrams(trigrams: &[Vec<u32>]) -> Vec<u8> {
 ///
 /// @param bytes - the blob
 fn unpack_trigrams(bytes: &[u8]) -> Vec<Vec<u32>> {
-    let word = |at: usize| bytes.get(at..at + 4).map_or(0, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+    let word = |at: usize| {
+        bytes.get(at..at + 4).map_or(0, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    };
     let mut out = Vec::new();
     let mut at = 4;
     for _ in 0..word(0) {
@@ -273,5 +338,9 @@ fn unpack_trigrams(bytes: &[u8]) -> Vec<Vec<u32>> {
 ///
 /// @param rel - the path
 pub fn extension(rel: &str) -> String {
-    rel.rsplit('/').next().and_then(|name| name.rsplit_once('.')).map(|(_, ext)| ext.to_ascii_lowercase()).unwrap_or_default()
+    rel.rsplit('/')
+        .next()
+        .and_then(|name| name.rsplit_once('.'))
+        .map(|(_, ext)| ext.to_ascii_lowercase())
+        .unwrap_or_default()
 }

@@ -19,7 +19,12 @@ fn ripgrep() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("UNLUMINOUS_RG") {
         return Some(PathBuf::from(path));
     }
-    Command::new("rg").arg("--version").output().ok().filter(|o| o.status.success()).map(|_| PathBuf::from("rg"))
+    Command::new("rg")
+        .arg("--version")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|_| PathBuf::from("rg"))
 }
 
 /// Writes the fixture tree into a fresh git repository.
@@ -33,7 +38,10 @@ fn fixture(dir: &Path) {
         std::fs::write(path, bytes).unwrap();
     };
     write(".gitignore", b"node_modules/\n*.log\n");
-    write("src/main.rs", b"fn main() {\n    println!(\"Hello, world\");\n}\nfn helper_thing() {}\n");
+    write(
+        "src/main.rs",
+        b"fn main() {\n    println!(\"Hello, world\");\n}\nfn helper_thing() {}\n",
+    );
     write("src/crlf.txt", b"foo\r\nbar\r\nfoo bar\r\n");
     let mut utf16 = vec![0xFF, 0xFE];
     for unit in "hello world\nsecond line\n".encode_utf16() {
@@ -82,8 +90,13 @@ fn rg_set(rg: &Path, dir: &Path, pattern: &str, insensitive: bool, path: &str) -
     for line in String::from_utf8_lossy(&out.stdout).lines() {
         let event: serde_json::Value = serde_json::from_str(line).unwrap_or_default();
         if event["type"] == "match" {
-            let file = event["data"]["path"]["text"].as_str().unwrap_or_default().replace('\\', "/");
-            set.insert(format!("{}:{}", file.trim_start_matches("./"), event["data"]["line_number"]));
+            let file =
+                event["data"]["path"]["text"].as_str().unwrap_or_default().replace('\\', "/");
+            set.insert(format!(
+                "{}:{}",
+                file.trim_start_matches("./"),
+                event["data"]["line_number"]
+            ));
         }
     }
     set
@@ -120,7 +133,13 @@ fn every_fixture_search_gives_ripgreps_lines() {
     for &(pattern, insensitive, path) in cases {
         let scope = Scope::new(dir.path(), path, &[], &[]).expect("a scope");
         let request = ExactRequest { pattern, case_insensitive: insensitive, scope: &scope };
-        let ours: BTreeSet<String> = index.search(dir.path(), &request).expect("searched").hits.iter().map(|h| format!("{}:{}", h.path, h.line)).collect();
+        let ours: BTreeSet<String> = index
+            .search(dir.path(), &request)
+            .expect("searched")
+            .hits
+            .iter()
+            .map(|h| format!("{}:{}", h.path, h.line))
+            .collect();
         let theirs = rg_set(&rg, dir.path(), pattern, insensitive, path);
         if ours != theirs {
             differences.push(format!("{pattern:?} in {path}: index {ours:?}, rg {theirs:?}"));

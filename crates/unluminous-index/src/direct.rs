@@ -25,7 +25,8 @@ pub fn scan(root: &Path, request: &ExactRequest) -> Result<ExactAnswer, String> 
         let hits = verify(&matcher, &request.scope.path, &bytes, BinaryDetection::convert(b'\x00'));
         return Ok(ExactAnswer { hits, in_scope: 1, candidates: 1, verified: 1, unbounded: true });
     }
-    let found: Vec<files::Found> = files::walk(root).into_iter().filter(|f| request.scope.contains(&f.rel)).collect();
+    let found: Vec<files::Found> =
+        files::walk(root).into_iter().filter(|f| request.scope.contains(&f.rel)).collect();
     let mut hits: Vec<Hit> = found
         .par_iter()
         .flat_map_iter(|f| {
@@ -34,5 +35,11 @@ pub fn scan(root: &Path, request: &ExactRequest) -> Result<ExactAnswer, String> 
         })
         .collect();
     hits.sort_by(|a, b| a.path.cmp(&b.path).then(a.line.cmp(&b.line)));
-    Ok(ExactAnswer { hits, in_scope: found.len(), candidates: found.len(), verified: found.len(), unbounded: true })
+    Ok(ExactAnswer {
+        hits,
+        in_scope: found.len(),
+        candidates: found.len(),
+        verified: found.len(),
+        unbounded: true,
+    })
 }

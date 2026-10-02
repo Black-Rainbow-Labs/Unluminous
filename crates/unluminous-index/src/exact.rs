@@ -72,8 +72,15 @@ impl FileRecord {
         let mut blocks = Vec::with_capacity(spans.len());
         let mut trigrams = Vec::with_capacity(spans.len());
         for (start, end, first_line) in spans {
-            blocks.push(Block { first_line, packed: lz4_flex::block::compress_prepend_size(&bytes[start..end]) });
-            trigrams.push(if whole { trigrams_of(&searched) } else { trigrams_of(&bytes[start..end]) });
+            blocks.push(Block {
+                first_line,
+                packed: lz4_flex::block::compress_prepend_size(&bytes[start..end]),
+            });
+            trigrams.push(if whole {
+                trigrams_of(&searched)
+            } else {
+                trigrams_of(&bytes[start..end])
+            });
         }
         let record = FileRecord {
             rel,
@@ -82,7 +89,8 @@ impl FileRecord {
             hash: *blake3::hash(bytes).as_bytes(),
             blocks,
             binary,
-            lines: memchr::memchr_iter(b'\n', &searched).count() as u32 + u32::from(!searched.ends_with(b"\n") && !searched.is_empty()),
+            lines: memchr::memchr_iter(b'\n', &searched).count() as u32
+                + u32::from(!searched.ends_with(b"\n") && !searched.is_empty()),
         };
         (record, trigrams)
     }
@@ -98,7 +106,9 @@ impl FileRecord {
 
     /// The bytes it holds in memory.
     pub fn heap_bytes(&self) -> usize {
-        self.blocks.iter().map(|b| b.packed.capacity() + 16).sum::<usize>() + self.rel.capacity() + 96
+        self.blocks.iter().map(|b| b.packed.capacity() + 16).sum::<usize>()
+            + self.rel.capacity()
+            + 96
     }
 }
 
@@ -266,7 +276,8 @@ impl Exact {
     /// @param root - the root
     pub fn build(root: &Path) -> Exact {
         let found = files::walk(root);
-        let read: Vec<Option<(FileRecord, Vec<Vec<u32>>)>> = found.par_iter().map(|f| FileRecord::read(root, f)).collect();
+        let read: Vec<Option<(FileRecord, Vec<Vec<u32>>)>> =
+            found.par_iter().map(|f| FileRecord::read(root, f)).collect();
         let mut exact = Exact::default();
         for (record, trigrams) in read.into_iter().flatten() {
             exact.insert(record, &trigrams);
@@ -279,7 +290,10 @@ impl Exact {
     ///
     /// @param records - the live files
     pub fn from_records(records: Vec<FileRecord>) -> Exact {
-        let read: Vec<(FileRecord, Vec<Vec<u32>>)> = records.into_par_iter().map(|r| FileRecord::from_bytes(r.rel.clone(), r.mtime_ns, &r.bytes())).collect();
+        let read: Vec<(FileRecord, Vec<Vec<u32>>)> = records
+            .into_par_iter()
+            .map(|r| FileRecord::from_bytes(r.rel.clone(), r.mtime_ns, &r.bytes()))
+            .collect();
         let mut exact = Exact::default();
         for (record, trigrams) in read {
             exact.insert(record, &trigrams);
@@ -292,7 +306,11 @@ impl Exact {
     /// @param files - records by id, None for a tombstone
     /// @param postings - the posting lists, which already cover every id
     pub fn restore(files: Vec<Option<FileRecord>>, postings: Postings) -> Exact {
-        let by_path = files.iter().enumerate().filter_map(|(id, f)| f.as_ref().map(|f| (f.rel.clone(), id as u32))).collect();
+        let by_path = files
+            .iter()
+            .enumerate()
+            .filter_map(|(id, f)| f.as_ref().map(|f| (f.rel.clone(), id as u32)))
+            .collect();
         let tombstones = files.iter().filter(|f| f.is_none()).count();
         Exact { files, by_path, postings, tombstones, generation: 0 }
     }
@@ -335,7 +353,8 @@ impl Exact {
 
     /// The bytes the index holds in memory.
     pub fn heap_bytes(&self) -> usize {
-        self.files.iter().flatten().map(FileRecord::heap_bytes).sum::<usize>() + self.postings.heap_bytes()
+        self.files.iter().flatten().map(FileRecord::heap_bytes).sum::<usize>()
+            + self.postings.heap_bytes()
     }
 
     /// Runs one exact search.
@@ -348,9 +367,18 @@ impl Exact {
             return Ok(self.search_explicit(&matcher, &request.scope.path, &path));
         }
         let (candidates, in_scope, unbounded) = self.candidates(request)?;
-        let mut hits: Vec<Hit> = candidates.par_iter().flat_map_iter(|&unit| self.verify_block(&matcher, unit)).collect();
+        let mut hits: Vec<Hit> = candidates
+            .par_iter()
+            .flat_map_iter(|&unit| self.verify_block(&matcher, unit))
+            .collect();
         hits.sort_by(|a, b| a.path.cmp(&b.path).then(a.line.cmp(&b.line)));
-        Ok(ExactAnswer { hits, in_scope, candidates: candidates.len(), verified: candidates.len(), unbounded })
+        Ok(ExactAnswer {
+            hits,
+            in_scope,
+            candidates: candidates.len(),
+            verified: candidates.len(),
+            unbounded,
+        })
     }
 
     /// Runs the regex over one block. A file of one block is searched whole, as ripgrep searches it; a
@@ -360,7 +388,9 @@ impl Exact {
     /// @param unit - the block's id
     fn verify_block(&self, matcher: &RegexMatcher, unit: u32) -> Vec<Hit> {
         let (file, block) = (unit >> BLOCK_BITS, (unit & ((1 << BLOCK_BITS) - 1)) as usize);
-        let Some(record) = self.files.get(file as usize).and_then(Option::as_ref) else { return Vec::new() };
+        let Some(record) = self.files.get(file as usize).and_then(Option::as_ref) else {
+            return Vec::new();
+        };
         let Some(piece) = record.blocks.get(block) else { return Vec::new() };
         let mut hits = verify(matcher, &record.rel, &piece.bytes(), BinaryDetection::quit(b'\x00'));
         if piece.first_line > 1 {
@@ -380,11 +410,20 @@ impl Exact {
         let query = plan(request.pattern, request.case_insensitive)?;
         let unbounded = query == Query::All;
         let everything = request.scope.is_everything();
-        let in_scope = if everything { self.by_path.len() } else { self.by_path.keys().filter(|rel| request.scope.contains(rel)).count() };
+        let in_scope = if everything {
+            self.by_path.len()
+        } else {
+            self.by_path.keys().filter(|rel| request.scope.contains(rel)).count()
+        };
         let allowed = self.evaluate(&query);
         let ids = allowed
             .into_iter()
-            .filter(|&unit| self.files.get((unit >> BLOCK_BITS) as usize).and_then(Option::as_ref).is_some_and(|r| everything || request.scope.contains(&r.rel)))
+            .filter(|&unit| {
+                self.files
+                    .get((unit >> BLOCK_BITS) as usize)
+                    .and_then(Option::as_ref)
+                    .is_some_and(|r| everything || request.scope.contains(&r.rel))
+            })
             .collect();
         Ok((ids, in_scope, unbounded))
     }
@@ -414,7 +453,9 @@ impl Exact {
                 let mut ids: Vec<u32> = self
                     .by_path
                     .values()
-                    .filter_map(|&file| self.files[file as usize].as_ref().map(|r| (file, r.blocks.len())))
+                    .filter_map(|&file| {
+                        self.files[file as usize].as_ref().map(|r| (file, r.blocks.len()))
+                    })
                     .flat_map(|(file, blocks)| (0..blocks).map(move |b| block_id(file, b)))
                     .collect();
                 ids.sort_unstable();
@@ -488,22 +529,42 @@ pub fn matcher(pattern: &str, case_insensitive: bool) -> Result<RegexMatcher, St
 /// @param rel - the file's path, for the hits
 /// @param bytes - the file's bytes
 /// @param binary - how binary data is treated
-pub fn verify(matcher: &RegexMatcher, rel: &str, bytes: &[u8], binary: BinaryDetection) -> Vec<Hit> {
+pub fn verify(
+    matcher: &RegexMatcher,
+    rel: &str,
+    bytes: &[u8],
+    binary: BinaryDetection,
+) -> Vec<Hit> {
     if binary.convert_byte().is_some() && memchr::memchr(0, bytes).is_some() {
         return verify_converted(matcher, rel, bytes, binary);
     }
-    let mut searcher: Searcher = SearcherBuilder::new().line_number(true).binary_detection(binary).bom_sniffing(true).build();
+    let mut searcher: Searcher = SearcherBuilder::new()
+        .line_number(true)
+        .binary_detection(binary)
+        .bom_sniffing(true)
+        .build();
     let mut hits = Vec::new();
     let sink = Bytes(|line, text| {
         let text = String::from_utf8_lossy(text);
-        hits.push(Hit { path: rel.to_owned(), line, text: text.trim_end_matches(['\n', '\r']).to_owned() });
+        hits.push(Hit {
+            path: rel.to_owned(),
+            line,
+            text: text.trim_end_matches(['\n', '\r']).to_owned(),
+        });
         Ok(true)
     });
     // Bytes with no NUL and no byte order mark are searched in place, as ripgrep searches a memory
     // map, which avoids copying a long line into the reader's buffer. Anything else goes through the
     // reader, whose buffering decides which matches before a NUL ripgrep reports.
-    let plain = memchr::memchr(0, bytes).is_none() && !bytes.starts_with(&[0xFF, 0xFE]) && !bytes.starts_with(&[0xFE, 0xFF]) && !bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
-    let _ = if plain { searcher.search_slice(matcher, bytes, sink) } else { searcher.search_reader(matcher, Cursor::new(bytes), sink) };
+    let plain = memchr::memchr(0, bytes).is_none()
+        && !bytes.starts_with(&[0xFF, 0xFE])
+        && !bytes.starts_with(&[0xFE, 0xFF])
+        && !bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
+    let _ = if plain {
+        searcher.search_slice(matcher, bytes, sink)
+    } else {
+        searcher.search_reader(matcher, Cursor::new(bytes), sink)
+    };
     hits
 }
 
@@ -515,16 +576,29 @@ pub fn verify(matcher: &RegexMatcher, rel: &str, bytes: &[u8], binary: BinaryDet
 /// @param rel - the file's path
 /// @param bytes - the file's bytes
 /// @param binary - convert mode
-fn verify_converted(matcher: &RegexMatcher, rel: &str, bytes: &[u8], binary: BinaryDetection) -> Vec<Hit> {
+fn verify_converted(
+    matcher: &RegexMatcher,
+    rel: &str,
+    bytes: &[u8],
+    binary: BinaryDetection,
+) -> Vec<Hit> {
     struct Offsets(Vec<u64>);
     impl grep_searcher::Sink for Offsets {
         type Error = std::io::Error;
-        fn matched(&mut self, _: &Searcher, m: &grep_searcher::SinkMatch<'_>) -> Result<bool, std::io::Error> {
+        fn matched(
+            &mut self,
+            _: &Searcher,
+            m: &grep_searcher::SinkMatch<'_>,
+        ) -> Result<bool, std::io::Error> {
             self.0.push(m.absolute_byte_offset());
             Ok(true)
         }
     }
-    let mut searcher: Searcher = SearcherBuilder::new().line_number(false).binary_detection(binary).bom_sniffing(true).build();
+    let mut searcher: Searcher = SearcherBuilder::new()
+        .line_number(false)
+        .binary_detection(binary)
+        .bom_sniffing(true)
+        .build();
     let mut offsets = Offsets(Vec::new());
     let _ = searcher.search_reader(matcher, Cursor::new(bytes), &mut offsets);
     let mut hits: Vec<Hit> = Vec::new();

@@ -35,7 +35,19 @@ pub struct SymbolTable {
 /// @param path - the path
 pub fn is_secondary(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
-    lower.contains("/test") || lower.starts_with("test") || lower.contains("tests/") || lower.contains(".test.") || lower.contains(".spec.") || lower.contains("_test.") || lower.contains("/examples/") || lower.contains("/benches/") || lower.contains(".min.") || lower.contains("/dist/") || lower.contains("/vendor/") || lower.contains("generated") || lower.contains("/fixtures/")
+    lower.contains("/test")
+        || lower.starts_with("test")
+        || lower.contains("tests/")
+        || lower.contains(".test.")
+        || lower.contains(".spec.")
+        || lower.contains("_test.")
+        || lower.contains("/examples/")
+        || lower.contains("/benches/")
+        || lower.contains(".min.")
+        || lower.contains("/dist/")
+        || lower.contains("/vendor/")
+        || lower.contains("generated")
+        || lower.contains("/fixtures/")
 }
 
 impl SymbolTable {
@@ -63,7 +75,10 @@ impl SymbolTable {
     pub fn set_file(&mut self, path: &str, defs: Vec<Definition>) {
         self.remove_file(path);
         for d in &defs {
-            self.by_name.entry(d.name.to_lowercase()).or_default().push(Defined { path: path.to_owned(), definition: d.clone() });
+            self.by_name
+                .entry(d.name.to_lowercase())
+                .or_default()
+                .push(Defined { path: path.to_owned(), definition: d.clone() });
         }
         if !defs.is_empty() {
             self.by_file.insert(path.to_owned(), defs);
@@ -113,7 +128,12 @@ impl SymbolTable {
         let lower = name.to_lowercase();
         let mut found: Vec<Defined> = self.by_name.get(&lower).cloned().unwrap_or_default();
         if found.is_empty() && lower.len() >= 3 {
-            let mut partial: Vec<&Defined> = self.by_name.iter().filter(|(k, _)| k.contains(&lower)).flat_map(|(_, v)| v.iter()).collect();
+            let mut partial: Vec<&Defined> = self
+                .by_name
+                .iter()
+                .filter(|(k, _)| k.contains(&lower))
+                .flat_map(|(_, v)| v.iter())
+                .collect();
             partial.sort_by_key(|d| d.definition.name.len());
             found = partial.into_iter().take(limit * 4).cloned().collect();
         }
@@ -134,7 +154,12 @@ fn rank(d: &Defined, asked: &str) -> (u8, u8, u8, u8, u8, usize, u32) {
         u8::from(def.name.to_lowercase() != asked.to_lowercase()),
         u8::from(is_secondary(&d.path)),
         u8::from(def.likely),
-        match def.kind { "type" | "function" => 0, "module" => 1, "constant" => 2, _ => 3 },
+        match def.kind {
+            "type" | "function" => 0,
+            "module" => 1,
+            "constant" => 2,
+            _ => 3,
+        },
         d.path.matches('/').count(),
         def.depth,
     )
@@ -153,5 +178,11 @@ pub fn definitions_of(record: &FileRecord) -> Option<Vec<Definition>> {
     }
     let bytes = record.bytes();
     let text = String::from_utf8_lossy(&bytes);
-    Some(outline::read(&record.rel, &text, CHUNK_BUDGET).definitions.into_iter().filter(outline::is_listed).collect())
+    Some(
+        outline::read(&record.rel, &text, CHUNK_BUDGET)
+            .definitions
+            .into_iter()
+            .filter(outline::is_listed)
+            .collect(),
+    )
 }

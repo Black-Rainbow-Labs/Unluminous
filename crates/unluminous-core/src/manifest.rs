@@ -156,7 +156,6 @@ impl Values {
     }
 }
 
-
 /// The `Grammar` a language plugin's manifest describes: every `language.` key the tokeniser, the
 /// symbol reading and the import reading use. A key a manifest leaves out keeps the behaviour the
 /// manifest key was added without, which is the rule every key since `task-1671` has kept.
@@ -218,7 +217,10 @@ pub fn language_grammar(values: &Values, name: &str) -> Result<Grammar, String> 
 ///
 /// @param values - the manifest
 pub fn language_extensions(values: &Values) -> Vec<String> {
-    list(values, "language.extensions").into_iter().map(|extension| extension.trim_start_matches('.').to_lowercase()).collect()
+    list(values, "language.extensions")
+        .into_iter()
+        .map(|extension| extension.trim_start_matches('.').to_lowercase())
+        .collect()
 }
 
 /// `language.definers`: a comma list of `keyword=kind`, such as `fn=function, struct=type`.
@@ -228,7 +230,9 @@ fn definers(values: &Values) -> Result<Vec<(String, SymbolKind)>, String> {
     let mut found = Vec::new();
     for (keyword, kind) in pairs(values, "language.definers") {
         let Some(kind) = kind else {
-            return Err(format!("language.definers holds `{keyword}`, which is not `keyword=kind`"));
+            return Err(format!(
+                "language.definers holds `{keyword}`, which is not `keyword=kind`"
+            ));
         };
         let Some(parsed) = SymbolKind::parse(&kind) else {
             let known: Vec<&str> = SymbolKind::ALL.iter().map(|kind| kind.name()).collect();
@@ -238,7 +242,9 @@ fn definers(values: &Values) -> Result<Vec<(String, SymbolKind)>, String> {
             ));
         };
         if keyword.is_empty() {
-            return Err(format!("language.definers holds `{keyword}={kind}`, which names no keyword"));
+            return Err(format!(
+                "language.definers holds `{keyword}={kind}`, which names no keyword"
+            ));
         }
         found.push((keyword, parsed));
     }
@@ -256,7 +262,10 @@ fn import_style(values: &Values) -> Result<Option<ImportStyle>, String> {
         Some(style) => Ok(Some(style)),
         None => {
             let known: Vec<&str> = ImportStyle::ALL.iter().map(|style| style.name()).collect();
-            Err(format!("language.imports is `{named}`, and an import in Unluminous is written {}", known.join(" or ")))
+            Err(format!(
+                "language.imports is `{named}`, and an import in Unluminous is written {}",
+                known.join(" or ")
+            ))
         }
     }
 }
@@ -279,7 +288,9 @@ fn path_roots(values: &Values) -> Result<Vec<(String, PathRoot)>, String> {
             ));
         };
         if word.is_empty() {
-            return Err(format!("language.path_roots holds `{word}={meaning}`, which names no word"));
+            return Err(format!(
+                "language.path_roots holds `{word}={meaning}`, which names no word"
+            ));
         }
         found.push((word, parsed));
     }
@@ -303,7 +314,9 @@ fn raw_text(values: &Values) -> Result<Vec<(String, Option<String>)>, String> {
         // A bare element (no `=` at all) has no language, and that is an escapable one rather than a
         // mistake. An `=` with nothing after it is the mistake.
         if language.as_deref().is_some_and(str::is_empty) {
-            return Err(format!("language.raw_text holds `{element}=`, which names an element and no language"));
+            return Err(format!(
+                "language.raw_text holds `{element}=`, which names an element and no language"
+            ));
         }
         found.push((element, language));
     }
@@ -323,7 +336,14 @@ pub fn word(values: &Values, name: &str) -> Option<String> {
 /// @param values - the manifest
 /// @param name - the key
 pub fn list(values: &Values, name: &str) -> Vec<String> {
-    values.text(name).unwrap_or_default().split(',').map(str::trim).filter(|part| !part.is_empty()).map(str::to_owned).collect()
+    values
+        .text(name)
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 /// Two comma separated values, which is what a block comment's opener and terminator are.

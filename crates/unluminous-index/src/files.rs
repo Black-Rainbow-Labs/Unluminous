@@ -76,24 +76,22 @@ pub fn walker(root: &Path, start: &Path, depth: Option<usize>) -> WalkBuilder {
 /// @param depth - how deep to go, None for all the way
 pub fn walk_under(root: &Path, start: &Path, depth: Option<usize>) -> Vec<Found> {
     let found = Mutex::new(Vec::new());
-    walker(root, start, depth)
-        .build_parallel()
-        .run(|| {
-            let found = &found;
-            Box::new(move |entry| {
-                let Ok(entry) = entry else { return WalkState::Continue };
-                if !entry.file_type().is_some_and(|t| t.is_file()) {
-                    return WalkState::Continue;
-                }
-                if let Some(rel) = relative(root, entry.path()) {
-                    let meta = entry.metadata().ok();
-                    let size = meta.as_ref().map_or(0, |m| m.len());
-                    let mtime_ns = meta.as_ref().map_or(0, mtime_of);
-                    found.lock().expect("the walk's list").push(Found { rel, size, mtime_ns });
-                }
-                WalkState::Continue
-            })
-        });
+    walker(root, start, depth).build_parallel().run(|| {
+        let found = &found;
+        Box::new(move |entry| {
+            let Ok(entry) = entry else { return WalkState::Continue };
+            if !entry.file_type().is_some_and(|t| t.is_file()) {
+                return WalkState::Continue;
+            }
+            if let Some(rel) = relative(root, entry.path()) {
+                let meta = entry.metadata().ok();
+                let size = meta.as_ref().map_or(0, |m| m.len());
+                let mtime_ns = meta.as_ref().map_or(0, mtime_of);
+                found.lock().expect("the walk's list").push(Found { rel, size, mtime_ns });
+            }
+            WalkState::Continue
+        })
+    });
     let mut found = found.into_inner().expect("the walk finished");
     found.sort_by(|a, b| a.rel.cmp(&b.rel));
     found
@@ -143,7 +141,12 @@ impl Scope {
     /// @param path - the path argument, relative to the root, or empty
     /// @param globs - `--glob` patterns, `!` negating
     /// @param types - `--type` names from ripgrep's default type list
-    pub fn new(root: &Path, path: &str, globs: &[String], types: &[String]) -> Result<Scope, String> {
+    pub fn new(
+        root: &Path,
+        path: &str,
+        globs: &[String],
+        types: &[String],
+    ) -> Result<Scope, String> {
         let path = normalise(path);
         let explicit_file = !path.is_empty() && root.join(&path).is_file();
         let globs = if globs.is_empty() {
@@ -180,7 +183,9 @@ impl Scope {
         if self.explicit_file {
             return rel == self.path;
         }
-        if !self.path.is_empty() && !(rel.starts_with(&self.path) && rel.as_bytes().get(self.path.len()) == Some(&b'/')) {
+        let under_the_folder =
+            rel.starts_with(&self.path) && rel.as_bytes().get(self.path.len()) == Some(&b'/');
+        if !(self.path.is_empty() || under_the_folder) {
             return false;
         }
         if let Some(globs) = &self.globs {
