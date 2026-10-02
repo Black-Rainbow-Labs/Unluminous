@@ -6,7 +6,7 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.58.0 — 2026-10-02
 
 - Publish unluminous.com and blackrainbowlabs.com from the black-rainbow-labs-sites repository (`task-2128`)
 - The task-2138 code index design, copied in as the plan this ticket implements (`task-2139`)
@@ -48,6 +48,8 @@ bumps the release script makes are left out, because they are the boundaries rat
 - CLAUDE.md records the code index's rules and what the measurement says (`task-2139`)
 - The held out scorecard: G1 passes, G2 is not reachable by construction, G3 is not met (`task-2139`)
 - Cargo fmt and clippy on the index and search code; the host lock no longer needs Rust 1.89 (`task-2139`)
+- The changelog written out from the history (`task-2139`)
+- The trigram index's comment names the reference editor, as shipped text must (`task-2139`)
 
 ## 0.57.1 — 2026-09-24
 
