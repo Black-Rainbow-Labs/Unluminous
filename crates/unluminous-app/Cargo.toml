@@ -37,6 +37,8 @@ rux.workspace = true
 # The catalogue of command line commands and the wire format, shared with the client so that the
 # two cannot come to disagree about what a command is called. It brings no window with it.
 unluminous-cli.workspace = true
+# The code index, for registering a language plugin somebody installed (`services::plugins::store`).
+atrius-index.workspace = true
 serde_json.workspace = true
 # The SHA-256 an update's installer is checked against before it is run. Already in the tree through
 # `wry` and `unluminous-db`. See `services/update_install.rs`.

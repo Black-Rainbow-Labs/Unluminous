@@ -4091,7 +4091,17 @@ terminal can be cut and that is how a person leaves `nano`.
 
 ## The code index answers what ripgrep would, from memory, and it is measured rather than assumed
 
-`task-2139` built `crates/unluminous-index` and the `search` area: `find`, `def`, `refs`, `fragment`,
+**The index is Atrius now (`task-2172`).** It moved to its own private repository,
+`Black-Rainbow-Labs/atrius-index` (`C:/jason/dev/atrius-index`), and Unluminous depends on the
+`atrius-index` crate from crates.io. The engine, the host, the lock and host file, and the wire protocol
+are all in that crate; `unluminous-cli/src/search.rs` is only the seam: it tells Atrius that a host
+Unluminous starts is `unluminous-cli search serve`, copies the `UNLUMINOUS_*` settings to their
+`ATRIUS_*` names, and converts the reply. `crates/unluminous-index` is the copy it was made from and is
+not built. A change to the index is made in Atrius, released there, and taken here by raising the
+version. The same index is reached by `atrius` and `atrius-mcp`, and a checkout has one host whichever
+program started it.
+
+`task-2139` built the index (then `crates/unluminous-index`) and the `search` area: `find`, `def`, `refs`, `fragment`,
 `outline`, `files`, `status` and `serve`, reached by the window, the command line and the MCP tool
 `unluminous_search` through one function, `unluminous_cli::search::ask`.
 `tasks/task-2138-unluminous-code-index-tdd.md` is the design, `tools/search-eval/` is the harness that
@@ -4105,7 +4115,7 @@ as ripgrep does. `tests/parity.rs` compares against a real ripgrep. Every frozen
 exactly on all four corpora, Linux included.
 
 **One host per checkout, and nothing waits behind it.** The index lives in
-`<cache>/unluminous/index/<blake3 of the root>/`, never in the project, with a lock file that makes
+`<cache>/atrius-index/index/<blake3 of the root>/`, never in the project, with a lock file that makes
 one process the host: the window, `mcp serve`, or a detached `search serve` that a one off command
 starts. Answers come from memory; the Inillucent file is written on a store thread from copies taken
 under a short lock, because a full save under the read lock once made a query wait 19 seconds.

@@ -407,6 +407,12 @@ fn read_folder(folder: &Path) -> Result<Plugin, String> {
         .map_err(|problem| format!("{MANIFEST} could not be read: {problem}"))?;
     let mut plugin = parse(&Values::parse(&text), false)?;
     plugin.icon = std::fs::read(folder.join(ICON)).ok();
+    // A language somebody installed is one the code index should read definitions in too. The index
+    // (Atrius) bundles every language Unluminous ships, so only a plugin on disk needs telling it, and
+    // only this process hears: a host started by `unluminous-cli search serve` reads the bundled ones.
+    if plugin.kind == Kind::Language {
+        atrius_index::grammars::register(&plugin.id, &text);
+    }
     Ok(plugin)
 }
 
