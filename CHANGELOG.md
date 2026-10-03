@@ -6,7 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.58.0 — 2026-10-02
+## Unreleased
+
+- Compare the index with git grep, ugrep, ugrep's index and Zoekt, and publish the comparison (`task-2139`)
+- The code index is Atrius, from the atrius-index crate (`task-2172`)
+
+## 0.58.0 — 2026-10-01
 
 - Publish unluminous.com and blackrainbowlabs.com from the black-rainbow-labs-sites repository (`task-2128`)
 - The task-2138 code index design, copied in as the plan this ticket implements (`task-2139`)
