@@ -6,10 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.59.0 — 2026-10-03
 
 - Compare the index with git grep, ugrep, ugrep's index and Zoekt, and publish the comparison (`task-2139`)
 - The code index is Atrius, from the atrius-index crate (`task-2172`)
+- The changelog written out from the history (`task-2172`)
 
 ## 0.58.0 — 2026-10-01
 
