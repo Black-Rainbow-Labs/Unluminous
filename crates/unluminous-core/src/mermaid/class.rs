@@ -422,6 +422,7 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
                 labels[index].height + counts.height,
             ),
             span: 1,
+            ..EdgeSpec::new(0, 0)
         });
     }
     let placed = layered::layout(&graph);
@@ -605,12 +606,12 @@ fn draw_relations(
         if path.len() < 2 {
             continue;
         }
-        let mut path = path;
+        let path = parts::edge_path(
+            &path,
+            &Outline::Rect(placed.nodes[relation.from].moved(origin.x, origin.y)),
+            &Outline::Rect(placed.nodes[relation.to].moved(origin.x, origin.y)),
+        );
         let last = path.len() - 1;
-        path[0] = Outline::Rect(placed.nodes[relation.from].moved(origin.x, origin.y))
-            .border_towards(path[1]);
-        path[last] = Outline::Rect(placed.nodes[relation.to].moved(origin.x, origin.y))
-            .border_towards(path[last - 1]);
         let stroke = Stroke::new(theme.line, parts::LINE);
         let dash = if relation.dashed { parts::DASH } else { Dash::Solid };
         let drawn = parts::trimmed(

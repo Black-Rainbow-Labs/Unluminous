@@ -304,6 +304,9 @@ fn main() -> eframe::Result {
             // The settings, the pane sizes and the recent projects come from disk here rather than in
             // `UnluminousApp::new`, so that a test never reads or writes the settings of the person running it.
             app.load_settings();
+            // The operating system's clipboard is the person's, so the binary switches it on and a
+            // test, which does not, never overwrites what they copied.
+            app.use_the_system_clipboard();
             unluminous_app::services::frame_trace::mark("settings");
             // What was left open in this project last time. After the settings, because it opens files
             // and they have to be set in the font the settings name; before the file argument, so a file

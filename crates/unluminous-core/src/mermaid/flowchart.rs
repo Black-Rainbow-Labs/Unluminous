@@ -59,6 +59,11 @@ pub struct Link {
     pub label: String,
     /// How many ranks it must span, from the number of dashes.
     pub span: usize,
+    /// True when the end it comes from is a subgraph, and its number is a subgraph's rather than a
+    /// node's. Mermaid lets a link name a subgraph, and draws it to the frame.
+    pub from_group: bool,
+    /// True when the end it points at is a subgraph.
+    pub to_group: bool,
 }
 
 /// One node, once it has been read.
@@ -82,6 +87,8 @@ struct Chart {
 
 #[derive(Debug, Clone, PartialEq)]
 struct Group {
+    /// The name a link uses for it: `app` in `subgraph app["The app"]`.
+    id: String,
     title: String,
     parent: Option<usize>,
 }
@@ -106,7 +113,8 @@ fn read(source: &Source) -> Result<Chart, Problem> {
         }
         if let Some(rest) = line.after_word("subgraph") {
             let parent = open.last().copied();
-            chart.groups.push(Group { title: subgraph_title(rest), parent });
+            let id = rest.split('[').next().unwrap_or_default().trim().to_owned();
+            chart.groups.push(Group { id, title: subgraph_title(rest), parent });
             open.push(chart.groups.len() - 1);
             continue;
         }
@@ -126,7 +134,58 @@ fn read(source: &Source) -> Result<Chart, Problem> {
         }
         read_statement(&mut chart, line, open.last().copied())?;
     }
+    point_links_at_subgraphs(&mut chart);
     Ok(chart)
+}
+
+/// Turn a link to a subgraph's name into a link to the subgraph.
+///
+/// `STATE --> components`, where `components` is a subgraph, is how a diagram says "this uses
+/// everything in there", and Mermaid draws it to the frame. Read one name at a time, `components`
+/// looked like a node nobody had described yet, so it was drawn as a second box called `components`
+/// beside the frame of the same name (`task-2194`). A node is taken to be the subgraph when it has the
+/// subgraph's name and was never given words or a shape of its own, which a real node with that name
+/// would have been.
+fn point_links_at_subgraphs(chart: &mut Chart) {
+    let named: HashMap<&str, usize> = chart
+        .groups
+        .iter()
+        .enumerate()
+        .filter(|(_, group)| !group.id.is_empty())
+        .map(|(index, group)| (group.id.as_str(), index))
+        .collect();
+    let subgraph_of: Vec<Option<usize>> = chart
+        .nodes
+        .iter()
+        .map(|node| match node.label == node.id && node.shape == Shape::Rect {
+            true => named.get(node.id.as_str()).copied(),
+            false => None,
+        })
+        .collect();
+    if subgraph_of.iter().all(Option::is_none) {
+        return;
+    }
+    let mut renumbered = vec![usize::MAX; chart.nodes.len()];
+    let mut kept = Vec::new();
+    for (index, node) in std::mem::take(&mut chart.nodes).into_iter().enumerate() {
+        if subgraph_of[index].is_none() {
+            renumbered[index] = kept.len();
+            kept.push(node);
+        }
+    }
+    chart.nodes = kept;
+    chart.by_id =
+        chart.nodes.iter().enumerate().map(|(index, node)| (node.id.clone(), index)).collect();
+    for (from, to, link) in &mut chart.links {
+        match subgraph_of[*from] {
+            Some(group) => (*from, link.from_group) = (group, true),
+            None => *from = renumbered[*from],
+        }
+        match subgraph_of[*to] {
+            Some(group) => (*to, link.to_group) = (group, true),
+            None => *to = renumbered[*to],
+        }
+    }
 }
 
 /// A subgraph's own title: `subgraph one[The First]`, or just `subgraph The First`.
@@ -242,6 +301,8 @@ fn next_link(text: &str, from: usize) -> Option<Found> {
                         tail,
                         label: source::label(&text[head_end..closing.start]),
                         span: span_of(core),
+                        from_group: false,
+                        to_group: false,
                     },
                 });
             }
@@ -251,7 +312,15 @@ fn next_link(text: &str, from: usize) -> Option<Found> {
         return Some(Found {
             start: tail_start,
             end,
-            link: Link { style: style_of(core), head, tail, label, span: span_of(core) },
+            link: Link {
+                style: style_of(core),
+                head,
+                tail,
+                label,
+                span: span_of(core),
+                from_group: false,
+                to_group: false,
+            },
         });
     }
     None
@@ -590,6 +659,7 @@ fn draw(chart: &Chart, source: &Source, options: &Options) -> Scene {
     draw_groups(&mut scene, chart, &placed, origin, options);
     draw_links(&mut scene, chart, &placed, origin, &link_labels, options);
     draw_nodes(&mut scene, chart, &placed, origin, &labels, options);
+    draw_group_titles(&mut scene, chart, &placed, origin, options);
     parts::finish(&mut scene);
     scene
 }
@@ -619,6 +689,8 @@ fn build_graph(
             to: *to,
             label: link_labels[index].size(),
             span: link.span,
+            from_group: link.from_group,
+            to_group: link.to_group,
         });
     }
     graph
@@ -633,7 +705,7 @@ fn draw_groups(
     options: &Options,
 ) {
     let theme = &options.theme;
-    for (index, group) in chart.groups.iter().enumerate() {
+    for index in 0..chart.groups.len() {
         let frame = placed.groups[index].moved(origin.x, origin.y);
         if frame.width <= 0.0 {
             continue;
@@ -644,19 +716,40 @@ fn draw_groups(
             fill: Some(theme.group_fill),
             stroke: Some(Stroke::new(theme.group_stroke, parts::LINE)),
         });
-        if group.title.trim().is_empty() {
+    }
+}
+
+/// Draw each subgraph's title on a panel of its own, over the lines.
+///
+/// After the links rather than with the frame, because an edge into a subgraph crosses the top of
+/// its frame and the title is in the top left corner of it. Drawn first, the line ran through the
+/// words (`task-2194`); on a panel drawn last, the line passes behind the title the way it passes
+/// behind an edge's label.
+fn draw_group_titles(
+    scene: &mut Scene,
+    chart: &Chart,
+    placed: &layered::Placed,
+    origin: Point,
+    options: &Options,
+) {
+    let theme = &options.theme;
+    for (index, group) in chart.groups.iter().enumerate() {
+        let frame = placed.groups[index].moved(origin.x, origin.y);
+        if frame.width <= 0.0 || group.title.trim().is_empty() {
             continue;
         }
+        let measure = options.style(0.95, true);
         let style = parts::text_style(options, 0.95, true, theme.text);
-        let width = text::width_of(&group.title, &options.style(0.95, true), options.metrics);
-        parts::one_line(
-            scene,
-            &group.title,
-            Point::new(frame.left() + 12.0, frame.top() + 6.0),
-            &style,
-            Anchor::Start,
-            width,
-        );
+        let width = text::width_of(&group.title, &measure, options.metrics);
+        let height = options.metrics.line_metrics(&measure).height();
+        let at = Point::new(frame.left() + 12.0, frame.top() + 6.0);
+        scene.add(Item::Rect {
+            rect: Rect::new(at.x - 4.0, at.y - 1.0, width + 8.0, height + 2.0),
+            radius: 3.0,
+            fill: Some(Paint::solid(theme.node_fill.color)),
+            stroke: None,
+        });
+        parts::one_line(scene, &group.title, at, &style, Anchor::Start, width);
     }
 }
 
@@ -696,10 +789,16 @@ fn draw_links(
             .iter()
             .map(|point| Point::new(point.x + origin.x, point.y + origin.y))
             .collect();
+        let start = outline_of(chart, placed, origin, *from, link.from_group);
+        let finish = outline_of(chart, placed, origin, *to, link.to_group);
         let path = if path.len() >= 2 {
-            clip_to_shapes(chart, placed, origin, *from, *to, path)
-        } else {
+            parts::edge_path(&path, &start, &finish)
+        } else if !link.from_group && !link.to_group && from == to {
             self_loop(chart, placed, origin, *from)
+        } else {
+            // A subgraph and something inside it: there is no line to draw between a frame and
+            // what it holds.
+            Vec::new()
         };
         if path.len() < 2 {
             continue;
@@ -736,25 +835,18 @@ fn draw_links(
     }
 }
 
-/// Cut a link's two ends back to the borders of the shapes it joins.
-fn clip_to_shapes(
+/// The shape one end of a link is cut back to: a node's own outline, or a subgraph's frame.
+fn outline_of(
     chart: &Chart,
     placed: &layered::Placed,
     origin: Point,
-    from: usize,
-    to: usize,
-    mut path: Vec<Point>,
-) -> Vec<Point> {
-    let last = path.len() - 1;
-    let start = outline_of(chart, placed, origin, from);
-    let finish = outline_of(chart, placed, origin, to);
-    path[0] = start.border_towards(path[1]);
-    path[last] = finish.border_towards(path[last - 1]);
-    path
-}
-
-fn outline_of(chart: &Chart, placed: &layered::Placed, origin: Point, index: usize) -> Outline {
-    chart.nodes[index].shape.outline(placed.nodes[index].moved(origin.x, origin.y))
+    index: usize,
+    is_group: bool,
+) -> Outline {
+    match is_group {
+        true => Outline::Rect(placed.groups[index].moved(origin.x, origin.y)),
+        false => chart.nodes[index].shape.outline(placed.nodes[index].moved(origin.x, origin.y)),
+    }
 }
 
 /// A link from a node to itself: a loop out of its right side and back again.

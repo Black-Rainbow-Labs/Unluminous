@@ -195,14 +195,13 @@ fn rows(ui: &mut egui::Ui, area: Rect, state: &mut GoToFile) -> Option<std::path
             // a file that is plainly there; opening one puts the reason in the status bar.
             let openable = crate::services::file_kind::is_openable(&found.path);
             let response = modal::row(ui, index, &label, chosen, |painter, row| {
-                let square = Rect::from_center_size(
+                // The same sheet of paper the explorer draws in front of the file (`task-2194`).
+                crate::theme::icon::file_mark(
+                    painter,
                     Pos2::new(row.left() + 20.0, row.center().y),
-                    Vec2::splat(8.0),
-                );
-                painter.rect_filled(
-                    square,
-                    egui::CornerRadius::same(2),
+                    crate::services::file_kind::is_prose(&found.path),
                     if openable { marker } else { marker.gamma_multiply(0.5) },
+                    1.0,
                 );
                 let tint = match (openable, chosen) {
                     (false, _) => color::text_faint(),

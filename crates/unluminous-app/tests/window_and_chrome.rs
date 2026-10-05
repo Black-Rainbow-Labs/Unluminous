@@ -756,6 +756,71 @@ fn text_in_the_preview_can_be_selected_by_dragging() {
     harness.snapshot(shot("preview_selection"));
 }
 
+/// **A double click selects the word under the pointer**, in a Markdown file's source and in its
+/// preview, and a third click takes the line. `task-2194`: egui reports the release that completes a
+/// double click as an ordinary click in the same frame, and the source pane read the click first, so
+/// the caret was put down and the word was never selected.
+#[test]
+fn a_double_click_selects_a_word_in_the_source_and_in_the_preview() {
+    let mut harness = harness(MARKDOWN);
+    harness.get_by_label("Raw Markdown").click();
+    steady(&mut harness);
+    let area = harness.state().editor_area();
+    let text = harness.state().document().text().to_string();
+    let word = text.find("paragraph").expect("the word") + 4;
+    let caret = harness.state().layout().caret_at(word);
+    let line =
+        area.top() + unluminous_app::theme::size::EDITOR_PADDING_Y + caret.y + caret.height / 2.0;
+    // Where the text starts depends on the gutter, so it is measured by a click rather than assumed:
+    // the caret lands on the letter nearest the pointer, and that letter's own position says how far
+    // in from the edge of the area the text begins.
+    click_at(&mut harness, egui::pos2(area.left() + 200.0, line));
+    let landed = harness.state().document().selection().head;
+    let left = area.left() + 200.0 - harness.state().layout().caret_at(landed).x;
+    double_click_at(&mut harness, egui::pos2(left + caret.x + 1.0, line));
+    assert_eq!(harness.state().document().selected_text(), "paragraph", "the word is selected");
+
+    let line_end = text[word..].find('\n').map_or(text.len(), |end| word + end);
+    let line_start = text[..word].rfind('\n').map_or(0, |start| start + 1);
+    triple_click_at(&mut harness, egui::pos2(left + caret.x + 1.0, line));
+    assert_eq!(
+        harness.state().document().selected_text(),
+        &text[line_start..line_end],
+        "three clicks take the whole line"
+    );
+
+    harness.get_by_label("Markdown preview").click();
+    steady(&mut harness);
+    let area = harness.state().editor_area();
+    let preview = harness.state().preview_text();
+    let word = preview.find("paragraph").expect("the word in the preview") + 4;
+    let caret = harness.state().preview_layout().caret_at(word);
+    let at = egui::pos2(
+        area.left() + unluminous_app::theme::size::EDITOR_PADDING_X + caret.x + 1.0,
+        area.top() + unluminous_app::theme::size::EDITOR_PADDING_Y + caret.y + caret.height / 2.0,
+    );
+    double_click_at(&mut harness, at);
+    assert_eq!(harness.state().preview_selected_text().as_deref(), Some("paragraph"));
+}
+
+/// Three presses and releases at one place, which egui reads as a triple click.
+fn triple_click_at(harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2) {
+    harness.input_mut().events.push(egui::Event::PointerMoved(at));
+    for _ in 0..3 {
+        for pressed in [true, false] {
+            harness.input_mut().events.push(egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            });
+        }
+    }
+    for _ in 0..8 {
+        pump(harness);
+    }
+}
+
 /// **And selecting all of it works from the menu**, so a whole page can be taken in one go.
 #[test]
 fn the_whole_preview_can_be_selected_and_copied() {

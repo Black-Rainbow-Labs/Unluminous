@@ -2954,6 +2954,40 @@ unluminous-cli explorer select README.md
 unluminous-cli explorer select --json
 ```
 
+### explorer choose
+
+```
+unluminous-cli explorer choose <path> [--add] [--range]
+```
+
+Choose rows in the explorer for a cut, a copy, a move or a delete, the way a click does: on its own, added to or taken from what is chosen as Ctrl or Cmd with the click does, or every row from the last one chosen to this one as Shift with the click does. Cut, Copy and Paste on the explorer's menu then act on every chosen row.
+
+- `path` — The file or folder to choose.
+
+- `--add` — Add it to the rows already chosen, or take it out when it is one of them.
+- `--range` — Choose every row from the last one chosen to this one.
+
+```sh
+unluminous-cli explorer choose src/one.rs
+unluminous-cli explorer choose src/two.rs --add
+unluminous-cli explorer choose src/nine.rs --range --json
+```
+
+### explorer copy-in
+
+```
+unluminous-cli explorer copy-in <path> <folder>
+```
+
+Copy a file or a folder from anywhere into a folder of the project, the same thing dropping it on the explorer from Finder or Explorer does. A name already taken in the folder gets a number rather than being overwritten.
+
+- `path` — The file or folder to copy in, from anywhere on the machine. A relative path is read from the project.
+- `folder` — The project folder it goes into.
+
+```sh
+unluminous-cli explorer copy-in C:/Users/me/Downloads/logo.png assets
+```
+
 ### explorer delete
 
 ```

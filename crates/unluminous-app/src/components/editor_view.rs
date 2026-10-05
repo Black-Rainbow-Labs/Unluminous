@@ -311,6 +311,26 @@ pub fn handle_pointer(
     let position =
         response.interact_pointer_pos().or_else(|| response.hover_pos()).map(|p| p - text_origin);
     if let Some(local) = position {
+        // **The double and triple clicks are asked first** (`task-2194`). egui reports the release
+        // that completes a double click as an ordinary click in the same frame, so a check for the
+        // click ahead of these put the caret down and the word was never selected.
+        if response.triple_clicked() {
+            let offset = layout.offset_at(local.x, local.y);
+            let text = document.text();
+            let line = text.line_range(text.byte_to_line(offset));
+            let end = line.end.min(text.len_bytes());
+            document.apply(Command::PlaceCaret { offset: line.start, extend: false });
+            outcome.changed = document.apply(Command::PlaceCaret { offset: end, extend: true });
+            return outcome;
+        }
+        if response.double_clicked() {
+            let offset = layout.offset_at(local.x, local.y);
+            let word = word_at(document.text(), offset);
+            document.apply(Command::PlaceCaret { offset: word.start, extend: false });
+            outcome.changed =
+                document.apply(Command::PlaceCaret { offset: word.end, extend: true });
+            return outcome;
+        }
         if response.clicked() && !response.dragged() && symbol.resolved() {
             // The word was resolved from where the pointer was, so the click is about that word
             // whatever the click's own arithmetic makes of the point.
@@ -325,12 +345,6 @@ pub fn handle_pointer(
         } else if response.dragged() {
             let offset = layout.offset_at(local.x, local.y);
             changed |= document.apply(Command::PlaceCaret { offset, extend: true });
-        } else if response.double_clicked() {
-            // A double click selects the word under the pointer.
-            let offset = layout.offset_at(local.x, local.y);
-            document.apply(Command::PlaceCaret { offset, extend: false });
-            document.apply(Command::MoveWordLeft { extend: false });
-            changed |= document.apply(Command::MoveWordRight { extend: true });
         }
     }
     outcome.changed = changed;

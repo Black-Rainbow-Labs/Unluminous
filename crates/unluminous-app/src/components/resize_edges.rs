@@ -94,11 +94,13 @@ pub enum Gesture {
     /// Reported once, on the frame the drag began: sending it again on the next frame would ask for a
     /// second resize inside the first.
     Begin(ResizeDirection),
-    /// Move this edge by `by` points, which is how far the pointer moved since the last frame.
+    /// The edge is being dragged: `by` is how far the pointer moved inside the window since the last
+    /// frame.
     ///
-    /// Reported on **every** frame of the drag, because there is nothing else moving the edge. Only
-    /// the component along the direction's own axis is read — the caller decides what an edge moving
-    /// means for the window's position and size, which is `Edges::moved_by`.
+    /// Reported on **every** frame of the drag, because there is nothing else moving the edge. The
+    /// caller works the window out from where the drag began and where the pointer is on the screen,
+    /// which is `UnluminousApp::move_the_windows_own_edge`, and uses `by` only where the screen
+    /// position cannot be asked for.
     Move { direction: ResizeDirection, by: Vec2 },
 }
 
@@ -375,6 +377,79 @@ impl Edges {
     }
 }
 
+/// A drag on one of the window's own edges, measured from where it began (`task-2194`).
+///
+/// The window is worked out on every frame as **where it was when the drag began, moved by how far
+/// the pointer has gone across the screen since**. Adding up each frame's movement instead, measured
+/// inside a window the drag itself is moving, fed the window's own movement back into the next frame:
+/// dragging the left edge moved the window under the pointer, the pointer then appeared to have moved,
+/// and the edge overshot and came back. That is the shaking `task-2194` reports on macOS, and the
+/// reason dragging a corner was smooth: the bottom right corner never moves the window.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EdgeDrag {
+    /// Where the pointer was on the screen when the drag began, when the platform can say.
+    pub pointer: Option<Pos2>,
+    /// The window's outer top left corner and inner size when the drag began.
+    pub window: Rect,
+    /// Whether the window's position was known then. A drag that moves the position is only applied
+    /// when it was, so a window that has not been told where it is is never thrown to a corner.
+    pub placed: bool,
+    /// How far the pointer has moved inside the window, added up, for a platform that cannot say
+    /// where it is on the screen.
+    pub moved: Vec2,
+    /// The position and size last asked for, so a frame that changes nothing sends nothing.
+    pub asked: (Pos2, Vec2),
+}
+
+/// What one frame of an edge drag asks the window for.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EdgeStep {
+    /// The drag as it stands after this frame, to be kept for the next one.
+    pub drag: EdgeDrag,
+    /// A new outer position, when the window has to move.
+    pub position: Option<Pos2>,
+    /// A new inner size, when the window has to change size.
+    pub size: Option<Vec2>,
+}
+
+impl EdgeDrag {
+    /// Begin a drag on a window whose outer top left corner is `position`, when that is known, and
+    /// whose inner size is `size`, with the pointer at `pointer` on the screen when that is known.
+    pub fn begin(position: Option<Pos2>, size: Vec2, pointer: Option<Pos2>) -> EdgeDrag {
+        let window = Rect::from_min_size(position.unwrap_or_default(), size);
+        EdgeDrag {
+            pointer,
+            window,
+            placed: position.is_some(),
+            moved: Vec2::ZERO,
+            asked: (window.min, size),
+        }
+    }
+
+    /// One frame of the drag: the pointer moved `by` inside the window and is at `pointer` on the
+    /// screen when that can be asked. The window asked for is the one the drag began with, moved by
+    /// the whole distance, and never smaller than `smallest`.
+    pub fn step(
+        self,
+        direction: ResizeDirection,
+        by: Vec2,
+        pointer: Option<Pos2>,
+        smallest: Vec2,
+    ) -> EdgeStep {
+        let moved = self.moved + by;
+        let total = match (self.pointer, pointer) {
+            (Some(began), Some(now)) => now - began,
+            _ => moved,
+        };
+        let (at, size) = Edges::of(direction).moved_by(self.window, total, smallest);
+        EdgeStep {
+            drag: EdgeDrag { moved, asked: (at, size), ..self },
+            position: (self.placed && at != self.asked.0).then_some(at),
+            size: (size != self.asked.1).then_some(size),
+        }
+    }
+}
+
 /// Whether a drag on a grip becomes a request to the window manager.
 ///
 /// **The one decision `app::frame::show_the_resize_grips` makes**, here rather than inline so that a
@@ -434,11 +509,14 @@ fn grip_at(
     });
     match HANDS_THE_DRAG_OVER {
         true => response.drag_started().then_some(Gesture::Begin(direction)),
+        // **Every frame of the drag, whether or not the pointer moved inside the window** (`task-2194`).
+        // Dragging the west or the north edge moves the window under the pointer, so a pointer that
+        // carries on moving across the screen can stay where it was *in the window* for a frame, and a
+        // frame that reported nothing then left the edge behind. The caller reads where the pointer is
+        // on the screen and works the window out from where the drag began, so a frame that changes
+        // nothing sends nothing.
         false => {
-            let by = response.drag_delta();
-            // A frame of a drag in which the pointer did not move is not a movement, and asking for the
-            // size it already has would be a `setContentSize` a frame for nothing.
-            (response.dragged() && by != Vec2::ZERO).then_some(Gesture::Move { direction, by })
+            response.dragged().then_some(Gesture::Move { direction, by: response.drag_delta() })
         }
     }
 }
@@ -446,6 +524,58 @@ fn grip_at(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `task-2194`: dragging the left edge is measured across the screen from where the drag began, so
+    /// the window moving under the pointer is not read as the pointer moving. The pointer goes forty
+    /// points left across the screen in four frames; inside the window it appears not to move at all,
+    /// because the window moves with it, and the edge still follows the screen.
+    #[test]
+    fn a_left_edge_drag_follows_the_screen_and_not_the_window_it_moves() {
+        let began = Pos2::new(500.0, 300.0);
+        let mut drag =
+            EdgeDrag::begin(Some(Pos2::new(500.0, 100.0)), Vec2::new(800.0, 600.0), Some(began));
+        let mut last = None;
+        for frame in 1..=4 {
+            let now = Pos2::new(500.0 - 10.0 * frame as f32, 300.0);
+            let step =
+                drag.step(ResizeDirection::West, Vec2::ZERO, Some(now), Vec2::new(200.0, 200.0));
+            drag = step.drag;
+            last = Some(step);
+        }
+        let last = last.expect("four frames");
+        assert_eq!(
+            last.position,
+            Some(Pos2::new(460.0, 100.0)),
+            "the left edge followed the pointer"
+        );
+        assert_eq!(
+            last.size,
+            Some(Vec2::new(840.0, 600.0)),
+            "and the right edge stayed where it was"
+        );
+        // A frame in which nothing moved asks for nothing.
+        let still = drag.step(
+            ResizeDirection::West,
+            Vec2::ZERO,
+            Some(Pos2::new(460.0, 300.0)),
+            Vec2::splat(200.0),
+        );
+        assert_eq!((still.position, still.size), (None, None));
+    }
+
+    /// Where the screen cannot be asked, the movement inside the window is added up from where the drag
+    /// began rather than applied to wherever the window was last reported, which lags behind.
+    #[test]
+    fn without_a_screen_position_the_movement_is_added_up_from_the_start() {
+        let mut drag =
+            EdgeDrag::begin(Some(Pos2::new(100.0, 100.0)), Vec2::new(800.0, 600.0), None);
+        for _ in 0..3 {
+            drag = drag
+                .step(ResizeDirection::SouthEast, Vec2::new(5.0, 2.0), None, Vec2::splat(200.0))
+                .drag;
+        }
+        assert_eq!(drag.asked, (Pos2::new(100.0, 100.0), Vec2::new(815.0, 606.0)));
+    }
 
     /// A page holding the operating system's keyboard is the one thing that stops a resize being
     /// asked for, and a window that is merely in the background is not that thing. `task-2004`.

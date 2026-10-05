@@ -2629,6 +2629,34 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         area: "explorer",
+        verb: "choose",
+        summary: "Choose rows in the explorer for a cut, a copy, a move or a delete, the way a click does: on its own, added to or taken from what is chosen as Ctrl or Cmd with the click does, or every row from the last one chosen to this one as Shift with the click does. Cut, Copy and Paste on the explorer's menu then act on every chosen row.",
+        arguments: &[argument("path", true, "The file or folder to choose.")],
+        flags: &[
+            switch("add", "Add it to the rows already chosen, or take it out when it is one of them."),
+            switch("range", "Choose every row from the last one chosen to this one."),
+        ],
+        examples: &[
+            "unluminous-cli explorer choose src/one.rs",
+            "unluminous-cli explorer choose src/two.rs --add",
+            "unluminous-cli explorer choose src/nine.rs --range --json",
+        ],
+        local: false,
+    },
+    Command {
+        area: "explorer",
+        verb: "copy-in",
+        summary: "Copy a file or a folder from anywhere into a folder of the project, the same thing dropping it on the explorer from Finder or Explorer does. A name already taken in the folder gets a number rather than being overwritten.",
+        arguments: &[
+            argument("path", true, "The file or folder to copy in, from anywhere on the machine. A relative path is read from the project."),
+            argument("folder", true, "The project folder it goes into."),
+        ],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli explorer copy-in C:/Users/me/Downloads/logo.png assets"],
+        local: false,
+    },
+    Command {
+        area: "explorer",
         verb: "delete",
         summary: "Delete a file or a folder. On Windows it goes to the Recycle Bin; everywhere else it is gone. No question is asked, because typing the command is the deliberate act the question exists to ask for.",
         arguments: &[argument("path", true, "The file or folder to delete.")],

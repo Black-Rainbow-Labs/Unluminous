@@ -761,3 +761,96 @@ fn every_sample_diagram_lays_out_with_no_refusal() {
         refusals.join("\n")
     );
 }
+
+/// Draw every Mermaid block in a folder of Markdown files into a picture of its own, for a person to
+/// look at.
+///
+/// `UNLUMINOUS_MERMAID_GALLERY=<folder of .md files> UNLUMINOUS_MERMAID_GALLERY_OUT=<folder>
+/// cargo test -p unluminous-app --test syntax_and_plugins_basic -- --ignored mermaid_gallery`
+///
+/// `task-2194` asked for a thorough look at how real diagrams are drawn, and the real diagrams are the
+/// ones in the task documents rather than the twenty samples. Each block is written to a `.mmd` file of
+/// its own and opened in the real window in Preview, so what is saved is what a person sees, at the
+/// size they see it, including the shrinking a diagram wider than the pane is given. Ignored, because
+/// it reads a folder on this machine and writes pictures nobody compares automatically.
+#[test]
+#[ignore = "run by hand with UNLUMINOUS_MERMAID_GALLERY set"]
+fn mermaid_gallery_of_every_block_in_a_folder() {
+    let Ok(source) = std::env::var("UNLUMINOUS_MERMAID_GALLERY") else {
+        return;
+    };
+    let out = std::path::PathBuf::from(
+        std::env::var("UNLUMINOUS_MERMAID_GALLERY_OUT").expect("a folder for the pictures"),
+    );
+    std::fs::create_dir_all(&out).expect("make the picture folder");
+    let blocks = std::env::temp_dir().join("unluminous-mermaid-gallery");
+    std::fs::create_dir_all(&blocks).expect("make the block folder");
+    let mut names = Vec::new();
+    for folder in source.split(';') {
+        for path in markdown_files(std::path::Path::new(folder)) {
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            for (index, block) in mermaid_fences(&text).into_iter().enumerate() {
+                let name = format!("{stem}-{index}.mmd");
+                std::fs::write(blocks.join(&name), block).expect("write the block");
+                names.push(name);
+            }
+        }
+    }
+    let wide = std::env::var("UNLUMINOUS_MERMAID_GALLERY_SIZE")
+        .ok()
+        .and_then(|size| size.split_once('x').map(|(w, h)| (w.to_owned(), h.to_owned())))
+        .and_then(|(w, h)| Some(egui::vec2(w.parse().ok()?, h.parse().ok()?)))
+        .unwrap_or(egui::vec2(1600.0, 1000.0));
+    let folder = blocks.clone();
+    let mut harness = builder().with_size(wide).build_eframe(move |cc| {
+        let mut app = UnluminousApp::new(folder);
+        app.prepare(&cc.egui_ctx);
+        app.draw_deterministically();
+        app
+    });
+    steady(&mut harness);
+    for name in names {
+        harness.state_mut().open_path_permanently(&blocks.join(&name)).expect("the block opens");
+        harness.state_mut().set_view_mode(ViewMode::Preview);
+        steady(&mut harness);
+        let picture = harness.render().expect("render the window");
+        picture.save(out.join(name.replace(".mmd", ".png"))).expect("save the picture");
+        harness.state_mut().close_tab_without_saving(0);
+        steady(&mut harness);
+    }
+}
+
+/// Every `.md` file under `folder`, in name order.
+fn markdown_files(folder: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(folder).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            found.extend(markdown_files(&path));
+        } else if path.extension().is_some_and(|extension| extension == "md") {
+            found.push(path);
+        }
+    }
+    found.sort();
+    found
+}
+
+/// The body of every ```mermaid fence in a Markdown document.
+fn mermaid_fences(text: &str) -> Vec<String> {
+    let mut blocks = Vec::new();
+    let mut current: Option<String> = None;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        match current.as_mut() {
+            None if trimmed.starts_with("```mermaid") => current = Some(String::new()),
+            None => {}
+            Some(_) if trimmed.starts_with("```") => blocks.extend(current.take()),
+            Some(block) => {
+                block.push_str(line);
+                block.push('\n');
+            }
+        }
+    }
+    blocks
+}

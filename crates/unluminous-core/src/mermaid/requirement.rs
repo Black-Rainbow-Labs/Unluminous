@@ -194,6 +194,7 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
             to: relation.to,
             label: labels[index].size(),
             span: 1,
+            ..EdgeSpec::new(0, 0)
         });
     }
     let placed = layered::layout(&graph);
@@ -312,18 +313,19 @@ fn draw_relations(
 ) {
     let theme = &options.theme;
     for (index, relation) in diagram.relations.iter().enumerate() {
-        let mut path: Vec<Point> = placed.edges[index]
+        let path: Vec<Point> = placed.edges[index]
             .iter()
             .map(|point| Point::new(point.x + origin.x, point.y + origin.y))
             .collect();
         if path.len() < 2 {
             continue;
         }
+        let path = parts::edge_path(
+            &path,
+            &Outline::Rect(placed.nodes[relation.from].moved(origin.x, origin.y)),
+            &Outline::Rect(placed.nodes[relation.to].moved(origin.x, origin.y)),
+        );
         let last = path.len() - 1;
-        path[0] = Outline::Rect(placed.nodes[relation.from].moved(origin.x, origin.y))
-            .border_towards(path[1]);
-        path[last] = Outline::Rect(placed.nodes[relation.to].moved(origin.x, origin.y))
-            .border_towards(path[last - 1]);
         scene.add(Item::Line {
             points: parts::trimmed(&path, 0.0, parts::ending_inset(Ending::Arrow)),
             stroke: Stroke::new(theme.line, parts::LINE),

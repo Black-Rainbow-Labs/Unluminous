@@ -67,6 +67,8 @@ fn sheet() -> Vec<Mark> {
     vec![
         ("folder", icon::folder),
         ("file", icon::editing_area),
+        ("file-page", icon::file_page),
+        ("text-page", icon::text_page),
         ("branch", icon::branch),
         ("space", icon::space),
         ("chat", icon::chat),

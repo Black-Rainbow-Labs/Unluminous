@@ -164,6 +164,83 @@ pub fn folder_mark(painter: &egui::Painter, centre: Pos2, open: bool, color: Col
     material_folder(painter, centre, open, color, scale * 0.85);
 }
 
+/// The mark in front of a file's name in the explorer and in `Go to File`, for a file whose plugin gives
+/// it no picture of its own.
+///
+/// `task-2194`: it was an eight point square, which said "something" and nothing more, beside folders
+/// and plugin icons that are drawn. Now it is a sheet of paper, in both sets, in the colour the file's
+/// kind already had: **filled with its corner folded down** for a file Unluminous knows nothing about,
+/// and **an outlined sheet with lines of writing on it** for a file that is text to be read — a `.txt`,
+/// a `.md`, a log, a `README`. One colour each, like every mark here, so it is right on a row, on the
+/// row's chosen pill and on a menu.
+pub fn file_mark(painter: &egui::Painter, centre: Pos2, prose: bool, color: Color32, scale: f32) {
+    let scale = scale * 0.85;
+    match prose {
+        true => text_page_at(painter, centre, color, scale),
+        false => file_page_at(painter, centre, color, scale),
+    }
+}
+
+/// A sheet of paper with its top right corner folded down, filled. For the icon sheet.
+pub fn file_page(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    file_page_at(painter, centre, color, 1.0);
+}
+
+/// An outlined sheet of paper with lines of writing on it. For the icon sheet.
+pub fn text_page(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    text_page_at(painter, centre, color, 1.0);
+}
+
+/// The filled sheet.
+///
+/// The fold is a separate triangle with a gap round it, which is the folder's own trick for its lid:
+/// one colour cannot draw a flap *over* a page, so the page gives the flap room instead. The page is two
+/// filled pieces that overlap where they meet, because two shapes that only touch leave a hairline of
+/// background between them once each edge is smoothed.
+fn file_page_at(painter: &egui::Painter, centre: Pos2, color: Color32, scale: f32) {
+    let at = |x: f32, y: f32| Pos2::new(centre.x + x * scale, centre.y + y * scale);
+    let fill = |points: Vec<Pos2>| {
+        painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
+    };
+    // The left of the page, full height, with its two left corners chamfered.
+    fill(vec![
+        at(-3.2, -5.5),
+        at(-0.1, -5.5),
+        at(-0.1, 5.5),
+        at(-3.2, 5.5),
+        at(-4.2, 4.5),
+        at(-4.2, -4.5),
+    ]);
+    // The right of the page, below the fold, with its bottom right corner chamfered.
+    fill(vec![at(-0.6, -1.2), at(4.2, -1.2), at(4.2, 4.5), at(3.2, 5.5), at(-0.6, 5.5)]);
+    // The fold, lying on the page with a gap of nine tenths of a point all round.
+    fill(vec![at(0.8, -5.5), at(4.2, -2.1), at(0.8, -2.1)]);
+}
+
+/// The outlined sheet with three lines of writing, the last one short the way a paragraph ends.
+fn text_page_at(painter: &egui::Painter, centre: Pos2, color: Color32, scale: f32) {
+    let at = |x: f32, y: f32| Pos2::new(centre.x + x * scale, centre.y + y * scale);
+    let stroke = Stroke::new(1.2 * scale, color);
+    painter.add(egui::Shape::closed_line(
+        vec![
+            at(-3.1, -5.5),
+            at(0.8, -5.5),
+            at(4.2, -2.1),
+            at(4.2, 4.4),
+            at(3.1, 5.5),
+            at(-3.1, 5.5),
+            at(-4.2, 4.4),
+            at(-4.2, -4.4),
+        ],
+        stroke,
+    ));
+    painter.add(egui::Shape::line(vec![at(0.8, -5.5), at(0.8, -2.1), at(4.2, -2.1)], stroke));
+    let writing = Stroke::new(1.1 * scale, color);
+    for (y, right) in [(-0.6, 2.1), (1.5, 2.1), (3.6, 0.4)] {
+        painter.line_segment([at(-2.1, y), at(right, y)], writing);
+    }
+}
+
 /// A filled folder, with a raised tab, and leaning open when it is.
 ///
 /// One drawing behind both the rail's button and the explorer's mark, so the two cannot drift apart.

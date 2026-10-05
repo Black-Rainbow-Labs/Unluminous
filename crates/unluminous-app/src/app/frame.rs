@@ -658,6 +658,8 @@ impl UnluminousApp {
                 let reveal_selected = self.reveal_selection > 0;
                 self.reveal_selection = self.reveal_selection.saturating_sub(1);
                 let selected = self.selected.clone();
+                let chosen = self.chosen.clone();
+                let outside_drag = self.files_from_another_program(ui.ctx());
                 if self.reveal_selection > 0 {
                     ui.ctx().request_repaint();
                 }
@@ -722,6 +724,8 @@ impl UnluminousApp {
                     explorer::View {
                         current: open.as_deref(),
                         selected: selected.as_deref(),
+                        chosen: &chosen,
+                        outside_drag,
                         keyboard: self.focus == Focus::Explorer,
                         unsaved,
                         reveal,
@@ -735,7 +739,10 @@ impl UnluminousApp {
                 )
             };
             if let Some(path) = explorer_outcome.select {
-                self.selected = Some(path);
+                self.pick_in_the_explorer(path, explorer_outcome.pick);
+            }
+            if let Some(folder) = &explorer_outcome.dropped_into {
+                self.take_the_dropped_files(ui.ctx(), folder);
             }
             if explorer_outcome.focus {
                 self.focus = Focus::Explorer;
@@ -766,12 +773,21 @@ impl UnluminousApp {
                 }
             }
             if let Some((source, folder)) = explorer_outcome.moved {
-                let name = source
-                    .file_name()
-                    .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                let target = folder.join(name);
-                self.move_path(&source, &target, true);
+                // Every chosen row goes when the one carried is among them (`task-2194`), each by the
+                // same move a single row takes, so each still takes the code that names it along.
+                // One that is already in the folder, or that the folder is inside, stays where it is.
+                for source in self.choice_including(&source) {
+                    if source.parent() == Some(folder.as_path()) || folder.starts_with(&source) {
+                        continue;
+                    }
+                    let name = source
+                        .file_name()
+                        .map(|name| name.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    let target = folder.join(name);
+                    self.move_path(&source, &target, true);
+                }
+                self.chosen.clear();
             }
             if explorer_outcome.hide {
                 self.explorer_visible = false;
@@ -935,7 +951,7 @@ impl UnluminousApp {
                 &self.menu_state(),
                 &path,
                 directory,
-                !self.clipboard.is_empty(),
+                self.something_to_paste(),
                 aimed,
             );
             let outcome = context_menu::show(ui, "explorer", at, &entries);
@@ -1909,6 +1925,11 @@ impl UnluminousApp {
         // `settle_the_native_views_before_the_pass` — but `winit` cannot know that until it has had its
         // `WM_SETFOCUS`, which is a frame later than the press this drag started on.
         let page_has_it = self.browser.page_holds_the_keyboard();
+        // A drag on the window's own edge ends when the button comes up, and the next one starts again
+        // from wherever the window is then.
+        if !ui.input(|input| input.pointer.primary_down()) {
+            self.edge_drag = None;
+        }
         if let Some(gesture) = resize_edges::ask_for_it(direction, page_has_it) {
             // **Written down as well as sent**, because `BeginResize` goes to the window manager and
             // nothing inside this process can watch a window change size. What a test — and
@@ -1956,27 +1977,36 @@ impl UnluminousApp {
         direction: egui::viewport::ResizeDirection,
         by: egui::Vec2,
     ) {
-        let (position, inner) = ctx.input(|input| {
-            let viewport = input.viewport();
-            (
-                viewport.outer_rect.map(|outer| outer.min),
-                viewport.inner_rect.map(|inner| inner.size()),
-            )
+        // Where the pointer is on the screen, which does not move when the window does. See
+        // `resize_edges::EdgeDrag` for what measuring inside the window cost.
+        let on_screen = crate::services::system_files::pointer_on_screen();
+        let drag = self.edge_drag.unwrap_or_else(|| {
+            let (position, inner) = ctx.input(|input| {
+                let viewport = input.viewport();
+                (
+                    viewport.outer_rect.map(|outer| outer.min),
+                    viewport.inner_rect.map(|inner| inner.size()),
+                )
+            });
+            // The size the window is now. `content_rect` is what the frame was drawn into and is the
+            // honest fallback: it is what `unluminous-cli window size` reports and reads back.
+            let was = inner.unwrap_or_else(|| ctx.content_rect().size());
+            resize_edges::EdgeDrag::begin(position, was, on_screen)
         });
-        // The size the window is now. `content_rect` is what the frame was drawn into and is the honest
-        // fallback: it is what `unluminous-cli window size` reports and reads back.
-        let was = inner.unwrap_or_else(|| ctx.content_rect().size());
-        let whole = egui::Rect::from_min_size(position.unwrap_or_default(), was);
-        let (at, size) =
-            resize_edges::Edges::of(direction).moved_by(whole, by, crate::app::SMALLEST_WINDOW);
-        // The position is only sent where it is really known and the edge being dragged really moves it.
-        // Sent from a guessed origin, a west drag would fling the window to the top left of the screen.
-        if position.is_some() && at != whole.min {
+        let step = drag.step(direction, by, on_screen, crate::app::SMALLEST_WINDOW);
+        // Position first, for the reason the caller gives. The position is only sent where it was
+        // really known when the drag began: sent from a guessed origin, a west drag would fling the
+        // window to the top left of the screen.
+        if let Some(at) = step.position {
             ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(at));
         }
-        if size != was {
+        if let Some(size) = step.size {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
         }
+        // Drawn again until the button comes up, because the pointer can carry on across the screen
+        // while staying put inside a window that is moving with it, and nothing else would ask.
+        ctx.request_repaint();
+        self.edge_drag = Some(step.drag);
     }
 
     /// What is written down at the end of a frame, and the two things that wait for the second one.

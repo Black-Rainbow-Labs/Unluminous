@@ -894,6 +894,8 @@ impl UnluminousApp {
             let view = crate::components::explorer::View {
                 current: showing.as_deref(),
                 selected: selected.as_deref(),
+                chosen: &[],
+                outside_drag: None,
                 keyboard: focused,
                 unsaved: false,
                 reveal: false,

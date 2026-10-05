@@ -100,6 +100,46 @@ impl Outline {
     }
 }
 
+impl Outline {
+    /// Whether `point` is inside the shape or on its border.
+    pub fn contains(&self, point: Point) -> bool {
+        match self {
+            Outline::Rect(rect) => rect.contains(point),
+            Outline::Circle(centre, radius) => centre.distance(point) <= *radius + 0.01,
+            Outline::Polygon(points) => {
+                let mut inside = false;
+                for index in 0..points.len() {
+                    let a = points[index];
+                    let b = points[(index + 1) % points.len()];
+                    if (a.y > point.y) != (b.y > point.y) {
+                        let x = a.x + (point.y - a.y) / (b.y - a.y) * (b.x - a.x);
+                        if point.x < x {
+                            inside = !inside;
+                        }
+                    }
+                }
+                inside
+            }
+        }
+    }
+
+    /// Where the straight line from `inside`, in the shape, to `outside`, out of it, crosses the
+    /// border. Found by halving the line twenty times, which is a ten-thousandth of a point on any
+    /// line a diagram draws and works the same for every one of the three kinds.
+    fn crossing(&self, inside: Point, outside: Point) -> Point {
+        let (mut near, mut far) = (0.0_f32, 1.0_f32);
+        for _ in 0..20 {
+            let middle = (near + far) / 2.0;
+            if self.contains(inside.towards(outside, middle)) {
+                near = middle;
+            } else {
+                far = middle;
+            }
+        }
+        inside.towards(outside, (near + far) / 2.0)
+    }
+}
+
 /// Where the ray from `from` in direction `along` crosses the polygon, furthest out.
 fn polygon_border(points: &[Point], from: Point, along: Point) -> Option<Point> {
     let mut best: Option<(f32, Point)> = None;
@@ -314,30 +354,124 @@ fn diamond_head(tip: Point, direction: Point, size: f32) -> Vec<Point> {
     ]
 }
 
-/// Shorten a polyline at each end, so the line stops where its endings begin.
-pub fn trimmed(points: &[Point], start: f32, end: f32) -> Vec<Point> {
-    let mut points = points.to_vec();
-    if points.len() < 2 {
-        return points;
+/// How far round a corner an edge's bend begins: the radius the corner is rounded to.
+pub const BEND: f32 = 12.0;
+
+/// An edge's line from the layered layout, finished: cut back to the borders of the two shapes it
+/// joins, and its corners rounded.
+///
+/// `task-2194` asked for arrows that are slightly rounded where they bend. The cut comes first, so the
+/// rounding is measured on the part of the line that is actually drawn, and the last stretch before
+/// each shape is kept straight for at least an arrowhead's length so the head points the way the line
+/// arrives rather than along a curve.
+pub fn edge_path(path: &[Point], start: &Outline, end: &Outline) -> Vec<Point> {
+    rounded(&clipped(path, start, end), BEND, HEAD)
+}
+
+/// Cut a line back to where it leaves `start` and where it reaches `end`.
+///
+/// Wherever along the line that happens, rather than only on its first and last segment: an edge
+/// that starts at a point inside a node beside its middle runs straight down out of it, and the first
+/// point outside the shape is not always the second point of the line.
+pub fn clipped(path: &[Point], start: &Outline, end: &Outline) -> Vec<Point> {
+    if path.len() < 2 {
+        return path.to_vec();
     }
-    if start > 0.0 {
-        let first = points[0];
-        let second = points[1];
-        let length = first.distance(second);
-        if length > start {
-            points[0] = first.towards(second, start / length);
+    let mut points = path.to_vec();
+    if start.contains(points[0]) {
+        if let Some(leaving) = (0..points.len() - 1).find(|&at| !start.contains(points[at + 1])) {
+            let cross = start.crossing(points[leaving], points[leaving + 1]);
+            points.drain(..=leaving);
+            points.insert(0, cross);
         }
     }
-    if end > 0.0 {
-        let last = points.len() - 1;
-        let tip = points[last];
-        let before = points[last - 1];
-        let length = tip.distance(before);
-        if length > end {
-            points[last] = tip.towards(before, end / length);
+    let last = points.len() - 1;
+    if points.len() >= 2 && end.contains(points[last]) {
+        if let Some(entering) = (1..points.len()).rev().find(|&at| !end.contains(points[at - 1])) {
+            let cross = end.crossing(points[entering], points[entering - 1]);
+            points.truncate(entering);
+            points.push(cross);
         }
     }
     points
+}
+
+/// The same line with each corner replaced by a short curve of radius up to `radius`.
+///
+/// A corner takes at most half of each segment beside it, so two corners never overlap, and the first
+/// and last segments keep at least `straight` of their length uncurved. The curve is a quadratic
+/// Bézier with the corner as its control point, flattened into a few segments, because the painter
+/// draws lines and nothing else.
+pub fn rounded(points: &[Point], radius: f32, straight: f32) -> Vec<Point> {
+    if points.len() < 3 {
+        return points.to_vec();
+    }
+    let last = points.len() - 1;
+    let mut out = vec![points[0]];
+    for at in 1..last {
+        let (before, corner, after) = (points[at - 1], points[at], points[at + 1]);
+        let incoming = before.distance(corner);
+        let outgoing = corner.distance(after);
+        // An end segment shorter than `straight` still gives up half of itself, so a short one is a
+        // gentler corner rather than a sharp one.
+        let room_in =
+            if at == 1 { (incoming - straight).max(incoming / 2.0) } else { incoming / 2.0 };
+        let room_out =
+            if at + 1 == last { (outgoing - straight).max(outgoing / 2.0) } else { outgoing / 2.0 };
+        let cut = radius.min(room_in).min(room_out);
+        if cut < 1.0 || incoming < f32::EPSILON || outgoing < f32::EPSILON {
+            out.push(corner);
+            continue;
+        }
+        let enter = corner.towards(before, cut / incoming);
+        let leave = corner.towards(after, cut / outgoing);
+        const STEPS: usize = 6;
+        for step in 0..=STEPS {
+            let t = step as f32 / STEPS as f32;
+            let first = enter.towards(corner, t);
+            let second = corner.towards(leave, t);
+            out.push(first.towards(second, t));
+        }
+    }
+    out.push(points[last]);
+    out
+}
+
+/// Shorten a polyline at each end, so the line stops where its endings begin.
+///
+/// Measured along the line, so a shortening longer than the last segment carries on into the one
+/// before it rather than being skipped. A line shorter than both shortenings together is left alone.
+pub fn trimmed(points: &[Point], start: f32, end: f32) -> Vec<Point> {
+    if points.len() < 2 {
+        return points.to_vec();
+    }
+    let total: f32 = points.windows(2).map(|pair| pair[0].distance(pair[1])).sum();
+    if start + end >= total {
+        return points.to_vec();
+    }
+    let mut points = cut_front(points, start);
+    points.reverse();
+    let mut points = cut_front(&points, end);
+    points.reverse();
+    points
+}
+
+/// The line with `distance` taken off its start.
+fn cut_front(points: &[Point], distance: f32) -> Vec<Point> {
+    if distance <= 0.0 {
+        return points.to_vec();
+    }
+    let mut walked = 0.0;
+    for at in 0..points.len() - 1 {
+        let length = points[at].distance(points[at + 1]);
+        if walked + length > distance {
+            let mut out = vec![points[at].towards(points[at + 1], (distance - walked) / length)];
+            out.extend_from_slice(&points[at + 1..]);
+            return out;
+        }
+        walked += length;
+    }
+    points.to_vec()
 }
 
 /// The direction the last segment of a polyline is going in.

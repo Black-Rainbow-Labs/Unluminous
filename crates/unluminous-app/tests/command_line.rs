@@ -2006,6 +2006,11 @@ fn drive_the_panels_and_the_explorer(coverage: &mut Coverage) {
     c.works(&mut harness, "explorer delete docs/today.md");
     c.refuses(&mut harness, "explorer delete no-such-file.md");
     c.works(&mut harness, "explorer reload");
+    c.works(&mut harness, "explorer choose readme.md");
+    c.works(&mut harness, "explorer choose src/main.rs --add");
+    c.refuses(&mut harness, "explorer choose no-such-file.md");
+    c.works(&mut harness, "explorer copy-in readme.md made");
+    c.refuses(&mut harness, "explorer copy-in no-such-file.md made");
 
     c.works(&mut harness, "action list --json");
     c.works(&mut harness, "action find line numbers --json");

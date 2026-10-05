@@ -213,7 +213,9 @@ pub fn unquote(text: &str) -> String {
 ///
 /// - the quotes come off, including the backtick pair inside them that marks a markdown string,
 ///   whose `**bold**` is then shown as it was written because a diagram label is set in one style;
-/// - `<br>`, `<br/>` and `<br />` become line breaks;
+/// - `<br>`, `<br/>` and `<br />` become line breaks, and so does a written `\n`, which is how a
+///   great many diagrams in this repository's own documents break a label (`task-2194`) and which
+///   nobody writing a label means as a backslash followed by an `n`;
 /// - `#35;` and `#quot;` style entity codes become the characters they name, and so do HTML's own
 ///   `&lt;`, `&amp;` and `&#91;`, because Mermaid draws a label as HTML and a person writing one
 ///   writes whichever they know (`task-2063`);
@@ -234,6 +236,11 @@ pub fn label(text: &str) -> String {
     let mut rest = text.as_str();
     while !rest.is_empty() {
         if let Some(after) = strip_break(rest) {
+            out.push('\n');
+            rest = after;
+            continue;
+        }
+        if let Some(after) = rest.strip_prefix("\\n") {
             out.push('\n');
             rest = after;
             continue;
@@ -422,6 +429,7 @@ mod tests {
         assert_eq!(label("one<br/>\u{b7} two"), "one\n\u{b7} two");
         assert_eq!(label("GET /jobs/<id>"), "GET /jobs/<id>", "a placeholder is kept as written");
         assert_eq!(label("ATT&CK"), "ATT&CK", "an ampersand that starts no entity is a character");
+        assert_eq!(label("\"main.rs\\nwindow setup\""), "main.rs\nwindow setup", "task-2194");
     }
 
     #[test]

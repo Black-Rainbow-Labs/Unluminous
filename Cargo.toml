@@ -160,12 +160,20 @@ windows-sys = { version = "0.61", features = [
     # `GetFocus`, which is how the window asks whether the keyboard is its own or a native child's
     # rather than believing `winit`'s cache of it. See `services/windows_focus.rs`.
     "Win32_UI_Input_KeyboardAndMouse",
+    # The clipboard's list of files, `CF_HDROP`, which is how a file copied in Explorer is pasted into
+    # the folder pane and one copied there is pasted in Explorer. See `services/system_files.rs`.
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
     "std",
     "NSProcessInfo",
     "NSString",
 ] }
+# Already in the tree under `objc2-foundation`; named here because `services/system_files.rs` sends
+# AppKit messages directly, for the pasteboard's files and for where the pointer is during a drop.
+objc2 = { version = "0.6", default-features = false, features = ["std"] }
 # Already in the tree under the objc2 crates; named here because `services/wake.rs` uses it directly.
 dispatch2 = { version = "0.3", default-features = false, features = ["std"] }
 

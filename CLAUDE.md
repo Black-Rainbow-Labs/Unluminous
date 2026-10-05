@@ -2106,6 +2106,38 @@ a subgraph points at the box it names rather than at the frame.
 `services::plugins` already made about a colour scheme: a document does not get to choose the
 window's colours, and nothing in a diagram is going to run. **Nothing is fetched**, ever.
 
+**An edge that crosses a subgraph's frame crosses it once, at a port** (`task-2194`). Laying a
+subgraph out as one box keeps its contents apart from everything else, and it used to cost the edges:
+a subgraph's own layout knew nothing about the edges leaving it, and the line was joined up afterwards
+by running it round the outside of the frame, so real diagrams had lines along frames, through titles
+and across three boxes to reach a fourth. Now `layered::place_container` gives each edge that leaves a
+subgraph a **port**, an entity of no height in a rank of its own along the side of the frame facing the
+other end. Inside, the ordering and the placement give the edge a lane to its node exactly as they give
+a dummy one. Outside, the container round it picks the edge up where the port ended. Which side faces
+the other end is decided before anything is placed, by `Reach`, because it is a question about the
+graph rather than about sizes.
+
+**An edge runs straight through a rank and turns only in the gap between two**, and the caller rounds
+the corners with `parts::edge_path`, which cuts the line back to the two shapes first so the rounding
+is measured on what is drawn and the last stretch before an arrowhead stays straight. Several edges on
+one side of a box leave it side by side. Mermaid draws its edges as curves. Unluminous draws straight
+lanes with rounded corners, which is what the ticket asked for, and a lane is what keeps a line out of
+a box it does not belong to.
+
+**A subgraph's title is drawn on a panel after the edges**, the way an edge's label is, because the
+edges into a subgraph cross the top of its frame where the title is. **A link to a subgraph's name is a
+link to the subgraph**, drawn to its frame, rather than a second box with the same name, and a written
+`\n` in a label is a line break.
+
+**Two tools measure all of this against the diagrams people actually write**, which are the ones in
+the task documents rather than `sample-diagrams`. `cargo run --release -p unluminous-app --example
+mermaid_audit -- "<folder>;<folder>"` lays out every block in every `.md` file under the folders and
+counts text outside its box, lines through a box that is not at either end of them, text over text, and
+lines behind another line's label. `mermaid_gallery_of_every_block_in_a_folder` in
+`tests/syntax_and_plugins_basic.rs` is ignored and run by hand with `UNLUMINOUS_MERMAID_GALLERY` set: it
+opens every block in the real window and writes a picture of each, which is what a person looks at.
+On `task-2194` the two of them covered 478 blocks from both repositories.
+
 The four properties every diagram type is held to are one function, `mermaid::check::properties`, so
 a type added later inherits them: nothing outside the scene, no two node boxes overlapping, every
 number finite — one NaN poisons the size and blanks the whole diagram — and every source label
@@ -3441,6 +3473,37 @@ three-answer dialog here; Unluminous can give the simpler answer because it save
 else, so writing the buffer to the file it came from is exactly what was typed. A picture tab and a
 tab with no path are the two exceptions, each with a reason, and the untitled one *says* it was
 closed without saving rather than putting `untitled.md` in somebody's project.
+
+## Several rows are chosen, and files come and go through the system's clipboard
+
+`task-2194` asks for the folder pane to behave like a file manager: several rows chosen and cut or
+copied together, pasted into any folder, and files dragged in from the Finder or Explorer.
+
+**A click with `Ctrl` or `Cmd` adds a row to the choice and a click with `Shift` chooses a run of rows**
+from the last one clicked. `UnluminousApp::chosen` holds them, empty when only the cursor's row is
+chosen, and `explorer_choice` is the one way to read it. A click with a modifier opens nothing and folds
+nothing. Cut, Copy, Paste and dragging act on every chosen row when the row they are about is one of
+them, which is what a right click on one of several chosen rows means in every file manager.
+
+**The explorer takes the clipboard keys while it has the keyboard.** egui delivers a copy and a cut as
+events of their own, and a paste as a `Paste` event only when the clipboard holds text, so the `V` press
+is watched for too: files on the clipboard are exactly the case with no text. The events are taken out
+of the frame's input so the editor beside the tree does not paste into the document. A paste goes into
+the cursor's folder, or the folder the cursor's file is in.
+
+**`services::system_files` is the half that reaches the operating system.** A cut or a copy also puts
+the files on the system clipboard, as `CF_HDROP` on Windows and as file addresses on the macOS
+pasteboard, so they paste in a file manager; a paste takes files another program put there when they
+are not the ones this window put there. It is off until the released binary calls
+`use_the_system_clipboard`, so a test never writes over what the person running it copied.
+
+**A file dropped from another program lands in the folder under the pointer, and the pointer is asked
+of the system**, because a platform drag sends the window no pointer movement: Windows carries the file
+through OLE and macOS through a dragging session, and egui is left holding wherever the pointer was
+before the drag began. While files are carried over the panel, the folder they would land in is marked.
+
+`unluminous-cli explorer choose <path> [--add] [--range]` is the click, through the same
+`pick_in_the_explorer`, and `explorer copy-in <path> <folder>` is the drop.
 
 ## A file that moves takes the code that names it with it
 
@@ -4804,6 +4867,21 @@ once it is installed, and remain the answer on macOS and Linux. `status --sectio
 so `Unlatch` watches every drag the window asks for: a moment later, with no move or size loop running
 (`GetGUIThreadInfo`, `GUI_INMOVESIZE`) and the button up, it posts `WM_EXITSIZEMOVE` to the window, which
 is the one message `winit` clears the flag on.
+
+## On macOS the window moves its own edge, measured across the screen
+
+`winit` cannot hand a resize to macOS, so there the window moves its own edges: a grip reports every
+frame of the drag and `move_the_windows_own_edge` asks for a position and a size. `task-2194` reported
+the window shaking while its left edge was dragged, and not while a corner was. The drag was measured
+inside the window, and dragging the left or the top edge moves the window under the pointer, so the
+window's own movement came back as pointer movement on the next frame and the edge overshot and swung
+back. The bottom right corner never moves the window, which is why it was smooth.
+
+`resize_edges::EdgeDrag` now measures from where the drag began, across the screen: the pointer's
+position comes from `NSEvent mouseLocation`, which does not move when the window does, and every frame
+asks for the starting rectangle moved by the whole distance. Where the screen cannot be asked, the
+movement inside the window is added up from the start rather than applied to a window position that
+lags behind. `EdgeDrag::step` is a pure function, and its two tests run on every platform.
 
 ## A labelled edge's words take room in the layout, and Ctrl+Click and Ctrl+[ work like IntelliJ's
 

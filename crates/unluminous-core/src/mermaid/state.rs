@@ -302,6 +302,7 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
             to: transition.to,
             label: transitions[index].size(),
             span: 1,
+            ..EdgeSpec::new(0, 0)
         });
     }
     let placed = layered::layout(&graph);
@@ -430,16 +431,19 @@ fn draw_transitions(
 ) {
     let theme = &options.theme;
     for (index, transition) in diagram.transitions.iter().enumerate() {
-        let mut path: Vec<Point> = placed.edges[index]
+        let path: Vec<Point> = placed.edges[index]
             .iter()
             .map(|point| Point::new(point.x + origin.x, point.y + origin.y))
             .collect();
         if path.len() < 2 {
             continue;
         }
+        let path = parts::edge_path(
+            &path,
+            &outline(diagram, placed, origin, transition.from),
+            &outline(diagram, placed, origin, transition.to),
+        );
         let last = path.len() - 1;
-        path[0] = outline(diagram, placed, origin, transition.from).border_towards(path[1]);
-        path[last] = outline(diagram, placed, origin, transition.to).border_towards(path[last - 1]);
         let stroke = Stroke::new(theme.line, parts::LINE);
         scene.add(Item::Line {
             points: parts::trimmed(&path, 0.0, parts::ending_inset(Ending::Arrow)),

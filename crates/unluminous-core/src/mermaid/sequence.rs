@@ -215,8 +215,13 @@ fn strip_word<'a>(text: &'a str, word: &str) -> Option<&'a str> {
 fn participant(diagram: &mut Diagram, text: &str, is_actor: bool, band: Option<usize>) -> usize {
     let text = text.trim();
     // An inline configuration object — `participant Alice, "alias": "A"` — is read for its name and
-    // nothing else, because everything in it is about colour.
-    let text = text.split(',').next().unwrap_or(text).trim();
+    // nothing else, because everything in it is about colour. Only a comma followed by a quote or a
+    // brace starts one: `participant B as Backend loop (abortable, disconnect-aware)` is a name with a
+    // comma in it, and cutting it there lost the second half of the name (`task-2194`).
+    let text = match text.find(',') {
+        Some(at) if text[at + 1..].trim_start().starts_with(['"', '{']) => text[..at].trim(),
+        _ => text,
+    };
     let (id, label) = match split_alias(text) {
         Some((id, label)) => (id.to_owned(), source::label(label)),
         None => (source::unquote(text), source::label(text)),
@@ -397,8 +402,23 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
         .iter()
         .map(|who| text::measure(&who.label, &style, options.metrics, 160.0))
         .collect();
-    let messages: Vec<Label> =
-        diagram.events.iter().map(|event| measure_event(event, options)).collect();
+    // **Measured with the number in front when `autonumber` is on** (`task-2194`), because that is
+    // what is drawn. Measured without it, the gap between two columns was sized for words a number
+    // shorter than the ones drawn there, and a numbered message ran past the end of its own arrow and
+    // over the cross or the head at the end of it.
+    let mut count = 0;
+    let messages: Vec<Label> = diagram
+        .events
+        .iter()
+        .map(|event| match event {
+            Event::Message { text, .. } if diagram.numbered => {
+                count += 1;
+                let words = format!("{count}. {text}");
+                text::measure(&words, &options.style(0.85, false), options.metrics, MESSAGE_WRAP)
+            }
+            _ => measure_event(event, options),
+        })
+        .collect();
 
     // An actor's figure is drawn above its name, so a diagram with one in it needs that much more
     // room at the top before the first row.
@@ -447,7 +467,36 @@ fn measure_frame(
     // A message's words have to fit between the two columns it joins, so the gap between any two
     // neighbouring columns is widened until the widest message crossing it fits.
     let mut gaps = vec![COLUMN_GAP; diagram.participants.len().saturating_sub(1)];
+    // How far left of the first column a note beside it reaches, so the columns can start far enough
+    // in for the whole of it to be inside the diagram rather than cut off at its left edge.
+    let mut lead = 0.0_f32;
     for (index, event) in diagram.events.iter().enumerate() {
+        // **A note beside a column needs the room between that column and its neighbour**, the way a
+        // message to oneself does (`task-2194`): it is drawn there, and in a gap sized only for the
+        // messages it covered the next column's lifeline and the words of the messages across it.
+        if let Event::Note { over, side, .. } = event {
+            let reach = messages[index].width + parts::PADDING_X * 2.0 + NOTE_OFFSET + 8.0;
+            let first = over.first().copied().unwrap_or(0);
+            match side {
+                Side::Left if first == 0 => lead = lead.max(reach - widths[0] / 2.0),
+                Side::Left => {
+                    let spanned = gaps[first - 1] + (widths[first - 1] + widths[first]) / 2.0;
+                    if reach > spanned {
+                        gaps[first - 1] += reach - spanned;
+                    }
+                }
+                Side::Right => {
+                    if let Some(gap) = gaps.get_mut(first) {
+                        let spanned = *gap + (widths[first] + widths[first + 1]) / 2.0;
+                        if reach > spanned {
+                            *gap += reach - spanned;
+                        }
+                    }
+                }
+                Side::Over => {}
+            }
+            continue;
+        }
         let Event::Message { from, to, .. } = event else {
             continue;
         };
@@ -464,7 +513,9 @@ fn measure_frame(
             }
             continue;
         }
-        let wanted = messages[index].width + 24.0;
+        // Twenty points clear at each end, which is more than the head, the cross or the circle at the
+        // end of an arrow takes, so the words never sit on one (`task-2194`).
+        let wanted = messages[index].width + 40.0;
         let spanned: f32 =
             (left..right).map(|at| gaps[at] + (widths[at] + widths[at + 1]) / 2.0).sum();
         if wanted > spanned {
@@ -475,7 +526,7 @@ fn measure_frame(
         }
     }
     let mut columns = Vec::with_capacity(widths.len());
-    let mut at = parts::MARGIN;
+    let mut at = parts::MARGIN + lead.max(0.0);
     for (index, width) in widths.iter().enumerate() {
         columns.push(at + width / 2.0);
         at += width + gaps.get(index).copied().unwrap_or(0.0);
@@ -807,6 +858,9 @@ fn draw_message(
 /// How far to the right of its lifeline a message to oneself starts its words: past the loop.
 const SELF_LOOP_TEXT: f32 = 44.0;
 
+/// How far from its lifeline a note beside a participant starts.
+const NOTE_OFFSET: f32 = 24.0;
+
 /// Draw a note as a small panel beside or over the participants it names.
 #[allow(clippy::too_many_arguments)]
 fn draw_note(
@@ -824,9 +878,11 @@ fn draw_note(
     let last = *over.last().expect("a note names at least one participant");
     let rect = match side {
         Side::Left => {
-            Rect::new(frame.columns[first] - width - 24.0, y - height / 2.0, width, height)
+            Rect::new(frame.columns[first] - width - NOTE_OFFSET, y - height / 2.0, width, height)
         }
-        Side::Right => Rect::new(frame.columns[first] + 24.0, y - height / 2.0, width, height),
+        Side::Right => {
+            Rect::new(frame.columns[first] + NOTE_OFFSET, y - height / 2.0, width, height)
+        }
         Side::Over => {
             let left = frame.columns[first].min(frame.columns[last]);
             let right = frame.columns[first].max(frame.columns[last]);
@@ -976,6 +1032,17 @@ mod tests {
         assert_eq!(diagram.participants.len(), 2);
         assert_eq!(diagram.participants[0].label, "Bob");
         assert_eq!(diagram.participants[1].label, "Alice");
+    }
+
+    /// `task-2194`: a comma in a participant's name is part of the name.
+    #[test]
+    fn a_comma_in_a_participants_name_is_kept() {
+        let diagram = diagram(
+            "sequenceDiagram\n participant B as Backend loop (abortable, disconnect-aware)\n \
+             participant A, \"alias\": \"x\"\n",
+        );
+        assert_eq!(diagram.participants[0].label, "Backend loop (abortable, disconnect-aware)");
+        assert_eq!(diagram.participants[1].label, "A", "an inline configuration is still dropped");
     }
 
     #[test]
@@ -1159,6 +1226,53 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// `task-2194`: a numbered message's words fit between the columns it joins, number and all, and
+    /// a note to the left of the first participant is inside the diagram.
+    #[test]
+    fn numbered_messages_and_a_note_on_the_left_stay_inside_their_room() {
+        let source = Source::read(
+            "sequenceDiagram\n autonumber\n participant A\n participant B\n              A ->> B: a message whose words are long enough to need the room\n              Note left of A: a note to the left of the first one\n",
+        )
+        .expect("a diagram");
+        let scene = render(&source, &options()).expect("it draws");
+        crate::mermaid::check::properties(&scene, &[]);
+        let note = scene
+            .items
+            .iter()
+            .find_map(|item| match item {
+                Item::Rect { rect, fill: Some(_), radius, .. } if *radius == parts::CORNER => {
+                    Some(*rect)
+                }
+                _ => None,
+            })
+            .expect("the note's panel");
+        assert!(note.left() >= 0.0, "the note starts inside the diagram: {note:?}");
+        let numbered = text::measure(
+            "1. a message whose words are long enough to need the room",
+            &options().style(0.85, false),
+            options().metrics,
+            MESSAGE_WRAP,
+        );
+        // Each participant's head is drawn at the top and again at the bottom, so the columns are the
+        // different places the heads are centred.
+        let mut columns: Vec<f32> = scene
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Rect { rect, .. } if rect.height == HEAD_HEIGHT => Some(rect.centre().x),
+                _ => None,
+            })
+            .collect();
+        columns.sort_by(f32::total_cmp);
+        columns.dedup();
+        let between = columns[1] - columns[0];
+        assert!(
+            between >= numbered.width + 40.0,
+            "the columns are {between} apart for words {} wide",
+            numbered.width
+        );
     }
 
     #[test]

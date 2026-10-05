@@ -41,8 +41,16 @@
 //!
 //! **A subgraph is laid out on its own and placed as one box.** Its contents cannot then overlap
 //! anything outside it, which is the failure a single flat layout with a frame drawn round some of
-//! the nodes always ends in. Edges that cross the frame are routed at the end, between the real
-//! nodes' final positions, so they still point at the box they name rather than at the frame.
+//! the nodes always ends in. An edge that crosses the frame is laid out in two halves that meet on
+//! it: inside, from the node to a port on the side of the frame facing the other end, and outside,
+//! from that port onwards. See [`place_container`].
+//!
+//! ## Edges run straight through the ranks and turn between them
+//!
+//! An edge leaves a box straight out of its side, passes down through each rank in a lane of its
+//! own, and changes lane only in the gap between two ranks, where there is nothing to cut across.
+//! The corners are rounded by the caller, which is `parts::edge_path`, once the ends have been cut
+//! back to the shapes.
 
 use std::collections::HashMap;
 
@@ -61,6 +69,18 @@ const GROUP_PADDING: f32 = 20.0;
 const ORDER_SWEEPS: usize = 4;
 /// How many times the positions are relaxed towards the median of each node's neighbours.
 const POSITION_SWEEPS: usize = 6;
+/// The gap between two ranks when the ranks have been doubled to give labels room.
+///
+/// A little over half the usual gap, so a diagram with labels is no taller than it needs to be, and
+/// still enough for an edge to run straight out of a box for an arrowhead's length before it turns
+/// (`task-2194`). At exactly half, the turn began under the arrowhead and the head leant.
+const LABELLED_GAP: f32 = RANK_GAP * 0.62;
+/// The longest an edge runs straight out of a rank before it turns.
+const STUB: f32 = 14.0;
+/// How much of a box's side the edges leaving it by that side are spread across.
+const SIDE_SHARE: f32 = 0.6;
+/// The furthest apart two edges leaving one side of a box start.
+const SIDE_STEP: f32 = 14.0;
 
 /// Which way the diagram flows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -107,11 +127,15 @@ pub struct EdgeSpec {
     pub label: Size,
     /// The fewest ranks it must span. Mermaid's extra dashes ask for more than one.
     pub span: usize,
+    /// True when `from` is a subgraph rather than a node, for Mermaid's `A --> someSubgraph`.
+    pub from_group: bool,
+    /// True when `to` is a subgraph rather than a node.
+    pub to_group: bool,
 }
 
 impl EdgeSpec {
     pub fn new(from: usize, to: usize) -> Self {
-        Self { from, to, label: Size::default(), span: 1 }
+        Self { from, to, label: Size::default(), span: 1, from_group: false, to_group: false }
     }
 }
 
@@ -147,9 +171,10 @@ pub struct Placed {
     pub nodes: Vec<Rect>,
     /// One frame per group, in the order they were given.
     pub groups: Vec<Rect>,
-    /// One polyline per edge, from the centre of its source to the centre of its target, through
-    /// whatever bends the layout gave it. Trimming each end back to the shape's own border is the
-    /// caller's, because only the caller knows what shape it drew.
+    /// One polyline per edge, from a point inside its source to a point inside its target, through
+    /// whatever bends the layout gave it. Each end is at the middle height of a node, or on the frame
+    /// when the end is a subgraph. Cutting each end back to the shape's own border is the caller's,
+    /// because only the caller knows what shape it drew, and so is rounding the corners.
     pub edges: Vec<Vec<Point>>,
     /// Where each edge's label goes: the middle of its middle segment.
     pub labels: Vec<Point>,
@@ -165,7 +190,8 @@ pub fn layout(graph: &Graph) -> Placed {
     // left-to-right diagram the node sizes go in turned as well, because in that layout a node's
     // height is what takes room along a rank; turning the result back restores both.
     let turned = graph.direction.is_horizontal();
-    let mut placed = place_container(graph, None, turned);
+    let reach = Reach::of(graph, turned);
+    let mut placed = place_container(graph, None, turned, &reach).placed;
     if turned {
         transpose(&mut placed);
     }
@@ -174,197 +200,109 @@ pub fn layout(graph: &Graph) -> Placed {
         Direction::Left => flip_horizontally(&mut placed),
         _ => {}
     }
-    attach_to_real_nodes(graph, &mut placed);
     placed
 }
 
-/// Move every edge's two ends onto the nodes it actually names.
+/// Which container each edge's middle is laid out in, and which way it runs there.
 ///
-/// A container lays an edge that reaches into a subgraph out as an edge to the *subgraph*, because
-/// that is the thing it placed. Once everything has an absolute position the real node does too, so
-/// the end is moved onto it: the arrow points at the box it names rather than at the frame round it,
-/// which is what Mermaid draws and what a reader expects. For an edge whose ends were both ordinary
-/// nodes this changes nothing, so it is one pass over all of them rather than a special case.
-fn attach_to_real_nodes(graph: &Graph, placed: &mut Placed) {
-    for (index, edge) in graph.edges.iter().enumerate() {
-        let mut path = placed.edges[index].clone();
-        if path.len() < 2 {
-            continue;
-        }
-        let last = path.len() - 1;
-        let (from, to) = (placed.nodes[edge.from].centre(), placed.nodes[edge.to].centre());
-        // Only an edge whose ends moved has a label to move. One between two ordinary nodes keeps the
-        // place the layout gave it, which since `task-2063` is a slot of its own.
-        let moved = path[0].distance(from) > 0.5 || path[last].distance(to) > 0.5;
-        // **Into a subgraph along a clear line, not straight through it** (`task-2063`). The edge was
-        // laid out to the subgraph's frame, and joining the frame's point to the real node with one
-        // straight segment cut across the frame and through whatever else was inside it: the
-        // photographed diagrams had lines running through three boxes to reach the fourth. Each end
-        // inside a subgraph the other end is not in now comes to a point just outside the frame and runs
-        // in to its node in a straight line, from the side with nothing else on the way.
-        let into = enter(graph, placed, edge.to, edge.from, path[last - 1]);
-        let out_of = enter(graph, placed, edge.from, edge.to, path[1]);
-        path[0] = from;
-        path[last] = to;
-        if let Some(entry) = into {
-            path.truncate(last);
-            path.extend(entry.into_iter().rev());
-        }
-        if let Some(mut exit) = out_of {
-            path.remove(0);
-            exit.extend(path);
-            path = exit;
-        }
-        // A label with a slot of its own is on one of the bends, which are kept, so it stays where the
-        // layout put it; only a straight edge with no bends has its label worked out again.
-        if moved && last == 1 {
-            placed.labels[index] = midpoint(&path);
-        }
-        placed.edges[index] = path;
-    }
+/// Worked out before anything is placed, because a subgraph is laid out before the container round it
+/// and has to know already which of its edges leave by the top of its frame and which by the bottom.
+/// Both questions are about the shape of the graph rather than about sizes, so they can be answered
+/// first: the container is the deepest one in which the two ends are in different entities, and the
+/// direction is whether the cycle removal in that container turned the edge round.
+struct Reach {
+    /// The container an edge is laid out in, or nothing for an edge with no route at all: a node
+    /// pointing at itself, or a subgraph pointing at something inside itself.
+    home: Vec<Option<Option<usize>>>,
+    /// True for an edge drawn against the way the diagram runs: up the page in a downward diagram.
+    upward: Vec<bool>,
 }
 
-/// How far outside a subgraph's frame an edge turns before it runs in to its node.
-const ENTRY_GAP: f32 = 10.0;
-
-/// The way into `node` from outside the outermost subgraph it is in that `other` is not, as points
-/// from the node's centre outwards: the centre, the point just outside the frame, and a corner when the
-/// edge has to go round the frame to reach that point. Nothing when `node` is in no such subgraph.
-///
-/// `towards` is the point the edge comes from, which decides the side tried first.
-fn enter(
-    graph: &Graph,
-    placed: &Placed,
-    node: usize,
-    other: usize,
-    towards: Point,
-) -> Option<Vec<Point>> {
-    let group = outermost_group_apart(graph, node, other)?;
-    let frame = placed.groups[group];
-    let rect = placed.nodes[node];
-    let centre = rect.centre();
-    let sides = sides_facing(frame, towards);
-    let clear = |side: Side| {
-        let (from, to) = match side {
-            Side::Top => (Point::new(centre.x, frame.y - ENTRY_GAP), Point::new(centre.x, rect.y)),
-            Side::Bottom => (
-                Point::new(centre.x, rect.bottom()),
-                Point::new(centre.x, frame.bottom() + ENTRY_GAP),
-            ),
-            Side::Left => (Point::new(frame.x - ENTRY_GAP, centre.y), Point::new(rect.x, centre.y)),
-            Side::Right => (
-                Point::new(rect.right(), centre.y),
-                Point::new(frame.right() + ENTRY_GAP, centre.y),
-            ),
-        };
-        let others =
-            (0..graph.nodes.len()).filter(|&other| other != node).map(|other| placed.nodes[other]);
-        let frames = (0..graph.groups.len())
-            .filter(|&inner| inner != group && !inside(graph, graph.nodes[node].group, inner))
-            .map(|inner| placed.groups[inner]);
-        !others.chain(frames).any(|obstacle| crosses(from, to, obstacle))
-    };
-    let side = sides.iter().copied().find(|side| clear(*side)).unwrap_or(sides[0]);
-    let outside = match side {
-        Side::Top => Point::new(centre.x, frame.y - ENTRY_GAP),
-        Side::Bottom => Point::new(centre.x, frame.bottom() + ENTRY_GAP),
-        Side::Left => Point::new(frame.x - ENTRY_GAP, centre.y),
-        Side::Right => Point::new(frame.right() + ENTRY_GAP, centre.y),
-    };
-    let mut points = vec![centre, outside];
-    // A corner outside the frame when the edge comes from beside the side it enters by, so it goes
-    // round the frame rather than across it.
-    let facing = match side {
-        Side::Top => towards.y <= outside.y,
-        Side::Bottom => towards.y >= outside.y,
-        Side::Left => towards.x <= outside.x,
-        Side::Right => towards.x >= outside.x,
-    };
-    if !facing {
-        points.extend(round_the_frame(frame, side, outside, towards));
-    }
-    Some(points)
-}
-
-/// The corners an edge coming from `towards` turns at to reach `outside` without crossing `frame`,
-/// nearest `outside` first.
-///
-/// One corner when the edge can run straight along the outside of the frame to the side it enters by;
-/// two when that straight run would cross the frame, in which case it goes round whichever end of the
-/// frame is nearer.
-fn round_the_frame(frame: Rect, side: Side, outside: Point, towards: Point) -> Vec<Point> {
-    match side {
-        Side::Top | Side::Bottom => {
-            if towards.x < frame.x || towards.x > frame.right() {
-                return vec![Point::new(towards.x, outside.y)];
+impl Reach {
+    fn of(graph: &Graph, turned: bool) -> Reach {
+        let mut reach =
+            Reach { home: vec![None; graph.edges.len()], upward: vec![false; graph.edges.len()] };
+        let containers = std::iter::once(None).chain((0..graph.groups.len()).map(Some));
+        for container in containers {
+            let members = Members::of(graph, container);
+            let lifted = lift_edges(graph, &members, turned);
+            let reversed = back_edges(members.count(), &lifted);
+            for (index, edge) in lifted.iter().enumerate() {
+                reach.home[edge.edge] = Some(container);
+                reach.upward[edge.edge] = reversed[index];
             }
-            let left = frame.x - ENTRY_GAP;
-            let right = frame.right() + ENTRY_GAP;
-            let x =
-                if (towards.x - left).abs() <= (right - towards.x).abs() { left } else { right };
-            vec![Point::new(x, outside.y), Point::new(x, towards.y)]
         }
-        Side::Left | Side::Right => {
-            if towards.y < frame.y || towards.y > frame.bottom() {
-                return vec![Point::new(outside.x, towards.y)];
+        reach
+    }
+}
+
+/// The things one container places, and which of them each node and each subgraph is inside.
+struct Members {
+    /// The nodes directly inside it, which are its first entities.
+    nodes: Vec<usize>,
+    /// The subgraphs directly inside it, which are its next entities, one box each.
+    children: Vec<usize>,
+    /// For every node, the entity it is or is inside, or nothing when it is elsewhere.
+    node_owner: Vec<Option<usize>>,
+    /// For every subgraph, the entity it is or is inside, or nothing when it is elsewhere.
+    group_owner: Vec<Option<usize>>,
+}
+
+impl Members {
+    fn of(graph: &Graph, group: Option<usize>) -> Members {
+        let nodes: Vec<usize> =
+            (0..graph.nodes.len()).filter(|&index| graph.nodes[index].group == group).collect();
+        let children: Vec<usize> =
+            (0..graph.groups.len()).filter(|&index| graph.groups[index].parent == group).collect();
+        let node_owner = ownership(graph, &nodes, &children);
+        let mut group_owner = vec![None; graph.groups.len()];
+        for (position, &child) in children.iter().enumerate() {
+            for (index, owner) in group_owner.iter_mut().enumerate() {
+                if inside(graph, Some(index), child) {
+                    *owner = Some(nodes.len() + position);
+                }
             }
-            let top = frame.y - ENTRY_GAP;
-            let bottom = frame.bottom() + ENTRY_GAP;
-            let y =
-                if (towards.y - top).abs() <= (bottom - towards.y).abs() { top } else { bottom };
-            vec![Point::new(outside.x, y), Point::new(towards.x, y)]
+        }
+        Members { nodes, children, node_owner, group_owner }
+    }
+
+    fn count(&self) -> usize {
+        self.nodes.len() + self.children.len()
+    }
+
+    /// The entity one end of an edge is, or is inside.
+    fn entity_of(&self, end: usize, is_group: bool) -> Option<usize> {
+        match is_group {
+            true => self.group_owner.get(end).copied().flatten(),
+            false => self.node_owner.get(end).copied().flatten(),
         }
     }
 }
 
-/// A side of a rectangle.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Side {
-    Top,
-    Bottom,
-    Left,
-    Right,
+/// What one container hands the container round it.
+struct Laid {
+    /// Its nodes, its subgraphs and every edge that starts and ends inside it, in its own coordinates.
+    placed: Placed,
+    /// The part inside it of every edge that leaves it, from the node to where the edge crosses the
+    /// frame, keyed by the edge.
+    partials: HashMap<usize, Partial>,
 }
 
-/// The four sides of `frame`, the one facing `towards` first and then the rest in a fixed order.
-fn sides_facing(frame: Rect, towards: Point) -> Vec<Side> {
-    let first = if towards.y < frame.y {
-        Side::Top
-    } else if towards.y > frame.bottom() {
-        Side::Bottom
-    } else if towards.x < frame.x {
-        Side::Left
-    } else {
-        Side::Right
-    };
-    let mut sides = vec![first];
-    sides.extend(
-        [Side::Top, Side::Bottom, Side::Left, Side::Right]
-            .into_iter()
-            .filter(|side| *side != first),
-    );
-    sides
+/// The part of an edge inside one subgraph.
+struct Partial {
+    /// In the direction the edge is drawn, so it is joined to the rest of the edge as it stands.
+    points: Vec<Point>,
+    /// True when the edge's source is inside and the crossing is the last point; false when the
+    /// target is inside and the crossing is the first.
+    from_inside: bool,
 }
 
-/// The outermost subgraph `node` is inside that `other` is not.
-fn outermost_group_apart(graph: &Graph, node: usize, other: usize) -> Option<usize> {
-    let mut found = None;
-    let mut at = graph.nodes[node].group;
-    for _ in 0..=graph.groups.len() {
-        let Some(group) = at else { break };
-        if !inside(graph, graph.nodes[other].group, group) {
-            found = Some(group);
-        }
-        at = graph.groups[group].parent;
+impl Partial {
+    /// Where the edge crosses the frame.
+    fn crossing(&self) -> Point {
+        let point = if self.from_inside { self.points.last() } else { self.points.first() };
+        point.copied().unwrap_or_default()
     }
-    found
-}
-
-/// Whether an axis-aligned segment from `from` to `to` passes through the inside of `rect`.
-fn crosses(from: Point, to: Point, rect: Rect) -> bool {
-    let (left, right) = (from.x.min(to.x), from.x.max(to.x));
-    let (top, bottom) = (from.y.min(to.y), from.y.max(to.y));
-    left < rect.right() && right > rect.x && top < rect.bottom() && bottom > rect.y
 }
 
 /// One box of the layout: the top level, or the inside of one subgraph.
@@ -372,50 +310,149 @@ fn crosses(from: Point, to: Point, rect: Rect) -> bool {
 /// Positions are relative to the box's own top left corner. A child group is laid out by calling
 /// this again and is then placed inside as a single node, which is what keeps its contents from ever
 /// overlapping anything outside it.
-fn place_container(graph: &Graph, group: Option<usize>, turned: bool) -> Placed {
-    let nodes: Vec<usize> =
-        (0..graph.nodes.len()).filter(|&index| graph.nodes[index].group == group).collect();
-    let children: Vec<usize> =
-        (0..graph.groups.len()).filter(|&index| graph.groups[index].parent == group).collect();
+///
+/// **An edge that leaves a subgraph leaves it through a crossing of its own** (`task-2194`). Before,
+/// a subgraph's layout knew nothing about the edges reaching out of it, and the line was joined up
+/// afterwards by running round the outside of the frame, which put long lines along the frames and
+/// through their titles. Now each such edge is given a **port**: an entity of no height in a rank of
+/// its own along the top or the bottom of the subgraph, joined to the node the edge belongs to. The
+/// ordering and the placement keep it out of the way of everything else, exactly as they do a dummy,
+/// so inside the frame the edge has a lane of its own to the node. Where the port ends up is where the
+/// container round it picks the edge up.
+fn place_container(graph: &Graph, group: Option<usize>, turned: bool, reach: &Reach) -> Laid {
+    let members = Members::of(graph, group);
+    let inner: Vec<Laid> = members
+        .children
+        .iter()
+        .map(|&child| place_container(graph, Some(child), turned, reach))
+        .collect();
+    let titles: Vec<Size> =
+        members.children.iter().map(|&child| turn(graph.groups[child].title, turned)).collect();
 
-    // Each child group becomes one box, laid out first so that its size is known.
-    let inner: Vec<Placed> =
-        children.iter().map(|&child| place_container(graph, Some(child), turned)).collect();
-
-    // The things this container places: its own nodes, then its child groups.
-    let mut entity_size: Vec<Size> =
-        nodes.iter().map(|&index| turn(graph.nodes[index].size, turned)).collect();
-    for (position, &child) in children.iter().enumerate() {
-        let title = turn(graph.groups[child].title, turned);
-        entity_size.push(frame_size(inner[position].size, title));
+    let mut sizes: Vec<Size> =
+        members.nodes.iter().map(|&index| turn(graph.nodes[index].size, turned)).collect();
+    let mut kinds: Vec<Kind> = vec![Kind::Node; members.nodes.len()];
+    for (position, laid) in inner.iter().enumerate() {
+        sizes.push(frame_size(laid.placed.size, titles[position]));
+        kinds.push(Kind::Group);
     }
 
-    let owner = ownership(graph, &nodes, &children);
-    let lifted = lift_edges(graph, &owner, turned);
-    let arranged = arrange(&entity_size, &lifted);
+    let mut lifted = lift_edges(graph, &members, turned);
+    let mut reversed: Vec<bool> = lifted.iter().map(|edge| reach.upward[edge.edge]).collect();
+    add_ports(graph, group, &members, reach, &mut sizes, &mut kinds, &mut lifted, &mut reversed);
 
-    let mut placed = Placed {
-        nodes: vec![Rect::default(); graph.nodes.len()],
-        groups: vec![Rect::default(); graph.groups.len()],
-        edges: vec![Vec::new(); graph.edges.len()],
-        labels: vec![Point::default(); graph.edges.len()],
-        size: arranged.size,
+    // Where every edge already laid out inside a child crosses that child's frame, measured from the
+    // frame's left edge, so the route out here starts exactly where the one in there stopped.
+    let mut anchors: Anchors = HashMap::new();
+    for (position, laid) in inner.iter().enumerate() {
+        for (&edge, partial) in &laid.partials {
+            anchors.insert(
+                (edge, members.nodes.len() + position),
+                partial.crossing().x + GROUP_PADDING,
+            );
+        }
+    }
+    let title = group.map_or(Size::default(), |group| turn(graph.groups[group].title, turned));
+    let boundary = Boundary { top: -(GROUP_PADDING + title.height), bottom_margin: GROUP_PADDING };
+    let arranged = arrange(&sizes, &kinds, &lifted, &reversed, &anchors, boundary);
+
+    let mut laid = Laid {
+        placed: Placed {
+            nodes: vec![Rect::default(); graph.nodes.len()],
+            groups: vec![Rect::default(); graph.groups.len()],
+            edges: vec![Vec::new(); graph.edges.len()],
+            labels: vec![Point::default(); graph.edges.len()],
+            size: arranged.size,
+        },
+        partials: HashMap::new(),
     };
-    for (position, &index) in nodes.iter().enumerate() {
-        placed.nodes[index] = arranged.entities[position];
+    for (position, &index) in members.nodes.iter().enumerate() {
+        laid.placed.nodes[index] = arranged.entities[position];
     }
-    for (position, &child) in children.iter().enumerate() {
-        let frame = arranged.entities[nodes.len() + position];
-        placed.groups[child] = frame;
-        let title = turn(graph.groups[child].title, turned);
-        let (dx, dy) = (frame.x + GROUP_PADDING, frame.y + GROUP_PADDING + title.height);
-        merge(&mut placed, &inner[position], dx, dy);
+    let mut moved_partials: HashMap<(usize, usize), Vec<Point>> = HashMap::new();
+    for (position, &child) in members.children.iter().enumerate() {
+        let frame = arranged.entities[members.nodes.len() + position];
+        laid.placed.groups[child] = frame;
+        let (dx, dy) = (frame.x + GROUP_PADDING, frame.y + GROUP_PADDING + titles[position].height);
+        merge(&mut laid.placed, &inner[position].placed, dx, dy);
+        for (&edge, partial) in &inner[position].partials {
+            let points = partial.points.iter().map(|p| Point::new(p.x + dx, p.y + dy)).collect();
+            moved_partials.insert((edge, members.nodes.len() + position), points);
+        }
     }
-    for (edge, path) in arranged.paths {
-        placed.edges[edge] = path.points;
-        placed.labels[edge] = path.label;
+    for (index, path) in arranged.paths.into_iter().enumerate() {
+        let edge = &lifted[index];
+        let before = moved_partials.remove(&(edge.edge, edge.from)).unwrap_or_default();
+        let after = moved_partials.remove(&(edge.edge, edge.to)).unwrap_or_default();
+        let points = join(&join(&before, &path.points), &after);
+        match edge.port {
+            None => {
+                laid.placed.edges[edge.edge] = points;
+                laid.placed.labels[edge.edge] = path.label;
+            }
+            Some(from_inside) => {
+                laid.partials.insert(edge.edge, Partial { points, from_inside });
+            }
+        }
     }
-    placed
+    laid
+}
+
+/// Give every edge that leaves this container a port, on the side of the frame facing its other end.
+#[allow(clippy::too_many_arguments)]
+fn add_ports(
+    graph: &Graph,
+    group: Option<usize>,
+    members: &Members,
+    reach: &Reach,
+    sizes: &mut Vec<Size>,
+    kinds: &mut Vec<Kind>,
+    lifted: &mut Vec<Lifted>,
+    reversed: &mut Vec<bool>,
+) {
+    for (edge, spec) in graph.edges.iter().enumerate() {
+        let Some(home) = reach.home[edge] else { continue };
+        if home == group {
+            continue;
+        }
+        let from = members.entity_of(spec.from, spec.from_group);
+        let to = members.entity_of(spec.to, spec.to_group);
+        let (inside, from_inside) = match (from, to) {
+            (Some(entity), None) => (entity, true),
+            (None, Some(entity)) => (entity, false),
+            _ => continue,
+        };
+        // The edge runs down the page in the container it is laid out in unless that container
+        // turned it round, so its other end is below this subgraph exactly when it leaves from here
+        // going down or arrives here from above.
+        let down = !reach.upward[edge];
+        let top = if from_inside { !down } else { down };
+        let port = sizes.len();
+        sizes.push(Size::new(LANE, 0.0));
+        kinds.push(Kind::Port { top });
+        // In the direction it is drawn, and turned round for the layout when that runs upwards.
+        let (from, to) = if from_inside { (inside, port) } else { (port, inside) };
+        lifted.push(Lifted {
+            edge,
+            from,
+            to,
+            label: Size::default(),
+            span: 1,
+            port: Some(from_inside),
+        });
+        reversed.push(if from_inside { top } else { !top });
+    }
+}
+
+/// Join two runs of points end to end, dropping the point where they meet from the second.
+fn join(first: &[Point], second: &[Point]) -> Vec<Point> {
+    let mut out = first.to_vec();
+    let skip = match (first.last(), second.first()) {
+        (Some(end), Some(start)) => usize::from(end.distance(*start) < 0.01),
+        _ => 0,
+    };
+    out.extend_from_slice(&second[skip.min(second.len())..]);
+    out
 }
 
 /// A size with its two numbers swapped when the diagram has been turned on its side.
@@ -490,6 +527,30 @@ fn inside(graph: &Graph, start: Option<usize>, wanted: usize) -> bool {
     false
 }
 
+/// What an entity of one container is, which decides where an edge touching it starts and stops.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Kind {
+    /// A node: an edge starts at a point inside it and the caller cuts it back to the shape.
+    Node,
+    /// A subgraph's frame: an edge starts on the frame, where the layout inside it left off.
+    Group,
+    /// Where an edge leaves this container, on its top or its bottom.
+    Port { top: bool },
+}
+
+/// Where an edge laid out inside a child crosses the child's frame, by the edge and the child's
+/// entity, measured from the frame's left edge.
+type Anchors = HashMap<(usize, usize), f32>;
+
+/// Where this container's own frame is, in its own coordinates, which is where its ports go.
+#[derive(Debug, Clone, Copy)]
+struct Boundary {
+    /// The top of the frame, above the contents by the padding and the title.
+    top: f32,
+    /// How far below the contents the bottom of the frame is.
+    bottom_margin: f32,
+}
+
 /// One edge as this container sees it: between two of its entities, remembering which edge it was.
 #[derive(Debug, Clone, Copy)]
 struct Lifted {
@@ -498,20 +559,23 @@ struct Lifted {
     to: usize,
     label: Size,
     span: usize,
+    /// For the part of an edge between a node and the port it leaves this container by: whether the
+    /// edge's source is the end inside. Nothing for an edge laid out here whole.
+    port: Option<bool>,
 }
 
 /// Every edge whose two ends are different entities of this container.
 ///
 /// An edge inside one child group is left for that group's own layout; an edge to somewhere outside
-/// this container is left for whichever container holds both ends.
-fn lift_edges(graph: &Graph, owner: &[Option<usize>], turned: bool) -> Vec<Lifted> {
+/// this container is given a port by [`add_ports`] instead.
+fn lift_edges(graph: &Graph, members: &Members, turned: bool) -> Vec<Lifted> {
     graph
         .edges
         .iter()
         .enumerate()
         .filter_map(|(edge, spec)| {
-            let from = owner.get(spec.from).copied().flatten()?;
-            let to = owner.get(spec.to).copied().flatten()?;
+            let from = members.entity_of(spec.from, spec.from_group)?;
+            let to = members.entity_of(spec.to, spec.to_group)?;
             (from != to).then_some(Lifted {
                 edge,
                 from,
@@ -523,6 +587,7 @@ fn lift_edges(graph: &Graph, owner: &[Option<usize>], turned: bool) -> Vec<Lifte
                 // beside it, which is what the state diagram's picture showed.
                 label: turn(spec.label, turned),
                 span: spec.span.max(1),
+                port: None,
             })
         })
         .collect()
@@ -537,12 +602,20 @@ struct Path {
 /// What one container's own arrangement came to.
 struct Arranged {
     entities: Vec<Rect>,
-    paths: Vec<(usize, Path)>,
+    /// One route for every lifted edge, in the same order.
+    paths: Vec<Path>,
     size: Size,
 }
 
 /// Rank, order, place and route one container's entities. Everything below here is plain Sugiyama.
-fn arrange(sizes: &[Size], edges: &[Lifted]) -> Arranged {
+fn arrange(
+    sizes: &[Size],
+    kinds: &[Kind],
+    edges: &[Lifted],
+    reversed: &[bool],
+    anchors: &Anchors,
+    boundary: Boundary,
+) -> Arranged {
     if sizes.is_empty() {
         return Arranged { entities: Vec::new(), paths: Vec::new(), size: Size::default() };
     }
@@ -557,14 +630,43 @@ fn arrange(sizes: &[Size], edges: &[Lifted]) -> Arranged {
         }
         false => edges,
     };
-    let reversed = back_edges(sizes.len(), edges);
-    let ranks = rank(sizes.len(), edges, &reversed);
-    let (layers, chains) = insert_dummies(sizes, edges, &reversed, &ranks);
+    let ranks = rank_with_ports(kinds, edges, reversed);
+    let (layers, chains) = insert_dummies(sizes, edges, reversed, &ranks);
     let labels = label_slots(edges, &chains);
-    let joins = build_joins(&chains, edges, &reversed);
+    let joins = build_joins(&chains, edges, reversed);
     let order = order_layers(&layers, &joins);
-    let placed = position(sizes, &order, &joins, edges, &labels, labelled);
-    route(edges, &reversed, &chains, &placed, &labels)
+    let placed = position(sizes, kinds, &order, &joins, edges, &labels, labelled);
+    let gap = if labelled { LABELLED_GAP } else { rank_gap(edges) };
+    let routing = Routing { kinds, anchors, boundary, stub: (gap * 0.35).min(STUB) };
+    route(edges, reversed, &chains, &placed, &labels, &routing)
+}
+
+/// Rank every entity, with the ports in ranks of their own along the top and the bottom.
+///
+/// The ports are left out of the ranking itself: one joined to a node would otherwise push that node
+/// a rank further down than its neighbours, and the picture inside the frame would change because of
+/// where its edges go next.
+fn rank_with_ports(kinds: &[Kind], edges: &[Lifted], reversed: &[bool]) -> Vec<usize> {
+    let own: Vec<(Lifted, bool)> = edges
+        .iter()
+        .zip(reversed)
+        .filter(|(edge, _)| edge.port.is_none())
+        .map(|(edge, reversed)| (*edge, *reversed))
+        .collect();
+    let (own_edges, own_reversed): (Vec<Lifted>, Vec<bool>) = own.into_iter().unzip();
+    let mut ranks = rank(kinds.len(), &own_edges, &own_reversed);
+    let is_port = |kind: &Kind| matches!(kind, Kind::Port { .. });
+    let shift = usize::from(kinds.iter().any(|kind| matches!(kind, Kind::Port { top: true })));
+    let deepest = (0..kinds.len()).filter(|&at| !is_port(&kinds[at])).map(|at| ranks[at]).max();
+    let deepest = deepest.unwrap_or(0) + shift;
+    for (at, kind) in kinds.iter().enumerate() {
+        ranks[at] = match kind {
+            Kind::Port { top: true } => 0,
+            Kind::Port { top: false } => deepest + 1,
+            _ => ranks[at] + shift,
+        };
+    }
+    ranks
 }
 
 /// Whether an edge has a label that takes any room.
@@ -892,6 +994,8 @@ fn crossings_between(layers: &[Vec<Slot>], joins: &Joins, upper: usize, lower: u
 struct Positions {
     /// The centre of each slot, by rank and position within the rank.
     centres: Vec<Vec<Point>>,
+    /// How tall each rank is, so an edge knows where the band it passes through starts and stops.
+    heights: Vec<f32>,
     layers: Vec<Vec<Slot>>,
     entities: Vec<Rect>,
     size: Size,
@@ -899,8 +1003,14 @@ struct Positions {
 
 /// Give every slot a position: down the page by rank, across it by relaxation towards its
 /// neighbours.
+///
+/// A rank holding nothing but ports takes no room: the ports along the top are put on the top edge of
+/// the contents and the ones along the bottom on the bottom edge, and the container moves them out to
+/// its frame afterwards. Otherwise every subgraph with an edge leaving it would be a rank gap taller
+/// than its contents for no reason anybody could see.
 fn position(
     sizes: &[Size],
+    kinds: &[Kind],
     order: &[Vec<Slot>],
     joins: &Joins,
     edges: &[Lifted],
@@ -918,20 +1028,32 @@ fn position(
     // Half the gap between twice the ranks, so the distance from one node to the next is what it was
     // and a label's own height is what is added to it.
     let gap = match labelled {
-        true => RANK_GAP / 2.0,
+        true => LABELLED_GAP,
         false => rank_gap(edges),
+    };
+    let only_ports = |layer: &Vec<Slot>| {
+        !layer.is_empty()
+            && layer.iter().all(|slot| {
+                matches!(slot, Slot::Entity(index) if matches!(kinds[*index], Kind::Port { .. }))
+            })
     };
     let mut centres: Vec<Vec<Point>> = Vec::with_capacity(order.len());
     let mut top = 0.0;
+    let mut bottom = 0.0_f32;
     for (rank, layer) in order.iter().enumerate() {
         let height = heights[rank];
-        let row: Vec<Point> = layer
-            .iter()
-            .enumerate()
-            .map(|(at, _)| Point::new(across[rank][at], top + height / 2.0))
-            .collect();
+        let y = match only_ports(layer) {
+            true if rank == 0 => 0.0,
+            true => bottom,
+            false => top + height / 2.0,
+        };
+        let row: Vec<Point> =
+            layer.iter().enumerate().map(|(at, _)| Point::new(across[rank][at], y)).collect();
         centres.push(row);
-        top += height + gap;
+        if !only_ports(layer) {
+            bottom = top + height;
+            top += height + gap;
+        }
     }
     let mut entities = vec![Rect::default(); sizes.len()];
     for (rank, layer) in order.iter().enumerate() {
@@ -951,7 +1073,7 @@ fn position(
             }
         }
     }
-    Positions { centres, layers: order.to_vec(), entities, size }
+    Positions { centres, heights, layers: order.to_vec(), entities, size }
 }
 
 /// How wide every slot is, rank by rank.
@@ -1142,45 +1264,220 @@ fn extent(entities: &[Rect], centres: &[Vec<Point>]) -> Size {
     size
 }
 
+/// What routing needs to know beyond where the slots are.
+struct Routing<'a> {
+    kinds: &'a [Kind],
+    anchors: &'a Anchors,
+    boundary: Boundary,
+    /// How far an edge runs straight out of a band before it turns, so an arrow meets a box head on.
+    stub: f32,
+}
+
+/// One edge's run through the ranks: the entity at the top, the dummies, the entity at the bottom.
+struct Run {
+    top: usize,
+    dummies: Vec<SlotKey>,
+    bottom: usize,
+}
+
 /// Turn the placed slots into one polyline an edge, and say where its label goes.
+///
+/// **An edge runs straight through a rank and turns only in the gap between two** (`task-2194`).
+/// Every edge used to go from the centre of one slot to the centre of the next, so it bent in the
+/// middle of every rank it crossed and left a box at whatever angle its neighbour happened to be at.
+/// Now it leaves a box straight down, runs down through each band it passes, and makes each change
+/// of lane in the gap between two bands, where nothing else is. The caller rounds the corners.
+///
+/// **Several edges on one side of a box leave it side by side** rather than all from its middle, in
+/// the order of where they are going, so two edges to neighbouring boxes do not start out on top of
+/// each other.
 fn route(
     edges: &[Lifted],
     reversed: &[bool],
     chains: &Chains,
     placed: &Positions,
     labels: &LabelSlots,
+    routing: &Routing,
 ) -> Arranged {
-    let mut where_is: HashMap<SlotKey, Point> = HashMap::new();
+    let mut where_is: HashMap<SlotKey, (Point, usize)> = HashMap::new();
     for (rank, layer) in placed.layers.iter().enumerate() {
         for (at, slot) in layer.iter().enumerate() {
-            where_is.insert(key(*slot, rank), placed.centres[rank][at]);
+            where_is.insert(key(*slot, rank), (placed.centres[rank][at], rank));
         }
     }
-    let mut paths = Vec::with_capacity(edges.len());
-    for (index, edge) in edges.iter().enumerate() {
-        let mut points = Vec::with_capacity(chains[index].len() + 2);
-        points.push(placed.entities[edge.from].centre());
-        let mut middle: Vec<Point> = chains[index]
-            .iter()
-            .filter_map(|&rank| where_is.get(&(1, index, rank)).copied())
-            .collect();
-        // The chain was built from the source's rank downwards, which for a reversed edge is from
-        // the target's. Drawing it the way it was written means walking it the other way.
-        if reversed[index] {
-            middle.reverse();
+    let band = |slot: &SlotKey| -> (f32, f32) {
+        let (centre, rank) = where_is[slot];
+        let half = placed.heights[rank] / 2.0;
+        (centre.y - half, centre.y + half)
+    };
+    let runs: Vec<Run> = edges
+        .iter()
+        .enumerate()
+        .map(|(index, edge)| {
+            let (top, bottom) = ends(edge, reversed[index]);
+            let dummies = chains[index].iter().map(|&rank| (1, index, rank)).collect();
+            Run { top, dummies, bottom }
+        })
+        .collect();
+    let mut at_end = side_positions(edges, &runs, placed, routing, &where_is);
+    // A port sits straight above or below whatever it is joined to, so the edge crosses the frame
+    // without a kink.
+    for (index, run) in runs.iter().enumerate() {
+        if matches!(routing.kinds[run.top], Kind::Port { .. }) {
+            let next = match run.dummies.first() {
+                Some(dummy) => where_is[dummy].0.x,
+                None => at_end[&(index, false)],
+            };
+            at_end.insert((index, true), next);
         }
-        points.extend(middle);
-        points.push(placed.entities[edge.to].centre());
+        if matches!(routing.kinds[run.bottom], Kind::Port { .. }) {
+            let previous = match run.dummies.last() {
+                Some(dummy) => where_is[dummy].0.x,
+                None => at_end[&(index, true)],
+            };
+            at_end.insert((index, false), previous);
+        }
+    }
+    let stub = routing.stub;
+    let mut paths = Vec::with_capacity(edges.len());
+    for (index, run) in runs.iter().enumerate() {
+        let top_x = at_end[&(index, true)];
+        let bottom_x = at_end[&(index, false)];
+        let top_key = (0, run.top, 0);
+        let bottom_key = (0, run.bottom, 0);
+        let mut points = vec![inner_point(run.top, top_x, true, placed, routing)];
+        if !matches!(routing.kinds[run.top], Kind::Port { .. }) {
+            points.push(Point::new(top_x, band(&top_key).1 + stub));
+        }
+        for dummy in &run.dummies {
+            let (top, bottom) = band(dummy);
+            let x = where_is[dummy].0.x;
+            points.push(Point::new(x, top - stub));
+            points.push(Point::new(x, bottom + stub));
+        }
+        if !matches!(routing.kinds[run.bottom], Kind::Port { .. }) {
+            points.push(Point::new(bottom_x, band(&bottom_key).0 - stub));
+        }
+        points.push(inner_point(run.bottom, bottom_x, false, placed, routing));
+        let mut points = simplify(&points);
+        // The run was built from the top down, which for a reversed edge is from its target.
+        // Drawing it the way it was written means walking it the other way.
+        if reversed[index] {
+            points.reverse();
+        }
         // The label's own slot when it has one, which is a point on the line by construction.
-        let label = chains[index]
+        let label = run
+            .dummies
             .iter()
-            .map(|&rank| (1, index, rank))
             .find(|slot| labels.contains_key(slot))
-            .and_then(|slot| where_is.get(&slot).copied())
+            .map(|slot| where_is[slot].0)
             .unwrap_or_else(|| midpoint(&points));
-        paths.push((edge.edge, Path { points, label }));
+        paths.push(Path { points, label });
     }
     Arranged { entities: placed.entities.clone(), paths, size: placed.size }
+}
+
+/// Where each edge meets the entity at each of its two ends, across the page.
+///
+/// Keyed by the edge and whether it is the end at the top. An edge reaching a subgraph that was laid
+/// out with a crossing for it uses that crossing; every other edge on one side of an entity is spread
+/// across the middle of that side in the order of where it goes next.
+fn side_positions(
+    edges: &[Lifted],
+    runs: &[Run],
+    placed: &Positions,
+    routing: &Routing,
+    where_is: &HashMap<SlotKey, (Point, usize)>,
+) -> HashMap<(usize, bool), f32> {
+    let centre_of = |entity: usize| placed.entities[entity].centre().x;
+    // For every entity and side, the edges on it and where each goes next.
+    let mut sides: HashMap<(usize, bool), Vec<(f32, usize)>> = HashMap::new();
+    let mut out = HashMap::new();
+    for (index, run) in runs.iter().enumerate() {
+        let next = run.dummies.first().map_or_else(|| centre_of(run.bottom), |d| where_is[d].0.x);
+        let previous = run.dummies.last().map_or_else(|| centre_of(run.top), |d| where_is[d].0.x);
+        for (entity, at_top, towards) in [(run.top, true, next), (run.bottom, false, previous)] {
+            let rect = placed.entities[entity];
+            match routing.kinds[entity] {
+                Kind::Port { .. } => {}
+                Kind::Group if routing.anchors.contains_key(&(edges[index].edge, entity)) => {
+                    let x = rect.x + routing.anchors[&(edges[index].edge, entity)];
+                    out.insert((index, at_top), x);
+                }
+                // The edge leaves the top entity by its bottom side and reaches the bottom one by its
+                // top side, so "the end at the top" and "the bottom side" are the same question.
+                _ => sides.entry((entity, at_top)).or_default().push((towards, index)),
+            }
+        }
+    }
+    let mut keys: Vec<(usize, bool)> = sides.keys().copied().collect();
+    keys.sort_unstable();
+    for (entity, bottom_side) in keys {
+        let mut uses = sides.remove(&(entity, bottom_side)).unwrap_or_default();
+        uses.sort_by(|a, b| {
+            a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1))
+        });
+        let rect = placed.entities[entity];
+        let xs = spread(rect.centre().x, rect.width, uses.len());
+        for ((_, index), x) in uses.into_iter().zip(xs) {
+            out.insert((index, bottom_side), x);
+        }
+    }
+    out
+}
+
+/// `count` positions across the middle of a side `width` wide, centred on `centre`.
+fn spread(centre: f32, width: f32, count: usize) -> Vec<f32> {
+    if count <= 1 {
+        return vec![centre; count];
+    }
+    let step = (width * SIDE_SHARE / (count - 1) as f32).min(SIDE_STEP);
+    let first = centre - step * (count - 1) as f32 / 2.0;
+    (0..count).map(|at| first + step * at as f32).collect()
+}
+
+/// Where an edge's line begins inside the entity at one of its ends.
+///
+/// Inside a node, at its middle height, so the caller can cut it back to whatever shape it drew. On a
+/// subgraph's frame, because the part inside the frame is drawn by the layout inside it, or because
+/// the edge names the subgraph itself. On this container's own frame for a port.
+fn inner_point(
+    entity: usize,
+    x: f32,
+    at_top: bool,
+    placed: &Positions,
+    routing: &Routing,
+) -> Point {
+    let rect = placed.entities[entity];
+    match routing.kinds[entity] {
+        Kind::Node => Point::new(x, rect.centre().y),
+        Kind::Group if at_top => Point::new(x, rect.bottom()),
+        Kind::Group => Point::new(x, rect.top()),
+        Kind::Port { top: true } => Point::new(x, routing.boundary.top),
+        Kind::Port { top: false } => {
+            Point::new(x, placed.size.height + routing.boundary.bottom_margin)
+        }
+    }
+}
+
+/// The same line with repeated points and points in the middle of a straight run taken out.
+fn simplify(points: &[Point]) -> Vec<Point> {
+    let mut out: Vec<Point> = Vec::with_capacity(points.len());
+    for &point in points {
+        if out.last().is_some_and(|last| last.distance(point) < 0.01) {
+            continue;
+        }
+        if out.len() >= 2 {
+            let (a, b) = (out[out.len() - 2], out[out.len() - 1]);
+            let cross = (b.x - a.x) * (point.y - b.y) - (b.y - a.y) * (point.x - b.x);
+            let forwards = (b.x - a.x) * (point.x - b.x) + (b.y - a.y) * (point.y - b.y) >= 0.0;
+            if cross.abs() < 0.01 && forwards {
+                out.pop();
+            }
+        }
+        out.push(point);
+    }
+    out
 }
 
 /// The middle of a polyline, measured along it rather than between its ends.
@@ -1261,6 +1558,12 @@ mod tests {
         graph
     }
 
+    /// Whether an edge's end is inside a node at its middle height, which is where every edge begins
+    /// and ends: beside the middle when several share one side of the box.
+    fn in_the_middle_of(point: Point, rect: Rect) -> bool {
+        rect.contains(point) && (point.y - rect.centre().y).abs() < 0.01
+    }
+
     /// Whether a polyline passes through the inside of `rect`, sampled finely enough for a box of forty
     /// points.
     fn runs_through(path: &[Point], rect: Rect) -> bool {
@@ -1295,10 +1598,9 @@ mod tests {
                 "{path:?} runs through node {blocker}"
             );
         }
-        assert_eq!(
-            *path.last().expect("an end"),
-            placed.nodes[c].centre(),
-            "and it ends on the node"
+        assert!(
+            in_the_middle_of(*path.last().expect("an end"), placed.nodes[c]),
+            "and it ends on the node: {path:?}"
         );
     }
 
@@ -1376,8 +1678,8 @@ mod tests {
         // The edge that closes the cycle is still drawn, and still from 2 to 0.
         let back = &placed.edges[2];
         assert!(back.len() >= 2);
-        assert_eq!(back[0], placed.nodes[2].centre());
-        assert_eq!(back[back.len() - 1], placed.nodes[0].centre());
+        assert!(in_the_middle_of(back[0], placed.nodes[2]), "{back:?}");
+        assert!(in_the_middle_of(back[back.len() - 1], placed.nodes[0]), "{back:?}");
     }
 
     #[test]
@@ -1441,11 +1743,10 @@ mod tests {
         graph.edges.push(EdgeSpec::new(outside, inside));
         let placed = layout(&graph);
         let path = &placed.edges[0];
-        assert_eq!(path[0], placed.nodes[outside].centre());
-        assert_eq!(
-            path[path.len() - 1],
-            placed.nodes[inside].centre(),
-            "it points at the node, not at the frame round it"
+        assert!(in_the_middle_of(path[0], placed.nodes[outside]), "{path:?}");
+        assert!(
+            in_the_middle_of(path[path.len() - 1], placed.nodes[inside]),
+            "it points at the node, not at the frame round it: {path:?}"
         );
     }
 

@@ -947,8 +947,8 @@ fn is_a_paste_chord(events: &[egui::Event]) -> bool {
 ///
 /// `None` means the platform reported no pointer through the drag, which Windows does not: a file is
 /// carried over a window through OLE and no cursor movement is sent at all, so `egui` can still be
-/// holding a position from before the drag started. Nothing else in Unluminous reads `dropped_files`, so a
-/// drop nobody can place belongs here rather than nowhere.
+/// holding a position from before the drag started. The system is asked first, and a drop that still
+/// cannot be placed belongs here rather than nowhere.
 fn belongs_here(pointer: Option<Pos2>, area: Rect) -> bool {
     pointer.is_none_or(|at| area.contains(at))
 }
@@ -964,8 +964,8 @@ fn belongs_here(pointer: Option<Pos2>, area: Rect) -> bool {
 ///
 /// **A drop with no pointer is this pane's.** Windows carries a file over a window through OLE, which
 /// reports no cursor movement at all, so `egui` can be holding a position from before the drag began — and
-/// gating on it silently threw the picture away. Nothing else in Unluminous reads `dropped_files`, so a drop
-/// whose position is not known belongs here rather than nowhere.
+/// gating on it silently threw the picture away. The folder pane reads `dropped_files` too since
+/// `task-2194`, which is why the system is asked where the pointer is before this falls back.
 ///
 /// **`hover_pos` alone, and not `latest_pos` behind it.** The zoom asks for both because a wheel event
 /// arrives with no pointer at all and the *last place it was seen* is still the honest answer. A drop is the
@@ -973,7 +973,11 @@ fn belongs_here(pointer: Option<Pos2>, area: Rect) -> bool {
 /// to it is falling back to a stale answer that reads as a confident one — which threw the picture away
 /// exactly where this was meant to stop it. Found by the `task-1771` review.
 fn dropped_pictures(ui: &egui::Ui, area: Rect) -> Vec<std::path::PathBuf> {
-    let pointer = ui.ctx().input(|input| input.pointer.hover_pos());
+    // **Asked of the system first** (`task-2194`), which knows where the pointer is during a drop when
+    // egui does not. Since the folder pane takes dropped files as well, a drop nobody could place would
+    // otherwise be attached here and copied into a folder there at once.
+    let pointer = crate::services::system_files::pointer(ui.ctx())
+        .or_else(|| ui.ctx().input(|input| input.pointer.hover_pos()));
     if !belongs_here(pointer, area) {
         return Vec::new();
     }

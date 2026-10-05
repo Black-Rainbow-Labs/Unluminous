@@ -53,6 +53,7 @@ pub mod shell_integration;
 pub mod space;
 pub mod store;
 pub mod symbol_index;
+pub mod system_files;
 pub mod text_renderer;
 pub mod text_search;
 pub mod update;

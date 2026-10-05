@@ -1733,6 +1733,182 @@ fn a_row_dropped_where_it_already_is_does_nothing_at_all() {
     );
 }
 
+/// `task-2194`: a click with `Ctrl` or `Cmd` held chooses a second row rather than opening it, and
+/// carrying one of the chosen rows onto a folder moves every one of them.
+#[test]
+fn rows_chosen_with_the_modifier_are_moved_together() {
+    let folder = scratch_folder("choose-and-drag");
+    let mut harness = harness_in(&folder);
+    did(&mut harness, &format!("explorer expand {}", folder.join("app").display()));
+    steady(&mut harness);
+    let first = explorer_row(&mut harness, "main.ts");
+    click_row(&mut harness, first, Modifiers::NONE);
+    let second = explorer_row(&mut harness, "layout.ts");
+    click_row(&mut harness, second, Modifiers::COMMAND);
+    assert_eq!(
+        harness.state().explorer_choice(),
+        vec![folder.join("app/main.ts"), folder.join("app/layout.ts")],
+        "both rows are chosen"
+    );
+    assert_eq!(
+        harness.state().files.active().name(),
+        "main.ts",
+        "the modifier click opened nothing"
+    );
+    let from = explorer_row(&mut harness, "layout.ts");
+    let to = explorer_row(&mut harness, "draw");
+    drag(&mut harness, from, to);
+    steady(&mut harness);
+    assert!(folder.join("draw/layout.ts").is_file(), "the row carried moved");
+    assert!(folder.join("draw/main.ts").is_file(), "and so did the other chosen row");
+}
+
+/// `task-2194`: `Shift` with a click chooses every row from the last one clicked, and the keyboard's
+/// copy and paste put all of them into the folder the cursor is on.
+#[test]
+fn a_shift_click_chooses_a_run_of_rows_and_the_keys_copy_and_paste_them() {
+    let folder = scratch_folder("shift-copy-paste");
+    let mut harness = harness_in(&folder);
+    did(&mut harness, &format!("explorer expand {}", folder.join("app").display()));
+    steady(&mut harness);
+    let first = explorer_row(&mut harness, "layout.ts");
+    click_row(&mut harness, first, Modifiers::NONE);
+    let last = explorer_row(&mut harness, "other.ts");
+    click_row(&mut harness, last, Modifiers::SHIFT);
+    assert_eq!(harness.state().explorer_choice().len(), 3, "layout, main and other");
+
+    harness.input_mut().events.push(egui::Event::Copy);
+    steady(&mut harness);
+    let target = explorer_row(&mut harness, "draw");
+    click_row(&mut harness, target, Modifiers::NONE);
+    press_paste(&mut harness);
+    for name in ["layout.ts", "main.ts", "other.ts"] {
+        assert!(folder.join("draw").join(name).is_file(), "{name} was pasted into draw");
+        assert!(folder.join("app").join(name).is_file(), "and {name} is still where it was");
+    }
+}
+
+/// `task-2194`: cut and paste with the keyboard into a folder **inside** the project, which is what
+/// the ticket says was ignored.
+#[test]
+fn a_cut_row_is_pasted_into_a_subfolder() {
+    let folder = scratch_folder("cut-into-subfolder");
+    std::fs::create_dir_all(folder.join("app/deeper")).expect("make a subfolder");
+    let mut harness = harness_in(&folder);
+    did(&mut harness, &format!("explorer expand {}", folder.join("app").display()));
+    steady(&mut harness);
+    let row = explorer_row(&mut harness, "readme.md");
+    click_row(&mut harness, row, Modifiers::NONE);
+    harness.input_mut().events.push(egui::Event::Cut);
+    steady(&mut harness);
+    let deeper = explorer_row(&mut harness, "deeper");
+    click_row(&mut harness, deeper, Modifiers::NONE);
+    press_paste(&mut harness);
+    assert!(folder.join("app/deeper/readme.md").is_file(), "it arrived in the subfolder");
+    assert!(!folder.join("readme.md").exists(), "and a cut moves it");
+}
+
+/// `task-2194`: a file dropped on a folder row from another program is copied into that folder and
+/// shows up straight away.
+#[test]
+fn a_file_dropped_from_another_program_lands_in_the_folder_under_the_pointer() {
+    let folder = scratch_folder("dropped-in");
+    let outside = std::env::temp_dir().join("unluminous-2194-from-elsewhere");
+    std::fs::create_dir_all(&outside).expect("make the outside folder");
+    std::fs::write(outside.join("picture.txt"), "from another program\n").expect("write it");
+    let mut harness = harness_in(&folder);
+    steady(&mut harness);
+    let target = explorer_row(&mut harness, "draw");
+    harness.input_mut().events.push(egui::Event::PointerMoved(target));
+    harness
+        .input_mut()
+        .dropped_files
+        .push(std::sync::Arc::new(Dropped(outside.join("picture.txt"))));
+    steady(&mut harness);
+    assert!(folder.join("draw/picture.txt").is_file(), "it was copied into draw");
+    assert!(outside.join("picture.txt").is_file(), "and the program it came from still has it");
+    assert!(harness.query_by_label("picture.txt").is_some(), "the row is in the tree at once");
+}
+
+/// `task-2194`: the two commands an agent has for the same things, through the same code.
+#[test]
+fn an_agent_chooses_rows_and_copies_a_file_in_from_outside() {
+    let folder = scratch_folder("agent-choose");
+    let mut harness = harness_in(&folder);
+    did(&mut harness, &format!("explorer choose {}", folder.join("app/main.ts").display()));
+    let chosen = did(
+        &mut harness,
+        &format!("explorer choose {} --add", folder.join("app/other.ts").display()),
+    );
+    assert_eq!(chosen["chosen"].as_array().map(Vec::len), Some(2), "{chosen}");
+
+    let outside = std::env::temp_dir().join("unluminous-2194-agent-outside.md");
+    std::fs::write(&outside, "# outside\n").expect("write it");
+    did(
+        &mut harness,
+        &format!("explorer copy-in {} {}", outside.display(), folder.join("draw").display()),
+    );
+    assert!(folder.join("draw/unluminous-2194-agent-outside.md").is_file());
+}
+
+/// The middle of the explorer's row for `name`. A file that has been clicked is open in a tab of the same
+/// name as well, so the row is told apart from the tab by being the one furthest down the window.
+fn explorer_row(harness: &mut Harness<'static, UnluminousApp>, name: &str) -> egui::Pos2 {
+    harness
+        .get_all_by_label(name)
+        .map(|node| node.rect().center())
+        .max_by(|a, b| a.y.total_cmp(&b.y))
+        .unwrap_or_else(|| panic!("no row called {name}"))
+}
+
+/// A file the operating system says was dropped on the window. egui describes one as a trait so each
+/// platform can say it its own way, and a test says it with a path.
+#[derive(Debug)]
+struct Dropped(std::path::PathBuf);
+
+impl egui::DroppedFile for Dropped {
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+
+    fn bytes(&self) -> Result<Vec<u8>, String> {
+        std::fs::read(&self.0).map_err(|problem| problem.to_string())
+    }
+}
+
+/// Press and release a row with `modifiers` held, the way a person clicks it.
+fn click_row(harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2, modifiers: Modifiers) {
+    harness.input_mut().events.push(egui::Event::ModifiersChanged(modifiers));
+    harness.input_mut().events.push(egui::Event::PointerMoved(at));
+    steady(harness);
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers,
+        });
+    }
+    steady(harness);
+    harness.input_mut().events.push(egui::Event::ModifiersChanged(Modifiers::NONE));
+    steady(harness);
+}
+
+/// `Ctrl+V` or `Cmd+V` with no text on the clipboard, which egui delivers as a key press and no
+/// `Paste` event: exactly the case of files on the clipboard.
+fn press_paste(harness: &mut Harness<'static, UnluminousApp>) {
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::Key {
+            key: egui::Key::V,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: Modifiers::COMMAND,
+        });
+    }
+    steady(harness);
+}
+
 /// The middle of the explorer row whose name contains `name`.
 fn row_middle(harness: &mut Harness<'static, UnluminousApp>, name: &str) -> egui::Pos2 {
     let node = harness.get_by_label_contains(name);

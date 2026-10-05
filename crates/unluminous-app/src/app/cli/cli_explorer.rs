@@ -79,6 +79,8 @@ impl UnluminousApp {
                 )
             }
             "select" => self.cli_explorer_select(request),
+            "choose" => self.cli_explorer_choose(request),
+            "copy-in" => self.cli_explorer_copy_in(request),
             "delete" => self.cli_explorer_delete(request),
             "move" => self.cli_explorer_move(request),
             "expand" => self.cli_explorer_expand(request),
@@ -111,7 +113,7 @@ impl UnluminousApp {
             }
             self.explorer_visible = true;
             self.tree.expand(&path);
-            self.selected = Some(path);
+            self.pick_in_the_explorer(path, crate::components::explorer::Pick::Only);
             self.focus = crate::app::Focus::Explorer;
         }
         match &self.selected {
@@ -124,6 +126,72 @@ impl UnluminousApp {
                 request,
                 "Nothing is selected in the explorer.",
                 json!({ "selected": null, "focused": self.focus == crate::app::Focus::Explorer }),
+            ),
+        }
+    }
+
+    /// `explorer choose` — pick a row the way a click with or without a modifier does, through the same
+    /// `pick_in_the_explorer` a click goes through.
+    fn cli_explorer_choose(&mut self, request: &Request) -> Outcome {
+        let Some(path) = self.cli_path_argument(request, "path") else {
+            return no(request, code::USAGE, "Say which row to choose.");
+        };
+        if !path.exists() {
+            return no(request, code::NOT_FOUND, format!("There is nothing at {}", path.display()));
+        }
+        let pick = if request.switch("range") {
+            crate::components::explorer::Pick::Range
+        } else if request.switch("add") {
+            crate::components::explorer::Pick::Toggle
+        } else {
+            crate::components::explorer::Pick::Only
+        };
+        self.explorer_visible = true;
+        if let Some(folder) = path.parent() {
+            self.tree.expand(folder);
+        }
+        self.pick_in_the_explorer(path, pick);
+        self.focus = crate::app::Focus::Explorer;
+        let chosen: Vec<String> =
+            self.explorer_choice().iter().map(|path| path.to_string_lossy().to_string()).collect();
+        ok(
+            request,
+            match chosen.len() {
+                1 => format!("Chose {}", chosen[0]),
+                count => format!("{count} rows are chosen"),
+            },
+            json!({ "chosen": chosen }),
+        )
+    }
+
+    /// `explorer copy-in` — what dropping a file from another program on the explorer does.
+    fn cli_explorer_copy_in(&mut self, request: &Request) -> Outcome {
+        let (Some(path), Some(folder)) =
+            (self.cli_path_argument(request, "path"), self.cli_path_argument(request, "folder"))
+        else {
+            return no(request, code::USAGE, "Say what to copy in and which folder it goes into.");
+        };
+        if !path.exists() {
+            return no(request, code::NOT_FOUND, format!("There is nothing at {}", path.display()));
+        }
+        if !folder.is_dir() || !folder.starts_with(self.tree.root()) {
+            return no(
+                request,
+                code::NOT_FOUND,
+                format!("{} is not a folder of the project", folder.display()),
+            );
+        }
+        self.copy_in(&[path], &folder);
+        match &self.selected {
+            Some(arrived) if arrived.starts_with(&folder) => ok(
+                request,
+                format!("Copied in {}", arrived.display()),
+                json!({ "path": arrived.to_string_lossy() }),
+            ),
+            _ => no(
+                request,
+                code::FAILED,
+                self.message.clone().unwrap_or_else(|| "Nothing was copied in.".to_owned()),
             ),
         }
     }

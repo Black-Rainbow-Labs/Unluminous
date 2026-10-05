@@ -913,18 +913,12 @@ impl UnluminousApp {
                     Purpose::NewFolder(folder),
                 ));
             }
-            Action::CutPath(path) => self.clipboard.cut(path),
-            Action::CopyPath(path) => self.clipboard.copy(path),
+            // Every chosen row when the one named is among them, so a right click on one of several
+            // chosen rows cuts all of them, the way it does in a file manager (`task-2194`).
+            Action::CutPath(path) => self.hold_for_pasting(self.choice_including(&path), true),
+            Action::CopyPath(path) => self.hold_for_pasting(self.choice_including(&path), false),
             Action::CopyPathReference(path) => ctx.copy_text(path.display().to_string()),
-            Action::PasteInto(folder) => match self.clipboard.paste_into(&folder) {
-                Ok(target) => {
-                    self.tree.reload();
-                    self.message = Some(format!("Pasted {}", target.display()));
-                }
-                Err(problem) => {
-                    self.message = Some(format!("Unluminous could not paste: {problem}"))
-                }
-            },
+            Action::PasteInto(folder) => self.paste_into_folder(&folder),
             Action::RenamePath(path) => {
                 let name = path
                     .file_name()

@@ -48,6 +48,14 @@ impl UnluminousApp {
         if text_box_has_the_keyboard(ui.ctx()) {
             return None;
         }
+        // **Cut, copy and paste are the explorer's while it has the keyboard** (`task-2194`). egui
+        // delivers the first two as events of their own rather than as key presses, and a paste as a
+        // `Paste` event only when the clipboard holds text, so the `V` press is watched for as well:
+        // files on the clipboard are exactly the case with no text. Taken out of the frame's input,
+        // so the editor beside the tree does not paste the same thing into the document.
+        if let Some(key) = self.take_a_clipboard_key(ui) {
+            return Some(key);
+        }
         // A letter typed while the tree has the keyboard belongs to the **editor**. The explorer has
         // no use for one, and "click a file in the tree and start typing" has to go on working
         // exactly as it did — the keyboard is handed over here, before any pane reads the frame's
@@ -100,6 +108,225 @@ impl UnluminousApp {
             _ => {}
         }
         None
+    }
+
+    /// The clipboard key pressed this frame, turned into the action the explorer's menu would give, and
+    /// taken out of the input so nothing else acts on it.
+    fn take_a_clipboard_key(&mut self, ui: &egui::Ui) -> Option<Action> {
+        let pressed = ui.ctx().input_mut(|input| {
+            let found = input.events.iter().find_map(|event| match event {
+                egui::Event::Copy => Some(egui::Key::C),
+                egui::Event::Cut => Some(egui::Key::X),
+                egui::Event::Paste(_) => Some(egui::Key::V),
+                egui::Event::Key { key: egui::Key::V, pressed: true, modifiers, .. }
+                    if modifiers.command =>
+                {
+                    Some(egui::Key::V)
+                }
+                _ => None,
+            })?;
+            input.events.retain(|event| {
+                !matches!(
+                    event,
+                    egui::Event::Copy
+                        | egui::Event::Cut
+                        | egui::Event::Paste(_)
+                        | egui::Event::Key { key: egui::Key::V, .. }
+                )
+            });
+            Some(found)
+        })?;
+        let cursor = self.selected.clone();
+        match pressed {
+            egui::Key::C => cursor.map(Action::CopyPath),
+            egui::Key::X => cursor.map(Action::CutPath),
+            _ => Some(Action::PasteInto(self.folder_to_paste_into())),
+        }
+    }
+
+    /// The folder a paste with the keyboard goes into: the cursor's row when it is a folder, the folder
+    /// the cursor's file is in when it is a file, and the project when the cursor is on nothing.
+    pub fn folder_to_paste_into(&self) -> PathBuf {
+        match &self.selected {
+            Some(path) if path.is_dir() => path.clone(),
+            Some(path) => {
+                path.parent().map_or_else(|| self.tree.root().to_path_buf(), Path::to_path_buf)
+            }
+            None => self.tree.root().to_path_buf(),
+        }
+    }
+
+    /// Every row chosen in the explorer: the rows picked with the modifier or `Shift` when there are
+    /// any, otherwise the cursor's row on its own.
+    pub fn explorer_choice(&self) -> Vec<PathBuf> {
+        match self.chosen.is_empty() {
+            true => self.selected.iter().cloned().collect(),
+            false => self.chosen.clone(),
+        }
+    }
+
+    /// The rows an action about `path` is about: every chosen row when `path` is one of them, which is
+    /// a right click on one of several chosen rows, and `path` alone otherwise.
+    pub fn choice_including(&self, path: &Path) -> Vec<PathBuf> {
+        match self.chosen.iter().any(|row| row == path) {
+            true => self.chosen.clone(),
+            false => vec![path.to_path_buf()],
+        }
+    }
+
+    /// Pick a row the way the click said: on its own, added to or taken from what is chosen, or every
+    /// row from the anchor to it.
+    pub fn pick_in_the_explorer(&mut self, path: PathBuf, pick: explorer::Pick) {
+        match pick {
+            explorer::Pick::Only => {
+                self.chosen.clear();
+                self.explorer_anchor = Some(path.clone());
+            }
+            explorer::Pick::Toggle => {
+                if self.chosen.is_empty() {
+                    self.chosen.extend(self.selected.iter().cloned());
+                }
+                match self.chosen.iter().position(|row| *row == path) {
+                    Some(at) => {
+                        self.chosen.remove(at);
+                    }
+                    None => self.chosen.push(path.clone()),
+                }
+                self.explorer_anchor = Some(path.clone());
+            }
+            explorer::Pick::Range => {
+                let rows = self.explorer_rows();
+                let anchor = self.explorer_anchor.clone().or_else(|| self.selected.clone());
+                let from = anchor.and_then(|anchor| rows.iter().position(|row| *row == anchor));
+                let to = rows.iter().position(|row| *row == path);
+                if let (Some(from), Some(to)) = (from, to) {
+                    let (first, last) = (from.min(to), from.max(to));
+                    self.chosen = rows[first..=last].to_vec();
+                } else {
+                    self.chosen.clear();
+                }
+            }
+        }
+        self.selected = Some(path);
+    }
+
+    /// Where files another program is carrying over the window are, and whether this is the frame
+    /// they were let go, or nothing when no such drag is happening.
+    ///
+    /// The pointer is asked of the system, because the platform's drag and drop sends the window no
+    /// pointer movement of its own; see `services::system_files`. While the drag is over the window
+    /// the frames are asked for here, because nothing else would draw the folder being aimed at.
+    pub(crate) fn files_from_another_program(
+        &self,
+        context: &egui::Context,
+    ) -> Option<(egui::Pos2, bool)> {
+        let (hovering, dropped) = context.input(|input| {
+            (!input.raw.hovered_files.is_empty(), !input.raw.dropped_files.is_empty())
+        });
+        if !hovering && !dropped {
+            return None;
+        }
+        if hovering {
+            context.request_repaint_after(std::time::Duration::from_millis(30));
+        }
+        let at = crate::services::system_files::pointer(context)
+            .or_else(|| context.input(|input| input.pointer.hover_pos()))?;
+        Some((at, dropped))
+    }
+
+    /// Copy the files another program dropped on the pane into `folder`, and show them.
+    pub(crate) fn take_the_dropped_files(&mut self, context: &egui::Context, folder: &Path) {
+        let paths: Vec<PathBuf> = context.input(|input| {
+            input.raw.dropped_files.iter().map(|file| file.path().to_path_buf()).collect()
+        });
+        if paths.is_empty() {
+            return;
+        }
+        self.copy_in(&paths, folder);
+    }
+
+    /// Copy `paths` from anywhere into `folder`, and show them, which is what a drop from another
+    /// program and `explorer copy-in` both are.
+    pub(crate) fn copy_in(&mut self, paths: &[PathBuf], folder: &Path) {
+        let copied = crate::services::file_clipboard::transfer_into(
+            paths,
+            folder,
+            crate::services::file_clipboard::Transfer::Copy,
+        );
+        self.show_what_arrived(folder, copied, "Copied");
+    }
+
+    /// Let a cut, a copy and a paste in the explorer reach the operating system's clipboard. The
+    /// released binary calls this and a test does not.
+    pub fn use_the_system_clipboard(&mut self) {
+        self.system_clipboard = true;
+    }
+
+    /// Whether a paste has anything to paste, here or on the system clipboard.
+    pub(crate) fn something_to_paste(&self) -> bool {
+        !self.clipboard.is_empty()
+            || (self.system_clipboard && crate::services::system_files::clipboard_has_files())
+    }
+
+    /// Paste into `folder`: files another program put on the system clipboard when there are some it
+    /// did not get from here, and otherwise what was cut or copied in the explorer.
+    pub(crate) fn paste_into_folder(&mut self, folder: &Path) {
+        let outside = match self.system_clipboard {
+            true => crate::services::system_files::clipboard_files(),
+            false => Vec::new(),
+        };
+        let pasted = if !outside.is_empty() && !self.clipboard.holds(&outside) {
+            crate::services::file_clipboard::transfer_into(
+                &outside,
+                folder,
+                crate::services::file_clipboard::Transfer::Copy,
+            )
+        } else {
+            self.clipboard.paste_into(folder)
+        };
+        self.show_what_arrived(folder, pasted, "Pasted");
+    }
+
+    /// Hold `paths` to be copied or moved by the next paste, here and in other programs.
+    pub(crate) fn hold_for_pasting(&mut self, paths: Vec<PathBuf>, cut: bool) {
+        if self.system_clipboard {
+            crate::services::system_files::put_files_on_the_clipboard(&paths);
+        }
+        let count = paths.len();
+        match cut {
+            true => self.clipboard.cut_all(paths),
+            false => self.clipboard.copy_all(paths),
+        }
+        let what = if count == 1 { "1 item".to_owned() } else { format!("{count} items") };
+        let verb = if cut { "Cut" } else { "Copied" };
+        self.message = Some(format!("{verb} {what}"));
+    }
+
+    /// Read the tree again, open the folder something arrived in, choose what arrived, and say so.
+    fn show_what_arrived(
+        &mut self,
+        folder: &Path,
+        arrived: std::io::Result<Vec<PathBuf>>,
+        verb: &str,
+    ) {
+        match arrived {
+            Ok(paths) => {
+                self.tree.reload();
+                self.tree.expand(folder);
+                let name = folder.file_name().map_or_else(
+                    || folder.display().to_string(),
+                    |name| name.to_string_lossy().to_string(),
+                );
+                self.message = Some(match paths.len() {
+                    1 => format!("{verb} {} into {name}", paths[0].display()),
+                    count => format!("{verb} {count} items into {name}"),
+                });
+                self.chosen = if paths.len() > 1 { paths.clone() } else { Vec::new() };
+                self.selected = paths.last().cloned();
+                self.reveal_selection = REVEAL_FRAMES;
+            }
+            Err(problem) => self.message = Some(format!("Unluminous could not paste: {problem}")),
+        }
     }
 
     /// Move the explorer's cursor by `step` rows, through the rows that are showing.
@@ -160,6 +387,8 @@ impl UnluminousApp {
         let view = explorer::View {
             current: None,
             selected: None,
+            chosen: &[],
+            outside_drag: None,
             keyboard: false,
             unsaved: false,
             reveal: false,

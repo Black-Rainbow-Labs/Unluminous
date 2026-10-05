@@ -300,6 +300,7 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
             to: relationship.to,
             label: wanted,
             span: 1,
+            ..EdgeSpec::new(0, 0)
         });
     }
     let placed = layered::layout(&graph);
@@ -453,23 +454,28 @@ fn draw_relationships(
 ) {
     let theme = &options.theme;
     for (index, relationship) in diagram.relationships.iter().enumerate() {
-        let mut path: Vec<Point> = placed.edges[index]
+        let path: Vec<Point> = placed.edges[index]
             .iter()
             .map(|point| Point::new(point.x + origin.x, point.y + origin.y))
             .collect();
         if path.len() < 2 {
             continue;
         }
-        let last = path.len() - 1;
-        path[0] = Outline::Rect(placed.nodes[relationship.from].moved(origin.x, origin.y))
-            .border_towards(path[1]);
-        path[last] = Outline::Rect(placed.nodes[relationship.to].moved(origin.x, origin.y))
-            .border_towards(path[last - 1]);
+        // The marks are laid along the line as it leaves the box, which is the straight first and
+        // last stretch before the corners are rounded. Read off the rounded line, the first point
+        // after the border can already be round the bend, and the marks leant with it.
+        let sharp = parts::clipped(
+            &path,
+            &Outline::Rect(placed.nodes[relationship.from].moved(origin.x, origin.y)),
+            &Outline::Rect(placed.nodes[relationship.to].moved(origin.x, origin.y)),
+        );
+        let path = parts::rounded(&sharp, parts::BEND, MARK);
+        let sharp_last = sharp.len() - 1;
         let stroke = Stroke::new(theme.line, parts::LINE);
         let dash = if relationship.identifying { Dash::Solid } else { parts::DASH };
         scene.add(Item::Line { points: path.clone(), stroke, dash });
-        draw_count(scene, relationship.from_count, path[0], path[1], stroke);
-        draw_count(scene, relationship.to_count, path[last], path[last - 1], stroke);
+        draw_count(scene, relationship.from_count, sharp[0], sharp[1], stroke);
+        draw_count(scene, relationship.to_count, sharp[sharp_last], sharp[sharp_last - 1], stroke);
         if labels[index].is_empty() {
             continue;
         }

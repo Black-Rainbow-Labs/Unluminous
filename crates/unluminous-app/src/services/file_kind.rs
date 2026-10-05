@@ -562,6 +562,38 @@ pub fn folding_reading<'a>(
     unluminous_core::folding::Reading::Plain
 }
 
+/// True for a file that is writing to be read rather than code or data: what the explorer draws with
+/// the sheet that has lines of writing on it (`task-2194`).
+///
+/// Prose by its extension, and the handful of files a project keeps at its top level with no extension
+/// at all, which are always prose.
+pub fn is_prose(path: &Path) -> bool {
+    let named = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+    let bare = ["README", "LICENSE", "LICENCE", "CHANGELOG", "NOTICE", "AUTHORS", "CONTRIBUTORS"];
+    if path.extension().is_none() && bare.iter().any(|word| named.eq_ignore_ascii_case(word)) {
+        return true;
+    }
+    matches!(
+        extension(path).as_deref(),
+        Some(
+            "txt"
+                | "text"
+                | "md"
+                | "markdown"
+                | "mdx"
+                | "rst"
+                | "adoc"
+                | "asciidoc"
+                | "org"
+                | "log"
+                | "rtf"
+                | "nfo"
+                | "csv"
+                | "tsv"
+        )
+    )
+}
+
 /// True for the files the Markdown preview is meant for.
 pub fn is_markdown(path: Option<&Path>) -> bool {
     matches!(path.and_then(extension).as_deref(), Some("md" | "markdown" | "mdx"))

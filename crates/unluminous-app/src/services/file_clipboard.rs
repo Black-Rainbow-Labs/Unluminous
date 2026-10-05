@@ -1,17 +1,14 @@
 //! What was cut or copied in the explorer, waiting to be pasted.
 //!
-//! This is Unluminous's own clipboard, not the operating system's. The system's *file* clipboard is a
-//! different interface on each platform — `CF_HDROP` on Windows, `NSFilenamesPboardType` on macOS —
-//! and `arboard`, which Unluminous already uses for text, exposes neither. Adding a platform-specific
-//! dependency for each platform to make cut and paste reach outside Unluminous is not worth it for
-//! version one.
+//! This is Unluminous's own clipboard, and since `task-2194` it is not the only one: a copy or a cut in
+//! the folder pane also puts the files on the operating system's clipboard, and a paste takes files
+//! another program put there. `services::system_files` is that half, because the system's file
+//! clipboard is a different interface on each platform. What only this one knows is whether the files
+//! are to be **moved**: a file manager says so in a way of its own, and a cut here is a move here.
 //!
-//! So the consequence is stated plainly rather than hidden: **a file cut in Unluminous cannot be pasted
-//! in Explorer or the Finder**, and one cut there cannot be pasted here. Copying a path *as text*
-//! does go to the system clipboard, because that is just text and `arboard` does it already.
-//!
-//! Pasting is a copy or a move depending on which of the two put the path here, which is what every
-//! file manager does.
+//! Pasting is a copy or a move depending on which of the two put the paths here, which is what every
+//! file manager does. Several paths are held at once, because several rows can be chosen and cut
+//! together.
 
 use std::path::{Path, PathBuf};
 
@@ -22,10 +19,11 @@ pub enum Transfer {
     Move,
 }
 
-/// The path waiting to be pasted, and what is to happen to it.
+/// The paths waiting to be pasted, and what is to happen to them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FileClipboard {
-    held: Option<(PathBuf, Transfer)>,
+    held: Vec<PathBuf>,
+    transfer: Option<Transfer>,
 }
 
 impl FileClipboard {
@@ -34,66 +32,119 @@ impl FileClipboard {
     }
 
     pub fn cut(&mut self, path: impl Into<PathBuf>) {
-        self.held = Some((path.into(), Transfer::Move));
+        self.cut_all(vec![path.into()]);
     }
 
     pub fn copy(&mut self, path: impl Into<PathBuf>) {
-        self.held = Some((path.into(), Transfer::Copy));
+        self.copy_all(vec![path.into()]);
+    }
+
+    /// Hold `paths` to be moved by the next paste.
+    pub fn cut_all(&mut self, paths: Vec<PathBuf>) {
+        self.held = paths;
+        self.transfer = Some(Transfer::Move);
+    }
+
+    /// Hold `paths` to be copied by every paste until something else is cut or copied.
+    pub fn copy_all(&mut self, paths: Vec<PathBuf>) {
+        self.held = paths;
+        self.transfer = Some(Transfer::Copy);
     }
 
     pub fn is_empty(&self) -> bool {
-        self.held.is_none()
+        self.held.is_empty()
     }
 
-    pub fn held(&self) -> Option<(&Path, Transfer)> {
-        self.held.as_ref().map(|(path, transfer)| (path.as_path(), *transfer))
+    /// What is held and what is to happen to it.
+    pub fn held(&self) -> Option<(&[PathBuf], Transfer)> {
+        match (self.held.is_empty(), self.transfer) {
+            (false, Some(transfer)) => Some((&self.held, transfer)),
+            _ => None,
+        }
+    }
+
+    /// Whether exactly `paths` are held, which is how a paste tells files this clipboard put on the
+    /// system's from files another program put there since.
+    pub fn holds(&self, paths: &[PathBuf]) -> bool {
+        !self.held.is_empty() && self.held == paths
     }
 
     pub fn clear(&mut self) {
-        self.held = None;
+        self.held.clear();
+        self.transfer = None;
     }
 
     /// Put what is held into `folder`.
     ///
-    /// Returns where it ended up. A name already taken in the destination gets a number added rather
-    /// than overwriting what is there: pasting must never quietly destroy a file, and asking would
-    /// mean a dialog inside a dialog.
-    pub fn paste_into(&mut self, folder: &Path) -> std::io::Result<PathBuf> {
-        let Some((source, transfer)) = self.held.clone() else {
+    /// Returns where each one ended up. A name already taken in the destination gets a number added
+    /// rather than overwriting what is there: pasting must never quietly destroy a file, and asking
+    /// would mean a dialog inside a dialog.
+    pub fn paste_into(&mut self, folder: &Path) -> std::io::Result<Vec<PathBuf>> {
+        let Some((held, transfer)) = self.held().map(|(held, transfer)| (held.to_vec(), transfer))
+        else {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 "nothing has been cut or copied",
             ));
         };
-        if !source.exists() {
+        if let Some(gone) = held.iter().find(|path| !path.exists()) {
             self.clear();
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("{} is no longer there", source.display()),
+                format!("{} is no longer there", gone.display()),
             ));
         }
-        let name = source.file_name().ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::InvalidInput, "a path with no name")
-        })?;
-        let target = free_name(folder, &name.to_string_lossy());
-        if source.is_dir() {
-            copy_folder(&source, &target)?;
-            if transfer == Transfer::Move {
-                std::fs::remove_dir_all(&source)?;
-            }
-        } else {
-            std::fs::copy(&source, &target)?;
-            if transfer == Transfer::Move {
-                std::fs::remove_file(&source)?;
-            }
-        }
+        let pasted = transfer_into(&held, folder, transfer)?;
         // A move happens once. A copy can be pasted into several folders, which is what a file
         // manager does and what makes copy worth having as well as cut.
         if transfer == Transfer::Move {
             self.clear();
         }
-        Ok(target)
+        Ok(pasted)
     }
+}
+
+/// Copy or move every one of `paths` into `folder`, each under a name not already taken there.
+///
+/// Shared by a paste and by files dropped on the pane from another program, which is a copy: the
+/// program they came from still has them. A folder is never put inside itself, which a person
+/// pasting a folder into one of its own subfolders would otherwise do without end.
+pub fn transfer_into(
+    paths: &[PathBuf],
+    folder: &Path,
+    transfer: Transfer,
+) -> std::io::Result<Vec<PathBuf>> {
+    let mut placed = Vec::with_capacity(paths.len());
+    for source in paths {
+        if source.is_dir() && folder.starts_with(source) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("{} cannot go inside itself", source.display()),
+            ));
+        }
+        let name = source.file_name().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "a path with no name")
+        })?;
+        // Moving a file into the folder it is already in leaves it where it is.
+        if transfer == Transfer::Move && source.parent() == Some(folder) {
+            placed.push(source.clone());
+            continue;
+        }
+        let target = free_name(folder, &name.to_string_lossy());
+        if source.is_dir() {
+            copy_folder(source, &target)?;
+            if transfer == Transfer::Move {
+                std::fs::remove_dir_all(source)?;
+            }
+        } else {
+            std::fs::copy(source, &target)?;
+            if transfer == Transfer::Move {
+                std::fs::remove_file(source)?;
+            }
+        }
+        placed.push(target);
+    }
+    Ok(placed)
 }
 
 /// A path in `folder` called `name`, or `name 2`, `name 3` and so on if that is taken.
@@ -153,7 +204,7 @@ mod tests {
         let mut clipboard = FileClipboard::new();
         clipboard.copy(root.join("from/note.md"));
         let pasted = clipboard.paste_into(&root.join("to")).expect("paste");
-        assert_eq!(pasted, root.join("to/note.md"));
+        assert_eq!(pasted, vec![root.join("to/note.md")]);
         assert!(root.join("from/note.md").is_file(), "a copy leaves the original where it was");
         assert!(!clipboard.is_empty(), "a copy can be pasted into a second folder");
 
@@ -172,7 +223,7 @@ mod tests {
         let mut clipboard = FileClipboard::new();
         clipboard.copy(root.join("from/note.md"));
         let pasted = clipboard.paste_into(&root.join("to")).expect("paste");
-        assert_eq!(pasted, root.join("to/note 2.md"), "the number goes before the extension");
+        assert_eq!(pasted, vec![root.join("to/note 2.md")], "the number goes before the extension");
         assert_eq!(
             std::fs::read_to_string(root.join("to/note.md")).expect("read"),
             "something else\n",
@@ -199,6 +250,24 @@ mod tests {
         let problem = clipboard.paste_into(&root.join("to")).expect_err("it is not there");
         assert!(problem.to_string().contains("no longer there"));
         assert!(clipboard.is_empty());
+    }
+
+    /// `task-2194`: several rows chosen and cut together move together, and a folder pasted into one of
+    /// its own subfolders is refused rather than copied into itself for ever.
+    #[test]
+    fn several_paths_move_together_and_a_folder_never_goes_inside_itself() {
+        let root = folder("several");
+        std::fs::write(root.join("from/second.md"), "two").expect("write the second");
+        let mut clipboard = FileClipboard::new();
+        clipboard.cut_all(vec![root.join("from/note.md"), root.join("from/second.md")]);
+        let pasted = clipboard.paste_into(&root.join("to")).expect("paste");
+        assert_eq!(pasted, vec![root.join("to/note.md"), root.join("to/second.md")]);
+        assert!(!root.join("from/note.md").exists() && !root.join("from/second.md").exists());
+
+        std::fs::create_dir_all(root.join("from/inner")).expect("make inner");
+        clipboard.copy(root.join("from"));
+        let refused = clipboard.paste_into(&root.join("from/inner")).expect_err("refused");
+        assert!(refused.to_string().contains("inside itself"), "{refused}");
     }
 
     #[test]

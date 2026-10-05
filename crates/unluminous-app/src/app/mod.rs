@@ -863,6 +863,9 @@ pub struct UnluminousApp {
     /// question `task-1945` put a guard on and `task-2004` found was refusing every resize while a browser
     /// node's page held the operating system's keyboard. `status --section window` reports it.
     pub(crate) last_resize_asked: Option<egui::viewport::ResizeDirection>,
+    /// A drag on one of the window's own edges, on the platform where the window moves its own edge:
+    /// where it began, and what has been asked for since. See `move_the_windows_own_edge`.
+    pub(crate) edge_drag: Option<crate::components::resize_edges::EdgeDrag>,
     /// Whether Windows is answering the hit test for the window's edges, which is how the window is
     /// resized there since `task-2063`. See `services::windows_resize`.
     pub(crate) native_resize: bool,
@@ -1157,6 +1160,16 @@ pub struct UnluminousApp {
     /// selects a row here and opens it there, and the arrow keys move this one without opening
     /// anything at all.
     pub selected: Option<PathBuf>,
+    /// Every row chosen in the explorer, when more than the cursor's row has been picked with the
+    /// modifier or with `Shift` (`task-2194`). Empty when only the cursor's row is chosen, so the
+    /// ordinary case costs nothing; [`UnluminousApp::explorer_choice`] is the one way to read it.
+    pub chosen: Vec<PathBuf>,
+    /// Where a `Shift` click's range starts: the row last clicked without `Shift`.
+    explorer_anchor: Option<PathBuf>,
+    /// Whether a cut, a copy or a paste in the explorer reaches the operating system's clipboard as
+    /// well as Unluminous's own. Off until the released binary turns it on, so a test never writes over
+    /// what the person running it had copied. See `services::system_files`.
+    system_clipboard: bool,
     /// How many more frames the explorer should scroll to its own selection.
     reveal_selection: u8,
     /// When the folders that are showing were last asked whether they had changed on disk.
@@ -1400,6 +1413,7 @@ impl UnluminousApp {
             wallpaper: crate::services::backgrounds::Wallpaper::default(),
             backgrounds: None,
             last_resize_asked: None,
+            edge_drag: None,
             native_resize: false,
             unlatch: crate::services::windows_resize::Unlatch::default(),
             tree,
@@ -1441,6 +1455,9 @@ impl UnluminousApp {
             native_menu: None,
             revealed: None,
             selected: None,
+            chosen: Vec::new(),
+            explorer_anchor: None,
+            system_clipboard: false,
             reveal_selection: 0,
             last_watched: std::time::Instant::now(),
             dragging_a_row: false,

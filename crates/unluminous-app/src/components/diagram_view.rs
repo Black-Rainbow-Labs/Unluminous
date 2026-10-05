@@ -174,16 +174,13 @@ pub fn paint(ui: &egui::Ui, scene: &Scene, origin: Pos2, scale: f32) {
                 paint_line(painter, &drawn, stroke, *dash, scale);
             }
             Item::Text { at: origin_of_text, text, style, anchor } => {
-                let font = egui::FontId::new(
-                    (style.size * scale).max(1.0),
-                    if style.bold {
-                        egui::FontFamily::Name(crate::theme::BOLD_FAMILY.into())
-                    } else {
-                        egui::FontFamily::Proportional
-                    },
-                );
+                let family = if style.bold {
+                    egui::FontFamily::Name(crate::theme::BOLD_FAMILY.into())
+                } else {
+                    egui::FontFamily::Proportional
+                };
                 let colour = colour_of(style.color);
-                let galley = painter.crisp_layout_no_wrap(text.clone(), font, colour);
+                let galley = scaled_words(painter, text, style.size, scale, &family, colour);
                 let left = match anchor {
                     Anchor::Start => 0.0,
                     Anchor::Middle => galley.size().x / 2.0,
@@ -194,6 +191,35 @@ pub fn paint(ui: &egui::Ui, scene: &Scene, origin: Pos2, scale: f32) {
             }
         }
     }
+}
+
+/// One piece of a diagram's text laid out at `scale`, never wider than its boxes were scaled to.
+///
+/// The boxes are worked out at the diagram's natural size and drawn at `scale` exactly, but a font is
+/// not: `egui` lays a small size out with its own rounding, and at the scale a wide diagram is shrunk
+/// to in a Markdown preview the words came out a few per cent wider than the box sized for them, which
+/// is words running over the edge of the box (`task-2194`). So the words are measured at the natural
+/// size as well, and when the scaled ones are wider than that measurement scaled, the font is made
+/// smaller by the difference. At a scale of one nothing is measured twice.
+fn scaled_words(
+    painter: &egui::Painter,
+    text: &str,
+    size: f32,
+    scale: f32,
+    family: &egui::FontFamily,
+    colour: Color32,
+) -> crate::theme::crisp::Text {
+    let at = |points: f32| egui::FontId::new(points.max(1.0), family.clone());
+    let galley = painter.crisp_layout_no_wrap(text.to_owned(), at(size * scale), colour);
+    if scale >= 1.0 {
+        return galley;
+    }
+    let natural = painter.crisp_layout_no_wrap(text.to_owned(), at(size), colour).size().x * scale;
+    let drawn = galley.size().x;
+    if drawn <= natural + 0.25 || drawn <= 0.0 {
+        return galley;
+    }
+    painter.crisp_layout_no_wrap(text.to_owned(), at(size * scale * natural / drawn), colour)
 }
 
 /// Draw one polyline, breaking it into marks when it is dashed.

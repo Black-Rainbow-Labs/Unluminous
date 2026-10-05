@@ -110,6 +110,14 @@ pub struct View<'a> {
     pub current: Option<&'a Path>,
     /// The row the explorer's own cursor is on.
     pub selected: Option<&'a Path>,
+    /// Every row chosen for a cut, a copy, a move or a delete, which is more than the cursor's row
+    /// when several were picked with the modifier or with `Shift` (`task-2194`). Each is drawn with the
+    /// cursor's quiet fill.
+    pub chosen: &'a [PathBuf],
+    /// Files another program is carrying over the window: where the pointer is, in this `Ui`'s points,
+    /// and whether this is the frame they were let go. The row under the pointer is marked as the
+    /// folder they would land in, and on the frame they are let go that folder is reported.
+    pub outside_drag: Option<(Pos2, bool)>,
     /// Whether the explorer has the keyboard, which is what the ring says.
     pub keyboard: bool,
     /// Whether the file showing has changes that have not been written.
@@ -164,6 +172,11 @@ pub struct ExplorerOutcome {
     pub menu_over_empty_space: bool,
     /// A row was clicked, so it becomes the explorer's selection.
     pub select: Option<PathBuf>,
+    /// How that click picked the row: on its own, added to or taken from the rows already chosen with
+    /// the modifier, or every row from the cursor to it with `Shift`.
+    pub pick: Pick,
+    /// Files another program dropped on the pane, and the folder they were dropped on.
+    pub dropped_into: Option<PathBuf>,
     /// Something was clicked in the panel, so the explorer should take the keyboard.
     pub focus: bool,
     /// A row was let go over a folder: what was carried, and the folder it landed in.
@@ -195,6 +208,19 @@ pub struct ExplorerOutcome {
     /// The panel itself is being carried to another edge of the window, or its heading was right
     /// clicked — `task-1697`. The heading is the handle, which is what the ask calls "the top bar".
     pub grab: crate::components::dock::Grab,
+}
+
+/// How a click picks a row, which is what a file manager does with the modifier keys held.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Pick {
+    /// A plain click: this row and nothing else.
+    #[default]
+    Only,
+    /// `Ctrl` on Windows or `Cmd` on macOS: this row added to the rows already chosen, or taken out
+    /// of them when it was one.
+    Toggle,
+    /// `Shift`: every row from the cursor to this one.
+    Range,
 }
 
 /// One row as it was drawn, which is what the drop target is worked out from.
@@ -599,6 +625,34 @@ pub fn show(
         }
     }
 
+    // Files carried in from another program. The folder under the pointer is marked the way a row
+    // carried inside the list marks it, and a drop anywhere else in the panel is the project's own.
+    if let Some((at, released)) = view.outside_drag {
+        if area.contains(at) {
+            let folder = outside_target(&drawn, tree.root(), at);
+            if let Some(row) = drawn.iter().find(|row| row.directory && row.path == folder) {
+                ui.painter_at(area).rect(
+                    row.rect.shrink2(Vec2::new(8.0, 1.0)),
+                    CornerRadius::same(5),
+                    color::control(),
+                    Stroke::new(1.0, color::accent()),
+                    egui::StrokeKind::Inside,
+                );
+            } else {
+                ui.painter_at(area).rect(
+                    list_rect.shrink(2.0),
+                    CornerRadius::same(5),
+                    egui::Color32::TRANSPARENT,
+                    Stroke::new(1.0, color::accent()),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            if released {
+                outcome.dropped_into = Some(folder);
+            }
+        }
+    }
+
     // The footer, counting the files and how many are unsaved.
     //
     // **A node has none**, which `footer_top` says above and this did not do. `Host::Node` puts
@@ -681,6 +735,19 @@ fn drop_target(
     Some(folder)
 }
 
+/// The folder files from another program land in when they are let go at `at`.
+///
+/// A folder row is that folder and a file row is the folder the file is in, as for a row carried
+/// inside the list. Anywhere else in the panel is the project folder: unlike a move, nothing can go
+/// wrong by dropping a new file at the top of the project, so nothing is refused.
+fn outside_target(drawn: &[Drawn], root: &Path, at: Pos2) -> PathBuf {
+    match drawn.iter().find(|row| row.rect.contains(at)) {
+        Some(row) if row.directory => row.path.clone(),
+        Some(row) => row.path.parent().map_or_else(|| root.to_path_buf(), Path::to_path_buf),
+        None => root.to_path_buf(),
+    }
+}
+
 /// The name of what is being carried, drawn under the pointer.
 fn carried_name(ui: &egui::Ui, area: Rect, source: &Path, at: Pos2, welcome: bool) {
     let name =
@@ -729,6 +796,8 @@ struct RowClick {
     /// Clicked at all, whether or not the file can be opened. What the selection follows, because
     /// a file Unluminous cannot show the text of can still be the one you meant to delete.
     picked: bool,
+    /// How the click picked the row, from the modifier keys held while it was made.
+    pick: Pick,
 }
 
 impl RowClick {
@@ -740,6 +809,7 @@ impl RowClick {
         }
         if self.picked {
             outcome.select = Some(path.to_path_buf());
+            outcome.pick = self.pick;
             outcome.focus = true;
         }
         if directory {
@@ -773,9 +843,21 @@ impl RowClick {
     /// Read a response into a click. Right clicking is separate from left clicking, so a menu can
     /// be opened over a row without also opening the file.
     fn from(response: &egui::Response) -> Self {
+        let modifiers = response.ctx.input(|input| input.modifiers);
+        let pick = if modifiers.shift {
+            Pick::Range
+        } else if modifiers.command {
+            Pick::Toggle
+        } else {
+            Pick::Only
+        };
+        // A click with a modifier held is choosing rows, not opening one: a file manager opens nothing
+        // and folds nothing on it, and a folder that opened as it was added to the choice would move
+        // every row under it.
+        let choosing = pick != Pick::Only;
         Self {
-            open: response.clicked(),
-            twice: response.double_clicked(),
+            open: response.clicked() && !choosing,
+            twice: response.double_clicked() && !choosing,
             menu: response
                 .secondary_clicked()
                 .then(|| response.interact_pointer_pos().or_else(|| response.hover_pos()))
@@ -785,6 +867,7 @@ impl RowClick {
             dropped: response.drag_stopped(),
             pointer: response.interact_pointer_pos(),
             picked: response.clicked() || response.double_clicked(),
+            pick,
         }
     }
 }
@@ -828,12 +911,13 @@ fn folder_row(
     let response = ui.interact(row, ui.id().with(("folder", name, depth)), Sense::click_and_drag());
     let pill = row.shrink2(Vec2::new(view.at(8.0), 1.0));
     let selected = view.selected == Some(entry.path.as_path());
+    let chosen = view.chosen.contains(&entry.path);
     if selected && view.reveal_selected {
         ui.scroll_to_rect(row, None);
     }
     // A folder is never the file that is showing, so it has only the cursor's quiet mark. See the
     // note at the top of this file.
-    if selected || response.hovered() {
+    if selected || chosen || response.hovered() {
         ui.painter().rect_filled(pill, CornerRadius::same(5), color::control());
     }
     if selected && view.keyboard {
@@ -911,6 +995,7 @@ fn file_row(
     }
     let open = view.current == Some(path);
     let selected = view.selected == Some(path);
+    let chosen = view.chosen.iter().any(|row| row == path);
     if (open && view.reveal) || (selected && view.reveal_selected) {
         // The least scrolling that brings the row into view, so a row already on the screen does not
         // move. See the note at the top of this file.
@@ -922,7 +1007,7 @@ fn file_row(
     // the note at the top of this file.
     if open {
         crate::components::controls::pill(ui.painter(), pill, 5);
-    } else if selected || (response.hovered() && openable) {
+    } else if selected || chosen || (response.hovered() && openable) {
         ui.painter().rect_filled(pill, CornerRadius::same(5), color::control());
     }
     // The ring says where the keyboard is, which is the whole reason the explorer has a selection of
@@ -946,16 +1031,17 @@ fn file_row(
             Pos2::new(mark_column(x, view, mark), row.center().y),
             icon,
         ),
+        // A sheet of paper rather than a square (`task-2194`): filled for a file Unluminous knows
+        // nothing about, and with lines of writing on it for one that is text to read.
         None => {
             let marker =
                 if openable { file_marker(path) } else { color::text_faint().gamma_multiply(0.45) };
-            ui.painter().rect_filled(
-                Rect::from_center_size(
-                    Pos2::new(mark_column(x, view, mark), row.center().y),
-                    Vec2::splat(view.at(8.0)),
-                ),
-                CornerRadius::same(2),
+            icon::file_mark(
+                ui.painter(),
+                Pos2::new(mark_column(x, view, mark), row.center().y),
+                crate::services::file_kind::is_prose(path),
                 marker,
+                view.zoom,
             );
         }
     }
@@ -1074,6 +1160,8 @@ mod tests {
             let view = View {
                 current: None,
                 selected: None,
+                chosen: &[],
+                outside_drag: None,
                 keyboard: false,
                 unsaved: false,
                 reveal: false,
