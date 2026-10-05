@@ -431,7 +431,7 @@ catalogue** — and for a program there are none, because the agent has its own.
 second list. A call goes back through `UnluminousApp::run_cli`, **the one place a command turns into a
 change**, so a tool call and a person pressing the same menu entry are the same thing. It is **off**
 unless somebody says so, which is the precedent the page this pane copies already set with its own
-robot button, and `chat.tool_limit` bounds a turn at thirty rounds because a model that decides to list
+robot button, and `chat.tool_limit` bounds a turn at a hundred rounds (`task-2193`) because a model that decides to list
 every file should stop being funded by a pane nobody is watching. A call that *asks to wait*, with a
 flag such as `--wait-for`, is refused with a sentence. A command that answers on a later frame, such
 as `window screenshot`, is held and answered when it is ready or when its own deadline passes, the way a
@@ -483,7 +483,7 @@ pane rather than the size of the transcript.
 **There is no context meter**, and that is the absent-control rule rather than an omission. The page
 this is modelled on draws one because its own server knows the window the model was loaded with; a URL
 and a model name say nothing about a context length, so a bar here would be a fraction of a number
-nobody measured. What is drawn is what the server really reported: the tokens in and the tokens out.
+nobody measured. `task-2193` took away the row of tokens in and out under the composer as well; `plugins view agent-chat` still reports them.
 
 `unluminous-cli plugins run agent-chat …` is the agent's half — `new`, `send`, `stop`, `state`, `messages`,
 `last`, `attach`, `providers`, `use`, `history`, `open`, `remove`, `tools` — and `plugins view
@@ -867,6 +867,23 @@ test asks for `Todos` and the drawing is what shouts. And a sprint or an epic is
 line **by its name**, because that is what is on the screen: `split_off_a_name` takes the longest run of
 arguments that names one, so `sprint-rename August 2nd Half September` needs no id.
 
+### The board is an Inillucent file, and the ticket modal is `rux` at one size (`task-2193`)
+
+`tasks/task-2193-unluminous-issues-tdd.md` is the whole of it. Four things to know before touching the board:
+
+- **The store runs on `inillucent-driver`**, through `services::agent_tasks::db`, which answers in the shape
+  `rusqlite` did so the queries kept their wording. The engine enforces no foreign key, so a delete takes the
+  child rows itself, and it has no database in memory, so a test's board is a file in a temporary folder. A
+  `board.sqlite3` is imported into `board.rdb` beside it the first time it is opened and is never written to.
+- **`new-task` with a title opens nothing.** Only `+ Add Task`, which sends `new-task` with no title, opens the
+  empty ticket in the modal. `describe <key> <text>` writes a description, and `task <key>` reads it back.
+- **The ticket modal is set at 14 points whatever the editor is**, through `Look::at_a_fixed_size`, because it
+  used to follow the editor's font while its fields did not. Its controls are `rux` components, and it asks for
+  at most 1180 by 820 points.
+- **On macOS the menu bar's `Cut`, `Copy`, `Paste` and `Select All` go to the text box with the keyboard**, not
+  to the document behind it, through `give_the_clipboard_entry_to_a_text_box`. AppKit gives the chord to the menu
+  and the window never sees the key.
+
 ### The plus sits after the last view, which is where a browser puts it
 
 `components::space::view_bar` drew it at `area.right() - 18.0`, past the zoom controls at the far end of
@@ -1017,7 +1034,7 @@ does not name is a usage refusal, so filling one in blindly would turn `space li
 exactly as one typing at a terminal is.
 
 **A tasks node draws the window's one board**, through `UiProvider::tab`, and is deliberately not
-per-node: the board is one SQLite file with one watchdog behind it, so a second instance would be a
+per-node: the board is one Inillucent file with one watchdog behind it, so a second instance would be a
 second connection to the same tickets, each refreshing without the other. Two tasks nodes show the same
 board, which they should. With the Agent-Tasks plugin switched off the node says so rather than
 resurrecting it, which is `Plugins::renders`' rule about a Mermaid diagram.

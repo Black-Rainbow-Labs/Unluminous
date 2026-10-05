@@ -76,7 +76,6 @@ pub enum Act {
     Remove(String),
     Choose(String),
     ToggleTools,
-    ToggleStream,
     /// A picture dropped on the pane.
     Dropped(std::path::PathBuf),
     /// Ctrl/Cmd+V in the composer: ask the window for whatever picture is on the clipboard.
@@ -89,6 +88,8 @@ pub enum Act {
     ShowHistory(bool),
     /// Open or close one tool block, by its call id.
     ToggleTool(String),
+    /// Open or close a run of tool calls, by `message::run_key`.
+    ToggleGroup(String),
     /// Open or close one message's thinking.
     ToggleThinking(u64),
     /// Select the whole of one message's words, which is what the menu's `Select All` means.
@@ -521,23 +522,34 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
         // question is **not** in the conversation — see `AgentChat::queued` for why — so it is drawn
         // after it, in the order it was sent, which is where it will be asked.
         let queued = parts.queued.iter().map(|one| (one, true));
-        for (one, waiting) in session.chat.messages.iter().map(|one| (one, false)).chain(queued) {
-            // A tool result is the copy that goes back up the wire; it is drawn inside the block
-            // of the call it answers, so it is not a row of its own.
-            if one.role == unluminous_chat::Role::Tool {
-                continue;
-            }
-            // Worked out once and handed to the drawing, because the height has to be known
-            // before the rectangle can be allocated and running it twice built the message's text
-            // twice. See `message::Shape`.
-            let shape = message::shape(one, parts.state, look, width, waiting);
-            let (rect, _) =
-                ui.allocate_exact_size(Vec2::new(width, shape.height), egui::Sense::hover());
-            // **Only what can be seen is drawn**, which is `task-1666`'s rule and, here, also what
-            // keeps the decoration's canvas the size of the pane: a bubble scrolled a thousand
-            // points away would otherwise record shadows a thousand points outside it.
-            if rect.intersects(ui.clip_rect()) {
-                acts.extend(message::show(one, shape, parts.state, ui, look, rect));
+        let messages = session.chat.messages.iter().map(|one| (one, false)).chain(queued);
+        for row in rows_of(messages) {
+            match row {
+                Row::Said(one, waiting) => {
+                    // Worked out once and handed to the drawing, because the height has to be known
+                    // before the rectangle can be allocated and running it twice built the message's
+                    // text twice. See `message::Shape`.
+                    let shape = message::shape(one, parts.state, look, width, waiting, false);
+                    if shape.height <= 0.0 {
+                        continue;
+                    }
+                    let (rect, _) = ui
+                        .allocate_exact_size(Vec2::new(width, shape.height), egui::Sense::hover());
+                    // **Only what can be seen is drawn**, which is `task-1666`'s rule and, here, also
+                    // what keeps the decoration's canvas the size of the pane: a bubble scrolled a
+                    // thousand points away would otherwise record shadows a thousand points outside it.
+                    if rect.intersects(ui.clip_rect()) {
+                        acts.extend(message::show(one, shape, parts.state, ui, look, rect));
+                    }
+                }
+                Row::Tools(tools) => {
+                    let height = message::run_height(&tools, parts.state, look, width);
+                    let (rect, _) =
+                        ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::hover());
+                    if rect.intersects(ui.clip_rect()) {
+                        acts.extend(message::run_show(&tools, parts.state, ui, look, rect));
+                    }
+                }
             }
             ui.add_space(GAP * look.scale());
         }
@@ -549,6 +561,52 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     parts.state.scrollable = (scrolled.content_size.y - area.height()).max(0.0);
     look.chrome.unclip();
     acts
+}
+
+/// One row of the conversation: something said, or a run of tool calls between two things said.
+#[derive(Debug)]
+enum Row<'a> {
+    /// A message, drawn without its tool calls, and whether it is a question waiting its turn.
+    Said(&'a unluminous_chat::Message, bool),
+    Tools(Vec<&'a unluminous_chat::model::ToolCall>),
+}
+
+/// The conversation as the rows it is drawn in.
+///
+/// `task-2193`: the tool calls an answer made are gathered into one run per gap between two things
+/// said, however many rounds they took — a model that calls three tools, says nothing, calls four more
+/// and then answers made seven blocks in three messages, and that is one run of seven. A message with
+/// nothing in it but its calls is not a row of its own. A tool result is the copy that goes back up the
+/// wire and is drawn inside the call it answers, so it is never a row.
+fn rows_of<'a>(
+    messages: impl Iterator<Item = (&'a unluminous_chat::Message, bool)>,
+) -> Vec<Row<'a>> {
+    use unluminous_chat::Role;
+    let mut rows = Vec::new();
+    let mut run: Vec<&unluminous_chat::model::ToolCall> = Vec::new();
+    let flush = |run: &mut Vec<&'a unluminous_chat::model::ToolCall>, rows: &mut Vec<Row<'a>>| {
+        if !run.is_empty() {
+            rows.push(Row::Tools(std::mem::take(run)));
+        }
+    };
+    for (one, waiting) in messages {
+        if one.role == Role::Tool {
+            continue;
+        }
+        let says_something = waiting
+            || one.role != Role::Assistant
+            || !one.text().trim().is_empty()
+            || !one.thinking.is_empty()
+            || one.failure.is_some()
+            || one.parts.iter().any(|part| matches!(part, unluminous_chat::model::Part::Picture { .. }));
+        if says_something {
+            flush(&mut run, &mut rows);
+            rows.push(Row::Said(one, waiting));
+        }
+        run.extend(one.tools.iter());
+    }
+    flush(&mut run, &mut rows);
+    rows
 }
 
 /// What the pane says when nothing has been said in it.
@@ -796,17 +854,6 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
                     requests.push(Request::Message(problem));
                 }
             }
-            Act::ToggleStream => {
-                let now = !chat.configuration().stream;
-                chat.configuration_mut().stream = now;
-                if let Err(problem) = chat.save_the_configuration() {
-                    requests.push(Request::Message(problem));
-                }
-                requests.push(Request::Message(match now {
-                    true => "The answer arrives a word at a time.".to_owned(),
-                    false => "The answer arrives whole.".to_owned(),
-                }));
-            }
             Act::ToggleTools => {
                 let now = !chat.configuration().tools;
                 chat.configuration_mut().tools = now;
@@ -830,6 +877,11 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
                 }
                 None => chat.ui.opened_tools.push(id),
             },
+            Act::ToggleGroup(key) => {
+                if !chat.ui.opened_groups.remove(&key) {
+                    chat.ui.opened_groups.insert(key);
+                }
+            }
             Act::SelectAll(id) => chat.select_the_whole_message(id),
             Act::ToggleThinking(id) => {
                 match chat.ui.opened_thinking.iter().position(|one| *one == id) {
@@ -944,6 +996,35 @@ fn dropped_pictures(ui: &egui::Ui, area: Rect) -> Vec<std::path::PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `task-2193`: the calls between two things said are one run, however many rounds they took, and a
+    /// message that is nothing but calls is not a row of its own.
+    #[test]
+    fn the_tool_calls_between_two_things_said_are_one_run() {
+        use unluminous_chat::model::{Message, ToolCall};
+        use unluminous_chat::Role;
+        let question = Message::said(1, Role::User, "Make three tickets");
+        let mut first = Message::said(2, Role::Assistant, "Reading the board first.");
+        first.tools.push(ToolCall::new("a", "unluminous_plugins", "{}"));
+        first.tools.push(ToolCall::new("b", "unluminous_plugins", "{}"));
+        let result = Message::said(3, Role::Tool, "{}");
+        let mut quiet = Message::new(4, Role::Assistant);
+        quiet.tools.push(ToolCall::new("c", "unluminous_editor", "{}"));
+        let answer = Message::said(5, Role::Assistant, "Done: task-1, task-2 and task-3.");
+        let messages = [&question, &first, &result, &quiet, &answer];
+        let rows = rows_of(messages.iter().map(|one| (*one, false)));
+        let shape: Vec<String> = rows
+            .iter()
+            .map(|row| match row {
+                Row::Said(one, _) => format!("said {}", one.id),
+                Row::Tools(tools) => format!(
+                    "run {}",
+                    tools.iter().map(|tool| tool.id.as_str()).collect::<Vec<_>>().join("")
+                ),
+            })
+            .collect();
+        assert_eq!(shape, vec!["said 1", "said 2", "run abc", "said 5"]);
+    }
 
     /// `task-1771`: pasting a picture into the composer had never worked, and this is why.
     #[test]

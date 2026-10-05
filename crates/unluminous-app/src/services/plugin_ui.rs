@@ -207,6 +207,30 @@ impl<'a> Look<'a> {
         }
     }
 
+    /// The same look set at one type size, whatever the editor's font and the pane's zoom are.
+    ///
+    /// `task-2193`: the ticket modal followed the editor's font, so on a machine whose editor is set large
+    /// its labels came out far bigger than the words in its fields, which are `rux` controls drawn at
+    /// `rux`'s own sizes. A dialog with a type scale of its own is set in that scale through this, and
+    /// every size a helper derives from `font_size` comes out in proportion to it.
+    pub fn at_a_fixed_size(self, size: f32) -> Self {
+        Self {
+            font_size: size,
+            zoom: crate::settings::DEFAULT_ZOOM,
+            row_height: size::ROW,
+            menu_row_height: MENU_ROW,
+            ..self
+        }
+    }
+
+    /// The same look with nothing recorded into a decoration canvas, so every helper draws with `egui`.
+    ///
+    /// For a surface whose depth is drawn by `rux` instead: a helper that saw a recording canvas would put
+    /// its wells into a canvas nobody rasterises and draw nothing in their place.
+    pub fn flat(self) -> Self {
+        Self { chrome: &NO_CHROME, ..self }
+    }
+
     /// The same look, colouring fenced code with the window's own plugins.
     pub fn colouring_with<'b: 'c, 'c>(
         self,

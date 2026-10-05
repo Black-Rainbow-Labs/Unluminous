@@ -289,7 +289,7 @@ pub fn codex_effort(effort: &str) -> &str {
 /// configuration error asking for the two values — measured on a real window, and the one failure that
 /// no test in the suite could have caught because the suite never launches an agent.
 ///
-/// So the handoff carries the protocol itself. Unluminous's board is a SQLite file driven through the
+/// So the handoff carries the protocol itself. Unluminous's board is an Inillucent file driven through the
 /// command line, and the four things an agent has to be able to do — read the ticket, say it is alive,
 /// comment, and move the card — are four commands named here in full. `{cli}` and `{instance}` are the
 /// two things it cannot work out for itself: where `unluminous-cli` is, since nothing puts it on `PATH`, and

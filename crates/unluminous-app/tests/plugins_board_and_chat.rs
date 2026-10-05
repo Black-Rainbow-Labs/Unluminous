@@ -1525,6 +1525,18 @@ fn a_ticket_can_name_its_jira_issue_and_copy_the_link_to_it() {
     assert_eq!(ticket["task"]["jira"], "ENX-1932", "the ticket names its issue");
     // With no `jira_url` on the row, the key itself is what Copy hands over: there is no configured JIRA site to
     // build an address against, and a guessed one would open nothing.
+    //
+    // The column of fields scrolls, and in this window the JIRA field is below the fold, so the column is
+    // scrolled to the bottom first, the way a person would reach it.
+    let over = harness.get_by_label("Assignee").rect().center();
+    harness.input_mut().events.push(egui::Event::PointerMoved(over));
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -2000.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: egui::Modifiers::default(),
+    });
+    steady(&mut harness);
     harness.get_by_label("Copy issue link").click();
     // Read across frames rather than from the last one. The modal is drawn after the point in the frame where a
     // plugin's copy is handed to egui, so the request the button makes is acted on one frame later, and only that
@@ -1677,6 +1689,8 @@ fn a_description_and_a_comment_are_read_as_markdown_or_as_their_source() {
     did(&mut harness, "plugins pane agent-tasks/board --show");
     did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
     did(&mut harness, "plugins run agent-tasks new-task Read me either way");
+    // `task-2193`: a ticket made with a title is not opened, so it is opened the way a click on its card does.
+    did(&mut harness, "plugins run agent-tasks open task-1");
     steady(&mut harness);
     let board = harness.state_mut();
     let tasks = board
@@ -1755,22 +1769,22 @@ fn choosing_in_each_dropdown_writes_the_field_it_names() {
     did(&mut harness, "plugins run agent-tasks open task-1");
     steady(&mut harness);
 
-    // Choose one option out of one dropdown, by the words a person reads in the list.
-    let pick = |harness: &mut Harness<'static, UnluminousApp>, control: &str, said: &str| {
-        harness.get_by_label(control).click();
-        steady(harness);
-        harness.get_by_label(said).click();
-        steady(harness);
+    // Choose one row of one dropdown, by where it is in the list. See `pick_a_row`.
+    let pick = |harness: &mut Harness<'static, UnluminousApp>, control: &str, row: usize| {
+        pick_a_row(harness, control, row);
     };
 
-    pick(&mut harness, "Priority", "high");
-    pick(&mut harness, "Assignee", "codex");
+    pick(&mut harness, "Priority", 2);
+    pick(&mut harness, "Assignee", 1);
     // The model list follows the agent that was just chosen, which is the reason `Assignee` is chosen first.
+    // Its first row is "The agent's default", so the first model is the second row.
     let codex_model =
         agent::models_for(Assignee::Codex, None).first().cloned().expect("a Codex model");
-    pick(&mut harness, "Model", &codex_model);
-    pick(&mut harness, "Effort", "high");
-    pick(&mut harness, "Status", "IN PROGRESS");
+    pick(&mut harness, "Model", 1);
+    // "Model default", then the five levels: `high` is the fourth row.
+    pick(&mut harness, "Effort", 3);
+    // New, QA Failed, In Progress, Agent Done.
+    pick(&mut harness, "Status", 2);
 
     let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
     assert_eq!(ticket["task"]["priority"], "high", "the Priority dropdown wrote the priority");
@@ -1781,7 +1795,7 @@ fn choosing_in_each_dropdown_writes_the_field_it_names() {
 
     // A dropdown that may hold nothing says so, and choosing that clears the column rather than writing an
     // empty string that nothing knows how to read.
-    pick(&mut harness, "Effort", "Model default");
+    pick(&mut harness, "Effort", 0);
     let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
     assert!(ticket["task"]["effort"].is_null(), "choosing nothing clears it: {}", ticket["task"]);
 }
@@ -1810,40 +1824,23 @@ fn add_task_opens_an_editor_with_every_field_a_ticket_needs() {
             "`{control}` has no control in the editor"
         );
     }
-    // `task-28`: these are **dropdowns** now rather than rows of buttons, so an option is in the widget tree
-    // once its list is open. Each list is opened and read, which is also what proves the control opens at all.
-    for (control, options) in [
-        ("Assignee", ["claude", "codex", "human"].as_slice()),
-        ("Effort", ["low", "medium", "high", "xhigh", "max"].as_slice()),
-        ("Priority", ["low", "medium", "high"].as_slice()),
-    ] {
-        harness.get_by_label(control).click();
-        steady(&mut harness);
-        for option in options {
-            assert!(
-                harness.query_all_by_label_contains(option).count() > 0,
-                "`{option}` is not in the `{control}` list once it is open"
-            );
-        }
-        // Shut it again, or the next one would open into a popup egui has already claimed.
-        harness.get_by_label(control).click();
-        steady(&mut harness);
-    }
-    // And the `Model` list offers the models the chosen agent has, which is what the ticket asked for: it used
-    // to be a text field, so an agent could not be started without an identifier typed from memory.
-    harness.get_by_label("Model").click();
-    steady(&mut harness);
-    for model in unluminous_app::services::agent_tasks::agent::models_for(
+    // `task-28`: these are **dropdowns** rather than rows of buttons. Since `task-2193` they are `rux`'s, whose
+    // rows carry no names, so each list is opened and its last row pressed, and the ticket is read back: that
+    // proves the control opens and that what it offers is what it writes.
+    let claude_models = unluminous_app::services::agent_tasks::agent::models_for(
         unluminous_app::services::agent_tasks::model::Assignee::Claude,
         None,
-    ) {
-        assert!(
-            harness.query_all_by_label_contains(&model).count() > 0,
-            "`{model}` is not in the Model list"
-        );
-    }
-    harness.get_by_label("Model").click();
-    steady(&mut harness);
+    );
+    pick_a_row(&mut harness, "Model", claude_models.len());
+    pick_a_row(&mut harness, "Effort", 5);
+    pick_a_row(&mut harness, "Priority", 2);
+    let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
+    assert_eq!(ticket["task"]["model"], claude_models.last().cloned().unwrap_or_default());
+    assert_eq!(ticket["task"]["effort"], "max");
+    assert_eq!(ticket["task"]["priority"], "high");
+    pick_a_row(&mut harness, "Assignee", 1);
+    let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
+    assert_eq!(ticket["task"]["assignee"], "codex");
     // And each of them writes. Driven through the same function the buttons call.
     let board = harness.state_mut();
     let tasks = board
@@ -1930,11 +1927,16 @@ fn the_ticket_modal_holds_every_section_the_browser_board_has() {
     assert_eq!(folded["terminal"], false);
     assert_eq!(folded["todos"], true, "shutting one leaves the other alone");
     steady(&mut harness);
-    // The heading says which way it is, which is what a disclosure's name is for.
-    assert!(harness.query_all_by_label_contains("Agent terminal, shut").count() > 0);
+    // The heading says which way it is. It is `rux`'s `SubGroup` since `task-2193`, which reports it as the
+    // heading's toggled state rather than in its name.
+    let open = |harness: &Harness<'static, UnluminousApp>| {
+        egui_kittest::kittest::NodeT::accesskit_node(&harness.get_by_label("Agent terminal")).toggled()
+            == Some(egui::accesskit::Toggled::True)
+    };
+    assert!(!open(&harness), "the heading says the section is shut");
     did(&mut harness, "plugins run agent-tasks fold terminal open");
     steady(&mut harness);
-    assert!(harness.query_all_by_label_contains("Agent terminal, open").count() > 0);
+    assert!(open(&harness), "and that it is open");
     assert_eq!(refused(&mut harness, "plugins run agent-tasks fold sideways"), "failed");
     // And the modal closes, leaving the board.
     did(&mut harness, "plugins run agent-tasks close");
@@ -2436,6 +2438,25 @@ fn a_tool_the_model_asked_for_is_run_by_the_window_and_its_answer_comes_back() {
 }
 
 /// Press and let go at one point, the way a person clicks something with no name to find it by.
+/// Open a `rux` dropdown by its name and press one of its rows, counted from the top.
+///
+/// `rux`'s menu rows carry no accessibility names, so a row is found by where it is: the menu opens six points
+/// under its trigger, inside six points of padding, one row a line of `rux::Style::CONTROL` plus sixteen points
+/// tall. `the_endpoint_selector_is_rux_s_dropdown...` measures the chat's dropdown the same way.
+fn pick_a_row(harness: &mut Harness<'static, UnluminousApp>, control: &str, row: usize) {
+    let trigger = harness.get_by_label(control).rect();
+    harness.get_by_label(control).click();
+    steady(harness);
+    let tall = {
+        let painter =
+            egui::Painter::new(harness.ctx.clone(), egui::LayerId::background(), egui::Rect::EVERYTHING);
+        rux::text::measure(&painter, rux::Style::CONTROL, "Ag").y + 16.0
+    };
+    let at = egui::pos2(trigger.center().x, trigger.bottom() + 6.0 + 6.0 + tall * (row as f32 + 0.5));
+    click_at(harness, at);
+    steady(harness);
+}
+
 fn click_at(harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2) {
     let modifiers = egui::Modifiers::default();
     harness.input_mut().events.push(egui::Event::PointerMoved(at));

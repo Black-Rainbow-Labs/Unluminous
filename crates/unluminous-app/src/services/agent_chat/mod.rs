@@ -37,12 +37,23 @@ use store::{Store, Summary};
 
 /// How many rounds of tools one turn may take before the pane stops asking.
 ///
-/// Thirty since `task-2096`, which asks for it. It was eight, and eight rounds ends a turn that reads a
-/// few files, searches and opens a tab before the work it was asked for is done.
-pub const DEFAULT_TOOL_LIMIT: u32 = 30;
+/// A hundred since `task-2193`: *"Tool call Limit is only 20 by default. Needs to be 100."* It was eight
+/// until `task-2096` and thirty after it, and each time the work an agent is asked to do in this window —
+/// reading a project, making tickets, writing their descriptions — ran past it and the turn stopped part
+/// way through with the work half done.
+pub const DEFAULT_TOOL_LIMIT: u32 = 100;
 
-/// The limit every settings file written before `task-2096` holds, because the code wrote it there.
-const OLD_DEFAULT_TOOL_LIMIT: u32 = 8;
+/// The most a person may set it to.
+///
+/// A bound rather than none, because a model that decides to read every file in a large project should
+/// stop being funded by a pane nobody is watching. It was 32, which made a hundred impossible to choose.
+pub const LARGEST_TOOL_LIMIT: u32 = 500;
+
+/// The defaults earlier versions wrote into the settings file: eight before `task-2096` and thirty after.
+///
+/// A file written by one of those versions holds its number because the code wrote it there rather than
+/// because a person chose it, which is the reasoning [`Configuration::of`] gives for moving it once.
+const OLD_DEFAULT_TOOL_LIMITS: [u32; 2] = [8, 30];
 
 /// How many conversations are kept.
 pub const DEFAULT_HISTORY: usize = 20;
@@ -70,8 +81,12 @@ pub const READINESS: std::time::Duration = std::time::Duration::from_secs(5);
 pub struct Configuration {
     pub providers: Vec<Provider>,
     /// Which one is used, by name. Empty means the first.
+    ///
+    /// **There is no stream setting.** `task-2193`: *"The answer should always be streamed."* It was a
+    /// switch on the page and a button in the composer, drawn with a play triangle nobody could read as
+    /// "a word at a time", and turning it off only ever made the pane look stuck until the whole answer
+    /// arrived. A file that still says `stream = false` is read and the line ignored.
     pub chosen: String,
-    pub stream: bool,
     /// Whether Unluminous's own commands are offered to the model. On unless somebody turns it off.
     pub tools: bool,
     /// Whether the commands that run a program of the model's choosing are among them.
@@ -100,7 +115,6 @@ impl Default for Configuration {
         Self {
             providers: Provider::defaults(),
             chosen: String::new(),
-            stream: true,
             // **On**, and the reasoning that made it off is narrowed rather than abandoned.
             //
             // `task-1767` turned it off because the other end of a URL is a server, and Unluminous's
@@ -139,7 +153,9 @@ impl Configuration {
     /// file that is rewritten on every change carries the old default as though it were a choice.
     ///
     /// **2** from `task-2096`, when the tool limit's default moved from eight to thirty.
-    const VERSION: f64 = 2.0;
+    ///
+    /// **3** from `task-2193`, when it moved from thirty to a hundred.
+    const VERSION: f64 = 3.0;
 
     /// Read the configuration out of the plugin's folder, or the defaults when there is no file.
     ///
@@ -170,9 +186,6 @@ impl Configuration {
         if let Some(chosen) = values.text("chosen") {
             configuration.chosen = chosen.trim().to_owned();
         }
-        if let Some(stream) = values.flag("stream") {
-            configuration.stream = stream;
-        }
         if let Some(tools) = values.flag("tools") {
             configuration.tools = tools;
         }
@@ -180,13 +193,13 @@ impl Configuration {
             configuration.shell = shell;
         }
         if let Some(limit) = values.number("tool-limit") {
-            configuration.tool_limit = limit.clamp(1.0, 32.0) as u32;
+            configuration.tool_limit = limit.clamp(1.0, LARGEST_TOOL_LIMIT as f32) as u32;
         }
-        // The same reasoning as the permission below: a file written before version 2 holds eight
-        // because the code wrote eight there, so eight in such a file is the old default and not a
-        // choice. Any other number in it was chosen and is kept.
-        let written_before_version_2 = values.number("version").is_none_or(|version| version < 2.0);
-        if written_before_version_2 && configuration.tool_limit == OLD_DEFAULT_TOOL_LIMIT {
+        // The same reasoning as the permission below: a file written before version 3 holds eight or
+        // thirty because the code wrote that number there, so either in such a file is an old default
+        // and not a choice. Any other number in it was chosen and is kept.
+        let written_before_version_3 = values.number("version").is_none_or(|version| version < 3.0);
+        if written_before_version_3 && OLD_DEFAULT_TOOL_LIMITS.contains(&configuration.tool_limit) {
             configuration.tool_limit = DEFAULT_TOOL_LIMIT;
         }
         // **A file written before `task-2003` does not get to keep the old default.** `full` is what
@@ -237,7 +250,6 @@ impl Configuration {
             values.set(&format!("provider.{index}.max-tokens"), provider.max_tokens.to_string());
         }
         values.set("chosen", self.chosen.clone());
-        values.set("stream", self.stream.to_string());
         values.set("tools", self.tools.to_string());
         values.set("shell", self.shell.to_string());
         values.set("tool-limit", self.tool_limit.to_string());
@@ -417,6 +429,17 @@ pub struct PaneState {
     pub model_select: Option<ModelSelect>,
     /// The tool blocks somebody has opened by hand, by their call id.
     pub opened_tools: Vec<String>,
+    /// The runs of tool calls somebody has opened, by `components::agent_chat::message::run_key`.
+    ///
+    /// A run is shut until it is opened, which is the whole of `task-2193`'s grouping: the calls between
+    /// two things said take one row rather than the pane.
+    pub opened_groups: std::collections::HashSet<String>,
+    /// How tall one line of the prompt really is, measured by the last frame that drew it.
+    ///
+    /// The composer has to say how tall it is before anything is drawn, and the height of a line is a
+    /// fact about the fonts, so the frame that draws it writes it here for the next one to measure with.
+    /// Zero until then, and a guess from the font size stands in.
+    pub prompt_row: f32,
     /// Which message's thinking has been opened.
     pub opened_thinking: Vec<u64>,
     /// The markdown each message came to, kept between frames and keyed on the message.
@@ -1145,14 +1168,9 @@ impl AgentChat {
             &self.session.chat,
             &self.system_prompt(),
             &tools,
-            self.configuration.stream,
+            true,
         );
-        self.client.send(
-            provider,
-            body.to_string(),
-            self.configuration.stream,
-            &Self::the_environment(),
-        );
+        self.client.send(provider, body.to_string(), true, &Self::the_environment());
     }
 
     /// What one turn asks a command-line agent.
@@ -1502,8 +1520,13 @@ impl AgentChat {
             "scrolled": self.ui.scrolled,
             "scrollable": self.ui.scrollable,
             "tools": self.configuration.tools,
-            "stream": self.configuration.stream,
             "streaming": self.session.is_busy(),
+            // What the server reported this conversation has cost. Answered here rather than drawn under the
+            // composer, which `task-2193` asked to be rid of.
+            "usage": {
+                "input": self.session.chat.usage.input,
+                "output": self.session.chat.usage.output,
+            },
             "draft": self.draft,
             // What was sent while an answer was arriving and has not gone yet, so an agent driving
             // the pane can tell "it is waiting its turn" from "it was never sent". `task-2060`.
@@ -1985,18 +2008,21 @@ mod tests_task_2003 {
     /// any other number in it was chosen and is kept, and once version 2 has written the file an
     /// eight in it is a choice too.
     #[test]
-    fn thirty_rounds_is_the_default_and_a_file_holding_the_old_eight_takes_it_once() {
-        assert_eq!(Configuration::default().tool_limit, 30);
+    fn a_hundred_rounds_is_the_default_and_a_file_holding_an_old_default_takes_it_once() {
+        assert_eq!(Configuration::default().tool_limit, 100);
 
         let old = |text: &str| Configuration::of(&Values::parse(text)).0.tool_limit;
-        assert_eq!(old("tool-limit = 8\n"), 30, "no version: eight is the old default");
-        assert_eq!(old("tool-limit = 8\nversion = 1\n"), 30, "version 1: eight is the old default");
+        assert_eq!(old("tool-limit = 8\n"), 100, "no version: eight is the old default");
+        assert_eq!(old("tool-limit = 8\nversion = 1\n"), 100, "version 1: eight is the old default");
+        assert_eq!(old("tool-limit = 30\nversion = 2\n"), 100, "version 2: thirty is the old default");
         assert_eq!(old("tool-limit = 12\nversion = 1\n"), 12, "a number somebody chose is kept");
         assert_eq!(
-            old("tool-limit = 8\nversion = 2\n"),
-            8,
-            "written by version 2, eight was chosen"
+            old("tool-limit = 30\nversion = 3\n"),
+            30,
+            "written by version 3, thirty was chosen"
         );
+        assert_eq!(old("tool-limit = 400\nversion = 3\n"), 400, "a few hundred can be chosen");
+        assert_eq!(old("tool-limit = 9000\nversion = 3\n"), LARGEST_TOOL_LIMIT, "and there is a ceiling");
     }
 
     /// A row Unluminous ships for an agent that is not here is not offered, and nothing is written.
@@ -2185,9 +2211,9 @@ mod tests {
     fn a_file_that_names_no_provider_gets_the_three_that_ship() {
         // A pane with no endpoint cannot do anything, and somebody who wanted none would have
         // switched the plugin off.
+        // A `stream = false` left by an older version is read and ignored: the answer always streams.
         let (configuration, refused) = Configuration::of(&Values::parse("stream = false\n"));
         assert_eq!(configuration.providers.len(), 3);
-        assert!(!configuration.stream);
         assert!(refused.is_empty());
     }
 
@@ -2535,7 +2561,6 @@ mod tests {
         let folder = a_folder("settings-round-trip");
         let mut configuration = Configuration {
             chosen: "codex".to_owned(),
-            stream: false,
             tools: true,
             shell: true,
             tool_limit: 3,
@@ -2551,7 +2576,6 @@ mod tests {
         let (read, refused) = Configuration::read(&folder);
         assert!(refused.is_empty(), "{refused:?}");
         assert_eq!(read.chosen, "codex");
-        assert!(!read.stream);
         assert!(read.tools);
         assert!(read.shell, "the second switch is remembered separately from the first");
         assert_eq!(read.tool_limit, 3);

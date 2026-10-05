@@ -544,12 +544,50 @@ impl UnluminousApp {
         }
     }
 
+    /// Hand `Cut`, `Copy`, `Paste` or `Select All` to the text box that holds the keyboard, and answer
+    /// whether one did.
+    ///
+    /// `task-2193`: *"I can't paste into the description with CMD+v."* On macOS the four are key
+    /// equivalents of the menu bar, so AppKit gives the chord to the menu and the window never sees a
+    /// key press — and these entries went to the editing area's document whatever had the keyboard. So a
+    /// ticket's description, a comment, the chat composer and every other field pasted into the file
+    /// behind them instead. A text box answers these four through `egui`'s own events, so that is what is
+    /// sent: the edit is queued for the field the way its right click menu queues one, and
+    /// `app::hold_the_keyboard` turns it into the event on the next frame. One mechanism for the menu bar
+    /// and the field's own menu, so the two cannot disagree about what a paste into a field does.
+    fn give_the_clipboard_entry_to_a_text_box(&self, action: &Action, ctx: &egui::Context) -> bool {
+        use crate::components::controls::{wants_an_edit, wants_the_keyboard, AskedEdit, FieldEdit};
+        let edit = match action {
+            Action::Cut => FieldEdit::Cut,
+            Action::Copy => FieldEdit::Copy,
+            Action::Paste => FieldEdit::Paste,
+            Action::SelectAll => FieldEdit::SelectAll,
+            _ => return false,
+        };
+        if !crate::app::text_box_has_the_keyboard(ctx) {
+            return false;
+        }
+        let Some(id) = ctx.memory(|memory| memory.focused()) else { return false };
+        let selected = egui::text_edit::TextEditState::load(ctx, id)
+            .and_then(|state| state.cursor.char_range());
+        let asked: AskedEdit = (id, edit, selected);
+        ctx.data_mut(|data| {
+            data.insert_temp(wants_an_edit(), asked);
+            data.insert_temp(wants_the_keyboard(), id);
+        });
+        ctx.request_repaint();
+        true
+    }
+
     /// The Edit menu, which holds the symbol, completion, navigation, highlight and folding
     /// entries as well as the clipboard.
     ///
     /// Reached only from [`Self::run_action`], which is what decides that an action is one of
     /// these, so the last arm cannot happen.
     fn an_edit_entry(&mut self, action: Action, ctx: &egui::Context) {
+        if self.give_the_clipboard_entry_to_a_text_box(&action, ctx) {
+            return;
+        }
         match action {
             Action::GoToDefinition => {
                 let offset = self.caret_offset();

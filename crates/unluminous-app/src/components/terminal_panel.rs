@@ -407,6 +407,7 @@ pub(crate) fn grid(
     response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Grid: {id}"))
     });
+    hold_the_keys_inside_a_modal(ui, &response, focused);
 
     let Some(session) = session else {
         let painter = ui.painter_at(area);
@@ -458,6 +459,43 @@ pub(crate) fn grid(
         outcome.copy = Some(text);
     }
     outcome
+}
+
+/// Keep `egui`'s keyboard focus on a grid drawn inside a modal, while the grid has the keys.
+///
+/// `task-2193`: *"The terminal doesn't have up/down arrow key, etc functionality needed to fully interact
+/// with the terminal."* Everywhere else in the window `app::hold_the_keyboard` owns `egui`'s focus and
+/// claims `Tab` and the arrows, so `egui` never moves its focus when one is pressed. Inside a modal it
+/// steps aside, because a dialog's fields are the ones the keys are for — and so in the ticket modal an
+/// arrow key reached the agent once and also moved `egui`'s focus to the next widget in the dialog. When
+/// that widget was a text box, `text_box_has_the_keyboard` answered yes and the grid stood aside for every
+/// key after it: the first press of Up worked and the second went nowhere.
+///
+/// So the grid does for itself what the holder does for the window: it takes the focus and claims `Tab`,
+/// `Escape` and all four arrows through an `EventFilter`, which is the only way `egui` offers to stop its
+/// own focus moving. Only while the grid is the thing with the keys, and only inside a modal: outside one
+/// the holder is doing this already, and two widgets each taking the focus back every frame would fight.
+fn hold_the_keys_inside_a_modal(ui: &egui::Ui, response: &egui::Response, focused: bool) {
+    let ctx = ui.ctx();
+    let in_its_own_modal = crate::app::a_modal_has_the_keyboard(ctx)
+        && !crate::app::another_modal_has_the_keyboard(ctx, ui.layer_id());
+    if !focused || !in_its_own_modal || crate::app::text_box_has_the_keyboard(ctx) {
+        return;
+    }
+    if ui.memory(|memory| memory.focused()) != Some(response.id) {
+        response.request_focus();
+    }
+    ui.memory_mut(|memory| {
+        memory.set_focus_lock_filter(
+            response.id,
+            egui::EventFilter {
+                tab: true,
+                horizontal_arrows: true,
+                vertical_arrows: true,
+                escape: true,
+            },
+        );
+    });
 }
 
 /// What one screen needs to be painted.

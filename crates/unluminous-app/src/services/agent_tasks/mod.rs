@@ -31,6 +31,7 @@ pub mod agent;
 pub mod board;
 pub mod clock;
 pub mod commands;
+pub mod db;
 pub mod keychain;
 pub mod model;
 pub mod store;
@@ -373,6 +374,39 @@ fn split_off_a_name(
 pub const SWATCHES: &[&str] =
     &["#2F6BFF", "#8B6BFF", "#FF6B5B", "#2FCFA6", "#FFB648", "#FF4F7A", "#6B7686"];
 
+/// What the ticket modal's `rux` controls keep between frames.
+///
+/// `rux` keeps a component's decoration canvases and its icon marks in a `RuxState`, and a dropdown's open
+/// flag in a `SelectState`; both belong to the caller, which is what lets several dropdowns sit in one dialog.
+/// Held on the provider because a component in Unluminous holds nothing — the rule
+/// `services::agent_chat::ModelSelect` keeps for the chat pane's own dropdown.
+pub struct TicketKit {
+    pub rux: rux::RuxState,
+    /// Each dropdown's state, by the name of the field it sets.
+    pub selects: std::collections::HashMap<&'static str, rux::components::SelectState>,
+}
+
+impl TicketKit {
+    /// Drawn in `rux`'s dark theme, deterministically, for the reason `ModelSelect::new` gives: a
+    /// screenshot of the modal must be the same picture on every machine.
+    pub fn new() -> Self {
+        let theme = rux::Theme::named("dark-neumorphic").unwrap_or_else(rux::theme::dark);
+        Self { rux: rux::RuxState::deterministic(theme), selects: Default::default() }
+    }
+}
+
+impl Default for TicketKit {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Debug for TicketKit {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.debug_struct("TicketKit").field("selects", &self.selects.len()).finish()
+    }
+}
+
 /// The Agent-Tasks provider.
 #[derive(Default)]
 pub struct AgentTasks {
@@ -493,6 +527,9 @@ pub struct AgentTasks {
     /// Separate from whether a ticket is open in the detail, because the pane shows a ticket in place and the
     /// modal shows the same ticket over everything: one ticket, two ways of looking at it.
     pub modal_open: bool,
+    /// What the ticket modal's `rux` controls keep between frames: their decoration and which dropdown
+    /// is open. Made the first time the modal is drawn. `task-2193`.
+    pub ticket_kit: Option<TicketKit>,
     /// True while a selection is being dragged out in a ticket's terminal.
     pub terminal_selecting: bool,
     /// True when the ticket's terminal has the keyboard, so typing goes to the agent rather than to the
@@ -1727,7 +1764,7 @@ impl AgentTasks {
 
     /// The tickets one of the listing views shows, as they were last read.
     ///
-    /// **Read on a refresh rather than while drawing.** Querying SQLite inside the draw is the one thing the
+    /// **Read on a refresh rather than while drawing.** Querying the database inside the draw is the one thing the
     /// design says the board never does, and it was doing it twice: once a frame for Backlog and once for
     /// Completed. They are read when the view is chosen and when a command changes something, which is when
     /// they can have changed.

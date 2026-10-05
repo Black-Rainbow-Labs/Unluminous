@@ -12,13 +12,22 @@
 //! end of the prompt is whichever applies. That is `PromptInput`'s own `onStopButtonPress`, and it is
 //! Unluminous's rule about a control that cannot apply being absent rather than present and refusing.
 //!
-//! ## There is no context meter, and that is deliberate
+//! ## There is no context meter and no token count
 //!
 //! The page this is modelled on draws a bar of how much of the model's context has been used, and it
 //! can: its own server knows the window the model was loaded with. Unluminous does not — a URL and a model
 //! name say nothing about a context length — so a bar here would be a fraction of a number nobody
-//! measured. What is drawn instead is what the server really reported: the tokens in and the tokens
-//! out. A control that cannot apply is absent, which is the rule the `F` button already keeps.
+//! measured. A row of the tokens in and out stood in its place until `task-2193`: *"The in/out is not
+//! needed."* It was a number somebody had to learn to ignore, under the one control they came to use.
+//! `plugins view agent-chat` still answers it, for whoever is counting.
+//!
+//! ## The words start at the top of the well
+//!
+//! `task-2193`: *"The prompt input is not formatting well when I add new lines. It has a giant space above
+//! the text as I enter new lines. It should vertically align at the top."* The box was handed a strip one
+//! line tall centred in the well, and a box with four lines in it laid out around that strip — so the well
+//! grew downwards while the words grew both ways. The first line now sits where a one line prompt has it,
+//! and every line after it goes below, so the field grows the way a page does.
 
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
@@ -26,7 +35,6 @@ use super::Act;
 use crate::services::agent_chat::Parts;
 use crate::services::plugin_ui::Look;
 use crate::services::vello_canvas::{Fill, Lift};
-use crate::theme::crisp::CrispPainter;
 use crate::theme::icon;
 
 /// One button in the tool pill: its name, its icon, whether it is switched on, the accent it wears
@@ -36,8 +44,6 @@ type ToolButtonRow = (&'static str, fn(&egui::Painter, Pos2, Color32), bool, Col
 /// The pill of tools, and one round button in it.
 const PILL: f32 = 28.0;
 const TOOL: f32 = 22.0;
-/// The row that says what has been used.
-const USED: f32 = 14.0;
 /// A thumbnail of an attached picture, and the row it sits in.
 const THUMB: f32 = 38.0;
 /// The prompt well when there is one line in it, and the most it grows to.
@@ -56,20 +62,21 @@ const GAP: f32 = 8.0;
 pub fn height(parts: &Parts<'_>, look: &Look<'_>, width: f32) -> f32 {
     let scale = look.scale();
     let mut total = PILL + GAP + prompt_height(parts, look, width);
-    // The row is the token counter and nothing else now, so it appears when there is a count to show. A
-    // failure has a toast of its own — see [`used`].
-    if parts.session.chat.usage.total() > 0 {
-        total += USED + GAP * 0.5;
-    }
     if !parts.attachments.is_empty() {
         total += THUMB + GAP * 0.5;
     }
     total * scale
 }
 
-/// How tall the prompt well is, in unscaled points: one line, grown by what has been typed.
+/// How tall the prompt well is, in unscaled points: one line, grown by one line for each line typed.
+///
+/// A line is as tall as the last frame measured it, so the well grows by exactly what the box inside it
+/// grows by and there is no slack to collect above or below the words.
 fn prompt_height(parts: &Parts<'_>, look: &Look<'_>, width: f32) -> f32 {
-    let per_line = look.font_size * 1.45;
+    let per_line = match parts.state.prompt_row > 0.0 {
+        true => parts.state.prompt_row / look.scale(),
+        false => look.font_size * 0.9 * 1.3 / look.scale(),
+    };
     PROMPT + (prompt_lines(parts.draft, look, width).saturating_sub(1) as f32) * per_line
 }
 
@@ -117,8 +124,10 @@ const SHORT_HINT: &str = "Ask anything…";
 /// well's height has to be known before anything is drawn. `PROMPT_ROWS` is where it stops growing.
 fn prompt_lines(draft: &str, look: &Look<'_>, width: f32) -> usize {
     let across = ((width - SEND - 40.0) / (look.font_size * 0.48)).max(8.0);
+    // `split` rather than `lines`, because `lines` does not count the empty line after a final line
+    // break — and that empty line is exactly where the caret is the moment `Shift+Enter` is pressed.
     draft
-        .lines()
+        .split('\n')
         .map(|line| ((line.chars().count() as f32 / across).ceil() as usize).max(1))
         .sum::<usize>()
         .clamp(1, PROMPT_ROWS)
@@ -137,16 +146,6 @@ pub fn show(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect
         Rect::from_min_size(Pos2::new(area.left(), pen), Vec2::new(area.width(), PILL * scale)),
     ));
     pen += (PILL + GAP) * scale;
-
-    if parts.session.chat.usage.total() > 0 {
-        used(
-            &parts,
-            ui,
-            look,
-            Rect::from_min_size(Pos2::new(area.left(), pen), Vec2::new(area.width(), USED * scale)),
-        );
-        pen += (USED + GAP * 0.5) * scale;
-    }
 
     if !parts.attachments.is_empty() {
         acts.extend(thumbnails(
@@ -170,18 +169,18 @@ pub fn show(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect
 fn pill(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
-    // Three, and each is a **state** rather than a command: whether the model may drive the window, a
-    // picture waiting to go up with the next message, and whether the answer arrives a token at a
-    // time. That is `ChatTool`'s own design — a pill of states reads at a glance where a pill of
+    // Two, and each is a **state** rather than a command: whether the model may drive the window, and a
+    // picture waiting to go up with the next message. There was a third, whether the answer arrives a
+    // token at a time, drawn as a play triangle; `task-2193` asked what it was for and asked for the
+    // answer always to stream, so it is gone. That is `ChatTool`'s own design — a pill of states reads at a glance where a pill of
     // buttons does not. Anything that is not a state is elsewhere: new and the history are in the
     // header, and stop is the send button. The history had a second button here and it was taken
     // away, because two controls doing one thing in one pane is one too many.
     //
-    // **Two of the three are absent when the row is a command-line agent**, which is the
-    // absent-control rule rather than tidiness: `claude` and `codex` bring their own tools, so
-    // handing them Unluminous's would be offering a switch that does nothing, and they always stream, so
-    // a switch that turned it off would be a switch that lies. What is left is the attachment, which
-    // means the same thing either way.
+    // **The tools switch is absent when the row is a command-line agent**, which is the absent-control
+    // rule rather than tidiness: `claude` and `codex` bring their own tools, so handing them Unluminous's
+    // would be offering a switch that does nothing. What is left is the attachment, which means the same
+    // thing either way.
     let an_agent = parts.configuration.provider().is_some_and(|one| one.is_a_program());
     let mut tools: Vec<ToolButtonRow> = Vec::new();
     if !an_agent {
@@ -211,16 +210,10 @@ fn pill(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Ve
             Act::Detach(parts.attachments.last().map(|one| one.id).unwrap_or_default()),
         ));
     }
-    if !an_agent {
-        tools.push((
-            "Stream",
-            icon::run,
-            parts.configuration.stream,
-            look.palette.attached,
-            Act::ToggleStream,
-        ));
-    }
     let buttons = tools.len();
+    if buttons == 0 {
+        return acts;
+    }
     let width = (TOOL * buttons as f32 + 4.0 * (buttons as f32 + 1.0)) * scale;
     let pill = Rect::from_center_size(
         Pos2::new(area.center().x, area.center().y),
@@ -269,40 +262,6 @@ fn pill(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Ve
         centre.x += (TOOL + 4.0) * scale;
     }
     acts
-}
-
-/// What the server said this conversation has cost.
-///
-/// **The tokens, and not the failure.** This row used to be given `problem` when there was one, in the red
-/// the close button is drawn in — one monospace line, centred, cut to the pane's width. `task-1848` shows
-/// what that looks like with a real server error in it: `HTTP 500: server_error: the current` and then
-/// nothing, which reads as a drawing fault rather than as a message. A sentence of any length needs room to
-/// wrap and something to dismiss it with, and `components::toast` is where a failure goes now.
-///
-/// So this row is the tokens in and the tokens out, always, which is the one thing here that is genuinely a
-/// number and genuinely fits.
-fn used(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) {
-    let painter = ui.painter_at(area);
-    let (said, tint) = (
-        format!(
-            "in {} · out {}",
-            thousands(parts.session.chat.usage.input),
-            thousands(parts.session.chat.usage.output)
-        ),
-        look.palette.text_faint,
-    );
-    let font = egui::FontId::monospace(look.font_size * 0.68);
-    let galley = painter.crisp_layout(said, font, tint, area.width());
-    let at = Pos2::new(area.center().x - galley.size().x.min(area.width()) / 2.0, area.top());
-    painter.crisp_galley(at, galley, tint);
-}
-
-/// A number a person reads: `18k` rather than `18342`.
-fn thousands(count: u64) -> String {
-    match count {
-        0..=999 => count.to_string(),
-        _ => format!("{:.1}k", count as f32 / 1000.0),
-    }
 }
 
 /// The pictures waiting to go up, each with a cross that takes it off again.
@@ -389,13 +348,13 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
     }
     let busy = parts.session.is_busy();
     let ready_to_send = !parts.draft.trim().is_empty() || !parts.attachments.is_empty();
-    // **Centred in the well, not measured up from its bottom edge.** `task-2060`: *"The send button
-    // is not vertically alighned (its a bit too low)."* It was five points off the bottom of a
-    // sixty-eight point well, which puts a thirty-two point disc thirteen points below the middle.
-    // The box the words are typed into is centred in the same well by `Ui::put` — see
-    // [`prompt_lines`] — so the disc beside it is centred too, and the two agree at one line and at
-    // six.
-    let middle = area.center().y;
+    // **Centred on the bottom line of the well.** `task-2060`: *"The send button is not vertically
+    // alighned (its a bit too low)."* It was five points off the bottom of a sixty-eight point well,
+    // which puts a thirty-two point disc thirteen points below the middle. With one line typed the
+    // bottom line is the whole well, so the disc is in its middle; with more, the words grow down from
+    // the top and the disc stays beside the last of them, which is where a person finishing a message
+    // is looking.
+    let middle = area.bottom() - PROMPT * scale / 2.0;
     let disc = Rect::from_center_size(
         Pos2::new(area.right() - (SEND / 2.0 + 5.0) * scale, middle),
         Vec2::splat(SEND * scale),
@@ -433,15 +392,23 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         // well is as tall as the draft in it, so it would have asked for letters half the height of a
         // four line message.
         let prompt_font = egui::FontId::proportional(look.font_size * 0.9);
-        let response = ui.put(
-            crate::components::controls::field_takes_the_whole_rectangle_at(
-                ui,
-                field,
-                0.0,
-                prompt_id,
-                "Prompt field",
-                &prompt_font,
-            ),
+        // **The box starts where a one line prompt's line is and grows downwards** — see the module
+        // comment. The first line is centred in the well's first `PROMPT` points, and the box is laid
+        // out top down inside the rest, so a second line goes under the first rather than pushing it up.
+        let row = ui.ctx().fonts_mut(|fonts| fonts.row_height(&prompt_font));
+        parts.state.prompt_row = row;
+        let first = area.top() + ((PROMPT * scale - row) / 2.0).max(4.0 * scale);
+        let words = Rect::from_min_max(
+            Pos2::new(field.left(), first),
+            Pos2::new(field.right(), area.bottom().max(first + row)),
+        );
+        crate::components::controls::claim_the_field(ui, field, prompt_id, "Prompt field");
+        let mut inside = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(words)
+                .layout(egui::Layout::top_down(egui::Align::LEFT)),
+        );
+        let response = inside.add(
             egui::TextEdit::multiline(parts.draft)
                 .id(prompt_id)
                 .frame(egui::Frame::NONE)
@@ -612,11 +579,15 @@ fn send_arrow(painter: &egui::Painter, centre: Pos2, tint: Color32, scale: f32) 
 mod tests {
     use super::*;
 
+    /// `task-2193`: a line break typed at the end of the draft is a line the caret is on, so the well grows
+    /// for it at once rather than on the first letter typed after it.
     #[test]
-    fn a_number_of_tokens_is_written_the_way_a_person_reads_one() {
-        assert_eq!(thousands(0), "0");
-        assert_eq!(thousands(999), "999");
-        assert_eq!(thousands(18_342), "18.3k");
+    fn a_line_break_at_the_end_of_the_draft_is_a_line() {
+        let renderer = crate::services::text_renderer::TextRenderer::new();
+        let look = Look::of(&crate::settings::Settings::new(), &renderer);
+        assert_eq!(prompt_lines("one line", &look, 600.0), 1);
+        assert_eq!(prompt_lines("one line\n", &look, 600.0), 2);
+        assert_eq!(prompt_lines("one\ntwo\nthree", &look, 600.0), 3);
     }
 
     /// A hint too wide for its field is the short one, because a hint that wraps grows the box past the

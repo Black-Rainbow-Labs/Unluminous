@@ -351,8 +351,8 @@ pub(crate) fn comment_section(
                     ui,
                     look,
                     Rect::from_min_size(
-                        Pos2::new(area.min.x, pen - look.font_size - 1.0),
-                        Vec2::new(area.width() - 112.0, 16.0),
+                        Pos2::new(area.min.x, pen - 2.0),
+                        Vec2::new(area.width() - 164.0, 16.0),
                     ),
                     &format!("comment {}", comment.id),
                     !raw_comments.contains(&comment.id),

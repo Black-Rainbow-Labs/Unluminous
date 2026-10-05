@@ -119,6 +119,7 @@ fn pieces(
     look: &Look<'_>,
     width: f32,
     queued: bool,
+    with_tools: bool,
 ) -> (Vec<Piece>, f32, f32, String) {
     let scale = look.scale();
     let mine = message.role == Role::User;
@@ -183,7 +184,12 @@ fn pieces(
             });
         }
     }
-    for (index, tool) in message.tools.iter().enumerate() {
+    // A message whose tools are drawn as a run of their own — see [`run_height`] — leaves them out here.
+    let tools = match with_tools {
+        true => message.tools.as_slice(),
+        false => &[],
+    };
+    for (index, tool) in tools.iter().enumerate() {
         let body = match state.opened_tools.contains(&tool.id) || tool.is_running() {
             true => tool_body_height(state, look, tool, in_block),
             false => 0.0,
@@ -223,15 +229,19 @@ pub struct Shape {
 /// `queued` is a question that has been sent while an answer was still arriving and is waiting its
 /// turn — it is drawn as an ordinary bubble with one quiet line under it saying so. See
 /// [`crate::services::agent_chat::AgentChat::send`].
+///
+/// `with_tools` is false for a message whose tool calls the conversation draws as a run of their own,
+/// which is every message from the model since `task-2193` — see [`run_height`].
 pub fn shape(
     message: &Message,
     state: &mut PaneState,
     look: &Look<'_>,
     width: f32,
     queued: bool,
+    with_tools: bool,
 ) -> Shape {
     let scale = look.scale();
-    let (pieces, bubble, block, text) = pieces(message, state, look, width, queued);
+    let (pieces, bubble, block, text) = pieces(message, state, look, width, queued, with_tools);
     let height = pieces.iter().map(|piece| piece.height() * scale).sum::<f32>()
         + (pieces.len().saturating_sub(1) as f32) * 6.0 * scale;
     Shape { pieces, bubble, block, text, height }
@@ -866,6 +876,195 @@ fn tool_block(
     acts
 }
 
+/// The key a run of tool calls is opened and shut by: the first call's id, which no other run shares.
+pub fn run_key(tools: &[&ToolCall]) -> String {
+    tools.first().map(|tool| format!("run-{}", tool.id)).unwrap_or_default()
+}
+
+/// How tall a run of tool calls is, in points at the size the window is set to.
+///
+/// `task-2193`: *"Tool calls between messages are supposed to be grouped so it doesn't fill the entire
+/// screen with tool calls."* An agent that reads a project before it answers makes a dozen calls, each
+/// across two or three rounds, and each was a block of its own — so the words it said were pushed off the
+/// top of the pane by the list of what it did to find them.
+///
+/// So the calls between two things said are one row. **One call is still its own block**, because a row
+/// saying "1 tool call" over one call is a heading over nothing. **Two or more are one row that opens**,
+/// named for how many there were and which commands they were, and shut until somebody opens it — while
+/// they are running as well, because the row's ring already says one is running and its name says which.
+pub fn run_height(tools: &[&ToolCall], state: &mut PaneState, look: &Look<'_>, width: f32) -> f32 {
+    let scale = look.scale();
+    let in_block = (width * BLOCK_SHARE - 24.0 * scale).max(24.0);
+    let one = |tool: &ToolCall, state: &mut PaneState| -> f32 {
+        let body = match state.opened_tools.contains(&tool.id) || tool.is_running() {
+            true => tool_body_height(state, look, tool, in_block),
+            false => 0.0,
+        };
+        TOOL_ROW + body
+    };
+    match tools {
+        [] => 0.0,
+        [only] => one(only, state) * scale,
+        many => {
+            let mut height = TOOL_ROW;
+            if state.opened_groups.contains(&run_key(many)) {
+                for tool in many {
+                    height += RUN_GAP + one(tool, state);
+                }
+                height += RUN_GAP;
+            }
+            height * scale
+        }
+    }
+}
+
+/// Between one call and the next inside an open run.
+const RUN_GAP: f32 = 4.0;
+
+/// Draw a run of tool calls into `rect`, which [`run_height`] measured.
+pub fn run_show(
+    tools: &[&ToolCall],
+    state: &mut PaneState,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    rect: Rect,
+) -> Vec<Act> {
+    let scale = look.scale();
+    let width = rect.width() * BLOCK_SHARE;
+    let block = Rect::from_min_size(rect.min, Vec2::new(width, rect.height()));
+    let open_one = |tool: &ToolCall, state: &PaneState| {
+        state.opened_tools.contains(&tool.id) || tool.is_running()
+    };
+    if let [only] = tools {
+        let open = open_one(only, state);
+        return tool_block(only, state, ui, look, block, open);
+    }
+    let mut acts = Vec::new();
+    let key = run_key(tools);
+    let open = state.opened_groups.contains(&key);
+    if look.chrome.is_recording() {
+        look.chrome.sunken(block, 10.0 * scale, look.palette.board_well, Lift::Small);
+    } else {
+        ui.painter().rect(
+            block,
+            CornerRadius::same((10.0 * scale) as u8),
+            look.ground(look.palette.board_well),
+            Stroke::new(1.0, look.palette.control_border),
+            egui::StrokeKind::Inside,
+        );
+    }
+    let head = Rect::from_min_size(block.min, Vec2::new(block.width(), TOOL_ROW * scale));
+    let response = ui.interact(head, ui.id().with(("agent-chat-tool-run", &key)), Sense::click());
+    let running = tools.iter().find(|tool| tool.is_running());
+    let failed = tools.iter().filter(|tool| tool.failed).count();
+    let said = run_summary(tools);
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(
+            egui::WidgetType::Button,
+            true,
+            open,
+            format!("Tool calls: {said}"),
+        )
+    });
+    let painter = painter_in(ui, block);
+    // The ring is the run's state, the way it is one call's: blue while one is running, red when one
+    // failed, git's green when every one worked.
+    let tint = match (running.is_some(), failed > 0) {
+        (true, _) => look.palette.board_accent,
+        (false, true) => crate::theme::color::close(),
+        (false, false) => crate::theme::color::git_added(),
+    };
+    let disc = Pos2::new(head.left() + (5.0 + TOOL_RING) * scale, head.center().y);
+    if look.chrome.is_recording() {
+        look.chrome.raised(
+            Rect::from_center_size(disc, Vec2::splat(TOOL_RING * 2.0 * scale)),
+            TOOL_RING * scale,
+            Fill::Solid(look.palette.board_card),
+            Lift::Small,
+        );
+    }
+    painter.circle_stroke(disc, TOOL_RING * scale, Stroke::new(1.0 * scale, tint));
+    icon::wrench_at(&painter, disc, tint, scale * TOOL_RING / 9.0);
+    let left = disc.x + (TOOL_RING + 7.0) * scale;
+    let right = head.right() - 24.0 * scale;
+    let timing = match running {
+        Some(tool) => format!("running {}", tool.name),
+        None => {
+            let took: u64 = tools.iter().filter_map(|tool| tool.took).sum();
+            format!("{:.1}s", took as f32 / 1000.0)
+        }
+    };
+    let timing_font = egui::FontId::monospace(look.font_size * 0.68);
+    let timing_width =
+        painter.layout_no_wrap(timing.clone(), timing_font.clone(), look.palette.text_faint).size().x;
+    painter.crisp_text(
+        Pos2::new(right - timing_width, head.center().y),
+        egui::Align2::LEFT_CENTER,
+        &timing,
+        timing_font,
+        look.palette.text_faint,
+    );
+    // The count and the commands, cut to the room left of the timing rather than wrapped: a run is one
+    // row, and a second line would make it the thing it exists to stop being.
+    let words = painter.crisp_layout_no_wrap(
+        said.clone(),
+        egui::FontId::proportional(look.font_size * 0.82),
+        look.palette.text_control,
+    );
+    let room = (right - timing_width - 10.0 * scale - left).max(0.0);
+    painter
+        .with_clip_rect(Rect::from_min_max(
+            Pos2::new(left, head.top()),
+            Pos2::new(left + room, head.bottom()),
+        ))
+        .crisp_galley(
+            Pos2::new(left, head.center().y - words.size().y / 2.0),
+            words,
+            look.palette.text_control,
+        );
+    icon::disclosure_at(
+        &painter,
+        Pos2::new(head.right() - 12.0 * scale, head.center().y),
+        open,
+        look.palette.text_faint,
+        scale,
+    );
+    if response.clicked() {
+        acts.push(Act::ToggleGroup(key));
+    }
+    if open {
+        let in_block = (width - 24.0 * scale).max(24.0);
+        let mut pen = head.bottom() + RUN_GAP * scale;
+        for tool in tools {
+            let opened = open_one(tool, state);
+            let body = match opened {
+                true => tool_body_height(state, look, tool, in_block),
+                false => 0.0,
+            };
+            let height = (TOOL_ROW + body) * scale;
+            let at = Rect::from_min_size(
+                Pos2::new(block.left() + 8.0 * scale, pen),
+                Vec2::new(block.width() - 16.0 * scale, height),
+            );
+            acts.extend(tool_block(tool, state, ui, look, at, opened));
+            pen += height + RUN_GAP * scale;
+        }
+    }
+    acts
+}
+
+/// What a shut run says: how many calls, and which commands, each named once in the order first used.
+fn run_summary(tools: &[&ToolCall]) -> String {
+    let mut names: Vec<&str> = Vec::new();
+    for tool in tools {
+        let name = tool.name.trim_start_matches("unluminous_");
+        if !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    format!("{} tool calls \u{b7} {}", tools.len(), names.join(", "))
+}
+
 /// What the server said when it refused, in its own words.
 fn failure(
     message: &Message,
@@ -1021,7 +1220,7 @@ mod tests {
             settings.font_size = font_size;
             let look = Look::of(&settings, &renderer);
             let mut state = PaneState::default();
-            let (_, bubble, _, _) = pieces(&answer, &mut state, &look, 900.0, false);
+            let (_, bubble, _, _) = pieces(&answer, &mut state, &look, 900.0, false, true);
 
             // What `show` will lay the words into, computed the way `show` computes it.
             let inside = bubble - PAD_X * 2.0 * look.scale();
@@ -1106,8 +1305,8 @@ mod tests {
         question.parts.push(Part::Text("Are you there?".to_string()));
 
         let mut state = PaneState::default();
-        let (plain, bubble, _, _) = pieces(&question, &mut state, &look, 400.0, false);
-        let (waiting, waiting_bubble, _, _) = pieces(&question, &mut state, &look, 400.0, true);
+        let (plain, bubble, _, _) = pieces(&question, &mut state, &look, 400.0, false, true);
+        let (waiting, waiting_bubble, _, _) = pieces(&question, &mut state, &look, 400.0, true, true);
         assert_eq!(waiting.len(), plain.len() + 1);
         assert_eq!(waiting.last().copied(), Some(Piece::Queued));
         assert_eq!(bubble, waiting_bubble, "the bubble is the same bubble");

@@ -209,16 +209,6 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
             ui,
             inner,
             pen,
-            "Stream the answer",
-            "On, the answer arrives a word at a time. Off, it arrives whole — which is what a proxy \
-             that will not stream needs. A program always streams.",
-            &mut configuration.stream,
-            &mut changed,
-        );
-        pen = a_switch(
-            ui,
-            inner,
-            pen,
             "Let the model use Unluminous's own commands",
             "On unless you turn it off. The model is offered Unluminous's whole command catalogue as \
              tools, so it can open a file, read the git status or run a search — through exactly the \
@@ -240,10 +230,11 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
         );
 
         let mut limit = configuration.tool_limit.to_string();
-        if let Some(typed) = one_field(ui, look, inner, &mut pen, "Tool rounds", &mut limit, "30") {
+        if let Some(typed) = one_field(ui, look, inner, &mut pen, "Tool rounds", &mut limit, "100") {
             if let Ok(rounds) = typed.trim().parse::<u32>() {
                 if rounds > 0 {
-                    configuration.tool_limit = rounds.min(32);
+                    configuration.tool_limit =
+                        rounds.min(crate::services::agent_chat::LARGEST_TOOL_LIMIT);
                     changed = true;
                 }
             }

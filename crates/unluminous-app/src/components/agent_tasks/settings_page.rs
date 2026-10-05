@@ -73,7 +73,7 @@ fn rows(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Reque
     let outcome = row(ui, look, area, &mut pen, Row {
         name: "Board file",
         value: &where_it_is,
-        explanation: "One SQLite file. Copy the path to back it up, `Reveal` to open the folder it is in, or set \
+        explanation: "One Inillucent file. Copy the path to back it up, `Reveal` to open the folder it is in, or set \
                       `database` in this plugin's own settings.conf to move it.",
         monospace: true,
         copy: true,

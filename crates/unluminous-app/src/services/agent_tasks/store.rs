@@ -1,27 +1,42 @@
-//! The board's database: one SQLite file, and every query there is.
+//! The board's database: one Inillucent file, and every query there is.
 //!
 //! No user interface dependency, so every rule below is a test with a temporary file and no window.
-//! `tasks/agent-tasks-plugin-tdd.md` §4 is the design.
+//! `tasks/agent-tasks-plugin-tdd.md` §4 is the design, and `tasks/task-2193-unluminous-issues-tdd.md`
+//! records the move from SQLite to Inillucent.
 //!
-//! ## One file, with SQLite compiled in
+//! ## One file, with the engine compiled in
 //!
 //! The application being replaced needs a PostgreSQL server on a port, a role and a schema, and its
 //! own notes record what that cost: the container on 5432 stored its data on tmpfs, so every restart
-//! destroyed the database. A text editor does not ask for a database server. `rusqlite` with the
-//! `bundled` feature compiles SQLite's own C into Unluminous, so there is nothing to install, nothing
-//! listening and nothing to be running, and the board is one file that can be copied and backed up.
+//! destroyed the database. A text editor does not ask for a database server. Inillucent is a library
+//! inside Unluminous, so there is nothing to install, nothing listening and nothing to be running, and
+//! the board is one file that can be copied and backed up.
 //!
-//! ## Three differences from the schema being replaced, each deliberate
+//! ## Inillucent rather than SQLite
 //!
-//! `SERIAL` becomes `INTEGER PRIMARY KEY AUTOINCREMENT`. `TIMESTAMPTZ` becomes `TEXT` holding an ISO
-//! 8601 instant in UTC, because SQLite has no `now()` that returns an instant with an offset — which
-//! also means the caller hands in the instant, and that is what makes every rule above this file
-//! testable with a fixed clock. `JSONB` becomes `TEXT`.
+//! `task-2193`: *"Agent tasks should use inillucent, not sqlite."* The board was a `rusqlite` file
+//! until then. Inillucent speaks SQLite's dialect, so the schema and the queries below are the same
+//! text, and `db` is the small seam that lets them read the same way. Three things the engine does
+//! differently, each handled where it matters:
+//!
+//! - **It enforces no foreign key.** The `REFERENCES … ON DELETE CASCADE` in the schema is kept as a
+//!   statement of intent, and every delete that relied on it removes the child rows itself:
+//!   [`Store::delete_task`] and [`Store::clear_the_tickets`]. A board that relied on the cascade would
+//!   keep a deleted ticket's todos for ever.
+//! - **It has no database in memory.** [`Store::in_memory`] is a file in a folder of its own under the
+//!   temporary folder, removed when the store is dropped.
+//! - **It does not open a SQLite file.** A board that is still `board.sqlite3` is imported into
+//!   `board.rdb` beside it the first time it is opened — see [`Store::open`] — and the SQLite file is
+//!   left exactly where it was, so nothing is lost if the import is ever wrong.
+//!
+//! `SERIAL` becomes `INTEGER PRIMARY KEY AUTOINCREMENT`, `TIMESTAMPTZ` becomes `TEXT` holding an ISO
+//! 8601 instant in UTC, and `JSONB` becomes `TEXT`, as they did for SQLite. The caller hands in the
+//! instant, which is what makes every rule above this file testable with a fixed clock.
 //!
 //! ## Migration is additive and nothing is ever dropped
 //!
 //! [`Store::open`] runs `CREATE TABLE IF NOT EXISTS` for every table and then adds any column a later
-//! version needs, guarded by a read of `pragma_table_info` because SQLite has no
+//! version needs, guarded by a read of `pragma_table_info` because there is no
 //! `ADD COLUMN IF NOT EXISTS`. That is the shape the application being replaced chose and it is right:
 //! a board somebody has been using is not a thing to recreate. A `meta` row records the schema version
 //! the file was last written by, and a file from a **newer** Unluminous is refused with a message rather
@@ -29,13 +44,12 @@
 //!
 //! ## Every query is a named function here, and there is no SQL anywhere else
 //!
-//! That is what keeps the drawing free of a query language and what makes the store swappable: if the
-//! board ever has to read the browser's API instead of a file, everything above this file is unchanged.
+//! That is what keeps the drawing free of a query language and what makes the store swappable. The
+//! move to Inillucent changed nothing above this file.
 
 use std::path::{Path, PathBuf};
 
-use rusqlite::{params, Connection, OptionalExtension};
-
+use super::db::{params, Db, Optional, Outcome, Problem, Row};
 use super::model::{
     Assignee, Author, Board, Comment, Epic, Lane, Priority, Source, Sprint, SprintStatus, Status,
     Task, Todo,
@@ -48,13 +62,30 @@ use super::model::{
 pub const SCHEMA_VERSION: i64 = 2;
 
 /// The file name inside the plugin's own folder.
-pub const FILE: &str = "board.sqlite3";
+pub const FILE: &str = "board.rdb";
+
+/// What the board was called while it was a SQLite file, which [`Store::open`] imports from.
+pub const SQLITE_FILE: &str = "board.sqlite3";
 
 /// The board, open.
 #[derive(Debug)]
 pub struct Store {
-    connection: Connection,
+    connection: Db,
     path: PathBuf,
+    /// The folder a board in memory lives in. Declared after `connection` on purpose: fields are
+    /// dropped in the order they are declared, so the database is closed before its folder is removed,
+    /// which Windows insists on.
+    _scratch: Option<Scratch>,
+}
+
+/// A folder this store made for itself, removed when the store goes.
+#[derive(Debug)]
+struct Scratch(PathBuf);
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 impl Store {
@@ -62,35 +93,50 @@ impl Store {
     ///
     /// The folder is created too, because a plugin's folder does not exist until something writes to
     /// it, and a person who moved the database in Settings named a folder rather than making one.
+    ///
+    /// **A board that is still a SQLite file is imported first.** `path` may name the old
+    /// `board.sqlite3` itself, which is what a person who moved the database in Settings has written
+    /// down, or a `board.rdb` that is not there yet beside a `board.sqlite3` that is, which is every
+    /// board made before `task-2193`. Either way the rows are read into `board.rdb` and the SQLite file
+    /// is never written to. See [`where_the_board_is`].
     pub fn open(path: impl Into<PathBuf>) -> Result<Self, String> {
-        let path = path.into();
-        if let Some(folder) = path.parent() {
+        let asked = path.into();
+        if let Some(folder) = asked.parent() {
             std::fs::create_dir_all(folder)
                 .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
         }
-        let connection = Connection::open(&path)
-            .map_err(|problem| format!("{} could not be opened: {problem}", path.display()))?;
-        Self::prepare(connection, path)
+        let (path, import_from) = where_the_board_is(&asked);
+        let connection = match &import_from {
+            Some(old) => import(old, &path)?,
+            None => Db::open(&path)
+                .map_err(|problem| format!("{} could not be opened: {problem}", path.display()))?,
+        };
+        Self::prepare(connection, path, None)
     }
 
-    /// A board in memory, which is what a test opens.
+    /// A board nobody else will open, which is what a test opens.
+    ///
+    /// Inillucent has no database in memory, so this is a file in a folder of its own under the
+    /// temporary folder, and the folder is removed when the store is dropped.
     pub fn in_memory() -> Result<Self, String> {
-        let connection = Connection::open_in_memory()
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let folder = std::env::temp_dir().join(format!(
+            "unluminous-board-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder)
+            .map_err(|problem| format!("a board in memory could not be made: {problem}"))?;
+        let path = folder.join(FILE);
+        let connection = Db::open(&path)
             .map_err(|problem| format!("a board in memory could not be opened: {problem}"))?;
-        Self::prepare(connection, PathBuf::from(":memory:"))
+        Self::prepare(connection, PathBuf::from(":memory:"), Some(Scratch(folder)))
     }
 
-    fn prepare(connection: Connection, path: PathBuf) -> Result<Self, String> {
-        // Foreign keys are off by default in SQLite, and the cascade that deletes a ticket's todos and
-        // comments with it is a foreign key. Off, a deleted ticket would leave its rows behind.
-        connection
-            .execute_batch(
-                "PRAGMA foreign_keys = ON;\n\
-                 PRAGMA journal_mode = WAL;\n\
-                 PRAGMA busy_timeout = 3000;",
-            )
-            .map_err(|problem| format!("the board could not be prepared: {problem}"))?;
-        let store = Self { connection, path };
+    fn prepare(connection: Db, path: PathBuf, scratch: Option<Scratch>) -> Result<Self, String> {
+        let store = Self { connection, path, _scratch: scratch };
         store.create()?;
         store.check_version()?;
         migrate(&store.connection)?;
@@ -193,12 +239,9 @@ impl Store {
             "{TASK_COLUMNS} WHERE ((?1 IS NULL AND t.sprint_id IS NULL) OR t.sprint_id = ?1) \
              ORDER BY t.status, t.position, t.id"
         );
-        let mut statement = self.prepared(&sql)?;
-        let rows = statement
-            .query_map(params![sprint], read_task)
-            .map_err(|problem| format!("the board could not be read: {problem}"))?;
-        rows.collect::<Result<Vec<Task>, _>>()
-            .map_err(|problem| format!("a card could not be read: {problem}"))
+        self.connection
+            .query_map(&sql, params![sprint], read_task)
+            .map_err(|problem| format!("the board could not be read: {problem}"))
     }
 
     /// Every ticket with no sprint, which is the Backlog view.
@@ -216,19 +259,16 @@ impl Store {
         self.tasks_by(&sql, params![])
     }
 
-    fn tasks_by(&self, sql: &str, arguments: &[&dyn rusqlite::ToSql]) -> Result<Vec<Task>, String> {
-        let mut statement = self.prepared(sql)?;
-        let rows = statement
-            .query_map(arguments, read_task)
-            .map_err(|problem| format!("the tickets could not be read: {problem}"))?;
-        rows.collect::<Result<Vec<Task>, _>>()
-            .map_err(|problem| format!("a ticket could not be read: {problem}"))
+    fn tasks_by(&self, sql: &str, arguments: Vec<inillucent_driver::Value>) -> Result<Vec<Task>, String> {
+        self.connection
+            .query_map(sql, arguments, read_task)
+            .map_err(|problem| format!("the tickets could not be read: {problem}"))
     }
 
     pub fn task(&self, id: i64) -> Result<Option<Task>, String> {
         let sql = format!("{TASK_COLUMNS} WHERE t.id = ?1");
-        self.prepared(&sql)?
-            .query_row(params![id], read_task)
+        self.connection
+            .query_row(&sql, params![id], read_task)
             .optional()
             .map_err(|problem| format!("ticket {id} could not be read: {problem}"))
     }
@@ -236,41 +276,39 @@ impl Store {
     /// The ticket called `task-27`, which is how the command line and an agent name one.
     pub fn task_by_key(&self, key: &str) -> Result<Option<Task>, String> {
         let sql = format!("{TASK_COLUMNS} WHERE t.task_key = ?1");
-        self.prepared(&sql)?
-            .query_row(params![key], read_task)
+        self.connection
+            .query_row(&sql, params![key], read_task)
             .optional()
             .map_err(|problem| format!("{key} could not be read: {problem}"))
     }
 
     pub fn todos(&self, task: i64) -> Result<Vec<Todo>, String> {
-        let mut statement = self.prepared(
-            "SELECT id, task_id, text, done, position, created_at FROM task_todo \
-             WHERE task_id = ?1 ORDER BY position, id",
-        )?;
-        let rows = statement
-            .query_map(params![task], |row| {
+        self.connection
+            .query_map(
+                "SELECT id, task_id, text, done, position, created_at FROM task_todo \
+                 WHERE task_id = ?1 ORDER BY position, id",
+                params![task],
+                |row| {
                 Ok(Todo {
                     id: row.get(0)?,
                     task_id: row.get(1)?,
                     text: row.get(2)?,
-                    done: row.get::<_, i64>(3)? != 0,
+                    done: row.get::<i64>(3)? != 0,
                     position: row.get(4)?,
                     created_at: row.get(5)?,
                 })
             })
-            .map_err(|problem| format!("the todos could not be read: {problem}"))?;
-        rows.collect::<Result<Vec<Todo>, _>>()
-            .map_err(|problem| format!("a todo could not be read: {problem}"))
+            .map_err(|problem| format!("the todos could not be read: {problem}"))
     }
 
     /// A ticket's comments, oldest first, which is the order a conversation is read in.
     pub fn comments(&self, task: i64) -> Result<Vec<Comment>, String> {
-        let mut statement = self.prepared(
-            "SELECT id, task_id, author, body, created_at FROM task_comment \
-             WHERE task_id = ?1 ORDER BY created_at, id",
-        )?;
-        let rows = statement
-            .query_map(params![task], |row| {
+        self.connection
+            .query_map(
+                "SELECT id, task_id, author, body, created_at FROM task_comment \
+                 WHERE task_id = ?1 ORDER BY created_at, id",
+                params![task],
+                |row| {
                 let author: String = row.get(2)?;
                 Ok(Comment {
                     id: row.get(0)?,
@@ -280,16 +318,12 @@ impl Store {
                     created_at: row.get(4)?,
                 })
             })
-            .map_err(|problem| format!("the comments could not be read: {problem}"))?;
-        rows.collect::<Result<Vec<Comment>, _>>()
-            .map_err(|problem| format!("a comment could not be read: {problem}"))
+            .map_err(|problem| format!("the comments could not be read: {problem}"))
     }
 
     pub fn epics(&self) -> Result<Vec<Epic>, String> {
-        let mut statement =
-            self.prepared("SELECT id, name, color, position FROM task_epic ORDER BY position, id")?;
-        let rows = statement
-            .query_map([], |row| {
+        self.connection
+            .query_map("SELECT id, name, color, position FROM task_epic ORDER BY position, id", [], |row| {
                 Ok(Epic {
                     id: row.get(0)?,
                     name: row.get(1)?,
@@ -297,20 +331,17 @@ impl Store {
                     position: row.get(3)?,
                 })
             })
-            .map_err(|problem| format!("the epics could not be read: {problem}"))?;
-        rows.collect::<Result<Vec<Epic>, _>>()
-            .map_err(|problem| format!("an epic could not be read: {problem}"))
+            .map_err(|problem| format!("the epics could not be read: {problem}"))
     }
 
     pub fn sprints(&self) -> Result<Vec<Sprint>, String> {
-        let mut statement = self.prepared(
-            "SELECT id, name, status, position, created_at FROM sprint ORDER BY position, id",
-        )?;
-        let rows = statement
-            .query_map([], read_sprint)
-            .map_err(|problem| format!("the sprints could not be read: {problem}"))?;
-        rows.collect::<Result<Vec<Sprint>, _>>()
-            .map_err(|problem| format!("a sprint could not be read: {problem}"))
+        self.connection
+            .query_map(
+                "SELECT id, name, status, position, created_at FROM sprint ORDER BY position, id",
+                [],
+                read_sprint,
+            )
+            .map_err(|problem| format!("the sprints could not be read: {problem}"))
     }
 
     /// The sprint the board shows, which is the one that is active.
@@ -318,12 +349,14 @@ impl Store {
     /// `None` with none, and the board then shows every ticket that has no sprint, so a board nobody
     /// has organised into sprints still draws its cards rather than four empty lanes.
     pub fn active_sprint(&self) -> Result<Option<Sprint>, String> {
-        self.prepared(
-            "SELECT id, name, status, position, created_at FROM sprint \
-             WHERE status = 'active' ORDER BY position, id LIMIT 1",
-        )?
-        .query_row([], read_sprint)
-        .optional()
+        self.connection
+            .query_row(
+                "SELECT id, name, status, position, created_at FROM sprint \
+                 WHERE status = 'active' ORDER BY position, id LIMIT 1",
+                [],
+                read_sprint,
+            )
+            .optional()
         .map_err(|problem| format!("the active sprint could not be read: {problem}"))
     }
 
@@ -463,16 +496,14 @@ impl Store {
 
     /// The ids in one lane, in the order they are drawn.
     fn lane_order(&self, status: Status, sprint: Option<i64>) -> Result<Vec<i64>, String> {
-        let mut statement = self.prepared(
-            "SELECT id FROM task WHERE status = ?1 AND ((?2 IS NULL AND sprint_id IS NULL) OR sprint_id = ?2) \
-             ORDER BY position, id",
-        )?;
-        let ids: Vec<i64> = statement
-            .query_map(params![status.name(), sprint], |row| row.get(0))
-            .map_err(|problem| format!("the lane could not be read: {problem}"))?
-            .collect::<Result<Vec<i64>, _>>()
-            .map_err(|problem| format!("the lane could not be read: {problem}"))?;
-        Ok(ids)
+        self.connection
+            .query_map(
+                "SELECT id FROM task WHERE status = ?1 AND ((?2 IS NULL AND sprint_id IS NULL) OR sprint_id = ?2) \
+                 ORDER BY position, id",
+                params![status.name(), sprint],
+                |row| row.get(0),
+            )
+            .map_err(|problem| format!("the lane could not be read: {problem}"))
     }
 
     /// Write 0, 1, 2 down a lane, so its positions are contiguous and hold the order given.
@@ -499,9 +530,9 @@ impl Store {
     /// and a board with no sprint draws "No active sprint" — so taking the sprint would make an empty board look
     /// broken rather than empty.
     ///
-    /// The todos and comments go with the tickets through the `ON DELETE CASCADE` on their foreign keys, which is
-    /// on because `Store::prepare` turns foreign keys on. The counts are read first so the answer can say what was
-    /// deleted, since after the statement there is nothing left to count.
+    /// The todos and comments are deleted here rather than by the `ON DELETE CASCADE` the schema names, because
+    /// Inillucent enforces no foreign key. The counts are read first so the answer can say what was deleted,
+    /// since after the statements there is nothing left to count.
     pub fn clear_the_tickets(&self) -> Result<(i64, i64, i64), String> {
         let count = |table: &str| -> Result<i64, String> {
             self.connection
@@ -511,9 +542,14 @@ impl Store {
         let tickets = count("task")?;
         let todos = count("task_todo")?;
         let comments = count("task_comment")?;
-        self.connection
-            .execute("DELETE FROM task", [])
-            .map_err(|problem| format!("the tickets could not be deleted: {problem}"))?;
+        self.connection.in_transaction(|| {
+            for table in ["task_todo", "task_comment", "task"] {
+                self.connection
+                    .execute(&format!("DELETE FROM {table}"), [])
+                    .map_err(|problem| format!("the tickets could not be deleted: {problem}"))?;
+            }
+            Ok(())
+        })?;
         Ok((tickets, todos, comments))
     }
 
@@ -522,15 +558,15 @@ impl Store {
     /// Answers where the copy is. Refused for a board in memory, which has no file to copy and which is every
     /// board a test opens unless it asks for one on disk.
     ///
-    /// `VACUUM INTO` rather than `std::fs::copy`, because this board is in write ahead logging mode: the newest
-    /// rows may be in `board.sqlite3-wal` rather than in the file itself, so copying the one file can copy a
-    /// board that is missing whatever was written most recently. `VACUUM INTO` asks SQLite for a complete copy.
+    /// The engine's own backup rather than `std::fs::copy`, because the newest rows may still be in the log beside
+    /// the file rather than in the file itself, so copying the one file can copy a board that is missing whatever
+    /// was written most recently. `backup_to` asks Inillucent for a complete copy.
     pub fn copy_the_file(&self, to: &Path) -> Result<PathBuf, String> {
         if self.path == Path::new(":memory:") {
             return Err("this board is in memory, so there is no file to copy".to_owned());
         }
         self.connection
-            .execute("VACUUM INTO ?1", params![to.to_string_lossy()])
+            .backup_to(to)
             .map_err(|problem| format!("{} could not be written: {problem}", to.display()))?;
         Ok(to.to_path_buf())
     }
@@ -622,11 +658,24 @@ impl Store {
         Ok(())
     }
 
+    /// Delete a ticket with its todos and its comments.
+    ///
+    /// The two child tables are emptied here rather than by the schema's `ON DELETE CASCADE`, because
+    /// Inillucent enforces no foreign key and a delete that left them would leave rows naming a ticket that
+    /// is gone.
     pub fn delete_task(&self, id: i64) -> Result<(), String> {
-        self.connection
-            .execute("DELETE FROM task WHERE id = ?1", params![id])
-            .map_err(|problem| format!("ticket {id} could not be deleted: {problem}"))?;
-        Ok(())
+        self.connection.in_transaction(|| {
+            for sql in [
+                "DELETE FROM task_todo WHERE task_id = ?1",
+                "DELETE FROM task_comment WHERE task_id = ?1",
+                "DELETE FROM task WHERE id = ?1",
+            ] {
+                self.connection
+                    .execute(sql, params![id])
+                    .map_err(|problem| format!("ticket {id} could not be deleted: {problem}"))?;
+            }
+            Ok(())
+        })
     }
 
     pub fn add_todo(&self, task: i64, text: &str, now: &str) -> Result<Todo, String> {
@@ -927,15 +976,13 @@ impl Store {
     pub fn complete_sprint(&self, id: i64, now: &str) -> Result<usize, String> {
         self.in_transaction(|| {
             let unfinished: Vec<i64> = {
-                let mut statement = self.prepared(
-                    "SELECT id FROM task WHERE sprint_id = ?1 AND status <> 'agent_done'",
-                )?;
-                let rows =
-                    statement.query_map(params![id], |row| row.get(0)).map_err(|problem| {
-                        format!("the sprint's tickets could not be read: {problem}")
-                    })?;
-                rows.collect::<Result<Vec<i64>, _>>()
-                    .map_err(|problem| format!("a ticket could not be read: {problem}"))?
+                self.connection
+                    .query_map(
+                        "SELECT id FROM task WHERE sprint_id = ?1 AND status <> 'agent_done'",
+                        params![id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|problem| format!("the sprint's tickets could not be read: {problem}"))?
             };
             for task in &unfinished {
                 self.to_the_foot_of_the_backlog(*task, now)?;
@@ -964,13 +1011,9 @@ impl Store {
             // One at a time, because each has to be given a place at the foot of the backlog's own lane —
             // see `to_the_foot_of_the_backlog`. A sprint holds tens of tickets, not thousands.
             let leaving: Vec<i64> = {
-                let mut statement = self.prepared("SELECT id FROM task WHERE sprint_id = ?1")?;
-                let rows =
-                    statement.query_map(params![id], |row| row.get(0)).map_err(|problem| {
-                        format!("the sprint's tickets could not be read: {problem}")
-                    })?;
-                rows.collect::<Result<Vec<i64>, _>>()
-                    .map_err(|problem| format!("a ticket could not be read: {problem}"))?
+                self.connection
+                    .query_map("SELECT id FROM task WHERE sprint_id = ?1", params![id], |row| row.get(0))
+                    .map_err(|problem| format!("the sprint's tickets could not be read: {problem}"))?
             };
             for task in leaving {
                 self.to_the_foot_of_the_backlog(task, now)?;
@@ -1053,51 +1096,47 @@ impl Store {
     /// every epic and the board holds only the active sprint's tickets — an epic used entirely in the
     /// backlog would otherwise read as zero.
     pub fn epic_counts(&self) -> Result<Vec<(i64, i64)>, String> {
-        let mut statement = self.prepared(
-            "SELECT epic_id, COUNT(*) FROM task WHERE epic_id IS NOT NULL GROUP BY epic_id",
-        )?;
-        let rows = statement
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-            .map_err(|problem| format!("the epics could not be counted: {problem}"))?;
-        rows.collect::<Result<Vec<(i64, i64)>, _>>()
-            .map_err(|problem| format!("an epic count could not be read: {problem}"))
+        self.connection
+            .query_map(
+                "SELECT epic_id, COUNT(*) FROM task WHERE epic_id IS NOT NULL GROUP BY epic_id",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|problem| format!("the epics could not be counted: {problem}"))
     }
 
     /// How many tickets are in each sprint, by sprint id.
     pub fn sprint_counts(&self) -> Result<Vec<(i64, i64)>, String> {
-        let mut statement = self.prepared(
-            "SELECT sprint_id, COUNT(*) FROM task WHERE sprint_id IS NOT NULL GROUP BY sprint_id",
-        )?;
-        let rows = statement
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-            .map_err(|problem| format!("the sprints could not be counted: {problem}"))?;
-        rows.collect::<Result<Vec<(i64, i64)>, _>>()
-            .map_err(|problem| format!("a sprint count could not be read: {problem}"))
+        self.connection
+            .query_map(
+                "SELECT sprint_id, COUNT(*) FROM task WHERE sprint_id IS NOT NULL GROUP BY sprint_id",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|problem| format!("the sprints could not be counted: {problem}"))
     }
 
     /// The schedules, in the order they run.
     pub fn schedules(&self) -> Result<Vec<Schedule>, String> {
-        let mut statement = self.prepared(
-            "SELECT id, project, agent, command, cron_expression, enabled, last_run_at, next_run_at, last_status \
-             FROM task_schedule ORDER BY next_run_at IS NULL, next_run_at, id",
-        )?;
-        let rows = statement
-            .query_map([], |row| {
+        self.connection
+            .query_map(
+                "SELECT id, project, agent, command, cron_expression, enabled, last_run_at, next_run_at, last_status \
+                 FROM task_schedule ORDER BY next_run_at IS NULL, next_run_at, id",
+                [],
+                |row| {
                 Ok(Schedule {
                     id: row.get(0)?,
                     project: row.get(1)?,
                     agent: row.get(2)?,
                     command: row.get(3)?,
                     cron: row.get(4)?,
-                    enabled: row.get::<_, i64>(5)? != 0,
+                    enabled: row.get::<i64>(5)? != 0,
                     last_run_at: row.get(6)?,
                     next_run_at: row.get(7)?,
                     last_status: row.get(8)?,
                 })
             })
-            .map_err(|problem| format!("the schedules could not be read: {problem}"))?;
-        rows.collect::<Result<Vec<Schedule>, _>>()
-            .map_err(|problem| format!("a schedule could not be read: {problem}"))
+            .map_err(|problem| format!("the schedules could not be read: {problem}"))
     }
 
     // ------------------------------------------------------------------ the watchdog's own read
@@ -1117,7 +1156,7 @@ impl Store {
         now: &str,
         default_lease_minutes: i64,
     ) -> Result<Vec<Candidate>, String> {
-        let mut statement = self.prepared(
+        self.connection.query_map(
             "SELECT id, task_key, agent_session_id, watchdog_strikes, watchdog_nudges, \
                     watchdog_nudged_at, \
                     CAST((julianday(?1) - julianday(COALESCE(heartbeat_at, updated_at))) * 1440 AS INTEGER), \
@@ -1125,9 +1164,8 @@ impl Store {
                     CAST((julianday(?1) - julianday(COALESCE(watchdog_nudged_at, '1970-01-01'))) * 1440 AS INTEGER) \
              FROM task WHERE status = 'in_progress' AND agent_session_id IS NOT NULL \
              ORDER BY id",
-        )?;
-        let rows = statement
-            .query_map(params![now, default_lease_minutes], |row| {
+            params![now, default_lease_minutes],
+            |row| {
                 Ok(Candidate {
                     id: row.get(0)?,
                     key: row.get(1)?,
@@ -1139,10 +1177,9 @@ impl Store {
                     lease_minutes: row.get(7)?,
                     minutes_since_nudge: row.get(8)?,
                 })
-            })
-            .map_err(|problem| format!("the watchdog's cards could not be read: {problem}"))?;
-        rows.collect::<Result<Vec<Candidate>, _>>()
-            .map_err(|problem| format!("a watchdog card could not be read: {problem}"))
+            },
+        )
+        .map_err(|problem| format!("the watchdog's cards could not be read: {problem}"))
     }
 
     /// Record a strike against a card whose terminal is gone.
@@ -1228,30 +1265,12 @@ impl Store {
 
     /// Run `work` as one transaction: all of its statements, or none of them.
     ///
-    /// SQLite autocommits every statement on its own, so an operation made of several — creating a ticket
-    /// after reading the next key, renumbering a lane after moving a card, standing a sprint down before
-    /// making another active — can interleave with another window's and can stop half done. `BEGIN
-    /// IMMEDIATE` takes the write lock at the start rather than on the first write, which is what stops two
-    /// windows reading the same next key and both using it.
-    ///
-    /// `unchecked_transaction` rather than `transaction`, because the latter wants `&mut Connection` and
-    /// every read here takes `&self`. The rollback still happens on drop, which is the part that matters.
+    /// The engine autocommits every statement on its own, so an operation made of several — creating a ticket
+    /// after reading the next key, renumbering a lane after moving a card, standing a sprint down before making
+    /// another active — can interleave with another window's and can stop half done. See
+    /// `db::Db::in_transaction` for how the work joins the transaction whichever handle it runs through.
     fn in_transaction<T>(&self, work: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
-        let transaction = self
-            .connection
-            .unchecked_transaction()
-            .map_err(|problem| format!("the board could not begin a transaction: {problem}"))?;
-        let answer = work()?;
-        transaction
-            .commit()
-            .map_err(|problem| format!("the board could not be written: {problem}"))?;
-        Ok(answer)
-    }
-
-    fn prepared(&self, sql: &str) -> Result<rusqlite::Statement<'_>, String> {
-        self.connection
-            .prepare(sql)
-            .map_err(|problem| format!("a query could not be prepared: {problem}\n{sql}"))
+        self.connection.in_transaction(work)
     }
 }
 
@@ -1370,17 +1389,13 @@ const TASK_COLUMNS: &str =
 /// here would have broken it: a status that quietly became `new` would draw in the wrong lane, and somebody
 /// would move it back and watch it move again. The check constraints in the schema are what stop this
 /// happening at all; this is what happens if a file is edited by hand or written by something else.
-fn known<T>(column: &str, word: &str, parsed: Option<T>) -> rusqlite::Result<T> {
+fn known<T>(column: &str, word: &str, parsed: Option<T>) -> Outcome<T> {
     parsed.ok_or_else(|| {
-        rusqlite::Error::FromSqlConversionFailure(
-            0,
-            rusqlite::types::Type::Text,
-            format!("`{word}` is not a value this board's {column} can hold").into(),
-        )
+        Problem::Said(format!("`{word}` is not a value this board's {column} can hold"))
     })
 }
 
-fn read_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
+fn read_task(row: &Row<'_>) -> Outcome<Task> {
     let priority: String = row.get(4)?;
     let status: String = row.get(5)?;
     let assignee: String = row.get(6)?;
@@ -1418,7 +1433,7 @@ fn read_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
     })
 }
 
-fn read_sprint(row: &rusqlite::Row<'_>) -> rusqlite::Result<Sprint> {
+fn read_sprint(row: &Row<'_>) -> Outcome<Sprint> {
     let status: String = row.get(2)?;
     Ok(Sprint {
         id: row.get(0)?,
@@ -1434,7 +1449,7 @@ fn read_sprint(row: &rusqlite::Row<'_>) -> rusqlite::Result<Sprint> {
 /// Guarded by a read of `pragma_table_info`, because SQLite has no `ADD COLUMN IF NOT EXISTS` and
 /// running the statement twice is an error rather than a no operation. Nothing is ever dropped and no
 /// table is recreated, which is the rule the schema being replaced already kept.
-fn migrate(connection: &Connection) -> Result<(), String> {
+fn migrate(connection: &Db) -> Result<(), String> {
     // Every version adds its rows here rather than only changing `SCHEMA`, so a board somebody has been
     // using is expanded in place. `SCHEMA` creates its tables with `CREATE TABLE IF NOT EXISTS`, so a
     // column added there alone never reaches a file that already exists — which is what left every board
@@ -1454,16 +1469,86 @@ fn migrate(connection: &Connection) -> Result<(), String> {
     Ok(())
 }
 
-fn has_column(connection: &Connection, table: &str, column: &str) -> Result<bool, String> {
-    let mut statement = connection
-        .prepare(&format!("SELECT name FROM pragma_table_info('{table}')"))
-        .map_err(|problem| format!("{table} could not be inspected: {problem}"))?;
-    let names: Vec<String> = statement
-        .query_map([], |row| row.get(0))
-        .map_err(|problem| format!("{table} could not be inspected: {problem}"))?
-        .collect::<Result<Vec<String>, _>>()
+fn has_column(connection: &Db, table: &str, column: &str) -> Result<bool, String> {
+    let names: Vec<String> = connection
+        .query_map(&format!("SELECT name FROM pragma_table_info('{table}')"), [], |row| row.get(0))
         .map_err(|problem| format!("{table} could not be inspected: {problem}"))?;
     Ok(names.iter().any(|name| name == column))
+}
+
+/// Which file the board really is, and the SQLite file to import it from when it has not been yet.
+///
+/// Four cases, and each is a board somebody may have:
+///
+/// - `asked` is a `.rdb` that exists: open it.
+/// - `asked` is a `.rdb` that does not exist, and `board.sqlite3` is beside it: import that. This is every
+///   board made before `task-2193`, because the default path moved from `board.sqlite3` to `board.rdb`.
+/// - `asked` names a SQLite file, which is what a person who chose a database in Settings before `task-2193`
+///   wrote down: the board is the `.rdb` beside it, imported from it the first time.
+/// - Anything else: a new board at `asked`.
+///
+/// A SQLite file is recognised by its first sixteen bytes rather than by its name, because a person could
+/// have called it anything.
+pub fn where_the_board_is(asked: &Path) -> (PathBuf, Option<PathBuf>) {
+    if is_a_sqlite_file(asked) {
+        let board = asked.with_extension("rdb");
+        return match board.is_file() {
+            true => (board, None),
+            false => (board, Some(asked.to_path_buf())),
+        };
+    }
+    if asked.is_file() {
+        return (asked.to_path_buf(), None);
+    }
+    let old = asked.with_file_name(SQLITE_FILE);
+    match asked.file_name().and_then(|name| name.to_str()) == Some(FILE) && is_a_sqlite_file(&old) {
+        true => (asked.to_path_buf(), Some(old)),
+        false => (asked.to_path_buf(), None),
+    }
+}
+
+/// Whether a file starts the way every SQLite database does.
+fn is_a_sqlite_file(path: &Path) -> bool {
+    use std::io::Read;
+    let mut header = [0u8; 16];
+    std::fs::File::open(path)
+        .and_then(|mut file| file.read_exact(&mut header))
+        .map(|()| &header == b"SQLite format 3\0")
+        .unwrap_or(false)
+}
+
+/// Build `board` out of the SQLite file at `old`, and open it.
+///
+/// **Written to a name beside it and renamed once it is complete**, so a window that stops half way
+/// through leaves no half written board at the path the next start opens — it imports again instead.
+/// `old` is read and never written, and it is left where it is afterwards: nothing deletes a person's
+/// board, and a copy that is never needed costs a few kilobytes.
+fn import(old: &Path, board: &Path) -> Result<Db, String> {
+    let staging = board.with_extension("rdb-importing");
+    let _ = std::fs::remove_file(&staging);
+    let imported = Db::import(old, &staging).map_err(|problem| {
+        format!("{} could not be read into {}: {problem}", old.display(), board.display())
+    })?;
+    imported.checkpoint().map_err(|problem| format!("{} could not be written: {problem}", staging.display()))?;
+    drop(imported);
+    // The engine keeps its log beside the file as `<name>-wal.<sequence>`, so the log moves with it: a board
+    // renamed without its log would be opened with whatever the log held missing.
+    let staged_name = staging.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    let board_name = board.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    if let (Some(folder), Ok(entries)) = (board.parent(), std::fs::read_dir(board.parent().unwrap_or(Path::new(".")))) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if let Some(rest) = name.strip_prefix(&format!("{staged_name}-wal.")) {
+                std::fs::rename(entry.path(), folder.join(format!("{board_name}-wal.{rest}"))).map_err(|problem| {
+                    format!("{name} could not be moved beside {}: {problem}", board.display())
+                })?;
+            }
+        }
+    }
+    std::fs::rename(&staging, board).map_err(|problem| {
+        format!("{} could not be moved to {}: {problem}", staging.display(), board.display())
+    })?;
+    Db::open(board).map_err(|problem| format!("{} could not be opened: {problem}", board.display()))
 }
 
 /// The tables, with the four check constraints that are the board's rules written into the file.
@@ -1589,6 +1674,106 @@ mod tests {
         (store, sprint.id)
     }
 
+    /// A SQLite board the way every Unluminous before `task-2193` wrote one: the same schema, a sprint, two
+    /// tickets, a todo and a comment on the first.
+    fn a_sqlite_board(path: &Path) {
+        let old = rusqlite::Connection::open(path).expect("a SQLite file");
+        old.execute_batch(SCHEMA).expect("the old schema");
+        old.execute_batch(
+            "INSERT INTO sprint (name, status, position, created_at) \
+                 VALUES ('Current Sprint', 'active', 0, '2026-08-29T12:00:00Z');
+             INSERT INTO task (task_key, title, description, status, sprint_id, created_at, updated_at) \
+                 VALUES ('task-1', 'Kept', 'A description', 'new', 1, '2026-08-29T12:00:00Z', '2026-08-29T12:00:00Z');
+             INSERT INTO task (task_key, title, status, sprint_id, created_at, updated_at) \
+                 VALUES ('task-7', 'Also kept', 'agent_done', 1, '2026-08-29T12:00:00Z', '2026-08-29T12:00:00Z');
+             INSERT INTO task_todo (task_id, text, done, position, created_at) \
+                 VALUES (1, 'A todo', 1, 0, '2026-08-29T12:00:00Z');
+             INSERT INTO task_comment (task_id, author, body, created_at) \
+                 VALUES (1, 'human', 'A comment', '2026-08-29T12:00:00Z');
+             INSERT INTO meta (name, value) VALUES ('schema_version', 2);",
+        )
+        .expect("a board somebody has used");
+    }
+
+    /// `task-2193`: the board moved from SQLite to Inillucent, and nobody's tickets may be lost on the way.
+    ///
+    /// The default path is `board.rdb` now, so the board a window opens on its first start after the change is
+    /// a file that is not there beside a `board.sqlite3` that is. Every row comes across with its id, the next
+    /// key carries on from the highest one, and the SQLite file is still there byte for byte afterwards.
+    #[test]
+    fn a_sqlite_board_beside_the_new_path_is_imported_and_left_where_it_was() {
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-board-import-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let old = folder.join(SQLITE_FILE);
+        a_sqlite_board(&old);
+        let before = std::fs::read(&old).expect("the SQLite file");
+
+        let store = Store::open(folder.join(FILE)).expect("the board, imported");
+        assert_eq!(store.path(), folder.join(FILE).as_path());
+        let board = store.board().expect("the board");
+        assert_eq!(board.sprint.as_ref().map(|sprint| sprint.name.as_str()), Some("Current Sprint"));
+        assert_eq!(board.total(), 2, "both tickets came across");
+        let kept = store.task_by_key("task-1").expect("a read").expect("task-1");
+        assert_eq!(kept.description, "A description");
+        assert_eq!((kept.todo_count, kept.todo_done_count, kept.comment_count), (1, 1, 1));
+        let next = store.create_task(NewTask::default(), NOW).expect("a new ticket");
+        assert_eq!(next.key, "task-8", "the next key carries on from the highest one");
+        assert!(next.id > kept.id, "and the ids carry on too");
+        drop(store);
+
+        assert_eq!(std::fs::read(&old).expect("the SQLite file"), before, "the old board is untouched");
+        // Opening it again opens the board, rather than importing the SQLite file a second time over the
+        // ticket just added.
+        let again = Store::open(folder.join(FILE)).expect("the same board");
+        assert!(again.task_by_key("task-8").expect("a read").is_some(), "the ticket added after the import is there");
+        assert_eq!(again.board().expect("the board").total(), 2);
+        drop(again);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// A person who chose a database in Settings before `task-2193` wrote down the path of a SQLite file. That
+    /// file is read into a `.rdb` beside it, and the setting does not have to be changed.
+    #[test]
+    fn a_setting_that_names_a_sqlite_file_opens_the_board_imported_beside_it() {
+        let folder = std::env::temp_dir()
+            .join(format!("unluminous-board-import-named-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let named = folder.join("shared-board.db");
+        a_sqlite_board(&named);
+        let store = Store::open(&named).expect("the board");
+        assert_eq!(store.path(), folder.join("shared-board.rdb").as_path());
+        assert_eq!(store.board().expect("the board").total(), 2);
+        drop(store);
+        assert_eq!(
+            where_the_board_is(&named),
+            (folder.join("shared-board.rdb"), None),
+            "once it has been imported, the import is what is opened"
+        );
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// Inillucent enforces no foreign key, so the cascade the schema names does nothing, and deleting a ticket
+    /// has to take its todos and its comments itself. A todo left behind would come back under no ticket at all.
+    #[test]
+    fn deleting_a_ticket_takes_its_todos_and_comments_with_it_without_a_cascade() {
+        let (store, _) = filled();
+        let first = store.task_by_key("task-1").expect("a read").expect("task-1");
+        let second = store.task_by_key("task-2").expect("a read").expect("task-2");
+        store.add_todo(first.id, "Goes", NOW).expect("a todo");
+        store.add_comment(first.id, Author::Human, "Goes too", NOW).expect("a comment");
+        store.add_todo(second.id, "Stays", NOW).expect("a todo");
+        store.delete_task(first.id).expect("a delete");
+        let count = |sql: &str| -> i64 {
+            store.connection.query_row(sql, [], |row| row.get(0)).expect("a count")
+        };
+        assert_eq!(count("SELECT count(*) FROM task_todo"), 1, "only the other ticket's todo is left");
+        assert_eq!(count("SELECT count(*) FROM task_comment"), 0);
+        assert_eq!(store.todos(second.id).expect("its todos").len(), 1);
+    }
+
     #[test]
     fn opening_a_file_that_is_not_there_makes_the_schema_and_opening_it_again_changes_nothing() {
         let folder = std::env::temp_dir().join(format!("unluminous-board-{}", std::process::id()));
@@ -1705,9 +1890,9 @@ mod tests {
 
     /// The copy the clear takes first, which is what makes it recoverable.
     ///
-    /// `VACUUM INTO` rather than a file copy, because the board is in write ahead logging mode and the newest rows
-    /// may still be in the `-wal` file. This is the test that would fail if that were a `std::fs::copy`: the
-    /// ticket is written and the copy is taken in the same breath, with nothing in between to checkpoint it.
+    /// The engine's backup rather than a file copy, because the newest rows may still be in the log beside the
+    /// file. This is the test that would fail if that were a `std::fs::copy`: the ticket is written and the copy
+    /// is taken in the same breath, with nothing in between to checkpoint it.
     #[test]
     fn the_copy_taken_before_a_clear_holds_the_tickets_that_were_there() {
         let folder =
@@ -1721,22 +1906,17 @@ mod tests {
                 .create_task(NewTask { title: title.to_owned(), ..NewTask::default() }, NOW)
                 .expect("a ticket");
         }
-        let copy = folder.join("board-before-clear.sqlite3");
+        let copy = folder.join("board-before-clear.rdb");
         let made = store.copy_the_file(&copy).expect("a copy");
         assert_eq!(made, copy);
         store.clear_the_tickets().expect("a clear");
         assert_eq!(store.board().expect("the board").total(), 0, "the board is empty");
 
-        // The copy still holds both, including the one written last, which is the point of `VACUUM INTO`.
+        // The copy still holds both, including the one written last, which is the point of the backup.
         let before = Store::open(&copy).expect("the copy opens as a board");
         let titles: Vec<String> = before
             .connection
-            .prepare("SELECT title FROM task ORDER BY id")
-            .and_then(|mut statement| {
-                statement
-                    .query_map([], |row| row.get::<usize, String>(0))?
-                    .collect::<Result<Vec<String>, _>>()
-            })
+            .query_map("SELECT title FROM task ORDER BY id", [], |row| row.get(0))
             .expect("the titles");
         assert_eq!(titles, vec!["One".to_owned(), "Two".to_owned()]);
 
@@ -1822,12 +2002,30 @@ mod tests {
         // The check constraints below are what stop this happening at all. This is what happens when a board
         // file is edited by hand or written by something else: the read says which column and which word,
         // rather than drawing the card in whichever lane the default named.
-        let store = board();
+        //
+        // Inillucent has no `PRAGMA ignore_check_constraints`, so the file is made the way something else
+        // would make it: with a `task` table that has no constraints at all. `CREATE TABLE IF NOT EXISTS`
+        // then leaves that table as it is when the board is opened.
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-board-unexplained-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let path = folder.join(FILE);
+        {
+            let other = Db::open(&path).expect("a file something else wrote");
+            let loose = SCHEMA
+                .split(";\n")
+                .find(|statement| statement.contains("CREATE TABLE IF NOT EXISTS task ("))
+                .expect("the task table")
+                .lines()
+                .filter(|line| !line.trim_start().starts_with("CONSTRAINT"))
+                .collect::<Vec<&str>>()
+                .join("\n")
+                .replace("updated_at             TEXT NOT NULL,", "updated_at             TEXT NOT NULL");
+            other.execute_batch(&loose).expect("a task table with no rules");
+        }
+        let store = Store::open(&path).expect("the board");
         let task = store.create_task(NewTask::default(), NOW).expect("a ticket");
-        store
-            .connection
-            .execute_batch("PRAGMA ignore_check_constraints = ON;")
-            .expect("the constraints off, so a bad row can be written at all");
         store
             .connection
             .execute("UPDATE task SET status = 'done' WHERE id = ?1", params![task.id])

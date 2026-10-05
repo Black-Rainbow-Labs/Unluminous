@@ -38,9 +38,19 @@ pub const LIST: &[(&str, &str)] = &[
     ),
     ("open-pane", "Show the board's pane."),
     ("view", "Show one of board, backlog, completed or epics."),
-    ("task", "One ticket, with its todos and its comments."),
-    ("new-task", "Create a ticket in New, with the rest of the line as its title."),
-    ("edit-task", "Change a ticket's title."),
+    ("task", "One ticket, with its description, its todos and its comments."),
+    (
+        "new-task",
+        "Create a ticket in New, with the rest of the line as its title, and answer its key. Nothing opens: \
+         `describe` writes its description. With no title it opens an empty ticket in the modal, which is \
+         what `+ Add Task` does.",
+    ),
+    ("edit-task", "Change a ticket's title. `describe` changes its description."),
+    (
+        "describe",
+        "Replace a ticket's description with the rest of the line, as markdown: `describe task-3 <text>`. \
+         Line breaks inside the text are kept.",
+    ),
     ("move-task", "Move a ticket to a lane and a place in it."),
     ("delete-task", "Delete a ticket, its todos and its comments."),
     ("priority", "Set a ticket's priority to low, medium or high."),
@@ -238,7 +248,7 @@ fn clear(tasks: &mut AgentTasks, said: &str) -> Result<Answer, String> {
     let copy = tasks
         .configuration
         .database_path(tasks.folder.as_deref())
-        .map(|file| file.with_file_name(format!("board-before-clear-{stamp}.sqlite3")));
+        .map(|file| file.with_file_name(format!("board-before-clear-{stamp}.rdb")));
     let copied = match &copy {
         Some(copy) => Some(tasks.store()?.copy_the_file(copy)?),
         None => None,
@@ -399,8 +409,9 @@ fn task_commands(
     let now = clock::now();
     Some(match command {
         "new-task" => (|| {
+            let title = arguments.join(" ");
             let draft = NewTask {
-                title: arguments.join(" "),
+                title: title.trim().to_owned(),
                 assignee: tasks.configuration.agent,
                 sprint_id: tasks.board.sprint.as_ref().map(|sprint| sprint.id),
                 project: tasks
@@ -412,12 +423,28 @@ fn task_commands(
             };
             let task = tasks.store()?.create_task(draft, &now)?;
             tasks.refresh()?;
-            // Opened as a new one, which is what puts the six fields and the description in front of
-            // somebody: a ticket that cannot be given an assignee, a model and a project is a ticket that
-            // cannot be started.
-            tasks.open_a_new_ticket(task.id)?;
+            // **Opened only when it has no title**, which is `+ Add Task`: an empty ticket is one somebody is
+            // about to fill in, and the modal is where its title and its fields are typed.
+            //
+            // `task-2193`: a ticket an agent created arrived with a title and opened anyway, so the modal
+            // filled the window under somebody who was doing something else, stayed open, and the agent had
+            // no way to close it. A ticket with a title is complete enough to be on the board, and whoever
+            // wants to look at it opens it.
+            let opened = title.trim().is_empty();
+            if opened {
+                tasks.open_a_new_ticket(task.id)?;
+            }
             Ok(Answer::said(format!("{} created", task.key))
-                .with(json!({"task": task.key, "id": task.id})))
+                .with(json!({"task": task.key, "id": task.id, "opened": opened})))
+        })(),
+        "describe" => (|| {
+            let task = tasks.by_key(argument(0))?;
+            let text = rest(1);
+            let edit = TaskEdit { description: Some(text.clone()), ..TaskEdit::default() };
+            tasks.store()?.edit_task(task.id, &edit, &now)?;
+            tasks.refresh()?;
+            Ok(Answer::said(format!("{} described", task.key))
+                .with(json!({"task": task.key, "characters": text.chars().count()})))
         })(),
         "edit-task" => (|| {
             let task = tasks.by_key(argument(0))?;
@@ -902,6 +929,21 @@ mod tests {
             .unwrap_or_else(|problem| panic!("`{command}` was refused: {problem}"))
     }
 
+    /// `+ Add Task` sends `new-task` with nothing after it, and that is the one case that opens the modal: the
+    /// ticket has no title yet and the modal is where one is typed.
+    #[test]
+    fn a_ticket_with_no_title_opens_in_the_modal_and_one_with_a_title_does_not() {
+        let mut board = board();
+        let made = did(&mut board, "new-task", &[]);
+        assert_eq!(made.value["opened"], true);
+        assert!(board.modal_open, "the empty ticket is in front of somebody to be filled in");
+        assert!(board.detail().is_new);
+        did(&mut board, "close", &[]);
+        let made = did(&mut board, "new-task", &["Made", "by", "an", "agent"]);
+        assert_eq!(made.value["opened"], false);
+        assert!(!board.modal_open);
+    }
+
     /// A ticket is made, changed, given a todo and a comment, and deleted, through the one path.
     ///
     /// **`task-1984` S18.** This file is 872 lines with no test in it. `mod.rs`'s
@@ -916,10 +958,20 @@ mod tests {
         let made = did(&mut board, "new-task", &["a", "ticket", "to", "drive"]);
         let ticket = key(&made);
         assert!(!ticket.is_empty(), "the answer names the ticket it made: {}", made.value);
+        // `task-2193`: a ticket with a title is made without the modal opening over somebody's window.
+        assert!(!board.modal_open, "a ticket made with a title does not open the modal");
+        assert_eq!(made.value["opened"], false);
 
         let read = did(&mut board, "task", &[&ticket]);
         assert_eq!(read.value["task"]["title"], "a ticket to drive");
         assert_eq!(read.value["task"]["status"], "new", "a new ticket starts in New");
+
+        // And its description is written by its own verb, line breaks and all, and leaves the title alone —
+        // which is what an agent reached into the database for when there was no such verb.
+        did(&mut board, "describe", &[&ticket, "## Why\nBecause.\n\n- one\n- two"]);
+        let read = did(&mut board, "task", &[&ticket]);
+        assert_eq!(read.value["description"], "## Why\nBecause.\n\n- one\n- two");
+        assert_eq!(read.value["task"]["title"], "a ticket to drive");
 
         did(&mut board, "edit-task", &[&ticket, "a", "better", "title"]);
         did(&mut board, "priority", &[&ticket, "high"]);
