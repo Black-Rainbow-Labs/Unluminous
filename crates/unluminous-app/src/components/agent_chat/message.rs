@@ -995,8 +995,10 @@ pub fn run_show(
         }
     };
     let timing_font = egui::FontId::monospace(look.font_size * 0.68);
-    let timing_width =
-        painter.layout_no_wrap(timing.clone(), timing_font.clone(), look.palette.text_faint).size().x;
+    let timing_width = painter
+        .layout_no_wrap(timing.clone(), timing_font.clone(), look.palette.text_faint)
+        .size()
+        .x;
     painter.crisp_text(
         Pos2::new(right - timing_width, head.center().y),
         egui::Align2::LEFT_CENTER,
@@ -1306,7 +1308,8 @@ mod tests {
 
         let mut state = PaneState::default();
         let (plain, bubble, _, _) = pieces(&question, &mut state, &look, 400.0, false, true);
-        let (waiting, waiting_bubble, _, _) = pieces(&question, &mut state, &look, 400.0, true, true);
+        let (waiting, waiting_bubble, _, _) =
+            pieces(&question, &mut state, &look, 400.0, true, true);
         assert_eq!(waiting.len(), plain.len() + 1);
         assert_eq!(waiting.last().copied(), Some(Piece::Queued));
         assert_eq!(bubble, waiting_bubble, "the bubble is the same bubble");

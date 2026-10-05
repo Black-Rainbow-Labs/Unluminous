@@ -259,7 +259,11 @@ impl Store {
         self.tasks_by(&sql, params![])
     }
 
-    fn tasks_by(&self, sql: &str, arguments: Vec<inillucent_driver::Value>) -> Result<Vec<Task>, String> {
+    fn tasks_by(
+        &self,
+        sql: &str,
+        arguments: Vec<inillucent_driver::Value>,
+    ) -> Result<Vec<Task>, String> {
         self.connection
             .query_map(sql, arguments, read_task)
             .map_err(|problem| format!("the tickets could not be read: {problem}"))
@@ -289,15 +293,16 @@ impl Store {
                  WHERE task_id = ?1 ORDER BY position, id",
                 params![task],
                 |row| {
-                Ok(Todo {
-                    id: row.get(0)?,
-                    task_id: row.get(1)?,
-                    text: row.get(2)?,
-                    done: row.get::<i64>(3)? != 0,
-                    position: row.get(4)?,
-                    created_at: row.get(5)?,
-                })
-            })
+                    Ok(Todo {
+                        id: row.get(0)?,
+                        task_id: row.get(1)?,
+                        text: row.get(2)?,
+                        done: row.get::<i64>(3)? != 0,
+                        position: row.get(4)?,
+                        created_at: row.get(5)?,
+                    })
+                },
+            )
             .map_err(|problem| format!("the todos could not be read: {problem}"))
     }
 
@@ -309,28 +314,33 @@ impl Store {
                  WHERE task_id = ?1 ORDER BY created_at, id",
                 params![task],
                 |row| {
-                let author: String = row.get(2)?;
-                Ok(Comment {
-                    id: row.get(0)?,
-                    task_id: row.get(1)?,
-                    author: known("comment author", &author, Author::parse(&author))?,
-                    body: row.get(3)?,
-                    created_at: row.get(4)?,
-                })
-            })
+                    let author: String = row.get(2)?;
+                    Ok(Comment {
+                        id: row.get(0)?,
+                        task_id: row.get(1)?,
+                        author: known("comment author", &author, Author::parse(&author))?,
+                        body: row.get(3)?,
+                        created_at: row.get(4)?,
+                    })
+                },
+            )
             .map_err(|problem| format!("the comments could not be read: {problem}"))
     }
 
     pub fn epics(&self) -> Result<Vec<Epic>, String> {
         self.connection
-            .query_map("SELECT id, name, color, position FROM task_epic ORDER BY position, id", [], |row| {
-                Ok(Epic {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    color: row.get(2)?,
-                    position: row.get(3)?,
-                })
-            })
+            .query_map(
+                "SELECT id, name, color, position FROM task_epic ORDER BY position, id",
+                [],
+                |row| {
+                    Ok(Epic {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        color: row.get(2)?,
+                        position: row.get(3)?,
+                    })
+                },
+            )
             .map_err(|problem| format!("the epics could not be read: {problem}"))
     }
 
@@ -357,7 +367,7 @@ impl Store {
                 read_sprint,
             )
             .optional()
-        .map_err(|problem| format!("the active sprint could not be read: {problem}"))
+            .map_err(|problem| format!("the active sprint could not be read: {problem}"))
     }
 
     // ------------------------------------------------------------------ changing the board
@@ -982,7 +992,9 @@ impl Store {
                         params![id],
                         |row| row.get(0),
                     )
-                    .map_err(|problem| format!("the sprint's tickets could not be read: {problem}"))?
+                    .map_err(|problem| {
+                        format!("the sprint's tickets could not be read: {problem}")
+                    })?
             };
             for task in &unfinished {
                 self.to_the_foot_of_the_backlog(*task, now)?;
@@ -1012,8 +1024,12 @@ impl Store {
             // see `to_the_foot_of_the_backlog`. A sprint holds tens of tickets, not thousands.
             let leaving: Vec<i64> = {
                 self.connection
-                    .query_map("SELECT id FROM task WHERE sprint_id = ?1", params![id], |row| row.get(0))
-                    .map_err(|problem| format!("the sprint's tickets could not be read: {problem}"))?
+                    .query_map("SELECT id FROM task WHERE sprint_id = ?1", params![id], |row| {
+                        row.get(0)
+                    })
+                    .map_err(|problem| {
+                        format!("the sprint's tickets could not be read: {problem}")
+                    })?
             };
             for task in leaving {
                 self.to_the_foot_of_the_backlog(task, now)?;
@@ -1529,19 +1545,26 @@ fn import(old: &Path, board: &Path) -> Result<Db, String> {
     let imported = Db::import(old, &staging).map_err(|problem| {
         format!("{} could not be read into {}: {problem}", old.display(), board.display())
     })?;
-    imported.checkpoint().map_err(|problem| format!("{} could not be written: {problem}", staging.display()))?;
+    imported
+        .checkpoint()
+        .map_err(|problem| format!("{} could not be written: {problem}", staging.display()))?;
     drop(imported);
     // The engine keeps its log beside the file as `<name>-wal.<sequence>`, so the log moves with it: a board
     // renamed without its log would be opened with whatever the log held missing.
-    let staged_name = staging.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-    let board_name = board.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-    if let (Some(folder), Ok(entries)) = (board.parent(), std::fs::read_dir(board.parent().unwrap_or(Path::new(".")))) {
+    let staged_name =
+        staging.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    let board_name =
+        board.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    if let (Some(folder), Ok(entries)) =
+        (board.parent(), std::fs::read_dir(board.parent().unwrap_or(Path::new("."))))
+    {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
             if let Some(rest) = name.strip_prefix(&format!("{staged_name}-wal.")) {
-                std::fs::rename(entry.path(), folder.join(format!("{board_name}-wal.{rest}"))).map_err(|problem| {
-                    format!("{name} could not be moved beside {}: {problem}", board.display())
-                })?;
+                std::fs::rename(entry.path(), folder.join(format!("{board_name}-wal.{rest}")))
+                    .map_err(|problem| {
+                        format!("{name} could not be moved beside {}: {problem}", board.display())
+                    })?;
             }
         }
     }
@@ -1713,7 +1736,10 @@ mod tests {
         let store = Store::open(folder.join(FILE)).expect("the board, imported");
         assert_eq!(store.path(), folder.join(FILE).as_path());
         let board = store.board().expect("the board");
-        assert_eq!(board.sprint.as_ref().map(|sprint| sprint.name.as_str()), Some("Current Sprint"));
+        assert_eq!(
+            board.sprint.as_ref().map(|sprint| sprint.name.as_str()),
+            Some("Current Sprint")
+        );
         assert_eq!(board.total(), 2, "both tickets came across");
         let kept = store.task_by_key("task-1").expect("a read").expect("task-1");
         assert_eq!(kept.description, "A description");
@@ -1723,11 +1749,18 @@ mod tests {
         assert!(next.id > kept.id, "and the ids carry on too");
         drop(store);
 
-        assert_eq!(std::fs::read(&old).expect("the SQLite file"), before, "the old board is untouched");
+        assert_eq!(
+            std::fs::read(&old).expect("the SQLite file"),
+            before,
+            "the old board is untouched"
+        );
         // Opening it again opens the board, rather than importing the SQLite file a second time over the
         // ticket just added.
         let again = Store::open(folder.join(FILE)).expect("the same board");
-        assert!(again.task_by_key("task-8").expect("a read").is_some(), "the ticket added after the import is there");
+        assert!(
+            again.task_by_key("task-8").expect("a read").is_some(),
+            "the ticket added after the import is there"
+        );
         assert_eq!(again.board().expect("the board").total(), 2);
         drop(again);
         let _ = std::fs::remove_dir_all(&folder);
@@ -1769,7 +1802,11 @@ mod tests {
         let count = |sql: &str| -> i64 {
             store.connection.query_row(sql, [], |row| row.get(0)).expect("a count")
         };
-        assert_eq!(count("SELECT count(*) FROM task_todo"), 1, "only the other ticket's todo is left");
+        assert_eq!(
+            count("SELECT count(*) FROM task_todo"),
+            1,
+            "only the other ticket's todo is left"
+        );
         assert_eq!(count("SELECT count(*) FROM task_comment"), 0);
         assert_eq!(store.todos(second.id).expect("its todos").len(), 1);
     }
@@ -2006,8 +2043,8 @@ mod tests {
         // Inillucent has no `PRAGMA ignore_check_constraints`, so the file is made the way something else
         // would make it: with a `task` table that has no constraints at all. `CREATE TABLE IF NOT EXISTS`
         // then leaves that table as it is when the board is opened.
-        let folder =
-            std::env::temp_dir().join(format!("unluminous-board-unexplained-{}", std::process::id()));
+        let folder = std::env::temp_dir()
+            .join(format!("unluminous-board-unexplained-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).expect("a folder");
         let path = folder.join(FILE);
@@ -2021,7 +2058,10 @@ mod tests {
                 .filter(|line| !line.trim_start().starts_with("CONSTRAINT"))
                 .collect::<Vec<&str>>()
                 .join("\n")
-                .replace("updated_at             TEXT NOT NULL,", "updated_at             TEXT NOT NULL");
+                .replace(
+                    "updated_at             TEXT NOT NULL,",
+                    "updated_at             TEXT NOT NULL",
+                );
             other.execute_batch(&loose).expect("a task table with no rules");
         }
         let store = Store::open(&path).expect("the board");

@@ -206,7 +206,12 @@ fn contents(
 /// exists gets `Close`. **The command key with Enter presses the last of them**, not Enter on its own: the
 /// description and the comment box are multiline fields where Enter is a new line, which is the commit
 /// panel's reason for the same choice.
-fn footer_row(board: &mut AgentTasks, rux: &mut rux::Rux<'_>, footer: Rect, new: bool) -> (bool, Vec<Request>) {
+fn footer_row(
+    board: &mut AgentTasks,
+    rux: &mut rux::Rux<'_>,
+    footer: Rect,
+    new: bool,
+) -> (bool, Vec<Request>) {
     let mut requests = Vec::new();
     let theme = rux.theme();
     rux.chrome.line(
@@ -238,15 +243,14 @@ fn footer_row(board: &mut AgentTasks, rux: &mut rux::Rux<'_>, footer: Rect, new:
         }
         right = at.left() - 10.0;
     }
-    let chord = rux.ctx().input(|input| {
-        input.key_pressed(egui::Key::Enter) && input.modifiers.command_only()
-    });
+    let chord = rux
+        .ctx()
+        .input(|input| input.key_pressed(egui::Key::Enter) && input.modifiers.command_only());
     if chord {
         pressed = Some(labels.len() - 1);
     }
     if new {
-        let galley =
-            rux.text(Style::sans(12.0), "Starts saving as you type", theme.ink.i400);
+        let galley = rux.text(Style::sans(12.0), "Starts saving as you type", theme.ink.i400);
         rux::text::draw_left_centre(
             rux.ui.painter(),
             Pos2::new(footer.left() + 22.0, middle),
@@ -398,7 +402,8 @@ fn main_column(
     // with a long conversation on it readable at all. The flags are the provider's, so a section left shut
     // stays shut while the board is refreshed under it.
     let title = format!("Todos \u{b7} {}/{}", task.todo_done_count, task.todo_count);
-    let (toggled, body) = folding_section(rux, &mut pen, area, &title, Icon::Check, theme.accent.mint, todos_open);
+    let (toggled, body) =
+        folding_section(rux, &mut pen, area, &title, Icon::Check, theme.accent.mint, todos_open);
     if toggled {
         board.todos_shut = todos_open;
     }
@@ -420,7 +425,8 @@ fn main_column(
         true => theme.semantic.success,
         false => theme.ink.i400,
     };
-    let (toggled, body) = folding_section(rux, &mut pen, area, &title, Icon::Spark, accent, terminal_open);
+    let (toggled, body) =
+        folding_section(rux, &mut pen, area, &title, Icon::Spark, accent, terminal_open);
     if toggled {
         board.terminal_shut = terminal_open;
     }
@@ -428,7 +434,8 @@ fn main_column(
         let at = Rect::from_min_size(body, Vec2::new(area.width(), terminal_height));
         let inside = Well::new().pad(Pad::all(6.0)).show(rux, at);
         if inside.height() > 20.0 {
-            requests.extend(super::detail::terminal_section(board, rux.ui, inside, look, task, false));
+            requests
+                .extend(super::detail::terminal_section(board, rux.ui, inside, look, task, false));
         }
         pen = at.max.y;
     }
@@ -444,7 +451,13 @@ fn main_column(
         theme.surface.sunken,
     );
     let title = format!("Comments \u{b7} {}", task.comment_count);
-    heading_row(rux, Pos2::new(area.min.x, pen + 8.0 + 14.0), &title, Icon::Chat, theme.accent.violet);
+    heading_row(
+        rux,
+        Pos2::new(area.min.x, pen + 8.0 + 14.0),
+        &title,
+        Icon::Chat,
+        theme.accent.violet,
+    );
     pen += SECTION;
     let comments_at = Rect::from_min_max(
         Pos2::new(area.min.x, pen),
@@ -488,12 +501,21 @@ fn heading_row(rux: &mut rux::Rux<'_>, at: Pos2, name: &str, icon: Icon, accent:
     rux.mark(rux::icon::Mark::new(icon, 13.0), Pos2::new(at.x + 6.5, middle), accent);
     let galley = rux.text(CAPTION_STYLE, name, theme.ink.i700);
     let width = galley.size().x;
-    rux::text::draw_left_centre(rux.ui.painter(), Pos2::new(at.x + 21.0, middle), galley, theme.ink.i700);
+    rux::text::draw_left_centre(
+        rux.ui.painter(),
+        Pos2::new(at.x + 21.0, middle),
+        galley,
+        theme.ink.i700,
+    );
     let area = Rect::from_min_size(at, Vec2::new(width + 21.0, HEADING));
-    let response =
-        rux.ui.interact(area, rux.ui.id().with(("agent-tasks-heading", name)), egui::Sense::hover());
+    let response = rux.ui.interact(
+        area,
+        rux.ui.id().with(("agent-tasks-heading", name)),
+        egui::Sense::hover(),
+    );
     let named = name.to_owned();
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, named.clone()));
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, named.clone()));
 }
 
 /// Everything that is a property of the ticket rather than its contents.
@@ -527,11 +549,17 @@ fn fields(
                 Pos2::new(area.min.x, top),
                 Vec2::new(area.width() - 10.0, 900.0),
             );
-            let used = rux::layer(ui, state, egui::Id::new("agent-tasks-ticket-fields-rux"), content.expand(24.0), |rux| {
-                let (asked, used) = field_column(board, rux, selects, content, look, task, new);
-                requests = asked;
-                used
-            });
+            let used = rux::layer(
+                ui,
+                state,
+                egui::Id::new("agent-tasks-ticket-fields-rux"),
+                content.expand(24.0),
+                |rux| {
+                    let (asked, used) = field_column(board, rux, selects, content, look, task, new);
+                    requests = asked;
+                    used
+                },
+            );
             // What the scrollbar measures itself against: the column's own rectangle, included rather than
             // allocated after whatever is already there. The JIRA field's text box is put into this `Ui` and
             // has already moved its cursor, so allocating the height again counted most of the column twice
@@ -598,11 +626,21 @@ fn field_column(
 
     // ---------------------------------------------------------------- what the ticket is
     if !new {
-        let options: Vec<(String, String)> =
-            Status::ALL.iter().map(|status| (status.name().to_owned(), status.label().to_owned())).collect();
-        if let Some(chosen) =
-            choice(rux, selects, &mut pen, area.min.x, width, "Status", &options, task.status.name(), None)
-        {
+        let options: Vec<(String, String)> = Status::ALL
+            .iter()
+            .map(|status| (status.name().to_owned(), status.label().to_owned()))
+            .collect();
+        if let Some(chosen) = choice(
+            rux,
+            selects,
+            &mut pen,
+            area.min.x,
+            width,
+            "Status",
+            &options,
+            task.status.name(),
+            None,
+        ) {
             if let Some(status) = Status::parse(&chosen) {
                 if let Err(problem) = board.move_card(task.id, status, i64::MAX) {
                     requests.push(Request::Message(problem));
@@ -611,11 +649,21 @@ fn field_column(
         }
     }
 
-    let options: Vec<(String, String)> =
-        Assignee::ALL.iter().map(|assignee| (assignee.name().to_owned(), assignee.name().to_owned())).collect();
-    if let Some(chosen) =
-        choice(rux, selects, &mut pen, area.min.x, width, "Assignee", &options, task.assignee.name(), None)
-    {
+    let options: Vec<(String, String)> = Assignee::ALL
+        .iter()
+        .map(|assignee| (assignee.name().to_owned(), assignee.name().to_owned()))
+        .collect();
+    if let Some(chosen) = choice(
+        rux,
+        selects,
+        &mut pen,
+        area.min.x,
+        width,
+        "Assignee",
+        &options,
+        task.assignee.name(),
+        None,
+    ) {
         requests.extend(write(board, task, Field::Assignee(chosen)));
     }
 
@@ -683,11 +731,21 @@ fn field_column(
     }
     pen = help(rux, pen, area.min.x, width, "The folder the agent's terminal opens in.");
 
-    let options: Vec<(String, String)> =
-        Priority::ALL.iter().map(|priority| (priority.name().to_owned(), priority.name().to_owned())).collect();
-    if let Some(chosen) =
-        choice(rux, selects, &mut pen, area.min.x, width, "Priority", &options, task.priority.name(), None)
-    {
+    let options: Vec<(String, String)> = Priority::ALL
+        .iter()
+        .map(|priority| (priority.name().to_owned(), priority.name().to_owned()))
+        .collect();
+    if let Some(chosen) = choice(
+        rux,
+        selects,
+        &mut pen,
+        area.min.x,
+        width,
+        "Priority",
+        &options,
+        task.priority.name(),
+        None,
+    ) {
         requests.extend(write(board, task, Field::Priority(chosen)));
     }
 
@@ -731,7 +789,12 @@ fn field_column(
     pen += CONTROL + 8.0;
     if !key.trim().is_empty() {
         let at = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(width.min(150.0), 30.0));
-        if Button::new("Copy issue link").icon(Icon::Copy).size(ButtonSize::Mini).show(rux, at).clicked() {
+        if Button::new("Copy issue link")
+            .icon(Icon::Copy)
+            .size(ButtonSize::Mini)
+            .show(rux, at)
+            .clicked()
+        {
             requests.push(Request::Copy(board.jira_link(&key)));
             requests.push(Request::Message(format!("copied the link to {key}")));
         }
@@ -769,7 +832,10 @@ fn field_column(
         true => {
             let half = (width - 10.0) / 2.0;
             let keep = Rect::from_min_size(at.min, Vec2::new(half, CONTROL));
-            let really = Rect::from_min_size(Pos2::new(at.min.x + half + 10.0, at.min.y), Vec2::new(half, CONTROL));
+            let really = Rect::from_min_size(
+                Pos2::new(at.min.x + half + 10.0, at.min.y),
+                Vec2::new(half, CONTROL),
+            );
             if Button::new("Keep it").stretch().show(rux, keep).clicked() {
                 board.delete_asked = false;
             }
@@ -841,10 +907,9 @@ fn choice(
     let state = selects.entry(name).or_default();
     let outcome = Select::new(&said, selected).label(name).placeholder("—").show(rux, at, state);
     *pen += CONTROL + 12.0;
-    outcome
-        .chosen
-        .and_then(|index| values.get(index).cloned())
-        .filter(|value| Some(value.as_str()) != selected.and_then(|at| values.get(at)).map(String::as_str))
+    outcome.chosen.and_then(|index| values.get(index).cloned()).filter(|value| {
+        Some(value.as_str()) != selected.and_then(|at| values.get(at)).map(String::as_str)
+    })
 }
 
 /// Write one field, and report what could not be written.

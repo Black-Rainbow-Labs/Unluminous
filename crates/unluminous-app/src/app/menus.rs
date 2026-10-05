@@ -556,7 +556,9 @@ impl UnluminousApp {
     /// `app::hold_the_keyboard` turns it into the event on the next frame. One mechanism for the menu bar
     /// and the field's own menu, so the two cannot disagree about what a paste into a field does.
     fn give_the_clipboard_entry_to_a_text_box(&self, action: &Action, ctx: &egui::Context) -> bool {
-        use crate::components::controls::{wants_an_edit, wants_the_keyboard, AskedEdit, FieldEdit};
+        use crate::components::controls::{
+            wants_an_edit, wants_the_keyboard, AskedEdit, FieldEdit,
+        };
         let edit = match action {
             Action::Cut => FieldEdit::Cut,
             Action::Copy => FieldEdit::Copy,

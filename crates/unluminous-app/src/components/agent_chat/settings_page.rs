@@ -230,7 +230,8 @@ fn rows(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request
         );
 
         let mut limit = configuration.tool_limit.to_string();
-        if let Some(typed) = one_field(ui, look, inner, &mut pen, "Tool rounds", &mut limit, "100") {
+        if let Some(typed) = one_field(ui, look, inner, &mut pen, "Tool rounds", &mut limit, "100")
+        {
             if let Ok(rounds) = typed.trim().parse::<u32>() {
                 if rounds > 0 {
                     configuration.tool_limit =

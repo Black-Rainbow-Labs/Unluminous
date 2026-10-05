@@ -288,10 +288,7 @@ impl Db {
     }
 
     /// Run `work` as one transaction: all of its statements, or none of them.
-    pub fn in_transaction<T>(
-        &self,
-        work: impl FnOnce() -> Result<T, String>,
-    ) -> Result<T, String> {
+    pub fn in_transaction<T>(&self, work: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
         let connection = self.connection();
         let transaction = connection
             .begin()

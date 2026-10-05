@@ -78,7 +78,13 @@ pub fn in_a_well(
 }
 
 /// The description as markdown, painted into `inside` with no panel of its own and scrolled with the wheel.
-fn rendered_text(board: &mut AgentTasks, ui: &mut egui::Ui, well: Rect, inside: Rect, look: &Look<'_>) {
+fn rendered_text(
+    board: &mut AgentTasks,
+    ui: &mut egui::Ui,
+    well: Rect,
+    inside: Rect,
+    look: &Look<'_>,
+) {
     use crate::components::markdown_text;
     let source = board.description_text();
     if source.trim().is_empty() {

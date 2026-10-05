@@ -598,7 +598,10 @@ fn rows_of<'a>(
             || !one.text().trim().is_empty()
             || !one.thinking.is_empty()
             || one.failure.is_some()
-            || one.parts.iter().any(|part| matches!(part, unluminous_chat::model::Part::Picture { .. }));
+            || one
+                .parts
+                .iter()
+                .any(|part| matches!(part, unluminous_chat::model::Part::Picture { .. }));
         if says_something {
             flush(&mut run, &mut rows);
             rows.push(Row::Said(one, waiting));

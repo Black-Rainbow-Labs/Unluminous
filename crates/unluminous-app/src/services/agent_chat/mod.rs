@@ -2013,8 +2013,16 @@ mod tests_task_2003 {
 
         let old = |text: &str| Configuration::of(&Values::parse(text)).0.tool_limit;
         assert_eq!(old("tool-limit = 8\n"), 100, "no version: eight is the old default");
-        assert_eq!(old("tool-limit = 8\nversion = 1\n"), 100, "version 1: eight is the old default");
-        assert_eq!(old("tool-limit = 30\nversion = 2\n"), 100, "version 2: thirty is the old default");
+        assert_eq!(
+            old("tool-limit = 8\nversion = 1\n"),
+            100,
+            "version 1: eight is the old default"
+        );
+        assert_eq!(
+            old("tool-limit = 30\nversion = 2\n"),
+            100,
+            "version 2: thirty is the old default"
+        );
         assert_eq!(old("tool-limit = 12\nversion = 1\n"), 12, "a number somebody chose is kept");
         assert_eq!(
             old("tool-limit = 30\nversion = 3\n"),
@@ -2022,7 +2030,11 @@ mod tests_task_2003 {
             "written by version 3, thirty was chosen"
         );
         assert_eq!(old("tool-limit = 400\nversion = 3\n"), 400, "a few hundred can be chosen");
-        assert_eq!(old("tool-limit = 9000\nversion = 3\n"), LARGEST_TOOL_LIMIT, "and there is a ceiling");
+        assert_eq!(
+            old("tool-limit = 9000\nversion = 3\n"),
+            LARGEST_TOOL_LIMIT,
+            "and there is a ceiling"
+        );
     }
 
     /// A row Unluminous ships for an agent that is not here is not offered, and nothing is written.

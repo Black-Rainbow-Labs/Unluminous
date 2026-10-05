@@ -1930,7 +1930,8 @@ fn the_ticket_modal_holds_every_section_the_browser_board_has() {
     // The heading says which way it is. It is `rux`'s `SubGroup` since `task-2193`, which reports it as the
     // heading's toggled state rather than in its name.
     let open = |harness: &Harness<'static, UnluminousApp>| {
-        egui_kittest::kittest::NodeT::accesskit_node(&harness.get_by_label("Agent terminal")).toggled()
+        egui_kittest::kittest::NodeT::accesskit_node(&harness.get_by_label("Agent terminal"))
+            .toggled()
             == Some(egui::accesskit::Toggled::True)
     };
     assert!(!open(&harness), "the heading says the section is shut");
@@ -2448,11 +2449,15 @@ fn pick_a_row(harness: &mut Harness<'static, UnluminousApp>, control: &str, row:
     harness.get_by_label(control).click();
     steady(harness);
     let tall = {
-        let painter =
-            egui::Painter::new(harness.ctx.clone(), egui::LayerId::background(), egui::Rect::EVERYTHING);
+        let painter = egui::Painter::new(
+            harness.ctx.clone(),
+            egui::LayerId::background(),
+            egui::Rect::EVERYTHING,
+        );
         rux::text::measure(&painter, rux::Style::CONTROL, "Ag").y + 16.0
     };
-    let at = egui::pos2(trigger.center().x, trigger.bottom() + 6.0 + 6.0 + tall * (row as f32 + 0.5));
+    let at =
+        egui::pos2(trigger.center().x, trigger.bottom() + 6.0 + 6.0 + tall * (row as f32 + 0.5));
     click_at(harness, at);
     steady(harness);
 }
