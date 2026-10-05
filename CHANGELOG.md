@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Agent-Tasks on Inillucent, a rux ticket modal, and the chat and terminal fixes (`task-2193`)
+- Cargo fmt (`task-2193`)
+
 ## 0.59.0 — 2026-10-03
 
 - Compare the index with git grep, ugrep, ugrep's index and Zoekt, and publish the comparison (`task-2139`)
