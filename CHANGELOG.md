@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Unluminous issues v5 (`task-2198`)
+- Rustfmt the new code (`task-2198`)
+- Clippy (`task-2198`)
+
 ## 0.61.0 — 2026-10-05
 
 - Mermaid edges, double click, folder pane, file icons, macOS edge resize (`task-2194`)
