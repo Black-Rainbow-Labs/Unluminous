@@ -667,7 +667,12 @@ if ($Notarize) {
     $keyFile = Get-NotaryKeyFile
     try {
         Write-Host '==> notarising; Apple usually answers in two to fifteen minutes'
-        Invoke-Rcodesign -Arguments @('notary-submit', '--api-key-file', $keyFile, '--wait', $zip)
+        # An hour rather than rcodesign's own ten minutes. `task-2198` had two submissions in a row still
+        # `InProgress` at Apple after 600 seconds, and the release failed both times with nothing wrong with the
+        # bundle. Waiting longer costs nothing when Apple is quick.
+        Invoke-Rcodesign -Arguments @(
+            'notary-submit', '--api-key-file', $keyFile, '--wait', '--max-wait-seconds', '3600', $zip
+        )
         # The ticket is stapled to the application rather than to the zip,
         # because what a person ends up running is the application they dragged
         # out of it, and a stapled ticket is checked with no network.
