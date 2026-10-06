@@ -134,10 +134,9 @@ pub fn show(board: &mut AgentTasks, ctx: &egui::Context, look: &Look<'_>) -> Out
     // is told what the modal is zoomed to, the way a canvas node tells it. `task-2198`.
     let was = look.renderer.crispness();
     look.renderer.composite_at(modal::zoom_of(ctx, egui::Id::new(MODAL_ID)));
-    let (inner, should_close) =
-        modal::show(ctx, MODAL_ID, width, height, |ui, area| {
-            contents(board, &mut kit, ui, area, &look, &task, new)
-        });
+    let (inner, should_close) = modal::show(ctx, MODAL_ID, width, height, |ui, area| {
+        contents(board, &mut kit, ui, area, &look, &task, new)
+    });
     look.renderer.restore_compositing(was);
     kit.rux.end_frame();
     board.ticket_kit = Some(kit);

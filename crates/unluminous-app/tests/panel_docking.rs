@@ -1421,7 +1421,11 @@ fn the_arrangements_are_drawn_the_way_they_are_described() {
 #[test]
 fn a_panel_let_go_on_the_fill_target_runs_the_whole_height_of_its_side() {
     use unluminous_app::app::dock::{Panel, Side};
-    let mut harness = with_terminal("The terminal along the bottom, and the file panel about to fill the right.", 12, 80);
+    let mut harness = with_terminal(
+        "The terminal along the bottom, and the file panel about to fill the right.",
+        12,
+        80,
+    );
     let body_bottom = harness.state().panel_area(Panel::Terminal).bottom();
     let zones = harness.state().drop_zones();
     let right = zones.iter().find(|zone| zone.side == Side::Right).expect("a right band").whole;
@@ -1443,7 +1447,10 @@ fn a_panel_let_go_on_the_fill_target_runs_the_whole_height_of_its_side() {
     let explorer = harness.state().panel_area(Panel::Explorer);
     let terminal = harness.state().panel_area(Panel::Terminal);
     assert!((explorer.bottom() - body_bottom).abs() < 1.0, "down to the bottom: {explorer:?}");
-    assert!((terminal.right() - explorer.left()).abs() < 1.0, "the strip stops at it: {terminal:?}");
+    assert!(
+        (terminal.right() - explorer.left()).abs() < 1.0,
+        "the strip stops at it: {terminal:?}"
+    );
     assert!(harness.state().editor_area().right() <= explorer.left() + 1.0);
     harness.snapshot(shot("panel_file_panel_fills_the_right"));
 }
@@ -1467,7 +1474,10 @@ fn a_side_is_filled_from_the_panel_menu_and_from_the_command_line() {
     let listed = did(&mut harness, "panel list");
     assert_eq!(listed["fills"], serde_json::json!(["right"]));
     assert_eq!(listed["corners"]["bottom-right"], "right");
-    assert_eq!(listed["corners"]["bottom-left"], "bottom", "the other corners are the strips' still");
+    assert_eq!(
+        listed["corners"]["bottom-left"], "bottom",
+        "the other corners are the strips' still"
+    );
     did(&mut harness, "panel fill bottom");
     assert!(harness.state().panes.dock.fills(Side::Bottom), "the bottom takes its corners back");
     assert!(!harness.state().panes.dock.fills(Side::Right));

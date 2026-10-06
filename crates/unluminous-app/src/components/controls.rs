@@ -76,7 +76,11 @@ pub fn field_font(height: f32) -> egui::FontId {
 ///
 /// egui paints a hint in its own weak text colour whatever colour it is handed, so `colour` decides
 /// nothing today. It is kept so the call says what the design asks for.
-pub fn placeholder(words: impl Into<String>, font: &egui::FontId, colour: Color32) -> egui::RichText {
+pub fn placeholder(
+    words: impl Into<String>,
+    font: &egui::FontId,
+    colour: Color32,
+) -> egui::RichText {
     egui::RichText::new(words.into()).font(font.clone()).color(colour)
 }
 
@@ -357,7 +361,12 @@ const FIELD_MENU_WIDTH: f32 = 180.0;
 /// This is the same menu for the words drawn inside a plugin's pane, which cannot reach the window's menus,
 /// and it is [`field_menu`]'s shape so the two look and close the same way: opened from the pointer rather
 /// than a widget, so nothing over the words loses a click to it, and kept in egui's memory under `id`.
-pub fn read_only_menu(ui: &egui::Ui, area: Rect, id: egui::Id, rows: &[(&str, bool)]) -> Option<usize> {
+pub fn read_only_menu(
+    ui: &egui::Ui,
+    area: Rect,
+    id: egui::Id,
+    rows: &[(&str, bool)],
+) -> Option<usize> {
     let menu = id.with("read-only-menu");
     let opened = ui.input(|input| input.pointer.secondary_clicked())
         && pointer_in(ui).is_some_and(|at| area.contains(at))
@@ -1207,9 +1216,14 @@ mod field_sizing {
             found = sizes_drawn(&output);
             output.textures_delta.clear();
         }
-        let size = |words: &str| found.iter().find(|(text, _)| text == words).map(|(_, size)| *size);
+        let size =
+            |words: &str| found.iter().find(|(text, _)| text == words).map(|(_, size)| *size);
         assert_eq!(size("Add a todo"), Some(13.5), "{found:?}");
-        assert_eq!(size("Add a comment"), Some(24.0), "egui still does this to a bare hint: {found:?}");
+        assert_eq!(
+            size("Add a comment"),
+            Some(24.0),
+            "egui still does this to a bare hint: {found:?}"
+        );
     }
 
     /// And every hint in the window goes through [`placeholder`], so the next field added cannot be the
@@ -1238,9 +1252,13 @@ mod field_sizing {
                 while let Some(at) = rest.find(&call) {
                     let after = &rest[at + call.len()..];
                     let argument = after.trim_start();
-                    let through = ["placeholder(", "controls::placeholder(", "crate::components::controls::placeholder("]
-                        .iter()
-                        .any(|start| argument.starts_with(start))
+                    let through = [
+                        "placeholder(",
+                        "controls::placeholder(",
+                        "crate::components::controls::placeholder(",
+                    ]
+                    .iter()
+                    .any(|start| argument.starts_with(start))
                         || argument.starts_with("\"Add a comment\")");
                     if !through {
                         let line = argument.lines().next().unwrap_or("");
@@ -1250,7 +1268,11 @@ mod field_sizing {
                 }
             }
         }
-        assert!(offenders.is_empty(), "a hint not set in its field's font:\n{}", offenders.join("\n"));
+        assert!(
+            offenders.is_empty(),
+            "a hint not set in its field's font:\n{}",
+            offenders.join("\n")
+        );
     }
 
     /// `task-2004`: *"ensure that the cursor fits the height of the input and that the 'Filter files'

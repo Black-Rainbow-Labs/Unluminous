@@ -234,7 +234,9 @@ pub fn sharpen_the_text_in(ctx: &egui::Context, layer: egui::LayerId, zoom: f32)
         ctx.graphics_mut(|graphics| {
             if let Some(list) = graphics.get_mut(one) {
                 for (index, shape) in found {
-                    list.mutate_shape(egui::layers::ShapeIdx(index), |clipped| clipped.shape = shape);
+                    list.mutate_shape(egui::layers::ShapeIdx(index), |clipped| {
+                        clipped.shape = shape
+                    });
                 }
             }
         });

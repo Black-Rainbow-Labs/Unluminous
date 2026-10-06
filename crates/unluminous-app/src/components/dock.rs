@@ -95,13 +95,7 @@ pub fn handle(ui: &mut egui::Ui, header: Rect, panel: Panel) -> Grab {
 /// Each band also carries its `Fill whole side` target, drawn on top of everything else so it can be seen
 /// over the strong rectangle as well — `task-2198`. Its label runs along the band, which on the left and the
 /// right means up the window's edge.
-pub fn zones(
-    ui: &egui::Ui,
-    bands: &[Zone; 4],
-    aimed: Option<Aim>,
-    landing: Rect,
-    carrying: Panel,
-) {
+pub fn zones(ui: &egui::Ui, bands: &[Zone; 4], aimed: Option<Aim>, landing: Rect, carrying: Panel) {
     let painter = ui.painter();
     let chosen = aimed.map(|aim| aim.side);
     for zone in bands {
@@ -136,8 +130,14 @@ fn fill_target(painter: &egui::Painter, zone: &Zone, aimed: bool) {
         false => (fade(LANDING_FILL), color::text_strong()),
     };
     painter.rect_filled(pill, CornerRadius::same(6), fill);
-    painter.rect_stroke(pill, CornerRadius::same(6), Stroke::new(1.0, color::accent()), egui::StrokeKind::Inside);
-    let label = painter.layout_no_wrap(FILL_LABEL.to_owned(), egui::FontId::proportional(11.0), ink);
+    painter.rect_stroke(
+        pill,
+        CornerRadius::same(6),
+        Stroke::new(1.0, color::accent()),
+        egui::StrokeKind::Inside,
+    );
+    let label =
+        painter.layout_no_wrap(FILL_LABEL.to_owned(), egui::FontId::proportional(11.0), ink);
     let size = label.size();
     let upright = pill.height() > pill.width();
     let (room, across) = match upright {

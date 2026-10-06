@@ -85,8 +85,7 @@ impl UnluminousApp {
                 return;
             }
         }
-        let modified =
-            std::fs::metadata(store.recent_path()).and_then(|meta| meta.modified()).ok();
+        let modified = std::fs::metadata(store.recent_path()).and_then(|meta| meta.modified()).ok();
         let moved = match self.recent_checked {
             Some((_, was)) => was != modified,
             None => true,

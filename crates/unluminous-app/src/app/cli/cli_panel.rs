@@ -285,10 +285,8 @@ impl UnluminousApp {
     fn corners_value(&self) -> Value {
         let mut corners = serde_json::Map::new();
         for corner in dock::Corner::ALL {
-            corners.insert(
-                corner.name().to_owned(),
-                json!(self.panes.dock.owner_of(corner).name()),
-            );
+            corners
+                .insert(corner.name().to_owned(), json!(self.panes.dock.owner_of(corner).name()));
         }
         Value::Object(corners)
     }

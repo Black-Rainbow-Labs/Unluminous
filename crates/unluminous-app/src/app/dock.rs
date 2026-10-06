@@ -1593,7 +1593,9 @@ mod tests {
         assert_eq!(after.editor.right(), run.left());
         assert_eq!(after.editor.bottom(), terminal.top());
         // Nothing overlaps anything.
-        for (one, other) in [(run, terminal), (run, after.editor), (after.of(Panel::Explorer), terminal)] {
+        for (one, other) in
+            [(run, terminal), (run, after.editor), (after.of(Panel::Explorer), terminal)]
+        {
             assert!(one.intersect(other).area() <= 0.0, "{one:?} overlaps {other:?}");
         }
     }
@@ -1630,7 +1632,8 @@ mod tests {
         let sizes = Panes::new();
         let layout = Layout::new();
         let showing = only(&[Panel::Explorer, Panel::Terminal]);
-        let geometry = DockGeometry { body: body(), layout: &layout, showing, sizes: &sizes, editor: true };
+        let geometry =
+            DockGeometry { body: body(), layout: &layout, showing, sizes: &sizes, editor: true };
         let bands = zones(body(), &layout, showing, &sizes, true);
         let right = bands.iter().find(|zone| zone.side == Side::Right).expect("a right band");
         assert!(right.band.contains_rect(right.whole), "the target is inside its band");

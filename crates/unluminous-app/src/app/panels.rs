@@ -840,8 +840,13 @@ impl UnluminousApp {
         let editor = self.editor_visible;
         let layout = self.panes.dock;
         let bands = dock::zones(panes, &layout, showing, &self.panes, editor);
-        let geometry =
-            dock::DockGeometry { body: panes, layout: &layout, showing, sizes: &self.panes, editor };
+        let geometry = dock::DockGeometry {
+            body: panes,
+            layout: &layout,
+            showing,
+            sizes: &self.panes,
+            editor,
+        };
         let aimed = dock::aim(&geometry, &bands, panel, at);
         let landing = match aimed {
             Some(aim) => {
@@ -874,8 +879,13 @@ impl UnluminousApp {
         let layout = self.panes.dock;
         let editor = self.editor_visible;
         let bands = dock::zones(panes, &layout, showing, &self.panes, editor);
-        let geometry =
-            dock::DockGeometry { body: panes, layout: &layout, showing, sizes: &self.panes, editor };
+        let geometry = dock::DockGeometry {
+            body: panes,
+            layout: &layout,
+            showing,
+            sizes: &self.panes,
+            editor,
+        };
         if let Some(aim) = dock::aim(&geometry, &bands, panel, at) {
             self.dock_the_panel(panel, aim.side, Some(aim.position));
             if aim.fill {

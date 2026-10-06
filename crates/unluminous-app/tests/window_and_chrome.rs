@@ -5599,12 +5599,8 @@ fn a_project_another_window_opened_reaches_this_windows_recent_projects() {
     unluminous_app::services::store::Store::at(&settings).remember_project(&elsewhere);
     std::thread::sleep(std::time::Duration::from_millis(1100));
     steady(&mut harness);
-    let recent: Vec<String> = harness
-        .state()
-        .recent
-        .iter()
-        .map(|path| path.to_string_lossy().to_lowercase())
-        .collect();
+    let recent: Vec<String> =
+        harness.state().recent.iter().map(|path| path.to_string_lossy().to_lowercase()).collect();
     let wanted = elsewhere.to_string_lossy().to_lowercase();
     assert!(
         recent.iter().any(|path| path.ends_with("task-2198-recent-project") || *path == wanted),
@@ -5626,6 +5622,10 @@ fn a_selection_over_prose_sits_on_the_letters() {
     let rects = layout.selection_rects(harness.state().document().selection().range());
     let line = &layout.lines[0];
     let letters = line.y + line.baseline - line.ascent + (line.ascent + line.descent) / 2.0;
-    assert!((rects[0].y + rects[0].height / 2.0 - letters).abs() < 0.01, "{:?} against {letters}", rects[0]);
+    assert!(
+        (rects[0].y + rects[0].height / 2.0 - letters).abs() < 0.01,
+        "{:?} against {letters}",
+        rects[0]
+    );
     harness.snapshot(shot("selection_centred_on_the_letters"));
 }

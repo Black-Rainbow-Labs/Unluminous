@@ -3185,15 +3185,17 @@ fn the_ticket_modal_zooms_with_the_wheel_the_keys_and_the_command_line() {
     let mut harness = harness("");
     a_ticket_open(&mut harness);
     let id = egui::Id::new(unluminous_app::components::agent_tasks::ticket_modal::MODAL_ID);
-    let before = modal::drawn(&harness.ctx, unluminous_app::components::agent_tasks::ticket_modal::MODAL_ID)
-        .expect("the modal was drawn");
+    let before =
+        modal::drawn(&harness.ctx, unluminous_app::components::agent_tasks::ticket_modal::MODAL_ID)
+            .expect("the modal was drawn");
     let editor_font = harness.state().settings.font_size;
 
     let said = did(&mut harness, "modal zoom 1.25");
     assert!((said["zoom"].as_f64().expect("a number") - 1.25).abs() < 0.001);
     steady(&mut harness);
-    let after = modal::drawn(&harness.ctx, unluminous_app::components::agent_tasks::ticket_modal::MODAL_ID)
-        .expect("the modal was drawn");
+    let after =
+        modal::drawn(&harness.ctx, unluminous_app::components::agent_tasks::ticket_modal::MODAL_ID)
+            .expect("the modal was drawn");
     assert_eq!(before, after, "the same place on the screen");
     harness.snapshot(shot("agent_tasks_modal_zoomed"));
 
@@ -3203,7 +3205,11 @@ fn the_ticket_modal_zooms_with_the_wheel_the_keys_and_the_command_line() {
     harness.input_mut().events.push(egui::Event::Zoom(1.0 / 1.6));
     steady(&mut harness);
     assert!(modal::zoom_of(&harness.ctx, id) < 1.25, "the wheel made it smaller");
-    assert_eq!(harness.state().settings.font_size, editor_font, "and the editor's font is untouched");
+    assert_eq!(
+        harness.state().settings.font_size,
+        editor_font,
+        "and the editor's font is untouched"
+    );
 
     // The keys.
     let was = modal::zoom_of(&harness.ctx, id);
