@@ -3257,7 +3257,7 @@ fn delete_task_deletes_the_ticket_on_one_press() {
     harness.get_by_label("Delete task").click();
     steady(&mut harness);
     assert!(
-        refused(&mut harness, "plugins run agent-tasks task task-1").len() > 0,
+        !refused(&mut harness, "plugins run agent-tasks task task-1").is_empty(),
         "the ticket is gone"
     );
     assert!(harness.query_by_label("Delete for good").is_none(), "and nothing asked a second time");
