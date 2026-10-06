@@ -209,7 +209,11 @@ pub(crate) fn todo_rows(
         egui::TextEdit::singleline(&mut draft)
             .id(todo_id)
             .frame(egui::Frame::NONE)
-            .hint_text(egui::RichText::new("Add a todo").color(look.palette.text_faint))
+            .hint_text(crate::components::controls::placeholder(
+                "Add a todo",
+                &egui::FontId::proportional(look.font_size - 0.5),
+                look.palette.text_faint,
+            ))
             .font(egui::FontId::proportional(look.font_size - 0.5))
             .text_color(look.palette.text),
     );
@@ -328,6 +332,7 @@ pub(crate) fn comment_section(
             let mut save = false;
             let mut cancel = false;
             let mut typed = false;
+            let mut copy: Option<String> = None;
             // Which comment's view was changed, acted on once the loop has finished for the reason every other
             // change in it is: `board` is borrowed for the drawing.
             let mut view_change: Option<(i64, bool)> = None;
@@ -453,6 +458,24 @@ pub(crate) fn comment_section(
                         height
                     }
                 };
+                // A comment that is being read rather than edited has a right click menu that copies it, which
+                // is `task-2198`'s *"right click ... text and see a menu with text options, like copy."*
+                if !being_edited {
+                    let block = Rect::from_min_size(
+                        Pos2::new(area.min.x, pen),
+                        Vec2::new(area.width(), height),
+                    );
+                    let id = ui.id().with(("agent-tasks-comment-menu", comment.id));
+                    if crate::components::controls::read_only_menu(
+                        ui,
+                        block,
+                        id,
+                        &[("Copy Comment", true)],
+                    ) == Some(0)
+                    {
+                        copy = Some(comment.body.clone());
+                    }
+                }
                 // A human's own comment can be sent to the agent on its own, which is the browser's `Send to terminal` on
                 // each comment: a comment written before the agent was running still has to be able to reach it. And it
                 // can be changed, which is the browser's `Edit`. Neither is drawn on an agent's comment: what an agent
@@ -551,10 +574,13 @@ pub(crate) fn comment_section(
             // an area whose content is painted rather than laid out believes it has nothing in it and never
             // scrolls.
             ui.allocate_space(Vec2::new(area.width(), (pen - top).max(0.0)));
-            (resend, edit, save, cancel, typed, view_change)
+            (resend, edit, save, cancel, typed, view_change, copy)
         })
         .inner;
-    let (resend, edit, save, cancel, typed, view_change) = scrolled;
+    let (resend, edit, save, cancel, typed, view_change, copy) = scrolled;
+    if let Some(text) = copy {
+        requests.push(Request::Copy(text));
+    }
     if let Some((id, raw)) = view_change {
         board.show_the_comment_raw(id, raw);
     }
@@ -607,7 +633,11 @@ pub(crate) fn comment_section(
         egui::TextEdit::singleline(&mut draft)
             .id(draft_id)
             .frame(egui::Frame::NONE)
-            .hint_text(egui::RichText::new("Add a comment").color(look.palette.text_faint))
+            .hint_text(crate::components::controls::placeholder(
+                "Add a comment",
+                &egui::FontId::proportional(look.font_size - 0.5),
+                look.palette.text_faint,
+            ))
             .font(egui::FontId::proportional(look.font_size - 0.5))
             .text_color(look.palette.text),
     );

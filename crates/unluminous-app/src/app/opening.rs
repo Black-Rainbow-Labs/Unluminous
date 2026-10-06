@@ -18,6 +18,10 @@ use crate::services::recycle;
 use crate::app::files;
 use crate::app::{move_the_bytes, write_the_edits, Focus, UnluminousApp, ViewMode};
 
+/// How often a window asks whether another window has changed the recent projects. See
+/// [`UnluminousApp::keep_the_recent_projects_current`].
+const RECENT_CHECK: std::time::Duration = std::time::Duration::from_secs(1);
+
 impl UnluminousApp {
     /// Show `folder` in the explorer, and remember it as a recent project.
     ///
@@ -42,6 +46,55 @@ impl UnluminousApp {
         }
         // The second folder may be a different repository, or none at all.
         self.open_repository();
+    }
+
+    /// Open `folder` in a window of its own, and put it at the top of this window's recent projects.
+    ///
+    /// `task-2198`: *"Open Recent projects seems to not be updating, and projects aren't showing up after I've
+    /// opened them."* A project opened from here starts a second process, and that process is what wrote the
+    /// folder into the recent list, a moment later and in a file this window had read once at startup. So the
+    /// window that did the opening never listed the project it had just opened. It is written down here, by
+    /// the window that asked, before the other one has started. The new window writes it again when it loads,
+    /// which leaves the list exactly the same.
+    ///
+    /// Only if a second process cannot be started does the folder take this window, which is better than the
+    /// entry doing nothing at all.
+    pub fn open_a_project_window(&mut self, folder: &Path) {
+        if let Some(store) = &self.store {
+            store.remember_project(folder);
+            self.recent = store.recent_projects();
+            self.recent_checked = None;
+        }
+        if crate::services::launcher::open_window(folder).is_none() {
+            self.open_folder(folder);
+        }
+    }
+
+    /// Read the recent projects again when another window has changed them.
+    ///
+    /// The other half of [`Self::open_a_project_window`]: every Unluminous window is a process of its own and
+    /// they share one list on disk, so a project opened in any of them has to reach the `Recent Projects`
+    /// menu of all of them. The file's modified time is asked at most once every [`RECENT_CHECK`], and the
+    /// list is read only when it moved. A window that is not drawing a frame asks nothing, so an idle window
+    /// still costs nothing.
+    pub fn keep_the_recent_projects_current(&mut self) {
+        let Some(store) = &self.store else { return };
+        let now = std::time::Instant::now();
+        if let Some((at, _)) = self.recent_checked {
+            if now.duration_since(at) < RECENT_CHECK {
+                return;
+            }
+        }
+        let modified =
+            std::fs::metadata(store.recent_path()).and_then(|meta| meta.modified()).ok();
+        let moved = match self.recent_checked {
+            Some((_, was)) => was != modified,
+            None => true,
+        };
+        if moved {
+            self.recent = store.recent_projects();
+        }
+        self.recent_checked = Some((now, modified));
     }
 
     /// Open a file into the tab that a single click reuses.

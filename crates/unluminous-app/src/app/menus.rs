@@ -225,6 +225,7 @@ impl UnluminousApp {
             | Action::ToggleRunTile
             | Action::ToggleDebugTile
             | Action::Dock { .. }
+            | Action::FillSide(_)
             | Action::ResetPanelLayout
             | Action::Space(_) => self.a_view_entry(action),
             Action::Run(_) | Action::Debug(_) => self.a_run_entry(action),
@@ -311,9 +312,7 @@ impl UnluminousApp {
             }
         }
         let folder = unluminous_terminal::paths::plain(folder);
-        if launcher::open_window(&folder).is_none() {
-            self.open_folder(&folder);
-        }
+        self.open_a_project_window(&folder);
         self.new_project = None;
         Ok(())
     }
@@ -339,11 +338,8 @@ impl UnluminousApp {
                 {
                     // A window of its own, which is what `Recent Projects` already did and what
                     // `task-1658` asks for: a project is a window, so opening a second one keeps the
-                    // first. Only if a second process cannot be started does the folder take this
-                    // window, which is better than the entry doing nothing at all.
-                    if launcher::open_window(&folder).is_none() {
-                        self.open_folder(&folder);
-                    }
+                    // first. See `open_a_project_window`.
+                    self.open_a_project_window(&folder);
                 }
             }
             Action::OpenFile => {
@@ -384,9 +380,7 @@ impl UnluminousApp {
             }
             Action::OpenRecent(folder) => {
                 // A window of its own, as the reference editor does it, so the project that is open stays open.
-                if launcher::open_window(&folder).is_none() {
-                    self.open_folder(&folder);
-                }
+                self.open_a_project_window(&folder);
             }
             Action::ForgetRecent => {
                 self.recent.clear();
@@ -742,6 +736,9 @@ impl UnluminousApp {
             // shortcut that meant "make the editor's font bigger" while somebody was working in the file
             // tree would be a shortcut that does nothing where they are looking. Which pane that is comes
             // from `Focus`, which is the one value in the window that says who holds the keyboard.
+            Action::ChangeFontSize { larger }
+                if self.the_zoom_keys_go_to_a_modal(Some(if larger { 1 } else { -1 })) => {}
+            Action::ResetFontSize if self.the_zoom_keys_go_to_a_modal(None) => {}
             Action::ChangeFontSize { larger } => match self.the_pane_the_keys_zoom() {
                 Some(panel) => self.step_the_zoom_of(panel, if larger { 1 } else { -1 }, None),
                 // On a tab showing a picture the same keys zoom the picture. `task-1658` asks for
@@ -851,6 +848,10 @@ impl UnluminousApp {
             // is where a person who did not aim means. The drag is what says before or after, and
             // `unluminous-cli panel dock --position` is what says it in a script.
             Action::Dock { panel, side } => self.dock_the_panel(panel, side, None),
+            Action::FillSide(side) => {
+                let fills = self.panes.dock.fills(side);
+                self.fill_a_side(side, !fills);
+            }
             Action::ResetPanelLayout => self.reset_the_panel_layout(),
             Action::Space(what) => self.run_a_space_action(what),
             Action::ToggleRunTile => {

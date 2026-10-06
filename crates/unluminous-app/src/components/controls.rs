@@ -65,6 +65,21 @@ pub fn field_font(height: f32) -> egui::FontId {
     egui::FontId::proportional(field_font_size(height))
 }
 
+/// A field's placeholder, set in the field's own font.
+///
+/// `task-2198`: *"Placeholder text in various places is not sized like the other font sizes around it."*
+/// egui 0.36 lays a `TextEdit`'s hint out as atoms, and an atom with no size of its own takes the `Ui`'s
+/// Body size, which is `appearance.ui.font.size`, rather than the font the `TextEdit` was given. On the
+/// machine the report came from that is 24 points, so `Add a todo` in a 13.5 point field was drawn nearly
+/// twice the size of anything typed into it. Every hint in the window goes through this, and
+/// `every_placeholder_is_set_in_its_fields_font` refuses a hint that does not.
+///
+/// egui paints a hint in its own weak text colour whatever colour it is handed, so `colour` decides
+/// nothing today. It is kept so the call says what the design asks for.
+pub fn placeholder(words: impl Into<String>, font: &egui::FontId, colour: Color32) -> egui::RichText {
+    egui::RichText::new(words.into()).font(font.clone()).color(colour)
+}
+
 /// Where a field's `TextEdit` goes and what it sets its text in.
 ///
 /// **The two are one answer, so a caller cannot take one and forget the other.** A strip measured for one
@@ -334,6 +349,56 @@ pub fn field_menu(ui: &egui::Ui, field: Rect, id: egui::Id) {
 /// How wide a field's right click menu is. Four short words, so it is narrower than a context menu.
 const FIELD_MENU_WIDTH: f32 = 180.0;
 
+/// The right click menu over text that is read rather than typed: a ticket's comments and its rendered
+/// description. Answers the row that was chosen, by its place in `rows`.
+///
+/// `task-2198`: *"I should be able to right click md preview, etc text and see a menu with text options, like
+/// copy."* The Markdown preview has a menu of its own in the window, and the chat's messages already had one.
+/// This is the same menu for the words drawn inside a plugin's pane, which cannot reach the window's menus,
+/// and it is [`field_menu`]'s shape so the two look and close the same way: opened from the pointer rather
+/// than a widget, so nothing over the words loses a click to it, and kept in egui's memory under `id`.
+pub fn read_only_menu(ui: &egui::Ui, area: Rect, id: egui::Id, rows: &[(&str, bool)]) -> Option<usize> {
+    let menu = id.with("read-only-menu");
+    let opened = ui.input(|input| input.pointer.secondary_clicked())
+        && pointer_in(ui).is_some_and(|at| area.contains(at))
+        && ui.clip_rect().intersects(area);
+    if opened {
+        if let Some(at) = ui.ctx().pointer_interact_pos() {
+            ui.ctx().data_mut(|data| data.insert_temp(menu, at));
+        }
+    }
+    let at = ui.ctx().data(|data| data.get_temp::<Pos2>(menu))?;
+    let mut chosen = None;
+    let popup = egui::Popup::new(menu, ui.ctx().clone(), at, ui.layer_id())
+        .kind(egui::PopupKind::Menu)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .layout(egui::Layout::top_down_justified(egui::Align::Min))
+        .frame(
+            egui::Frame::popup(ui.style())
+                .fill(color::menu())
+                .stroke(Stroke::new(1.0, color::control_border()))
+                .inner_margin(6),
+        )
+        .width(FIELD_MENU_WIDTH);
+    let mut close = false;
+    if let Some(response) = popup.show(|ui| {
+        for (index, (name, enabled)) in rows.iter().enumerate() {
+            if menu_row(ui, name, "", *enabled, false, 0.0) {
+                chosen = Some(index);
+            }
+        }
+    }) {
+        close = response.response.should_close();
+    }
+    if chosen.is_some() || ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+        close = true;
+    }
+    if close {
+        ui.ctx().data_mut(|data| data.remove::<Pos2>(menu));
+    }
+    chosen
+}
+
 /// What this box had selected at the end of the frame before this one, and remember what it has now.
 ///
 /// **One frame of history, because a right click takes two.** `Response::secondary_clicked` is
@@ -421,7 +486,7 @@ pub fn search_field_over(
     let response = field.add(
         egui::TextEdit::singleline(value)
             .id(id)
-            .hint_text(egui::RichText::new(hint).color(color::text_faint()).size(inside.font.size))
+            .hint_text(placeholder(hint, &inside.font, color::text_faint()))
             .font(inside.font.clone())
             .frame(egui::Frame::NONE)
             .desired_width(inside.rect.width())
@@ -1091,6 +1156,102 @@ pub fn bar_button(ui: &mut egui::Ui, area: Rect, name: &str, strong: bool) -> eg
 #[cfg(test)]
 mod field_sizing {
     use super::*;
+
+    /// The font size every piece of text one frame laid out was set in, with the text.
+    fn sizes_drawn(output: &egui::FullOutput) -> Vec<(String, f32)> {
+        fn collect(shape: &egui::Shape, out: &mut Vec<(String, f32)>) {
+            match shape {
+                egui::Shape::Text(text) => {
+                    for section in &text.galley.job.sections {
+                        out.push((text.galley.job.text.clone(), section.format.font_id.size));
+                    }
+                }
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|one| collect(one, out)),
+                _ => {}
+            }
+        }
+        let mut found = Vec::new();
+        for clipped in &output.shapes {
+            collect(&clipped.shape, &mut found);
+        }
+        found
+    }
+
+    /// `task-2198`: a placeholder came out at the interface's size rather than the field's. The window's
+    /// Body is set to the 24 points of the machine the report came from, and a 13.5 point field is drawn
+    /// with an empty value, once with the hint [`placeholder`] builds and once with a bare string, which
+    /// is what the fields handed egui before.
+    #[test]
+    fn a_placeholder_is_laid_out_in_its_fields_font_and_a_bare_one_is_not() {
+        let context = egui::Context::default();
+        context.all_styles_mut(|style| {
+            if let Some(font) = style.text_styles.get_mut(&egui::TextStyle::Body) {
+                font.size = 24.0;
+            }
+        });
+        let font = egui::FontId::proportional(13.5);
+        let mut found = Vec::new();
+        for _ in 0..2 {
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                let mut empty = String::new();
+                ui.add(
+                    egui::TextEdit::singleline(&mut empty)
+                        .id_salt("through placeholder")
+                        .hint_text(placeholder("Add a todo", &font, color::text_faint()))
+                        .font(font.clone()),
+                );
+                let mut also_empty = String::new();
+                let bare = egui::TextEdit::singleline(&mut also_empty).id_salt("bare");
+                ui.add(bare.hint_text("Add a comment").font(font.clone()));
+            });
+            found = sizes_drawn(&output);
+            output.textures_delta.clear();
+        }
+        let size = |words: &str| found.iter().find(|(text, _)| text == words).map(|(_, size)| *size);
+        assert_eq!(size("Add a todo"), Some(13.5), "{found:?}");
+        assert_eq!(size("Add a comment"), Some(24.0), "egui still does this to a bare hint: {found:?}");
+    }
+
+    /// And every hint in the window goes through [`placeholder`], so the next field added cannot be the
+    /// next one drawn at the interface's size. Read off the source, because a field is drawn deep inside
+    /// a component that a unit test cannot reach on its own.
+    #[test]
+    fn every_placeholder_is_set_in_its_fields_font() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut stack = vec![root];
+        let mut offenders = Vec::new();
+        // Built from two halves so this test's own source is not a match for itself, and so is the bare
+        // hint in the test above, which is written as a method on a binding for the same reason.
+        let call = [".hint", "_text("].concat();
+        while let Some(folder) = stack.pop() {
+            for entry in std::fs::read_dir(&folder).expect("a source folder").flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|ext| ext != "rs") {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path).expect("a source file");
+                let mut rest = text.as_str();
+                while let Some(at) = rest.find(&call) {
+                    let after = &rest[at + call.len()..];
+                    let argument = after.trim_start();
+                    let through = ["placeholder(", "controls::placeholder(", "crate::components::controls::placeholder("]
+                        .iter()
+                        .any(|start| argument.starts_with(start))
+                        || argument.starts_with("\"Add a comment\")");
+                    if !through {
+                        let line = argument.lines().next().unwrap_or("");
+                        offenders.push(format!("{}: {line}", path.display()));
+                    }
+                    rest = after;
+                }
+            }
+        }
+        assert!(offenders.is_empty(), "a hint not set in its field's font:\n{}", offenders.join("\n"));
+    }
 
     /// `task-2004`: *"ensure that the cursor fits the height of the input and that the 'Filter files'
     /// text is about the same size as the folder/file name text"*.

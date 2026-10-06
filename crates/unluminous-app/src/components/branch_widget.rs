@@ -165,7 +165,11 @@ fn rows(ui: &mut egui::Ui, state: &BranchState) -> Option<Action> {
             egui::TextEdit::singleline(&mut editing)
                 .frame(egui::Frame::NONE)
                 .font(inside.font.clone())
-                .hint_text(egui::RichText::new("Filter branches").size(inside.font.size)),
+                .hint_text(controls::placeholder(
+                    "Filter branches",
+                    &inside.font,
+                    color::text_faint(),
+                )),
         );
         if editing != wanted {
             wanted = editing.clone();

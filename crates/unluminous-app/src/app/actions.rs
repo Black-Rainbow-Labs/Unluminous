@@ -176,6 +176,11 @@ pub enum Action {
         panel: crate::app::dock::Panel,
         side: crate::app::dock::Side,
     },
+    /// Make a side of the window run the whole length of its edge, or stop it doing so — `task-2198`.
+    ///
+    /// A toggle, because the row on a panel's menu is about the side that panel is on and says with its tick
+    /// whether that side fills now. See `dock::Layout::fills`.
+    FillSide(crate::app::dock::Side),
     /// Put every panel back where a new Unluminous has it.
     ResetPanelLayout,
     /// Something about the Base of Infinite Space — `task-1904`.
@@ -2309,6 +2314,15 @@ pub fn panel_menu(state: &MenuState, panel: crate::app::dock::Panel) -> Vec<Entr
                 .checked(state.dock.side_of(panel) == side)
         })
         .collect();
+    // Whether the side this panel is on runs the whole length of its edge: `task-2198`'s *"I should be allowed
+    // to choose to fill an entire side/bottom/top"*. The same choice a drop on the band's `Fill whole side`
+    // target makes.
+    let side = state.dock.side_of(panel);
+    entries.push(Entry::Separator);
+    entries.push(
+        Entry::item(&format!("Fill Whole {}", side.label()), Action::FillSide(side))
+            .checked(state.dock.fills(side)),
+    );
     entries.push(Entry::Separator);
     entries.push(Entry::item("Reset Panel Layout", Action::ResetPanelLayout));
     entries
@@ -2512,6 +2526,21 @@ pub fn clear_highlight_menu(state: &MenuState) -> Vec<Entry> {
     vec![
         Entry::item("Clear Highlight", Action::ClearHighlight).enabled(state.on_a_highlight),
         Entry::item("Clear All Highlights", Action::ClearHighlights).enabled(state.highlights > 0),
+    ]
+}
+
+/// The Markdown preview's own right click menu.
+///
+/// `task-2198`: *"I should be able to right click md preview, etc text and see a menu with text options, like
+/// copy."* The preview could already be selected and copied with the keys, so these are the two
+/// [`Action`]s the Edit menu holds, with the arm in `run_action` that already copies what the preview has
+/// selected. Nothing that changes text is offered, because the preview is worked out from the source and
+/// there is nothing in it to cut or paste into.
+pub fn preview_menu(has_selection: bool) -> Vec<Entry> {
+    vec![
+        Entry::with_shortcut("Copy", Action::Copy, Shortcut::command(egui::Key::C))
+            .enabled(has_selection),
+        Entry::with_shortcut("Select All", Action::SelectAll, Shortcut::command(egui::Key::A)),
     ]
 }
 

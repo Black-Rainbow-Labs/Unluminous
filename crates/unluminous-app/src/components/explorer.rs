@@ -418,12 +418,15 @@ pub fn show(
     // height is the row that font occupies, stood proud of the 24 point box at both ends.
     // `controls::field_font_size` is a fraction of the field's own height, and the field is
     // `view.at(24.0)` - so it is `view.at(12.5)` at every zoom, which is exactly the rows.
-    let typed = inside.font.size;
     let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
     let response = field.add(
         egui::TextEdit::singleline(filter)
             .id(filter_id)
-            .hint_text(egui::RichText::new("Filter files").color(color::text_faint()).size(typed))
+            .hint_text(crate::components::controls::placeholder(
+                "Filter files",
+                &inside.font,
+                color::text_faint(),
+            ))
             .font(inside.font.clone())
             .frame(egui::Frame::NONE)
             .desired_width(inside.rect.width())
@@ -954,13 +957,13 @@ fn folder_row(
             view.zoom,
         );
     }
-    let galley = ui.painter().crisp_layout_no_wrap(
-        name.to_owned(),
-        egui::FontId::proportional(view.at(12.5)),
-        color::text_control(),
-    );
+    // Placed by its capitals rather than by its box, so the name lines up with the mark in front of it.
+    // See `crisp::top_centring_capitals`.
+    let font = egui::FontId::proportional(view.at(12.5));
+    let top = crate::theme::crisp::top_centring_capitals(ui.painter(), &font, row.center().y);
+    let galley = ui.painter().crisp_layout_no_wrap(name.to_owned(), font, color::text_control());
     ui.painter().crisp_galley(
-        Pos2::new(name_column(x, view, mark, true), row.center().y - galley.size().y / 2.0),
+        Pos2::new(name_column(x, view, mark, true), top),
         galley,
         color::text_control(),
     );
@@ -1056,16 +1059,11 @@ fn file_row(
     } else {
         color::text_faint().gamma_multiply(0.7)
     };
-    let galley = ui.painter().crisp_layout_no_wrap(
-        name.clone(),
-        egui::FontId::proportional(view.at(12.5)),
-        tint,
-    );
-    ui.painter().crisp_galley(
-        Pos2::new(name_column(x, view, mark, false), row.center().y - galley.size().y / 2.0),
-        galley,
-        tint,
-    );
+    // By its capitals, for the reason a folder's name is.
+    let font = egui::FontId::proportional(view.at(12.5));
+    let top = crate::theme::crisp::top_centring_capitals(ui.painter(), &font, row.center().y);
+    let galley = ui.painter().crisp_layout_no_wrap(name.clone(), font, tint);
+    ui.painter().crisp_galley(Pos2::new(name_column(x, view, mark, false), top), galley, tint);
     if open && view.unsaved {
         ui.painter().circle_filled(
             Pos2::new(pill.right() - view.at(12.0), row.center().y),

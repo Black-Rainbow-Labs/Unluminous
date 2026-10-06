@@ -35,6 +35,7 @@ impl UnluminousApp {
             "accept" => self.cli_modal_accept(request, ctx),
             "cancel" => self.cli_modal_cancel(request),
             "move" | "size" | "reset" => self.cli_modal_geometry(request, verb, ctx),
+            "zoom" => cli_modal_zoom(request, ctx),
             _ => unknown(request),
         }
     }
@@ -772,6 +773,44 @@ impl UnluminousApp {
         ctx.request_repaint();
         done(request, message)
     }
+}
+
+/// `modal zoom` — how big the modal that is open is drawn. `task-2198`.
+///
+/// Asked of egui rather than of `open_modal`, because the modal in front may be one a plugin drew, such as
+/// the Agent Tasks ticket, which `modal open` has no name for. Its zoom is kept under its own egui id by
+/// `components::modal`, which is the same place the wheel and the keys change it.
+fn cli_modal_zoom(request: &Request, ctx: &egui::Context) -> Outcome {
+    let Some(id) = modal::the_open_one(ctx) else {
+        return no(request, code::NOT_APPLICABLE, "No modal is open.");
+    };
+    let asked = request.text("factor").map(|said| said.trim().to_owned());
+    match asked.as_deref() {
+        None | Some("") => {}
+        Some("reset") => modal::set_zoom(ctx, id, settings::DEFAULT_ZOOM),
+        // Refused rather than clamped, for the reason `panel zoom` gives.
+        Some(said) => match said.parse::<f32>() {
+            Ok(factor)
+                if factor.is_finite()
+                    && (settings::MIN_ZOOM..=settings::MAX_ZOOM).contains(&factor) =>
+            {
+                modal::set_zoom(ctx, id, factor);
+            }
+            _ => {
+                return no(
+                    request,
+                    code::USAGE,
+                    format!(
+                        "`{said}` is not a zoom: say a number between {:.1} and {:.1}, or `reset`.",
+                        settings::MIN_ZOOM,
+                        settings::MAX_ZOOM
+                    ),
+                )
+            }
+        },
+    }
+    let zoom = modal::zoom_of(ctx, id);
+    ok(request, format!("The modal is at {zoom:.2}x"), json!({ "zoom": zoom }))
 }
 
 /// The modals `modal open` knows, and what each one is.

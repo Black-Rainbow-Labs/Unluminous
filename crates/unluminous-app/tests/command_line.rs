@@ -1979,6 +1979,9 @@ fn drive_the_panels_and_the_explorer(coverage: &mut Coverage) {
     c.refuses(&mut harness, "panel size nosuchpanel --height 320");
     c.works(&mut harness, "panel zoom explorer 1.35");
     c.refuses(&mut harness, "panel zoom nosuchpanel 1.35");
+    c.works(&mut harness, "panel fill right");
+    c.refuses(&mut harness, "panel fill sideways");
+    c.works(&mut harness, "panel fill right off");
     c.works(&mut harness, "panel reset");
 
     c.works(&mut harness, "explorer show");
@@ -2057,6 +2060,7 @@ fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
     c.refuses(&mut harness, "modal move --x 10");
     c.refuses(&mut harness, "modal size --width 800");
     c.refuses(&mut harness, "modal reset");
+    c.refuses(&mut harness, "modal zoom 1.2");
     c.works(&mut harness, "modal open go-to-file --query one");
     c.refuses(&mut harness, "modal open no-such-modal");
     c.works(&mut harness, "modal type one");
@@ -2064,6 +2068,9 @@ fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
     c.works(&mut harness, "modal move --x 60 --y 60");
     c.works(&mut harness, "modal size --width 900 --height 600");
     c.works(&mut harness, "modal reset");
+    c.works(&mut harness, "modal zoom 1.2");
+    c.refuses(&mut harness, "modal zoom 9");
+    c.works(&mut harness, "modal zoom reset");
     c.works(&mut harness, "modal choose 0");
     c.works(&mut harness, "modal accept");
     c.sets_up(&mut harness, "modal open go-to-file --query nothing-matches-this");

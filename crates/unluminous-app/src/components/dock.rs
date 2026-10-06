@@ -23,7 +23,7 @@
 
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
-use crate::app::dock::{Panel, Side, Zone};
+use crate::app::dock::{Aim, Panel, Zone};
 use crate::theme::color;
 
 /// How much of the accent each part of the overlay is painted at.
@@ -91,14 +91,19 @@ pub fn handle(ui: &mut egui::Ui, header: Rect, panel: Panel) -> Grab {
 /// `landing` is the rectangle the panel would occupy — worked out by the window from
 /// `app::dock::regions`, so it is the real one. `Rect::ZERO` while the pointer is over none of the
 /// bands, which is a drag that can still be thought better of.
+///
+/// Each band also carries its `Fill whole side` target, drawn on top of everything else so it can be seen
+/// over the strong rectangle as well — `task-2198`. Its label runs along the band, which on the left and the
+/// right means up the window's edge.
 pub fn zones(
     ui: &egui::Ui,
     bands: &[Zone; 4],
-    chosen: Option<Side>,
+    aimed: Option<Aim>,
     landing: Rect,
     carrying: Panel,
 ) {
     let painter = ui.painter();
+    let chosen = aimed.map(|aim| aim.side);
     for zone in bands {
         if Some(zone.side) == chosen {
             continue;
@@ -111,9 +116,56 @@ pub fn zones(
             egui::StrokeKind::Inside,
         );
     }
-    if chosen.is_none() || landing.width() <= 1.0 || landing.height() <= 1.0 {
+    let filling = aimed.filter(|aim| aim.fill).map(|aim| aim.side);
+    if chosen.is_some() && landing.width() > 1.0 && landing.height() > 1.0 {
+        landing_plate(painter, landing, carrying, filling.is_some());
+    }
+    for zone in bands {
+        fill_target(painter, zone, filling == Some(zone.side));
+    }
+}
+
+/// One band's `Fill whole side` target: a pill against the window's edge, strong while it is being aimed at.
+fn fill_target(painter: &egui::Painter, zone: &Zone, aimed: bool) {
+    let pill = zone.whole;
+    if pill.width() < 8.0 || pill.height() < 8.0 {
         return;
     }
+    let (fill, ink) = match aimed {
+        true => (color::accent(), color::text_strong()),
+        false => (fade(LANDING_FILL), color::text_strong()),
+    };
+    painter.rect_filled(pill, CornerRadius::same(6), fill);
+    painter.rect_stroke(pill, CornerRadius::same(6), Stroke::new(1.0, color::accent()), egui::StrokeKind::Inside);
+    let label = painter.layout_no_wrap(FILL_LABEL.to_owned(), egui::FontId::proportional(11.0), ink);
+    let size = label.size();
+    let upright = pill.height() > pill.width();
+    let (room, across) = match upright {
+        true => (pill.height(), pill.width()),
+        false => (pill.width(), pill.height()),
+    };
+    if size.x + 8.0 > room || size.y > across {
+        return;
+    }
+    // Up the edge on the left and the right, which is a quarter turn back about the galley's top left corner:
+    // what was its width runs upwards from there and what was its height runs to the right.
+    let shape = match upright {
+        true => egui::epaint::TextShape::new(
+            Pos2::new(pill.center().x - size.y / 2.0, pill.center().y + size.x / 2.0),
+            label,
+            ink,
+        )
+        .with_angle(-std::f32::consts::FRAC_PI_2),
+        false => egui::epaint::TextShape::new(pill.center() - size / 2.0, label, ink),
+    };
+    painter.add(shape);
+}
+
+/// What the `Fill whole side` target says.
+pub const FILL_LABEL: &str = "Fill whole side";
+
+/// The strong rectangle a panel would land in, with its name on a plate in the middle.
+fn landing_plate(painter: &egui::Painter, landing: Rect, carrying: Panel, filling: bool) {
     painter.rect_filled(landing, CornerRadius::ZERO, fade(LANDING_FILL));
     painter.rect_stroke(
         landing.shrink(1.0),
@@ -123,11 +175,12 @@ pub fn zones(
     );
     // The panel's own name in the middle of where it is going, so a preview over an empty editing
     // area still says what is about to happen there.
-    let label = painter.layout_no_wrap(
-        carrying.label().to_owned(),
-        egui::FontId::proportional(12.5),
-        color::text_strong(),
-    );
+    let name = match filling {
+        true => format!("{}, whole side", carrying.label()),
+        false => carrying.label().to_owned(),
+    };
+    let label =
+        painter.layout_no_wrap(name, egui::FontId::proportional(12.5), color::text_strong());
     let size = label.size();
     if size.x + 20.0 < landing.width() && size.y + 12.0 < landing.height() {
         let plate = Rect::from_center_size(landing.center(), size + Vec2::new(20.0, 12.0));

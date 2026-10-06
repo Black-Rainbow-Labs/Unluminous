@@ -883,6 +883,12 @@ arguments that names one, so `sprint-rename August 2nd Half September` needs no 
 - **On macOS the menu bar's `Cut`, `Copy`, `Paste` and `Select All` go to the text box with the keyboard**, not
   to the document behind it, through `give_the_clipboard_entry_to_a_text_box`. AppKit gives the chord to the menu
   and the window never sees the key.
+- **`Delete task` deletes on one press** (`task-2198`). It used to turn into `Keep it` and `Delete for good` and
+  wait for a second press.
+- **Text in the modal that is read rather than typed has a right click menu** (`task-2198`): a comment and the
+  rendered description each copy their source, through `controls::read_only_menu`, which is `field_menu`'s shape
+  for words a plugin draws. The Markdown preview's own menu, `Copy` and `Select All`, is the window's
+  (`actions::preview_menu`, opened into `UnluminousApp::preview_menu`).
 
 ### The plus sits after the last view, which is where a browser puts it
 
@@ -1235,6 +1241,28 @@ given. It asks for as many rows as there is text now — one reckoning, `compose
 by the well that is measured and by the box inside it — so `Ui::put` centres a box that is the height of
 what it holds. And `composer::hint` drops the long form where it would wrap, because a hint that wraps
 grows the box past the well measured for one line.
+
+### A placeholder is set in its field's font, and a test refuses one that is not (`task-2198`)
+
+*"Placeholder text in various places is not sized like the other font sizes around it."* egui 0.36 lays a
+`TextEdit`'s hint out as atoms, and an atom with no size of its own takes the `Ui`'s Body size, which is
+`appearance.ui.font.size`, rather than the font the `TextEdit` was given. On a machine whose interface is 24
+points, `Add a todo` in a 13.5 point field was drawn nearly twice the size of what is typed into it.
+
+Every hint goes through `controls::placeholder(words, &font, colour)`, which gives the hint the field's own
+font. `every_placeholder_is_set_in_its_fields_font` reads the source and fails on a `hint_text` call made any
+other way. `rux` had the same fault in `TextInput` and `TextArea` and was fixed there (`rux` e901f59), so the
+ticket modal's `No issue` and `What needs doing?` are right too.
+
+### A name beside an icon is placed by its capitals (`task-2198`)
+
+*"Icons aren't vertically aligned with text."* A galley is as tall as the font's whole line, and the band a
+name is read by, from the top of a capital down to the baseline, does not sit in the middle of it. With the
+face the report came from, the explorer's names were two and a half points above the icon beside them.
+`crisp::top_centring_capitals(painter, font, centre_y)` answers the top to draw a line at so its capitals are
+centred on `centre_y`, measured off the font from an `H`, so every row in a list is placed the same whatever
+letters are in it. The explorer's rows and the file tabs use it. Text that has no icon beside it is still
+centred by its box.
 
 ### `Ui::set_clip_rect` assigns, and on a canvas that matters twice over
 
@@ -2913,6 +2941,32 @@ would be a second thing moving while somebody was moving the first.
 each panel is on — an agent that reads it and then works out where to click has to be told, because
 the terminal is not necessarily along the bottom any more.
 
+### A side can run the whole length of its edge, and the corners say which (`task-2198`)
+
+*"When I rearrange a panel, I should be allowed to choose to fill an entire side/bottom/top. E.g. right now if
+I have agent tasks open at the bottom, I'm not able to have Agent chat fill the entire side."*
+
+Each corner of the window belongs to one of the two sides that meet there, and that is `Layout::owner_of`.
+By default the top and the bottom own all four, which is the arrangement the window always had and is why
+no existing picture moved. A side **fills** when it owns both of its corners: a column that fills runs from
+the top of the window to the bottom and the strips stop at its edge, and a strip that fills takes its corners
+back. `regions_with` works out the columns' widths before it lays either strip out, because a corner a column
+owns is cut out of the strip that meets it there. The corners are written to the settings file as
+`panes.corner.top-left = top` and so on, beside the sides and the orders.
+
+Three ways in, and all three go through `UnluminousApp::fill_a_side`:
+
+- **The drag.** Each band carries a `Fill whole side` target, a pill against the window's edge most of the way
+  along the band, towards the bottom or the right, with its label running up the edge on the left and the
+  right. Not half way along, because the middle of an edge is where a person lets go when they only mean that
+  side, and a pill there filled the side by accident. Let go on it and the panel lands
+  on that side and the side fills. Let go anywhere else in the band and nothing about the corners changes,
+  so an ordinary move never fills a side by accident. `dock::aim` asks the targets first and falls back to
+  `dock::target`.
+- **The panel's own menu**, `Fill Whole <Side>`, a toggle about the side that panel is on.
+- **`unluminous-cli panel fill <side> [on|off]`** and `panel dock --fill`. `panel list` answers `fills` and
+  `corners`.
+
 ## A block is collapsed by hiding its lines, and the line numbers do not move
 
 `task-1686` asks for IntelliJ's fold arrows: a chevron beside the line number against a function, an
@@ -3367,6 +3421,16 @@ text, which is the exception `design/style-guide.md` records beside a syntax the
 `tasks/task-1663-highlights-tdd.md` records what was weighed. `unluminous-cli highlight` is the command
 line half — `list`, `add`, `clear` and `apply`, the last taking a JSON array so twenty passages across
 twenty files are one request and none of the files has to be opened.
+
+### A selection is a line tall and centred on the letters (`task-2198`)
+
+*"highlighted text isn't vertically aligned, its too much at bottom and not enough at top."* A line puts its
+baseline `ascent` from its top and adds every scrap of extra leading below the letters, so a rectangle laid
+over the line box had all of that air under the words. `Layout::selection_rects_in` moves each line's
+rectangle up by half of the line's leading, so its middle is the middle of the letters. Every line of a
+selection moves by the same amount, so a selection over several lines still has no gap in it, and a line
+with no extra leading, which is most code, is drawn exactly where it was. Everything painted behind a range
+uses this one function: the selection, the find matches, the highlights and the code chips in the preview.
 
 ## The editing area is a row of panes, and a pane is a number written on the tab
 
@@ -3931,6 +3995,33 @@ line in the file behind it **and** opened the row the explorer's cursor was on. 
 modal layer rather than a list of Unluminous's dialogs, so a modal added later is covered without being
 added anywhere, and it is the layer as it stood at the **end of the last frame** — which is the
 honest answer at the point those three read the keyboard, before anything this frame has drawn.
+
+### A modal zooms the way a canvas node does (`task-2198`)
+
+*"I should be able to zoom modals, such as the agent tasks modal."* While a modal is open, Ctrl or Cmd with
+the wheel, a pinch, and Ctrl or Cmd with plus, minus and `Reset Font Size` all go to the modal, and
+`unluminous-cli modal zoom [factor|reset]` is the agent's half. The modal is drawn into its own layer through
+a `TSTransform` about its top left corner and laid out in a rectangle the zoom times smaller, so it stays in
+the same place on the screen with everything in it larger. A dialog needs no change for this: it already lays
+itself out in whatever rectangle it is given. The zoom is kept in egui's memory under the modal's id, beside
+its placement, and `modal::the_open_one` is egui's own top modal layer, so a modal a plugin draws, such as the
+ticket, is covered.
+
+Three things had to be right for a zoomed modal to look like a modal rather than a magnified picture of one:
+
+- **The text is laid out again at the size it is seen at.** `epaint` applies a layer's transform to the
+  finished shapes, so the modal's words were bitmaps magnified by the zoom. `crisp::sharpen_the_text_in` runs
+  once the modal is drawn and swaps each `TextShape` in its layer for the same job laid out at the zoomed size
+  and scaled back down about its own position, which is what `crisp::galley` already does for one word. It
+  reaches text nothing in Unluminous draws: `rux`'s labels and the words in a `TextEdit`. The ticket's terminal
+  is Unluminous's own glyph engine and is told the zoom through `TextRenderer::composite_at`.
+- **`rux` rasterises for the layer it is in.** `rux::render::composited_scale` is the display's density times
+  the layer's zoom, and the decoration canvas and the icon atlas are made at it. A `rux` overlay, such as a
+  dropdown opened from the modal, is drawn through the same transform as the layer that opened it (`rux`
+  b348763). Both help a `rux` control inside a canvas node as well.
+- **The backdrop and the frame are painted by `modal::show`**, the same shapes egui painted, because egui
+  paints its backdrop over the window's rectangle in the layer's own points, and a zoom below one shrank it
+  into a dark patch in the middle of the window.
 
 ## A widget of Unluminous's own holds egui's keyboard focus, and the window buttons cannot take it
 
@@ -4561,6 +4652,15 @@ the middle of a test.
 
 **Terminals come back as fresh shells.** What a program was doing when the window closed cannot be
 brought back; what is restored is the same number of shells in the project's folder.
+
+### Recent Projects follows every window (`task-2198`)
+
+*"Open Recent projects seems to not be updating, and projects aren't showing up after I've opened them."* A
+project opened from a window starts a second process, and that process wrote the folder into the recent list a
+moment later, in a file the first window had read once at startup. `open_a_project_window` now writes the
+folder down in the window that asked, before the new one starts, and `keep_the_recent_projects_current` reads
+the file again when its modified time has moved, asked at most once a second and only on a frame that is being
+drawn anyway, so an idle window still costs nothing.
 
 ## Everything is reachable from the command line, and that is enforced
 

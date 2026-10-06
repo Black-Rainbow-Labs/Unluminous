@@ -1454,7 +1454,7 @@ unluminous-cli fold others --regions --json
 
 ## panel — which edge of the window each panel is docked to
 
-Unluminous has four panels — the explorer, the terminal, the run tile and the debug tile — and each of them can be docked to any edge of the window, which is what dragging its header does. A side holds an ordered row of panels laid out left to right, so `panel dock terminal left --position 1` puts the terminal beside the explorer rather than in place of it. The terminal, run and debug tiles all draw a character grid and two grids in one strip would be two half-sized grids, so showing one puts away the other tiles **on its own side** — move one somewhere else and they are both showing at once. `panel list` says where everything is, including the rectangle each occupies, which is what to read before working out where a click lands.
+Unluminous has four panels — the explorer, the terminal, the run tile and the debug tile — and each of them can be docked to any edge of the window, which is what dragging its header does. A side holds an ordered row of panels laid out left to right, so `panel dock terminal left --position 1` puts the terminal beside the explorer rather than in place of it. The terminal, run and debug tiles all draw a character grid and two grids in one strip would be two half-sized grids, so showing one puts away the other tiles **on its own side** — move one somewhere else and they are both showing at once. `panel list` says where everything is, including the rectangle each occupies, which is what to read before working out where a click lands. By default the top and the bottom run the whole width of the window and the columns stop at them; `panel fill <side>` makes a side run the whole length of its edge instead.
 
 ### panel list
 
@@ -1471,7 +1471,7 @@ unluminous-cli panel list --json
 ### panel dock
 
 ```
-unluminous-cli panel dock <panel> <left|right|top|bottom> [--position <number>]
+unluminous-cli panel dock <panel> <left|right|top|bottom> [--position <number>] [--fill]
 ```
 
 Move a panel to an edge of the window: the same change dragging its header makes. A side can hold more than one panel, side by side, so the terminal can sit beside the explorer down the left.
@@ -1480,11 +1480,29 @@ Move a panel to an edge of the window: the same change dragging its header makes
 - `side` — left, right, top or bottom.
 
 - `--position <number>` — Where in that side, counting the panels already there from the left, starting at 0. The end of the side when it is not given.
+- `--fill` — Make that side run the whole length of its edge, the way letting go on the band's Fill whole side target does. See `panel fill`.
 
 ```sh
 unluminous-cli panel dock terminal right
 unluminous-cli panel dock terminal left --position 0
-unluminous-cli panel dock agent-chat/chat right
+unluminous-cli panel dock agent-chat/chat right --fill
+```
+
+### panel fill
+
+```
+unluminous-cli panel fill <left|right|top|bottom> [on|off]
+```
+
+Make a side of the window run the whole length of its edge, or stop it. Each corner of the window belongs to one of the two sides that meet there, and by default the top and the bottom own all four, so a strip along the bottom runs under a column on the right. A side that fills owns both of its corners: a column that fills is as tall as the window and the strips stop at its edge, and a strip that fills takes its corners back. This is the panel menu's Fill Whole row. Left out, `on` is meant; `panel list` says which sides fill.
+
+- `side` — left, right, top or bottom.
+- `state` (optional) — on or off. On when it is left out.
+
+```sh
+unluminous-cli panel fill right
+unluminous-cli panel fill bottom
+unluminous-cli panel fill right off
 ```
 
 ### panel size
@@ -3258,6 +3276,22 @@ Put the modal that is open back in the middle at the size it asked for, the way 
 
 ```sh
 unluminous-cli modal reset
+```
+
+### modal zoom
+
+```
+unluminous-cli modal zoom [factor]
+```
+
+Make everything in the modal that is open bigger or smaller, which is what Ctrl/Cmd and the wheel, a pinch, or Ctrl/Cmd and plus or minus do while it is open. It covers every dialog, the Agent Tasks ticket included. The modal stays where it is on the screen and everything in it is drawn larger, and it comes back at that zoom the next time it opens.
+
+- `factor` (optional) — How much bigger than usual, between 0.5 and 3. Left out, it says what the modal is at now; `reset` puts it back to 1.
+
+```sh
+unluminous-cli modal zoom 1.35
+unluminous-cli modal zoom
+unluminous-cli modal zoom reset
 ```
 
 ## settings — Edit -> Settings, by the names in the settings file

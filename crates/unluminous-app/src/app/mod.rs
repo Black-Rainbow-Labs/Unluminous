@@ -918,6 +918,11 @@ pub struct UnluminousApp {
     pub menu_placement: MenuPlacement,
     /// The projects that have been open, newest first.
     pub recent: Vec<PathBuf>,
+    /// When the recent projects file was last asked about, and the modified time it had then.
+    ///
+    /// `None` until the first frame asks, and again after this window writes the list itself. See
+    /// `keep_the_recent_projects_current`.
+    pub(crate) recent_checked: Option<(std::time::Instant, Option<std::time::SystemTime>)>,
     /// What the keyboard is talking to.
     pub focus: Focus,
     /// Something to say in the status bar, such as what version this is.
@@ -1261,6 +1266,9 @@ pub struct UnluminousApp {
     /// Where the gutter's own menu is open, when it is. Held here rather than in egui's memory so
     /// that a test can open it: a screenshot test cannot press the right mouse button.
     pub gutter_menu: Option<Pos2>,
+    /// Where the Markdown preview's own menu is open, when it is. Window state rather than egui's memory,
+    /// for the reason `gutter_menu` gives. `task-2198`.
+    pub preview_menu: Option<Pos2>,
     /// Which paragraph that menu was opened over, so its breakpoint entries are about the row under
     /// the pointer rather than about the caret — the rule the text menu and the terminal tab menu
     /// already follow. `None` means the caret's line, which is what the keyboard and the command
@@ -1440,6 +1448,7 @@ impl UnluminousApp {
             breakpoint_dialog: None,
             menu_placement: MenuPlacement::for_this_platform(),
             recent: Vec::new(),
+            recent_checked: None,
             focus: Focus::Editor,
             message: None,
             toasts: crate::components::toast::Toasts::default(),
@@ -1514,6 +1523,7 @@ impl UnluminousApp {
             about: None,
             reveal_caret: false,
             gutter_menu: None,
+            preview_menu: None,
             gutter_menu_line: None,
             inline_cache: None,
             run_to: None,

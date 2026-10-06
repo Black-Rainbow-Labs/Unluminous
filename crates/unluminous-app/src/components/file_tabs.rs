@@ -300,13 +300,11 @@ fn draw_tab(
     // A transient tab is drawn faintly rather than in italic: egui has no italic face for the
     // family Unluminous installs, and a fake slant is worse than a change of weight.
     let tint = if tab.transient { tint.gamma_multiply(0.75) } else { tint };
-    let galley =
-        painter.crisp_layout_no_wrap(tab.name.clone(), egui::FontId::proportional(12.0), tint);
-    painter.crisp_galley(
-        Pos2::new(rect.left() + PADDING + 16.0, rect.center().y - galley.size().y / 2.0),
-        galley,
-        tint,
-    );
+    // By its capitals, so the name lines up with the icon in front of it — `crisp::top_centring_capitals`.
+    let font = egui::FontId::proportional(12.0);
+    let top = crate::theme::crisp::top_centring_capitals(painter, &font, rect.center().y);
+    let galley = painter.crisp_layout_no_wrap(tab.name.clone(), font, tint);
+    painter.crisp_galley(Pos2::new(rect.left() + PADDING + 16.0, top), galley, tint);
 
     // The cross, or the amber dot when there are unsaved changes and the pointer is elsewhere.
     let shut = Rect::from_center_size(

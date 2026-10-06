@@ -49,6 +49,9 @@ use crate::services::agent_tasks::model::{Assignee, Priority, Status, Task};
 use crate::services::agent_tasks::{clock, AgentTasks, Field, TicketKit, EFFORTS};
 use crate::services::plugin_ui::{Look, Request};
 
+/// The id the modal is drawn under, which is what its place and its zoom are kept against.
+pub const MODAL_ID: &str = "agent-tasks-ticket";
+
 /// The type size the whole dialog is set in: `rux`'s own body size, which its fields and buttons match.
 pub const BODY: f32 = 14.0;
 
@@ -127,10 +130,15 @@ pub fn show(board: &mut AgentTasks, ctx: &egui::Context, look: &Look<'_>) -> Out
     let look = look.clone().at_a_fixed_size(BODY).flat();
     // Taken out of the board for the length of the drawing, because the drawing needs the board too.
     let mut kit = board.ticket_kit.take().unwrap_or_default();
+    // **The agent's terminal is drawn by Unluminous's own glyph engine**, which `crisp` does not reach, so it
+    // is told what the modal is zoomed to, the way a canvas node tells it. `task-2198`.
+    let was = look.renderer.crispness();
+    look.renderer.composite_at(modal::zoom_of(ctx, egui::Id::new(MODAL_ID)));
     let (inner, should_close) =
-        modal::show(ctx, "agent-tasks-ticket", width, height, |ui, area| {
+        modal::show(ctx, MODAL_ID, width, height, |ui, area| {
             contents(board, &mut kit, ui, area, &look, &task, new)
         });
+    look.renderer.restore_compositing(was);
     kit.rux.end_frame();
     board.ticket_kit = Some(kit);
     outcome.requests = inner.requests;
@@ -812,45 +820,19 @@ fn field_column(
 
     // ------------------------------------------------------------ and the one thing that destroys work
     //
-    // Last, in the coral `rux` keeps for destruction and never as a filled button. Pressed once it says what it
-    // will do, pressed twice it does it: deleting a ticket takes its todos and comments with it, so it is the
-    // one control here that asks.
-    let asking = board.delete_asked;
+    // Last, in the coral `rux` keeps for destruction and never as a filled button. One press deletes the ticket
+    // with its todos and comments. `task-2198`: *"When I press Delete task it should just delete, not prompt me
+    // again."* It used to change into `Keep it` and `Delete for good` and wait for a second press.
     let at = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(width, CONTROL));
-    match asking {
-        false => {
-            if Button::new("Delete task")
-                .variant(ButtonVariant::Danger)
-                .icon(Icon::Trash)
-                .stretch()
-                .show(rux, at)
-                .clicked()
-            {
-                board.delete_asked = true;
-            }
-        }
-        true => {
-            let half = (width - 10.0) / 2.0;
-            let keep = Rect::from_min_size(at.min, Vec2::new(half, CONTROL));
-            let really = Rect::from_min_size(
-                Pos2::new(at.min.x + half + 10.0, at.min.y),
-                Vec2::new(half, CONTROL),
-            );
-            if Button::new("Keep it").stretch().show(rux, keep).clicked() {
-                board.delete_asked = false;
-            }
-            if Button::new("Delete for good")
-                .variant(ButtonVariant::Danger)
-                .icon(Icon::Trash)
-                .stretch()
-                .show(rux, really)
-                .clicked()
-            {
-                board.delete_asked = false;
-                if let Err(problem) = board.discard_the_ticket() {
-                    requests.push(Request::Message(problem));
-                }
-            }
+    if Button::new("Delete task")
+        .variant(ButtonVariant::Danger)
+        .icon(Icon::Trash)
+        .stretch()
+        .show(rux, at)
+        .clicked()
+    {
+        if let Err(problem) = board.discard_the_ticket() {
+            requests.push(Request::Message(problem));
         }
     }
     pen += CONTROL + 12.0;

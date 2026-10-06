@@ -157,11 +157,11 @@ fn header(ui: &mut egui::Ui, area: Rect, state: &mut PluginsState, plugins: &Plu
     let response = field.add(
         egui::TextEdit::singleline(&mut state.search)
             .id(search_id)
-            .hint_text(
-                egui::RichText::new("Search plugins")
-                    .color(color::text_faint())
-                    .size(inside.font.size),
-            )
+            .hint_text(crate::components::controls::placeholder(
+                "Search plugins",
+                &inside.font,
+                color::text_faint(),
+            ))
             .font(inside.font.clone())
             .frame(egui::Frame::NONE)
             .desired_width(inside.rect.width())

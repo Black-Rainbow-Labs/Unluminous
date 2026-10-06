@@ -416,14 +416,11 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
                 // to do it is gone: `task-1848` asked for it to go and for drag and drop and paste to be
                 // the routes. A control removed with nothing said in its place is a feature nobody finds.
                 // It says it only while nothing is attached, so it is a hint rather than a label.
-                .hint_text(
-                    egui::RichText::new(hint(
-                        measured,
-                        field.width(),
-                        parts.attachments.is_empty(),
-                    ))
-                    .color(look.palette.text_faint),
-                )
+                .hint_text(crate::components::controls::placeholder(
+                    hint(measured, field.width(), parts.attachments.is_empty()),
+                    &prompt_font,
+                    look.palette.text_faint,
+                ))
                 .desired_width(field.width())
                 .desired_rows(rows)
                 .font(prompt_font.clone())

@@ -21,6 +21,7 @@ impl UnluminousApp {
             // everything else with its multiplier, and both are the number that really decides how big the
             // pane is drawn.
             "zoom" => self.cli_panel_zoom(request),
+            "fill" => self.cli_panel_fill(request),
             "reset" => self.cli_panel_reset(request),
             _ => no(
                 request,
@@ -179,6 +180,19 @@ impl UnluminousApp {
             })
             .collect();
         let editor = self.panel_rects.editor;
+        let filling: Vec<&str> = dock::Side::ALL
+            .into_iter()
+            .filter(|side| self.panes.dock.fills(*side))
+            .map(dock::Side::name)
+            .collect();
+        let mut rows = rows;
+        rows.push(format!(
+            "whole length: {}",
+            match filling.is_empty() {
+                true => "no side".to_owned(),
+                false => filling.join(", "),
+            }
+        ));
         lines(
             request,
             format!(
@@ -188,6 +202,8 @@ impl UnluminousApp {
             ),
             rows,
             json!({
+                "fills": filling,
+                "corners": self.corners_value(),
                 "panels": panels,
                 "editor": {
                     "x": editor.left(),
@@ -219,6 +235,10 @@ impl UnluminousApp {
         };
         let position = request.number("position").map(|at| at.max(0.0) as usize);
         self.dock_the_panel(panel, side, position);
+        // The same two calls a drop on the band's `Fill whole side` target makes, in the same order.
+        if request.switch("fill") {
+            self.fill_a_side(side, true);
+        }
         ok(
             request,
             format!("{} is on the {}", self.panel_label(panel), side.name()),
@@ -227,8 +247,50 @@ impl UnluminousApp {
                 "side": side.name(),
                 "position": self.panes.dock.order_of(panel),
                 "showing": self.panel_is_showing(panel),
+                "fills": self.panes.dock.fills(side),
             }),
         )
+    }
+
+    /// `fill` — whether a side runs the whole length of its edge. `task-2198`.
+    fn cli_panel_fill(&mut self, request: &Request) -> Outcome {
+        let Some(side) = request.text("side").and_then(|side| dock::Side::from_name(side.trim()))
+        else {
+            return no(
+                request,
+                code::USAGE,
+                "Say which side should fill: left, right, top or bottom.",
+            );
+        };
+        let fill = match request.text("state").map(|state| state.trim().to_owned()).as_deref() {
+            None | Some("") | Some("on") => true,
+            Some("off") => false,
+            Some(other) => {
+                return no(request, code::USAGE, format!("`{other}` is not on or off."));
+            }
+        };
+        self.fill_a_side(side, fill);
+        let fills = self.panes.dock.fills(side);
+        ok(
+            request,
+            match fills {
+                true => format!("The {} runs the whole length of the window", side.name()),
+                false => format!("The {} stops where the sides beside it start", side.name()),
+            },
+            json!({ "side": side.name(), "fills": fills, "corners": self.corners_value() }),
+        )
+    }
+
+    /// Which side owns each corner of the window, for `panel list` and `panel fill`.
+    fn corners_value(&self) -> Value {
+        let mut corners = serde_json::Map::new();
+        for corner in dock::Corner::ALL {
+            corners.insert(
+                corner.name().to_owned(),
+                json!(self.panes.dock.owner_of(corner).name()),
+            );
+        }
+        Value::Object(corners)
     }
 
     /// `size`. Split out of [`Self::cli_panel`] by `task-1984` §3.6.

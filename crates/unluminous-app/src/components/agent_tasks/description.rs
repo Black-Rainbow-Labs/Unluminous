@@ -36,6 +36,13 @@ pub fn in_a_well(
     let mut requests = Vec::new();
     if board.detail().description_rendered {
         rendered_text(board, ui, well, inside, look);
+        // The rendered view is read rather than typed into, so its menu copies the description's source.
+        let id = ui.id().with("agent-tasks-description-menu");
+        if crate::components::controls::read_only_menu(ui, well, id, &[("Copy Description", true)])
+            == Some(0)
+        {
+            requests.push(Request::Copy(board.description_text()));
+        }
         return requests;
     }
     let mut text = board.description_text();
@@ -55,10 +62,11 @@ pub fn in_a_well(
                     .id(description_id)
                     .frame(egui::Frame::NONE)
                     .margin(egui::Margin::ZERO)
-                    .hint_text(
-                        egui::RichText::new("What needs doing, in markdown.")
-                            .color(look.palette.text_faint),
-                    )
+                    .hint_text(crate::components::controls::placeholder(
+                        "What needs doing, in markdown.",
+                        &font,
+                        look.palette.text_faint,
+                    ))
                     .desired_width(inside.width())
                     // At least the well's own height, so a press anywhere below the last line still
                     // lands in the box and puts the caret at the end.

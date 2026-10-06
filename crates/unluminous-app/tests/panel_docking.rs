@@ -1410,3 +1410,74 @@ fn the_arrangements_are_drawn_the_way_they_are_described() {
 
     report(results);
 }
+
+// -------------------------------------------------------------------------------------- task-2198
+//
+// *"When I rearrange a panel, I should be allowed to choose to fill an entire side/bottom/top. E.g. right now if
+// I have agent tasks open at the bottom, I'm not able to have Agent chat fill the entire side."*
+
+/// Let go on the right band's `Fill whole side` target and the panel lands on the right, as tall as the window,
+/// with the strip along the bottom stopping at its edge.
+#[test]
+fn a_panel_let_go_on_the_fill_target_runs_the_whole_height_of_its_side() {
+    use unluminous_app::app::dock::{Panel, Side};
+    let mut harness = with_terminal("The terminal along the bottom, and the file panel about to fill the right.", 12, 80);
+    let body_bottom = harness.state().panel_area(Panel::Terminal).bottom();
+    let zones = harness.state().drop_zones();
+    let right = zones.iter().find(|zone| zone.side == Side::Right).expect("a right band").whole;
+    assert!(right.width() > 10.0 && right.height() > 40.0, "the target is drawn: {right:?}");
+    let from = panel_handle(&harness, "Move Project");
+    carry(&mut harness, from, right.center());
+    // In the air over the target: the strong rectangle is the whole height of the right hand side.
+    harness.snapshot(shot("panel_fill_whole_side_target"));
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: right.center(),
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::default(),
+    });
+    steady(&mut harness);
+
+    assert_eq!(side_of(&harness, Panel::Explorer), Side::Right);
+    assert!(harness.state().panes.dock.fills(Side::Right), "the right fills");
+    let explorer = harness.state().panel_area(Panel::Explorer);
+    let terminal = harness.state().panel_area(Panel::Terminal);
+    assert!((explorer.bottom() - body_bottom).abs() < 1.0, "down to the bottom: {explorer:?}");
+    assert!((terminal.right() - explorer.left()).abs() < 1.0, "the strip stops at it: {terminal:?}");
+    assert!(harness.state().editor_area().right() <= explorer.left() + 1.0);
+    harness.snapshot(shot("panel_file_panel_fills_the_right"));
+}
+
+/// The panel menu's `Fill Whole` row and the command line make the same change the drop does.
+#[test]
+fn a_side_is_filled_from_the_panel_menu_and_from_the_command_line() {
+    use unluminous_app::app::dock::{Panel, Side};
+    let mut harness = with_terminal("", 12, 80);
+    did(&mut harness, "panel dock explorer right");
+    assert!(!harness.state().panes.dock.fills(Side::Right), "an ordinary move changes no corner");
+    did(&mut harness, "action run fill-right");
+    steady(&mut harness);
+    assert!(harness.state().panes.dock.fills(Side::Right), "the menu row filled it");
+    did(&mut harness, "action run fill-right");
+    steady(&mut harness);
+    assert!(!harness.state().panes.dock.fills(Side::Right), "and pressed again it stops");
+
+    let said = did(&mut harness, "panel fill right");
+    assert_eq!(said["fills"], true);
+    let listed = did(&mut harness, "panel list");
+    assert_eq!(listed["fills"], serde_json::json!(["right"]));
+    assert_eq!(listed["corners"]["bottom-right"], "right");
+    assert_eq!(listed["corners"]["bottom-left"], "bottom", "the other corners are the strips' still");
+    did(&mut harness, "panel fill bottom");
+    assert!(harness.state().panes.dock.fills(Side::Bottom), "the bottom takes its corners back");
+    assert!(!harness.state().panes.dock.fills(Side::Right));
+    did(&mut harness, "panel dock explorer left --fill");
+    steady(&mut harness);
+    assert!(harness.state().panes.dock.fills(Side::Left));
+    let explorer = harness.state().panel_area(Panel::Explorer);
+    let terminal = harness.state().panel_area(Panel::Terminal);
+    assert!((terminal.left() - explorer.right()).abs() < 1.0, "the strip starts at its edge");
+    assert_eq!(refused(&mut harness, "panel fill sideways"), "usage");
+    did(&mut harness, "panel fill left off");
+    assert!(!harness.state().panes.dock.fills(Side::Left));
+}

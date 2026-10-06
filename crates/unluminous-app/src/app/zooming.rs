@@ -57,6 +57,35 @@ impl UnluminousApp {
         }
     }
 
+    /// A pinch, or the wheel with the zoom modifier held, while a modal is open: the modal gets bigger or smaller.
+    ///
+    /// `task-2198`: *"I should be able to zoom modals, such as the agent tasks modal."* The modal is in front of
+    /// everything and has the keyboard, so the gesture is its own wherever the pointer is. One step is one step of
+    /// the list every pane's zoom walks, and `components::modal` says how a modal is drawn at it.
+    pub(crate) fn zoom_the_open_modal(&mut self, ui: &egui::Ui) {
+        let Some(modal) = crate::components::modal::the_open_one(ui.ctx()) else { return };
+        let steps = self.zoom_steps(ui);
+        if steps != 0 {
+            crate::components::modal::step_zoom(ui.ctx(), modal, steps);
+        }
+    }
+
+    /// Give `Make Text Bigger`, `Make Text Smaller` and `Reset Font Size` to the modal that is open, when one
+    /// is. `steps` is how far to go, and `None` is a reset. Answers whether a modal took them.
+    ///
+    /// The keys for the same reason as the wheel: a person zooming while a dialog is in front of them is
+    /// zooming the dialog, and a shortcut that changed the editor's font behind it would change something they
+    /// cannot see.
+    pub(crate) fn the_zoom_keys_go_to_a_modal(&mut self, steps: Option<i32>) -> bool {
+        let Some(ctx) = self.context.clone() else { return false };
+        let Some(modal) = crate::components::modal::the_open_one(&ctx) else { return false };
+        match steps {
+            Some(steps) => crate::components::modal::step_zoom(&ctx, modal, steps),
+            None => crate::components::modal::set_zoom(&ctx, modal, settings::DEFAULT_ZOOM),
+        }
+        true
+    }
+
     /// A pinch, or the wheel with the zoom modifier held, over the Markdown preview.
     ///
     /// `task-2063`. The size is the editor's own, `appearance.font.size`, because the preview is laid

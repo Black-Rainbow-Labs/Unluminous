@@ -465,9 +465,9 @@ pub struct AgentTasks {
     modal_canvas: Option<crate::services::plugin_ui::ChromeSlot>,
     /// A sprint or an epic whose delete button has been pressed once.
     ///
-    /// **Asked rather than done**, which is the rule `delete_asked` already keeps for a ticket: the browser
-    /// board puts a `confirm()` in the way of both of these, and a plugin cannot open the window's own
-    /// confirmation, so the row asks in place.
+    /// **Asked rather than done**: the browser board puts a `confirm()` in the way of both of these, and a
+    /// plugin cannot open the window's own confirmation, so the row asks in place. A ticket's own `Delete task`
+    /// does not ask any more (`task-2198`).
     sprint_to_delete: Option<i64>,
     epic_to_delete: Option<i64>,
     /// How far the lanes are scrolled sideways.
@@ -498,12 +498,6 @@ pub struct AgentTasks {
     /// Asked once rather than once a frame. See [`AgentTasks::where_the_key_is`].
     key_checked: Option<String>,
     key_source: Option<&'static str>,
-    /// True once `Delete` has been pressed and is waiting to be pressed again.
-    ///
-    /// A second press rather than a question in a dialog of its own: deleting a ticket takes its todos and its
-    /// comments with it, so it is the one control on the board that asks, and a column 260 points wide has room
-    /// for a changed label and a `Keep it` beside it rather than for a tenth modal.
-    pub delete_asked: bool,
     /// Which card the keyboard is on: a lane and how far down it.
     ///
     /// A lane and a row rather than a ticket's id, because the board changes under it — a card moved, a ticket
@@ -952,8 +946,6 @@ impl AgentTasks {
 
     pub fn close_detail(&mut self) {
         self.detail = Detail::default();
-        // A question nobody answered is forgotten rather than waiting for the next ticket to be opened.
-        self.delete_asked = false;
     }
 
     /// Search, or clear the results when the query is empty.
@@ -1303,7 +1295,6 @@ impl AgentTasks {
         // `Done`. Without this, a ticket opened after a new one had been closed still read as an editor.
         self.detail.is_new = false;
         self.modal_open = true;
-        self.delete_asked = false;
         Ok(())
     }
 

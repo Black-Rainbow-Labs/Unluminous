@@ -1034,7 +1034,11 @@ fn plain_field(
                 egui::TextEdit::singleline(value)
                     .id(field_id)
                     .frame(egui::Frame::NONE)
-                    .hint_text(egui::RichText::new(hint).color(look.palette.text_faint))
+                    .hint_text(crate::components::controls::placeholder(
+                        hint,
+                        &egui::FontId::proportional(look.font_size - 1.0),
+                        look.palette.text_faint,
+                    ))
                     .font(egui::FontId::proportional(look.font_size - 1.0))
                     .text_color(look.palette.text),
             )

@@ -3161,3 +3161,140 @@ fn enter_in_the_composer_sends_and_shift_enter_does_not() {
         "the refusal ate the draft: {after}"
     );
 }
+
+// -------------------------------------------------------------------------------------- task-2198
+
+/// The ticket modal from `a_ticket_in_full_as_a_modal`, open on task-1.
+fn a_ticket_open(harness: &mut Harness<'static, UnluminousApp>) {
+    did(harness, "plugins pane agent-tasks/board --show");
+    did(harness, "plugins run agent-tasks new-sprint Current Sprint");
+    did(harness, "plugins run agent-tasks new-task Zoom the ticket modal");
+    did(harness, "plugins run agent-tasks close");
+    did(harness, "plugins run agent-tasks todo-add task-1 Draw it larger");
+    did(harness, "plugins run agent-tasks comment task-1 A comment to copy.");
+    did(harness, "plugins run agent-tasks open task-1");
+    steady(harness);
+}
+
+/// *"I should be able to zoom modals, such as the agent tasks modal."* The modal stays where it is on the screen
+/// and everything in it is drawn larger. The wheel and the keys both reach it while it is open, and neither
+/// changes the editor's font behind it.
+#[test]
+fn the_ticket_modal_zooms_with_the_wheel_the_keys_and_the_command_line() {
+    use unluminous_app::components::modal;
+    let mut harness = harness("");
+    a_ticket_open(&mut harness);
+    let id = egui::Id::new(unluminous_app::components::agent_tasks::ticket_modal::MODAL_ID);
+    let before = modal::drawn(&harness.ctx, unluminous_app::components::agent_tasks::ticket_modal::MODAL_ID)
+        .expect("the modal was drawn");
+    let editor_font = harness.state().settings.font_size;
+
+    let said = did(&mut harness, "modal zoom 1.25");
+    assert!((said["zoom"].as_f64().expect("a number") - 1.25).abs() < 0.001);
+    steady(&mut harness);
+    let after = modal::drawn(&harness.ctx, unluminous_app::components::agent_tasks::ticket_modal::MODAL_ID)
+        .expect("the modal was drawn");
+    assert_eq!(before, after, "the same place on the screen");
+    harness.snapshot(shot("agent_tasks_modal_zoomed"));
+
+    // The wheel with the modifier, wherever the pointer is.
+    harness.input_mut().events.push(egui::Event::PointerMoved(after.center()));
+    steady(&mut harness);
+    harness.input_mut().events.push(egui::Event::Zoom(1.0 / 1.6));
+    steady(&mut harness);
+    assert!(modal::zoom_of(&harness.ctx, id) < 1.25, "the wheel made it smaller");
+    assert_eq!(harness.state().settings.font_size, editor_font, "and the editor's font is untouched");
+
+    // The keys.
+    let was = modal::zoom_of(&harness.ctx, id);
+    did(&mut harness, "action run increase-font-size");
+    steady(&mut harness);
+    assert!(modal::zoom_of(&harness.ctx, id) > was, "control and plus made it bigger");
+    assert_eq!(harness.state().settings.font_size, editor_font);
+    did(&mut harness, "action run reset-font-size");
+    steady(&mut harness);
+    assert_eq!(modal::zoom_of(&harness.ctx, id), 1.0);
+
+    assert_eq!(refused(&mut harness, "modal zoom 9"), "usage");
+    let read = did(&mut harness, "modal zoom");
+    assert!((read["zoom"].as_f64().expect("a number") - 1.0).abs() < 0.001);
+}
+
+/// The Settings window zoomed, so the same thing is seen on a modal Unluminous draws with its own controls.
+#[test]
+fn the_settings_modal_zoomed() {
+    let mut harness = harness("");
+    did(&mut harness, "modal open settings");
+    steady(&mut harness);
+    did(&mut harness, "modal zoom 1.35");
+    steady(&mut harness);
+    harness.snapshot(shot("settings_modal_zoomed"));
+    did(&mut harness, "modal zoom reset");
+}
+
+/// *"When I press Delete task it should just delete, not prompt me again."*
+#[test]
+fn delete_task_deletes_the_ticket_on_one_press() {
+    let mut harness = harness("");
+    a_ticket_open(&mut harness);
+    // The column of fields scrolls, and in this window `Delete task` is below the fold, so the column is scrolled
+    // to the bottom first, the way `a_ticket_can_name_its_jira_issue_and_copy_the_link_to_it` reaches its field.
+    let over = harness.get_by_label("Assignee").rect().center();
+    harness.input_mut().events.push(egui::Event::PointerMoved(over));
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -2000.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: egui::Modifiers::default(),
+    });
+    steady(&mut harness);
+    harness.get_by_label("Delete task").click();
+    steady(&mut harness);
+    assert!(
+        refused(&mut harness, "plugins run agent-tasks task task-1").len() > 0,
+        "the ticket is gone"
+    );
+    assert!(harness.query_by_label("Delete for good").is_none(), "and nothing asked a second time");
+}
+
+/// *"I should be able to right click ... text and see a menu with text options, like copy."* A comment in the
+/// ticket modal is read rather than typed into, and its right click menu copies it.
+#[test]
+fn a_comment_in_the_ticket_modal_is_copied_from_its_right_click_menu() {
+    let mut harness = harness("");
+    a_ticket_open(&mut harness);
+    // The rendered comment is painted rather than a widget, so it is found under its own header row, which
+    // holds the comment's `Edit` button.
+    let edit = harness.get_by_label_contains("Edit the comment by").rect();
+    right_click_at(&mut harness, egui::pos2(edit.left() - 200.0, edit.bottom() + 6.0));
+    harness.get_by_label("Copy Comment").click();
+    // Read across frames, for the reason the JIRA test gives: a plugin's copy reaches egui a frame later.
+    let mut copied = String::new();
+    for _ in 0..4 {
+        harness.step();
+        if let Some(text) =
+            harness.output().platform_output.commands.iter().find_map(|command| match command {
+                egui::OutputCommand::CopyText(text) => Some(text.clone()),
+                _ => None,
+            })
+        {
+            copied = text;
+            break;
+        }
+    }
+    assert_eq!(copied, "A comment to copy.");
+}
+
+/// *"Placeholder text in various places is not sized like the other font sizes around it."* The editor for a new
+/// ticket, on an interface set to 24 points, which is the machine the report came from. Every placeholder is
+/// the size of what would be typed into its field.
+#[test]
+fn the_editor_for_a_new_ticket_at_a_large_interface_size() {
+    let mut harness = harness("");
+    did(&mut harness, "settings set appearance.ui.font.size 24");
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
+    did(&mut harness, "plugins run agent-tasks new-task");
+    steady(&mut harness);
+    harness.snapshot(shot("agent_tasks_editor_large_interface").as_str());
+}

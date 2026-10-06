@@ -155,6 +155,136 @@ pub fn layout_job(painter: &Painter, job: LayoutJob) -> Text {
     Text { galley: painter.layout_job(job), scale }
 }
 
+/// Where to put the top of one line of `font` so that its capitals are centred on `centre_y`.
+///
+/// `task-2198`: *"Icons aren't vertically aligned with text."* A row of the explorer centred its name's
+/// galley on the row, and a galley is as tall as the font's whole line: the room above for accents, the
+/// room below for descenders, and the line gap. The letters a name is read by, the capitals and the tall
+/// strokes of `l`, `d` and `t`, run from the top of a capital down to the baseline, and that band sits
+/// above the middle of the galley. Measured with the face this window ships, a 12.5 point name's capitals
+/// were centred about two and a half points above the icon beside it, which was centred on the row.
+///
+/// So a name that sits beside an icon is placed by its capitals instead. The band is measured off the font
+/// itself, from an `H`, so every row of a list is placed the same whatever letters are in it: centring by
+/// each name's own ink would lift `mcp.json` and drop `README.md`.
+pub fn top_centring_capitals(painter: &Painter, font: &FontId, centre_y: f32) -> f32 {
+    let probe = painter.layout_no_wrap("H".to_owned(), font.clone(), Color32::WHITE);
+    match capital_band(&probe) {
+        Some((cap, baseline)) => centre_y - (cap + baseline) / 2.0,
+        None => centre_y - probe.size().y / 2.0,
+    }
+}
+
+/// From the top of a galley, where its first glyph's ink starts and where its baseline is.
+///
+/// `Glyph::pos` is the baseline relative to its row, and `uv_rect.offset` is where the ink starts relative
+/// to that, which is the sum `epaint`'s own tessellator makes when it places the glyph.
+fn capital_band(galley: &Galley) -> Option<(f32, f32)> {
+    let row = galley.rows.first()?;
+    let glyph = row.row.glyphs.first()?;
+    let baseline = row.pos.y + glyph.pos.y;
+    let cap = baseline + glyph.uv_rect.offset.y;
+    (baseline > cap).then_some((cap, baseline))
+}
+
+/// Lay every piece of text in `layer` out again at the size `zoom` composites it at.
+///
+/// `task-2198`. A modal is zoomed through a transform on its layer, and `epaint` applies a layer's
+/// transform to the finished shapes, so a word laid out at 14 points in a modal at 1.6 was a 14 point
+/// bitmap magnified by 1.6. The rest of this module avoids that by laying text out at the bigger size from
+/// the start, which needs every caller to draw through it, and a modal holds text nobody here draws: `rux`'s
+/// labels, the words in an `egui::TextEdit`, and every helper that calls `Painter::galley`. So once the
+/// modal has been drawn, each `TextShape` in its layer is swapped for the same job laid out at the size it
+/// is seen at and scaled back down about its own position, which is exactly what [`galley`] does for one
+/// word. A layer drawn by a `rux` overlay through the same transform, such as a dropdown opened from the
+/// modal, is done too.
+///
+/// Nothing moves. What is swapped is how a shape is drawn, not where: the widgets were laid out and their
+/// carets and selections measured from the original galleys before this runs.
+pub fn sharpen_the_text_in(ctx: &egui::Context, layer: egui::LayerId, zoom: f32) {
+    let scale = Crispness::at(zoom).scale();
+    if (scale - 1.0).abs() < 0.001 {
+        return;
+    }
+    let Some(to_global) = ctx.layer_transform_to_global(layer) else { return };
+    let mut layers = vec![layer];
+    let visible = ctx.memory(|memory| memory.areas().visible_layer_ids());
+    layers.extend(visible.into_iter().filter(|other| {
+        *other != layer && ctx.layer_transform_to_global(*other) == Some(to_global)
+    }));
+    for one in layers {
+        // Read out, laid out and put back in three steps, because the fonts and the shape lists are both
+        // behind the context's one lock and laying out while holding the list would wait on itself.
+        let mut found: Vec<(usize, egui::Shape)> = Vec::new();
+        ctx.graphics_mut(|graphics| {
+            if let Some(list) = graphics.get_mut(one) {
+                for (index, clipped) in list.all_entries().enumerate() {
+                    if holds_text(&clipped.shape) {
+                        found.push((index, clipped.shape.clone()));
+                    }
+                }
+            }
+        });
+        if found.is_empty() {
+            continue;
+        }
+        for (_, shape) in &mut found {
+            sharpen(ctx, shape, scale);
+        }
+        ctx.graphics_mut(|graphics| {
+            if let Some(list) = graphics.get_mut(one) {
+                for (index, shape) in found {
+                    list.mutate_shape(egui::layers::ShapeIdx(index), |clipped| clipped.shape = shape);
+                }
+            }
+        });
+    }
+}
+
+/// Whether a shape is text, or a group with text somewhere in it.
+fn holds_text(shape: &egui::Shape) -> bool {
+    match shape {
+        egui::Shape::Text(_) => true,
+        egui::Shape::Vec(shapes) => shapes.iter().any(holds_text),
+        _ => false,
+    }
+}
+
+/// Swap every `TextShape` in `shape` for its job laid out `scale` times larger and drawn `scale` times
+/// smaller about its own position.
+fn sharpen(ctx: &egui::Context, shape: &mut egui::Shape, scale: f32) {
+    match shape {
+        egui::Shape::Text(text) => {
+            let mut job = (*text.galley.job).clone();
+            for section in &mut job.sections {
+                section.format.font_id.size *= scale;
+                section.format.extra_letter_spacing *= scale;
+                if let Some(height) = section.format.line_height.as_mut() {
+                    *height *= scale;
+                }
+            }
+            if job.wrap.max_width.is_finite() {
+                job.wrap.max_width *= scale;
+            }
+            job.first_row_min_height *= scale;
+            let larger = ctx.fonts_mut(|fonts| fonts.layout_job(job));
+            let mut sharp = TextShape {
+                galley: larger,
+                underline: egui::Stroke::new(text.underline.width * scale, text.underline.color),
+                ..text.clone()
+            };
+            let at = sharp.pos.to_vec2();
+            sharp.transform(egui::emath::TSTransform {
+                scaling: 1.0 / scale,
+                translation: at * (1.0 - 1.0 / scale),
+            });
+            *text = sharp;
+        }
+        egui::Shape::Vec(shapes) => shapes.iter_mut().for_each(|one| sharpen(ctx, one, scale)),
+        _ => {}
+    }
+}
+
 /// `Painter::galley`, put back into the rectangle the caller's own points gave it.
 pub fn galley(painter: &Painter, at: Pos2, text: Text, colour: Color32) {
     if text.is_empty() {
@@ -248,6 +378,29 @@ impl CrispPainter for Painter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The capitals of a name land on the middle of the row, at every size. `task-2198`.
+    ///
+    /// How far that is from the galley's own middle depends on the face: the one the report came from put
+    /// its capitals two and a half points above it, and egui's built-in face, which this test has, is within
+    /// a point either way. So what is checked is where the capitals end up, not which way they moved.
+    #[test]
+    fn a_names_capitals_are_centred_on_the_row_it_is_drawn_in() {
+        let context = egui::Context::default();
+        let mut output = context.run_ui(egui::RawInput::default(), |_| {});
+        output.textures_delta.clear();
+        let painter = Painter::new(context.clone(), egui::LayerId::background(), Rect::EVERYTHING);
+        for size in [11.0_f32, 12.5, 16.0, 24.0] {
+            let font = FontId::proportional(size);
+            let probe = painter.layout_no_wrap("H".to_owned(), font.clone(), Color32::WHITE);
+            let (cap, baseline) = capital_band(&probe).expect("an H has ink");
+            let row_middle = 100.0;
+            let top = top_centring_capitals(&painter, &font, row_middle);
+            let capitals_middle = top + (cap + baseline) / 2.0;
+            assert!((capitals_middle - row_middle).abs() < 0.01, "at {size}: {capitals_middle}");
+            assert!(baseline - cap > size * 0.5, "an H is most of a line tall at {size}");
+        }
+    }
 
     /// A scale of one is the window as it was: the same galley, the same size, and no transform.
     ///

@@ -530,6 +530,14 @@ impl UnluminousApp {
         // The pointer is read before anything is drawn, so the selection painted below is the one
         // this frame's drag made rather than the one it started with.
         self.select_in_the_preview(&response, origin);
+        // **A right click opens the preview's own menu**, and leaves what is selected alone: the press
+        // already claimed the copy for the preview, above, and `read_pointer` places a caret on the primary
+        // button only, so the selection the menu is about is still there when the menu opens.
+        if response.secondary_clicked() {
+            if let Some(at) = response.interact_pointer_pos() {
+                self.preview_menu = Some(at);
+            }
+        }
         if response.hovered() {
             painter_ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
         }

@@ -68,6 +68,8 @@ impl UnluminousApp {
         self.ask_for_the_next_frame_and_let_the_plugins_catch_up(ui);
 
         let places = self.lay_the_frame_out(ui);
+        // Before the menus are built, so `Recent Projects` lists a project another window has just opened.
+        self.keep_the_recent_projects_current();
         // **The menus, built once** (`task-1984` A6). `menu_state` was built at least twice a frame
         // and `menus` once, plus once more inside `action_for_key` for every key press -- and
         // `menu_state` clones the recent list and every plugin's menu tree and asks the run
@@ -170,14 +172,15 @@ impl UnluminousApp {
         if !self.git_looked {
             self.open_repository();
         }
-        // **A zoom is nobody's while a modal is open.** Every pane claims the gesture by finding the pointer
+        // **A zoom is the modal's while a modal is open.** Every pane claims the gesture by finding the pointer
         // inside itself, and a modal covers them without being one of them - so a wheel turned over a ticket
         // would have zoomed whatever pane happened to be underneath it. Taken before anything can claim it,
-        // which is the same lock the claim already is.
-        self.zoom = match a_modal_has_the_keyboard(ui.ctx()) {
-            true => ZoomClaim::Taken,
-            false => ZoomClaim::Nobody,
-        };
+        // which is the same lock the claim already is, and since `task-2198` spent on the modal itself.
+        self.zoom = ZoomClaim::Nobody;
+        if a_modal_has_the_keyboard(ui.ctx()) {
+            self.zoom_the_open_modal(ui);
+            self.zoom = ZoomClaim::Taken;
+        }
         // Frame local, like the tab drag: every panel that is drawn says whether it is in the air,
         // and `settle_the_panel_drag` reads the answer once they all have. Cleared here rather than
         // beside the tab drag because the explorer is drawn before that point.
@@ -984,6 +987,18 @@ impl UnluminousApp {
             }
             if outcome.close {
                 self.gutter_menu = None;
+            }
+        }
+
+        // The Markdown preview's own menu: Copy and Select All, about what the preview has selected.
+        if let Some(at) = self.preview_menu {
+            let entries = actions::preview_menu(self.preview_holds_the_selection());
+            let outcome = context_menu::show(ui, "preview", at, &entries);
+            if let Some(chosen) = outcome.chosen {
+                *action = Some(chosen);
+            }
+            if outcome.close {
+                self.preview_menu = None;
             }
         }
 

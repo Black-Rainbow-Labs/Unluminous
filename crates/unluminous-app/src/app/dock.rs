@@ -16,9 +16,15 @@
 //! "where in this side did the pointer let go" is one comparison — the same one
 //! `file_tabs::Strip::position_at` already makes about a tab.
 //!
-//! **The strips are taken first, across the whole width; the columns come out of what is left.** That
-//! is what Unluminous did before any of this: the terminal spans the whole width of the panes, including
-//! under the explorer, which is also what the reference editor's bottom tool window does.
+//! **Each corner of the window belongs to one of the two sides that meet there.** By default all four
+//! belong to the strips, so the strips are taken across the whole width and the columns come out of what
+//! is left. That is what Unluminous did before any of this: the terminal spans the whole width of the panes,
+//! including under the explorer, which is also what the reference editor's bottom tool window does.
+//! `task-2198` asks for the other choice as well: *"When I rearrange a panel, I should be allowed to choose
+//! to fill an entire side/bottom/top. E.g. right now if I have agent tasks open at the bottom, I'm not able
+//! to have Agent chat fill the entire side."* A side that **fills** owns both of its corners, so a column
+//! that fills runs from the top of the window to the bottom and the strips stop at its edge. See
+//! [`Layout::fills`].
 //!
 //! **A panel carries two measurements and the side decides which is read.** A width for when it is a
 //! column at the side, a height for when it is in a strip. One number cannot be both: the terminal is
@@ -238,11 +244,78 @@ impl Side {
     }
 }
 
+/// A corner of the window, which is where a column and a strip meet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Corner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+impl Corner {
+    pub const ALL: [Corner; 4] =
+        [Corner::TopLeft, Corner::TopRight, Corner::BottomLeft, Corner::BottomRight];
+
+    fn index(self) -> usize {
+        match self {
+            Corner::TopLeft => 0,
+            Corner::TopRight => 1,
+            Corner::BottomLeft => 2,
+            Corner::BottomRight => 3,
+        }
+    }
+
+    /// What the settings file calls it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Corner::TopLeft => "top-left",
+            Corner::TopRight => "top-right",
+            Corner::BottomLeft => "bottom-left",
+            Corner::BottomRight => "bottom-right",
+        }
+    }
+
+    /// The strip and the column that meet here, in that order.
+    pub fn sides(self) -> (Side, Side) {
+        match self {
+            Corner::TopLeft => (Side::Top, Side::Left),
+            Corner::TopRight => (Side::Top, Side::Right),
+            Corner::BottomLeft => (Side::Bottom, Side::Left),
+            Corner::BottomRight => (Side::Bottom, Side::Right),
+        }
+    }
+
+    /// The two corners at the ends of `side`.
+    pub fn of(side: Side) -> [Corner; 2] {
+        match side {
+            Side::Left => [Corner::TopLeft, Corner::BottomLeft],
+            Side::Right => [Corner::TopRight, Corner::BottomRight],
+            Side::Top => [Corner::TopLeft, Corner::TopRight],
+            Side::Bottom => [Corner::BottomLeft, Corner::BottomRight],
+        }
+    }
+
+    /// The side that is not `side` of the two that meet here.
+    fn other(self, side: Side) -> Side {
+        let (strip, column) = self.sides();
+        match side == strip {
+            true => column,
+            false => strip,
+        }
+    }
+}
+
 /// Which side each panel is on, and where in that side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Layout {
     sides: [Side; SLOTS],
     orders: [usize; SLOTS],
+    /// Which side owns each corner of the window, by [`Corner::index`].
+    ///
+    /// The strips own all four until somebody asks for a side to fill. A side that owns both of its corners
+    /// runs the whole length of its edge, and the side meeting it at each corner stops where it starts.
+    corners: [Side; 4],
     /// How many of the plugin slots hold a pane.
     ///
     /// A slot with nothing in it is **not a panel on any side**: it is not in `panels_on`, it takes no
@@ -275,7 +348,39 @@ impl Layout {
         // `regions` lays out only what is showing, which is why adding it leaves the default
         // arrangement exactly as it was — `the_default_layout_is_the_arithmetic_the_window_used_to_do_inline`.
         orders[Panel::Space.index()] = 3;
-        Self { sides, orders, plugin_panes: 0 }
+        let corners = [Side::Top, Side::Top, Side::Bottom, Side::Bottom];
+        Self { sides, orders, corners, plugin_panes: 0 }
+    }
+
+    /// Which side owns `corner`.
+    pub fn owner_of(&self, corner: Corner) -> Side {
+        self.corners[corner.index()]
+    }
+
+    /// Whether `side` runs the whole length of its edge of the window, which is owning both of its corners.
+    ///
+    /// The top and the bottom do until a column is made to fill; the left and the right do not until
+    /// somebody asks. A column that fills is as tall as the window, with the strips stopping at its edge, and
+    /// a strip that fills is as wide as the window, with the columns stopping at its edge.
+    pub fn fills(&self, side: Side) -> bool {
+        Corner::of(side).into_iter().all(|corner| self.owner_of(corner) == side)
+    }
+
+    /// Make `side` run the whole length of its edge, or give both of its corners to the sides it meets there.
+    pub fn fill(&mut self, side: Side, fill: bool) {
+        for corner in Corner::of(side) {
+            self.corners[corner.index()] = match fill {
+                true => side,
+                false => corner.other(side),
+            };
+        }
+    }
+
+    /// The same, on a copy. What the preview of a drop onto a `Fill whole side` target is painted from.
+    pub fn filling(&self, side: Side) -> Layout {
+        let mut copy = *self;
+        copy.fill(side, true);
+        copy
     }
 
     /// How many panes the plugins that are switched on contribute.
@@ -407,6 +512,19 @@ impl Layout {
                 layout.orders[panel.index()] = order.max(0.0) as usize;
             }
         }
+        // Which side owns each corner. Only one of the two sides that meet there is accepted, so a file
+        // edited by hand into an impossible shape falls back to the default for that corner.
+        for corner in Corner::ALL {
+            if let Some(name) = values.text(&format!("panes.corner.{}", corner.name())) {
+                let (strip, column) = corner.sides();
+                match Side::from_name(name.trim()) {
+                    Some(side) if side == strip || side == column => {
+                        layout.corners[corner.index()] = side;
+                    }
+                    _ => {}
+                }
+            }
+        }
         for side in Side::ALL {
             layout.tidy(side);
         }
@@ -426,6 +544,9 @@ impl Layout {
         for panel in Panel::ALL {
             values.set(&format!("panes.{}.side", panel.name()), self.side_of(panel).name());
             values.set(&format!("panes.{}.order", panel.name()), self.order_of(panel).to_string());
+        }
+        for corner in Corner::ALL {
+            values.set(&format!("panes.corner.{}", corner.name()), self.owner_of(corner).name());
         }
         for (slot, key) in plugin_panes.iter().enumerate().take(PLUGIN_PANES) {
             let panel = Panel::Plugin(slot as u8);
@@ -565,19 +686,14 @@ pub fn regions_with(
         (false, false) => fill_the_depth(body.height(), depth(&top_panels), depth(&bottom_panels)),
     };
 
-    let top_strip = Rect::from_min_max(body.min, Pos2::new(body.right(), body.top() + top_depth));
-    let bottom_strip =
-        Rect::from_min_max(Pos2::new(body.left(), body.bottom() - bottom_depth), body.max);
     let middle = Rect::from_min_max(
-        Pos2::new(body.left(), top_strip.bottom()),
-        Pos2::new(body.right(), bottom_strip.top()),
+        Pos2::new(body.left(), body.top() + top_depth),
+        Pos2::new(body.right(), body.bottom() - bottom_depth),
     );
 
-    lay_a_strip_out(top_strip, &top_panels, sizes, &mut panels);
-    lay_a_strip_out(bottom_strip, &bottom_panels, sizes, &mut panels);
-
-    // Then the columns, out of what the strips left. Each takes its own width, so a side's depth is
-    // the sum of its columns rather than the greatest of them.
+    // Then the columns' widths. Each takes its own width, so a side's depth is the sum of its columns
+    // rather than the greatest of them. Worked out before either strip is laid out, because a corner a
+    // column owns is cut out of the strip that meets it there (`task-2198`).
     //
     // **The width needs no equivalent of the rule above**, and that asymmetry is a decision rather than an
     // oversight: with the editing area hidden there is genuinely nothing between the left and the right,
@@ -593,10 +709,46 @@ pub fn regions_with(
         false => fill_the_depth(middle.width(), width(&left_panels), width(&right_panels)),
     };
 
-    let left_region =
-        Rect::from_min_max(middle.min, Pos2::new(middle.left() + left_depth, middle.bottom()));
-    let right_region =
-        Rect::from_min_max(Pos2::new(middle.right() - right_depth, middle.top()), middle.max);
+    // **Who owns each corner decides which of the two that meet there reaches it.** A strip that owns a
+    // corner runs to the window's edge and the column stops under it, which is the default and what the
+    // window always did. A column that owns one runs to the top or the bottom of the window and the strip
+    // stops at the column's edge.
+    let owns = |corner: Corner, side: Side| layout.owner_of(corner) == side;
+    let strip_left = |corner: Corner| match owns(corner, Side::Left) {
+        true => body.left() + left_depth,
+        false => body.left(),
+    };
+    let strip_right = |corner: Corner| match owns(corner, Side::Right) {
+        true => body.right() - right_depth,
+        false => body.right(),
+    };
+    let top_strip = Rect::from_min_max(
+        Pos2::new(strip_left(Corner::TopLeft), body.top()),
+        Pos2::new(strip_right(Corner::TopRight), body.top() + top_depth),
+    );
+    let bottom_strip = Rect::from_min_max(
+        Pos2::new(strip_left(Corner::BottomLeft), body.bottom() - bottom_depth),
+        Pos2::new(strip_right(Corner::BottomRight), body.bottom()),
+    );
+    lay_a_strip_out(top_strip, &top_panels, sizes, &mut panels);
+    lay_a_strip_out(bottom_strip, &bottom_panels, sizes, &mut panels);
+
+    let column_top = |corner: Corner, side: Side| match owns(corner, side) {
+        true => body.top(),
+        false => middle.top(),
+    };
+    let column_bottom = |corner: Corner, side: Side| match owns(corner, side) {
+        true => body.bottom(),
+        false => middle.bottom(),
+    };
+    let left_region = Rect::from_min_max(
+        Pos2::new(middle.left(), column_top(Corner::TopLeft, Side::Left)),
+        Pos2::new(middle.left() + left_depth, column_bottom(Corner::BottomLeft, Side::Left)),
+    );
+    let right_region = Rect::from_min_max(
+        Pos2::new(middle.right() - right_depth, column_top(Corner::TopRight, Side::Right)),
+        Pos2::new(middle.right(), column_bottom(Corner::BottomRight, Side::Right)),
+    );
     lay_columns_out(left_region, &left_panels, sizes, &mut panels);
     lay_columns_out(right_region, &right_panels, sizes, &mut panels);
 
@@ -604,8 +756,8 @@ pub fn regions_with(
     // of a rectangle in this module already treats as "not there".
     let editor = match editor {
         true => Rect::from_min_max(
-            Pos2::new(left_region.right(), middle.top()),
-            Pos2::new(right_region.left(), middle.bottom()),
+            Pos2::new(middle.left() + left_depth, middle.top()),
+            Pos2::new(middle.right() - right_depth, middle.bottom()),
         ),
         false => Rect::ZERO,
     };
@@ -712,12 +864,31 @@ pub const ZONE: f32 = 72.0;
 /// The most of the window one band may take, so the middle always exists.
 const ZONE_SHARE: f32 = 0.4;
 
+/// How thick a band's `Fill whole side` target is, and the most of the band's length it takes.
+pub const WHOLE_THICKNESS: f32 = 26.0;
+pub const WHOLE_LENGTH: f32 = 132.0;
+
 /// One place a panel can be let go.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Zone {
     pub side: Side,
     /// Where the pointer has to be for this side to be the answer.
     pub band: Rect,
+    /// The `Fill whole side` target inside the band: let go here and the panel lands on this side, and the
+    /// side runs the whole length of its edge. Against the window's own edge and most of the way along the
+    /// band, towards the bottom or the right. **Not half way along**, because the middle of an edge is where a
+    /// person lets a panel go when they only mean "this side", and a target there filled the side every time.
+    /// `task-2198`.
+    pub whole: Rect,
+}
+
+/// Where a panel let go at the pointer would land: a side, where in it, and whether the side fills.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Aim {
+    pub side: Side,
+    pub position: usize,
+    /// True when the pointer is on the band's `Fill whole side` target.
+    pub fill: bool,
 }
 
 /// The four bands, one along each edge of `body`.
@@ -767,8 +938,69 @@ pub fn zones(
                 Rect::from_min_max(Pos2::new(body.left(), body.bottom() - depth), body.max)
             }
         };
-        Zone { side, band }
+        Zone { side, band, whole: whole_target(side, band) }
     })
+}
+
+/// How far along its band the `Fill whole side` target's middle is, from the top or the left.
+const WHOLE_ALONG: f32 = 0.85;
+
+/// The `Fill whole side` target in `band`: against the window's edge, [`WHOLE_ALONG`] of the way along.
+fn whole_target(side: Side, band: Rect) -> Rect {
+    let inset = 6.0;
+    let along = match side.is_a_column() {
+        true => band.height(),
+        false => band.width(),
+    };
+    let length = WHOLE_LENGTH.min((along - inset * 2.0).max(0.0));
+    let thick = WHOLE_THICKNESS
+        .min((if side.is_a_column() { band.width() } else { band.height() }) - inset * 2.0)
+        .max(0.0);
+    // Kept inside the band at both ends however short the band is.
+    let down = (band.top() + band.height() * WHOLE_ALONG)
+        .min(band.bottom() - inset - length / 2.0)
+        .max(band.top() + inset + length / 2.0);
+    let across = (band.left() + band.width() * WHOLE_ALONG)
+        .min(band.right() - inset - length / 2.0)
+        .max(band.left() + inset + length / 2.0);
+    match side {
+        Side::Left => Rect::from_center_size(
+            Pos2::new(band.left() + inset + thick / 2.0, down),
+            egui::Vec2::new(thick, length),
+        ),
+        Side::Right => Rect::from_center_size(
+            Pos2::new(band.right() - inset - thick / 2.0, down),
+            egui::Vec2::new(thick, length),
+        ),
+        Side::Top => Rect::from_center_size(
+            Pos2::new(across, band.top() + inset + thick / 2.0),
+            egui::Vec2::new(length, thick),
+        ),
+        Side::Bottom => Rect::from_center_size(
+            Pos2::new(across, band.bottom() - inset - thick / 2.0),
+            egui::Vec2::new(length, thick),
+        ),
+    }
+}
+
+/// Where a panel let go at `pointer` would land, including whether its side would fill.
+///
+/// The `Fill whole side` targets are asked first, because each sits inside its own band; anywhere else the
+/// answer is [`target`]'s, which leaves who owns the corners exactly as it was. A panel put on a side the
+/// ordinary way does not change whether that side fills.
+pub fn aim(
+    geometry: &DockGeometry,
+    zones: &[Zone; 4],
+    carrying: Panel,
+    pointer: Pos2,
+) -> Option<Aim> {
+    if let Some(zone) = zones.iter().find(|zone| zone.whole.contains(pointer)) {
+        let position = position_in(geometry, zone.side, carrying, pointer.x);
+        return Some(Aim { side: zone.side, position, fill: true });
+    }
+    let &DockGeometry { body, layout, showing, sizes, editor } = geometry;
+    let (side, position) = target(body, layout, showing, sizes, carrying, pointer, editor)?;
+    Some(Aim { side, position, fill: false })
 }
 
 /// Which side the pointer is aiming at, and where in that side the panel would land.
@@ -1336,6 +1568,77 @@ mod tests {
         let flat = Rect::from_min_max(Pos2::new(0.0, 100.0), Pos2::new(400.0, 100.0));
         lay_columns_out(flat, &[Panel::Explorer], &sizes, &mut out);
         assert_eq!(out[Panel::Explorer.index()], Rect::ZERO);
+    }
+
+    /// `task-2198`: agent tasks along the bottom, and the chat asked to fill the whole of the right. The chat
+    /// runs from the top of the window to the bottom and the strip stops at its left edge.
+    #[test]
+    fn a_column_that_fills_its_side_runs_the_whole_height_and_the_strip_stops_at_it() {
+        let sizes = Panes::new();
+        let mut layout = Layout::new().with(Panel::Run, Side::Right, None);
+        let showing = only(&[Panel::Explorer, Panel::Terminal, Panel::Run]);
+        let before = regions(body(), &layout, showing, &sizes);
+        assert!(before.of(Panel::Run).bottom() < 700.0, "by default the strip owns the corner");
+        assert_eq!(before.of(Panel::Terminal).right(), 1000.0);
+
+        layout.fill(Side::Right, true);
+        assert!(layout.fills(Side::Right));
+        assert!(!layout.fills(Side::Bottom), "the bottom gave its right hand corner away");
+        let after = regions(body(), &layout, showing, &sizes);
+        let run = after.of(Panel::Run);
+        let terminal = after.of(Panel::Terminal);
+        assert_eq!((run.top(), run.bottom()), (0.0, 700.0), "the whole height: {run:?}");
+        assert_eq!(terminal.right(), run.left(), "the strip stops at the column's edge");
+        assert_eq!(terminal.left(), 0.0, "and still runs under the explorer, which does not fill");
+        assert_eq!(after.editor.right(), run.left());
+        assert_eq!(after.editor.bottom(), terminal.top());
+        // Nothing overlaps anything.
+        for (one, other) in [(run, terminal), (run, after.editor), (after.of(Panel::Explorer), terminal)] {
+            assert!(one.intersect(other).area() <= 0.0, "{one:?} overlaps {other:?}");
+        }
+    }
+
+    /// And the other way round: the bottom asked to fill again takes its corner back.
+    #[test]
+    fn a_strip_that_fills_takes_its_corners_back_from_the_columns() {
+        let mut layout = Layout::new();
+        layout.fill(Side::Left, true);
+        layout.fill(Side::Right, true);
+        assert!(!layout.fills(Side::Bottom) && !layout.fills(Side::Top));
+        layout.fill(Side::Bottom, true);
+        assert!(layout.fills(Side::Bottom));
+        assert_eq!(layout.owner_of(Corner::TopLeft), Side::Left, "the top corners are untouched");
+        assert!(!layout.fills(Side::Left), "the left kept only its top corner");
+    }
+
+    /// Who owns each corner is written to the settings file and read back, and a value that names a side
+    /// that does not meet at that corner is ignored.
+    #[test]
+    fn the_corners_survive_the_settings_file() {
+        let mut layout = Layout::new();
+        layout.fill(Side::Right, true);
+        let mut values = crate::services::store::Values::new();
+        layout.write_into(&mut values);
+        assert_eq!(Layout::read_from(&values), layout);
+        values.set("panes.corner.top-left", "right");
+        assert_eq!(Layout::read_from(&values).owner_of(Corner::TopLeft), Side::Top);
+    }
+
+    /// Let go on a band's `Fill whole side` target and the side fills; anywhere else in the band it does not.
+    #[test]
+    fn the_fill_target_is_the_only_place_a_drop_fills_a_side() {
+        let sizes = Panes::new();
+        let layout = Layout::new();
+        let showing = only(&[Panel::Explorer, Panel::Terminal]);
+        let geometry = DockGeometry { body: body(), layout: &layout, showing, sizes: &sizes, editor: true };
+        let bands = zones(body(), &layout, showing, &sizes, true);
+        let right = bands.iter().find(|zone| zone.side == Side::Right).expect("a right band");
+        assert!(right.band.contains_rect(right.whole), "the target is inside its band");
+        let on = aim(&geometry, &bands, Panel::Run, right.whole.center()).expect("an aim");
+        assert_eq!((on.side, on.fill), (Side::Right, true));
+        let beside = right.band.center();
+        let off = aim(&geometry, &bands, Panel::Run, beside).expect("an aim");
+        assert_eq!((off.side, off.fill), (Side::Right, false));
     }
 
     /// `regions` is `regions_with` with the editing area showing, which is what every existing caller and every

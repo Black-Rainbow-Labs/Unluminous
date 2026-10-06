@@ -91,6 +91,7 @@ impl Action {
             // `dock-terminal-right`. Two words that both come from the value, so a name cannot drift
             // from what it moves — the rule the whole file keeps.
             Action::Dock { panel, side } => format!("dock-{}-{}", panel.name(), side.name()),
+            Action::FillSide(side) => format!("fill-{}", side.name()),
             Action::ResetPanelLayout => "reset-panel-layout".to_owned(),
             // The canvas's own actions, `task-1904`. One name a variant, spelled the way every other
             // name here is, so `unluminous-cli action run space-add-terminal` works the day the entry
@@ -176,6 +177,10 @@ impl Action {
                 }
             }
             return None;
+        }
+        // `fill-<side>`, the panel menu's `Fill Whole <Side>`.
+        if let Some(rest) = name.strip_prefix("fill-") {
+            return crate::app::dock::Side::from_name(rest).map(Action::FillSide);
         }
         if let Some(rest) = name.strip_prefix("fold-") {
             return FoldAction::from_name(rest).map(Action::Fold);

@@ -1208,6 +1208,14 @@ impl Layout {
     ///
     /// Selecting the whole of a long file otherwise built a rectangle for every line in it on every
     /// frame, all but a screenful of them off the top or the bottom of the window.
+    ///
+    /// **Each rectangle is a line tall and centred on the letters**, not laid over the line box.
+    /// `task-2198`: *"highlighted text isn't vertically aligned, its too much at bottom and not enough at
+    /// top."* A line puts its baseline `ascent` from its top and adds every scrap of extra leading below
+    /// the letters, so a rectangle drawn over the line box had all of that air under the words and none
+    /// over them. Moving every line's rectangle up by the same half of the leading keeps a selection across
+    /// several lines continuous, because neighbouring lines carry the same leading. A line with no extra
+    /// leading, which is most code, is drawn exactly where it was.
     pub fn selection_rects_in(&self, lines: Range<usize>, range: Range<usize>) -> Vec<Rect> {
         if range.is_empty() {
             return Vec::new();
@@ -1242,7 +1250,9 @@ impl Layout {
                 right = right.max(left) + line.height * 0.25;
             }
             if right > left {
-                rects.push(Rect { x: left, y: line.y, width: right - left, height: line.height });
+                let letters = line.baseline - line.ascent + (line.ascent + line.descent) / 2.0;
+                let y = line.y + letters - line.height / 2.0;
+                rects.push(Rect { x: left, y, width: right - left, height: line.height });
             }
         }
         rects
@@ -2302,6 +2312,32 @@ mod tests {
         assert_eq!(rects[0].y, 0.0);
         assert_eq!(rects[1].y, 20.0);
         assert_eq!(rects[2].y, 40.0);
+    }
+
+    /// `task-2198`: a selection over prose had all the extra leading under the words. With double line
+    /// spacing the line is 40 points and the letters 20, so the rectangle is moved up by half of the 20
+    /// points of air and its middle is the middle of the letters.
+    #[test]
+    fn a_selection_is_centred_on_the_letters_rather_than_on_the_line_box() {
+        let (rope, spans, mut paragraphs) = fixture("one\ntwo");
+        paragraphs.set(0..7, |p| p.line_spacing = 2.0);
+        let result = layout(&rope, &spans, &paragraphs, &ScaledMetrics, 500.0);
+        let rects = result.selection_rects(0..7);
+        assert_eq!(rects.len(), 2);
+        for (rect, line) in rects.iter().zip(&result.lines) {
+            let letters_top = line.y + line.baseline - line.ascent;
+            let letters_middle = letters_top + (line.ascent + line.descent) / 2.0;
+            assert_eq!(rect.height, line.height, "still a whole line tall");
+            assert!(
+                (rect.y + rect.height / 2.0 - letters_middle).abs() < 0.001,
+                "centred on the letters: {rect:?} against {letters_middle}"
+            );
+            assert!(rect.y < line.y, "and moved up from the line box, which had the air below");
+        }
+        assert!(
+            (rects[0].y + rects[0].height - rects[1].y).abs() < 0.001,
+            "two lines of a selection still meet with no gap between them"
+        );
     }
 
     #[test]

@@ -235,11 +235,11 @@ fn address_field(
     let response = inner.add(
         egui::TextEdit::singleline(toolbar.typed)
             .id(toolbar.id)
-            .hint_text(
-                egui::RichText::new("Type an address")
-                    .color(color::text_faint())
-                    .size(ADDRESS_TEXT),
-            )
+            .hint_text(crate::components::controls::placeholder(
+                "Type an address",
+                &ADDRESS_FONT,
+                color::text_faint(),
+            ))
             .font(ADDRESS_FONT)
             .frame(egui::Frame::NONE)
             .desired_width(text_rect.width())

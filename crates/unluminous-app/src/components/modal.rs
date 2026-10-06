@@ -22,6 +22,21 @@
 //! window has no decision to make about it, nothing is written to disk, and a dialog closed and
 //! opened again is where it was left, which is what every other application does.
 //!
+//! ## Every modal zooms
+//!
+//! `task-2198`: *"I should be able to zoom modals, such as the agent tasks modal."* Control or command with
+//! the wheel, a pinch, or control or command with plus and minus, while a modal is open, make the modal
+//! bigger or smaller; `unluminous-cli modal zoom` is the same thing for an agent. It is the way a canvas node
+//! is zoomed: the modal is drawn into its own layer through a `TSTransform` about its top left corner, and
+//! it is laid out in a rectangle the zoom times smaller, so it fills the same place on the screen with
+//! everything in it larger. The dialog itself knows nothing about it. Its rectangle is smaller, and a
+//! dialog already lays itself out in whatever rectangle it is given.
+//!
+//! The zoom is kept in egui's memory under the modal's id, beside where it has been dragged to and for the
+//! same reason: it belongs to the modal, and a modal closed and opened again comes back at it. Text in the
+//! layer is laid out again at the size it is seen at once the modal has been drawn
+//! (`crisp::sharpen_the_text_in`), which is what keeps a zoomed modal's words from being magnified bitmaps.
+//!
 //! Two rules about the order things are added in, and both are why they work at all. The **drag
 //! strip is added before the contents**, so the close cross the header draws sits over it and a
 //! click on the cross closes the modal rather than starting a drag. The **grips are added after the
@@ -29,6 +44,7 @@
 //! gives a pointer to the last widget that wants it, and a list or a field reaching the modal's edge
 //! would otherwise take a drag meant for the edge.
 
+use egui::emath::TSTransform;
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::components::controls;
@@ -103,6 +119,53 @@ pub fn set_placement(ctx: &egui::Context, id: &str, placement: Placement) {
     remember_placement(ctx, id, placement);
 }
 
+fn zoom_id(modal: egui::Id) -> egui::Id {
+    modal.with("zoom")
+}
+
+/// How much bigger than its own size the modal with this egui id is drawn. One until somebody zooms it.
+pub fn zoom_of(ctx: &egui::Context, modal: egui::Id) -> f32 {
+    ctx.data(|data| data.get_temp::<f32>(zoom_id(modal))).unwrap_or(crate::settings::DEFAULT_ZOOM)
+}
+
+/// Draw the modal with this egui id at `zoom`, which is kept between [`crate::settings::MIN_ZOOM`] and
+/// [`crate::settings::MAX_ZOOM`], the range every pane's zoom has.
+pub fn set_zoom(ctx: &egui::Context, modal: egui::Id, zoom: f32) {
+    let zoom = zoom.clamp(crate::settings::MIN_ZOOM, crate::settings::MAX_ZOOM);
+    ctx.data_mut(|data| match (zoom - crate::settings::DEFAULT_ZOOM).abs() < 0.001 {
+        true => data.remove::<f32>(zoom_id(modal)),
+        false => {
+            data.insert_temp(zoom_id(modal), zoom);
+        }
+    });
+    ctx.request_repaint();
+}
+
+/// Take `steps` up or down the list of zooms every pane walks, which is what one notch of the wheel and
+/// one press of control and plus are each worth.
+pub fn step_zoom(ctx: &egui::Context, modal: egui::Id, steps: i32) {
+    let mut zoom = zoom_of(ctx, modal);
+    for _ in 0..steps.abs() {
+        zoom = crate::settings::step_zoom(zoom, steps > 0);
+    }
+    set_zoom(ctx, modal, zoom);
+}
+
+/// The egui id of the modal in front, from the frame before this one, or `None` when no modal is open.
+///
+/// egui's own answer, because egui is what keeps the modals in order: every modal Unluminous draws goes
+/// through [`show`], and [`show`] gives its layer the modal's own id, so the id of the top modal layer is
+/// the id its zoom is kept under.
+pub fn the_open_one(ctx: &egui::Context) -> Option<egui::Id> {
+    ctx.memory(|memory| memory.top_modal_layer()).map(|layer| layer.id)
+}
+
+/// The transform a modal at `zoom` is drawn through: a scale about `corner`, its top left corner on the
+/// screen, so the corner stays where [`place`] put it and everything else grows away from it.
+fn zoomed_about(corner: Pos2, zoom: f32) -> TSTransform {
+    TSTransform { scaling: zoom, translation: corner.to_vec2() * (1.0 - zoom) }
+}
+
 fn drawn_id(id: &str) -> egui::Id {
     egui::Id::new(id).with("drawn")
 }
@@ -147,6 +210,16 @@ pub fn show<R>(
     let mut placement = placement(ctx, id);
     let (position, size) = place(ctx, width, height, &mut placement);
     remember_drawn(ctx, id, Rect::from_min_size(position, size));
+    // **Zoomed the way a canvas node is**: through a transform on the modal's own layer, with the dialog laid
+    // out in a rectangle `zoom` times smaller so it fills the same place on the screen. egui leaves a layer
+    // with the identity transform alone, so a modal nobody has zoomed is drawn exactly as it always was.
+    let zoom = zoom_of(ctx, egui::Id::new(id));
+    let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new(id));
+    let to_screen = zoomed_about(position, zoom);
+    ctx.set_transform_layer(layer, to_screen);
+    let laid_out = size / zoom;
+    // The whole window, in the layer's own points, which is what the backdrop has to cover.
+    let window = to_screen.inverse().mul_rect(ctx.content_rect());
 
     let response = egui::Modal::new(egui::Id::new(id))
         .area(
@@ -158,24 +231,44 @@ pub fn show<R>(
                 .sense(Sense::hover())
                 .order(egui::Order::Foreground)
                 .interactable(true)
+                // `fit` has already kept the modal inside the window, in the window's points. egui's own
+                // clamp would measure the zoomed layer's points against the window and move it.
+                .constrain(false)
                 .fixed_pos(position),
         )
-        .backdrop_color(Color32::from_black_alpha(120))
-        .frame(
-            egui::Frame::NONE
-                .fill(color::explorer())
-                .stroke(Stroke::new(1.0, color::control_border()))
-                .corner_radius(CornerRadius::same(10)),
-        )
+        // **The backdrop and the frame are painted here rather than by egui**, the same shapes egui paints, so
+        // that a modal zoomed out still darkens the whole window. egui paints its backdrop over the window's
+        // rectangle in the layer's own points, which a zoom below one would shrink into a dark patch in the
+        // middle. A frame with nothing but its one point of margin keeps the dialog's rectangle exactly where
+        // egui's frame put it.
+        .backdrop_color(Color32::TRANSPARENT)
+        .frame(egui::Frame::NONE.inner_margin(1))
         .show(ctx, |ui| {
-            let (area, _) = ui.allocate_exact_size(size, Sense::hover());
+            ui.painter().rect_filled(window, CornerRadius::ZERO, Color32::from_black_alpha(120));
+            let frame_at = ui.painter().add(egui::Shape::Noop);
+            let (area, _) = ui.allocate_exact_size(laid_out, Sense::hover());
+            ui.painter().set(
+                frame_at,
+                egui::Shape::Rect(egui::epaint::RectShape::new(
+                    area.expand(1.0),
+                    CornerRadius::same(10),
+                    color::explorer(),
+                    Stroke::new(1.0, color::control_border()),
+                    egui::StrokeKind::Inside,
+                )),
+            );
+            // **Nothing a dialog draws reaches past its own frame.** The area's clip was the whole window, so a
+            // section that ran out of room painted over the backdrop under the modal, which a zoom makes easy to
+            // reach: a modal zoomed in has less room in its own points. `task-2198`.
+            ui.set_clip_rect(area.expand(1.0).intersect(ui.clip_rect()));
             // Before the contents, so the close cross the header draws sits over the strip.
-            let moved = drag_strip(ui, area, id, &mut placement);
+            let moved = drag_strip(ui, area, id, &mut placement, zoom);
             let inner = contents(ui, area);
             // After the contents, for the reason `components::resize_edges` gives.
-            let resized = grips(ui, area, id, &mut placement);
+            let resized = grips(ui, area, id, &mut placement, zoom);
             (inner, moved || resized)
         });
+    crate::theme::crisp::sharpen_the_text_in(ctx, layer, zoom);
 
     let should_close = response.should_close();
     let (inner, changed) = response.inner;
@@ -235,7 +328,16 @@ pub fn fit(window: Vec2, asked: Vec2, grown: Vec2, offset: Vec2) -> (Vec2, Vec2)
 ///
 /// A double click puts the modal back where it started at the size it started, which is what double
 /// clicking a divider does to a pane in `components::splitter`.
-fn drag_strip(ui: &mut egui::Ui, area: Rect, id: &str, placement: &mut Placement) -> bool {
+///
+/// `zoom` is what the modal is drawn at. A drag is reported in the layer's own points and a placement is
+/// kept in the window's, so a drag across a modal at twice its size moves it twice as far as it reports.
+fn drag_strip(
+    ui: &mut egui::Ui,
+    area: Rect,
+    id: &str,
+    placement: &mut Placement,
+    zoom: f32,
+) -> bool {
     let strip = Rect::from_min_size(area.min, Vec2::new(area.width(), HEADER));
     let response = ui.interact(strip, ui.id().with(("modal-move", id)), Sense::click_and_drag());
     if response.hovered() || response.dragged() {
@@ -250,7 +352,7 @@ fn drag_strip(ui: &mut egui::Ui, area: Rect, id: &str, placement: &mut Placement
         return true;
     }
     if response.dragged() && response.drag_delta() != Vec2::ZERO {
-        placement.offset += response.drag_delta();
+        placement.offset += response.drag_delta() * zoom;
         return true;
     }
     false
@@ -261,7 +363,9 @@ fn drag_strip(ui: &mut egui::Ui, area: Rect, id: &str, placement: &mut Placement
 /// Dragging an edge keeps the opposite edge where it is, which is what resizing means everywhere
 /// else. The modal is positioned from its middle, so growing it by `d` moves that middle by `d / 2`
 /// towards the edge being dragged; that is the whole of the arithmetic here.
-fn grips(ui: &mut egui::Ui, area: Rect, id: &str, placement: &mut Placement) -> bool {
+///
+/// `zoom` is what the modal is drawn at, for the reason [`drag_strip`] gives.
+fn grips(ui: &mut egui::Ui, area: Rect, id: &str, placement: &mut Placement, zoom: f32) -> bool {
     let mut moved = false;
     for (name, side, rect, cursor) in edges_and_corners(area) {
         let response = ui.interact(rect, ui.id().with(("modal-resize", id, name)), Sense::drag());
@@ -275,7 +379,7 @@ fn grips(ui: &mut egui::Ui, area: Rect, id: &str, placement: &mut Placement) -> 
         if !response.dragged() {
             continue;
         }
-        let drag = response.drag_delta();
+        let drag = response.drag_delta() * zoom;
         let grown = Vec2::new(side.0 as f32 * drag.x, side.1 as f32 * drag.y);
         if grown == Vec2::ZERO {
             continue;

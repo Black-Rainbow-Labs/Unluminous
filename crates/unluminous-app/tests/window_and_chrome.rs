@@ -3968,6 +3968,7 @@ const EVERY_VARIANT: &[&str] = &[
     "ToggleRunTile",
     "ToggleDebugTile",
     "Dock",
+    "FillSide",
     "ResetPanelLayout",
     "Space",
     "Run",
@@ -4069,6 +4070,7 @@ fn variant_name(action: &Action) -> &'static str {
         Action::ToggleRunTile => "ToggleRunTile",
         Action::ToggleDebugTile => "ToggleDebugTile",
         Action::Dock { .. } => "Dock",
+        Action::FillSide(_) => "FillSide",
         Action::ResetPanelLayout => "ResetPanelLayout",
         Action::Space(_) => "Space",
         Action::Run(_) => "Run",
@@ -4931,6 +4933,11 @@ fn every_step() -> Vec<Step> {
         });
     }
 
+    // Each side asked to fill, which changes which side owns two corners of the window. `task-2198`.
+    for side in Side::ALL {
+        steps.push(Step::new(Action::FillSide(side)));
+    }
+
     // A panel to each of the four edges. Moved somewhere else first, because docking a panel to the
     // side it is already on is a row that would correctly do nothing.
     for panel in Panel::ALL {
@@ -5531,4 +5538,94 @@ fn a_fields_right_click_menu_cuts_copies_and_selects() {
         harness.state().files.active().typed_address.is_empty(),
         "Cut took the whole address, which is what was selected"
     );
+}
+
+// -------------------------------------------------------------------------------------- task-2198
+
+/// *"I should be able to right click md preview, etc text and see a menu with text options, like copy."*
+///
+/// A right click in the preview opens its own menu and leaves what is selected alone; `Copy` in it copies the
+/// rendered words, which is what the key already did.
+#[test]
+fn a_right_click_in_the_preview_opens_a_menu_that_copies_what_is_selected() {
+    let mut harness = harness(MARKDOWN_TABLE);
+    harness.get_by_label("Side by side").click();
+    steady(&mut harness);
+    let source = harness.state().editor_area();
+    let inside = egui::Pos2::new(source.right() + 60.0, source.top() + 60.0);
+    click_at(&mut harness, inside);
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::SelectAll, &ctx);
+    steady(&mut harness);
+    assert!(harness.state().preview_holds_the_selection());
+
+    right_click_at(&mut harness, inside);
+    assert!(harness.state().preview_menu.is_some(), "the menu opened");
+    assert!(harness.state().preview_holds_the_selection(), "and the selection is still there");
+    harness.snapshot(shot("preview_right_click_menu"));
+
+    harness.get_by_label("Copy").click();
+    harness.step();
+    let copied = harness
+        .output()
+        .platform_output
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            egui::OutputCommand::CopyText(text) => Some(text.clone()),
+            _ => None,
+        })
+        .unwrap_or_default();
+    assert!(copied.contains("What the crates hold"), "the preview was copied, got {copied:?}");
+    assert!(!copied.contains("| ----- |"), "and not the source, got {copied:?}");
+    steady(&mut harness);
+    assert!(harness.state().preview_menu.is_none(), "and choosing a row closes the menu");
+}
+
+/// *"Open Recent projects seems to not be updating, and projects aren't showing up after I've opened them."*
+///
+/// Every window is a process of its own and they share one list on disk. A project another window opened is in
+/// this window's `Recent Projects` within a second, without this window being restarted.
+#[test]
+fn a_project_another_window_opened_reaches_this_windows_recent_projects() {
+    let mut harness = harness("");
+    let settings = scratch_folder("task-2198-recent-settings");
+    let elsewhere = scratch_folder("task-2198-recent-project");
+    harness.state_mut().use_store(unluminous_app::services::store::Store::at(&settings));
+    harness.state_mut().keep_the_recent_projects_current();
+    assert!(!harness.state().recent.contains(&elsewhere), "not there yet");
+
+    // What the other window's process does when it loads, written through a store of its own.
+    unluminous_app::services::store::Store::at(&settings).remember_project(&elsewhere);
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    steady(&mut harness);
+    let recent: Vec<String> = harness
+        .state()
+        .recent
+        .iter()
+        .map(|path| path.to_string_lossy().to_lowercase())
+        .collect();
+    let wanted = elsewhere.to_string_lossy().to_lowercase();
+    assert!(
+        recent.iter().any(|path| path.ends_with("task-2198-recent-project") || *path == wanted),
+        "the project the other window opened is listed: {recent:?}"
+    );
+}
+
+/// *"highlighted text isn't vertically aligned, its too much at bottom and not enough at top."* A selection over
+/// prose, which has reading leading under every line, is centred on the letters rather than laid over the line.
+#[test]
+fn a_selection_over_prose_sits_on_the_letters() {
+    let mut harness = harness(
+        "A paragraph of prose, long enough to wrap onto a second line in the window, so the selection covers the server afterwards. It loads a snapshot with no lock and the selection is centred on the words.",
+    );
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::SelectAll, &ctx);
+    steady(&mut harness);
+    let layout = harness.state().layout();
+    let rects = layout.selection_rects(harness.state().document().selection().range());
+    let line = &layout.lines[0];
+    let letters = line.y + line.baseline - line.ascent + (line.ascent + line.descent) / 2.0;
+    assert!((rects[0].y + rects[0].height / 2.0 - letters).abs() < 0.01, "{:?} against {letters}", rects[0]);
+    harness.snapshot(shot("selection_centred_on_the_letters"));
 }

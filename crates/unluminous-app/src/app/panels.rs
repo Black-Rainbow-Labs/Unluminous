@@ -838,16 +838,22 @@ impl UnluminousApp {
         // the editing area showing", so with it hidden the bands, the answer and the strong rectangle
         // were all worked out against a window nobody was looking at. `task-1905`.
         let editor = self.editor_visible;
-        let bands = dock::zones(panes, &self.panes.dock, showing, &self.panes, editor);
-        let aimed = dock::target(panes, &self.panes.dock, showing, &self.panes, panel, at, editor);
+        let layout = self.panes.dock;
+        let bands = dock::zones(panes, &layout, showing, &self.panes, editor);
+        let geometry =
+            dock::DockGeometry { body: panes, layout: &layout, showing, sizes: &self.panes, editor };
+        let aimed = dock::aim(&geometry, &bands, panel, at);
         let landing = match aimed {
-            Some((side, position)) => {
-                let after = self.panes.dock.with(panel, side, Some(position));
+            Some(aim) => {
+                let mut after = layout.with(panel, aim.side, Some(aim.position));
+                if aim.fill {
+                    after = after.filling(aim.side);
+                }
                 dock::regions_with(panes, &after, showing, &self.panes, editor).of(panel)
             }
             None => Rect::ZERO,
         };
-        crate::components::dock::zones(ui, &bands, aimed.map(|(side, _)| side), landing, panel);
+        crate::components::dock::zones(ui, &bands, aimed, landing, panel);
     }
 
     /// Where the panel that was let go actually landed.
@@ -865,16 +871,16 @@ impl UnluminousApp {
         let showing = self.panels_showing();
         // Let go over the document rather than over an edge, nothing happens: a drag can be thought
         // better of, which is what the explorer's row drag and the tab drag both already promise.
-        if let Some((side, position)) = dock::target(
-            panes,
-            &self.panes.dock,
-            showing,
-            &self.panes,
-            panel,
-            at,
-            self.editor_visible,
-        ) {
-            self.dock_the_panel(panel, side, Some(position));
+        let layout = self.panes.dock;
+        let editor = self.editor_visible;
+        let bands = dock::zones(panes, &layout, showing, &self.panes, editor);
+        let geometry =
+            dock::DockGeometry { body: panes, layout: &layout, showing, sizes: &self.panes, editor };
+        if let Some(aim) = dock::aim(&geometry, &bands, panel, at) {
+            self.dock_the_panel(panel, aim.side, Some(aim.position));
+            if aim.fill {
+                self.fill_a_side(aim.side, true);
+            }
         }
         ctx.request_repaint();
     }
@@ -901,6 +907,38 @@ impl UnluminousApp {
             self.put_the_other_tiles_away(panel);
         }
         self.message = Some(format!("{} is on the {}", panel.label(), side.name()));
+    }
+
+    /// The four bands a panel being carried can be let go in, with each one's `Fill whole side` target, worked
+    /// out against the panes as the last frame drew them.
+    ///
+    /// For a test, which has to aim at a target it cannot find by name: the bands are drawn rather than added
+    /// as widgets, because a widget over the body would take the drag that is carrying the panel.
+    pub fn drop_zones(&self) -> [dock::Zone; 4] {
+        let regions = self.panel_rects;
+        let body = regions
+            .panels
+            .iter()
+            .filter(|rect| rect.width() > 0.0 && rect.height() > 0.0)
+            .fold(regions.editor, |whole, rect| whole.union(*rect));
+        dock::zones(body, &self.panes.dock, self.panels_showing(), &self.panes, self.editor_visible)
+    }
+
+    /// Make `side` run the whole length of its edge of the window, or give its corners to the sides it meets.
+    ///
+    /// The one place it happens, which the drop on a `Fill whole side` target, the panel menu's `Fill Whole`
+    /// row and `unluminous-cli panel fill` all go through. `task-2198`.
+    pub fn fill_a_side(&mut self, side: dock::Side, fill: bool) {
+        let before = self.panes.dock;
+        self.panes.dock.fill(side, fill);
+        if self.panes.dock == before {
+            return;
+        }
+        self.unsaved_settings = true;
+        self.message = Some(match fill {
+            true => format!("The {} runs the whole length of the window", side.name()),
+            false => format!("The {} stops where the sides beside it start", side.name()),
+        });
     }
 
     /// Put every panel back where it started, which is what `Reset Panel Layout` means.

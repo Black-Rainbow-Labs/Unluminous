@@ -312,7 +312,11 @@ fn rows(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Reque
                 .id(key_id)
                 .frame(egui::Frame::NONE)
                 .password(true)
-                .hint_text(egui::RichText::new(&key_state).color(look.palette.text_faint))
+                .hint_text(crate::components::controls::placeholder(
+                    key_state.as_str(),
+                    &egui::FontId::proportional(look.font_size - 0.5),
+                    look.palette.text_faint,
+                ))
                 .font(egui::FontId::proportional(look.font_size - 0.5))
                 .text_color(look.palette.text),
         );
@@ -587,7 +591,11 @@ fn field(
         egui::TextEdit::singleline(&mut value)
             .id(value_id)
             .frame(egui::Frame::NONE)
-            .hint_text(egui::RichText::new(settings_field.hint).color(look.palette.text_faint))
+            .hint_text(crate::components::controls::placeholder(
+                settings_field.hint,
+                &egui::FontId::proportional(look.font_size - 0.5),
+                look.palette.text_faint,
+            ))
             .font(egui::FontId::proportional(look.font_size - 0.5))
             .text_color(look.palette.text),
     );
