@@ -3911,6 +3911,12 @@ fn a_note_is_a_markdown_file_with_its_three_views_in_its_header() {
     let written =
         std::fs::read_to_string(folder.join(".realm-files/main.realm")).expect("the realm");
     assert!(written.contains(".view = preview"), "{written}");
+    // The explorer is read again before the picture, so how many files it counts does not depend on
+    // whether its own watch had noticed the realm being written yet.
+    did(&mut harness, "explorer reload");
+    for _ in 0..2 {
+        steady(&mut harness);
+    }
     harness.snapshot(shot("realm_note_preview").as_str());
     did(&mut harness, &format!("realm note view {node} raw"));
     let index = harness.state().files.tab_in_node(node).expect("the note has its tab");
