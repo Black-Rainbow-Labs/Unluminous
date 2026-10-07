@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 0.64.3 — 2026-10-07
+
+- The chat prompt's text and caret stay inside its field (`task-2200`)
+- Atrius 0.1.1, whose store thread survives a store it cannot open and a job that panics, and which answers a question from its words when the passages cannot (`task-2200`)
+- A media file copied into a realm is written through a temporary, which the persisted write check asks for (`task-2200`)
+
 ## 0.64.2 — 2026-10-07
 
 - A realm tab that is showing is the canvas, so asking for the canvas does not open the panel beside it (`task-2202`)
