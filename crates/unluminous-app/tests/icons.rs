@@ -88,6 +88,8 @@ fn sheet() -> Vec<Mark> {
         ("resume", icon::resume),
         ("clear", icon::clear),
         ("magnifier", icon::magnifier),
+        ("crosshair", icon::crosshair),
+        ("whole_page", icon::whole_page),
         ("plus", icon::plus),
         ("cross", icon::cross),
         ("tick", icon::tick),

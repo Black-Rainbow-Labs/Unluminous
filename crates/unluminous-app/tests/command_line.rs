@@ -1853,6 +1853,10 @@ fn drive_the_window_and_the_tabs(coverage: &mut Coverage) {
     // fetched: there is no web view behind a test window, so what is under test is the tab.
     c.works(&mut harness, "browser open https://example.com/");
     c.works(&mut harness, "browser status --json");
+    // The visited addresses. A test window has no settings folder, so the list is empty and the answer
+    // says nothing matches, which is still a success. `task-2203`.
+    c.works(&mut harness, "browser history --json");
+    c.works(&mut harness, "browser history example");
     c.refuses(&mut harness, "browser open");
     c.sets_up(&mut harness, "tab open readme.md");
     c.refuses(&mut harness, "browser status --json");

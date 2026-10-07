@@ -791,6 +791,15 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         area: "browser",
+        verb: "history",
+        summary: "List the addresses visited in Unluminous's browser tabs and nodes, in every project, the most visited first. The list is kept in the settings folder, so it survives a restart and an upgrade, and it is what the address fields offer while an address is typed. With words given, only the addresses whose address or title holds every one of them.",
+        arguments: &[rest("text", false, "Words to look for in the address or the title.")],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli browser history", "unluminous-cli browser history github egui --json"],
+        local: false,
+    },
+    Command {
+        area: "browser",
         verb: "back",
         summary: "Go back through the rendered tab's own history, which is kept apart from every other tab's.",
         arguments: NO_ARGUMENTS,
@@ -1953,24 +1962,27 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "realm",
         verb: "browser",
-        summary: "Drive a browser node: `go` to an address, `back`, `forward`, `reload`, `url` to read where it is, and `shot` to write a picture of the node to a file. A window renders one page at a time, so the node acted on is shown first. **`shot` photographs the node as Unluminous drew it and not the page inside it**: a rendered page is a native child window the operating system composites on top, and no picture taken from inside Unluminous contains one. Use it to see the node, its address bar and where it is on the canvas; use `url` to read the address, and the agent's own tools to read what a page says.",
+        summary: "Drive a browser node: `go` to an address, `back`, `forward`, `reload`, `url` to read where it is, and `shot` to write a picture of the node to a file. `pin --selector <css>` makes the node show only that element of the page, scaled to fill the node without being stretched; `unpin` shows the whole page again; `pinned` says what is pinned; `pick` opens the element picker in the page for a person to click an element, which is what `Select Element` on the page's right click menu does. A pin belongs to the address it was made on and is kept in the realm file. A window renders one page at a time, so the node acted on is shown first. **`shot` photographs the node as Unluminous drew it and not the page inside it**: a rendered page is a native child window the operating system composites on top, and no picture taken from inside Unluminous contains one. Use it to see the node, its address bar and where it is on the canvas; use `url` to read the address, and the agent's own tools to read what a page says.",
         arguments: &[
             whole("node", true, "The browser node's id."),
             closed(
                 "command",
                 true,
-                "go, back, forward, reload, url or shot.",
-                &["go", "back", "forward", "reload", "url", "shot"],
+                "go, back, forward, reload, url, shot, pick, pin, unpin or pinned.",
+                &["go", "back", "forward", "reload", "url", "shot", "pick", "pin", "unpin", "pinned"],
             ),
         ],
         flags: &[
             option("url", "address", "Where to go, for `go`."),
+            option("selector", "css", "Which element to show, for `pin`."),
             whole_option("from", "node", "Which node is asking. It must be wired to the one it names."),
             option("path", "file", "Where to write the picture, for `shot`."),
         ],
         examples: &[
             "unluminous-cli realm browser 9 go --url https://example.com/ --from 7",
             "unluminous-cli realm browser 9 url",
+            "unluminous-cli realm browser 9 pin --selector \"main table.prices\"",
+            "unluminous-cli realm browser 9 unpin",
         ],
         local: false,
     },

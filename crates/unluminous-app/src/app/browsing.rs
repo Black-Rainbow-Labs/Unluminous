@@ -29,6 +29,7 @@ impl UnluminousApp {
         // same reason: a tab that is not showing is not drawn.
         let mut typed = std::mem::take(&mut self.files.active_mut().typed_address);
         let mut editing = self.files.active().editing_address;
+        let suggestions = self.suggestions_for(&typed, editing);
         let (outcome, placement) = browser_view::show(
             ui,
             area,
@@ -37,6 +38,12 @@ impl UnluminousApp {
                 typed: &mut typed,
                 editing: &mut editing,
                 id: egui::Id::new(("browser-address", tab.id)),
+                // Pinning one element is a browser node's feature, so a tab in the editing area offers none
+                // of it. `task-2203`.
+                pickable: false,
+                pinned: false,
+                picking: false,
+                suggestions,
             },
             focused,
             showing,
@@ -55,6 +62,26 @@ impl UnluminousApp {
         outcome.took_focus
     }
 
+    /// The visited addresses to offer under an address field holding `typed`. Nothing while the field is the
+    /// page's rather than the person's, because a list that opens over a page nobody is typing at is in the way.
+    pub(crate) fn suggestions_for(
+        &self,
+        typed: &str,
+        editing: bool,
+    ) -> Vec<browser_view::Suggestion> {
+        if !editing {
+            return Vec::new();
+        }
+        self.visits
+            .matching(typed, crate::services::browser_session::MOST_OFFERED)
+            .into_iter()
+            .map(|visit| browser_view::Suggestion {
+                url: visit.url.clone(),
+                title: visit.title.clone(),
+            })
+            .collect()
+    }
+
     /// Open a validated address or local HTML file through the same path used by menus and CLI.
     pub fn open_browser(&mut self, value: &str) -> Result<u64, String> {
         if !crate::services::browser::SUPPORTED {
@@ -67,6 +94,32 @@ impl UnluminousApp {
         self.focus = Focus::Editor;
         self.message = Some("Opened in a browser tab".to_owned());
         Ok(id)
+    }
+
+    /// Open the browser tabs a project left open, each in its pane and with the addresses it had been at.
+    ///
+    /// `task-2203`: *"we don't seem to be retaining session history."* A browser tab in the editing area was
+    /// not written down at all, so a project reopened without it. A tab whose address no longer opens is
+    /// skipped, which is the rule a file that has gone keeps.
+    pub(crate) fn restore_browser_tabs(
+        &mut self,
+        tabs: &[crate::services::project_state::RememberedBrowser],
+    ) {
+        if !crate::services::browser::SUPPORTED {
+            return;
+        }
+        for remembered in tabs {
+            let Some(current) = remembered.current() else { continue };
+            let Ok(location) = BrowserLocation::parse(current, self.tree.root()) else { continue };
+            let mut tab = self.browser.open_tab(location);
+            tab.restore_history(&remembered.history, remembered.position);
+            let index = self.files.open_file(files::OpenFile::browser(tab), true);
+            let pane = remembered.pane.min(self.files.pane_count().saturating_sub(1));
+            if self.files.pane_of(index) != pane {
+                let end = self.files.tabs_in(pane).len();
+                self.files.drag_tab(index, pane, end);
+            }
+        }
     }
 
     /// Run one browser command against the tab that asked for it.
@@ -89,6 +142,22 @@ impl UnluminousApp {
                 let answer = match self.realm.live.node_of_browser(id) {
                     Some(node) => self.send_a_realm_browser_to(node, address.trim()),
                     None => self.open_browser(address.trim()).map(|_| ()),
+                };
+                if let Err(problem) = answer {
+                    self.message = Some(problem);
+                }
+                return;
+            }
+            // **The element picker and the pin, which only a browser node has.** `task-2203`.
+            BrowserCommand::Pick | BrowserCommand::CancelPick | BrowserCommand::Unpin => {
+                let Some(node) = self.realm.live.node_of_browser(id) else { return };
+                let answer = match command {
+                    BrowserCommand::Pick => self.pick_in_a_realm_browser(node, None),
+                    BrowserCommand::CancelPick => {
+                        self.browser.cancel_picking();
+                        Ok(())
+                    }
+                    _ => self.unpin_a_realm_browser(node),
                 };
                 if let Err(problem) = answer {
                     self.message = Some(problem);
@@ -138,6 +207,24 @@ impl UnluminousApp {
         }
         let arrived = self.browser.take_events();
         self.act_on_browser_events(arrived);
+        // What the page's own right click menu offers, for the page showing now. `task-2203`.
+        let node = self.browser.showing().and_then(|id| self.realm.live.node_of_browser(id));
+        let pinned = node.is_some_and(|node| self.a_nodes_pin(node).is_some());
+        self.browser
+            .set_page_menu(crate::services::browser::PageMenu { pickable: node.is_some(), pinned });
+        // A pick asked for while another page held the one view, opened once the view is on this node's page.
+        if let Some((node, at)) = self.pick_when_showing {
+            match self.realm.live.browser(node) {
+                Some(tab) if self.browser.showing() == Some(tab.id) && !tab.loading => {
+                    self.pick_when_showing = None;
+                    if let Err(problem) = self.browser.start_picking(tab.id, at) {
+                        self.message = Some(problem);
+                    }
+                }
+                Some(_) => {}
+                None => self.pick_when_showing = None,
+            }
+        }
     }
 
     /// What each event does, split out so a test can feed the four shapes with no engine behind them.
@@ -151,6 +238,31 @@ impl UnluminousApp {
                 BrowserEvent::OpenRequested { url, .. } => {
                     let _ = self.open_browser(&url);
                 }
+                BrowserEvent::PickAsked { id, at } => {
+                    if let Some(node) = self.realm.live.node_of_browser(id) {
+                        if let Err(problem) = self.pick_in_a_realm_browser(node, at) {
+                            self.message = Some(problem);
+                        }
+                    }
+                }
+                BrowserEvent::UnpinAsked { id } => {
+                    if let Some(node) = self.realm.live.node_of_browser(id) {
+                        if let Err(problem) = self.unpin_a_realm_browser(node) {
+                            self.message = Some(problem);
+                        }
+                    }
+                }
+                BrowserEvent::Picked { id, selector } => {
+                    if let Some(node) = self.realm.live.node_of_browser(id) {
+                        match self.pin_a_realm_browser(node, &selector) {
+                            Ok(()) => {
+                                self.message = Some(format!("Node {node} shows only {selector}."))
+                            }
+                            Err(problem) => self.message = Some(problem),
+                        }
+                    }
+                }
+                BrowserEvent::PickCancelled { .. } => {}
                 BrowserEvent::Title { id, title } => {
                     // A video node's page says where it is in its title, which is how the position reaches
                     // the realm's sidecar with no script callback. `task-2202`.
@@ -159,13 +271,40 @@ impl UnluminousApp {
                             self.realm.live.report_a_video(node, report);
                         }
                     }
+                    // **A title that arrives while a page is loading is the next page's**, and the tab's
+                    // address still names the last one until the load finishes, so it is held until then.
+                    // `task-2203`: filed at once, the second page of a visit was written down with the first
+                    // page's title.
+                    match self
+                        .browser_tab(id)
+                        .map(|tab| (tab.loading, tab.current_url().to_owned()))
+                    {
+                        Some((true, _)) => {
+                            self.titles_arriving.insert(id, title.clone());
+                        }
+                        Some((false, url)) => self.visits.titled(&url, &title),
+                        None => {}
+                    }
                     self.change_browser_tab(id, |tab| tab.title = title)
                 }
                 BrowserEvent::LoadStarted { id, .. } => {
+                    self.titles_arriving.remove(&id);
                     self.change_browser_tab(id, |tab| tab.loading = true)
                 }
                 BrowserEvent::LoadFinished { id, url } => {
-                    self.change_browser_tab(id, |tab| tab.arrived_at(url))
+                    self.change_browser_tab(id, |tab| tab.arrived_at(url));
+                    // Where a person has been, kept for every project. `task-2203`.
+                    if let Some(tab) = self.browser_tab(id).filter(|tab| !tab.loading) {
+                        let now = tab.current_url().to_owned();
+                        self.visits.visited(&now, crate::services::browser_session::now());
+                        if let Some(title) = self.titles_arriving.remove(&id) {
+                            self.visits.titled(&now, &title);
+                        }
+                    }
+                    // And a node showing one element of this page shows it again.
+                    if let Some(node) = self.realm.live.node_of_browser(id) {
+                        self.show_a_nodes_pin(node);
+                    }
                 }
             }
         }

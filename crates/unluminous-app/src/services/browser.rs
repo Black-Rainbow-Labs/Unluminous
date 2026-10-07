@@ -39,6 +39,13 @@ impl BrowserLocation {
         if path.is_absolute() || project.join(path).is_file() {
             return Self::local(value, project);
         }
+        // **An address this tab's own origin wrote down in an earlier run.** A local page is served as
+        // `unluminous://tab-<id>/<path>` and the id is handed out again every run, so the address a
+        // realm or a project wrote down names a tab that no longer exists. It is read as the file it
+        // was, which is what lets a node on a local page come back at all. `task-2203`.
+        if let Some(relative) = a_local_tab_address(value) {
+            return Self::local(&relative.to_string_lossy(), project);
+        }
         if let Ok(url) = Url::parse(value) {
             return match url.scheme() {
                 "http" | "https" => Ok(Self::Remote { url: url.to_string() }),
@@ -275,6 +282,35 @@ impl BrowserTab {
         self.position = self.history.len() - 1;
     }
 
+    /// Every address this tab has been at, oldest first, and which of them it is on.
+    ///
+    /// What a project and a realm write down, so a tab comes back with a `Back` that works. `task-2203`.
+    pub fn history(&self) -> (&[String], usize) {
+        (&self.history, self.position)
+    }
+
+    /// Put back a history written down in an earlier run, keeping the page this tab was opened on.
+    ///
+    /// **The tab keeps the address it was opened with, and the history is put around it.** A tab is opened
+    /// at the address that was written down as its current one, so that address replaces the entry at the
+    /// position: the two name the same page, and the one the tab was opened with is the spelling the engine
+    /// is about to report. A local page's addresses carry the tab's id in their origin, and the id is new
+    /// every run, so each one is moved under this tab's own.
+    pub fn restore_history(&mut self, history: &[String], position: usize) {
+        let mut history: Vec<String> = history
+            .iter()
+            .filter(|url| !url.trim().is_empty())
+            .map(|url| under_tab(url, self.id))
+            .collect();
+        if history.is_empty() {
+            return;
+        }
+        let position = position.min(history.len() - 1);
+        history[position] = self.current_url().to_owned();
+        self.history = history;
+        self.position = position;
+    }
+
     /// The concise label shown in the file tab strip.
     pub fn name(&self) -> String {
         if !self.title.trim().is_empty() {
@@ -352,15 +388,116 @@ pub enum BrowserCommand {
     /// `BrowserLocation::parse`, because handing typed text straight to the view is what a live window
     /// refused with "Class not registered".
     Go(String),
+    /// Open the element picker in the page. A browser node's toolbar only. `task-2203`.
+    Pick,
+    /// Put the picker away with nothing chosen.
+    CancelPick,
+    /// Show the whole page again after one element of it was shown alone.
+    Unpin,
 }
 
 /// Something the embedded engine reported back to the application.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BrowserEvent {
-    LoadStarted { id: u64, url: String },
-    LoadFinished { id: u64, url: String },
-    Title { id: u64, title: String },
-    OpenRequested { source: u64, url: String },
+    LoadStarted {
+        id: u64,
+        url: String,
+    },
+    LoadFinished {
+        id: u64,
+        url: String,
+    },
+    Title {
+        id: u64,
+        title: String,
+    },
+    OpenRequested {
+        source: u64,
+        url: String,
+    },
+    /// `Select Element` was chosen on the page's own right click menu, at a point in the page's own pixels.
+    /// `task-2203`.
+    PickAsked {
+        id: u64,
+        at: Option<(f64, f64)>,
+    },
+    /// `Show Whole Page` was chosen on the page's own right click menu.
+    UnpinAsked {
+        id: u64,
+    },
+    /// The picker was answered with the element to show.
+    Picked {
+        id: u64,
+        selector: String,
+    },
+    /// The picker was put away with nothing chosen, or the page it was on went away.
+    PickCancelled {
+        id: u64,
+    },
+}
+
+/// What the page's own right click menu offers, for the page that is showing. `task-2203`.
+///
+/// Shared with the engine's menu callback, which runs when the menu opens, and set by the window each frame
+/// from what it knows about the tab that is showing: whether it is a browser node, and whether that node is
+/// showing one element.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PageMenu {
+    /// `Select Element` is offered. True for a browser node, never for a tab in the editing area.
+    pub pickable: bool,
+    /// `Show Whole Page` is offered as well.
+    pub pinned: bool,
+}
+
+/// The script that holds the element picker and the pin, evaluated in the page when either is wanted.
+///
+/// It defines two objects on the page's `window` and gives the page nothing to call: the host asks for the
+/// picker's answer itself. See `browser_pin.js` and §3.3 of the design.
+pub const PIN_SCRIPT: &str = include_str!("browser_pin.js");
+
+/// How often the host asks the picker for its answer while it is open.
+const PICK_POLL: Duration = Duration::from_millis(150);
+
+/// How often the session cookies are read while a page is open, and how soon after a page finishes loading.
+const COOKIES_EVERY: Duration = Duration::from_secs(30);
+const COOKIES_AFTER_A_LOAD: Duration = Duration::from_secs(2);
+
+/// The script that asks the picker for its answer, which the engine hands back as JSON.
+const TAKE_THE_PICK: &str =
+    "window.__unluminousPicker ? window.__unluminousPicker.take() : { state: 'gone' }";
+
+/// The script that starts the picker, with the point to start at in the page's own pixels.
+fn start_the_picker(at: Option<(f64, f64)>) -> String {
+    let (x, y) = match at {
+        Some((x, y)) if x.is_finite() && y.is_finite() => (format!("{x:.1}"), format!("{y:.1}")),
+        _ => ("undefined".to_owned(), "undefined".to_owned()),
+    };
+    format!("{PIN_SCRIPT}\nwindow.__unluminousPicker.start({x}, {y});")
+}
+
+/// The script that shows only the element `selector` finds.
+pub fn pin_script(selector: &str) -> String {
+    let quoted = serde_json::to_string(selector).unwrap_or_else(|_| "\"\"".to_owned());
+    format!("{PIN_SCRIPT}\nwindow.__unluminousPin.apply({quoted});")
+}
+
+/// The script that shows the whole page again.
+const UNPIN_SCRIPT: &str = "window.__unluminousPin && window.__unluminousPin.clear();";
+
+/// What the picker's answer, as the engine reported it, means.
+fn read_the_pick(id: u64, json: &str) -> Option<BrowserEvent> {
+    let answer: serde_json::Value = serde_json::from_str(json).ok()?;
+    match answer["state"].as_str()? {
+        "picked" => {
+            let selector = answer["selector"].as_str()?.trim().to_owned();
+            Some(match selector.is_empty() {
+                true => BrowserEvent::PickCancelled { id },
+                false => BrowserEvent::Picked { id, selector },
+            })
+        }
+        "cancelled" | "gone" => Some(BrowserEvent::PickCancelled { id }),
+        _ => None,
+    }
 }
 
 /// The one native browser view a window owns, and the local roots its tabs read under.
@@ -376,6 +513,19 @@ pub enum BrowserEvent {
 pub struct BrowserHost {
     next_id: u64,
     profile: Option<PathBuf>,
+    /// The session cookies kept beside the profile, read back when a view is made. `task-2203`.
+    session: Option<crate::services::browser_session::SessionCookies>,
+    /// What was last written to that file, so a read that found the same cookies writes nothing.
+    cookies_written: Option<Vec<crate::services::browser_session::KeptCookie>>,
+    /// When the cookies are read next.
+    cookies_due: Option<Instant>,
+    /// The tab the picker is open on, shared with the callback that reads its answer.
+    picking: Arc<Mutex<Option<u64>>>,
+    /// Whether an answer has been asked for and not yet given, so two are never in flight.
+    asking: Arc<std::sync::atomic::AtomicBool>,
+    last_ask: Instant,
+    /// What the page's own right click menu offers. See [`PageMenu`].
+    menu: Arc<Mutex<PageMenu>>,
     resources: LocalResourceStore,
     /// The tab the one native view is pointed at, shared with the engine's own callbacks.
     showing: Arc<AtomicU64>,
@@ -392,6 +542,13 @@ impl BrowserHost {
         Self {
             next_id: 1,
             profile: None,
+            session: None,
+            cookies_written: None,
+            cookies_due: None,
+            picking: Arc::new(Mutex::new(None)),
+            asking: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            last_ask: Instant::now(),
+            menu: Arc::new(Mutex::new(PageMenu::default())),
             resources: LocalResourceStore::new(),
             showing: Arc::new(AtomicU64::new(0)),
             sender,
@@ -404,7 +561,123 @@ impl BrowserHost {
     /// Keep browser cookies and caches in Unluminous's per-user settings folder.
     pub fn set_profile(&mut self, folder: PathBuf) {
         if !self.has_views() {
+            self.session =
+                Some(crate::services::browser_session::SessionCookies::in_profile(&folder));
             self.profile = Some(folder);
+        }
+    }
+
+    /// Say what the page's own right click menu offers for the page that is showing.
+    pub fn set_page_menu(&self, menu: PageMenu) {
+        if let Ok(mut held) = self.menu.lock() {
+            *held = menu;
+        }
+    }
+
+    /// Open the element picker in the page tab `id` is showing, starting at a point in the page's own pixels.
+    pub fn start_picking(&mut self, id: u64, at: Option<(f64, f64)>) -> Result<(), String> {
+        self.for_the_showing_tab(id)?;
+        self.native.evaluate(&start_the_picker(at))?;
+        if let Ok(mut picking) = self.picking.lock() {
+            *picking = Some(id);
+        }
+        self.asking.store(false, Ordering::Relaxed);
+        self.last_ask = Instant::now();
+        Ok(())
+    }
+
+    /// The tab the picker is open on, if it is open.
+    pub fn picking(&self) -> Option<u64> {
+        self.picking.lock().ok().and_then(|picking| *picking)
+    }
+
+    /// Put the picker away without choosing anything.
+    pub fn cancel_picking(&mut self) {
+        let Some(id) = self.picking() else { return };
+        if self.showing() == Some(id) {
+            let _ = self
+                .native
+                .evaluate("window.__unluminousPicker && window.__unluminousPicker.cancel();");
+        }
+        if let Ok(mut picking) = self.picking.lock() {
+            *picking = None;
+        }
+        let _ = self.sender.send(BrowserEvent::PickCancelled { id });
+    }
+
+    /// Show only the element `selector` finds, in the page tab `id` is showing.
+    pub fn pin(&self, id: u64, selector: &str) -> Result<(), String> {
+        self.for_the_showing_tab(id)?;
+        self.native.evaluate(&pin_script(selector))
+    }
+
+    /// Show the whole page again.
+    pub fn unpin(&self, id: u64) -> Result<(), String> {
+        self.for_the_showing_tab(id)?;
+        self.native.evaluate(UNPIN_SCRIPT)
+    }
+
+    /// Ask the picker for its answer, at most once every [`PICK_POLL`] and never twice at once.
+    fn ask_the_picker(&mut self) {
+        let Some(id) = self.picking() else { return };
+        if self.showing() != Some(id) {
+            // The view went to another tab, so the page the picker was on is not there to answer.
+            if let Ok(mut picking) = self.picking.lock() {
+                *picking = None;
+            }
+            let _ = self.sender.send(BrowserEvent::PickCancelled { id });
+            return;
+        }
+        if self.last_ask.elapsed() < PICK_POLL || self.asking.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        self.last_ask = Instant::now();
+        let (sender, picking, asking) =
+            (self.sender.clone(), self.picking.clone(), self.asking.clone());
+        let asked = self.native.evaluate_with_callback(TAKE_THE_PICK, move |json| {
+            asking.store(false, Ordering::Relaxed);
+            if let Some(event) = read_the_pick(id, &json) {
+                if let Ok(mut open) = picking.lock() {
+                    if *open == Some(id) {
+                        *open = None;
+                        let _ = sender.send(event);
+                    }
+                }
+            }
+        });
+        if asked.is_err() {
+            self.asking.store(false, Ordering::Relaxed);
+        }
+    }
+
+    /// Read the session cookies and write them down when they changed. `task-2203`.
+    ///
+    /// **Before the egui pass**, from [`Self::reconcile`], because reading them waits on the engine with a
+    /// nested message pump, and `task-1756` measured what a nested pump inside the pass does.
+    fn keep_the_session(&mut self, now_or_never: bool) {
+        let Some(session) = &self.session else { return };
+        if !self.native.has_view() {
+            return;
+        }
+        let now = Instant::now();
+        if !now_or_never && self.cookies_due.is_some_and(|due| now < due) {
+            return;
+        }
+        self.cookies_due = Some(now + COOKIES_EVERY);
+        let Some(cookies) = self.native.session_cookies() else { return };
+        if self.cookies_written.as_ref() == Some(&cookies) {
+            return;
+        }
+        if session.write(&cookies).is_ok() {
+            self.cookies_written = Some(cookies);
+        }
+    }
+
+    /// Note that a page finished loading, so the cookies it set are read soon rather than in half a minute.
+    fn a_page_loaded(&mut self) {
+        let soon = Instant::now() + COOKIES_AFTER_A_LOAD;
+        if self.cookies_due.is_none_or(|due| due > soon) {
+            self.cookies_due = Some(soon);
         }
     }
 
@@ -481,6 +754,9 @@ impl BrowserHost {
     ) -> Settled {
         let live: HashSet<u64> = tabs.iter().map(|tab| tab.id).collect();
         self.resources.retain(&live);
+        self.ask_the_picker();
+        // Read once more just before the last view goes, because nothing will read them afterwards.
+        self.keep_the_session(tabs.is_empty());
         if tabs.is_empty() {
             self.native.forget();
             self.showing.store(0, Ordering::Relaxed);
@@ -498,10 +774,21 @@ impl BrowserHost {
             return Settled::default();
         };
         let was = self.showing();
+        // The session cookies are read from the file once, when there is about to be a view to give them to.
+        let cookies = match (self.native.has_view(), &self.session) {
+            (false, Some(session)) => session.read(),
+            _ => Vec::new(),
+        };
+        if !self.native.has_view() {
+            self.cookies_written = Some(cookies.clone());
+            self.cookies_due = Some(Instant::now() + COOKIES_EVERY);
+        }
         let problems = self.native.settle(native::Settle {
             tab,
             placement,
             showing: &self.showing,
+            cookies: &cookies,
+            menu: self.menu.clone(),
             profile: self.profile.clone(),
             resources: self.resources.clone(),
             sender: self.sender.clone(),
@@ -542,8 +829,12 @@ impl BrowserHost {
     }
 
     /// Drain browser callbacks at the top of a frame.
-    pub fn take_events(&self) -> Vec<BrowserEvent> {
-        self.receiver.try_iter().collect()
+    pub fn take_events(&mut self) -> Vec<BrowserEvent> {
+        let events: Vec<BrowserEvent> = self.receiver.try_iter().collect();
+        if events.iter().any(|event| matches!(event, BrowserEvent::LoadFinished { .. })) {
+            self.a_page_loaded();
+        }
+        events
     }
 
     /// Reload the local tabs whose previously requested resources changed on disk.
@@ -1069,6 +1360,39 @@ impl ResourceReply {
     }
 }
 
+/// The project relative path an `unluminous://tab-<id>/<path>` address names, in either of the two forms
+/// the engines report it in.
+///
+/// `None` for anything else, including the realm's own `unluminous://realm/...` pages, which are not files.
+fn a_local_tab_address(value: &str) -> Option<PathBuf> {
+    let url = Url::parse(&canonical(value)).ok()?;
+    if url.scheme() != "unluminous" {
+        return None;
+    }
+    url.host_str()?.strip_prefix("tab-")?.parse::<u64>().ok()?;
+    let mut relative = PathBuf::new();
+    for segment in url.path_segments()?.filter(|segment| !segment.is_empty()) {
+        let name = percent_decode_str(segment).decode_utf8().ok()?;
+        if name == ".." || name == "." {
+            return None;
+        }
+        relative.push(name.as_ref());
+    }
+    (!relative.as_os_str().is_empty()).then_some(relative)
+}
+
+/// The same address under another tab's origin, so a history written in one run reads its files in the next.
+///
+/// Every address outside a tab's own origin is returned as it is.
+fn under_tab(url: &str, id: u64) -> String {
+    let url = canonical(url);
+    let Some(rest) = url.strip_prefix("unluminous://tab-") else { return url };
+    match rest.split_once('/') {
+        Some((old, path)) if old.parse::<u64>().is_ok() => format!("unluminous://tab-{id}/{path}"),
+        _ => url,
+    }
+}
+
 /// The address a scheme-less value stands for, when it names a host rather than a file.
 fn implied_address(value: &str) -> Option<String> {
     let host = value.split(['/', '?', '#']).next().unwrap_or_default();
@@ -1164,12 +1488,17 @@ mod native {
         NewWindowResponse, PageLoadEvent, PermissionResponse, WebContext, WebView, WebViewBuilder,
     };
 
-    use super::{BrowserEvent, BrowserPlacement, BrowserTab, LocalResourceStore};
+    use super::{BrowserEvent, BrowserPlacement, BrowserTab, LocalResourceStore, PageMenu};
+    use crate::services::browser_session::KeptCookie;
 
     /// Everything needed to settle the native view on one tab for one frame.
     pub struct Settle<'a> {
         pub tab: &'a BrowserTab,
         pub placement: &'a BrowserPlacement,
+        /// The session cookies to give a view that is about to be made, before its first page. `task-2203`.
+        pub cookies: &'a [KeptCookie],
+        /// What the page's own right click menu offers. Read by the menu callback when the menu opens.
+        pub menu: std::sync::Arc<std::sync::Mutex<PageMenu>>,
         /// What egui is drawing over the page this frame, in the window's own points.
         pub occluders: &'a [egui::Rect],
         pub showing: &'a Arc<AtomicU64>,
@@ -1225,12 +1554,58 @@ mod native {
         context: Option<WebContext>,
         view: Option<NativeView>,
         parent: Option<Parent>,
+        /// The zoom the page was last given, shared with the menu callback so a point it reports in the
+        /// view's own units can be turned into the page's pixels. Stored as the bits of an `f64`.
+        zoom: Arc<AtomicU64>,
     }
 
     impl NativeHost {
         /// A host with no browser environment until a tab is first shown.
         pub fn new() -> Self {
-            Self { context: None, view: None, parent: None }
+            Self {
+                context: None,
+                view: None,
+                parent: None,
+                zoom: Arc::new(AtomicU64::new(1f64.to_bits())),
+            }
+        }
+
+        /// Run a script in the page and hand its answer, as JSON, to `answer` when the engine has it.
+        pub fn evaluate_with_callback(
+            &self,
+            script: &str,
+            answer: impl Fn(String) + Send + 'static,
+        ) -> Result<(), String> {
+            let view =
+                self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
+            view.webview
+                .evaluate_script_with_callback(script, answer)
+                .map_err(|problem| format!("The page could not be asked: {problem}"))
+        }
+
+        /// The cookies with no expiry the engine holds now, or `None` when it could not be asked.
+        ///
+        /// **Waits on the engine with a nested message pump**, so it is called from before the egui pass
+        /// and nowhere else. See `BrowserHost::keep_the_session`.
+        pub fn session_cookies(&self) -> Option<Vec<KeptCookie>> {
+            let view = self.view.as_ref()?;
+            let cookies = view.webview.cookies().ok()?;
+            let mut kept: Vec<KeptCookie> = cookies
+                .iter()
+                .filter(|cookie| cookie.expires_datetime().is_none())
+                .map(|cookie| KeptCookie {
+                    name: cookie.name().to_owned(),
+                    value: cookie.value().to_owned(),
+                    domain: cookie.domain().unwrap_or_default().to_owned(),
+                    path: cookie.path().unwrap_or("/").to_owned(),
+                    secure: cookie.secure().unwrap_or(false),
+                    http_only: cookie.http_only().unwrap_or(false),
+                    same_site: cookie.same_site().map(|same| same.to_string()).unwrap_or_default(),
+                })
+                .filter(|cookie| !cookie.name.is_empty() && !cookie.domain.is_empty())
+                .collect();
+            kept.sort_by(|a, b| (&a.domain, &a.path, &a.name).cmp(&(&b.domain, &b.path, &b.name)));
+            Some(kept)
         }
 
         /// Whether the native view exists.
@@ -1295,6 +1670,7 @@ mod native {
             }
             if let Some(view) = &mut self.view {
                 place(view, request.placement, request.occluders);
+                self.zoom.store(view.zoom.unwrap_or(1.0).to_bits(), Ordering::Relaxed);
             }
             Vec::new()
         }
@@ -1319,9 +1695,12 @@ mod native {
             let popup_showing = request.showing.clone();
             let resources = request.resources.clone();
             let protocol_showing = request.showing.clone();
+            // **Built with no address**, so the session cookies can be given to it before its first request
+            // goes. Built with the address, the request starts inside `build` and the page arrives signed
+            // out. `task-2203`.
+            let first = super::engine_url(request.tab.current_url());
             let webview = WebViewBuilder::new_with_web_context(context)
                 .with_id("unluminous-browser")
-                .with_url(request.tab.current_url())
                 .with_visible(false)
                 .with_clipboard(true)
                 .with_background_throttling(wry::BackgroundThrottlingPolicy::Throttle)
@@ -1352,6 +1731,23 @@ mod native {
                 })
                 .build_as_child(parent)
                 .map_err(|problem| format!("Unluminous could not start the browser: {problem}"))?;
+            for cookie in request.cookies {
+                let _ = webview.set_cookie(&engine_cookie(cookie));
+            }
+            #[cfg(windows)]
+            context_menu::offer(
+                &webview,
+                request.menu.clone(),
+                request.showing.clone(),
+                self.zoom.clone(),
+                request.sender.clone(),
+                request.repaint.clone(),
+            );
+            // macOS has no host hook into WKWebView's own menu that `wry` exposes; the toolbar's button is the
+            // way in there. See the design, §3.2.
+            #[cfg(not(windows))]
+            let _ = (&request.menu, &self.zoom);
+            let _ = webview.load_url(&first);
             self.view = Some(NativeView {
                 webview,
                 bounds: None,
@@ -1401,6 +1797,139 @@ mod native {
             view.webview
                 .zoom(factor)
                 .map_err(|problem| format!("The browser could not be zoomed: {problem}"))
+        }
+    }
+
+    /// A kept cookie in the form the engine takes, with no expiry, which is what makes it a session cookie.
+    fn engine_cookie(kept: &KeptCookie) -> wry::cookie::Cookie<'static> {
+        let mut cookie = wry::cookie::Cookie::new(kept.name.clone(), kept.value.clone());
+        cookie.set_domain(kept.domain.clone());
+        cookie.set_path(kept.path.clone());
+        cookie.set_secure(kept.secure);
+        cookie.set_http_only(kept.http_only);
+        let same_site = match kept.same_site.to_ascii_lowercase().as_str() {
+            "strict" => Some(wry::cookie::SameSite::Strict),
+            "lax" => Some(wry::cookie::SameSite::Lax),
+            "none" => Some(wry::cookie::SameSite::None),
+            _ => None,
+        };
+        cookie.set_same_site(same_site);
+        cookie
+    }
+
+    /// `Select Element` and `Show Whole Page` on WebView2's own right click menu. `task-2203`.
+    ///
+    /// `wry` does not wrap `ContextMenuRequested`, so the engine is reached through the `ICoreWebView2` `wry`
+    /// hands out. The items are added to the **default** menu, at the top with a separator under them, and
+    /// only while the page showing is a browser node: the event's `Handled` is left alone so the rest of the
+    /// menu is the engine's own. A runtime older than `ICoreWebView2_11` has no such event, and the toolbar's
+    /// button is then the way in.
+    #[cfg(windows)]
+    mod context_menu {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::{Arc, Mutex};
+
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            ICoreWebView2ContextMenuItem, ICoreWebView2Environment9, ICoreWebView2_11,
+            ICoreWebView2_2, COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND,
+            COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_COMMAND,
+            COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_SEPARATOR,
+        };
+        use webview2_com::{ContextMenuRequestedEventHandler, CustomItemSelectedEventHandler};
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::System::Com::IStream;
+        use windows_core::{Interface, HSTRING};
+        use wry::WebViewExtWindows;
+
+        use super::super::{BrowserEvent, PageMenu};
+
+        /// Register the menu callback on a view that has just been made.
+        pub fn offer(
+            webview: &wry::WebView,
+            menu: Arc<Mutex<PageMenu>>,
+            showing: Arc<AtomicU64>,
+            zoom: Arc<AtomicU64>,
+            sender: std::sync::mpsc::Sender<BrowserEvent>,
+            repaint: egui::Context,
+        ) {
+            let Ok(engine) = webview.webview().cast::<ICoreWebView2_11>() else { return };
+            let handler =
+                ContextMenuRequestedEventHandler::create(Box::new(move |sender_view, args| {
+                    let (Some(view), Some(args)) = (sender_view, args) else { return Ok(()) };
+                    let offered = menu.lock().map(|held| *held).unwrap_or_default();
+                    if !offered.pickable {
+                        return Ok(());
+                    }
+                    let id = showing.load(Ordering::Relaxed);
+                    let mut at = POINT::default();
+                    // Safety: every call here is on the engine's own thread, inside its own callback.
+                    unsafe {
+                        let _ = args.Location(&mut at);
+                        let environment = view
+                            .cast::<ICoreWebView2_2>()?
+                            .Environment()?
+                            .cast::<ICoreWebView2Environment9>()?;
+                        let items = args.MenuItems()?;
+                        let scale = f64::from_bits(zoom.load(Ordering::Relaxed)).max(0.05);
+                        let point = (f64::from(at.x) / scale, f64::from(at.y) / scale);
+                        let separator =
+                            item(&environment, "", COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_SEPARATOR)?;
+                        items.InsertValueAtIndex(0, &separator)?;
+                        if offered.pinned {
+                            let whole = item(
+                                &environment,
+                                "Show Whole Page",
+                                COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_COMMAND,
+                            )?;
+                            let (events, again) = (sender.clone(), repaint.clone());
+                            on_choice(&whole, move || {
+                                let _ = events.send(BrowserEvent::UnpinAsked { id });
+                                again.request_repaint();
+                            })?;
+                            items.InsertValueAtIndex(0, &whole)?;
+                        }
+                        let select = item(
+                            &environment,
+                            "Select Element",
+                            COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_COMMAND,
+                        )?;
+                        let (events, again) = (sender.clone(), repaint.clone());
+                        on_choice(&select, move || {
+                            let _ = events.send(BrowserEvent::PickAsked { id, at: Some(point) });
+                            again.request_repaint();
+                        })?;
+                        items.InsertValueAtIndex(0, &select)?;
+                    }
+                    Ok(())
+                }));
+            let mut token = 0i64;
+            // Safety: the handler is a COM object the engine holds a reference to for as long as it needs.
+            let _ = unsafe { engine.add_ContextMenuRequested(&handler, &mut token) };
+        }
+
+        /// One item for the menu.
+        unsafe fn item(
+            environment: &ICoreWebView2Environment9,
+            label: &str,
+            kind: COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND,
+        ) -> windows_core::Result<ICoreWebView2ContextMenuItem> {
+            let label = HSTRING::from(label);
+            // Safety: the label outlives the call, and no icon is given.
+            unsafe { environment.CreateContextMenuItem(&label, None::<&IStream>, kind) }
+        }
+
+        /// What choosing an item does.
+        unsafe fn on_choice(
+            item: &ICoreWebView2ContextMenuItem,
+            chosen: impl Fn() + 'static,
+        ) -> windows_core::Result<()> {
+            let handler = CustomItemSelectedEventHandler::create(Box::new(move |_, _| {
+                chosen();
+                Ok(())
+            }));
+            let mut token = 0i64;
+            // Safety: as above.
+            unsafe { item.add_CustomItemSelected(&handler, &mut token) }
         }
     }
 
@@ -1679,12 +2208,15 @@ mod native {
     use std::sync::atomic::AtomicU64;
     use std::sync::Arc;
 
-    use super::{BrowserEvent, BrowserPlacement, BrowserTab, LocalResourceStore};
+    use super::{BrowserEvent, BrowserPlacement, BrowserTab, LocalResourceStore, PageMenu};
+    use crate::services::browser_session::KeptCookie;
 
     /// The same input on a platform without an embedded engine.
     pub struct Settle<'a> {
         pub tab: &'a BrowserTab,
         pub placement: &'a BrowserPlacement,
+        pub cookies: &'a [KeptCookie],
+        pub menu: Arc<std::sync::Mutex<PageMenu>>,
         /// What egui is drawing over the page this frame, in the window's own points.
         pub occluders: &'a [egui::Rect],
         pub showing: &'a Arc<AtomicU64>,
@@ -1723,6 +2255,8 @@ mod native {
             let _ = (
                 request.placement,
                 request.showing,
+                request.cookies,
+                request.menu,
                 request.profile,
                 request.resources,
                 request.sender,
@@ -1742,6 +2276,18 @@ mod native {
         pub fn evaluate(&self, _script: &str) -> Result<(), String> {
             Err(UNSUPPORTED.to_owned())
         }
+        /// Refuse a script with an answer for the same reason.
+        pub fn evaluate_with_callback(
+            &self,
+            _script: &str,
+            _answer: impl Fn(String) + Send + 'static,
+        ) -> Result<(), String> {
+            Err(UNSUPPORTED.to_owned())
+        }
+        /// There is no engine to hold any cookies.
+        pub fn session_cookies(&self) -> Option<Vec<KeptCookie>> {
+            None
+        }
         /// And zooming, which is the engine's own number.
         pub fn zoom(&self, _factor: f64) -> Result<(), String> {
             Err(UNSUPPORTED.to_owned())
@@ -1752,6 +2298,85 @@ mod native {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `task-2203`: a node left on a local page wrote `unluminous://tab-3/page.html`, and the next run refused
+    /// the scheme, so the node came back with no page. Both of the forms an engine reports are read as the
+    /// file, and a path that climbs out of the origin stays inside it.
+    #[test]
+    fn an_address_a_local_tab_wrote_down_is_read_as_its_file() {
+        let project =
+            std::env::temp_dir().join(format!("unluminous-old-tab-{}", std::process::id()));
+        std::fs::create_dir_all(project.join("site")).expect("folder");
+        std::fs::write(project.join("site").join("my page.html"), "<p>hi</p>").expect("page");
+        for written in [
+            "unluminous://tab-3/site/my%20page.html",
+            "http://unluminous.tab-17/site/my%20page.html",
+        ] {
+            let location = BrowserLocation::parse(written, &project).expect("read as a file");
+            let path = location.source_path().expect("a local page");
+            assert!(path.ends_with(Path::new("site").join("my page.html")), "{written}: {path:?}");
+        }
+        // An address cannot climb out of its origin: the parser resolves `..` against the root first.
+        assert_eq!(
+            a_local_tab_address("unluminous://tab-3/../secret.html"),
+            Some(PathBuf::from("secret.html"))
+        );
+        assert!(a_local_tab_address("unluminous://realm/video/12").is_none());
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    /// `task-2203`: the picker's answer, as the engine hands it back, is read into the event it means.
+    #[test]
+    fn the_pickers_answer_is_read_into_what_it_means() {
+        assert_eq!(
+            read_the_pick(4, r#"{"state":"picked","selector":"main > table","label":"table"}"#),
+            Some(BrowserEvent::Picked { id: 4, selector: "main > table".to_owned() })
+        );
+        assert_eq!(
+            read_the_pick(4, r#"{"state":"cancelled"}"#),
+            Some(BrowserEvent::PickCancelled { id: 4 })
+        );
+        assert_eq!(
+            read_the_pick(4, r#"{"state":"gone"}"#),
+            Some(BrowserEvent::PickCancelled { id: 4 })
+        );
+        assert_eq!(read_the_pick(4, r#"{"state":"picking"}"#), None, "still open");
+        assert_eq!(read_the_pick(4, "null"), None, "nothing to say yet");
+        assert_eq!(
+            read_the_pick(4, r#"{"state":"picked","selector":"  "}"#),
+            Some(BrowserEvent::PickCancelled { id: 4 })
+        );
+        // The selector reaches the page as a JavaScript string, whatever is in it.
+        assert!(pin_script("a[title=\"x\"]\n").ends_with(r#"apply("a[title=\"x\"]\n");"#));
+    }
+
+    /// `task-2203`: a tab's back and forward list comes back, under the tab's new origin.
+    #[test]
+    fn a_history_written_in_one_run_is_put_back_under_the_new_tab() {
+        let mut tab = BrowserTab::new(
+            42,
+            BrowserLocation::Remote { url: "https://example.com/b".to_owned() },
+        );
+        tab.restore_history(
+            &[
+                "https://example.com/a".to_owned(),
+                "https://example.com/b".to_owned(),
+                "unluminous://tab-7/docs/index.html".to_owned(),
+            ],
+            1,
+        );
+        let (history, position) = tab.history();
+        assert_eq!(position, 1);
+        assert_eq!(history[2], "unluminous://tab-42/docs/index.html");
+        assert!(tab.can_go_back() && tab.can_go_forward());
+        assert_eq!(tab.step(true), Some((0, "https://example.com/a".to_owned())));
+        // A position past the end is clamped, and the entry there is the address the tab was opened on.
+        let mut tab =
+            BrowserTab::new(1, BrowserLocation::Remote { url: "https://example.org/".to_owned() });
+        tab.restore_history(&["https://example.com/a".to_owned(), "https://x.test/".to_owned()], 9);
+        assert_eq!(tab.history().0, ["https://example.com/a", "https://example.org/"]);
+        assert_eq!(tab.current_url(), "https://example.org/");
+    }
 
     /// `task-1945`: a page that stops being the surface somebody types into hands the keyboard back.
     ///

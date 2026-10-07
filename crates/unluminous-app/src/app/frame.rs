@@ -2224,7 +2224,19 @@ impl UnluminousApp {
                 placement.focused = false;
             }
         }
+        // **`Escape` puts the element picker away** when the keys are Unluminous's rather than the page's, which
+        // they are when the picker was opened from the toolbar's button. `task-2203`.
+        let escape = raw_input.events.iter().any(|event| {
+            matches!(event, egui::Event::Key { key: egui::Key::Escape, pressed: true, .. })
+        });
+        if escape && self.browser.picking().is_some() {
+            self.browser.cancel_picking();
+        }
         let settled = self.browser.reconcile(&tabs, &placements, &occluders, ctx.clone());
+        // The picker's answer is asked for on a frame, so while it is open the window keeps drawing.
+        if self.browser.picking().is_some() || self.pick_when_showing.is_some() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(150));
+        }
         // **What a page's own command can be asked about.** A page is a native child view, so nothing
         // Unluminous photographs holds one and no state in the window said whether it was drawing —
         // which is why `task-2009`'s blanked page had to be found by looking at the screen.

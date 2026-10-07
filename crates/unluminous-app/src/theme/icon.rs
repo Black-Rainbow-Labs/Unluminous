@@ -351,6 +351,38 @@ pub fn magnifier_at(painter: &egui::Painter, centre: Pos2, color: Color32, scale
     painter.line_segment([at(1.6, 1.6), at(4.0, 4.0)], stroke);
 }
 
+/// A crosshair: a ring with four short lines reaching in towards a dot, for choosing one element of a page.
+///
+/// `task-2203`. The mark element pickers use, uBlock Origin's and the browsers' own inspectors among them, so
+/// a person who has used one knows what pressing it starts.
+pub fn crosshair(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.3, color);
+    painter.circle_stroke(centre, 4.2, stroke);
+    for (x, y) in [(0.0, -1.0), (0.0, 1.0), (-1.0, 0.0), (1.0, 0.0)] {
+        painter.line_segment(
+            [
+                Pos2::new(centre.x + x * 2.4, centre.y + y * 2.4),
+                Pos2::new(centre.x + x * 6.2, centre.y + y * 6.2),
+            ],
+            stroke,
+        );
+    }
+    painter.circle_filled(centre, 1.1, color);
+}
+
+/// Four corners of a frame, for showing the whole of a page again after one element of it was shown alone.
+///
+/// `task-2203`. The corners say "the whole thing", which is the opposite of the crosshair beside it.
+pub fn whole_page(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.4, color);
+    let (reach, arm) = (5.0, 2.6);
+    for (x, y) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+        let corner = Pos2::new(centre.x + x * reach, centre.y + y * reach);
+        painter.line_segment([corner, Pos2::new(corner.x - x * arm, corner.y)], stroke);
+        painter.line_segment([corner, Pos2::new(corner.x, corner.y - y * arm)], stroke);
+    }
+}
+
 /// A waste bin: a lid, a body and two lines down it.
 ///
 /// Drawn rather than lettered, which is `design/style-guide.md`'s rule for every mark in this file. It is

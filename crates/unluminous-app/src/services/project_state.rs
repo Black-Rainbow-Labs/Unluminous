@@ -62,6 +62,12 @@ const TERMINAL_TABS_FILE: &str = "terminal-tabs.txt";
 /// is single values, which is the same reason the open files and the expanded folders each have one.
 const PLUGIN_TABS_FILE: &str = "plugin-tabs.txt";
 
+/// The browser tabs in the editing area: each one's pane and the addresses it had been at. `task-2203`.
+///
+/// A file of its own for the reason the plugin tabs have one: every list in `workspace.conf` is indexed with
+/// `open-files.txt`, and a browser tab has no file.
+const BROWSER_TABS_FILE: &str = "browser-tabs.conf";
+
 /// How many files are remembered. A window with more tabs than this open has a problem the state file
 /// is not going to fix, and a list that grows without limit is a file that grows without limit.
 const OPEN_LIMIT: usize = 60;
@@ -84,6 +90,24 @@ pub struct RememberedTerminal {
     /// process itself and answers `None` where the platform will not say, in which case this is empty and
     /// the tab opens in the project's own root as it always did.
     pub folder: String,
+}
+
+/// One browser tab in the editing area, so it comes back with a `Back` that works. `task-2203`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RememberedBrowser {
+    /// Which pane it was in.
+    pub pane: usize,
+    /// Every address it had been at, oldest first.
+    pub history: Vec<String>,
+    /// Which of them it was on.
+    pub position: usize,
+}
+
+impl RememberedBrowser {
+    /// The address it was on, which is what it is opened at.
+    pub fn current(&self) -> Option<&str> {
+        self.history.get(self.position).map(String::as_str)
+    }
 }
 
 /// What was left open in one project.
@@ -165,6 +189,9 @@ pub struct ProjectState {
     /// came back as a bare shell in the project's root with an empty screen, because the only things this
     /// module had ever held about one were a count and a name.
     pub terminals: Vec<RememberedTerminal>,
+    /// The browser tabs in the editing area, in tab order. `task-2203`: they were not written down at all, so
+    /// a project reopened without them.
+    pub browser_tabs: Vec<RememberedBrowser>,
     /// True when the run tile was the one showing at the bottom of the window.
     ///
     /// The runs themselves are deliberately not remembered, for the reason the terminals are not:
@@ -285,6 +312,8 @@ pub fn load(root: &Path) -> ProjectState {
     state.terminals.resize(state.terminal_tabs, RememberedTerminal::default());
     state.terminal_tab_names =
         state.terminals.iter().map(|terminal| terminal.name.clone()).collect();
+    state.browser_tabs =
+        read_browsers(&std::fs::read_to_string(folder.join(BROWSER_TABS_FILE)).unwrap_or_default());
     state.window = read_window(&values);
     state.open_files = read_paths(root, &folder.join(OPEN_FILES_FILE));
     state.open_files.truncate(OPEN_LIMIT);
@@ -392,6 +421,51 @@ pub fn save(root: &Path, state: &ProjectState) {
     if !state.plugin_tabs.is_empty() {
         write(&folder.join(PLUGIN_TABS_FILE), &names_text(&state.plugin_tabs));
     }
+    // Written once there has been a browser tab, and written empty once the last one is closed, so a tab that
+    // was closed does not come back.
+    let browsers = folder.join(BROWSER_TABS_FILE);
+    if !state.browser_tabs.is_empty() || browsers.exists() {
+        write(&browsers, &browsers_text(&state.browser_tabs));
+    }
+}
+
+/// The browser tabs as numbered blocks, one address a line, because an address can hold any character a
+/// separator could be.
+fn browsers_text(browsers: &[RememberedBrowser]) -> String {
+    let mut values = Values::new();
+    for (index, browser) in browsers.iter().take(OPEN_LIMIT).enumerate() {
+        values.set(&format!("browser.{index}.pane"), browser.pane.to_string());
+        values.set(&format!("browser.{index}.position"), browser.position.to_string());
+        values.set(&format!("browser.{index}.count"), browser.history.len().to_string());
+        for (at, url) in browser.history.iter().enumerate() {
+            values.set(&format!("browser.{index}.{at}"), url.clone());
+        }
+    }
+    values.to_text_headed(
+        "Unluminous: the browser tabs open in this project, and where each had been.",
+    )
+}
+
+/// Read [`browsers_text`] back. A block with no addresses in it ends the list.
+fn read_browsers(text: &str) -> Vec<RememberedBrowser> {
+    let values = Values::parse(text);
+    let mut browsers = Vec::new();
+    for index in 0..OPEN_LIMIT {
+        let number = |key: &str| {
+            values.number(&format!("browser.{index}.{key}")).unwrap_or(0.0).max(0.0) as usize
+        };
+        let history: Vec<String> = (0..number("count"))
+            .filter_map(|at| values.text(&format!("browser.{index}.{at}")))
+            .map(|url| url.trim().to_owned())
+            .filter(|url| !url.is_empty())
+            .collect();
+        if history.is_empty() {
+            break;
+        }
+        let position = number("position").min(history.len() - 1);
+        browsers.push(RememberedBrowser { pane: number("pane"), history, position });
+    }
+    browsers
 }
 
 /// A comma separated list of whole numbers, for the pane a tab is in.
@@ -736,6 +810,22 @@ mod tests {
                     folder: root.join("chapters").to_string_lossy().into_owned(),
                 },
                 RememberedTerminal::default(),
+            ],
+            // `task-2203`: a browser tab comes back in its pane with where it had been.
+            browser_tabs: vec![
+                RememberedBrowser {
+                    pane: 0,
+                    history: vec![
+                        "https://example.com/".to_owned(),
+                        "https://example.com/a?b=c = d".to_owned(),
+                    ],
+                    position: 1,
+                },
+                RememberedBrowser {
+                    pane: 1,
+                    history: vec!["unluminous://tab-4/site/index.html".to_owned()],
+                    position: 0,
+                },
             ],
             run_visible: false,
             run_selected: "Dev server".to_owned(),

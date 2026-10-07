@@ -56,7 +56,7 @@ use crate::services::store::Values;
 
 use super::node::{
     Audio, Browser, Camera, Chat, Edge, Editor, Fit, Folder, Image, Kind, Node, NodeId, Note,
-    NoteView, Pipe, State, Tasks, Terminal, Unknown, Video,
+    NoteView, Pin, Pipe, State, Tasks, Terminal, Unknown, Video,
 };
 use super::{Access, Format, Realm, READS_UP_TO};
 
@@ -397,9 +397,14 @@ fn read_a_node(id: NodeId, mut keys: BTreeMap<String, String>, root: &Path, path
         }),
         Some(Kind::Browser) => {
             let url = take(&mut keys, "url").unwrap_or_default();
+            // The one element the node shows, with the address it was picked on. `task-2203`.
+            let selector = take(&mut keys, "pin").unwrap_or_default();
+            let pinned_on = take(&mut keys, "pin.url").unwrap_or_default();
+            let pin = (!selector.trim().is_empty())
+                .then(|| Pin { url: pinned_on, selector: selector.trim().to_owned() });
             // **What a realm comes back with is the address the node is on**, so a node opens with its own
             // address in its bar rather than with an empty one. `task-1905`.
-            State::Browser(Browser { typed: url.clone(), url, editing: false })
+            State::Browser(Browser { typed: url.clone(), url, pin, ..Browser::default() })
         }
         Some(Kind::Folder) => State::Folder(Folder {
             // An empty `root`, or none, is the project itself, which is what a folder node starts on.
@@ -542,7 +547,13 @@ fn write_a_node(node: &Node, root: &Path, values: &mut Values) {
         }
         // `Browser::typed` is deliberately not written: a half-typed address is not state a realm should
         // come back with. `task-1905`.
-        State::Browser(browser) => values.set_or_clear(&format!("{key}.url"), &browser.url),
+        State::Browser(browser) => {
+            values.set_or_clear(&format!("{key}.url"), &browser.url);
+            if let Some(pin) = &browser.pin {
+                set(values, "pin", pin.selector.clone());
+                set(values, "pin.url", pin.url.clone());
+            }
+        }
         State::Folder(folder) => {
             // The project itself is written as no `root` at all, which is what reads back as the project.
             if let Some(at) = folder.root.as_ref().filter(|at| !written(root, at).is_empty()) {
@@ -655,6 +666,15 @@ pub fn write_the_sidecar(realm: &Realm, root: &Path) -> String {
                     values.set(&format!("{key}.scroll.y"), format!("{:.1}", image.scroll.y));
                 }
             }
+            // **Where the page had been, so `Back` works after a restart.** `task-2203`. One line an address,
+            // numbered, because an address can hold any character a separator could be.
+            State::Browser(browser) if !browser.history.is_empty() => {
+                values.set(&format!("{key}.history.count"), browser.history.len().to_string());
+                for (index, url) in browser.history.iter().enumerate() {
+                    values.set(&format!("{key}.history.{index}"), url.clone());
+                }
+                values.set(&format!("{key}.history.position"), browser.position.to_string());
+            }
             State::Audio(audio) if audio.position > 0.05 => {
                 values.set(&format!("{key}.position"), format!("{:.1}", audio.position));
             }
@@ -725,6 +745,15 @@ pub fn read_the_sidecar(realm: &mut Realm, text: &str, root: &Path) {
                 };
                 image.scroll =
                     Vec2::new(number("scroll.x").unwrap_or(0.0), number("scroll.y").unwrap_or(0.0));
+            }
+            State::Browser(browser) => {
+                let many = number("history.count").unwrap_or(0.0).max(0.0) as usize;
+                browser.history = (0..many)
+                    .map(|index| text(&format!("history.{index}")))
+                    .filter(|url| !url.trim().is_empty())
+                    .collect();
+                browser.position = (number("history.position").unwrap_or(0.0).max(0.0) as usize)
+                    .min(browser.history.len().saturating_sub(1));
             }
             State::Audio(audio) => audio.position = number("position").unwrap_or(0.0).max(0.0),
             State::Video(video) => video.position = number("position").unwrap_or(0.0).max(0.0),
@@ -1080,9 +1109,11 @@ pub mod legacy {
                 session: text("session"),
                 running: text("running"),
             }),
-            Kind::Browser => {
-                State::Browser(Browser { url: text("url"), typed: text("url"), editing: false })
-            }
+            Kind::Browser => State::Browser(Browser {
+                url: text("url"),
+                typed: text("url"),
+                ..Browser::default()
+            }),
             Kind::Folder => State::Folder(Folder {
                 root: values
                     .text(&format!("{key}.root"))
@@ -1235,6 +1266,17 @@ mod tests {
             if let State::Browser(browser) = state {
                 browser.url = "https://example.com/a page".to_owned();
                 browser.typed = browser.url.clone();
+                // Where it had been goes to the sidecar and the one element it shows to the file. `task-2203`.
+                browser.history = vec![
+                    "https://example.com/".to_owned(),
+                    "https://example.com/a page".to_owned(),
+                    "https://example.com/next?q=a=b".to_owned(),
+                ];
+                browser.position = 1;
+                browser.pin = Some(super::super::node::Pin {
+                    url: "https://example.com/a page".to_owned(),
+                    selector: "main > table.prices:nth-of-type(2)".to_owned(),
+                });
             }
         });
         realm.change(folder, |state| {
@@ -1490,7 +1532,7 @@ edge.00000003.to = 0000000a
             State::Browser(Browser {
                 url: "https://first/".into(),
                 typed: "https://first/".into(),
-                editing: false
+                ..Browser::default()
             })
         );
         assert_eq!(realm.edges[0].to, 10, "the edge points at the first");

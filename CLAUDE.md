@@ -291,6 +291,47 @@ WebView2's low-memory target, and closing the last rendered tab drops the view a
 entirely: 197 MB with none open, 527 MB with one, 531 MB with four. Toolbar navigation and
 `unluminous-cli browser` both go through `UnluminousApp::run_browser_command`.
 
+### A browsing session survives a restart (`task-2203`)
+
+`tasks/task-2203-browser-sessions-and-pinned-elements-tdd.md` is the design. The profile was already in
+`<settings folder>/browser`, which is per person and which no installer touches. Four things were lost on
+a restart anyway, and each has its own fix:
+
+- **Session cookies**, the ones with no expiry, which the engine never writes down.
+  `services::browser_session::SessionCookies` keeps them in `browser/session-cookies`, encrypted with
+  `CryptProtectData` on Windows. `BrowserHost::keep_the_session` reads them from the engine two seconds
+  after a page loads, every 30 seconds, and before the last view is dropped, always from `reconcile`
+  because `WebView::cookies` pumps messages. A new view is built **with no address**, given the cookies,
+  and then sent to its page, so the first request already carries them.
+- **Each tab's back and forward list.** `BrowserTab::history` and `restore_history`. A node's list goes to
+  the realm's sidecar; a tab in the editing area goes to `.unluminous/browser-tabs.conf`.
+- **Browser tabs in the editing area**, which `project_state` skipped because they have no path.
+- **A node on a local page**, written as `unluminous://tab-<id>/...` with an id the next run does not
+  have. `BrowserLocation::parse` reads that form as the file, and `restore_history` moves every local
+  address under the new tab's id.
+
+`services::browser_session::Visits` is `<settings folder>/browser-history.conf`, the addresses visited in
+every project, offered under every address field and read by `unluminous-cli browser history`.
+
+### A browser node can show one element of its page (`task-2203`)
+
+`Select Element` on the page's own right click menu (Windows, through WebView2's `ContextMenuRequested`,
+which `wry` does not wrap), the crosshair at the right of a node's toolbar (every platform), or
+`realm browser <node> pick` opens a picker in the page, drawn the way uBlock Origin draws its own. The
+chosen element is a `Pin` (the address and a CSS selector) in the **realm file**, and while the node is on
+that address the page shows only that element, scaled by one factor in both directions to fill the node.
+
+Three rules:
+
+- **No host bridge.** `services/browser_pin.js` is evaluated in the page and keeps the picker's answer in a
+  closure; `BrowserHost::ask_the_picker` asks for it with `evaluate_script_with_callback` every 150 ms
+  while the picker is open. The page is given nothing it can call.
+- **The pin is applied on every `LoadFinished`** for a node whose pin applies to the address, which covers
+  a reload, `Back`, and the one native view moving back to the node.
+- **Hiding is done with `visibility` on the siblings of the element and its ancestors**, never a rule that
+  hides everything and shows the element's subtree again, because that would show every closed menu
+  inside it.
+
 ## The chat pane runs the agent you already have, and that is the whole of the design
 
 `task-1767` asks for "an agent chat plugin that opens as a right panel (left side toggle icon), can be
@@ -5562,6 +5603,9 @@ trade that away to be a shade nearer a screenshot.
   turned four "I cannot type in X" reports from guesswork into measurement, what each of the seven really
   was and which two did not reproduce, the two controls that were drawn at one size inside a box measured
   at another, and the three faults the visual sweep found that nobody had reported.
+- `tasks/task-2203-browser-sessions-and-pinned-elements-tdd.md` — what a browser lost on a restart and
+  the four fixes, the session cookie file, the visited list, and how a browser node shows one element of
+  a page: the picker, the selector, and the uniform scale that fills the node.
 - `tasks/task-2063-improvements-seven-tdd.md` — installing an update and restarting, the daily check and
   the toast with buttons, zooming the preview, Ctrl+Click and Ctrl+[, what photographing every Mermaid
   diagram in the task documents found, and why the window now answers its own hit test on Windows.
