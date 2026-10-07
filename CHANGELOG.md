@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- A picture, sound or video from outside the project is copied into the realm, and a .realm file opens in a tab (`task-2202`)
+- Keep a node's keyboard only when the realm is in a tab, and let the sound test wait for its frame (`task-2202`)
+- The sound test plays thirty seconds, so a slow frame cannot reach the end of it (`task-2202`)
+
 ## 0.63.0 — 2026-10-07
 
 - Realm TDD, the Base of Infinite Space as .realm files in the project (`task-2199`)
