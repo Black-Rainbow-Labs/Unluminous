@@ -6,9 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.64.5 — 2026-10-07
 
 - A release from a ticket worktree copies notarize.env and fetches the cross toolchain, or it has no macOS half (`task-2207`)
+- The changelog lists 0.64.4 as released (`task-2207`)
 
 ## 0.64.4 — 2026-10-07
 
