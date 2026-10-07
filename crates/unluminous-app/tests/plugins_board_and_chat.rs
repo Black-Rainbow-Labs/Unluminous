@@ -3198,6 +3198,55 @@ fn selecting_a_whole_message_answers_with_the_words_as_they_are_drawn() {
 /// press: `consume_key` matches by `Modifiers::matches_logically` and would take `Shift+Enter` for a
 /// pattern of `NONE`, which is the trap `task-1678` and `task-1682` each recorded. The endpoint has no
 /// key, so the send is refused before a request goes out and **no test here reaches a network**.
+/// `task-2200`: *"agent chat panel prompt input text can escape out of the input field ... even the cursor
+/// blinker and new lines are escaping"*. The well was sized from an estimate of how many lines the draft
+/// wraps to, and the text box inside it was not cut to it, so a draft longer than the estimate drew its last
+/// lines and its caret below the well, and one past six lines drew them over the bottom of the pane.
+#[test]
+fn the_prompt_never_draws_outside_its_field() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    harness.get_by_label("Message").click();
+    steady(&mut harness);
+    let drafts = [
+        // Ten short lines, past the six the well grows to.
+        (1..=10).map(|line| format!("line {line}")).collect::<Vec<_>>().join("\n"),
+        // One line long enough to wrap many times, with few spaces to break it at.
+        "W".repeat(400),
+        // Both.
+        format!("{}\n{}", "Wide words ".repeat(30), "and\nmore\nlines\nafter\nthat"),
+    ];
+    for draft in drafts {
+        with_the_chat(&mut harness, |chat| chat.draft = draft.clone());
+        for _ in 0..3 {
+            steady(&mut harness);
+        }
+        harness.step();
+        let field = harness.get_by_label("Prompt field").rect().expand(1.0);
+        let pane = harness.state().plugin_pane_area_for("agent-chat/chat").expect("the chat pane");
+        assert!(
+            field.bottom() <= pane.bottom(),
+            "the field stays inside the pane: {field:?} in {pane:?}"
+        );
+        // What was painted for the draft, and the rectangle it was cut to. A shape is only seen inside its
+        // clip rectangle, so the text cannot escape the field when that rectangle is inside it.
+        let mut found = false;
+        for clipped in &harness.output().shapes {
+            if let egui::Shape::Text(text) = &clipped.shape {
+                if text.galley.job.text == draft {
+                    found = true;
+                    let shown = clipped.clip_rect.intersect(text.visual_bounding_rect());
+                    assert!(
+                        field.contains_rect(shown),
+                        "the draft is drawn at {shown:?}, outside its field {field:?}"
+                    );
+                }
+            }
+        }
+        assert!(found, "the draft was drawn");
+    }
+}
+
 #[test]
 fn enter_in_the_composer_sends_and_shift_enter_does_not() {
     let mut harness = harness("");

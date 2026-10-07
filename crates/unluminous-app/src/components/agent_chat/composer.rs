@@ -81,7 +81,9 @@ fn prompt_height(parts: &Parts<'_>, look: &Look<'_>, width: f32) -> f32 {
         true => parts.state.prompt_row / look.scale(),
         false => look.font_size * 0.9 * 1.3 / look.scale(),
     };
-    PROMPT + (prompt_lines(parts.draft, look, width).saturating_sub(1) as f32) * per_line
+    let lines =
+        prompt_lines(parts.draft, look, width).max(parts.state.prompt_lines).clamp(1, PROMPT_ROWS);
+    PROMPT + (lines.saturating_sub(1) as f32) * per_line
 }
 
 /// What the field says while it is empty, in whichever form fits on one line.
@@ -411,7 +413,7 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         let first = area.top() + ((PROMPT * scale - row) / 2.0).max(4.0 * scale);
         let words = Rect::from_min_max(
             Pos2::new(field.left(), first),
-            Pos2::new(field.right(), area.bottom().max(first + row)),
+            Pos2::new(field.right(), field.bottom().max(first + row)),
         );
         crate::components::controls::claim_the_field(ui, field, prompt_id, "Prompt field");
         let mut inside = ui.new_child(
@@ -419,24 +421,40 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
                 .max_rect(words)
                 .layout(egui::Layout::top_down(egui::Align::LEFT)),
         );
-        let response = inside.add(
-            egui::TextEdit::multiline(parts.draft)
-                .id(prompt_id)
-                .frame(egui::Frame::NONE)
-                // **The placeholder names the two ways a picture goes up**, because the button that used
-                // to do it is gone: `task-1848` asked for it to go and for drag and drop and paste to be
-                // the routes. A control removed with nothing said in its place is a feature nobody finds.
-                // It says it only while nothing is attached, so it is a hint rather than a label.
-                .hint_text(crate::components::controls::placeholder(
-                    hint(measured, field.width(), parts.attachments.is_empty()),
-                    &prompt_font,
-                    look.palette.text_faint,
-                ))
-                .desired_width(field.width())
-                .desired_rows(rows)
-                .font(prompt_font.clone())
-                .text_color(look.palette.text),
-        );
+        // **The text box is cut to the field and scrolls inside it** (`task-2200`: *"prompt input text can
+        // escape out of the input field ... even the cursor blinker and new lines are escaping"*). The well
+        // stops growing at `PROMPT_ROWS` lines, and the box inside it went on growing past that and past any
+        // line the wrap estimate missed, drawing its words and its caret below the well and over the pane's
+        // edge. In a scrolling area as tall as the field, a long draft scrolls and egui keeps the caret in view.
+        inside.set_clip_rect(field.intersect(ui.clip_rect()));
+        let response = egui::ScrollArea::vertical()
+            .id_salt("agent-chat-prompt-scroll")
+            .max_height(words.height())
+            .auto_shrink([false, true])
+            .show(&mut inside, |inside| {
+                inside.add(
+                    egui::TextEdit::multiline(parts.draft)
+                        .id(prompt_id)
+                        .frame(egui::Frame::NONE)
+                        // **The placeholder names the two ways a picture goes up**, because the button that used
+                        // to do it is gone: `task-1848` asked for it to go and for drag and drop and paste to be
+                        // the routes. A control removed with nothing said in its place is a feature nobody finds.
+                        // It says it only while nothing is attached, so it is a hint rather than a label.
+                        .hint_text(crate::components::controls::placeholder(
+                            hint(measured, field.width(), parts.attachments.is_empty()),
+                            &prompt_font,
+                            look.palette.text_faint,
+                        ))
+                        .desired_width(field.width())
+                        .desired_rows(rows)
+                        .font(prompt_font.clone())
+                        .text_color(look.palette.text),
+                )
+            })
+            .inner;
+        // How many lines the box really took, for the next frame's well. See `PaneState::prompt_lines`.
+        parts.state.prompt_lines =
+            ((response.rect.height() / row.max(1.0)).round() as usize).max(1);
         // Named, because every control in Unluminous has a plain name and a test finds one by it. Its hint
         // text is not a name: it is what the field says when it is empty.
         response

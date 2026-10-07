@@ -440,6 +440,12 @@ pub struct PaneState {
     /// fact about the fonts, so the frame that draws it writes it here for the next one to measure with.
     /// Zero until then, and a guess from the font size stands in.
     pub prompt_row: f32,
+    /// How many lines the prompt's text really took when the last frame laid it out, wrapping and all.
+    ///
+    /// `task-2200`: the well was sized from an estimate of how the draft wraps, made from a character count,
+    /// and a draft of wide letters wrapped onto more lines than that and drew below the well. The text box
+    /// says how tall it came out, and the next frame sizes the well from the larger of the two.
+    pub prompt_lines: usize,
     /// Which message's thinking has been opened.
     pub opened_thinking: Vec<u64>,
     /// The markdown each message came to, kept between frames and keyed on the message.
