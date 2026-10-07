@@ -18,6 +18,7 @@ use egui::{Pos2, Rect, Sense, Vec2};
 use unluminous_git::status::Entry;
 use unluminous_git::Status;
 
+use crate::components::controls::WithHint as _;
 use crate::components::{controls, modal};
 use crate::theme::{color, icon, size};
 
@@ -260,7 +261,7 @@ fn recent_messages(ui: &mut egui::Ui, counts: Rect, panel: &mut CommitPanel, rec
     );
     let response = ui
         .interact(clock, ui.id().with("commit-history"), Sense::click())
-        .on_hover_text("Recent commit messages");
+        .with_hint("Recent commit messages");
     icon::clock(ui.painter(), clock.center(), color::text_dim());
     response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Recent commit messages")
@@ -279,6 +280,7 @@ fn recent_messages(ui: &mut egui::Ui, counts: Rect, panel: &mut CommitPanel, rec
     )
     .width(420.0)
     .show(|ui| {
+        crate::components::controls::set_in_the_list_size(ui);
         let mut chosen = None;
         for (index, message) in recent.iter().enumerate() {
             let first = message.lines().next().unwrap_or_default().to_owned();

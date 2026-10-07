@@ -446,6 +446,21 @@ pub struct Parts {
     pub body: Rect,
 }
 
+/// Paint a node's surface into the node's own layer, under everything else the node draws.
+///
+/// **This is what makes a node hide the nodes behind it** (`task-2200`). The raised surface and its
+/// shadows go into the pane's canvas, which is rasterised once *underneath every node layer*, so a node
+/// whose surface lived only there covered nothing a node behind it drew into its own layer: the text of a
+/// File Editor node sent behind another node showed through it. The same two colours the canvas paints,
+/// flat and opaque, so where nothing overlaps the picture is exactly what it was. Painted in world points,
+/// because the layer carries the camera.
+pub fn cover(ui: &egui::Ui, node: &Node, look: Look<'_>) {
+    let parts = parts_of(node);
+    let painter = ui.painter();
+    painter.rect_filled(node.rect(), CornerRadius::same(8), look.card);
+    painter.rect_filled(parts.header, CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 }, look.header);
+}
+
 /// A node's header and body, which the window needs before it draws the body.
 pub fn parts_of(node: &Node) -> Parts {
     let rect = node.rect();
@@ -789,11 +804,14 @@ fn show_the_ports(
             6.0,
         );
     }
-    // And flat as well, for a canvas with the decoration switched off.
-    if !look.chrome.is_recording() {
-        ui.painter().circle_filled(output, PORT, look_accent());
-        ui.painter().circle_filled(input, PORT, input_fill);
-    }
+    // **And into the node's own layer, always** (`task-2200`). The canvas is underneath every node layer, and
+    // since a node paints its card into its layer (see [`cover`]) the half of each port inside the node's
+    // edge was hidden by the node's own card. The same disc and ring at the same screen size, converted to
+    // the layer's world points, which is also the flat form for a canvas with the decoration switched off.
+    let radius = PORT / scale.max(0.01);
+    let ring = egui::Stroke::new(1.5 / scale.max(0.01), look.card);
+    ui.painter().circle(output, radius, look_accent(), ring);
+    ui.painter().circle(input, radius, input_fill, ring);
 }
 
 /// The eight invisible grips round a node's edge.

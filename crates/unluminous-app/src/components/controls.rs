@@ -84,6 +84,49 @@ pub fn placeholder(
     egui::RichText::new(words.into()).font(font.clone()).color(colour)
 }
 
+/// How large the words in a tooltip are set, whatever the interface's own font size is.
+///
+/// The size of the labels on the controls a tooltip is shown beside — `bar_button` is 12.5 — so the tooltip
+/// reads as a note about the control rather than as a heading over it.
+pub const HINT_SIZE: f32 = 12.0;
+
+/// A tooltip set at [`HINT_SIZE`], which is what every control in the window shows on hover.
+///
+/// `task-2200`: a `New Conversation` tooltip drawn larger than the conversation's own title, beside a
+/// twenty two point button. `Response::on_hover_text` lays its words out in the `Ui`'s Body style, which
+/// is `appearance.ui.font.size`, and that is 24 points on the machine the report came from. So no tooltip
+/// is made with it directly: `every_tooltip_is_set_at_the_hint_size` reads the source and refuses one.
+pub trait WithHint {
+    /// Show `words` while the pointer rests on this.
+    fn with_hint(self, words: impl Into<String>) -> Self;
+}
+
+impl WithHint for egui::Response {
+    fn with_hint(self, words: impl Into<String>) -> Self {
+        let words = words.into();
+        self.on_hover_ui(|ui| {
+            // The same cap egui's own puts on a tooltip, so a long one wraps rather than growing.
+            ui.set_max_width(ui.spacing().tooltip_width);
+            ui.add(egui::Label::new(egui::RichText::new(words).size(HINT_SIZE)));
+        })
+    }
+}
+
+/// How large the words in a dropdown's list or a flyout's panel are, which is the size the dropdown's own
+/// value is drawn at.
+pub const LIST_SIZE: f32 = 12.5;
+
+/// Set every plain egui widget in `ui` — a `selectable_label`, a `checkbox`, a `label` — at [`LIST_SIZE`].
+///
+/// `task-2200` asked for the places where a font size is out of proportion with what is round it. A
+/// dropdown draws its value at 12.5 points and then lists the choices with `selectable_label`, which egui
+/// sets in the Body style, `appearance.ui.font.size`: on a machine whose interface is 24 points the list
+/// under a 12.5 point value was nearly twice its size. Called at the top of every popup the window draws
+/// its own rows into.
+pub fn set_in_the_list_size(ui: &mut egui::Ui) {
+    ui.style_mut().override_font_id = Some(egui::FontId::proportional(LIST_SIZE));
+}
+
 /// Where a field's `TextEdit` goes and what it sets its text in.
 ///
 /// **The two are one answer, so a caller cannot take one and forget the other.** A strip measured for one
@@ -700,7 +743,7 @@ pub fn dropdown_over<T>(
     contents: impl FnOnce(&mut egui::Ui) -> Option<T>,
 ) -> Option<T> {
     let id = ui.id().with(("dropdown", name));
-    let response = ui.interact(area, id, Sense::click()).on_hover_text(name);
+    let response = ui.interact(area, id, Sense::click()).with_hint(name);
     let painter = ui.painter();
     if ground {
         painter.rect(
@@ -718,7 +761,7 @@ pub fn dropdown_over<T>(
     }
     let galley = painter.crisp_layout_no_wrap(
         value.to_owned(),
-        egui::FontId::proportional(12.5),
+        egui::FontId::proportional(LIST_SIZE),
         color::text_control(),
     );
     painter.crisp_galley(
@@ -745,7 +788,10 @@ pub fn dropdown_over<T>(
                 .stroke(Stroke::new(1.0, color::control_border())),
         )
         .width(area.width().max(120.0))
-        .show(contents)
+        .show(|ui| {
+            set_in_the_list_size(ui);
+            contents(ui)
+        })
         .and_then(|inner| inner.inner);
     if chosen.is_some() {
         egui::Popup::close_id(ui.ctx(), popup_id);
@@ -775,7 +821,7 @@ pub fn flyout<T>(
     contents: impl FnOnce(&mut egui::Ui) -> T,
 ) -> Option<T> {
     let response =
-        ui.interact(area, ui.id().with(("flyout", name)), Sense::click()).on_hover_text(name);
+        ui.interact(area, ui.id().with(("flyout", name)), Sense::click()).with_hint(name);
     // What the panel will be by the time it is drawn: the click this frame is what toggles it, and
     // the button has to be tinted for the state it is going into rather than the one it is leaving.
     let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&response))
@@ -799,7 +845,10 @@ pub fn flyout<T>(
                 .stroke(Stroke::new(1.0, color::control_border())),
         )
         .width(width)
-        .show(contents)
+        .show(|ui| {
+            set_in_the_list_size(ui);
+            contents(ui)
+        })
         .map(|inner| inner.inner)
 }
 
@@ -842,9 +891,8 @@ pub fn labelled_flyout_with_icon<T>(
     width: f32,
     contents: impl FnOnce(&mut egui::Ui) -> T,
 ) -> Option<T> {
-    let response = ui
-        .interact(area, ui.id().with(("labelled-flyout", name)), Sense::click())
-        .on_hover_text(name);
+    let response =
+        ui.interact(area, ui.id().with(("labelled-flyout", name)), Sense::click()).with_hint(name);
     // What the panel will be by the time it is drawn: the click this frame is what toggles it.
     let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&response))
         != response.clicked();
@@ -880,7 +928,10 @@ pub fn labelled_flyout_with_icon<T>(
                 .stroke(Stroke::new(1.0, color::control_border())),
         )
         .width(width)
-        .show(contents)
+        .show(|ui| {
+            set_in_the_list_size(ui);
+            contents(ui)
+        })
         .map(|inner| inner.inner)
 }
 
@@ -1131,12 +1182,24 @@ pub fn icon_button(
     name: &str,
     draw: fn(&egui::Painter, Pos2, Color32),
 ) -> bool {
+    icon_button_at(ui, area, name, draw, 1.0)
+}
+
+/// The same, with its mark drawn `scale` times as large — for a pane that zooms. `task-2200`.
+pub fn icon_button_at(
+    ui: &mut egui::Ui,
+    area: Rect,
+    name: &str,
+    draw: fn(&egui::Painter, Pos2, Color32),
+    scale: f32,
+) -> bool {
     let response =
-        ui.interact(area, ui.id().with(("icon-button", name)), Sense::click()).on_hover_text(name);
+        ui.interact(area, ui.id().with(("icon-button", name)), Sense::click()).with_hint(name);
     if response.hovered() {
-        ui.painter().rect_filled(area, CornerRadius::same(4), color::control());
+        let corner = (4.0 * scale).round().clamp(0.0, 255.0) as u8;
+        ui.painter().rect_filled(area, CornerRadius::same(corner), color::control());
     }
-    draw(ui.painter(), area.center(), color::text_dim());
+    crate::theme::icon::scaled(ui.painter(), area.center(), color::text_dim(), scale, draw);
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
     response.clicked()
@@ -1229,6 +1292,46 @@ mod field_sizing {
     /// And every hint in the window goes through [`placeholder`], so the next field added cannot be the
     /// next one drawn at the interface's size. Read off the source, because a field is drawn deep inside
     /// a component that a unit test cannot reach on its own.
+    /// `task-2200`: a tooltip made with egui's own `on_hover_text` is set in the interface's Body size,
+    /// which can be twice the size of the control it is about. Every tooltip goes through
+    /// [`WithHint::with_hint`], and this reads the source and names any that does not.
+    #[test]
+    fn every_tooltip_is_set_at_the_hint_size() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut stack = vec![root];
+        let mut offenders = Vec::new();
+        // Built from two halves so this test's own source is not a match for itself.
+        let call = [".on_hover", "_text("].concat();
+        while let Some(folder) = stack.pop() {
+            for entry in std::fs::read_dir(&folder).expect("a source folder").flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|ext| ext != "rs") {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path).expect("a source file");
+                for (number, line) in text.lines().enumerate() {
+                    if line.contains(&call) {
+                        offenders.push(format!(
+                            "{}:{}: {}",
+                            path.display(),
+                            number + 1,
+                            line.trim()
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "a tooltip not set at the hint size:\n{}",
+            offenders.join("\n")
+        );
+    }
+
     #[test]
     fn every_placeholder_is_set_in_its_fields_font() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");

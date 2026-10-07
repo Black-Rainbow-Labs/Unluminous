@@ -1039,6 +1039,20 @@ because the window draws the panel, and the plugin contributes `ui.extensions = 
 a test builds plays through `SilentPlayer`. A video plays in the one web view, on
 `unluminous://realm/video/<id>`, with its file served by node id at `unluminous://realm/media/<id>`.
 
+### A node's place in the stacking order is the model's, and egui is told it every frame (`task-2200`)
+
+`Realm::nodes` is the drawing order, and the node menu's `Arrange` rows and `realm arrange <node>
+front|forward|backward|back` move a node in it through `Realm::arrange`, which renumbers every `z` and is
+written to the realm file. **A click chooses a node and does not raise it**, or `Send Backward` would last
+only until the next click on that node. Two things keep the screen honest about the order:
+
+- **A node's layer is named by its place in the order**, `("realm-node-layer", rank)`, not by the node.
+  egui keeps a layer where it was first seen, so layers named by node kept their first places and the chosen
+  one was moved to the top, and a node behind another drew its text over it.
+- **Each node paints its card flat into its own layer first**, `realm_view::cover`. The raised surface and
+  its shadows go into the pane's canvas, which is underneath every node layer, so without the flat card a
+  node covered nothing a node behind it drew.
+
 ### Six kinds of node, and the two that were added are not the same shape as each other
 
 `task-1914` asks for an **Agent Chat** node and an **Agent Tasks** node beside the four `task-1904`
@@ -1265,6 +1279,18 @@ given. It asks for as many rows as there is text now — one reckoning, `compose
 by the well that is measured and by the box inside it — so `Ui::put` centres a box that is the height of
 what it holds. And `composer::hint` drops the long form where it would wrap, because a hint that wraps
 grows the box past the well measured for one line.
+
+### A tooltip is set at 12 points, and the words in a popup list at the size of its value (`task-2200`)
+
+`Response::on_hover_text` and egui's own widgets, `selectable_label`, `checkbox` and `label`, set their words
+in the Body style, which is `appearance.ui.font.size` and is 24 points on the machine the reports come from.
+So every tooltip goes through `controls::WithHint::with_hint` at `controls::HINT_SIZE`, and
+`every_tooltip_is_set_at_the_hint_size` refuses a direct `on_hover_text`. Every popup the window draws its
+own rows into, the dropdown, both flyouts and the commit message list, calls `controls::set_in_the_list_size`
+first, so the list under a 12.5 point value is 12.5 points too.
+
+A pane that zooms by a multiplier draws its marks through `theme::icon::scaled` or
+`controls::icon_button_at`, and a `rux` select through `Select::zoom`, so they grow with its words.
 
 ### A placeholder is set in its field's font, and a test refuses one that is not (`task-2198`)
 

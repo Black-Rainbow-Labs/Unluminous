@@ -65,6 +65,7 @@ use std::path::{Path, PathBuf};
 
 use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
+use crate::components::controls::WithHint as _;
 use crate::services::file_kind::Refusal;
 use crate::services::file_tree::FileTree;
 use crate::theme::crisp::CrispPainter;
@@ -374,7 +375,7 @@ pub fn show(
             let hit = Rect::from_center_size(centre, Vec2::splat(view.at(22.0)));
             let response = ui
                 .interact(hit, ui.id().with(("explorer-button", name)), Sense::click())
-                .on_hover_text(name);
+                .with_hint(name);
             if response.hovered() {
                 painter.rect_filled(hit, CornerRadius::same(4), color::control());
             }
@@ -994,7 +995,7 @@ fn file_row(
     let response = ui.interact(row, ui.id().with(("file", path)), Sense::click_and_drag());
     if let Some(refusal) = refusal {
         // The row says which of the two reasons it is: the file is not text, or it is too large.
-        response.clone().on_hover_text(refusal.reason());
+        response.clone().with_hint(refusal.reason());
     }
     let open = view.current == Some(path);
     let selected = view.selected == Some(path);

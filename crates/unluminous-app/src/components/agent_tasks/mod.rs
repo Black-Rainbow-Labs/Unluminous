@@ -23,6 +23,7 @@ pub mod ticket_modal;
 
 use egui::{Pos2, Rect, Vec2};
 
+use crate::components::controls::WithHint as _;
 use crate::services::agent_tasks::{AgentTasks, View};
 use crate::services::plugin_ui::{Look, Request};
 use crate::theme::crisp::CrispPainter;
@@ -718,7 +719,7 @@ pub(crate) fn round_button(
 ) -> bool {
     let response = ui
         .interact(area, ui.id().with(("agent-tasks-round", name)), egui::Sense::click())
-        .on_hover_text(name);
+        .with_hint(name);
     let ground = look.palette.board_accent;
     let radius = area.width() / 2.0;
     if look.chrome.is_recording() {
@@ -869,7 +870,7 @@ pub(crate) fn raw_or_rendered(
         let said = name.clone();
         response
             .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, &said));
-        let _ = response.clone().on_hover_text(name);
+        let _ = response.clone().with_hint(name);
         if response.clicked() && !on {
             chosen = Some(wants);
         }

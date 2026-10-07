@@ -433,7 +433,7 @@ fn words(
         if crate::components::controls::pointer_in(ui).is_some_and(|pointer| at.contains(pointer)) {
             state.copy_shown = Some((message.id, now));
         }
-        if crate::components::controls::icon_button(ui, at, "Copy message", icon::copy) {
+        if crate::components::controls::icon_button_at(ui, at, "Copy message", icon::copy, scale) {
             acts.push(Act::Copy(said.to_owned()));
         }
         // An idle window draws twice a second, so without this the button would linger for up to
@@ -724,7 +724,13 @@ fn queued_note(ui: &mut egui::Ui, look: &Look<'_>, rect: Rect, mine: bool) {
         font,
         tint,
     );
-    icon::clock(&painter, Pos2::new(right - width - 9.0 * scale, rect.center().y), tint);
+    icon::scaled(
+        &painter,
+        Pos2::new(right - width - 9.0 * scale, rect.center().y),
+        tint,
+        scale,
+        icon::clock,
+    );
 }
 
 /// How far the ring round a tool call's mark reaches from its centre, at a scale of one.

@@ -35,6 +35,7 @@
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::app::actions::{Action, Menu};
+use crate::components::controls::WithHint as _;
 use crate::components::menu_bar;
 use crate::theme::{color, size};
 
@@ -209,9 +210,8 @@ pub fn show(
         // typed in a file into the window closing. `app::hold_the_keyboard` is what stops the focus
         // wandering in the first place; this is here so that even if it ever does, the keys it arrives
         // with cannot do something a person cannot undo.
-        let response = ui
-            .interact(hit, ui.id().with(("window-button", label)), Sense::CLICK)
-            .on_hover_text(label);
+        let response =
+            ui.interact(hit, ui.id().with(("window-button", label)), Sense::CLICK).with_hint(label);
         painter.circle_filled(centre, 6.5, if lit { fill } else { color::icon() });
         if response.hovered() {
             painter.circle_stroke(centre, 6.5, Stroke::new(1.0, Color32::from_black_alpha(90)));

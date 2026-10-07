@@ -2224,6 +2224,7 @@ fn drive_the_canvas(coverage: &mut Coverage) {
         (format!("realm size {terminal} --width 500"), "realm size 99 --width 500"),
         (format!("realm title {terminal} named"), "realm title 99 named"),
         (format!("realm focus {terminal}"), "realm focus 99"),
+        (format!("realm arrange {terminal} front"), "realm arrange 99 front"),
         (format!("realm font {terminal} --size 16"), "realm font 99 --size 16"),
         (format!("realm zoom {terminal} --bigger"), "realm zoom 99 --bigger"),
         (format!("realm send {terminal} hello"), "realm send 99 hello"),

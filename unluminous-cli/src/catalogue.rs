@@ -1795,10 +1795,27 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "realm",
         verb: "focus",
-        summary: "Choose a node, bring it to the front and give it the keyboard.",
+        summary: "Choose a node and give it the keyboard. It stays where it is in the stacking order, as it does when it is clicked; `realm arrange` moves it.",
         arguments: &[whole("node", true, "The node's id.")],
         flags: NO_FLAGS,
         examples: &["unluminous-cli realm focus 7"],
+        local: false,
+    },
+    Command {
+        area: "realm",
+        verb: "arrange",
+        summary: "Move a node in the stacking order, which is what the node menu's Arrange rows do: `front` puts it over every other node, `forward` and `backward` move it one place, `back` puts it behind every other node. The order is written to the realm file.",
+        arguments: &[
+            whole("node", true, "The node's id."),
+            closed(
+                "how",
+                true,
+                "front, forward, backward or back.",
+                &["front", "forward", "backward", "back"],
+            ),
+        ],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli realm arrange 7 back", "unluminous-cli realm arrange 3 forward"],
         local: false,
     },
     Command {

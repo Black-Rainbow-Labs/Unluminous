@@ -117,6 +117,50 @@ pub enum Access {
     ReadOnly(String),
 }
 
+/// Where [`Realm::arrange`] moves a node in the stacking order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Arrange {
+    /// In front of every other node.
+    Front,
+    /// One place nearer the front.
+    Forward,
+    /// One place nearer the back.
+    Backward,
+    /// Behind every other node.
+    Back,
+}
+
+impl Arrange {
+    /// Every way, in the order the menu lists them.
+    pub const ALL: [Arrange; 4] =
+        [Arrange::Front, Arrange::Forward, Arrange::Backward, Arrange::Back];
+
+    /// The word the command line uses, `realm arrange <node> <how>`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Arrange::Front => "front",
+            Arrange::Forward => "forward",
+            Arrange::Backward => "backward",
+            Arrange::Back => "back",
+        }
+    }
+
+    /// The way a command line word names, if it names one.
+    pub fn from_name(name: &str) -> Option<Arrange> {
+        Arrange::ALL.into_iter().find(|how| how.name() == name)
+    }
+
+    /// What the menu row says.
+    pub fn label(self) -> &'static str {
+        match self {
+            Arrange::Front => "Bring to Front",
+            Arrange::Forward => "Bring Forward",
+            Arrange::Backward => "Send Backward",
+            Arrange::Back => "Send to Back",
+        }
+    }
+}
+
 /// What was last read from or written to disk for one realm, so a save that would write the same bytes
 /// writes nothing.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -367,12 +411,45 @@ impl Realm {
         true
     }
 
-    /// Bring a node to the front, which is what clicking one does.
+    /// Move a node up or down the stacking order, which is the node menu's `Arrange` submenu.
     ///
-    /// The list is the drawing order, so "to the front" is "to the end", and [`Node::z`] becomes one more
-    /// than the largest so the file says the same. **Nothing is marked dirty by it on its own**: a canvas
-    /// that wrote itself to disk every time somebody clicked a node would be writing on every click. The
-    /// new `z` goes out with the next change, as one line.
+    /// The list is the drawing order, so a step forward swaps the node with the one after it and `Front`
+    /// moves it to the end. Every node's [`Node::z`] is then renumbered from its place in the list, so the
+    /// file says the same thing the screen does. **This is marked dirty**, unlike [`Self::raise`]: somebody
+    /// chose this order on purpose and expects it to be there next time. Answers whether anything moved.
+    ///
+    /// `task-2200`. Clicking a node used to raise it, which made `Send Backward` last only until the next
+    /// click on that node, so a click now chooses a node and leaves the order alone.
+    pub fn arrange(&mut self, id: NodeId, how: Arrange) -> bool {
+        if !self.editable() {
+            return false;
+        }
+        let Some(at) = self.nodes.iter().position(|node| node.id == id) else { return false };
+        let last = self.nodes.len() - 1;
+        let to = match how {
+            Arrange::Front => last,
+            Arrange::Forward => (at + 1).min(last),
+            Arrange::Backward => at.saturating_sub(1),
+            Arrange::Back => 0,
+        };
+        if to == at {
+            return false;
+        }
+        let node = self.nodes.remove(at);
+        self.nodes.insert(to, node);
+        for (z, node) in self.nodes.iter_mut().enumerate() {
+            node.z = z as u32;
+        }
+        self.dirty = true;
+        true
+    }
+
+    /// Bring a node to the front without writing anything down.
+    ///
+    /// What `realm screenshot` uses, so the node it photographs is not covered. The list is the drawing
+    /// order, so "to the front" is "to the end", and [`Node::z`] becomes one more than the largest so the
+    /// file says the same. **Nothing is marked dirty by it on its own**: the new `z` goes out with the next
+    /// change, as one line. A person asks for the same thing through [`Self::arrange`].
     pub fn raise(&mut self, id: NodeId) {
         let top = self.top_z();
         let Some(at) = self.nodes.iter().position(|node| node.id == id) else { return };
@@ -931,6 +1008,30 @@ mod tests {
         assert_eq!(realm.nodes.len(), 2, "raising moves rather than copies");
         assert_eq!(realm.node(under).expect("there").z, top + 1, "one line: its own z");
         assert_eq!(realm.node(over).expect("there").z, top, "and nothing else's");
+    }
+
+    #[test]
+    fn arranging_a_node_moves_it_one_place_or_to_either_end_and_is_written_down() {
+        let mut realm = a_canvas();
+        let a = realm.add_node(Kind::Folder, Pos2::ZERO, None);
+        let b = realm.add_node(Kind::Folder, Pos2::ZERO, None);
+        let c = realm.add_node(Kind::Folder, Pos2::ZERO, None);
+        let order = |realm: &Realm| realm.nodes.iter().map(|node| node.id).collect::<Vec<_>>();
+        realm.written();
+        assert!(realm.arrange(c, Arrange::Backward));
+        assert_eq!(order(&realm), vec![a, c, b]);
+        assert!(realm.is_dirty(), "an order somebody chose is written down");
+        assert!(realm.arrange(a, Arrange::Forward));
+        assert_eq!(order(&realm), vec![c, a, b]);
+        assert!(realm.arrange(c, Arrange::Front));
+        assert_eq!(order(&realm), vec![a, b, c]);
+        assert!(realm.arrange(c, Arrange::Back));
+        assert_eq!(order(&realm), vec![c, a, b]);
+        assert!(!realm.arrange(c, Arrange::Back), "already at the back moves nothing");
+        assert!(!realm.arrange(b, Arrange::Forward), "already in front moves nothing");
+        let zs: Vec<u32> = realm.nodes.iter().map(|node| node.z).collect();
+        assert_eq!(zs, vec![0, 1, 2], "the file's z follows the drawing order");
+        assert_eq!(realm.node_at(Pos2::new(5.0, 5.0)), Some(b), "the front one is what is hit");
     }
 
     #[test]

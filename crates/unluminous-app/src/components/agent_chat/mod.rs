@@ -24,7 +24,7 @@ pub mod composer;
 pub mod message;
 pub mod settings_page;
 
-use egui::{Color32, CornerRadius, Pos2, Rect, Stroke, Vec2};
+use egui::{CornerRadius, Pos2, Rect, Stroke, Vec2};
 
 use crate::components::controls;
 use crate::services::agent_chat::{AgentChat, ModelSelect, Parts};
@@ -47,8 +47,12 @@ pub const INNER: f32 = 10.0;
 pub const RADIUS: f32 = 18.0;
 /// The header row, from `ChatHeader.module.css`'s padding plus its 13 point name.
 pub const HEADER: f32 = 32.0;
-/// Between two rows of the conversation, from `ChatConversation.module.css`'s own `gap: 14px`.
-pub const GAP: f32 = 14.0;
+/// Between two rows of the conversation.
+///
+/// Half of `ChatConversation.module.css`'s own `gap: 14px`, since `task-2200`: *"There's too much margin
+/// between messages. it should be about half."* A bubble here carries more padding of its own than the
+/// reference's does, so the reference's gap read as twice as much.
+pub const GAP: f32 = 7.0;
 /// How far in from the card's edge the conversation's own rows sit.
 ///
 /// **Two points, where it used to be the card's full ten.** `task-1848`: "the margin on the sides of the
@@ -306,80 +310,91 @@ fn message_menu(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
     acts
 }
 
-/// The header: the state dot, the conversation's name, the model selector, history and new.
+/// The header: the conversation's name, the model selector, history and new.
+///
+/// **Everything in it is sized by the pane's zoom**, `task-2200`: zoomed in, the title grew while the
+/// select, its words and the two buttons' marks stayed the size they are at one. The select takes the zoom
+/// through `rux::components::Select::zoom` and the buttons through `controls::icon_button_at`.
+///
+/// **There is no state dot.** `task-2200`: *"I don't want the dot at all. Just have the title"*. What the
+/// dot said is still said by the stop disc in the composer while an answer arrives and by the failure row
+/// when one fails.
 fn header(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
     let painter = ui.painter_at(area);
     let middle = area.center().y;
 
-    // The dot is the state, which is the one thing the header says that changes by itself: mint when
-    // it is ready, the board's blue while an answer is arriving, red when the last one failed. Its
-    // halo is the reference's `box-shadow: 0 0 0 3px`, drawn as a glow rather than a ring because a
-    // hard ring at this size reads as a second dot.
-    let (tone, said) = state_of(parts, look);
-    let dot = Pos2::new(area.left() + 5.0 * scale, middle);
-    if look.chrome.is_recording() {
-        look.chrome.glow(
-            Rect::from_center_size(dot, Vec2::splat(4.5 * scale)),
-            4.5 * scale,
-            tone.gamma_multiply(0.35),
-            5.0 * scale,
-        );
-        look.chrome.disc(dot, 4.0 * scale, Fill::Solid(tone));
-    } else {
-        painter.circle_filled(dot, 4.0 * scale, tone);
-    }
-
-    let name = parts.session.chat.display_name();
-    let mut pen = dot.x + 10.0 * scale;
-    // How much room the name may take: whatever the two buttons and the model selector leave it.
+    // The two buttons first, from the right, then the select to their left, so the title knows how much
+    // room is left for it.
+    let button = 22.0 * scale;
+    let new =
+        Rect::from_center_size(Pos2::new(area.right() - 12.0 * scale, middle), Vec2::splat(button));
+    let history =
+        Rect::from_center_size(Pos2::new(area.right() - 38.0 * scale, middle), Vec2::splat(button));
     let names: Vec<String> =
         parts.configuration.providers.iter().map(|one| one.name.clone()).collect();
-    let chip_width = model_select_width(&painter, &names);
-    let buttons = 56.0 * scale;
-    let room = (area.right() - pen - chip_width - buttons - 12.0 * scale).max(24.0);
-    // **Laid out without wrapping and then clipped**, because a conversation named after a long first
-    // sentence has to lose its end rather than gain a second line: a wrapped name drew over the chip
-    // beside it and over the first message under it.
-    let galley = painter.crisp_layout_no_wrap(
-        name.to_owned(),
-        egui::FontId::proportional(look.font_size * 0.82),
-        look.palette.text_strong,
+    let chip_width = model_select_width(&painter, &names, scale);
+    let chip_height = MODEL_SELECT_HEIGHT * scale;
+    let chip = Rect::from_min_size(
+        Pos2::new(history.left() - 8.0 * scale - chip_width, middle - chip_height / 2.0),
+        Vec2::new(chip_width, chip_height),
     );
-    let cut = galley.size().x.min(room);
+
+    // **One line, cut with an ellipsis before it reaches the select**, because a conversation named after
+    // a long first sentence has to lose its end rather than run under the select or gain a second line.
+    let font = egui::FontId::proportional(look.font_size * 0.82);
+    let left = area.left() + 2.0 * scale;
+    let right = match names.is_empty() {
+        true => history.left(),
+        false => chip.left(),
+    } - 10.0 * scale;
+    let room = (right - left).max(1.0);
+    let mut job = egui::text::LayoutJob::single_section(
+        parts.session.chat.display_name().to_owned(),
+        egui::TextFormat {
+            font_id: font.clone(),
+            color: look.palette.text_strong,
+            ..Default::default()
+        },
+    );
+    job.wrap = egui::text::TextWrapping {
+        max_width: room,
+        max_rows: 1,
+        break_anywhere: true,
+        overflow_character: Some('\u{2026}'),
+    };
+    let title = painter.crisp_layout_job(job);
+    // Placed by its capitals, so it shares a middle with the select's words and the buttons' marks.
+    let top = crate::theme::crisp::top_centring_capitals(&painter, &font, middle);
     painter
-        .with_clip_rect(Rect::from_min_size(
-            Pos2::new(pen, area.top()),
-            Vec2::new(room, area.height()),
+        .with_clip_rect(Rect::from_min_max(
+            Pos2::new(left, area.top()),
+            Pos2::new(right, area.bottom()),
         ))
-        .crisp_galley(
-            Pos2::new(pen, middle - look.font_size * 0.55),
-            galley,
-            look.palette.text_strong,
-        );
-    pen += cut + 10.0 * scale;
+        .crisp_galley(Pos2::new(left, top), title, look.palette.text_strong);
 
     // **The model selector is `rux`'s `Select`**, the dropdown from Black Rainbow Labs' component
     // library. `task-2096` asks for a dropdown menu from that library rather than a new one: the chip
     // this replaces opened a list drawn over the whole conversation. The menu opens under the trigger on
-    // a foreground layer of its own, and a press anywhere else closes it.
+    // a foreground layer of its own, and a press anywhere else closes it. Its menu takes the theme's
+    // smallest raised shadow rather than the reference's largest, which spread a dark blur over the
+    // messages under it (`task-2200`).
     let chosen = parts
         .configuration
         .provider()
         .and_then(|chosen| names.iter().position(|name| *name == chosen.name));
-    let chip = Rect::from_min_size(
-        Pos2::new(area.right() - buttons - chip_width, middle - MODEL_SELECT_HEIGHT / 2.0),
-        Vec2::new(chip_width, MODEL_SELECT_HEIGHT),
-    );
-    if !names.is_empty() && chip.left() > pen {
+    if !names.is_empty() && chip.left() > left {
         let select = parts.state.model_select.get_or_insert_with(ModelSelect::new);
         let id = ui.id().with("agent-chat-model-select");
         // The layer is the trigger and room round it for its shadow. The menu opens a layer of its own.
-        let outcome = rux::layer(ui, &select.rux, id, chip.expand(24.0), |rux| {
+        let outcome = rux::layer(ui, &select.rux, id, chip.expand(24.0 * scale), |rux| {
+            let quiet = rux.theme().elevation.raised_sm;
             rux::components::Select::new(&names, chosen)
                 .label("Model")
                 .placeholder("No endpoint")
+                .zoom(scale)
+                .menu_elevation(quiet)
                 .show(rux, chip, &mut select.menu)
         });
         select.rux.end_frame();
@@ -390,18 +405,10 @@ fn header(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
 
     // Two ghost buttons, which is `ChatHeader.module.css`'s `.toolBtn`: no surface until the pointer
     // is on them.
-    let history = Rect::from_center_size(
-        Pos2::new(area.right() - 38.0 * scale, middle),
-        Vec2::splat(22.0 * scale),
-    );
-    if crate::components::controls::icon_button(ui, history, "Conversations", icon::clock) {
+    if controls::icon_button_at(ui, history, "Conversations", icon::clock, scale) {
         acts.push(Act::ShowHistory(!parts.state.history_open));
     }
-    let new = Rect::from_center_size(
-        Pos2::new(area.right() - 12.0 * scale, middle),
-        Vec2::splat(22.0 * scale),
-    );
-    if crate::components::controls::icon_button(ui, new, "New Conversation", icon::plus) {
+    if controls::icon_button_at(ui, new, "New Conversation", icon::plus, scale) {
         acts.push(Act::New);
     }
 
@@ -414,18 +421,18 @@ fn header(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
         0,
         look.palette.divider,
     );
-    let _ = said;
     acts
 }
 
 /// How wide the model selector's trigger is: the widest endpoint name, plus what the trigger and the
-/// menu under it each take round the words, whichever is more.
+/// menu under it each take round the words, whichever is more, all at the pane's zoom.
 ///
 /// The widest rather than the chosen one, so the trigger stays the same width when a different endpoint
 /// is chosen and nothing beside it moves. The words are measured at the size `rux::Style::CONTROL`
-/// sets them in.
-fn model_select_width(painter: &egui::Painter, names: &[String]) -> f32 {
+/// sets them in, times the zoom, which is what `Select::zoom` draws them at.
+fn model_select_width(painter: &egui::Painter, names: &[String], scale: f32) -> f32 {
     let style = rux::Style::CONTROL;
+    let style = style.at(style.size * scale);
     let widest =
         names.iter().map(|name| rux::text::measure(painter, style, name).x).fold(0.0_f32, f32::max);
     // **Wide enough for the menu's rows, not only for the trigger's words.** `rux` draws the menu
@@ -433,20 +440,9 @@ fn model_select_width(painter: &egui::Painter, names: &[String]) -> f32 {
     // of the menu, twelve each side of the row and eighteen for the tick. Sized for the trigger alone,
     // which needs only `padding: 9px 12px`, an eight point gap and the thirteen point chevron, every
     // row was cut to three letters: `cla…`, `cod…`, `loc…`, seen on the installed 0.56.0.
-    let trigger = widest + 12.0 * 2.0 + 8.0 + 13.0;
-    let row = widest + 6.0 * 2.0 + 12.0 * 2.0 + 18.0 + 4.0;
-    trigger.max(row).min(MODEL_SELECT_WIDEST)
-}
-
-/// The colour of the state dot, and the word for it.
-fn state_of(parts: &Parts<'_>, look: &Look<'_>) -> (Color32, &'static str) {
-    use unluminous_chat::State;
-    match parts.session.state() {
-        State::Failed(_) => (crate::theme::color::close(), "failed"),
-        State::Sending | State::Streaming => (look.palette.board_accent, "answering"),
-        State::WaitingForTools => (crate::theme::color::agent(), "running a tool"),
-        _ => (crate::theme::color::git_added(), "ready"),
-    }
+    let trigger = widest + (12.0 * 2.0 + 8.0 + 13.0) * scale;
+    let row = widest + (6.0 * 2.0 + 12.0 * 2.0 + 18.0 + 4.0) * scale;
+    trigger.max(row).min(MODEL_SELECT_WIDEST * scale)
 }
 
 /// The conversation: every message, scrolled, with the empty state when there is nothing.
@@ -475,7 +471,13 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     // recorded its whole surface and the canvas painted it over the header above. `egui`'s own clip
     // rectangle cannot reach the canvas; `Decor::Clip` is the one thing that can. Measured on a real
     // window: a message scrolled off the top was drawn across the pane's own name.
-    look.chrome.clip(area, 0.0);
+    //
+    // **Cut above and below, not at the sides** (`task-2200`). The rows sit [`LIST_INSET`] from the card's
+    // edge, and a bubble from the person is raised at `Lift::Medium`, whose shadow reaches well past two
+    // points: cut at the list's own sides, the shadow down its right edge stopped in a hard vertical line.
+    // A shadow spilling sideways onto the card's padding is what it would do on the reference page.
+    let reach = crate::services::vello_canvas::Lift::Medium.reach() * look.scale();
+    look.chrome.clip(area.expand2(Vec2::new(reach, 0.0)), 0.0);
     let mut scroller = egui::ScrollArea::vertical()
         .id_salt("agent-chat-conversation")
         // **Stuck to the bottom while an answer is arriving, and unstuck the moment somebody scrolls
@@ -633,7 +635,7 @@ fn empty(ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
             look.palette.board_card,
         );
     }
-    icon::chat(&painter, badge.center(), look.palette.board_accent);
+    icon::scaled(&painter, badge.center(), look.palette.board_accent, scale, icon::chat);
     pen = badge.bottom() + 14.0 * scale;
     controls::centred_line(
         &painter,
@@ -783,11 +785,12 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
             if response.clicked() {
                 acts.push(Act::Open(one.id.clone()));
             }
-            if crate::components::controls::icon_button(
+            if crate::components::controls::icon_button_at(
                 ui,
                 cross,
                 &format!("Remove conversation: {}", one.name),
                 icon::cross,
+                scale,
             ) {
                 acts.push(Act::Remove(one.id.clone()));
             }

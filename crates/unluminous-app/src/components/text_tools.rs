@@ -48,6 +48,7 @@ use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 use unluminous_core::{Align, Color, Command, Document, StyleChange};
 
 use crate::components::controls;
+use crate::components::controls::WithHint as _;
 use crate::services::file_kind;
 use crate::theme::{color, icon, size};
 
@@ -215,7 +216,7 @@ fn text_options(
         let hit = Rect::from_center_size(centre, Vec2::splat(24.0));
         let response = ui
             .interact(hit, ui.id().with(("colour", name)), Sense::click())
-            .on_hover_text(format!("Colour: {name}"));
+            .with_hint(format!("Colour: {name}"));
         let chosen = style.color == *swatch;
         let painter = ui.painter();
         let fill = Color32::from_rgb(swatch.r, swatch.g, swatch.b);
@@ -291,7 +292,7 @@ fn format_button(
     bold_family: &egui::FontFamily,
 ) -> bool {
     let response =
-        ui.interact(area, ui.id().with(("format", name)), Sense::click()).on_hover_text(name);
+        ui.interact(area, ui.id().with(("format", name)), Sense::click()).with_hint(name);
     if active {
         ui.painter().rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::accent());
     } else if response.hovered() {
@@ -342,7 +343,7 @@ fn view_mode_button(
     let name = mode.label_for(kind);
     let response = ui
         .interact(area, ui.id().with(("view-mode", name)), Sense::click())
-        .on_hover_text(mode.description_for(kind));
+        .with_hint(mode.description_for(kind));
     let painter = ui.painter();
     if active {
         painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::accent());
@@ -362,7 +363,7 @@ fn alignment_button(ui: &mut egui::Ui, area: Rect, align: Align, active: bool) -
     let name = align.label();
     let response = ui
         .interact(area, ui.id().with(("align", name)), Sense::click())
-        .on_hover_text(format!("Align {}", name.to_lowercase()));
+        .with_hint(format!("Align {}", name.to_lowercase()));
     let painter = ui.painter();
     if active {
         painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::accent());

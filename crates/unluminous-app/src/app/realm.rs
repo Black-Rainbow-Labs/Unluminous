@@ -423,7 +423,6 @@ impl UnluminousApp {
             .filter(|node| realm_view::is_showing(node, body, &camera))
             .cloned()
             .collect();
-        let chosen = self.realm.chosen();
         let wiring = matches!(self.realm.gesture, Gesture::Wiring { .. });
         // Which node the wire in the air would land on, worked out once from the model rather than
         // asked of each port - see the note in `components::realm::show_the_ports`.
@@ -441,19 +440,14 @@ impl UnluminousApp {
         // found. One answer, worked out from the drawing order the way `View::node_at` does, and handed to
         // whichever node it names.
         //
-        // It is the **chosen** node first when the pointer is inside it, because a node that has been clicked
-        // is moved to the top egui layer by `move_to_top` whether or not `Realm::raise` moved it in the
-        // model — so the model's own order is not the whole truth about what is on top.
+        // The model's order is the whole truth about what is on top, since `task-2200` made the layers
+        // follow it (see below), so the frontmost node the pointer is inside is the last one in the list.
         let pointer = body_ui
             .input(|input| input.pointer.hover_pos().or_else(|| input.pointer.latest_pos()))
             .filter(|at| body.contains(*at));
         let under_the_pointer = pointer.and_then(|at| {
             let over = |node: &Node| camera.rect_to_screen(body.min, node.rect()).contains(at);
-            nodes
-                .iter()
-                .find(|node| Some(node.id) == chosen && over(node))
-                .or_else(|| nodes.iter().rev().find(|node| over(node)))
-                .map(|node| node.id)
+            nodes.iter().rev().find(|node| over(node)).map(|node| node.id)
         });
         // **The modifier wheel goes to that node**, before `zoom_over_a_panel` at the end of
         // `show_the_realm` can give it to the camera. `task-1905`.
@@ -477,28 +471,32 @@ impl UnluminousApp {
             && pointer.is_some();
         if let (true, Some(node)) = (pressed, under_the_pointer) {
             if self.realm.chosen() != Some(node) || !matches!(self.focus, Focus::Realm) {
+                // **Chosen, not raised**, since `task-2200`: the stacking order is what the node menu's
+                // `Arrange` rows set, and a click that raised the node would undo `Send Backward` the
+                // next time somebody clicked into the node they had just sent back.
                 self.realm.realm.choose(Some(node));
-                self.realm.realm.raise(node);
                 self.take_the_keyboard_for_the_realm();
             }
         }
-        // Read again, because the press above may have changed it and the loop below decides which layer
-        // is moved to the top and which node draws its ring from this answer.
+        // Read again, because the press above may have changed it and the loop below decides which node
+        // has the keyboard and draws its ring from this answer.
         let chosen = self.realm.chosen();
         let parent = body_ui.layer_id();
         let mut menu: Option<(Pos2, NodeId)> = None;
-        for node in nodes {
+        for (rank, node) in nodes.into_iter().enumerate() {
+            // **A layer is named by its place in the drawing order, not by the node in it** (`task-2200`).
+            // egui keeps a layer where it was first seen, and the sublayers of one parent keep their
+            // relative order, so naming them `0, 1, 2, …` and always meeting them in that order makes
+            // egui composite the nodes in exactly the model's order. Named by node, a layer kept the place
+            // it was first given and the chosen one was moved to the top, so a node the model put behind
+            // another still drew its text over it: *"The file editor text is above, even though the box is
+            // behind"*.
             let layer = egui::LayerId::new(
                 egui::Order::Background,
-                egui::Id::new(("realm-node-layer", node.id)),
+                egui::Id::new(("realm-node-layer", rank)),
             );
             ui.ctx().set_sublayer(parent, layer);
             ui.ctx().set_transform_layer(layer, to_global);
-            if Some(node.id) == chosen {
-                // The chosen node is the one in front. A layer keeps the place it was first given, so
-                // raising a node in the model is not enough on its own — this is what actually moves it.
-                ui.ctx().move_to_top(layer);
-            }
             let parts = realm_view::parts_of(&node);
             let mut node_ui = ui.new_child(
                 egui::UiBuilder::new()
@@ -507,6 +505,7 @@ impl UnluminousApp {
                     .id_salt(("realm-node", node.id)),
             );
             node_ui.set_clip_rect(clip);
+            realm_view::cover(&node_ui, &node, look);
             let focused = Some(node.id) == chosen && matches!(self.focus, Focus::Realm);
             let has_the_pointer = under_the_pointer == Some(node.id);
             // **Both text engines are told what this node is composited at, around the whole of it.**
@@ -541,7 +540,6 @@ impl UnluminousApp {
         }
         if let Some((at, node)) = menu {
             self.realm.realm.choose(Some(node));
-            self.realm.realm.raise(node);
             self.realm.menu = Some((at, Menu::Node));
         }
     }
@@ -661,7 +659,6 @@ impl UnluminousApp {
     fn act_on_a_node(&mut self, node: &Node, outcome: realm_view::NodeOutcome) {
         if outcome.chose {
             self.realm.realm.choose(Some(node.id));
-            self.realm.realm.raise(node.id);
             self.take_the_keyboard_for_the_realm();
         }
         if let Some(by) = outcome.moved {
@@ -2995,6 +2992,22 @@ impl UnluminousApp {
             }
             RealmAction::CloseNode => match self.realm.chosen() {
                 Some(node) => self.close_a_realm_node(node),
+                None => self.message = Some("No node is chosen.".to_owned()),
+            },
+            RealmAction::Arrange(how) => match self.realm.chosen() {
+                Some(node) => {
+                    if let Some(why) = self.realm.realm.read_only_because() {
+                        self.message = Some(format!("This realm is read only. {why}"));
+                    } else if !self.realm.realm.arrange(node, how) {
+                        self.message = Some(match how {
+                            crate::services::realm::Arrange::Front
+                            | crate::services::realm::Arrange::Forward => {
+                                "That node is already in front.".to_owned()
+                            }
+                            _ => "That node is already at the back.".to_owned(),
+                        });
+                    }
+                }
                 None => self.message = Some("No node is chosen.".to_owned()),
             },
             RealmAction::ChooseFolder => self.choose_a_folder_for_a_node(),

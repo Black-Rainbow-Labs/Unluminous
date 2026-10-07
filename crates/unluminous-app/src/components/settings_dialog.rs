@@ -12,6 +12,7 @@
 use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::components::controls;
+use crate::components::controls::WithHint as _;
 use crate::components::mcp_page::{self, McpState};
 use crate::components::modal;
 use crate::components::plugins_page::{self, PluginsState};
@@ -1021,7 +1022,7 @@ fn swatch_button(
 ) -> bool {
     let area = Rect::from_center_size(centre, Vec2::splat(24.0));
     let response =
-        ui.interact(area, ui.id().with(("accent", name)), Sense::click()).on_hover_text(name);
+        ui.interact(area, ui.id().with(("accent", name)), Sense::click()).with_hint(name);
     let painter = ui.painter_at(area);
     if follow {
         painter.circle_stroke(centre, 8.0, Stroke::new(2.0, colour));

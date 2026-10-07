@@ -31,6 +31,7 @@
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::components::controls;
+use crate::components::controls::WithHint as _;
 use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, icon};
 
@@ -240,7 +241,7 @@ fn draw_tab(
     // a drag once the pointer has moved far enough, so a click is still a click.
     let response = ui
         .interact(rect, ui.id().with(("file-tab", at.pane, index)), Sense::click_and_drag())
-        .on_hover_text(&name);
+        .with_hint(&name);
     if response.dragged() || response.drag_stopped() {
         if let Some(pointer) = response.interact_pointer_pos() {
             outcome.dragging = Some((index, pointer));
@@ -321,7 +322,7 @@ fn draw_tab(
         let shut_name = format!("Close tab {}", tab.name);
         let shut_response = ui
             .interact(shut, ui.id().with(("file-tab-close", at.pane, index)), Sense::click())
-            .on_hover_text(&shut_name);
+            .with_hint(&shut_name);
         icon::cross(ui.painter(), shut.center(), color::text_dim());
         shut_response
             .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &shut_name));

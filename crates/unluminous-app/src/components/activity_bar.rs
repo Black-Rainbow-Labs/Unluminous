@@ -41,6 +41,7 @@ use egui::{CornerRadius, Pos2, Rect, Sense, Vec2};
 
 use crate::app::actions::{Action, GitAction};
 use crate::components::controls;
+use crate::components::controls::WithHint as _;
 use crate::theme::{color, icon, size};
 
 /// How big one button in the rail is, and how far apart two of them are.
@@ -364,7 +365,7 @@ fn rail_button(
 ) -> Pressed {
     let hit = Rect::from_center_size(centre, Vec2::splat(BUTTON));
     let sense = if enabled { Sense::click() } else { Sense::hover() };
-    let response = ui.interact(hit, ui.id().with(("activity", name)), sense).on_hover_text(name);
+    let response = ui.interact(hit, ui.id().with(("activity", name)), sense).with_hint(name);
     let painter = ui.painter();
     if on {
         controls::pill(painter, hit, size::CONTROL_CORNER);

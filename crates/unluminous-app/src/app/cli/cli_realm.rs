@@ -30,7 +30,7 @@ use crate::services::realm::{Kind, NodeId, Pipe, State};
 /// connected to"*.
 /// The verbs that change what the open realm file says, refused while it is read only.
 const CHANGES_THE_FILE: &[&str] =
-    &["add", "move", "size", "title", "remove", "connect", "disconnect", "volume"];
+    &["add", "move", "size", "title", "remove", "arrange", "connect", "disconnect", "volume"];
 
 impl UnluminousApp {
     pub(crate) fn cli_realm(
@@ -72,6 +72,7 @@ impl UnluminousApp {
             "title" => self.cli_realm_title(request),
             "remove" => self.cli_realm_remove(request),
             "focus" => self.cli_realm_focus(request),
+            "arrange" => self.cli_realm_arrange(request),
             "connect" => self.cli_realm_connect(request),
             "disconnect" => self.cli_realm_disconnect(request),
             "connections" => self.cli_realm_connections(request),
@@ -1440,9 +1441,31 @@ impl UnluminousApp {
         };
         self.show_a_panel(dock::Panel::Realm, true);
         self.realm.realm.choose(Some(node));
-        self.realm.realm.raise(node);
         self.take_the_keyboard_for_the_realm();
         done(request, format!("Node {node} has the keyboard."))
+    }
+
+    /// `arrange`: the node menu's `Arrange` rows, through the same `Realm::arrange`. `task-2200`.
+    fn cli_realm_arrange(&mut self, request: &Request) -> Outcome {
+        let node = match self.a_named_node(request, "node") {
+            Ok(node) => node,
+            Err(outcome) => return *outcome,
+        };
+        let word = request.text("how").unwrap_or_default();
+        let Some(how) = crate::services::realm::Arrange::from_name(&word) else {
+            return no(
+                request,
+                code::USAGE,
+                format!("`{word}` is not a way to arrange a node. Say front, forward, backward or back."),
+            );
+        };
+        let moved = self.realm.realm.arrange(node, how);
+        let order: Vec<u64> = self.realm.realm.nodes.iter().map(|node| node.id).collect();
+        let said = match moved {
+            true => format!("Node {node}: {}.", how.label()),
+            false => format!("Node {node} is already there."),
+        };
+        ok(request, said, serde_json::json!({ "node": node, "moved": moved, "order": order }))
     }
 
     /// `disconnect`. Split out of [`Self::cli_realm`] by `task-1984` §3.6.

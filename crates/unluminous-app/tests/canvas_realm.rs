@@ -228,6 +228,77 @@ fn the_canvas_can_be_read_and_changed_entirely_from_the_command_line() {
     assert!(!harness.state().realm.visible);
 }
 
+/// `task-2200`: a node can be moved up and down the stacking order, from the command line and from the
+/// node menu's `Arrange` rows, and clicking a node no longer undoes it by raising the node.
+///
+/// What is asserted is the model's order and which node a point over the overlap belongs to, because both
+/// the drawing order of the node layers and the hit test are worked out from that one list.
+#[test]
+fn a_node_is_arranged_in_the_stacking_order_and_a_click_leaves_the_order_alone() {
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let back = did(&mut harness, "realm add folder --x 40 --y 40 --width 320 --height 260")["node"]
+        .as_u64()
+        .expect("a node id");
+    let front = did(&mut harness, "realm add folder --x 120 --y 100 --width 320 --height 260")
+        ["node"]
+        .as_u64()
+        .expect("a node id");
+    let order = |harness: &Harness<'static, UnluminousApp>| -> Vec<u64> {
+        harness.state().realm.realm.nodes.iter().map(|node| node.id).collect()
+    };
+    let overlap = egui::pos2(200.0, 200.0);
+    assert_eq!(order(&harness), vec![back, front]);
+    assert_eq!(harness.state().realm.realm.node_at(overlap), Some(front));
+
+    // Sent to the back from the command line.
+    let reply = did(&mut harness, &format!("realm arrange {front} back"));
+    assert_eq!(reply["moved"], true);
+    assert_eq!(order(&harness), vec![front, back]);
+    assert_eq!(harness.state().realm.realm.node_at(overlap), Some(back));
+    // Asked again, nothing moves and the reply says so.
+    assert_eq!(did(&mut harness, &format!("realm arrange {front} back"))["moved"], false);
+    assert_eq!(refused(&mut harness, &format!("realm arrange {front} sideways")), "usage");
+
+    // Choosing the node behind, which is what a click does, leaves it behind.
+    did(&mut harness, &format!("realm focus {front}"));
+    for _ in 0..3 {
+        harness.step();
+    }
+    assert_eq!(order(&harness), vec![front, back], "choosing a node does not raise it");
+
+    // And the menu's row reaches the same function: `Bring Forward` on the chosen node.
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(
+        unluminous_app::app::actions::Action::Realm(
+            unluminous_app::app::actions::RealmAction::Arrange(
+                unluminous_app::services::realm::Arrange::Forward,
+            ),
+        ),
+        &ctx,
+    );
+    assert_eq!(order(&harness), vec![back, front]);
+
+    // The menu has the four rows under `Arrange`.
+    let state = harness.state().menu_state();
+    let rows: Vec<String> = unluminous_app::app::actions::realm_node_menu(&state)
+        .into_iter()
+        .flat_map(|entry| match entry {
+            unluminous_app::app::actions::Entry::Submenu { name, entries } if name == "Arrange" => {
+                entries
+                    .into_iter()
+                    .filter_map(|entry| match entry {
+                        unluminous_app::app::actions::Entry::Item { name, .. } => Some(name),
+                        _ => None,
+                    })
+                    .collect()
+            }
+            _ => Vec::new(),
+        })
+        .collect();
+    assert_eq!(rows, vec!["Bring to Front", "Bring Forward", "Send Backward", "Send to Back"]);
+}
+
 /// A File Editor node is an ordinary tab whose home is that node.
 ///
 /// Which is what makes it the editing area rather than a second editor: the same `Document`, the same

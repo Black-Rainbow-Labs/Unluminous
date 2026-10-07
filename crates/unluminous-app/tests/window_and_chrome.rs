@@ -4245,6 +4245,7 @@ const EVERY_SPACE: &[&str] = &[
     "RestartNode",
     "ResumeSession",
     "StartWhatWasRunning",
+    "Arrange",
     "Disconnect",
     "CarryLines",
 ];
@@ -4266,6 +4267,7 @@ fn realm_variant_name(action: &RealmAction) -> &'static str {
         RealmAction::RestartNode => "RestartNode",
         RealmAction::ResumeSession => "ResumeSession",
         RealmAction::StartWhatWasRunning => "StartWhatWasRunning",
+        RealmAction::Arrange(_) => "Arrange",
         RealmAction::Disconnect => "Disconnect",
         RealmAction::CarryLines(_) => "CarryLines",
     }
@@ -4622,6 +4624,13 @@ fn a_canvas_with_a_chosen_node(harness: &mut Harness<'static, UnluminousApp>) {
     ask(harness, &format!("realm focus {node}"));
 }
 
+/// Two nodes, the one in front chosen, so moving it down the stacking order is a change.
+fn a_canvas_with_its_front_node_chosen(harness: &mut Harness<'static, UnluminousApp>) {
+    harness.state_mut().new_detached_realm_node(Kind::Editor, egui::pos2(40.0, 40.0));
+    let front = harness.state_mut().new_detached_realm_node(Kind::Folder, egui::pos2(80.0, 80.0));
+    ask(harness, &format!("realm focus {front}"));
+}
+
 /// Two nodes, and the camera moved off them, so putting every node on the screen is a change.
 fn a_canvas_the_camera_is_off(harness: &mut Harness<'static, UnluminousApp>) {
     harness.state_mut().new_detached_realm_node(Kind::Editor, egui::pos2(40.0, 40.0));
@@ -4915,6 +4924,14 @@ fn every_step() -> Vec<Step> {
                 .ready_with(a_canvas_with_a_chosen_node),
         );
     }
+    // The front one of two, so sending it to the back is a change. `task-2200`.
+    steps.push(
+        Step::new(Action::Realm(RealmAction::Arrange(
+            unluminous_app::services::realm::Arrange::Back,
+        )))
+        .after(&["realm show"])
+        .ready_with(a_canvas_with_its_front_node_chosen),
+    );
     steps.push(
         Step::new(Action::Realm(RealmAction::Disconnect))
             .after(&["realm show"])

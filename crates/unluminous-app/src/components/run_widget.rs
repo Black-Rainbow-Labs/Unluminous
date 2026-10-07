@@ -42,6 +42,7 @@ use egui::{CornerRadius, Pos2, Rect, Sense, Vec2};
 
 use crate::app::actions::{Action, DebugAction, RunAction};
 use crate::components::controls;
+use crate::components::controls::WithHint as _;
 use crate::services::run_configurations::Origin;
 use crate::theme::{color, icon, size};
 
@@ -223,7 +224,7 @@ fn square_button(
     green: bool,
 ) -> bool {
     let response =
-        ui.interact(area, ui.id().with(("run-widget", name)), Sense::click()).on_hover_text(name);
+        ui.interact(area, ui.id().with(("run-widget", name)), Sense::click()).with_hint(name);
     if response.hovered() {
         ui.painter().rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::control());
     }

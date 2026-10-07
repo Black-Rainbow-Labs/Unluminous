@@ -51,6 +51,7 @@ use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Vec2};
 use unluminous_core::Layout;
 
 use crate::components::controls::mix;
+use crate::components::controls::WithHint as _;
 use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, icon};
 
@@ -73,6 +74,17 @@ const CHANGE_BAR: f32 = 3.0;
 /// size sets its numbers at exactly the 11.5 points it always has and no accepted screenshot changes
 /// its type. See [`number_size`].
 const NUMBER_RATIO: f32 = 11.5 / crate::settings::DEFAULT_FONT_SIZE;
+/// How much larger than at the default size the gutter's marks are drawn: the fold arrow, the breakpoint
+/// dot, the execution arrow, and the gap the arrow sits in.
+///
+/// `task-2200`: zoomed in, the numbers grew with the text and the arrow and the dot stayed the size they are
+/// at sixteen points, so a `1` taller than the arrow beside it. They follow the numbers, which already
+/// follow the text and already shrink when the gutter runs out of room, so the marks and the numbers cannot
+/// disagree about how large the gutter is. Exactly one at the default size, so nothing moves there.
+fn mark_scale(font_size: f32) -> f32 {
+    number_size(font_size) / (crate::settings::DEFAULT_FONT_SIZE * NUMBER_RATIO)
+}
+
 /// The size the blame column is set at, on the same terms.
 const BLAME_RATIO: f32 = 10.5 / crate::settings::DEFAULT_FONT_SIZE;
 /// The smallest the gutter's own type is allowed to get.
@@ -403,7 +415,8 @@ fn width_at(ui: &egui::Ui, gutter: &Gutter, lines: usize, font_size: f32) -> f32
     if !gutter.showing() {
         return 0.0;
     }
-    let mut width = CHANGE_BAR + 2.0 + GAP;
+    let marks = mark_scale(gutter.font_size);
+    let mut width = CHANGE_BAR + 2.0 + GAP * marks;
     if gutter.numbers {
         let font = egui::FontId::monospace(number_size(gutter.font_size));
         let digit = ui.ctx().fonts_mut(|fonts| fonts.glyph_width(&font, '0'));
@@ -412,7 +425,7 @@ fn width_at(ui: &egui::Ui, gutter: &Gutter, lines: usize, font_size: f32) -> f32
         // With the numbers on there is nothing to add: the dot is drawn over the number. This is
         // the other configuration, and the column is reserved whether or not anything is set so
         // that the first breakpoint never moves the text sideways.
-        width += BREAKPOINT_COLUMN;
+        width += BREAKPOINT_COLUMN * marks;
     }
     if gutter.blame.is_some() {
         width += blame_width(gutter.font_size);
@@ -449,6 +462,7 @@ pub fn show(
         outcome.context_menu = response.interact_pointer_pos().or_else(|| response.hover_pos());
     }
 
+    let marks = mark_scale(gutter.font_size);
     let mut pen = area.left();
     let blame = blame_width(gutter.font_size);
     let blame_rect = gutter.blame.map(|_| {
@@ -457,7 +471,7 @@ pub fn show(
         rect
     });
     let numbers_rect = gutter.numbers.then(|| {
-        let width = area.right() - pen - GAP - CHANGE_BAR - 2.0;
+        let width = area.right() - pen - GAP * marks - CHANGE_BAR - 2.0;
         let rect = Rect::from_min_size(Pos2::new(pen, area.top()), Vec2::new(width, area.height()));
         pen += width;
         rect
@@ -470,7 +484,7 @@ pub fn show(
         None if gutter.needs_a_breakpoint_column() => {
             let rect = Rect::from_min_size(
                 Pos2::new(pen, area.top()),
-                Vec2::new(BREAKPOINT_COLUMN, area.height()),
+                Vec2::new(BREAKPOINT_COLUMN * marks, area.height()),
             );
             // Nothing else is laid out from the pen after this — the change bar is measured from the
             // right hand edge and the fold arrow from the change bar — so it is not advanced here.
@@ -548,14 +562,15 @@ pub fn show(
                     mark,
                     stopped,
                     can_debug: gutter.can_debug,
+                    scale: marks,
                 },
             ) {
                 outcome.toggle_breakpoint = Some(line.paragraph);
             }
         }
         if let (Some(collapsed), true) = (gutter.fold_at(line.paragraph), first_row) {
-            let centre = Pos2::new(change_x - ARROW / 2.0, band.center());
-            if draw_arrow(&mut inner, centre, line.paragraph, collapsed) {
+            let centre = Pos2::new(change_x - ARROW * marks / 2.0, band.center());
+            if draw_arrow(&mut inner, centre, line.paragraph, collapsed, marks) {
                 outcome.toggle_fold = Some(line.paragraph);
             }
         }
@@ -577,8 +592,14 @@ pub fn show(
 /// explorer's own disclosure triangles already are — and it is the same shape, so a triangle means
 /// the same thing in both places. A collapsed block's arrow is never faint: it is the only thing on
 /// the screen saying that a stretch of the file is missing.
-fn draw_arrow(ui: &mut egui::Ui, centre: Pos2, paragraph: usize, collapsed: bool) -> bool {
-    let area = Rect::from_center_size(centre, Vec2::splat(ARROW));
+fn draw_arrow(
+    ui: &mut egui::Ui,
+    centre: Pos2,
+    paragraph: usize,
+    collapsed: bool,
+    scale: f32,
+) -> bool {
+    let area = Rect::from_center_size(centre, Vec2::splat(ARROW * scale));
     let name = if collapsed {
         format!("Expand block at line {}", paragraph + 1)
     } else {
@@ -587,7 +608,7 @@ fn draw_arrow(ui: &mut egui::Ui, centre: Pos2, paragraph: usize, collapsed: bool
     let response = ui.interact(area, ui.id().with(("fold", paragraph)), Sense::click());
     let tint =
         if collapsed || response.hovered() { color::text_control() } else { color::text_faint() };
-    icon::disclosure(ui.painter(), centre, !collapsed, tint);
+    icon::disclosure_at(ui.painter(), centre, !collapsed, tint, scale);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, true, collapsed, &name)
     });
@@ -610,6 +631,8 @@ struct BreakpointRow {
     stopped: bool,
     /// False when the file's language names no debugger, which makes the whole column inert.
     can_debug: bool,
+    /// How much larger than at the default size the marks are drawn. See [`mark_scale`].
+    scale: f32,
 }
 
 /// The breakpoint column for one row: the dot if there is one, the execution-point arrow if the
@@ -623,20 +646,20 @@ struct BreakpointRow {
 /// A file whose language names no debugger takes no click at all — Unluminous's rule for a control that
 /// can never apply — and draws nothing, so its gutter looks exactly as it did.
 fn draw_breakpoint(ui: &mut egui::Ui, at: BreakpointRow) -> bool {
-    let BreakpointRow { column, row, band, paragraph, mark, stopped, can_debug } = at;
+    let BreakpointRow { column, row, band, paragraph, mark, stopped, can_debug, scale } = at;
     // The dot sits at the left of the column with the numbers on — over the margin the number's
     // right alignment leaves — and in the middle of its own column with them off. Its height comes
     // from the letters rather than from the line, so it stays beside the number it replaces at every
     // size. The click target is still the whole row, because a person aiming at a line means the
     // line.
     let centre = Pos2::new(
-        column.left() + (column.width() / 2.0).min(NUMBER_MARGIN + icon::BREAKPOINT_RADIUS),
+        column.left() + (column.width() / 2.0).min(NUMBER_MARGIN + icon::BREAKPOINT_RADIUS * scale),
         band.center(),
     );
     if stopped {
         // The execution point's own mark, drawn behind the dot so a breakpoint that is also where
         // the program stopped still reads as a breakpoint. The reference editor's arrow, drawn.
-        execution_arrow(ui.painter(), centre, color::accent());
+        execution_arrow(ui.painter(), centre, color::accent(), scale);
     }
     if let Some(mark) = mark {
         // Both hollow, because both mean the program will not stop here — but they are not the same
@@ -648,9 +671,9 @@ fn draw_breakpoint(ui: &mut egui::Ui, at: BreakpointRow) -> bool {
             true => color::breakpoint(),
             false => color::breakpoint().gamma_multiply(0.45),
         };
-        icon::breakpoint(ui.painter(), centre, mark.is_filled(), tint);
+        icon::breakpoint_at(ui.painter(), centre, mark.is_filled(), tint, scale);
         if mark.conditional {
-            icon::breakpoint_badge(ui.painter(), centre, tint);
+            icon::scaled(ui.painter(), centre, tint, scale, icon::breakpoint_badge);
         }
     }
     if !can_debug {
@@ -658,7 +681,7 @@ fn draw_breakpoint(ui: &mut egui::Ui, at: BreakpointRow) -> bool {
     }
     let target = Rect::from_min_size(
         Pos2::new(column.left(), row.top()),
-        Vec2::new(column.width().min(BREAKPOINT_COLUMN + NUMBER_MARGIN), row.height()),
+        Vec2::new(column.width().min((BREAKPOINT_COLUMN + NUMBER_MARGIN) * scale), row.height()),
     );
     let name = match mark {
         Some(_) => format!("Remove breakpoint on line {}", paragraph + 1),
@@ -668,7 +691,13 @@ fn draw_breakpoint(ui: &mut egui::Ui, at: BreakpointRow) -> bool {
     // A hovered row with nothing on it shows where the dot would go, which is how a person finds a
     // control that is otherwise invisible until it is used — VS Code's own hint.
     if response.hovered() && mark.is_none() {
-        icon::breakpoint(ui.painter(), centre, false, color::breakpoint().gamma_multiply(0.45));
+        icon::breakpoint_at(
+            ui.painter(),
+            centre,
+            false,
+            color::breakpoint().gamma_multiply(0.45),
+            scale,
+        );
     }
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, true, mark.is_some(), &name)
@@ -680,12 +709,13 @@ fn draw_breakpoint(ui: &mut egui::Ui, at: BreakpointRow) -> bool {
 ///
 /// Drawn rather than lettered, in the manner of every other mark in the gutter, and it is the reference editor's
 /// own shape.
-fn execution_arrow(painter: &egui::Painter, centre: Pos2, color: Color32) {
+fn execution_arrow(painter: &egui::Painter, centre: Pos2, color: Color32, scale: f32) {
+    let reach = 5.0 * scale;
     painter.add(egui::Shape::convex_polygon(
         vec![
-            Pos2::new(centre.x - 5.0, centre.y - 5.0),
-            Pos2::new(centre.x + 5.0, centre.y),
-            Pos2::new(centre.x - 5.0, centre.y + 5.0),
+            Pos2::new(centre.x - reach, centre.y - reach),
+            Pos2::new(centre.x + reach, centre.y),
+            Pos2::new(centre.x - reach, centre.y + reach),
         ],
         color,
         egui::Stroke::NONE,
@@ -746,7 +776,7 @@ fn draw_blame(
     let name = format!("Blame: {} {}", entry.date, entry.author);
     let response = ui
         .interact(cell, ui.id().with(("blame", paragraph)), Sense::click())
-        .on_hover_text(format!("{}\n{} \u{00B7} {}", entry.summary, entry.author, entry.date));
+        .with_hint(format!("{}\n{} \u{00B7} {}", entry.summary, entry.author, entry.date));
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &name));
     if response.clicked() {
         outcome.show_commit = Some(entry.commit.clone());
@@ -788,6 +818,18 @@ mod tests {
             clusters: Vec::new(),
             empty_style: std::sync::Arc::new(unluminous_core::CharStyle::default()),
         }
+    }
+
+    /// `task-2200`: the fold arrow and the breakpoint dot grow with the numbers, and are exactly the size
+    /// they always were at the default, so a window nobody has zoomed draws the gutter as it did.
+    #[test]
+    fn the_marks_grow_with_the_numbers_and_are_unchanged_at_the_default() {
+        assert_eq!(mark_scale(crate::settings::DEFAULT_FONT_SIZE), 1.0);
+        assert_eq!(mark_scale(0.0), 1.0, "a gutter built by hand is at the default");
+        let doubled = mark_scale(crate::settings::DEFAULT_FONT_SIZE * 2.0);
+        assert!((doubled - 2.0).abs() < 0.001, "{doubled}");
+        // The numbers have a floor, and the marks keep to it, so they never shrink past what is readable.
+        assert!(mark_scale(2.0) > 0.7);
     }
 
     /// `task-1693`: a mark centred on the line box sits low, because the bottom of a line box is

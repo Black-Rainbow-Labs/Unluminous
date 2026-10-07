@@ -1838,12 +1838,28 @@ unluminous-cli realm remove 7
 unluminous-cli realm focus <node>
 ```
 
-Choose a node, bring it to the front and give it the keyboard.
+Choose a node and give it the keyboard. It stays where it is in the stacking order, as it does when it is clicked; `realm arrange` moves it.
 
 - `node` — The node's id.
 
 ```sh
 unluminous-cli realm focus 7
+```
+
+### realm arrange
+
+```
+unluminous-cli realm arrange <node> <front|forward|backward|back>
+```
+
+Move a node in the stacking order, which is what the node menu's Arrange rows do: `front` puts it over every other node, `forward` and `backward` move it one place, `back` puts it behind every other node. The order is written to the realm file.
+
+- `node` — The node's id.
+- `how` — front, forward, backward or back.
+
+```sh
+unluminous-cli realm arrange 7 back
+unluminous-cli realm arrange 3 forward
 ```
 
 ### realm connect

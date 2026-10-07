@@ -35,6 +35,7 @@ use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 use unluminous_terminal::session::{Session, SessionSettings, Size};
 
 use crate::components::controls;
+use crate::components::controls::WithHint as _;
 use crate::components::splitter;
 use crate::components::terminal_panel;
 use crate::services::run_configurations::Configuration;
@@ -597,7 +598,7 @@ fn dimmable_button(
     enabled: bool,
 ) -> bool {
     let sense = if enabled { Sense::click() } else { Sense::hover() };
-    let response = ui.interact(area, ui.id().with(("run-button", name)), sense).on_hover_text(name);
+    let response = ui.interact(area, ui.id().with(("run-button", name)), sense).with_hint(name);
     if response.hovered() && enabled {
         ui.painter().rect_filled(area, CornerRadius::same(4), color::control());
     }
@@ -681,7 +682,7 @@ fn draw_tab(
     );
     let response = ui
         .interact(tab, ui.id().with(("run-tab", index)), Sense::click())
-        .on_hover_text(format!("Run: {name} \u{00B7} {}", state.label()));
+        .with_hint(format!("Run: {name} \u{00B7} {}", state.label()));
     if active {
         controls::pill_with_stroke(
             &painter,
@@ -713,7 +714,7 @@ fn draw_tab(
         Rect::from_center_size(Pos2::new(tab.right() - 12.0, tab.center().y), Vec2::splat(16.0));
     let shut_response = ui
         .interact(shut, ui.id().with(("run-close", index)), Sense::click())
-        .on_hover_text(format!("Close run {name}"));
+        .with_hint(format!("Close run {name}"));
     icon::cross(&painter, shut.center(), color::text_dim());
     shut_response.widget_info(|| {
         // Prefixed for `no_two_controls_share_a_name`'s reason -- see `file_tabs::show`.

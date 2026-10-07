@@ -896,6 +896,8 @@ pub enum RealmAction {
     /// and calling it the same. A shell is also somebody's shell, and there is no undo for a program that
     /// starts. `task-1907`.
     StartWhatWasRunning,
+    /// Move the chosen node up or down the stacking order — `task-2200`.
+    Arrange(crate::services::realm::Arrange),
     /// Take away the connection that was right clicked.
     Disconnect,
     /// Turn the connection that was right clicked into one that carries lines, or back.
@@ -911,6 +913,9 @@ impl RealmAction {
     pub fn from_name(name: &str) -> Option<RealmAction> {
         if let Some(kind) = name.strip_prefix("add-") {
             return crate::services::realm::Kind::from_name(kind).map(RealmAction::Add);
+        }
+        if let Some(how) = name.strip_prefix("arrange-") {
+            return crate::services::realm::Arrange::from_name(how).map(RealmAction::Arrange);
         }
         Some(match name {
             "toggle" => RealmAction::Toggle,
@@ -952,6 +957,7 @@ impl RealmAction {
             RealmAction::RestartNode => "restart-node".to_owned(),
             RealmAction::ResumeSession => "resume-session".to_owned(),
             RealmAction::StartWhatWasRunning => "start-what-was-running".to_owned(),
+            RealmAction::Arrange(how) => format!("arrange-{}", how.name()),
             RealmAction::Disconnect => "disconnect".to_owned(),
             RealmAction::CarryLines(on) => match on {
                 true => "carry-lines".to_owned(),
@@ -2273,6 +2279,16 @@ pub fn realm_node_menu(state: &MenuState) -> Vec<Entry> {
     if let Some((crate::services::realm::Kind::Folder, _)) = state.realm_node {
         entries.push(Entry::item("Choose Folder...", Action::Realm(RealmAction::ChooseFolder)));
     }
+    // **The stacking order**, `task-2200`. A submenu, which a context menu draws as a heading with its
+    // rows under it, so the four sit together under the word somebody looks for.
+    entries.push(Entry::Separator);
+    entries.push(Entry::Submenu {
+        name: "Arrange".to_owned(),
+        entries: crate::services::realm::Arrange::ALL
+            .into_iter()
+            .map(|how| Entry::item(how.label(), Action::Realm(RealmAction::Arrange(how))))
+            .collect(),
+    });
     entries.push(Entry::Separator);
     entries.push(Entry::item("Close", Action::Realm(RealmAction::CloseNode)));
     entries

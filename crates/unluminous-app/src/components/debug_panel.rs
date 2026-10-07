@@ -22,6 +22,7 @@ use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::app::debug::{DebugState, Row, Watch};
 use crate::components::controls;
+use crate::components::controls::WithHint as _;
 use crate::components::splitter;
 use crate::components::terminal_panel;
 use crate::theme::{color, icon, size};
@@ -783,8 +784,7 @@ fn dimmable(
     draw: &dyn Fn(&egui::Painter, Pos2),
 ) -> bool {
     let sense = if enabled { Sense::click() } else { Sense::hover() };
-    let response =
-        ui.interact(area, ui.id().with(("debug-button", name)), sense).on_hover_text(name);
+    let response = ui.interact(area, ui.id().with(("debug-button", name)), sense).with_hint(name);
     if response.hovered() && enabled {
         ui.painter().rect_filled(area, CornerRadius::same(4), color::control());
     }

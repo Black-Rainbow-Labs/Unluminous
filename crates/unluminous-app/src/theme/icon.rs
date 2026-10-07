@@ -77,6 +77,38 @@ pub fn chevron_up(painter: &egui::Painter, centre: Pos2, color: Color32) {
 }
 
 /// A triangle pointing down when a folder is open and right when it is closed.
+/// Draw any mark here `scale` times as large, about its own centre.
+///
+/// `task-2200`: a zoomed chat pane drew its text at the zoom and its history and new conversation marks at
+/// twelve points. Most marks here are drawn from fixed numbers and only a few take a scale of their own, so
+/// this draws the mark as it is and then scales the shapes it added about `centre` — points, radii and
+/// stroke widths together, which is `epaint::Shape::transform`. The clip rectangle each shape carries is
+/// left alone, so a mark is still cut by the pane it is in.
+pub fn scaled(
+    painter: &egui::Painter,
+    centre: Pos2,
+    color: Color32,
+    scale: f32,
+    draw: fn(&egui::Painter, Pos2, Color32),
+) {
+    if (scale - 1.0).abs() < 0.01 {
+        draw(painter, centre, color);
+        return;
+    }
+    let first = painter.add(egui::Shape::Noop);
+    draw(painter, centre, color);
+    let end = painter.add(egui::Shape::Noop);
+    let about = egui::emath::TSTransform::new(centre.to_vec2() * (1.0 - scale), scale);
+    painter.ctx().graphics_mut(|layers| {
+        let list = layers.entry(painter.layer_id());
+        for index in first.0 + 1..end.0 {
+            list.mutate_shape(egui::layers::ShapeIdx(index), |clipped| {
+                clipped.shape.transform(about)
+            });
+        }
+    });
+}
+
 pub fn disclosure(painter: &egui::Painter, centre: Pos2, open: bool, color: Color32) {
     disclosure_at(painter, centre, open, color, 1.0);
 }
@@ -1117,10 +1149,25 @@ pub const BREAKPOINT_RADIUS: f32 = 4.5;
 /// the gutter already is. A ring rather than a second colour, because what is different about an
 /// unverified breakpoint is that it is hollow — the program has not agreed to stop there yet.
 pub fn breakpoint(painter: &egui::Painter, centre: Pos2, filled: bool, color: Color32) {
+    breakpoint_at(painter, centre, filled, color, 1.0);
+}
+
+/// The same, `scale` times as large, for a gutter whose type has been zoomed. `task-2200`.
+pub fn breakpoint_at(
+    painter: &egui::Painter,
+    centre: Pos2,
+    filled: bool,
+    color: Color32,
+    scale: f32,
+) {
     if filled {
-        painter.circle_filled(centre, BREAKPOINT_RADIUS, color);
+        painter.circle_filled(centre, BREAKPOINT_RADIUS * scale, color);
     } else {
-        painter.circle_stroke(centre, BREAKPOINT_RADIUS - 0.75, Stroke::new(1.5, color));
+        painter.circle_stroke(
+            centre,
+            (BREAKPOINT_RADIUS - 0.75) * scale,
+            Stroke::new(1.5 * scale, color),
+        );
     }
 }
 

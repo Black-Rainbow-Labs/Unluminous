@@ -21,6 +21,7 @@ use unluminous_terminal::session::{SelectionKind, SessionSettings, Size};
 use unluminous_terminal::Tabs;
 
 use crate::components::controls;
+use crate::components::controls::WithHint as _;
 use crate::components::file_tabs;
 use crate::components::splitter;
 use crate::services::text_renderer::TextRenderer;
@@ -254,7 +255,7 @@ fn draw_tab(
     // drag once the pointer has moved far enough, so a click is still a click.
     let response = ui
         .interact(tab, ui.id().with(("terminal-tab", index)), Sense::click_and_drag())
-        .on_hover_text(format!("Terminal tab: {name}"));
+        .with_hint(format!("Terminal tab: {name}"));
     if response.dragged() || response.drag_stopped() {
         if let Some(pointer) = response.interact_pointer_pos() {
             hit.dragging = Some((index, pointer));
@@ -291,7 +292,7 @@ fn draw_tab(
         Rect::from_center_size(Pos2::new(tab.right() - 12.0, tab.center().y), Vec2::splat(16.0));
     let shut_response = ui
         .interact(shut, ui.id().with(("terminal-close", index)), Sense::click())
-        .on_hover_text(format!("Close terminal {name}"));
+        .with_hint(format!("Close terminal {name}"));
     icon::cross(&painter, shut.center(), color::text_dim());
     shut_response.widget_info(|| {
         // Prefixed for `no_two_controls_share_a_name`'s reason -- see `file_tabs::show`.

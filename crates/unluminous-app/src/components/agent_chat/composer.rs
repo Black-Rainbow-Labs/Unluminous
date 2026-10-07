@@ -48,13 +48,17 @@ const TOOL: f32 = 22.0;
 const THUMB: f32 = 38.0;
 /// The prompt well when there is one line in it, and the most it grows to.
 ///
-/// **Sixty-eight rather than forty-two**, which is the reference's own: at forty-two the field was
-/// shallower than its own send button and the whole composer read as cramped, which is the first
-/// thing a review of the picture said about it.
-const PROMPT: f32 = 68.0;
+/// **Forty-eight**, which leaves eight points above and below the send disc. It was sixty-eight, after
+/// the reference's forty-two read as cramped beside a thirty-two point disc, and `task-2200` reported the
+/// sixty-eight as *"too much padding on the prompt input"*: one line of text sat in a well three lines
+/// tall.
+const PROMPT: f32 = 48.0;
 const PROMPT_ROWS: usize = 6;
 /// The disc at the end of the prompt.
 const SEND: f32 = 32.0;
+/// How far the disc's edge is from the well's right edge. The well's corners are eighteen points round,
+/// so at five the disc sat against the curve; `task-2200` reported it as too close to the right.
+const SEND_INSET: f32 = 10.0;
 /// Between the composer's rows.
 const GAP: f32 = 8.0;
 
@@ -255,7 +259,7 @@ fn pill(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Ve
             (false, true) => look.palette.text_strong,
             (false, false) => look.palette.text_dim,
         };
-        drawing(&ui.painter_at(area), centre, tint);
+        icon::scaled(&ui.painter_at(area), centre, tint, scale, drawing);
         if response.clicked() {
             acts.push(act);
         }
@@ -309,17 +313,24 @@ fn thumbnails(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: R
             }
             // A picture that will not decode still says it is attached, because it will still be
             // sent — the server is the one that decides whether it can read it.
-            None => icon::image(&ui.painter_at(area), at.center(), look.palette.text_dim),
+            None => icon::scaled(
+                &ui.painter_at(area),
+                at.center(),
+                look.palette.text_dim,
+                scale,
+                icon::image,
+            ),
         }
         let cross = Rect::from_center_size(
             Pos2::new(at.right() - 2.0 * scale, at.top() + 2.0 * scale),
             Vec2::splat(14.0 * scale),
         );
-        if crate::components::controls::icon_button(
+        if crate::components::controls::icon_button_at(
             ui,
             cross,
             &format!("Take off {}", attachment.name),
             icon::cross,
+            scale,
         ) {
             acts.push(Act::Detach(attachment.id));
         }
@@ -356,7 +367,7 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
     // is looking.
     let middle = area.bottom() - PROMPT * scale / 2.0;
     let disc = Rect::from_center_size(
-        Pos2::new(area.right() - (SEND / 2.0 + 5.0) * scale, middle),
+        Pos2::new(area.right() - (SEND / 2.0 + SEND_INSET) * scale, middle),
         Vec2::splat(SEND * scale),
     );
     // **While an answer is arriving there are two things to do, so there are two discs.** Stopping
@@ -525,9 +536,10 @@ fn one_disc(
     });
     if look.chrome.is_recording() {
         if enabled {
-            // The blue glow under the primary button, which is the reference's own
-            // `4px 4px 12px rgba(29,79,219,0.35)`.
-            look.chrome.glow(disc, disc.width() / 2.0, start.gamma_multiply(0.45), 7.0 * scale);
+            // The glow under the primary button. The reference's own is `4px 4px 12px
+            // rgba(29,79,219,0.35)`; `task-2200` reported that as too much blur round a disc this small,
+            // so it is tighter and fainter: a rim of colour rather than a cloud.
+            look.chrome.glow(disc, disc.width() / 2.0, start.gamma_multiply(0.28), 3.0 * scale);
         }
         look.chrome.disc(disc.center(), disc.width() / 2.0, Fill::diagonal(disc, start, end));
     } else {
@@ -544,8 +556,8 @@ fn one_disc(
 }
 
 /// The stop square, at the shape [`one_disc`] hands its mark.
-fn stop_mark(painter: &egui::Painter, centre: Pos2, tint: Color32, _scale: f32) {
-    icon::stop(painter, centre, tint);
+fn stop_mark(painter: &egui::Painter, centre: Pos2, tint: Color32, scale: f32) {
+    icon::scaled(painter, centre, tint, scale, icon::stop);
 }
 
 /// The arrow on the send button: a shaft and two strokes, drawn rather than lettered.
