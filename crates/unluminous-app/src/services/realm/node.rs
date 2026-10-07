@@ -352,6 +352,53 @@ pub struct Browser {
     ///
     /// Not written down either: a realm comes back showing where the page is.
     pub editing: bool,
+    /// Every address the node's page has been at, oldest first, and which of them it is on.
+    ///
+    /// **Written to the sidecar**, beside the camera, because where one person had been is not part of what
+    /// the realm is. Empty for a node that has never had a page, and for one read from a sidecar written
+    /// before `task-2203`, which comes back with only its address.
+    pub history: Vec<String>,
+    pub position: usize,
+    /// The one element of the page this node shows, when it shows only one. `task-2203`.
+    ///
+    /// **In the realm file**, because a node that shows one element of a page is part of what the realm is.
+    pub pin: Option<Pin>,
+}
+
+/// One element of one page, shown alone in a browser node.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Pin {
+    /// The address it was picked on. The pin applies while the page is there, ignoring the fragment.
+    pub url: String,
+    /// A CSS selector that finds exactly that element.
+    pub selector: String,
+}
+
+impl Pin {
+    /// Whether the page at `url` is the one this pin was picked on.
+    ///
+    /// **A local page is compared by its path in the project**, because its address carries the id of the tab
+    /// it was opened in, `unluminous://tab-3/site/index.html`, and the id is new every run. Measured on
+    /// `task-2203`: a pin made on `tab-3` was not shown after a restart that opened the page as `tab-2`. The
+    /// fragment and a trailing `/` are ignored too.
+    pub fn applies_to(&self, url: &str) -> bool {
+        !self.selector.trim().is_empty() && the_page(&self.url) == the_page(url)
+    }
+}
+
+/// An address with its fragment and trailing `/` taken off, and a local page's tab id taken out.
+fn the_page(url: &str) -> String {
+    let url = url.split('#').next().unwrap_or_default().trim_end_matches('/');
+    for origin in ["unluminous://tab-", "http://unluminous.tab-", "https://unluminous.tab-"] {
+        if let Some(rest) = url.strip_prefix(origin) {
+            if let Some((id, path)) = rest.split_once('/') {
+                if id.chars().all(|c| c.is_ascii_digit()) {
+                    return format!("unluminous://tab/{path}");
+                }
+            }
+        }
+    }
+    url.to_owned()
 }
 
 /// A folder node: which folder, which folders inside it are open, and what is in its filter box.

@@ -30,6 +30,15 @@
 //! What is being typed belongs to the caller, because it has to outlive a frame in which this is not
 //! drawn at all: a node scrolled off the canvas stops being drawn, and `egui`'s memory is not where a
 //! half-typed address should live.
+//!
+//! ## Where a person has been, and one element of a page
+//!
+//! `task-2203` added two things. While the field is being typed into, the addresses visited in every
+//! project that match what is typed are listed under it (`services::browser_session::Visits`); `Up` and
+//! `Down` choose one and `Enter` or a click goes there. And a browser **node** has a crosshair button at
+//! the right hand end, which opens the element picker in the page, and a second button while it shows one
+//! element, which shows the whole page again. A tab in the editing area has neither, because pinning is a
+//! node's feature and a control that can never apply is absent.
 
 use egui::{Align2, CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 
@@ -53,6 +62,21 @@ pub struct Toolbar<'a> {
     pub editing: &'a mut bool,
     /// Which widget id the field takes, so it is stable across frames and unique between two of these.
     pub id: egui::Id,
+    /// Whether this is a browser node, which is what offers the element picker. `task-2203`.
+    pub pickable: bool,
+    /// Whether the node is showing one element of its page rather than the whole of it.
+    pub pinned: bool,
+    /// Whether the element picker is open in this page now.
+    pub picking: bool,
+    /// The visited addresses that match what is being typed, best first. Empty while nothing is typed.
+    pub suggestions: Vec<Suggestion>,
+}
+
+/// One visited address offered under the field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Suggestion {
+    pub url: String,
+    pub title: String,
 }
 
 impl Toolbar<'_> {
@@ -89,9 +113,24 @@ pub struct Outcome {
 /// The content and command of one compact navigation control.
 struct Button<'a> {
     name: &'a str,
-    glyph: &'a str,
+    mark: Mark<'a>,
     enabled: bool,
     command: BrowserCommand,
+}
+
+/// What is drawn on a button: a letter, or one of the drawn marks in `theme::icon`.
+enum Mark<'a> {
+    Glyph(&'a str),
+    Drawn(fn(&egui::Painter, Pos2, egui::Color32)),
+}
+
+/// How much of the strip's right hand end the picker's buttons take, which the field stops short of.
+fn room_for_the_picker(toolbar: &Toolbar<'_>) -> f32 {
+    match (toolbar.pickable, toolbar.pinned) {
+        (false, _) => 0.0,
+        (true, false) => BUTTON_SIZE + 6.0,
+        (true, true) => 2.0 * BUTTON_SIZE + 8.0,
+    }
 }
 
 /// Draw navigation controls and return the rectangle reserved for the native child view.
@@ -117,7 +156,7 @@ pub fn show(
         strip,
         Button {
             name: "Back",
-            glyph: "‹",
+            mark: Mark::Glyph("‹"),
             enabled: toolbar.can_go_back(),
             command: BrowserCommand::Back,
         },
@@ -129,7 +168,7 @@ pub fn show(
         strip,
         Button {
             name: "Forward",
-            glyph: "›",
+            mark: Mark::Glyph("›"),
             enabled: toolbar.can_go_forward(),
             command: BrowserCommand::Forward,
         },
@@ -141,13 +180,14 @@ pub fn show(
         strip,
         Button {
             name: "Reload",
-            glyph: "↻",
+            mark: Mark::Glyph("↻"),
             enabled: toolbar.tab.is_some(),
             command: BrowserCommand::Reload,
         },
         &mut outcome,
     );
     address_field(ui, &mut left, strip, &mut toolbar, &mut outcome);
+    picker_buttons(ui, strip, &toolbar, &mut outcome);
 
     // **No page and nothing to place.** A native child view is placed where a tab is drawn, and a node
     // with no tab has none to place — answering with a placement for a tab that does not exist would ask
@@ -205,7 +245,7 @@ fn address_field(
 ) {
     let field = Rect::from_min_max(
         Pos2::new(*left + 6.0, strip.top() + 6.0),
-        Pos2::new(strip.right() - 8.0, strip.bottom() - 6.0),
+        Pos2::new(strip.right() - 8.0 - room_for_the_picker(toolbar), strip.bottom() - 6.0),
     );
     ui.painter().rect(
         field,
@@ -231,6 +271,28 @@ fn address_field(
         "Address field",
         &ADDRESS_FONT,
     );
+    // **The list's keys are taken before the field sees them**, because a single line `TextEdit` reads `Up`
+    // and `Down` as moving the cursor to the ends and `Enter` as giving up the focus.
+    let offered = suggestions_open(ui, toolbar) && !toolbar.suggestions.is_empty();
+    let chosen_id = toolbar.id.with("suggestion");
+    let mut chosen: Option<usize> = ui.data(|data| data.get_temp(chosen_id)).flatten();
+    let mut chose_by_key = None;
+    if offered {
+        let last = toolbar.suggestions.len() - 1;
+        ui.input_mut(|input| {
+            if input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown) {
+                chosen = Some(chosen.map_or(0, |at| (at + 1).min(last)));
+            }
+            if input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp) {
+                chosen = chosen.and_then(|at| at.checked_sub(1));
+            }
+            if chosen.is_some() && input.consume_key(egui::Modifiers::NONE, egui::Key::Enter) {
+                chose_by_key = chosen;
+            }
+        });
+    } else {
+        chosen = None;
+    }
     let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
     let response = inner.add(
         egui::TextEdit::singleline(toolbar.typed)
@@ -267,7 +329,32 @@ fn address_field(
     // Typing makes the field the person's until they enter it or put it back.
     if response.changed() {
         *toolbar.editing = true;
+        chosen = None;
+        set_suggestions_open(ui, toolbar.id, true);
     }
+    if response.gained_focus() {
+        set_suggestions_open(ui, toolbar.id, true);
+    }
+    // A visited address chosen from the list, by `Enter` on the one chosen with the arrows or by a click.
+    let clicked = match offered {
+        true => suggestions(ui, field, toolbar, chosen),
+        false => None,
+    };
+    if let Some(at) = chose_by_key.or(clicked) {
+        if let Some(suggestion) = toolbar.suggestions.get(at) {
+            outcome.command = Some(BrowserCommand::Go(suggestion.url.clone()));
+            *toolbar.typed = suggestion.url.clone();
+            *toolbar.editing = false;
+            outcome.took_focus = true;
+        }
+        chosen = None;
+        set_suggestions_open(ui, toolbar.id, false);
+        ui.memory_mut(|memory| memory.surrender_focus(toolbar.id));
+    }
+    if entered || ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+        set_suggestions_open(ui, toolbar.id, false);
+    }
+    ui.data_mut(|data| data.insert_temp(chosen_id, chosen));
     // **What the tab really says**, which is what every address bar puts back.
     if response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Escape)) {
         *toolbar.editing = false;
@@ -298,6 +385,162 @@ fn address_field(
     *left = field.right();
 }
 
+/// Whether the list of visited addresses is open under this field.
+///
+/// Open from the moment the field is typed into or given the focus until an address is chosen, `Enter` or
+/// `Escape` is pressed, or the pointer is pressed somewhere that is neither the field nor the list. Kept in
+/// `egui`'s memory rather than read off the field's focus, because pressing a row in the list takes the focus
+/// off the field a frame before the click is seen.
+fn suggestions_open(ui: &egui::Ui, toolbar: &Toolbar<'_>) -> bool {
+    let open =
+        ui.data(|data| data.get_temp::<bool>(toolbar.id.with("suggesting"))).unwrap_or(false);
+    let focused = ui.memory(|memory| memory.has_focus(toolbar.id));
+    let area = ui.data(|data| data.get_temp::<Rect>(toolbar.id.with("suggestions-area")));
+    let field = ui.data(|data| data.get_temp::<Rect>(toolbar.id.with("field-area")));
+    let pressed_elsewhere = ui.input(|input| {
+        input.pointer.any_pressed()
+            && input.pointer.interact_pos().is_some_and(|at| {
+                !area.is_some_and(|area| area.contains(at))
+                    && !field.is_some_and(|field| field.contains(at))
+            })
+    });
+    if pressed_elsewhere && !focused {
+        set_suggestions_open(ui, toolbar.id, false);
+        return false;
+    }
+    open && toolbar.editing()
+}
+
+fn set_suggestions_open(ui: &egui::Ui, id: egui::Id, open: bool) {
+    ui.data_mut(|data| data.insert_temp(id.with("suggesting"), open));
+}
+
+/// Height of one row in the list of visited addresses.
+const SUGGESTION_ROW: f32 = 34.0;
+
+/// The list of visited addresses under the field, and the row a click chose.
+///
+/// **Drawn in the window's own points on a layer of its own**, so it sits over the page and over whatever
+/// is below the node. A browser node is drawn into a layer carrying the canvas's camera, so the field's
+/// rectangle is mapped through that layer's transform first. A native page is cut around the list, which is
+/// what `UnluminousApp::occluding_rects` already does for every popup.
+fn suggestions(
+    ui: &egui::Ui,
+    field: Rect,
+    toolbar: &Toolbar<'_>,
+    chosen: Option<usize>,
+) -> Option<usize> {
+    let to_screen = ui.ctx().layer_transform_to_global(ui.layer_id()).unwrap_or_default();
+    let field_on_screen = to_screen * field;
+    ui.data_mut(|data| data.insert_temp(toolbar.id.with("field-area"), field_on_screen));
+    let width = field_on_screen.width().max(260.0);
+    let height = SUGGESTION_ROW * toolbar.suggestions.len() as f32 + 8.0;
+    let top_left = Pos2::new(field_on_screen.left(), field_on_screen.bottom() + 4.0);
+    let mut picked = None;
+    let area = egui::Area::new(toolbar.id.with("suggestions"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(top_left)
+        .show(ui.ctx(), |ui| {
+            let outer = Rect::from_min_size(top_left, Vec2::new(width, height));
+            ui.painter().rect(
+                outer,
+                CornerRadius::same(size::CONTROL_CORNER),
+                color::menu(),
+                Stroke::new(1.0, color::control_border()),
+                egui::StrokeKind::Inside,
+            );
+            for (at, suggestion) in toolbar.suggestions.iter().enumerate() {
+                let row = Rect::from_min_size(
+                    Pos2::new(outer.left() + 4.0, outer.top() + 4.0 + SUGGESTION_ROW * at as f32),
+                    Vec2::new(width - 8.0, SUGGESTION_ROW),
+                );
+                let response =
+                    ui.interact(row, toolbar.id.with(("suggestion-row", at)), Sense::click());
+                if response.hovered() || chosen == Some(at) {
+                    ui.painter().rect_filled(
+                        row,
+                        CornerRadius::same(size::CONTROL_CORNER),
+                        color::control(),
+                    );
+                }
+                // Cut at the sides only, so a long address stops at the list's edge and no line is clipped.
+                let painter = ui.painter().with_clip_rect(row.shrink2(Vec2::new(6.0, 0.0)));
+                let title = match suggestion.title.trim().is_empty() {
+                    true => suggestion.url.as_str(),
+                    false => suggestion.title.trim(),
+                };
+                painter.crisp_text(
+                    Pos2::new(row.left() + 8.0, row.top() + 10.0),
+                    Align2::LEFT_CENTER,
+                    title,
+                    FontId::proportional(12.0),
+                    color::text_control(),
+                );
+                painter.crisp_text(
+                    Pos2::new(row.left() + 8.0, row.top() + 24.0),
+                    Align2::LEFT_CENTER,
+                    &suggestion.url,
+                    FontId::proportional(10.5),
+                    color::text_faint(),
+                );
+                let name = format!("Visited: {}", suggestion.url);
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &name)
+                });
+                if response.clicked() {
+                    picked = Some(at);
+                }
+            }
+            ui.allocate_rect(outer, Sense::hover());
+        });
+    ui.data_mut(|data| data.insert_temp(toolbar.id.with("suggestions-area"), area.response.rect));
+    picked
+}
+
+/// The picker's buttons at the right hand end of a node's toolbar: the crosshair that opens the element
+/// picker, and while one element is shown alone, the button that shows the whole page again.
+fn picker_buttons(ui: &mut egui::Ui, strip: Rect, toolbar: &Toolbar<'_>, outcome: &mut Outcome) {
+    if !toolbar.pickable {
+        return;
+    }
+    let mut left = strip.right() - 4.0 - room_for_the_picker(toolbar);
+    let has_a_page = toolbar.tab.is_some();
+    let picking = toolbar.picking;
+    let area = Rect::from_min_size(Pos2::new(left, strip.top() + 6.0), Vec2::splat(BUTTON_SIZE));
+    draw_button(
+        ui,
+        &mut left,
+        strip,
+        Button {
+            name: if picking { "Stop Selecting" } else { "Select Element" },
+            mark: Mark::Drawn(crate::theme::icon::crosshair),
+            enabled: has_a_page,
+            command: if picking { BrowserCommand::CancelPick } else { BrowserCommand::Pick },
+        },
+        outcome,
+    );
+    // **Lit while the picker is open**, painted after the button so its hover fill does not cover the accent,
+    // and the mark drawn in the dark of the editor, or it disappears into the accent.
+    if picking {
+        ui.painter().rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::accent());
+        crate::theme::icon::crosshair(ui.painter(), area.center(), color::editor());
+    }
+    if toolbar.pinned {
+        draw_button(
+            ui,
+            &mut left,
+            strip,
+            Button {
+                name: "Show Whole Page",
+                mark: Mark::Drawn(crate::theme::icon::whole_page),
+                enabled: has_a_page,
+                command: BrowserCommand::Unpin,
+            },
+            outcome,
+        );
+    }
+}
+
 /// Draw one compact navigation button and record a click when it is available.
 fn draw_button(
     ui: &mut egui::Ui,
@@ -315,13 +558,18 @@ fn draw_button(
     };
     ui.painter().rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), fill);
     let text = if button.enabled { color::text_control() } else { color::text_faint() };
-    ui.painter().crisp_text(
-        area.center(),
-        Align2::CENTER_CENTER,
-        button.glyph,
-        FontId::proportional(19.0),
-        text,
-    );
+    match button.mark {
+        Mark::Glyph(glyph) => {
+            ui.painter().crisp_text(
+                area.center(),
+                Align2::CENTER_CENTER,
+                glyph,
+                FontId::proportional(19.0),
+                text,
+            );
+        }
+        Mark::Drawn(draw) => draw(ui.painter(), area.center(), text),
+    }
     response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Button, button.enabled, button.name)
     });

@@ -273,6 +273,33 @@ impl UnluminousApp {
 
     /// `unluminous-cli browser ...` through the same host and commands as the menu and toolbar.
     pub(crate) fn cli_browser(&mut self, request: &Request, verb: &str) -> Outcome {
+        // The addresses visited in every project, which is what the address fields offer. `task-2203`.
+        if verb == "history" {
+            let text = request.text("text").unwrap_or_default();
+            self.visits.reload();
+            let visits: Vec<_> = match text.trim().is_empty() {
+                true => self.visits.all().iter().take(50).collect(),
+                false => self.visits.matching(&text, 50),
+            };
+            let lines: Vec<String> = visits
+                .iter()
+                .map(|visit| match visit.title.is_empty() {
+                    true => visit.url.clone(),
+                    false => format!("{}  {}", visit.url, visit.title),
+                })
+                .collect();
+            let listed: Vec<_> = visits
+                .iter()
+                .map(|visit| {
+                    json!({ "url": visit.url, "title": visit.title, "visits": visit.count, "last": visit.last })
+                })
+                .collect();
+            let summary = match lines.is_empty() {
+                true => "No visited address matches.".to_owned(),
+                false => lines.join("\n"),
+            };
+            return ok(request, summary, json!({ "visits": listed }));
+        }
         if verb == "open" {
             let Some(address) = request.text("address") else {
                 return no(request, code::USAGE, "Give an HTTP address or HTML path.");
@@ -310,6 +337,10 @@ impl UnluminousApp {
                     "covered": self.page_is_covered,
                     "canGoBack": tab.can_go_back(),
                     "canGoForward": tab.can_go_forward(),
+                    // Every address the tab has been at and which it is on, which a project now keeps
+                    // between runs. `task-2203`.
+                    "history": tab.history().0,
+                    "position": tab.history().1,
                     "problem": tab.problem,
                 }),
             );

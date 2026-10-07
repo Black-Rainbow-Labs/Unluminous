@@ -170,7 +170,16 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_DataExchange",
     "Win32_System_Memory",
     "Win32_System_Ole",
+    # `CryptProtectData`, which encrypts the browser's session cookies for the current user the way
+    # Chromium encrypts its own. See `services/browser_session.rs`.
+    "Win32_Security_Cryptography",
 ] }
+# Already in the tree under `wry`, at the versions `wry` uses; named here because a browser node adds
+# `Select Element` to WebView2's own right click menu, which `wry` does not wrap. See
+# `services/browser.rs`'s `context_menu`.
+webview2-com = "0.38"
+windows = { version = "0.61", default-features = false, features = ["Win32_Foundation", "Win32_System_Com"] }
+windows-core = "0.61"
 objc2-foundation = { version = "0.3", default-features = false, features = [
     "std",
     "NSProcessInfo",

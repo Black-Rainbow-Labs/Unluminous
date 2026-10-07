@@ -843,10 +843,63 @@ impl UnluminousApp {
             return no(
                 request,
                 code::USAGE,
-                "Say what to do: go, back, forward, reload, url or shot.",
+                "Say what to do: go, back, forward, reload, url, shot, pick, pin, unpin or pinned.",
             );
         };
+        // Showing one element is part of what the realm is, so it is refused while the realm is read only.
+        if matches!(command.trim(), "pin" | "unpin") {
+            if let Some(why) = self.realm.realm.read_only_because() {
+                return no(request, code::REFUSED, format!("This realm is read only. {why}"));
+            }
+        }
         match command.trim() {
+            // **The element picker and the pin.** `task-2203`.
+            "pick" => match self.pick_in_a_realm_browser(node, None) {
+                Ok(()) => done(
+                    request,
+                    format!(
+                        "The element picker is open in node {node}. Choose an element in the page, or use `pin --selector` to name one."
+                    ),
+                ),
+                Err(problem) => no(request, code::REFUSED, problem),
+            },
+            "pin" => {
+                let Some(selector) = request.text("selector") else {
+                    return no(request, code::USAGE, "Say which element, with --selector <css>.");
+                };
+                match self.pin_a_realm_browser(node, &selector) {
+                    Ok(()) => done(request, format!("Node {node} shows only {}.", selector.trim())),
+                    Err(problem) => no(request, code::REFUSED, problem),
+                }
+            }
+            "unpin" => match self.unpin_a_realm_browser(node) {
+                Ok(()) => done(request, format!("Node {node} shows the whole page.")),
+                Err(problem) => no(request, code::REFUSED, problem),
+            },
+            "pinned" => {
+                let pin = match self.realm.realm.node(node).map(|found| &found.state) {
+                    Some(State::Browser(browser)) => browser.pin.clone(),
+                    _ => None,
+                };
+                let showing = self.a_nodes_pin(node).is_some();
+                match pin {
+                    Some(pin) => ok(
+                        request,
+                        format!(
+                            "Node {node} shows only {} on {}{}.",
+                            pin.selector,
+                            pin.url,
+                            if showing { "" } else { ", which is not the page it is on now" }
+                        ),
+                        json!({ "node": node, "selector": pin.selector, "url": pin.url, "showing": showing }),
+                    ),
+                    None => ok(
+                        request,
+                        format!("Node {node} shows the whole page."),
+                        json!({ "node": node, "selector": null, "url": null, "showing": false }),
+                    ),
+                }
+            }
             "go" => {
                 let Some(url) = request.text("url") else {
                     return no(request, code::USAGE, "Say where to go, with --url.");
@@ -913,7 +966,9 @@ impl UnluminousApp {
             other => no(
                 request,
                 code::USAGE,
-                format!("A browser node does go, back, forward, reload, url or shot, not {other}."),
+                format!(
+                    "A browser node does go, back, forward, reload, url, shot, pick, pin, unpin or pinned, not {other}."
+                ),
             ),
         }
     }

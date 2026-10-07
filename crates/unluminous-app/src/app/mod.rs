@@ -857,6 +857,16 @@ pub struct UnluminousApp {
     backgrounds: Option<std::path::PathBuf>,
     /// Browser child rectangles reported by the panes in this frame.
     browser_placements: Vec<BrowserPlacement>,
+    /// The addresses visited in every project, offered under every address field. `task-2203`.
+    ///
+    /// In memory only until the window is given a settings folder, so a test writes nothing of the person's.
+    pub(crate) visits: crate::services::browser_session::Visits,
+    /// A browser node the element picker was asked for while another page held the one native view. The
+    /// picker opens once the view has moved to it. `task-2203`.
+    pub(crate) pick_when_showing: Option<(crate::services::realm::NodeId, Option<(f64, f64)>)>,
+    /// A title a page gave itself while it was still loading, by tab, filed against its address once the load
+    /// finishes. See `act_on_browser_events`.
+    pub(crate) titles_arriving: std::collections::HashMap<u64, String>,
     /// The last resize this window asked the window manager for, and nothing if it has asked for none.
     ///
     /// **`ViewportCommand::BeginResize` goes straight to the window manager**, so nothing inside this
@@ -1421,6 +1431,9 @@ impl UnluminousApp {
             files: OpenFiles::new(document),
             browser: BrowserHost::new(),
             browser_placements: Vec::new(),
+            visits: crate::services::browser_session::Visits::in_memory(),
+            pick_when_showing: None,
+            titles_arriving: std::collections::HashMap::new(),
             page_was_pressed: false,
             wallpaper: crate::services::backgrounds::Wallpaper::default(),
             backgrounds: None,
@@ -1651,6 +1664,7 @@ impl UnluminousApp {
     /// The same, against a named folder, which is what a test that wants to check the settings uses.
     pub fn use_store(&mut self, store: Store) {
         self.browser.set_profile(store.folder().join("browser"));
+        self.visits = crate::services::browser_session::Visits::in_folder(store.folder());
         // **Whether this is a fresh Unluminous, asked before anything is written.** The five bundled
         // pictures are put in the backgrounds folder either way, because a person who deleted one should
         // not get it back; what only happens on a fresh install is *choosing* one, and the question has
@@ -1810,6 +1824,9 @@ impl UnluminousApp {
             file.document.apply(Command::PlaceCaret { offset: caret.min(end), extend: false });
             file.scroll = scroll.max(0.0);
         }
+        // The browser tabs, after the panes they go in exist and before the tab that was showing is chosen,
+        // because opening one shows it. `task-2203`.
+        self.restore_browser_tabs(&state.browser_tabs);
         if let Some(path) = state.open_files.get(state.active_file) {
             if let Some(index) = self.files.index_of(path) {
                 self.show_tab(index);
@@ -1874,7 +1891,19 @@ impl UnluminousApp {
         let mut file_scrolls = Vec::new();
         let mut file_carets = Vec::new();
         let mut plugin_tabs = Vec::new();
+        let mut browser_tabs = Vec::new();
         for file in self.files.iter() {
+            // A browser tab is remembered by where it had been, in a list of its own, for the reason a
+            // plugin tab is: it has no file, and every list beside `open_files` is indexed with it. `task-2203`.
+            if let Some(tab) = &file.browser {
+                let (history, position) = tab.history();
+                browser_tabs.push(project_state::RememberedBrowser {
+                    pane: file.home.pane().unwrap_or(0),
+                    history: history.to_vec(),
+                    position,
+                });
+                continue;
+            }
             // A tab a plugin drew is remembered by its own name, in a list of its own: every list beside
             // `open_files` is indexed with it, and none of them means anything for a tab with no document.
             if let Some(plugin) = &file.plugin {
@@ -1899,6 +1928,7 @@ impl UnluminousApp {
         ProjectState {
             open_files,
             plugin_tabs,
+            browser_tabs,
             active_file: active.unwrap_or(0),
             file_panes,
             file_scrolls,

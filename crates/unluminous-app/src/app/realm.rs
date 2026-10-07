@@ -831,6 +831,9 @@ impl UnluminousApp {
             _ => String::new(),
         };
         let mut editing = matches!(&node.state, State::Browser(browser) if browser.editing);
+        let suggestions = self.suggestions_for(&typed, editing);
+        let picking = tab.as_ref().is_some_and(|tab| self.browser.picking() == Some(tab.id))
+            || self.pick_when_showing.is_some_and(|(waiting, _)| waiting == node.id);
         let (outcome, placement) = crate::components::browser_view::show(
             ui,
             body,
@@ -839,6 +842,10 @@ impl UnluminousApp {
                 typed: &mut typed,
                 editing: &mut editing,
                 id: egui::Id::new(("realm-browser-address", node.id)),
+                pickable: crate::services::browser::SUPPORTED,
+                pinned: matches!(&node.state, State::Browser(browser) if browser.pin.is_some()),
+                picking,
+                suggestions,
             },
             focused,
             showing,
@@ -2069,7 +2076,17 @@ impl UnluminousApp {
             .filter(|(node, _)| self.realm.live.browser(*node).is_none())
             .collect();
         for (node, url) in waiting {
-            let _ = self.open_a_realm_browser(node, &url);
+            // **And where the page had been, so `Back` works after a restart.** `task-2203`. The sidecar
+            // holds the list; the tab is opened on the address the node was on and the list is put round it.
+            let (history, position) = match self.realm.realm.node(node).map(|found| &found.state) {
+                Some(State::Browser(browser)) => (browser.history.clone(), browser.position),
+                _ => (Vec::new(), 0),
+            };
+            if self.open_a_realm_browser(node, &url).is_ok() && !history.is_empty() {
+                if let Some(tab) = self.realm.live.browser(node).map(|tab| tab.id) {
+                    self.change_browser_tab(tab, |tab| tab.restore_history(&history, position));
+                }
+            }
         }
     }
 
@@ -2359,6 +2376,107 @@ impl UnluminousApp {
             return Ok(());
         }
         self.open_a_realm_browser(node, address)
+    }
+
+    /// The pin a browser node has, when the page it is on now is the one the pin was picked on.
+    pub(crate) fn a_nodes_pin(&self, node: NodeId) -> Option<crate::services::realm::node::Pin> {
+        let pin = match self.realm.realm.node(node).map(|found| &found.state) {
+            Some(State::Browser(browser)) => browser.pin.clone()?,
+            _ => return None,
+        };
+        let url = self.realm.live.browser(node).map(|tab| tab.current_url().to_owned())?;
+        pin.applies_to(&url).then_some(pin)
+    }
+
+    /// Show a browser node's one element again, when the page it is on is the one the pin was picked on.
+    ///
+    /// Called when a page finishes loading in the node, which covers a reload, `Back` to the page, and the one
+    /// native view moving back to this node from another tab. `task-2203`.
+    pub(crate) fn show_a_nodes_pin(&mut self, node: NodeId) {
+        let Some(pin) = self.a_nodes_pin(node) else { return };
+        let Some(tab) = self.realm.live.browser(node).map(|tab| tab.id) else { return };
+        let _ = self.browser.pin(tab, &pin.selector);
+    }
+
+    /// Open the element picker in a browser node's page. `task-2203`.
+    ///
+    /// **The node is chosen first**, because a window has one native view and the picker runs in the page it
+    /// is showing. When another page holds the view the pick waits for it to move, which
+    /// `receive_browser_events` sees to.
+    pub(crate) fn pick_in_a_realm_browser(
+        &mut self,
+        node: NodeId,
+        at: Option<(f64, f64)>,
+    ) -> Result<(), String> {
+        let Some(tab) = self.realm.live.browser(node).map(|tab| tab.id) else {
+            return Err(format!("Node {node} has no page open."));
+        };
+        if self.browser.showing() == Some(tab) {
+            return self.browser.start_picking(tab, at);
+        }
+        self.realm.realm.choose(Some(node));
+        self.realm.realm.raise(node);
+        self.pick_when_showing = Some((node, at));
+        Ok(())
+    }
+
+    /// Show only the element `selector` finds in a browser node, from the page it is on now. `task-2203`.
+    pub(crate) fn pin_a_realm_browser(
+        &mut self,
+        node: NodeId,
+        selector: &str,
+    ) -> Result<(), String> {
+        let selector = selector.trim();
+        if selector.is_empty() {
+            return Err("Say which element to show, as a CSS selector.".to_owned());
+        }
+        if let Some(why) = self.realm.realm.read_only_because() {
+            return Err(format!("This realm is read only. {why}"));
+        }
+        let Some((tab, url)) =
+            self.realm.live.browser(node).map(|tab| (tab.id, tab.current_url().to_owned()))
+        else {
+            return Err(format!("Node {node} has no page open."));
+        };
+        let pin = crate::services::realm::node::Pin { url, selector: selector.to_owned() };
+        self.realm.realm.change(node, |state| {
+            if let State::Browser(browser) = state {
+                browser.pin = Some(pin);
+            }
+        });
+        // Shown now when the page is showing; otherwise when the view next arrives at it.
+        if self.browser.showing() == Some(tab) {
+            self.browser.pin(tab, selector)?;
+        } else {
+            self.realm.realm.choose(Some(node));
+            self.realm.realm.raise(node);
+        }
+        Ok(())
+    }
+
+    /// Show the whole of a browser node's page again. `task-2203`.
+    pub(crate) fn unpin_a_realm_browser(&mut self, node: NodeId) -> Result<(), String> {
+        let pinned = matches!(
+            self.realm.realm.node(node).map(|found| &found.state),
+            Some(State::Browser(browser)) if browser.pin.is_some()
+        );
+        if !pinned {
+            return Err(format!("Node {node} is showing the whole page already."));
+        }
+        if let Some(why) = self.realm.realm.read_only_because() {
+            return Err(format!("This realm is read only. {why}"));
+        }
+        self.realm.realm.change(node, |state| {
+            if let State::Browser(browser) = state {
+                browser.pin = None;
+            }
+        });
+        if let Some(tab) = self.realm.live.browser(node).map(|tab| tab.id) {
+            if self.browser.showing() == Some(tab) {
+                self.browser.unpin(tab)?;
+            }
+        }
+        Ok(())
     }
 
     /// Point a browser node at an address, in a tab of its own.
@@ -2765,25 +2883,32 @@ impl UnluminousApp {
         // `follow_the_open_file`'s rule: a page's address also changes on a redirect, on `Back` and
         // on `Forward`, and a list of the places that have to remember to write it down is a list
         // whose next entry is the one that forgets.
-        let showing = self
-            .realm
-            .live
-            .browser(node)
-            .map(|tab| tab.current_url().to_owned())
-            .unwrap_or_default();
+        let Some((showing, history, position)) = self.realm.live.browser(node).map(|tab| {
+            let (history, position) = tab.history();
+            (tab.current_url().to_owned(), history.to_vec(), position)
+        }) else {
+            return;
+        };
         // A node with no page open keeps what it was left holding, because that is what a restore
         // will send it to. Only a page that really is somewhere overwrites it.
         if showing.is_empty() {
             return;
         }
-        let held = match &self.realm.realm.node(node).map(|node| &node.state) {
-            Some(State::Browser(browser)) => browser.url.clone(),
-            _ => String::new(),
+        // **The history too**, which is what `task-2203` found missing: `Back` on a restored node had nowhere
+        // to go. Compared before `change` is called, because `Realm::change` marks the canvas dirty whatever
+        // the closure did.
+        let same = match &self.realm.realm.node(node).map(|node| &node.state) {
+            Some(State::Browser(browser)) => {
+                browser.url == showing && browser.history == history && browser.position == position
+            }
+            _ => true,
         };
-        if held != showing {
+        if !same {
             self.realm.realm.change(node, |state| {
                 if let State::Browser(browser) = state {
                     browser.url = showing;
+                    browser.history = history;
+                    browser.position = position;
                 }
             });
         }
@@ -3696,5 +3821,94 @@ mod tests {
             _ => String::new(),
         };
         assert_eq!(held, "https://example.com/moved");
+    }
+
+    /// `task-2203`: where a node's page had been is written down, and a canvas opened again has a `Back`.
+    #[test]
+    fn a_browser_nodes_history_is_written_down_and_comes_back() {
+        let mut app = a_window("browser-history-comes-back");
+        let node = app.new_detached_realm_node(Kind::Browser, Pos2::ZERO);
+        let tab = app.new_detached_realm_page(node, "https://example.com/").expect("a tab");
+        app.arrived_at_for_tests(tab, "https://example.com/".to_owned());
+        app.arrived_at_for_tests(tab, "https://example.com/second".to_owned());
+        app.note_where_a_node_is_browsing(node);
+        let (history, position) = match app.realm.realm.node(node).map(|node| &node.state) {
+            Some(State::Browser(browser)) => (browser.history.clone(), browser.position),
+            _ => (Vec::new(), 0),
+        };
+        assert_eq!(history, ["https://example.com/", "https://example.com/second"]);
+        assert_eq!(position, 1);
+        // The sidecar holds it, and a canvas read back with that sidecar opens the node with somewhere to go.
+        let root = app.tree.root().to_path_buf();
+        let sidecar = crate::services::realm::store::write_the_sidecar(&app.realm.realm, &root);
+        assert!(sidecar.contains(".history.1 = https://example.com/second"), "{sidecar}");
+        let mut again = a_window("browser-history-comes-back-again");
+        let back = again.new_detached_realm_node(Kind::Browser, Pos2::ZERO);
+        again.realm.realm.change(back, |state| {
+            if let State::Browser(browser) = state {
+                browser.url = "https://example.com/second".to_owned();
+                browser.history = history.clone();
+                browser.position = 1;
+            }
+        });
+        again.open_the_canvass_browsers();
+        let tab = again.realm.live.browser(back).expect("the node has its page again");
+        assert!(tab.can_go_back(), "and a Back that works");
+        assert_eq!(tab.step(true).map(|(_, url)| url), Some("https://example.com/".to_owned()));
+    }
+
+    /// `task-2203`: a node shows one element of the page it was pinned on, and the whole of any other page.
+    #[test]
+    fn a_pin_belongs_to_the_page_it_was_made_on_and_can_be_taken_away() {
+        let mut app = a_window("browser-pin");
+        let node = app.new_detached_realm_node(Kind::Browser, Pos2::ZERO);
+        let tab = app.new_detached_realm_page(node, "https://example.com/prices").expect("a tab");
+        assert!(app.pin_a_realm_browser(node, "  ").is_err(), "a selector is needed");
+        app.pin_a_realm_browser(node, "main > table").expect("pinned");
+        let pin = app.a_nodes_pin(node).expect("it applies to the page it is on");
+        assert_eq!(pin.selector, "main > table");
+        assert_eq!(pin.url, "https://example.com/prices");
+        // A link followed out of it shows the whole of the next page, and coming back shows the element.
+        app.arrived_at_for_tests(tab, "https://example.com/elsewhere".to_owned());
+        assert!(app.a_nodes_pin(node).is_none());
+        app.arrived_at_for_tests(tab, "https://example.com/prices#total".to_owned());
+        assert!(app.a_nodes_pin(node).is_some(), "the fragment is not part of the page");
+        // A local page's address carries a tab id that is new every run, and the pin still applies.
+        let local = crate::services::realm::node::Pin {
+            url: "unluminous://tab-3/site/index.html".to_owned(),
+            selector: "#chart".to_owned(),
+        };
+        assert!(local.applies_to("unluminous://tab-2/site/index.html"));
+        assert!(local.applies_to("http://unluminous.tab-9/site/index.html#top"));
+        assert!(!local.applies_to("unluminous://tab-3/site/other.html"));
+        // It is in the realm file, beside the address.
+        let root = app.tree.root().to_path_buf();
+        let file = crate::services::realm::store::write(&app.realm.realm, &root);
+        assert!(file.contains(".pin = main > table"), "{file}");
+        app.unpin_a_realm_browser(node).expect("unpinned");
+        assert!(app.a_nodes_pin(node).is_none());
+        assert!(app.unpin_a_realm_browser(node).is_err(), "there is nothing left to take away");
+    }
+
+    /// `task-2203`: the picker asked for on a node whose page is not the one the view shows waits for it.
+    #[test]
+    fn a_pick_asked_for_on_a_page_that_is_not_showing_waits_for_it() {
+        let mut app = a_window("browser-pick-waits");
+        let node = app.new_detached_realm_node(Kind::Browser, Pos2::ZERO);
+        assert!(
+            app.pick_in_a_realm_browser(node, None).is_err(),
+            "a node with no page has nothing to pick"
+        );
+        let tab = app.new_detached_realm_page(node, "https://example.com/").expect("a tab");
+        app.act_on_browser_events(vec![crate::services::browser::BrowserEvent::PickAsked {
+            id: tab,
+            at: Some((10.0, 20.0)),
+        }]);
+        assert_eq!(app.pick_when_showing, Some((node, Some((10.0, 20.0)))));
+        assert_eq!(
+            app.realm.realm.chosen,
+            Some(node),
+            "the node is chosen so the view moves to it"
+        );
     }
 }
