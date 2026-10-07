@@ -6,7 +6,7 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.63.0 — 2026-10-07
 
 - Realm TDD, the Base of Infinite Space as .realm files in the project (`task-2199`)
 - The Realm, a canvas kept in .realm files in the project (`task-2202`)
@@ -14,6 +14,7 @@ bumps the release script makes are left out, because they are the boundaries rat
 - Clippy, and the bundled plugin test allows a ui plugin's own file type (`task-2202`)
 - Cargo fmt (`task-2202`)
 - The realm tests' project folders have fixed names, so their pictures are the same on every run (`task-2202`)
+- The changelog written out from the history (`task-2202`)
 
 ## 0.62.0 — 2026-10-06
 
