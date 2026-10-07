@@ -185,6 +185,16 @@ eight more frameworks and zig ships a stub for `libSystem` alone; `installer/REA
 SDK comes from and what Apple's licence says about keeping one there. It is off by default for that
 reason, and `installer/macos/build.sh` is unchanged and still the route on a Mac.
 
+### A release from a ticket worktree needs two gitignored things from the main checkout (`task-2207`)
+
+`installer/macos/notarize.env` names the sealed Developer ID key, its certificate, the sealed notary key and
+`SDKROOT=J:\mac-sdk\MacOSX.sdk`, and `tools/cross/bin` holds zig, cargo-zigbuild and rcodesign. Both are
+ignored by git, so a fresh worktree under `.claude/worktrees/` has neither, the macOS preflight fails, and
+`release.ps1` goes out Windows only while saying so in one yellow line. 0.64.4 shipped that way. Before
+releasing from a worktree, copy `notarize.env` from `C:/jason/dev/unluminous/installer/macos/`, run
+`pwsh tools/cross/fetch-toolchain.ps1`, and check that `pwsh installer/macos/build-on-windows.ps1 -Preflight`
+prints `ready`. A release without macOS is not a finished release.
+
 ### A release reclaims the build output it just superseded
 
 **Cargo never removes anything from `target`.** Every build writes a fresh hash-suffixed copy of each
