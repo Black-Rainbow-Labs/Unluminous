@@ -580,6 +580,10 @@ impl UnluminousApp {
             if focused {
                 self.editor_area = area;
             }
+            // A realm tab draws the canvas rather than asking a provider. `task-2202`.
+            if tab.plugin == "realm" {
+                return self.show_a_realm_tab(ui, area, &tab);
+            }
             return self.show_plugin_tab(ui, area, &tab);
         }
         if self.files.active().is_browser() {

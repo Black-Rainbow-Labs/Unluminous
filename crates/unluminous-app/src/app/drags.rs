@@ -93,7 +93,7 @@ impl UnluminousApp {
     /// canvas is a panel laid out beside the editing area, so a point on it is never inside a pane, and a
     /// node on it is drawn over the canvas and is what the pointer is really over.
     fn canvas_would_take_a_drop_at(&self, at: Pos2) -> bool {
-        self.realm.visible && self.realm.body.contains(at)
+        self.the_canvas_is_drawn() && self.realm.body.contains(at)
     }
 
     /// The rectangle a node made by a drop at `at` would cover on the screen, cut to the canvas.

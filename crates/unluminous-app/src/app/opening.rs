@@ -132,8 +132,7 @@ impl UnluminousApp {
         // drop all come through here, so they all do the same.
         if self.plugins.opens_elsewhere(path) == Some("realm") {
             let relative = crate::services::project_state::relative(self.tree.root(), path);
-            self.show_a_panel(crate::app::dock::Panel::Realm, true);
-            return self.open_a_realm(&relative);
+            return self.open_a_realm_in_a_tab(&relative);
         }
         if let Err(refusal) = file_kind::openable(path) {
             let reason = format!("{}: {}", path.display(), refusal.reason());

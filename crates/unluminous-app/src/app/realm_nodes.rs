@@ -9,7 +9,7 @@
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Vec2};
 
 use crate::app::UnluminousApp;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::services::realm::{Fit, Kind, Node, NoteView, State};
 use crate::theme::color;
@@ -726,9 +726,11 @@ impl UnluminousApp {
     /// Put a node on the realm that shows `file`, a file in this project: a picture, a sound, a video or a
     /// note, by `kind`.
     ///
-    /// **Refused when the file is not inside the project**, which is the rule a realm file keeps when it is
-    /// read (§5.1): a realm is shared with the project, and a node that names a file elsewhere is a node
-    /// whose realm would show something different on every machine.
+    /// **A file from outside the project is copied into the realm's own folder first**,
+    /// `.realm-files/<realm>/`, and the node names the copy. A realm is shared with the project, and a node
+    /// that named a file elsewhere would show something different on every machine, which is why a realm
+    /// file naming one is refused when it is read (§5.1). Refusing the file chooser's answer instead meant a
+    /// picture picked from Downloads added nothing, with one line in the status bar to say why.
     pub(crate) fn add_a_file_node(
         &mut self,
         kind: Kind,
@@ -743,7 +745,11 @@ impl UnluminousApp {
             true => file.to_path_buf(),
             false => root.join(file),
         };
-        let relative = crate::services::project_state::relative(&root, &absolute);
+        let absolute = match absolute.is_file() && !is_inside(&root, &absolute) {
+            true => self.copy_into_the_realm(&root, &absolute)?,
+            false => absolute,
+        };
+        let relative = relative_to(&root, &absolute);
         let checked = crate::services::realm::store::inside(
             &root,
             &crate::services::realm::slashed(&relative),
@@ -759,6 +765,48 @@ impl UnluminousApp {
         }
         self.take_the_keyboard_for_the_realm();
         Ok(id)
+    }
+
+    /// Copy a file from outside the project into `.realm-files/<realm>/`, and answer where the copy is.
+    ///
+    /// A file of that name already there with the same bytes is used as it is, so adding the same picture
+    /// twice makes one copy. One with different bytes gets a number after its name rather than being
+    /// written over, because a file Unluminous did not write is never overwritten.
+    fn copy_into_the_realm(&self, root: &Path, from: &Path) -> Result<PathBuf, String> {
+        let folder =
+            root.join(crate::services::realm::store::FOLDER).join(self.realm.realm.title());
+        std::fs::create_dir_all(&folder)
+            .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
+        let bytes = std::fs::read(from)
+            .map_err(|problem| format!("{} could not be read: {problem}", from.display()))?;
+        let name =
+            from.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+        let stem = Path::new(&name)
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let extension = Path::new(&name)
+            .extension()
+            .map(|extension| format!(".{}", extension.to_string_lossy()));
+        for count in 1..1000 {
+            let candidate = match count {
+                1 => folder.join(&name),
+                more => {
+                    folder.join(format!("{stem} {more}{}", extension.clone().unwrap_or_default()))
+                }
+            };
+            match std::fs::read(&candidate) {
+                Ok(there) if there == bytes => return Ok(candidate),
+                Ok(_) => continue,
+                Err(_) => {
+                    std::fs::write(&candidate, &bytes).map_err(|problem| {
+                        format!("{} could not be written: {problem}", candidate.display())
+                    })?;
+                    return Ok(candidate);
+                }
+            }
+        }
+        Err(format!("There are too many files called {name} in {} already.", folder.display()))
     }
 
     /// Make a note called `name` in `.realm-files/<realm>/` and put a node on it. A file by that name already
@@ -873,6 +921,27 @@ impl UnluminousApp {
         if let Err(problem) = self.add_a_file_node(kind, &chosen, at) {
             self.message = Some(problem);
         }
+    }
+}
+
+/// Whether `path` is inside the project at `root`, asked of the folders as they really are on the disk so a
+/// link or a differently spelled path to the same place counts as inside.
+/// `path` relative to the project, worked out on the folders as the disk spells them when the two paths as
+/// written do not share a beginning, which is a project opened through a link.
+fn relative_to(root: &Path, path: &Path) -> PathBuf {
+    if let Ok(inside) = path.strip_prefix(root) {
+        return inside.to_path_buf();
+    }
+    match (std::fs::canonicalize(root), std::fs::canonicalize(path)) {
+        (Ok(root), Ok(path)) => path.strip_prefix(&root).map(Path::to_path_buf).unwrap_or(path),
+        _ => path.to_path_buf(),
+    }
+}
+
+fn is_inside(root: &Path, path: &Path) -> bool {
+    match (std::fs::canonicalize(root), std::fs::canonicalize(path)) {
+        (Ok(root), Ok(path)) => path.starts_with(root),
+        _ => path.starts_with(root),
     }
 }
 

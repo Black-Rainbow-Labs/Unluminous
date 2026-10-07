@@ -1787,7 +1787,10 @@ impl UnluminousApp {
         // The tabs a plugin drew, reopened before the files so they sit where they did: a plugin tab is
         // opened from a menu rather than by opening a file, so nothing else would bring it back.
         for key in state.plugin_tabs.clone() {
-            if self.plugin_ui.surfaces().tab(&key).is_some() {
+            if let Some(realm) = realm_files::realm_of_a_tab_key(&key) {
+                // A realm tab is the realm plugin's, and its key names the realm it showed. `task-2202`.
+                let _ = self.open_a_realm_in_a_tab(&realm);
+            } else if self.plugin_ui.surfaces().tab(&key).is_some() {
                 self.open_the_plugin_tab(&key);
             }
         }
