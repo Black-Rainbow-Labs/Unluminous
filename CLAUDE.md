@@ -1035,7 +1035,11 @@ default, and `services::realm::store` reads and writes it. Four rules to keep:
 
 The `realm` plugin is the switch for all of it: `ui.provider = realm` is in `plugins::CORE_PROVIDERS`,
 because the window draws the panel, and the plugin contributes `ui.extensions = .realm` and
-`explorer.shows = .realm-files`. A sound is played by `rodio` through the `Player` trait, and a window
+`explorer.shows = .realm-files`. A `.realm` file opened from the explorer is a **realm tab**, a plugin tab
+whose key is `realm:<path>`, drawn by `show_a_realm_tab` into the editing area; the panel says so while
+one is showing, because there is one canvas. `OpenFiles::reuse` never takes a plugin tab, since one holds
+an empty document with no path. A file from outside the project put on a node is copied into
+`.realm-files/<realm>/` first. A sound is played by `rodio` through the `Player` trait, and a window
 a test builds plays through `SilentPlayer`. A video plays in the one web view, on
 `unluminous://realm/video/<id>`, with its file served by node id at `unluminous://realm/media/<id>`.
 

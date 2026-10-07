@@ -121,6 +121,9 @@ pub struct RealmState {
     /// found exactly that — the strip of views changed the model and nothing else, so a view chosen
     /// from it had no sessions, no pages and no files behind its nodes.
     pub brought_to_life: Option<std::path::PathBuf>,
+    /// The key of the realm tab that drew the canvas last, and the pass it drew it in. See
+    /// `UnluminousApp::show_a_realm_tab`.
+    pub tab_drawn: Option<(String, u64)>,
     /// The project's realm files, relative to it, as last listed. See `app::realm_files`.
     pub files: Vec<std::path::PathBuf>,
     /// How many nodes and connections each listed realm holds, read when the list was walked, for the
@@ -182,6 +185,7 @@ impl Default for RealmState {
             imported: false,
             unsaved: std::collections::HashMap::new(),
             write_failed_at: None,
+            tab_drawn: None,
             asked_what_is_running: None,
             body: Rect::ZERO,
             glide: None,
@@ -213,8 +217,6 @@ impl UnluminousApp {
         if rect.width() < 2.0 || rect.height() < 2.0 {
             return;
         }
-        self.make_sure_the_open_realm_is_on_disk();
-        self.keep_the_realm_list_current();
         let header = Rect::from_min_size(
             rect.min,
             Vec2::new(rect.width(), crate::components::agent_tasks::PANE_HEADER),
@@ -236,11 +238,31 @@ impl UnluminousApp {
             self.show_a_panel(dock::Panel::Realm, false);
             return;
         }
+        let below = Rect::from_min_max(Pos2::new(rect.left(), header.bottom()), rect.max);
+        // One canvas, drawn once: while a realm tab is showing in the editing area the panel says so rather
+        // than drawing the same nodes a second time.
+        if self.a_realm_tab_is_showing() {
+            ui.painter().rect_filled(below, 0, crate::theme::color::editor());
+            crate::app::realm_nodes::say_in_a_node(
+                ui,
+                below,
+                u64::MAX,
+                "This realm is showing in a tab.",
+            );
+            return;
+        }
+        self.show_the_realm_canvas(ui, below);
+    }
 
-        let bar = Rect::from_min_size(
-            Pos2::new(rect.left(), header.bottom()),
-            Vec2::new(rect.width(), realm_view::VIEW_BAR),
-        );
+    /// Draw the realm bar and the canvas under it into `rect`, which is the panel below its header or a
+    /// whole realm tab.
+    pub(crate) fn show_the_realm_canvas(&mut self, ui: &mut egui::Ui, rect: Rect) {
+        if rect.width() < 2.0 || rect.height() < 2.0 {
+            return;
+        }
+        self.make_sure_the_open_realm_is_on_disk();
+        self.keep_the_realm_list_current();
+        let bar = Rect::from_min_size(rect.min, Vec2::new(rect.width(), realm_view::VIEW_BAR));
         let body = Rect::from_min_max(Pos2::new(rect.left(), bar.bottom()), rect.max);
         self.realm.body = body;
 
@@ -3254,7 +3276,7 @@ impl UnluminousApp {
         &mut self,
         ui: &egui::Ui,
     ) -> Option<crate::app::actions::Action> {
-        if !matches!(self.focus, Focus::Realm) || !self.realm.visible {
+        if !matches!(self.focus, Focus::Realm) || !self.the_canvas_is_drawn() {
             return None;
         }
         if crate::app::a_modal_has_the_keyboard(ui.ctx())

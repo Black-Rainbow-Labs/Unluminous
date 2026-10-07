@@ -887,6 +887,16 @@ impl UnluminousApp {
             }
         }
         self.files.focus_pane(keyboard);
+        // A File Editor node on a realm drawn in a tab borrows the keyboard from inside the pane loop, so
+        // the line above has just taken it back. While the realm holds the keyboard the chosen node keeps it,
+        // which is what `take_the_keyboard_for_the_realm` gave it. `task-2202`.
+        if matches!(self.focus, Focus::Realm) {
+            if let Some(node) = self.realm.chosen() {
+                if self.files.tab_in_node(node).is_some() {
+                    self.files.focus_node(node);
+                }
+            }
+        }
         crate::services::frame_trace::phase("panes");
         if let Some(index) = close {
             self.close_tab(index);

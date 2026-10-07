@@ -360,6 +360,7 @@ impl UnluminousApp {
     pub(crate) fn a_realm_file_went(&mut self, gone: &Path) {
         let root = self.tree.root().to_path_buf();
         let relative = crate::services::project_state::relative(&root, gone);
+        self.close_the_realm_tabs_under(&relative);
         let was_open = self.realm.realm.path.starts_with(&relative);
         for path in self.realm.files.clone() {
             if path.starts_with(&relative) {
@@ -398,6 +399,7 @@ impl UnluminousApp {
             crate::services::project_state::relative(&root, from),
             crate::services::project_state::relative(&root, to),
         );
+        self.move_the_realm_tabs(&from_relative, &to_relative);
         for path in self.realm.files.clone() {
             if let Ok(rest) = path.strip_prefix(&from_relative) {
                 let moved = to_relative.join(rest);
@@ -542,6 +544,149 @@ impl UnluminousApp {
             .collect();
         for node in playing {
             self.realm.live.pause_a_player(node);
+        }
+    }
+}
+
+/// What a realm tab's key starts with. The rest is the realm's path, relative to the project and written
+/// with `/`, so `open-files.txt`'s neighbour `plugin-tabs.txt` brings the tab back on the realm it showed.
+pub(crate) const REALM_TAB: &str = "realm:";
+
+/// The key of the tab that shows the realm at `path`.
+pub(crate) fn realm_tab_key(path: &Path) -> String {
+    format!("{REALM_TAB}{}", slashed(path))
+}
+
+/// The realm a tab's key names, when it is a realm tab's key.
+pub(crate) fn realm_of_a_tab_key(key: &str) -> Option<PathBuf> {
+    key.strip_prefix(REALM_TAB).map(PathBuf::from)
+}
+
+/// A realm drawn in a tab of the editing area, rather than in the panel.
+///
+/// **A realm tab is a plugin tab of the `realm` plugin**, so everything the window already refuses a tab a
+/// plugin draws is refused it too: it is not saved, it has no gutter, no preview, no text tools and no git.
+/// Its key names the realm, so it comes back on the realm it showed. One realm is open at a time, so the tab
+/// draws the open realm and opens its own when it is shown, and while a realm tab is showing the panel says
+/// so rather than drawing the same nodes a second time.
+impl UnluminousApp {
+    /// Open the realm at `path` in a tab of the editing area, or show the tab already open on it.
+    pub(crate) fn open_a_realm_in_a_tab(&mut self, path: &Path) -> Result<(), String> {
+        if !self.realm_is_on() {
+            return Err(self.the_realm_is_off());
+        }
+        self.open_a_realm(path)?;
+        let open = self.realm.realm.path.clone();
+        self.files.open_plugin_tab(
+            unluminous_core::Document::new(),
+            crate::app::files::PluginTab {
+                key: realm_tab_key(&open),
+                plugin: "realm".to_owned(),
+                label: title_of(&open),
+            },
+        );
+        self.realm.tab_drawn = None;
+        self.focus = crate::app::Focus::Editor;
+        Ok(())
+    }
+
+    /// Whether a realm tab is the tab showing in one of the editing area's panes.
+    pub(crate) fn a_realm_tab_is_showing(&self) -> bool {
+        self.editor_visible
+            && (0..self.files.pane_count()).any(|pane| {
+                self.files.showing_in(pane).is_some_and(|index| {
+                    self.files.at(index).plugin.as_ref().is_some_and(|tab| tab.plugin == "realm")
+                })
+            })
+    }
+
+    /// Whether the canvas is drawn this frame, in the panel or in a tab.
+    pub(crate) fn the_canvas_is_drawn(&self) -> bool {
+        self.realm.visible || self.a_realm_tab_is_showing()
+    }
+
+    /// Draw a realm tab into `area`.
+    ///
+    /// **The tab follows the canvas while it is the one showing, and the canvas follows the tab when it is
+    /// shown.** A realm chosen on the realm bar inside the tab, or with `realm open`, is the tab's realm
+    /// from then on, and the tab is renamed; a realm tab that has just been shown opens its own realm. Only
+    /// one realm tab draws the canvas in a frame, because there is one canvas: a second one says where the
+    /// realm is showing.
+    pub(crate) fn show_a_realm_tab(
+        &mut self,
+        ui: &mut egui::Ui,
+        area: egui::Rect,
+        tab: &crate::app::files::PluginTab,
+    ) -> bool {
+        ui.painter().rect_filled(area, 0, crate::theme::color::editor());
+        let Some(path) = realm_of_a_tab_key(&tab.key) else { return false };
+        let pass = ui.ctx().cumulative_pass_nr();
+        if self
+            .realm
+            .tab_drawn
+            .as_ref()
+            .is_some_and(|(key, drawn)| *drawn == pass && *key != tab.key)
+        {
+            self.say_in_a_realm_tab(ui, area, "This realm is showing in another pane.");
+            return false;
+        }
+        let same_tab = self.realm.tab_drawn.as_ref().is_some_and(|(key, _)| *key == tab.key);
+        if self.realm.realm.path != path && !same_tab {
+            if let Err(problem) = self.open_a_realm(&path) {
+                self.say_in_a_realm_tab(ui, area, &problem);
+                return false;
+            }
+        }
+        self.show_the_realm_canvas(ui, area);
+        self.follow_the_canvas_in_the_tab(&tab.key);
+        self.realm.tab_drawn = Some((realm_tab_key(&self.realm.realm.path), pass));
+        false
+    }
+
+    /// Name the realm tab after the realm the canvas is on, when the two have come apart.
+    fn follow_the_canvas_in_the_tab(&mut self, key: &str) {
+        let open = self.realm.realm.path.clone();
+        let wanted = realm_tab_key(&open);
+        if key == wanted {
+            return;
+        }
+        if let Some(index) = self.files.index_of_plugin_tab(key) {
+            if let Some(tab) = self.files.at_mut(index).plugin.as_mut() {
+                tab.key = wanted;
+                tab.label = title_of(&open);
+            }
+        }
+    }
+
+    /// One sentence in the middle of a realm tab, for a tab that cannot draw the canvas.
+    fn say_in_a_realm_tab(&self, ui: &egui::Ui, area: egui::Rect, said: &str) {
+        crate::app::realm_nodes::say_in_a_node(ui, area, u64::MAX - 1, said);
+    }
+
+    /// Close every realm tab on a realm under `gone`, which was deleted.
+    pub(crate) fn close_the_realm_tabs_under(&mut self, gone: &Path) {
+        let going: Vec<usize> = (0..self.files.len())
+            .filter(|index| {
+                self.files.at(*index).plugin.as_ref().is_some_and(|tab| {
+                    realm_of_a_tab_key(&tab.key).is_some_and(|path| path.starts_with(gone))
+                })
+            })
+            .collect();
+        for index in going.into_iter().rev() {
+            self.close_tab(index);
+        }
+    }
+
+    /// Point every realm tab on a realm under `from` at the same realm under `to`, which is where it moved.
+    pub(crate) fn move_the_realm_tabs(&mut self, from: &Path, to: &Path) {
+        for index in 0..self.files.len() {
+            let Some(tab) = self.files.at_mut(index).plugin.as_mut() else { continue };
+            let Some(path) = realm_of_a_tab_key(&tab.key) else { continue };
+            if let Ok(rest) = path.strip_prefix(from) {
+                let moved = to.join(rest);
+                tab.key = realm_tab_key(&moved);
+                tab.label = title_of(&moved);
+            }
         }
     }
 }

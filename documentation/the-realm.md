@@ -28,7 +28,7 @@ the maximise chord all arrived with no code of their own.
 **The `realm` plugin is the switch for it.** The plugin is `kind = ui` and names `ui.provider =
 realm`, a provider built into Unluminous, listed in `plugins::CORE_PROVIDERS` because the window draws
 it rather than a provider object. What the plugin contributes is the file type and the folder:
-`ui.extensions = .realm` makes a `.realm` file open in the panel from the explorer, with the plugin's
+`ui.extensions = .realm` makes a `.realm` file open in a realm tab from the explorer, with the plugin's
 icon on its row, and `explorer.shows = .realm-files` lists that folder in the explorer although its name
 starts with a dot. Switching the plugin off in `Settings -> Plugins` takes away the panel, its rail
 button, its `View` menu rows, its commands, the icon and the folder, and a `.realm` file opens as text.
@@ -71,7 +71,9 @@ to read back what it just set is a script with a race in it.
 
 `realm add image <file>`, `realm add audio <file>` and `realm add video <file>` make one from a file in
 the project, and so does dropping a file from the explorer on the canvas. Choosing `Image`, `Audio` or
-`Video` in the canvas's add dialog opens a file chooser. A file outside the project is refused.
+`Video` in the canvas's add dialog opens a file chooser. A file from outside the project is copied into
+`.realm-files/<realm>/` and the node names the copy, so the realm stays complete when it is shared. The
+same picture added twice is one copy, and a different file with the same name gets a number after it.
 
 **A note is a file, and the realm only names it.** `realm add note Plan` writes
 `.realm-files/<realm>/Plan.md` and opens it in the node through the same editing area a tab uses, so
@@ -151,8 +153,11 @@ that makes a new one. The `View` menu and the `Realms...` dialog have `New Realm
 - **Duplicate** writes a copy with fresh ids, so two realms never share a node.
 - **Delete** goes through the explorer's delete, so on Windows the file goes to the Recycle Bin.
 
-Opening a `.realm` file anywhere in the project, from the explorer, from `Go to File` or with
-`realm open <name or path>`, shows it in the panel. Switching realms writes the one that was open
+Opening a `.realm` file from the explorer, from `Go to File` or with `tab open` shows it in a **realm
+tab**: a tab in the editing area with the realm bar and the canvas drawn in it, which comes back with the
+project. `realm open <name or path>` and the realm bar show it wherever the canvas is. There is one canvas,
+so while a realm tab is showing the panel says the realm is showing in a tab, and choosing another realm on
+the bar inside a tab makes the tab that realm's. Switching realms writes the one that was open
 first, stops its sounds and closes its pages. Which realm was open is `realm.current` in
 `.unluminous/workspace.conf`, and that is the one a project opens on.
 
