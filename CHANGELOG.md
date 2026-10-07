@@ -6,6 +6,17 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 0.64.0 — 2026-10-07
+
+- Realm stacking order, agent chat sizing, tooltips and the gutter's marks (`task-2200`)
+- The sound node test plays a thirty second clip, so a busy test binary cannot let it end before the test looks for Pause (`task-2200`)
+- The ticket modal's comments are whole and scroll, and a pane no longer follows the editor's font (`task-2200`)
+
+## 0.63.1 — 2026-10-07
+
+- Browser sessions survive a restart, and a browser node can show one element (`task-2203`)
+- The changelog written out from the history (`task-2203`)
+
 ## 0.63.0 — 2026-10-07
 
 - Realm TDD, the Base of Infinite Space as .realm files in the project (`task-2199`)
