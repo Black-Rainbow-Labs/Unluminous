@@ -3794,9 +3794,10 @@ fn a_realm_tab_draws_the_canvas_and_the_panel_says_where_it_is() {
         "tab",
         &[(".realm-files/main.realm", empty), (".realm-files/plans.realm", empty)],
     );
+    // The panel was open first, so it stays open and says where the realm is.
+    did(&mut harness, "realm show");
     did(&mut harness, "tab open .realm-files/plans.realm");
     added(&mut harness, "realm add note Plan --x 40 --y 30");
-    did(&mut harness, "realm show");
     for _ in 0..4 {
         steady(&mut harness);
     }
@@ -3816,6 +3817,15 @@ fn a_realm_tab_draws_the_canvas_and_the_panel_says_where_it_is() {
         harness.query_by_label("This realm is showing in a tab.").is_none(),
         "the panel draws it again"
     );
+
+    // With the panel closed and a realm tab showing, asking for the canvas leaves the panel closed: the
+    // tab is the canvas.
+    did(&mut harness, "realm hide");
+    did(&mut harness, "tab open .realm-files/plans.realm");
+    did(&mut harness, "realm show");
+    added(&mut harness, "realm add note Second --x 600 --y 30");
+    steady(&mut harness);
+    assert!(!harness.state().realm.visible, "the panel stays closed");
     std::fs::remove_dir_all(&folder).ok();
 }
 
@@ -3911,7 +3921,6 @@ fn a_note_is_a_markdown_file_with_its_three_views_in_its_header() {
     let written =
         std::fs::read_to_string(folder.join(".realm-files/main.realm")).expect("the realm");
     assert!(written.contains(".view = preview"), "{written}");
-    harness.snapshot(shot("realm_note_preview").as_str());
     did(&mut harness, &format!("realm note view {node} raw"));
     let index = harness.state().files.tab_in_node(node).expect("the note has its tab");
     assert_eq!(harness.state().files.at(index).view_mode, unluminous_app::app::ViewMode::Raw);

@@ -6,13 +6,24 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.64.2 — 2026-10-07
+
+- A realm tab that is showing is the canvas, so asking for the canvas does not open the panel beside it (`task-2202`)
+- The changelog written out from the history (`task-2202`)
+- The note test checks the note without a picture, which differed with frame timing under load (`task-2202`)
+
+## 0.64.1 — 2026-10-07
 
 - A picture, sound or video from outside the project is copied into the realm, and a .realm file opens in a tab (`task-2202`)
 - Keep a node's keyboard only when the realm is in a tab, and let the sound test wait for its frame (`task-2202`)
+- Browser sessions survive a restart, and a browser node can show one element (`task-2203`)
 - The sound test plays thirty seconds, so a slow frame cannot reach the end of it (`task-2202`)
+- The changelog written out from the history (`task-2203`)
 - The changelog written out from the history (`task-2202`)
 - This repository's canvas, imported from .unluminous/space.conf into realm files (`task-2202`)
+- A file copied into a realm is written atomically (`task-2202`)
+- The note picture is taken after the explorer is read again, so its file count is the same every run (`task-2202`)
+- The realm's player summaries are one sentence each, so the grouped MCP schema is under its ceiling again (`task-2202`)
 
 ## 0.64.0 — 2026-10-07
 

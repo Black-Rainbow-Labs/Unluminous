@@ -799,7 +799,6 @@ impl UnluminousApp {
                 Ok(there) if there == bytes => return Ok(candidate),
                 Ok(_) => continue,
                 Err(_) => {
-                    // Through a temporary, so a copy cut short leaves no half a picture under the name.
                     crate::services::store::write_atomically(&candidate, &bytes).map_err(
                         |problem| {
                             format!("{} could not be written: {problem}", candidate.display())
