@@ -220,8 +220,11 @@ impl RodioPlayer {
     }
 }
 
+/// What a sound file is decoded by.
+pub type FileDecoder = rodio::Decoder<std::io::BufReader<std::fs::File>>;
+
 /// A decoder over a sound file, which is the half of playing one that needs no audio device.
-pub fn decoder_for(path: &Path) -> Result<rodio::Decoder<std::io::BufReader<std::fs::File>>, String> {
+pub fn decoder_for(path: &Path) -> Result<FileDecoder, String> {
     let file = std::fs::File::open(path)
         .map_err(|problem| format!("{} could not be read: {problem}", path.display()))?;
     let length = file.metadata().map(|about| about.len()).unwrap_or(0);
