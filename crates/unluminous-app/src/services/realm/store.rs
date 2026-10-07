@@ -526,7 +526,7 @@ fn write_a_node(node: &Node, root: &Path, values: &mut Values) {
         State::Browser(browser) => values.set_or_clear(&format!("{key}.url"), &browser.url),
         State::Folder(folder) => {
             // The project itself is written as no `root` at all, which is what reads back as the project.
-            if let Some(at) = folder.root.as_ref().filter(|at| written(root, at) != "") {
+            if let Some(at) = folder.root.as_ref().filter(|at| !written(root, at).is_empty()) {
                 set(values, "root", written(root, at));
             }
             a_multiple(values, &format!("{key}.zoom"), folder.zoom);
@@ -636,15 +636,11 @@ pub fn write_the_sidecar(realm: &Realm, root: &Path) -> String {
                     values.set(&format!("{key}.scroll.y"), format!("{:.1}", image.scroll.y));
                 }
             }
-            State::Audio(audio) => {
-                if audio.position > 0.05 {
-                    values.set(&format!("{key}.position"), format!("{:.1}", audio.position));
-                }
+            State::Audio(audio) if audio.position > 0.05 => {
+                values.set(&format!("{key}.position"), format!("{:.1}", audio.position));
             }
-            State::Video(video) => {
-                if video.position > 0.05 {
-                    values.set(&format!("{key}.position"), format!("{:.1}", video.position));
-                }
+            State::Video(video) if video.position > 0.05 => {
+                values.set(&format!("{key}.position"), format!("{:.1}", video.position));
             }
             _ => {}
         }

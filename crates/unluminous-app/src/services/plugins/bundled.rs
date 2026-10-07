@@ -206,7 +206,13 @@ mod tests {
                         "{} names colours, which no plugin may",
                         plugin.id
                     );
-                    assert!(plugin.extensions.is_empty(), "{} claims a file type", plugin.id);
+                    // A ui plugin claims a file type only through `ui.extensions`, which is the file type its
+                    // own pane opens, as the realm plugin's `.realm` is. `task-2202`.
+                    assert_eq!(
+                        plugin.extensions, plugin.contributions.extensions,
+                        "{} claims a file type its pane does not open",
+                        plugin.id
+                    );
                 }
                 // A theme plugin is the one that *does* name colours, which is the whole of what it is
                 // for. It claims no file type and contributes nothing to the window.

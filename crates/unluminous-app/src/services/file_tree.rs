@@ -553,7 +553,7 @@ fn read_directory(path: &Path, shows: &[String]) -> std::io::Result<Vec<Entry>> 
         let name = entry.file_name().to_string_lossy().to_string();
         // Every dot entry is hidden, `.git` and `.unluminous` among them, apart from a folder a switched on
         // plugin's `explorer.shows` names.
-        if name.starts_with('.') && !shows.iter().any(|shown| *shown == name) {
+        if name.starts_with('.') && !shows.contains(&name) {
             continue;
         }
         // A child whose metadata cannot be read at all is listed as something that is not a file, which is
