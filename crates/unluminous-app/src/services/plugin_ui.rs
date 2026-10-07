@@ -566,11 +566,14 @@ pub trait UiProvider: std::fmt::Debug {
 
     /// Whether this provider's text is sized from the editor's font, so zooming a file resizes it.
     ///
-    /// True by default, which is what a board wants: `Look::scale` exists so a person who reads code at
-    /// 48 points gets cards tall enough for it. Agent-Chat answers false, because `task-2096` asks that
-    /// zooming a file leaves the chat alone. Its size is then its own pane zoom and nothing else.
+    /// **False by default**, since `task-2200`: *"when i zoom in/out with mouse wheel with CMD+scroll on file
+    /// editor pane, it zooms the agent tasks pane at the same time. they should be independent."* Zooming a
+    /// file walks `appearance.font.size`, and a pane that followed it grew with every notch of a wheel turned
+    /// over somewhere else. Each pane has a zoom of its own, `panel zoom <pane>`, and that is the one thing its
+    /// size follows. `task-2096` made the same decision for Agent-Chat alone; it is every pane's now. A
+    /// provider that really is about the editor's text can still answer true.
     fn follows_the_editor_font(&self) -> bool {
-        true
+        false
     }
 
     /// Draw the pane. Called once a frame while the pane is showing.

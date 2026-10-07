@@ -286,6 +286,11 @@ pub(crate) fn terminal_section(
     requests
 }
 
+/// How tall a comment's header row is: its author and time, and the buttons beside them.
+const HEAD: f32 = 22.0;
+/// How much of that row's right hand end the two view buttons take, with the gap before what is left of them.
+const VIEW_BUTTONS: f32 = 18.0 * 2.0 + 4.0 + 6.0;
+
 /// The comments and the box that posts one, for the modal.
 pub(crate) fn comment_section(
     board: &mut AgentTasks,
@@ -320,7 +325,7 @@ pub(crate) fn comment_section(
     let list =
         Rect::from_min_max(Pos2::new(area.min.x, pen), Pos2::new(area.max.x, room_for_comments));
     let mut inside = ui.new_child(egui::UiBuilder::new().max_rect(list));
-    let scrolled = egui::ScrollArea::vertical()
+    let output = egui::ScrollArea::vertical()
         .id_salt("agent-tasks-comments")
         .max_height(list.height().max(0.0))
         .show(&mut inside, |ui| {
@@ -338,9 +343,12 @@ pub(crate) fn comment_section(
             let mut view_change: Option<(i64, bool)> = None;
             let markdown = &mut board.markdown;
             for comment in comments.iter().rev() {
+                // **A header row tall enough for its buttons** (`task-2200`). The row used to advance by one line
+                // of its small type while the view buttons on it are eighteen points tall, so their bottom edge
+                // sat over the first line of the comment.
                 text(
                     &painter,
-                    Pos2::new(area.min.x, pen),
+                    Pos2::new(area.min.x, pen + (HEAD - (look.font_size - 2.5)) / 2.0 - 1.0),
                     &format!(
                         "{} · {}",
                         comment.author.name(),
@@ -349,22 +357,22 @@ pub(crate) fn comment_section(
                     look.font_size - 2.5,
                     look.palette.text_faint,
                 );
-                // The two view buttons on the comment's own header row, right aligned, the same pair the description has.
-                // Left of the `Edit` and `Send` buttons a person's own comment carries, which is why they stop short of
-                // the right edge.
+                // The two view buttons on the comment's own header row, at its right hand end, the same pair the
+                // description has. `task-2200` asked for them *"all the way at the right of the comment"*; a person's
+                // own comment carries `Edit` and `Send` to their left.
                 if let Some(as_markdown) = super::raw_or_rendered(
                     ui,
                     look,
                     Rect::from_min_size(
-                        Pos2::new(area.min.x, pen - 2.0),
-                        Vec2::new(area.width() - 164.0, 16.0),
+                        Pos2::new(area.min.x, pen + (HEAD - 18.0) / 2.0),
+                        Vec2::new(area.width(), 18.0),
                     ),
                     &format!("comment {}", comment.id),
                     !raw_comments.contains(&comment.id),
                 ) {
                     view_change = Some((comment.id, !as_markdown));
                 }
-                pen += look.font_size + 1.0;
+                pen += HEAD;
                 let mine = comment.author == crate::services::agent_tasks::model::Author::Human;
                 let being_edited = editing == Some(comment.id);
                 let height = match being_edited {
@@ -426,9 +434,10 @@ pub(crate) fn comment_section(
                             area.width(),
                             None,
                         );
-                        // Clipped to sixty points, which is what the source view is clipped to: a very long comment is
-                        // read in the modal's own scrolling list rather than by one block growing without limit.
-                        let height = made.height().min(60.0);
+                        // **The whole comment**, `task-2200`: *"the comments are clipped and I cant scroll"*. Each one
+                        // was cut to sixty points, so a long comment lost everything after its third line and the list
+                        // around it had nothing more to scroll to. The list scrolls, so a comment can be as tall as it is.
+                        let height = made.height();
                         let block = Rect::from_min_size(
                             Pos2::new(area.min.x, pen),
                             Vec2::new(area.width(), height),
@@ -443,9 +452,8 @@ pub(crate) fn comment_section(
                             look.palette.text_control,
                             area.width(),
                         );
-                        // Clipped to what was drawn rather than laid out for. A three thousand word comment used to paint
-                        // its whole galley while the layout moved on by sixty points, so it drew over everything under it.
-                        let height = galley.size().y.min(60.0);
+                        // Clipped to what was laid out for, which is now the whole galley. See the rendered arm.
+                        let height = galley.size().y;
                         let block = Rect::from_min_size(
                             Pos2::new(area.min.x, pen),
                             Vec2::new(area.width(), height),
@@ -481,17 +489,19 @@ pub(crate) fn comment_section(
                 // can be changed, which is the browser's `Edit`. Neither is drawn on an agent's comment: what an agent
                 // said is a record, and the store refuses to change one whatever is pressed.
                 if mine {
-                    let row = pen - look.font_size - 2.0;
+                    let row = pen - HEAD + (HEAD - 18.0) / 2.0;
+                    // Left of the two view buttons, which take the row's right hand forty points.
+                    let right = area.max.x - VIEW_BUTTONS;
                     match being_edited {
                         // `Save` and `Cancel` in place of the two, because while a comment is being edited those are the
                         // only two things to do with it.
                         true => {
                             let save_at = Rect::from_min_size(
-                                Pos2::new(area.max.x - 106.0, row),
+                                Pos2::new(right - 106.0, row),
                                 Vec2::new(50.0, 18.0),
                             );
                             let cancel_at = Rect::from_min_size(
-                                Pos2::new(area.max.x - 52.0, row),
+                                Pos2::new(right - 52.0, row),
                                 Vec2::new(52.0, 18.0),
                             );
                             if ui
@@ -517,11 +527,11 @@ pub(crate) fn comment_section(
                         }
                         false => {
                             let edit_at = Rect::from_min_size(
-                                Pos2::new(area.max.x - 144.0, row),
+                                Pos2::new(right - 144.0, row),
                                 Vec2::new(40.0, 18.0),
                             );
                             let send_at = Rect::from_min_size(
-                                Pos2::new(area.max.x - 100.0, row),
+                                Pos2::new(right - 100.0, row),
                                 Vec2::new(100.0, 18.0),
                             );
                             if ui
@@ -575,9 +585,14 @@ pub(crate) fn comment_section(
             // scrolls.
             ui.allocate_space(Vec2::new(area.width(), (pen - top).max(0.0)));
             (resend, edit, save, cancel, typed, view_change, copy)
-        })
-        .inner;
-    let (resend, edit, save, cancel, typed, view_change, copy) = scrolled;
+        });
+    // **The box goes directly under the comments**, `task-2200`: *"too large of a margin between the bottom of
+    // comments and the add comment input"*. The section is given the same height whatever is in it, so a ticket
+    // with one short comment had the rest of that height empty between it and the box. With more comments than
+    // fit, the list fills the section and the box sits where it always did.
+    let used = output.content_size.y.min(list.height()).max(0.0);
+    let box_top = (list.min.y + used + 6.0).min(area.max.y - box_height);
+    let (resend, edit, save, cancel, typed, view_change, copy) = output.inner;
     if let Some(text) = copy {
         requests.push(Request::Copy(text));
     }
@@ -609,7 +624,7 @@ pub(crate) fn comment_section(
         }
     }
     let at = Rect::from_min_size(
-        Pos2::new(area.min.x, area.max.y - box_height),
+        Pos2::new(area.min.x, box_top),
         Vec2::new(area.width(), look.row_height),
     );
     painter.rect(

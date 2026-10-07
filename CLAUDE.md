@@ -652,11 +652,11 @@ egui panics on a family nobody bound. `rux::text::install` binds them by replaci
 context, which would change the whole window's typeface, so `theme::install_fonts` binds the seven names
 to the interface's own faces instead. A `rux` control drawn anywhere in Unluminous needs nothing more.
 
-**And a pane can decline to follow the editor's font.** A plugin's `Look` is built from
-`appearance.font.size`, which is the setting zooming a file walks, so zooming a file resized the chat.
-`UiProvider::follows_the_editor_font` is true by default, because the board's cards are meant to grow
-with a large editor font, and Agent-Chat answers false: its size is its own pane zoom, and a chat node's
-is the canvas's, and nothing else.
+**And a pane does not follow the editor's font.** A plugin's `Look` is built from
+`appearance.font.size`, which is the setting zooming a file walks, so zooming a file resized the chat, and
+later the board. `UiProvider::follows_the_editor_font` is false by default since `task-2200`: a pane's size
+is its own pane zoom, a node's is the canvas's and its own, and nothing else. A provider that really is
+about the editor's text can still answer true.
 ### Pasting a picture is seen on the key going **up**, and it could never have been seen any other way
 
 `task-1771` reported that pasting a picture into the composer did nothing, and the reason is in

@@ -763,7 +763,7 @@ fn the_same_board_in_two_windows_is_the_same_picture() {
 /// points and cannot squeeze the editing area far enough on this window: an earlier version of this test
 /// asked for 800, got 620, and left the board 523 points wide against a threshold of 342 — so it was not
 /// at the boundary at all, which is what the third review caught. Every measurement in the threshold
-/// scales with the editor's font except the shadow's own reach, so 32 point text raises it to about 418
+/// scales with the board's zoom except the shadow's own reach, so a zoom of two raises it to about 418
 /// and the board is then within a hundred points of it.
 ///
 /// At that width there is no room for the heading, the count, the search box and the button. Something
@@ -782,7 +782,9 @@ fn the_board_keeps_add_task_at_the_width_the_rail_appears_at() {
     // `panel size explorer --width 800` — which this test used to rely on — left it 1144 points wide.
     did(&mut harness, "plugins pane agent-tasks/board --side right");
     harness.state_mut().set_plugin_pane_width_for("agent-tasks/board", 360.0);
-    did(&mut harness, "settings set appearance.font.size 32");
+    // The board's own zoom rather than the editor's font, since `task-2200` made a pane's size its own:
+    // twice the default sixteen points is the thirty two this test was written against.
+    did(&mut harness, "panel zoom agent-tasks/board 2");
     did(
         &mut harness,
         "plugins run agent-tasks new-sprint A sprint with a long enough name to crowd the row",
@@ -2026,6 +2028,56 @@ fn a_ticket_in_full_as_a_modal() {
     harness.snapshot(shot("agent_tasks_modal").as_str());
 }
 
+/// `task-2200`: *"on the task modal for agent tasks, the comments are clipped and I cant scroll."* Each
+/// comment was cut to sixty points, so a long one lost its end and the list had nothing past it to scroll to.
+/// A long comment now takes its whole height, and the wheel over the list moves it.
+#[test]
+fn the_ticket_modals_comments_are_whole_and_scroll() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
+    did(&mut harness, "plugins run agent-tasks new-task Comments that run long");
+    did(&mut harness, "plugins run agent-tasks close");
+    let long = "A comment long enough to wrap onto several lines of the modal, so that cutting it to sixty \
+                points would lose its end. It goes on to say what was tried, what was measured and what is left \
+                to do, which is what an agent's comment on a real ticket is like, and it keeps going for long \
+                enough that nobody could mistake it for a short one.";
+    let long = format!("{long} {long} {long}");
+    for _ in 0..4 {
+        did(&mut harness, &format!("plugins run agent-tasks comment task-1 {long}"));
+    }
+    did(&mut harness, "plugins run agent-tasks open task-1");
+    for _ in 0..3 {
+        steady(&mut harness);
+    }
+    // Newest first, so comment 4 is at the top and comment 3 is under it.
+    let top = |harness: &Harness<'static, UnluminousApp>, id: u32| {
+        harness.get_by_label(&format!("Read comment {id} as markdown")).rect().top()
+    };
+    let fourth = top(&harness, 4);
+    let third = top(&harness, 3);
+    assert!(
+        third - fourth > 120.0,
+        "a long comment takes its whole height, not sixty points: {fourth} then {third}"
+    );
+    // The wheel over the list scrolls it.
+    let over = harness.get_by_label("Read comment 4 as markdown").rect().center()
+        - egui::vec2(200.0, -30.0);
+    harness.input_mut().events.push(egui::Event::PointerMoved(over));
+    steady(&mut harness);
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -120.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: egui::Modifiers::default(),
+    });
+    for _ in 0..3 {
+        steady(&mut harness);
+    }
+    let moved = top(&harness, 4);
+    assert!(moved < fourth - 20.0, "the list scrolled: {fourth} then {moved}");
+}
+
 #[test]
 fn the_editor_for_a_new_ticket() {
     let mut harness = harness("");
@@ -2523,6 +2575,29 @@ fn the_model_selector_is_a_dropdown_and_a_row_in_it_chooses_that_endpoint() {
         chosen, "second",
         "the last row of the dropdown was pressed; the rows are {names:?}"
     );
+}
+
+/// Zooming a file does not resize the Agent-Tasks board either. `task-2200`: *"when i zoom in/out with mouse
+/// wheel with CMD+scroll on file editor pane, it zooms the agent tasks pane at the same time. they should be
+/// independent."* The board's `+ Add Task` button is measured before and after the editor's font is made
+/// twice as large, and then the board's own zoom is shown still to work.
+#[test]
+fn zooming_a_file_leaves_the_board_the_size_it_was() {
+    let mut harness =
+        a_window_with_its_own_board("zooming_a_file_leaves_the_board_the_size_it_was");
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
+    did(&mut harness, "plugins run agent-tasks board");
+    steady(&mut harness);
+    let before = harness.get_by_label("+ Add Task").rect();
+    did(&mut harness, "settings set appearance.font.size 32");
+    steady(&mut harness);
+    let after = harness.get_by_label("+ Add Task").rect();
+    assert_eq!(before.size(), after.size(), "the board changed size with the editor's font");
+    did(&mut harness, "panel zoom agent-tasks/board 1.5");
+    steady(&mut harness);
+    let zoomed = harness.get_by_label("+ Add Task").rect();
+    assert!(zoomed.height() > after.height(), "{zoomed:?} against {after:?}");
 }
 
 /// Zooming a file does not resize the chat pane. `task-2096`.

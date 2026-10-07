@@ -1226,7 +1226,9 @@ impl UnluminousApp {
         let zoom = node_zoom_of(node);
         let asked = {
             let highlighter = crate::app::PluginHighlighter { plugins: &self.plugins };
+            // The board's size is the canvas's zoom and the node's own, never the editor's font. `task-2200`.
             let look = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer)
+                .following_the_editor_font(false)
                 .zoomed_by(zoom)
                 .holding_the_keyboard(focused)
                 .colouring_with(&highlighter)

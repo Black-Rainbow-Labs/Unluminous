@@ -545,13 +545,20 @@ fn fields(
 ) -> Vec<Request> {
     let mut requests = Vec::new();
     let state = rux.state;
-    let mut inside = rux.ui.new_child(egui::UiBuilder::new().max_rect(area));
-    inside.set_clip_rect(area.intersect(rux.ui.clip_rect()));
+    // **The scrolling area is larger than the fields by the reach of their shadows** (`task-2200`: *"the
+    // dropdown options for the task, such as status, priority, etc have shadowing that is being clipped"*). A
+    // scrolling area clips to its own rectangle, which was the column's, so every select's raised shadow was
+    // cut along the column's left edge and the first control's along its top. The fields stay where they
+    // were; the area round them reaches into the gutter beside the column and the gap above it.
+    let reach = Vec2::new(12.0, 8.0);
+    let viewport = area.expand2(reach);
+    let mut inside = rux.ui.new_child(egui::UiBuilder::new().max_rect(viewport));
+    inside.set_clip_rect(viewport.intersect(rux.ui.clip_rect()));
     egui::ScrollArea::vertical()
         .id_salt("agent-tasks-ticket-fields")
         .auto_shrink([false, false])
         .show(&mut inside, |ui| {
-            let top = ui.cursor().min.y;
+            let top = ui.cursor().min.y + reach.y;
             let content = Rect::from_min_size(
                 Pos2::new(area.min.x, top),
                 Vec2::new(area.width() - 10.0, 900.0),
@@ -573,7 +580,7 @@ fn fields(
             // and let it scroll a screenful past its last control.
             ui.expand_to_include_rect(Rect::from_min_size(
                 Pos2::new(area.min.x, top),
-                Vec2::new(area.width() - 10.0, (used - top).max(0.0)),
+                Vec2::new(area.width() - 10.0, (used - top + reach.y).max(0.0)),
             ));
         });
     requests
