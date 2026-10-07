@@ -3851,7 +3851,11 @@ fn a_note_is_a_markdown_file_with_its_three_views_in_its_header() {
 /// it writes where it was to the sidecar. The window a test builds plays through `SilentPlayer`.
 #[test]
 fn a_sound_node_plays_pauses_and_remembers_where_it_was() {
-    let wav = unluminous_app::services::realm::player::a_silent_wav(1.0);
+    // **Thirty seconds rather than one** (`task-2200`). `steady` steps frames until the window stops
+    // asking for one, and a playing node asks every 200 ms, so with a hundred tests running beside it the
+    // steps after `Play` took longer than a one second clip lasts and the clip had ended, showing `Play`
+    // again, before the test looked for `Pause`.
+    let wav = unluminous_app::services::realm::player::a_silent_wav(30.0);
     let (folder, mut harness) = a_realm_project("audio", &[("one.wav", &wav)]);
     did(&mut harness, "realm show");
     let node = added(&mut harness, "realm add audio one.wav --x 40 --y 30");
@@ -3864,7 +3868,7 @@ fn a_sound_node_plays_pauses_and_remembers_where_it_was() {
     let paused = did(&mut harness, &format!("realm pause {node}"));
     let at = paused["position"].as_f64().expect("a position");
     assert!(at > 0.1, "it moved while it played: {at}");
-    assert_eq!(paused["duration"].as_f64(), Some(1.0));
+    assert_eq!(paused["duration"].as_f64(), Some(30.0));
     for _ in 0..4 {
         steady(&mut harness);
     }
