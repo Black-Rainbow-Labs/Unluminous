@@ -1190,13 +1190,17 @@ impl UnluminousApp {
             .iter()
             .map(|surface| surface.key(&surface.what.id))
             .collect();
+        // A realm tab is the realm plugin's own and contributes no surface, so it stays while that plugin
+        // is on and goes when it is switched off. `task-2202`.
+        let realm_on = self.realm_is_on();
         let going: Vec<usize> = (0..self.files.len())
             .filter(|index| {
-                self.files
-                    .at(*index)
-                    .plugin
-                    .as_ref()
-                    .is_some_and(|tab| !contributed.contains(&tab.key))
+                self.files.at(*index).plugin.as_ref().is_some_and(|tab| {
+                    match tab.plugin == "realm" {
+                        true => !realm_on,
+                        false => !contributed.contains(&tab.key),
+                    }
+                })
             })
             .collect();
         // Backwards, because closing a tab renumbers the ones after it.

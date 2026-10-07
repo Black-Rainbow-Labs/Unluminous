@@ -1289,10 +1289,13 @@ impl OpenFiles {
         let pane = Home::Pane(self.last_pane.min(self.panes.saturating_sub(1)));
         let mine = |file: &OpenFile| file.home == pane;
         let transient = self.files.iter().position(|file| mine(file) && file.transient);
+        // A tab a plugin draws holds an empty document with no path too, and is not an empty tab: reusing
+        // one put the next file opened into the Agent-Tasks board's tab, or into a realm tab. `task-2202`.
         let empty = self.files.iter().position(|file| {
             mine(file)
                 && file.path().is_none()
                 && !file.is_browser()
+                && file.plugin.is_none()
                 && file.document.text().is_empty()
                 && !file.document.is_modified()
         });

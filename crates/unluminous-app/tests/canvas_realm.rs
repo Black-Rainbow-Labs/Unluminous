@@ -3767,18 +3767,89 @@ fn a_realm_file_opens_from_the_explorer_and_the_plugin_is_the_switch() {
     );
     double_click(&mut harness, "a.realm");
     steady(&mut harness);
-    assert!(harness.state().realm.visible, "the panel shows");
+    let tab = harness.state().files.active().plugin.clone().expect("a realm tab is showing");
+    assert_eq!((tab.plugin.as_str(), tab.label.as_str()), ("realm", "a"), "a tab on that realm");
     assert_eq!(harness.state().realm.realm.path, std::path::Path::new("a.realm"), "on that realm");
     assert!(harness.state().files.index_of(&folder.join("a.realm")).is_none(), "not as text");
+    harness.get_by_label("Realm tab: a");
 
     did(&mut harness, "plugins disable realm");
     steady(&mut harness);
     assert!(!harness.state().realm.visible, "the panel goes with the plugin");
+    assert!(harness.state().files.active().plugin.is_none(), "and so does the realm tab");
     assert!(harness.query_by_label(".realm-files").is_none(), "and so does the folder");
     assert!(harness.state().plugins.for_path(&folder.join("a.realm")).is_none(), "and the icon");
     assert_eq!(refused(&mut harness, "realm show"), "refused");
     did(&mut harness, "plugins enable realm");
     std::fs::remove_dir_all(&folder).ok();
+}
+
+/// A realm opened in a tab draws its canvas there, and the panel says where the realm is rather than drawing
+/// the same nodes a second time. Switching realms on the bar inside the tab renames the tab.
+#[test]
+fn a_realm_tab_draws_the_canvas_and_the_panel_says_where_it_is() {
+    let empty: &[u8] = b"realm.format = 1
+";
+    let (folder, mut harness) = a_realm_project(
+        "tab",
+        &[(".realm-files/main.realm", empty), (".realm-files/plans.realm", empty)],
+    );
+    did(&mut harness, "tab open .realm-files/plans.realm");
+    added(&mut harness, "realm add note Plan --x 40 --y 30");
+    did(&mut harness, "realm show");
+    for _ in 0..4 {
+        steady(&mut harness);
+    }
+    harness.get_by_label("Node: Plan.md");
+    harness.get_by_label("This realm is showing in a tab.");
+    harness.snapshot(shot("realm_in_a_tab").as_str());
+
+    harness.get_by_label("Realm tab: main").click_accesskit();
+    for _ in 0..4 {
+        steady(&mut harness);
+    }
+    let tab = harness.state().files.active().plugin.clone().expect("still the realm tab");
+    assert_eq!(tab.label, "main", "the tab follows the realm chosen inside it");
+    did(&mut harness, "tab close");
+    steady(&mut harness);
+    assert!(
+        harness.query_by_label("This realm is showing in a tab.").is_none(),
+        "the panel draws it again"
+    );
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// A picture from outside the project is copied into the realm's own folder, and the node names the copy,
+/// so the file chooser can be pointed anywhere.
+#[test]
+fn a_picture_from_outside_the_project_is_copied_into_the_realm() {
+    let picture = a_picture();
+    let outside = std::env::temp_dir().join("unluminous-realm-outside-picture");
+    std::fs::create_dir_all(&outside).expect("make the outside folder");
+    let source = outside.join("holiday.png");
+    std::fs::write(&source, &picture).expect("write the outside picture");
+    let (folder, mut harness) = a_realm_project("outside", &[]);
+    did(&mut harness, "realm show");
+    let line = format!("realm add image {}", source.display());
+    let node = added(&mut harness, &line);
+    let copy = folder.join(".realm-files/main/holiday.png");
+    assert_eq!(std::fs::read(&copy).expect("the copy"), picture);
+    assert!(source.is_file(), "the original is left where it was");
+    let again = added(&mut harness, &line);
+    assert_ne!(node, again);
+    assert!(
+        !folder.join(".realm-files/main/holiday 2.png").exists(),
+        "the same bytes are one copy"
+    );
+    for _ in 0..4 {
+        steady(&mut harness);
+    }
+    assert_eq!(harness.get_all_by_label("Picture: holiday.png").count(), 2);
+    let written =
+        std::fs::read_to_string(folder.join(".realm-files/main.realm")).expect("the realm");
+    assert!(written.contains(".file = .realm-files/main/holiday.png"), "{written}");
+    std::fs::remove_dir_all(&folder).ok();
+    std::fs::remove_dir_all(&outside).ok();
 }
 
 /// Item 14: a picture node draws a 64 by 64 picture fitted to the node, and names it relative to the
@@ -3851,17 +3922,19 @@ fn a_note_is_a_markdown_file_with_its_three_views_in_its_header() {
 /// it writes where it was to the sidecar. The window a test builds plays through `SilentPlayer`.
 #[test]
 fn a_sound_node_plays_pauses_and_remembers_where_it_was() {
-    // **Thirty seconds rather than one** (`task-2200`). `steady` steps frames until the window stops
-    // asking for one, and a playing node asks every 200 ms, so with a hundred tests running beside it the
-    // steps after `Play` took longer than a one second clip lasts and the clip had ended, showing `Play`
-    // again, before the test looked for `Pause`.
+    // Thirty seconds, so a slow frame on a loaded machine cannot reach the end of it before the test looks.
     let wav = unluminous_app::services::realm::player::a_silent_wav(30.0);
     let (folder, mut harness) = a_realm_project("audio", &[("one.wav", &wav)]);
     did(&mut harness, "realm show");
     let node = added(&mut harness, "realm add audio one.wav --x 40 --y 30");
     steady(&mut harness);
     harness.get_by_label("Play one.wav").click_accesskit();
-    steady(&mut harness);
+    for _ in 0..4 {
+        if harness.query_by_label("Pause one.wav").is_some() {
+            break;
+        }
+        steady(&mut harness);
+    }
     harness.get_by_label("Pause one.wav");
     std::thread::sleep(std::time::Duration::from_millis(400));
     pump(&mut harness);
