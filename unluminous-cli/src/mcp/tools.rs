@@ -1684,6 +1684,10 @@ mod tests {
         //            ceiling moves to 27,000, because the area's other verbs (`def`, `refs`,
         //            `fragment`, `outline`) follow in the same ticket and are recorded below when
         //            they land.
+        //   26,987   `task-2202`, `task-2203` and `task-2200` together took it to 27,043, over the
+        //            ceiling, with the realm's files, nodes and players and the browser's sessions.
+        //            The realm's `play`, `pause` and `volume` summaries were cut to one sentence
+        //            each, which brought it back under. The next command added moves this ceiling.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with

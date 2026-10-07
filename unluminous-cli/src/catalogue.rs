@@ -2054,7 +2054,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "realm",
         verb: "play",
-        summary: "Play an audio or video node, and answer where it is and how long it is. A sound plays in the window itself, so every audio node can play at once. A video plays in the window's one web view, so playing one makes it the chosen node, and the video that was showing stops showing.",
+        summary: "Play an audio or video node, and answer where it is and how long it is. Sounds play at once; one video plays at a time, in the window's web view.",
         arguments: &[whole("node", true, "The audio or video node's id.")],
         flags: &[whole_option("from", "node", "Which node is asking. It must be wired to the one it names.")],
         examples: &["unluminous-cli realm play 13"],
@@ -2063,7 +2063,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "realm",
         verb: "pause",
-        summary: "Pause an audio or video node where it is. Where it was paused is remembered on this machine and is where it starts next time.",
+        summary: "Pause an audio or video node. Where it stopped is remembered on this machine.",
         arguments: &[whole("node", true, "The audio or video node's id.")],
         flags: &[whole_option("from", "node", "Which node is asking. It must be wired to the one it names.")],
         examples: &["unluminous-cli realm pause 13"],
@@ -2084,7 +2084,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "realm",
         verb: "volume",
-        summary: "Set how loud an audio or video node plays, from 0 for silent to 1 for as loud as the file is. It is written in the realm file.",
+        summary: "Set how loud an audio or video node plays, from 0 to 1. Written in the realm file.",
         arguments: &[
             whole("node", true, "The audio or video node's id."),
             number("level", true, "From 0 to 1."),
