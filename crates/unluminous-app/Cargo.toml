@@ -74,6 +74,12 @@ libc.workspace = true
 objc2-foundation.workspace = true
 objc2.workspace = true
 wry.workspace = true
+# A browser node's page is cropped to its part of the canvas with a mask on the web view's own layer,
+# because macOS has no window region to set. All four are already in the build through `wry`. `task-2207`.
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSView", "NSResponder", "objc2-quartz-core", "objc2-core-foundation"] }
+objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CALayer", "objc2-core-graphics", "objc2-core-foundation"] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGColor"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes"] }
 # Posting a block to the main dispatch queue, which is how a run loop that has stopped answering
 # repaint requests is woken. See `services/wake.rs`.
 dispatch2.workspace = true

@@ -209,19 +209,7 @@ impl RodioPlayer {
     /// Put the file on the player again, paused at the start, which is how a sound that ended starts over.
     fn queue(&mut self) -> Result<(), String> {
         use rodio::Source;
-        let file = std::fs::File::open(&self.path)
-            .map_err(|problem| format!("{} could not be read: {problem}", self.path.display()))?;
-        let length = file.metadata().map(|about| about.len()).unwrap_or(0);
-        let mut builder = rodio::Decoder::builder()
-            .with_data(std::io::BufReader::new(file))
-            .with_byte_len(length)
-            .with_seekable(true);
-        if let Some(extension) = self.path.extension().and_then(|extension| extension.to_str()) {
-            builder = builder.with_hint(extension);
-        }
-        let decoder = builder
-            .build()
-            .map_err(|problem| format!("{} could not be played: {problem}", self.path.display()))?;
+        let decoder = decoder_for(&self.path)?;
         if let Some(length) = decoder.total_duration() {
             self.duration = length;
         }
@@ -230,6 +218,21 @@ impl RodioPlayer {
         self.player.pause();
         Ok(())
     }
+}
+
+/// A decoder over a sound file, which is the half of playing one that needs no audio device.
+pub fn decoder_for(path: &Path) -> Result<rodio::Decoder<std::io::BufReader<std::fs::File>>, String> {
+    let file = std::fs::File::open(path)
+        .map_err(|problem| format!("{} could not be read: {problem}", path.display()))?;
+    let length = file.metadata().map(|about| about.len()).unwrap_or(0);
+    let mut builder = rodio::Decoder::builder()
+        .with_data(std::io::BufReader::new(file))
+        .with_byte_len(length)
+        .with_seekable(true);
+    if let Some(extension) = path.extension().and_then(|extension| extension.to_str()) {
+        builder = builder.with_hint(extension);
+    }
+    builder.build().map_err(|problem| format!("{} could not be played: {problem}", path.display()))
 }
 
 impl Player for RodioPlayer {
@@ -303,6 +306,22 @@ impl Player for RodioPlayer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `task-2207`: an `.m4a` is a container, and the two things found in one are AAC and Apple Lossless.
+    /// The second was refused with "The format of the data has not been recognized" until the decoder for it
+    /// was turned on, because rodio's `mp4` feature brings the AAC decoder only.
+    #[test]
+    fn an_m4a_holding_aac_or_apple_lossless_can_be_decoded() {
+        use rodio::Source;
+        let fixtures =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("sounds");
+        for name in ["aac.m4a", "apple-lossless.m4a"] {
+            let decoder = decoder_for(&fixtures.join(name))
+                .unwrap_or_else(|problem| panic!("{name} should decode: {problem}"));
+            let samples = decoder.count();
+            assert!(samples > 1_000, "{name} decoded to {samples} samples");
+        }
+    }
 
     #[test]
     fn a_wav_says_how_long_it_is() {

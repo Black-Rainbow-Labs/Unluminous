@@ -566,6 +566,25 @@ impl UnluminousApp {
         }
     }
 
+    /// Where every node stacked in front of `node` is on the screen, cut to the canvas.
+    ///
+    /// A page in a browser or video node is a native child, which paints above everything egui draws, so
+    /// it is cropped around these. `Realm::nodes` is the drawing order, so the nodes in front are the ones
+    /// after it. `task-2207`: *"The web browser node doesn't respect the bring to front/back order."*
+    pub(crate) fn nodes_in_front_of(&self, node: NodeId) -> Vec<Rect> {
+        let camera = self.realm.realm.camera;
+        let body = self.realm.body;
+        let nodes = &self.realm.realm.nodes;
+        let Some(at) = nodes.iter().position(|each| each.id == node) else {
+            return Vec::new();
+        };
+        nodes[at + 1..]
+            .iter()
+            .map(|each| camera.rect_to_screen(body.min, each.rect()).intersect(body))
+            .filter(|on_screen| on_screen.is_positive())
+            .collect()
+    }
+
     /// The modifier wheel over a node zooms **that node**, and the canvas gets it only when no node did.
     ///
     /// `task-1905`: *"If I CMD/CTRL mouse wheel while hovering over a node, that node should zoom in/out,
@@ -896,6 +915,7 @@ impl UnluminousApp {
             // reported jitter. See `services::browser::BrowserPlacement::zoom`.
             let wanted = self.realm.live.page_zoom_of(node.id) * camera.zoom;
             placement.zoom = Some(f64::from(wanted));
+            placement.over = self.nodes_in_front_of(node.id);
             // A node scrolled off the canvas has nothing on the screen to place, and a rectangle with no room
             // in it would ask the view to be a pixel wide somewhere on the pane's edge. Asked of the
             // **visible** part, because the whole one is now the node wherever it is.

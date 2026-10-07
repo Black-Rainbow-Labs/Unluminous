@@ -135,6 +135,11 @@ impl UnluminousApp {
         if let Some(chosen) = action {
             self.run_action(chosen, ui.ctx());
         }
+        // **The page follows the node it was drawn in, in the same frame.** See `BrowserHost::follow`.
+        if !self.browser_placements.is_empty() {
+            let occluders = self.occluding_rects(ui.ctx());
+            self.browser.follow(&self.browser_placements, &occluders);
+        }
         self.end_the_frame(ui);
     }
 

@@ -330,7 +330,7 @@ impl BrowserTab {
 }
 
 /// A browser view that should be visible in this frame.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BrowserPlacement {
     pub id: u64,
     /// Where the page lays itself out, in the window's own points.
@@ -365,13 +365,58 @@ pub struct BrowserPlacement {
     /// **`None` for a page in a pane**, whose zoom is the person's own through `browser zoom` and is not
     /// Unluminous's to write back on every frame.
     pub zoom: Option<f64>,
+    /// What else on the canvas is drawn over this page, in the window's own points, cut to the pane.
+    ///
+    /// `task-2207`: *"The web browser node doesn't respect the bring to front/back order. the node seems to
+    /// but the content is always on top of everything."* A native child is a window, so it paints above
+    /// everything egui draws, whatever place its node has in the stacking order. The occluders the window
+    /// reads off egui's layers cannot see this, because every canvas node is drawn into a background layer.
+    /// So the canvas says which nodes are in front of this one, and they are cut out of the page exactly as
+    /// a menu over it is.
+    pub over: Vec<Rect>,
+    /// Whether this is a video that is playing. A playing video keeps the one native view when nothing has
+    /// the keyboard, so clicking somewhere else on the canvas does not stop it. `task-2207`.
+    pub playing: bool,
 }
 
 impl BrowserPlacement {
     /// A placement that is wholly visible, which is every page drawn in a pane.
     pub fn whole(id: u64, area: Rect, focused: bool) -> Self {
-        Self { id, area, visible: area, focused, zoom: None }
+        Self { id, area, visible: area, focused, zoom: None, over: Vec::new(), playing: false }
     }
+}
+
+/// The part of `visible` left once every rectangle in `over` is taken out of it, as rectangles that do
+/// not overlap.
+///
+/// A platform that crops a native child by a list of rectangles rather than by a region, which is macOS
+/// with a layer mask, needs the answer this way: two holes that overlap would otherwise be counted twice.
+/// Each hole splits what is left of every piece it touches into at most four, above, below, left and right.
+pub fn pieces_of(visible: Rect, over: &[Rect]) -> Vec<Rect> {
+    let mut pieces = vec![visible];
+    for hole in over {
+        let mut next = Vec::with_capacity(pieces.len() + 4);
+        for piece in pieces {
+            let cut = piece.intersect(*hole);
+            if !cut.is_positive() {
+                next.push(piece);
+                continue;
+            }
+            let above = Rect::from_min_max(piece.min, egui::pos2(piece.max.x, cut.min.y));
+            let below = Rect::from_min_max(egui::pos2(piece.min.x, cut.max.y), piece.max);
+            let left = Rect::from_min_max(
+                egui::pos2(piece.min.x, cut.min.y),
+                egui::pos2(cut.min.x, cut.max.y),
+            );
+            let right = Rect::from_min_max(
+                egui::pos2(cut.max.x, cut.min.y),
+                egui::pos2(piece.max.x, cut.max.y),
+            );
+            next.extend([above, below, left, right].into_iter().filter(|part| part.is_positive()));
+        }
+        pieces = next;
+    }
+    pieces
 }
 
 /// A command shared by the browser toolbar and `unluminous-cli browser`.
@@ -744,6 +789,27 @@ impl BrowserHost {
         }
     }
 
+    /// Move the view that is showing to where this frame drew its page, at the end of the frame.
+    ///
+    /// `task-2207`: *"Web browser node contents dont zoom at the same time as everything else. seems to be
+    /// delayed in catching up."* [`Self::reconcile`] runs before the egui pass and so places the view where
+    /// the **previous** frame drew its node: during a pan or a zoom of the canvas the page was always one
+    /// frame behind the node around it, on top of whatever the engine itself takes to lay the page out at a
+    /// new zoom. This moves it again once the frame that drew the node has finished, so the page and its
+    /// node are presented together.
+    ///
+    /// **Only a move.** Making the view and pointing it at another page stay before the pass, because making
+    /// one waits in a nested message pump that the pass must not be inside; moving one, zooming it and
+    /// setting its crop return at once. Nothing is done unless the placement chosen this frame is for the
+    /// page the view already shows.
+    pub fn follow(&mut self, placements: &[BrowserPlacement], occluders: &[egui::Rect]) {
+        let Some(showing) = self.showing() else { return };
+        let Some(chosen) = choose(placements, occluders, CAN_CUT_A_PAGE) else { return };
+        if chosen.id == showing {
+            self.native.follow(chosen, occluders);
+        }
+    }
+
     /// Create, point, place and hide the native view. Called before the egui pass, never inside it.
     pub fn reconcile(
         &mut self,
@@ -940,8 +1006,9 @@ pub fn the_focus(view_holds_it: bool, wanted: bool) -> TheFocus {
 ///
 /// Windows can: `wry` builds the engine inside a container window of its own, and a region set on that
 /// container clips the engine — which is how a browser node hanging off the canvas has shown part of a
-/// page since `task-1914`. macOS has no such container, so there a covered page is hidden instead.
-const CAN_CUT_A_PAGE: bool = cfg!(windows);
+/// page since `task-1914`. macOS can since `task-2207`, with a mask on the web view's own layer. The Linux
+/// build has no web view at all, so the answer there is never asked.
+const CAN_CUT_A_PAGE: bool = cfg!(any(windows, target_os = "macos"));
 
 /// The one placement the native view goes to: the pane with the keyboard, else the first drawn.
 ///
@@ -957,8 +1024,14 @@ fn choose<'a>(
     // one furthest behind. With two browser nodes overlapping and the keyboard somewhere else entirely, the
     // one underneath took the native view and painted above the one on top of it, because a native child
     // composites over everything egui draws. The Codex Sol review of `task-1905` found it.
-    let chosen =
-        placements.iter().find(|placement| placement.focused).or_else(|| placements.last())?;
+    //
+    // **A playing video comes before the last one drawn**, so clicking the canvas's empty ground, or a node
+    // that is not a page, does not take the view away from a video somebody is watching. `task-2207`.
+    let chosen = placements
+        .iter()
+        .find(|placement| placement.focused)
+        .or_else(|| placements.iter().rev().find(|placement| placement.playing))
+        .or_else(|| placements.last())?;
     // **A page is hidden only where there is no way to cut it around what is over it.** It used to be
     // hidden whenever any popup was open anywhere: `egui::Popup::is_any_open` is one answer for the
     // menu bar, every dropdown and every flyout, and it was read as "take the view off the screen".
@@ -972,8 +1045,8 @@ fn choose<'a>(
     // Where the whole page is covered — a modal, which dims the window — the region comes out empty
     // and the child shows nothing, which is the same answer by the same route.
     //
-    // macOS has no container of `wry`'s to mask, which `clip_to_the_visible_part` already records, so
-    // there a page really does have to be hidden. `visible` rather than `area`, because the part of a
+    // A platform that cannot cut a page has to hide it instead. Both platforms with a web view can since
+    // `task-2207`, when macOS gained a layer mask, so this is kept for a third. `visible` rather than `area`, because the part of a
     // node hanging off the canvas is not on the screen; and an overlap has to have some area in it,
     // since `Rect::intersects` is true of two rectangles that merely touch along an edge.
     if !can_cut_the_page_around_them && covers_any_of(occluders, chosen.visible) {
@@ -1675,6 +1748,17 @@ mod native {
             Vec::new()
         }
 
+        /// Move the view that is already showing to where this frame drew its node, at the end of the
+        /// frame. See [`super::BrowserHost::follow`].
+        pub fn follow(&mut self, placement: &BrowserPlacement, occluders: &[egui::Rect]) {
+            if let Some(view) = &mut self.view {
+                if view.visible {
+                    move_to(view, placement, occluders);
+                    self.zoom.store(view.zoom.unwrap_or(1.0).to_bits(), Ordering::Relaxed);
+                }
+            }
+        }
+
         /// Build the one native view, with no host bridge and callbacks that report browser state.
         ///
         /// The callbacks read which tab the view is pointed at rather than closing over one, because
@@ -1965,6 +2049,23 @@ mod native {
     /// viewport as well as its position, so cutting it is what reflows a responsive page — see
     /// [`clip_to_the_visible_part`], which takes the part that may be painted off the same placement.
     fn place(view: &mut NativeView, placement: &BrowserPlacement, occluders: &[egui::Rect]) {
+        move_to(view, placement, occluders);
+        set_visible(view, true);
+        // **What the platform says, not what this last did.** See [`the_page_really_has_the_keyboard`].
+        match super::the_focus(page_has_it(view), placement.focused) {
+            super::TheFocus::LeaveIt => {}
+            super::TheFocus::GiveItToThePage => {
+                let _ = view.webview.focus();
+                view.has_the_focus = true;
+            }
+            super::TheFocus::GiveItBackToTheWindow => give_the_focus_back(view),
+        }
+    }
+
+    /// Put the view where a placement says, at its zoom and cut to what may be painted. Nothing else: not
+    /// whether it is showing and not where the keyboard is, so it is safe at the end of a frame as well as
+    /// before one. See [`NativeHost::follow`].
+    fn move_to(view: &mut NativeView, placement: &BrowserPlacement, occluders: &[egui::Rect]) {
         let bounds = browser_rect(placement.area);
         if view.bounds != Some(bounds) && view.webview.set_bounds(bounds).is_ok() {
             view.bounds = Some(bounds);
@@ -1990,9 +2091,14 @@ mod native {
         // taken off the screen while a menu is open. `task-2009`: the branch picker hangs over part of a
         // pane, and a native child paints above everything egui draws, so the page has to come out from
         // under the menu — but only from under the menu. See `services::browser::choose`.
+        //
+        // **And so are the canvas nodes stacked in front of it**, which egui's layers cannot report because
+        // every node is drawn into a background layer. They are not grown by the popup shadow: a node's own
+        // edge is where the node in front of the page begins. `task-2207`.
         let over: Vec<egui::Rect> = occluders
             .iter()
             .map(|rect| rect.expand(super::OCCLUDER_SHADOW))
+            .chain(placement.over.iter().copied())
             .filter(|rect| rect.intersect(placement.visible).is_positive())
             .collect();
         let wanted = match placement.visible.contains_rect(placement.area) && over.is_empty() {
@@ -2004,16 +2110,6 @@ mod native {
         if view.clip != wanted {
             clip_to_the_visible_part(view, placement.area, placement.visible, &over);
             view.clip = wanted;
-        }
-        set_visible(view, true);
-        // **What the platform says, not what this last did.** See [`the_page_really_has_the_keyboard`].
-        match super::the_focus(page_has_it(view), placement.focused) {
-            super::TheFocus::LeaveIt => {}
-            super::TheFocus::GiveItToThePage => {
-                let _ = view.webview.focus();
-                view.has_the_focus = true;
-            }
-            super::TheFocus::GiveItBackToTheWindow => give_the_focus_back(view),
         }
     }
 
@@ -2097,11 +2193,7 @@ mod native {
     /// nothing is deleted here; a placement that is wholly visible passes `None`, which is how a region is
     /// taken off again.
     ///
-    /// **On macOS there is no crop and the placement is honest about it.** A `WKWebView` is an `NSView` and
-    /// its superview is the window's content view, which does not clip its subviews — there is no container
-    /// of `wry`'s to put a mask on, and adding one would mean reaching into the view hierarchy `wry` owns.
-    /// So the bounds are the whole page there and the part outside the pane is drawn over Unluminous's own
-    /// furniture, which is the trade the caller states in `show_a_browser_node`.
+    /// macOS has no window region, and is cropped with a layer mask instead. See its half below.
     #[cfg(windows)]
     fn clip_to_the_visible_part(
         view: &NativeView,
@@ -2163,14 +2255,65 @@ mod native {
         unsafe { SetWindowRgn(hwnd, region, 1) };
     }
 
-    /// The same question on a platform whose native child cannot be cropped. See the Windows half.
-    #[cfg(not(windows))]
+    /// **On macOS this is a mask on the web view's own layer**, since `task-2207`. There is no window region
+    /// on macOS and no container of `wry`'s to set one on, so until then a page was never cropped there at
+    /// all: it drew over the realm's bar, over a panel beside the canvas and over every node in front of it,
+    /// which is the report. A layer mask clips what the layer and its sublayers draw to the opaque part of
+    /// the mask, and the bounds are left alone, so the page's viewport is still the whole node.
+    ///
+    /// The mask is one sublayer for each rectangle [`super::pieces_of`] answers, which do not overlap, so
+    /// two things over the page that overlap each other cannot cancel out. Its rectangles are measured in
+    /// the view's own coordinates, which go down the screen when the view is flipped and up it otherwise,
+    /// and the view is asked which rather than assumed.
+    #[cfg(target_os = "macos")]
     fn clip_to_the_visible_part(
-        _view: &NativeView,
-        _area: egui::Rect,
-        _visible: egui::Rect,
-        _over: &[egui::Rect],
+        view: &NativeView,
+        area: egui::Rect,
+        visible: egui::Rect,
+        over: &[egui::Rect],
     ) {
+        use objc2_core_foundation::{CGPoint, CGRect, CGSize};
+        use objc2_core_graphics::CGColor;
+        use objc2_quartz_core::CALayer;
+        use wry::WebViewExtMacOS as _;
+
+        let webview = view.webview.webview();
+        if visible.contains_rect(area) && over.is_empty() {
+            if let Some(layer) = webview.layer() {
+                // SAFETY: taking a layer's mask away is always allowed.
+                unsafe { layer.setMask(None) };
+            }
+            return;
+        }
+        if !webview.wantsLayer() {
+            webview.setWantsLayer(true);
+        }
+        let Some(layer) = webview.layer() else {
+            return;
+        };
+        let flipped = webview.isFlipped();
+        let mask = CALayer::new();
+        mask.setFrame(CGRect::new(
+            CGPoint::new(0.0, 0.0),
+            CGSize::new(f64::from(area.width()), f64::from(area.height())),
+        ));
+        let opaque = CGColor::new_generic_gray(0.0, 1.0);
+        for piece in super::pieces_of(visible.intersect(area), over) {
+            let x = f64::from(piece.left() - area.left());
+            let y = match flipped {
+                true => f64::from(piece.top() - area.top()),
+                false => f64::from(area.bottom() - piece.bottom()),
+            };
+            let part = CALayer::new();
+            part.setFrame(CGRect::new(
+                CGPoint::new(x, y),
+                CGSize::new(f64::from(piece.width()), f64::from(piece.height())),
+            ));
+            part.setBackgroundColor(Some(&opaque));
+            mask.addSublayer(&part);
+        }
+        // SAFETY: the mask is a fresh layer that belongs to nothing else, which is what `setMask` asks.
+        unsafe { layer.setMask(Some(&mask)) };
     }
 
     /// Show or hide the native child and lower an inactive Windows renderer's memory target.
@@ -2250,6 +2393,8 @@ mod native {
         pub fn forget(&mut self) {}
         /// There is nothing to hide.
         pub fn hide(&mut self) {}
+        /// Nothing to move where there is no view.
+        pub fn follow(&mut self, _placement: &BrowserPlacement, _occluders: &[egui::Rect]) {}
         /// Report one clear platform refusal for the tab that would have been shown.
         pub fn settle(&mut self, request: Settle<'_>) -> Vec<(u64, String)> {
             let _ = (
@@ -2465,7 +2610,7 @@ mod tests {
         let focused_behind = [placed(1, true), placed(2, false)];
         assert_eq!(choose(&focused_behind, &[], true).map(|one| one.id), Some(1));
         // A menu over it takes it off the screen **only** where there is no way to cut it around one,
-        // which is macOS: `wry` builds no container there for a region to be set on.
+        // which since `task-2207` is neither platform with a web view; the answer is kept for a third.
         let over = egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(20.0, 20.0));
         assert!(choose(&both, &[over], false).is_none(), "nothing to cut it with");
         assert_eq!(
@@ -2474,6 +2619,49 @@ mod tests {
             "and where there is, the page stays and the child is cut around the menu"
         );
         assert!(choose(&[], &[], true).is_none());
+    }
+
+    /// `task-2207`: a video that is playing keeps the one view when the keyboard is elsewhere, so clicking
+    /// another node or the empty canvas does not stop it. A page somebody chose still takes it.
+    #[test]
+    fn a_playing_video_keeps_the_view_until_another_page_is_chosen() {
+        let area = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(100.0, 100.0));
+        let mut video = BrowserPlacement::whole(1, area, false);
+        video.playing = true;
+        let page = BrowserPlacement::whole(2, area, false);
+        let drawn = [video.clone(), page.clone()];
+        assert_eq!(choose(&drawn, &[], true).map(|one| one.id), Some(1), "the playing video");
+        let chosen_page = BrowserPlacement::whole(2, area, true);
+        assert_eq!(choose(&[video, chosen_page], &[], true).map(|one| one.id), Some(2));
+    }
+
+    /// `task-2207`: what is left of a page once what is over it is taken out, as rectangles that do not
+    /// overlap, which is what a macOS layer mask is made of.
+    #[test]
+    fn the_pieces_of_a_page_cover_what_is_not_covered_and_nothing_twice() {
+        let page = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(100.0, 80.0));
+        assert_eq!(pieces_of(page, &[]), vec![page]);
+        // Two holes that overlap each other and one wholly outside the page.
+        let holes = [
+            egui::Rect::from_min_max(egui::pos2(20.0, 10.0), egui::pos2(60.0, 50.0)),
+            egui::Rect::from_min_max(egui::pos2(40.0, 30.0), egui::pos2(90.0, 70.0)),
+            egui::Rect::from_min_max(egui::pos2(200.0, 0.0), egui::pos2(300.0, 50.0)),
+        ];
+        let pieces = pieces_of(page, &holes);
+        let area: f32 = pieces.iter().map(|piece| piece.area()).sum();
+        let covered = 40.0 * 40.0 + 50.0 * 40.0 - 20.0 * 20.0;
+        assert!((area - (page.area() - covered)).abs() < 0.01, "{area} {pieces:?}");
+        for (i, one) in pieces.iter().enumerate() {
+            assert!(page.contains_rect(*one));
+            for hole in &holes {
+                assert!(!one.intersect(*hole).is_positive(), "{one:?} is under {hole:?}");
+            }
+            for other in &pieces[i + 1..] {
+                assert!(!one.intersect(*other).is_positive(), "{one:?} overlaps {other:?}");
+            }
+        }
+        // A page wholly covered has no pieces at all.
+        assert!(pieces_of(page, &[page.expand(1.0)]).is_empty());
     }
 
     /// `task-2009`: what is really over a page, rather than anything being open anywhere.

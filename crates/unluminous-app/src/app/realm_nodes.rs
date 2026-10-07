@@ -522,7 +522,18 @@ impl UnluminousApp {
         }
         let name = self.name_of_a_node(node);
         let chosen = self.realm.realm.chosen() == Some(node.id);
-        if chosen && crate::services::browser::SUPPORTED {
+        // **A video that is playing keeps playing when it stops being the chosen node.** `task-2207`:
+        // *"Video node playback stops when I click outside of the video node."* Its page was placed only
+        // while the node was chosen, so a click anywhere else took the one native view away from it and the
+        // video stopped with it. It is the page reporting that it plays, and that the view is still on it,
+        // that keeps it; another page that is chosen still takes the view, because there is only one.
+        let playing = self.realm.live.video_report(node.id).is_some_and(|(_, playing, _)| playing)
+            && self
+                .realm
+                .live
+                .browser(node.id)
+                .is_some_and(|tab| self.browser.showing() == Some(tab.id));
+        if (chosen || playing) && crate::services::browser::SUPPORTED {
             match self.a_video_tab(node.id, false) {
                 Ok(tab) => {
                     let camera = self.realm.realm.camera;
@@ -532,6 +543,8 @@ impl UnluminousApp {
                     placement.area = whole;
                     placement.visible = whole.intersect(self.realm.body);
                     placement.zoom = Some(f64::from(camera.zoom));
+                    placement.over = self.nodes_in_front_of(node.id);
+                    placement.playing = playing;
                     if placement.visible.width() > 1.0 && placement.visible.height() > 1.0 {
                         self.browser_placements.push(placement);
                     }

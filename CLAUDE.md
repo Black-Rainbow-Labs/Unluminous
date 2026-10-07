@@ -1081,7 +1081,9 @@ whose key is `realm:<path>`, drawn by `show_a_realm_tab` into the editing area; 
 one is showing, because there is one canvas. `OpenFiles::reuse` never takes a plugin tab, since one holds
 an empty document with no path. A file from outside the project put on a node is copied into
 `.realm-files/<realm>/` first. A sound is played by `rodio` through the `Player` trait, and a window
-a test builds plays through `SilentPlayer`. A video plays in the one web view, on
+a test builds plays through `SilentPlayer`. rodio reports any codec it was built without as "The format
+of the data has not been recognized", and its `mp4` feature brings the AAC decoder only, so an `.m4a`
+holding Apple Lossless needs `symphonia-alac` as well (`task-2207`). A video plays in the one web view, on
 `unluminous://realm/video/<id>`, with its file served by node id at `unluminous://realm/media/<id>`.
 
 ### A node's place in the stacking order is the model's, and egui is told it every frame (`task-2200`)
@@ -1223,8 +1225,32 @@ On Windows the crop is a **window region on the container `wry` already creates*
 is a real `WS_CHILD` window whose only child is the engine's, so `SetWindowRgn` on it clips the engine
 while `ICoreWebView2Controller::SetBounds` stays at the whole node. The scale comes from
 `GetDpiForWindow` on that same window, which is what `wry` asks, so the two cannot disagree about where a
-logical point is. On macOS there is no container of `wry`'s to mask and the placement says so: the page
-is drawn whole and the part outside the pane is over Unluminous's own furniture.
+logical point is. On macOS there is no window region, so since `task-2207` the crop is a **mask on the
+`WKWebView`'s own layer**: one opaque sublayer for each rectangle `services::browser::pieces_of` answers,
+measured in the view's own coordinates after asking it whether it is flipped. Before that a page on macOS
+was never cropped at all, and it drew over the realm's bar, the panel beside the canvas and every node in
+front of it. That half compiles for `aarch64-apple-darwin` on the Windows machine with
+`cargo-zigbuild zigbuild --target aarch64-apple-darwin -p unluminous-app --lib`, which needs no SDK because
+nothing is linked, but it was not run on a Mac when it was written.
+
+### A node in front of a page is cut out of it, and a page follows its node in the same frame (`task-2207`)
+
+A native child paints above everything egui draws, and every canvas node is drawn into a background
+layer, so the occluders read off egui's layers never include a node. `UnluminousApp::nodes_in_front_of`
+answers where the nodes after this one in `Realm::nodes` are on the screen, and they go on the placement
+as `BrowserPlacement::over`, cut out of the page the way a menu over it is. A browser node and a video node
+both carry it.
+
+`BrowserHost::reconcile` runs before the egui pass and so placed the view where the **previous** frame drew
+its node, a frame behind during every pan and zoom. `BrowserHost::follow` moves it again at the end of the
+frame that drew the node: bounds, zoom and crop only, because creating a view or pointing it at another page
+waits in a nested message pump and stays before the pass. It acts only when the placement chosen this frame
+is for the page the view already shows.
+
+**A playing video keeps the view.** A video node placed its page only while it was the chosen node, so a
+click anywhere else stopped it. It is placed while its page reports that it is playing and the view is on
+it, and `BrowserPlacement::playing` puts it before the last placement drawn in `choose`. A page somebody
+chose still takes the view, because there is one.
 
 ### Everything that can be dropped on the canvas
 

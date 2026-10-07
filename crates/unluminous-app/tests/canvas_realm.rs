@@ -2346,7 +2346,7 @@ fn a_browser_nodes_page_is_placed_inside_the_node() {
 
     let body = harness.state().realm.body;
     let placements = harness.state().browser_placements();
-    let page = placements.first().copied().expect("the node's page was placed").area;
+    let page = placements.first().cloned().expect("the node's page was placed").area;
     // Inside the canvas, which is what "contained to the node" means at the outer edge.
     assert!(body.contains_rect(page), "the page is at {page:?} and the canvas is {body:?}");
     // And inside the node itself, under its own toolbar.
@@ -2370,7 +2370,7 @@ fn a_browser_nodes_page_is_placed_inside_the_node() {
     // exactly the case that is now put away.
     did(&mut harness, "realm camera --x 40 --y 150");
     steady(&mut harness);
-    let panned = harness.state().browser_placements().first().copied().expect("still placed").area;
+    let panned = harness.state().browser_placements().first().cloned().expect("still placed").area;
     assert_ne!(panned.min, was.min, "the page should have moved with the canvas");
     let node_now = camera_of(&harness).rect_to_screen(
         harness.state().realm.body.min,
@@ -2387,13 +2387,48 @@ fn a_browser_nodes_page_is_placed_inside_the_node() {
     // kept its world size would hang out of it.
     did(&mut harness, "realm camera --zoom 0.5");
     steady(&mut harness);
-    let smaller = harness.state().browser_placements().first().copied().expect("still placed").area;
+    let smaller = harness.state().browser_placements().first().cloned().expect("still placed").area;
     assert!(smaller.width() < was.width() * 0.75, "the page was {was:?} and is now {smaller:?}");
     let on_screen = camera_of(&harness).rect_to_screen(
         harness.state().realm.body.min,
         harness.state().realm.realm.node(node).expect("the node").rect(),
     );
     assert!(on_screen.contains_rect(smaller), "at half the zoom the page is {smaller:?}");
+}
+
+/// A node stacked in front of a browser node is cut out of its page, and one behind it is not.
+///
+/// `task-2207`: *"The web browser node doesn't respect the bring to front/back order. the node seems to but
+/// the content is always on top of everything."* A page is a native child, which paints over everything egui
+/// draws, so the only way a node can be in front of one is for the page to be cropped around it. The
+/// placement carries where those nodes are, and moving a node in the stacking order changes the answer.
+#[test]
+fn a_node_in_front_of_a_browser_node_is_cut_out_of_its_page() {
+    use unluminous_app::services::realm::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let page = harness.state_mut().new_detached_realm_node(Kind::Browser, egui::pos2(60.0, 60.0));
+    did(&mut harness, &format!("realm size {page} --width 520 --height 360"));
+    harness
+        .state_mut()
+        .new_detached_realm_page(page, "https://example.com/")
+        .expect("a tab with no view behind it");
+    let front = harness.state_mut().new_detached_realm_node(Kind::Folder, egui::pos2(300.0, 200.0));
+    steady(&mut harness);
+
+    let placed = harness.state().browser_placements().first().cloned().expect("the page is placed");
+    assert_eq!(placed.over.len(), 1, "the folder node is in front: {:?}", placed.over);
+    let body = harness.state().realm.body;
+    let folder = camera_of(&harness).rect_to_screen(
+        body.min,
+        harness.state().realm.realm.node(front).expect("the folder").rect(),
+    );
+    assert_eq!(placed.over[0], folder.intersect(body), "the rectangle cut out is the folder node");
+
+    did(&mut harness, &format!("realm arrange {front} back"));
+    steady(&mut harness);
+    let placed = harness.state().browser_placements().first().cloned().expect("the page is placed");
+    assert!(placed.over.is_empty(), "behind the page, nothing is cut: {:?}", placed.over);
 }
 
 /// The camera the canvas is being looked at from, for the test above.
@@ -2837,7 +2872,7 @@ fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
         .new_detached_realm_page(node, "https://example.com/")
         .expect("a tab with no view behind it");
     steady(&mut harness);
-    let whole = harness.state().browser_placements().first().copied().expect("the page is drawn");
+    let whole = harness.state().browser_placements().first().cloned().expect("the page is drawn");
     assert_eq!(whole.visible, whole.area, "nothing is cut while the node is inside the pane");
     let width = whole.area.width();
 
@@ -2849,7 +2884,7 @@ fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
     did(&mut harness, &format!("realm move {node} --x {} --y 20", body.width() - 180.0));
     steady(&mut harness);
     let cut =
-        harness.state().browser_placements().first().copied().expect("the page is still drawn");
+        harness.state().browser_placements().first().cloned().expect("the page is still drawn");
     assert!(
         (cut.area.width() - width).abs() < 0.5,
         "the page lays itself out at the node's whole width, not at what is left: {} against {width}",
@@ -2868,7 +2903,7 @@ fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
     did(&mut harness, &format!("realm move {node} --x {} --y 20", body.width() - 40.0));
     steady(&mut harness);
     let strip =
-        harness.state().browser_placements().first().copied().expect("a strip is still a page");
+        harness.state().browser_placements().first().cloned().expect("a strip is still a page");
     assert!((strip.area.width() - width).abs() < 0.5, "still the whole page");
     assert!(strip.visible.width() < 100.0, "and a strip of it showing");
 
@@ -2882,7 +2917,7 @@ fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
 
     did(&mut harness, &format!("realm move {node} --x 20 --y 20"));
     steady(&mut harness);
-    let back = harness.state().browser_placements().first().copied().expect("the page comes back");
+    let back = harness.state().browser_placements().first().cloned().expect("the page comes back");
     assert_eq!(back.visible, back.area, "and it is whole again");
 }
 
