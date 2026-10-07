@@ -185,13 +185,24 @@ pub struct Contributions {
     pub tab: Option<TabContribution>,
     pub menu: Option<MenuContribution>,
     pub page: Option<PageContribution>,
+    /// `ui.extensions`: the file types this plugin's provider opens instead of a text tab, lower case and
+    /// without the dot. `task-2202`. The plugin's icon is what the explorer and the tabs draw for them.
+    pub extensions: Vec<String>,
+    /// `explorer.shows`: folders whose names start with a dot that the explorer lists while this plugin is
+    /// switched on. `task-2202`: `.realm-files`. Every other dot folder stays hidden.
+    pub explorer_shows: Vec<String>,
 }
 
 impl Contributions {
     /// True when this manifest adds nothing at all, which is what makes a `ui` plugin unreachable and
     /// is therefore refused.
     pub fn is_empty(&self) -> bool {
-        self.pane.is_none() && self.tab.is_none() && self.menu.is_none() && self.page.is_none()
+        self.pane.is_none()
+            && self.tab.is_none()
+            && self.menu.is_none()
+            && self.page.is_none()
+            && self.extensions.is_empty()
+            && self.explorer_shows.is_empty()
     }
 }
 

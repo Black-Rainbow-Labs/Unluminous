@@ -12,7 +12,7 @@ use egui::{Pos2, Rect, Vec2};
 use crate::components::splitter;
 use crate::settings::Panes;
 
-use crate::app::{dock, space};
+use crate::app::{dock, realm};
 use crate::app::{Drag, Focus, Maximise, UnluminousApp};
 
 impl UnluminousApp {
@@ -104,7 +104,7 @@ impl UnluminousApp {
         showing[dock::Panel::Terminal.index()] = self.terminal.visible;
         showing[dock::Panel::Run.index()] = self.run.visible;
         showing[dock::Panel::Debug.index()] = self.debug_panel.visible;
-        showing[dock::Panel::Space.index()] = self.space.visible;
+        showing[dock::Panel::Realm.index()] = self.realm.visible;
         // And whichever panes the plugins that are switched on are showing. A slot with no plugin in it
         // is never showing, so it takes no room and gets `Rect::ZERO`.
         for (slot, visible) in self.plugin_ui.visible().into_iter().enumerate() {
@@ -167,7 +167,7 @@ impl UnluminousApp {
                 // The explorer is a list and never competes with anything, and neither is the
                 // canvas: it holds several grids inside itself deliberately, so the rule about a
                 // strip holding one does not apply to it - `task-1904`.
-                dock::Panel::Explorer | dock::Panel::Space => {}
+                dock::Panel::Explorer | dock::Panel::Realm => {}
             }
         }
     }
@@ -366,15 +366,20 @@ impl UnluminousApp {
             dock::Panel::Terminal => self.show_the_terminal_tile(showing),
             dock::Panel::Run => self.show_the_run_tile(showing),
             dock::Panel::Debug => self.show_the_debug_tile(showing),
-            dock::Panel::Space => {
-                self.space.visible = showing;
+            dock::Panel::Realm => {
+                // The Realm plugin is the switch for the panel. Off, it does not show. `task-2202`.
+                if showing && !self.realm_is_on() {
+                    self.message = Some(self.the_realm_is_off());
+                    return;
+                }
+                self.realm.visible = showing;
                 if !showing {
                     // A gesture is a pointer half way through something, and the pointer is about to
                     // be somewhere else entirely. A `Wiring` left set draws a line from a node nobody
                     // can see to wherever the pointer now is, and a `Panning` left set pans the
                     // canvas on the next drag anywhere. `task-1922`.
-                    self.space.gesture = space::Gesture::None;
-                    if matches!(self.focus, Focus::Space) {
+                    self.realm.gesture = realm::Gesture::None;
+                    if matches!(self.focus, Focus::Realm) {
                         self.focus = Focus::Editor;
                     }
                 }
@@ -423,11 +428,11 @@ impl UnluminousApp {
     pub(crate) fn a_terminal_has_the_keyboard(&self) -> bool {
         match self.focus {
             Focus::Terminal => true,
-            Focus::Space => self
-                .space
+            Focus::Realm => self
+                .realm
                 .chosen()
-                .and_then(|id| self.space.space.current().node(id))
-                .is_some_and(|node| node.kind() == crate::services::space::Kind::Terminal),
+                .and_then(|id| self.realm.realm.node(id))
+                .is_some_and(|node| node.kind() == crate::services::realm::Kind::Terminal),
             _ => false,
         }
     }
@@ -436,7 +441,7 @@ impl UnluminousApp {
         match self.focus {
             Focus::Editor => None,
             Focus::Explorer => Some(dock::Panel::Explorer),
-            Focus::Space => Some(dock::Panel::Space),
+            Focus::Realm => Some(dock::Panel::Realm),
             Focus::Terminal => Some(self.tile_with_the_keyboard),
             Focus::Plugin => {
                 let plugin = self.plugin_with_the_keyboard.as_deref()?;

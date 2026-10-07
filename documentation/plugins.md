@@ -109,6 +109,8 @@ editor. A list is comma separated, a flag is `true` or `false`, and a colour is 
 | Key | What it is |
 |---|---|
 | `ui.provider` | which code that shipped inside Unluminous draws it, checked against the providers this version has |
+| `ui.extensions` | file extensions this plugin opens, such as `.realm`. A file with one opens in the plugin's panel rather than as text, and its row in the explorer carries the plugin's icon. |
+| `explorer.shows` | a folder whose name starts with a dot that the explorer lists anyway, such as `.realm-files`. `.git` and `.unluminous` are refused. |
 | `ui.chrome` | which renderer draws the depth behind it. Refused on a plugin that is not a `ui` plugin, because a renderer with no pane to draw is a line that would do nothing silently. |
 | `pane.id`, `.label`, `.icon` | what it is called and what its rail button looks like |
 | `pane.side`, `.order` | which edge it starts on and where in that edge |

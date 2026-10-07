@@ -1,6 +1,6 @@
 //! The things on the canvas that are actually running.
 //!
-//! [`super::Space`] is a value: where a node is, what kind it is and what it is wired to. This is the
+//! [`super::Realm`] is a value: where a node is, what kind it is and what it is wired to. This is the
 //! other half — the pseudoterminal behind a terminal node, the tab behind a browser node, the file
 //! tree behind a folder node — keyed by the ids in that value.
 //!
@@ -75,6 +75,19 @@ pub struct Live {
     /// manifests contributed it, `plugins.chrome` is still what decides whether it draws depth, and a
     /// window with the Agent-Chat plugin switched off still has a canvas.
     chats: HashMap<NodeId, crate::services::agent_chat::AgentChat>,
+    /// The player behind each sound node, with the file it was given. `task-2202`.
+    players: HashMap<NodeId, (std::path::PathBuf, Box<dyn crate::services::realm::player::Player>)>,
+    /// What each video node's page last said about where it is: seconds in, whether it is playing, and how
+    /// long it is. Read off the page's title, which it sets for exactly this. `task-2202`.
+    video_reports: HashMap<NodeId, (f32, bool, f32)>,
+    /// The window's one audio output, opened the first time a sound plays, or why there is none.
+    output: Option<Result<crate::services::realm::player::Output, String>>,
+    /// Whether sound nodes make sound. Only the released binary turns it on, in `load_settings`; a window a
+    /// test builds plays every sound through `SilentPlayer`. See `services::realm::player`.
+    pub real_players: bool,
+    /// The picture behind each image node, decoded once and kept with the file it came from, so a node pointed
+    /// at another file decodes that one. `task-2202`.
+    pictures: HashMap<NodeId, (std::path::PathBuf, crate::services::picture::Picture)>,
     /// When the pipes were last read, in seconds of the window's own clock.
     read_at: f64,
 }
@@ -250,7 +263,7 @@ impl Live {
 
     /// Remember that a line was typed into a node by hand, so its echo is not piped on.
     ///
-    /// `space send` goes through here as well as a pipe does: a line somebody sent is a line the
+    /// `realm send` goes through here as well as a pipe does: a line somebody sent is a line the
     /// target's shell will echo, and an echo forwarded is the same loop by another route.
     pub fn typed_into(&mut self, node: NodeId, line: &str) {
         self.taps.entry(node).or_default().sent(line);
@@ -378,10 +391,94 @@ impl Live {
         self.selected.remove(&node);
         self.scrolls.remove(&node);
         self.page_zooms.remove(&node);
+        self.pictures.remove(&node);
+        self.players.remove(&node);
+        self.video_reports.remove(&node);
         self.stop_a_chat(node);
     }
 
-    /// Stop and forget everything behind a list of nodes, which is what deleting a view is.
+    /// The picture an image node shows, decoded the first time it is asked for and again when the node is
+    /// pointed at a different file.
+    pub fn picture(&mut self, node: NodeId, file: &std::path::Path) -> &mut crate::services::picture::Picture {
+        let stale = self.pictures.get(&node).is_none_or(|(held, _)| held != file);
+        if stale {
+            self.pictures.insert(node, (file.to_path_buf(), crate::services::picture::Picture::open(file)));
+        }
+        &mut self.pictures.get_mut(&node).expect("it was just put there").1
+    }
+
+    /// Forget the pages behind these nodes, whose tabs the caller has closed, which is what leaving a
+    /// realm does: the window has one native web view, and the next realm has none of these nodes.
+    pub fn forget_the_pages(&mut self, nodes: &[NodeId]) {
+        for node in nodes {
+            self.browsers.remove(node);
+            self.page_zooms.remove(node);
+        }
+    }
+
+    /// Pause whatever this node is playing. `task-2202`.
+    pub fn pause_a_player(&mut self, node: NodeId) {
+        if let Some((_, player)) = self.players.get_mut(&node) {
+            player.pause();
+        }
+    }
+
+    /// The player behind a sound node, opened on `file` the first time it is asked for and again when the node
+    /// is pointed at another file, at `position` seconds. Refused, with the reason, when there is no audio
+    /// output or the file cannot be played.
+    pub fn player(
+        &mut self,
+        node: NodeId,
+        file: &std::path::Path,
+        position: f32,
+    ) -> Result<&mut dyn crate::services::realm::player::Player, String> {
+        use crate::services::realm::player::{Output, Player, SilentPlayer};
+        let stale = self.players.get(&node).is_none_or(|(held, _)| held != file);
+        if stale {
+            let mut made: Box<dyn Player> = match self.real_players {
+                true => {
+                    let output = self.output.get_or_insert_with(Output::open);
+                    match output {
+                        Ok(output) => Box::new(output.player()),
+                        Err(problem) => return Err(problem.clone()),
+                    }
+                }
+                false => Box::new(SilentPlayer::new()),
+            };
+            made.load(file)?;
+            if position > 0.0 {
+                made.seek(std::time::Duration::from_secs_f32(position));
+            }
+            self.players.insert(node, (file.to_path_buf(), made));
+        }
+        Ok(self.players.get_mut(&node).expect("it was just put there").1.as_mut())
+    }
+
+    /// What a video node's page last said: seconds in, playing, and how long it is.
+    pub fn video_report(&self, node: NodeId) -> Option<(f32, bool, f32)> {
+        self.video_reports.get(&node).copied()
+    }
+
+    /// Remember what a video node's page said about itself.
+    pub fn report_a_video(&mut self, node: NodeId, report: (f32, bool, f32)) {
+        self.video_reports.insert(node, report);
+    }
+
+    /// The player behind a sound node, when it has one, for reading.
+    pub fn a_player(&self, node: NodeId) -> Option<&dyn crate::services::realm::player::Player> {
+        self.players.get(&node).map(|(_, player)| player.as_ref())
+    }
+
+    /// Whether anything is playing, which is what keeps the window drawing so the time moves.
+    pub fn any_playing(&mut self) -> bool {
+        let mut playing = false;
+        for (_, player) in self.players.values_mut() {
+            playing |= player.catch_up();
+        }
+        playing
+    }
+
+    /// Stop and forget everything behind a list of nodes, which is what deleting a realm is.
     pub fn forget_all(&mut self, nodes: &[NodeId]) {
         for node in nodes {
             self.forget(*node);

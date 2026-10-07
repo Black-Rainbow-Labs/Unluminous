@@ -3905,10 +3905,10 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use unluminous_app::app::actions::{
-    DebugAction, FoldAction, GitAction, HighlightColor, RunAction, SpaceAction,
+    DebugAction, FoldAction, GitAction, HighlightColor, RunAction, RealmAction,
 };
 use unluminous_app::app::dock::{Panel, Side};
-use unluminous_app::services::space::Kind;
+use unluminous_app::services::realm::Kind;
 
 /// Every variant of [`Action`], by the name [`variant_name`] answers with.
 ///
@@ -3970,7 +3970,7 @@ const EVERY_VARIANT: &[&str] = &[
     "Dock",
     "FillSide",
     "ResetPanelLayout",
-    "Space",
+    "Realm",
     "Run",
     "Debug",
     "CloseTab",
@@ -4072,7 +4072,7 @@ fn variant_name(action: &Action) -> &'static str {
         Action::Dock { .. } => "Dock",
         Action::FillSide(_) => "FillSide",
         Action::ResetPanelLayout => "ResetPanelLayout",
-        Action::Space(_) => "Space",
+        Action::Realm(_) => "Realm",
         Action::Run(_) => "Run",
         Action::Debug(_) => "Debug",
         Action::CloseTab => "CloseTab",
@@ -4234,11 +4234,11 @@ const EVERY_SPACE: &[&str] = &[
     "Add",
     "Fit",
     "OpenAddModal",
-    "NewView",
+    "NewRealm",
     "Manage",
-    "RenameView",
-    "DuplicateView",
-    "DeleteView",
+    "RenameRealm",
+    "DuplicateRealm",
+    "DeleteRealm",
     "RenameNode",
     "CloseNode",
     "ChooseFolder",
@@ -4249,25 +4249,25 @@ const EVERY_SPACE: &[&str] = &[
     "CarryLines",
 ];
 
-fn space_variant_name(action: &SpaceAction) -> &'static str {
+fn realm_variant_name(action: &RealmAction) -> &'static str {
     match action {
-        SpaceAction::Toggle => "Toggle",
-        SpaceAction::Add(_) => "Add",
-        SpaceAction::Fit => "Fit",
-        SpaceAction::OpenAddModal => "OpenAddModal",
-        SpaceAction::NewView => "NewView",
-        SpaceAction::Manage => "Manage",
-        SpaceAction::RenameView => "RenameView",
-        SpaceAction::DuplicateView => "DuplicateView",
-        SpaceAction::DeleteView => "DeleteView",
-        SpaceAction::RenameNode => "RenameNode",
-        SpaceAction::CloseNode => "CloseNode",
-        SpaceAction::ChooseFolder => "ChooseFolder",
-        SpaceAction::RestartNode => "RestartNode",
-        SpaceAction::ResumeSession => "ResumeSession",
-        SpaceAction::StartWhatWasRunning => "StartWhatWasRunning",
-        SpaceAction::Disconnect => "Disconnect",
-        SpaceAction::CarryLines(_) => "CarryLines",
+        RealmAction::Toggle => "Toggle",
+        RealmAction::Add(_) => "Add",
+        RealmAction::Fit => "Fit",
+        RealmAction::OpenAddModal => "OpenAddModal",
+        RealmAction::NewRealm => "NewRealm",
+        RealmAction::Manage => "Manage",
+        RealmAction::RenameRealm => "RenameRealm",
+        RealmAction::DuplicateRealm => "DuplicateRealm",
+        RealmAction::DeleteRealm => "DeleteRealm",
+        RealmAction::RenameNode => "RenameNode",
+        RealmAction::CloseNode => "CloseNode",
+        RealmAction::ChooseFolder => "ChooseFolder",
+        RealmAction::RestartNode => "RestartNode",
+        RealmAction::ResumeSession => "ResumeSession",
+        RealmAction::StartWhatWasRunning => "StartWhatWasRunning",
+        RealmAction::Disconnect => "Disconnect",
+        RealmAction::CarryLines(_) => "CarryLines",
     }
 }
 
@@ -4287,9 +4287,12 @@ const CANNOT_BE_DRIVEN: &[(&str, &str)] = &[
     ("open-file", "it opens the platform's own file chooser and waits for somebody to click in it"),
     ("save-as", "it opens the platform's own save dialog and waits for somebody to click in it"),
     (
-        "space-choose-folder",
+        "realm-choose-folder",
         "it opens the platform's own folder chooser and waits for somebody to click in it",
     ),
+    ("realm-add-image", "it opens the platform's own file chooser and waits for somebody to click in it"),
+    ("realm-add-audio", "it opens the platform's own file chooser and waits for somebody to click in it"),
+    ("realm-add-video", "it opens the platform's own file chooser and waits for somebody to click in it"),
     ("quit", "it closes the window, and the walk has the rest of the actions still to run"),
     ("close-window", "the same: it closes the window"),
     (
@@ -4558,8 +4561,8 @@ fn signature(harness: &mut Harness<'static, UnluminousApp>) -> String {
         "status --json",
         "fold list --json",
         "highlight list --all --json",
-        "space view --json",
-        "space connections --json",
+        "realm view --json",
+        "realm connections --json",
         "run list --json",
         "run status --json",
         "debug status --json",
@@ -4591,9 +4594,9 @@ fn signature(harness: &mut Harness<'static, UnluminousApp>) -> String {
     parts.push(format!("run configurations dialog -> {:?}", state.run_dialog));
     parts.push(format!("expression box -> {}", state.evaluate.is_some()));
     parts.push(format!("breakpoint dialog -> {}", state.breakpoint_dialog.is_some()));
-    parts.push(format!("add a node -> {}", state.space.adding.is_some()));
-    parts.push(format!("manage the canvases -> {}", state.space.managing.is_some()));
-    parts.push(format!("in hand -> {:?}", state.space.in_hand));
+    parts.push(format!("add a node -> {}", state.realm.adding.is_some()));
+    parts.push(format!("manage the canvases -> {}", state.realm.managing.is_some()));
+    parts.push(format!("in hand -> {:?}", state.realm.in_hand));
     parts.push(format!("closing -> {}", state.closing));
     parts.push(format!("completion list -> {}", state.completion().is_some()));
     parts.push(format!("value tooltip -> {}", state.value_tooltip_is_open()));
@@ -4606,18 +4609,18 @@ fn signature(harness: &mut Harness<'static, UnluminousApp>) -> String {
 // ------------------------------------------------------------------ what each action needs first
 
 fn a_canvas_with_a_chosen_node(harness: &mut Harness<'static, UnluminousApp>) {
-    let node = harness.state_mut().new_detached_space_node(Kind::Editor, egui::pos2(40.0, 40.0));
-    ask(harness, &format!("space focus {node}"));
+    let node = harness.state_mut().new_detached_realm_node(Kind::Editor, egui::pos2(40.0, 40.0));
+    ask(harness, &format!("realm focus {node}"));
 }
 
 /// Two nodes, and the camera moved off them, so putting every node on the screen is a change.
 fn a_canvas_the_camera_is_off(harness: &mut Harness<'static, UnluminousApp>) {
-    harness.state_mut().new_detached_space_node(Kind::Editor, egui::pos2(40.0, 40.0));
-    harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(600.0, 320.0));
+    harness.state_mut().new_detached_realm_node(Kind::Editor, egui::pos2(40.0, 40.0));
+    harness.state_mut().new_detached_realm_node(Kind::Folder, egui::pos2(600.0, 320.0));
     for _ in 0..4 {
         harness.step();
     }
-    ask(harness, "space camera --x 900 --y 900");
+    ask(harness, "realm camera --x 900 --y 900");
 }
 
 /// Two terminal nodes with a wire between them, and the wire in hand -- which is what a right click
@@ -4633,12 +4636,12 @@ fn a_wire_in_hand_carrying_lines(harness: &mut Harness<'static, UnluminousApp>) 
 
 fn hold_a_wire(harness: &mut Harness<'static, UnluminousApp>, carrying: bool) {
     // Detached, because a terminal node started the ordinary way runs a real shell.
-    let from = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
-    let to = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(600.0, 40.0));
+    let from = harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    let to = harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(600.0, 40.0));
     let pipe = if carrying { " --pipe lines" } else { "" };
-    ask(harness, &format!("space connect {from} {to}{pipe}"));
-    let wires = ask(harness, "space connections --json");
-    harness.state_mut().space.in_hand.wire =
+    ask(harness, &format!("realm connect {from} {to}{pipe}"));
+    let wires = ask(harness, "realm connections --json");
+    harness.state_mut().realm.in_hand.wire =
         wires["result"]["connections"][0]["connection"].as_u64();
 }
 
@@ -4862,55 +4865,57 @@ fn every_step() -> Vec<Step> {
     steps.push(Step::new(Action::Git(GitAction::Switch("main".to_owned()))).at(Where::Repository));
 
     // The canvas.
-    steps.push(Step::new(Action::Space(SpaceAction::Toggle)).after(&["space show"]));
-    for kind in Kind::ALL {
-        steps.push(Step::new(Action::Space(SpaceAction::Add(kind))).after(&["space show"]));
+    steps.push(Step::new(Action::Realm(RealmAction::Toggle)).after(&["realm show"]));
+    // A picture, a sound and a video open the platform's file chooser, so they are on
+    // `CANNOT_BE_DRIVEN` and `realm add <kind> <file>` covers them in `command_line.rs`.
+    for kind in Kind::ALL.into_iter().filter(|kind| !matches!(kind, Kind::Image | Kind::Audio | Kind::Video)) {
+        steps.push(Step::new(Action::Realm(RealmAction::Add(kind))).after(&["realm show"]));
     }
     for action in [
-        SpaceAction::OpenAddModal,
-        SpaceAction::NewView,
-        SpaceAction::Manage,
-        SpaceAction::RenameView,
-        SpaceAction::DuplicateView,
+        RealmAction::OpenAddModal,
+        RealmAction::NewRealm,
+        RealmAction::Manage,
+        RealmAction::RenameRealm,
+        RealmAction::DuplicateRealm,
     ] {
-        steps.push(Step::new(Action::Space(action)).after(&["space show"]));
+        steps.push(Step::new(Action::Realm(action)).after(&["realm show"]));
     }
     steps.push(
-        Step::new(Action::Space(SpaceAction::Fit))
-            .after(&["space show"])
+        Step::new(Action::Realm(RealmAction::Fit))
+            .after(&["realm show"])
             .ready_with(a_canvas_the_camera_is_off),
     );
     // The last view cannot be deleted, so there are two.
     steps.push(
-        Step::new(Action::Space(SpaceAction::DeleteView))
-            .after(&["space show", "space new-view Second"]),
+        Step::new(Action::Realm(RealmAction::DeleteRealm))
+            .after(&["realm show", "realm new Second"]),
     );
     for action in [
-        SpaceAction::RenameNode,
-        SpaceAction::CloseNode,
-        SpaceAction::RestartNode,
-        SpaceAction::ResumeSession,
-        SpaceAction::StartWhatWasRunning,
+        RealmAction::RenameNode,
+        RealmAction::CloseNode,
+        RealmAction::RestartNode,
+        RealmAction::ResumeSession,
+        RealmAction::StartWhatWasRunning,
     ] {
         steps.push(
-            Step::new(Action::Space(action))
-                .after(&["space show"])
+            Step::new(Action::Realm(action))
+                .after(&["realm show"])
                 .ready_with(a_canvas_with_a_chosen_node),
         );
     }
     steps.push(
-        Step::new(Action::Space(SpaceAction::Disconnect))
-            .after(&["space show"])
+        Step::new(Action::Realm(RealmAction::Disconnect))
+            .after(&["realm show"])
             .ready_with(a_wire_in_hand),
     );
     steps.push(
-        Step::new(Action::Space(SpaceAction::CarryLines(true)))
-            .after(&["space show"])
+        Step::new(Action::Realm(RealmAction::CarryLines(true)))
+            .after(&["realm show"])
             .ready_with(a_wire_in_hand),
     );
     steps.push(
-        Step::new(Action::Space(SpaceAction::CarryLines(false)))
-            .after(&["space show"])
+        Step::new(Action::Realm(RealmAction::CarryLines(false)))
+            .after(&["realm show"])
             .ready_with(a_wire_in_hand_carrying_lines),
     );
 
@@ -5058,11 +5063,11 @@ fn every_action_changes_the_window_or_says_why_it_cannot() {
         every
             .iter()
             .filter_map(|action| match action {
-                Action::Space(what) => Some(space_variant_name(what)),
+                Action::Realm(what) => Some(realm_variant_name(what)),
                 _ => None,
             })
             .collect(),
-        "SpaceAction",
+        "RealmAction",
         &mut faults,
     );
 
@@ -5140,12 +5145,12 @@ fn no_two_controls_share_a_name() {
     did(&mut harness, "tab open first.md --permanent");
     did(&mut harness, "tab open second.md --permanent");
     // The same file again, on the canvas, which is the pair S8 is about.
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     let node =
-        did(&mut harness, "space add editor --x 40 --y 40")["node"].as_u64().expect("a node");
+        did(&mut harness, "realm add editor --x 40 --y 40")["node"].as_u64().expect("a node");
     // The same file the editing area is showing, which is exactly the pair S8 is about: a tab and a
     // node whose close buttons were both `Close first.md`.
-    did(&mut harness, &format!("space editor {node} first.md"));
+    did(&mut harness, &format!("realm editor {node} first.md"));
     did(&mut harness, "terminal show");
     did(&mut harness, "plugins pane agent-tasks/board --show");
     steady(&mut harness);

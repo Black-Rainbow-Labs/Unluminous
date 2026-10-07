@@ -1,4 +1,4 @@
-//! The Base of Infinite Space: the canvas, its six kinds of node, and who holds the keyboard on it.
+//! The Realm: the canvas, its six kinds of node, and who holds the keyboard on it.
 //!
 //! Adding a node, dragging one, zooming the camera, wiring two together and driving one from the
 //! other, and each kind of node in turn — terminal, browser, folder, file editor, chat and tasks.
@@ -6,7 +6,7 @@
 //! them a question about which surface the keyboard is on.
 //!
 //! **Most of this file is assertions.** What a canvas is comes back through
-//! `unluminous-cli space` and `status --section keyboard`, and a picture of a browser node never holds
+//! `unluminous-cli realm` and `status --section keyboard`, and a picture of a browser node never holds
 //! the page anyway, because a rendered page is a native child the operating system composites on top
 //! of the surface a screenshot reads back.
 //!
@@ -21,45 +21,45 @@ use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
 use unluminous_app::UnluminousApp;
 
-// ------------------------------------------------------------- the Base of Infinite Space (`task-1904`)
+// ------------------------------------------------------------- the Realm (`task-1904`)
 
 /// A canvas with one node of each kind on it, wired, ready to be photographed.
 ///
 /// **Every terminal node is detached**, which is what makes the picture the same on every run: a real
-/// shell answers when it answers, and `new_detached_space_node` hands the emulator fixed bytes
+/// shell answers when it answers, and `new_detached_realm_node` hands the emulator fixed bytes
 /// instead. That is `new_detached_terminal_tab`'s own bargain, made for a node.
 fn a_canvas() -> Harness<'static, UnluminousApp> {
     let folder = sample_folder();
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let terminal = harness.state_mut().new_detached_space_node(
-        unluminous_app::services::space::Kind::Terminal,
+    did(&mut harness, "realm show");
+    let terminal = harness.state_mut().new_detached_realm_node(
+        unluminous_app::services::realm::Kind::Terminal,
         egui::pos2(40.0, 30.0),
     );
-    harness.state_mut().feed_a_space_terminal(
+    harness.state_mut().feed_a_realm_terminal(
         terminal,
         b"$ cargo test -p unluminous-app\r\n   Compiling unluminous-app\r\n    Finished in 3.59s\r\n$ ",
     );
-    let browser = harness.state_mut().new_detached_space_node(
-        unluminous_app::services::space::Kind::Browser,
+    let browser = harness.state_mut().new_detached_realm_node(
+        unluminous_app::services::realm::Kind::Browser,
         egui::pos2(700.0, 30.0),
     );
-    let explorer = harness.state_mut().new_detached_space_node(
-        unluminous_app::services::space::Kind::Folder,
+    let explorer = harness.state_mut().new_detached_realm_node(
+        unluminous_app::services::realm::Kind::Folder,
         egui::pos2(40.0, 440.0),
     );
-    let editor = harness.state_mut().new_detached_space_node(
-        unluminous_app::services::space::Kind::Editor,
+    let editor = harness.state_mut().new_detached_realm_node(
+        unluminous_app::services::realm::Kind::Editor,
         egui::pos2(400.0, 440.0),
     );
     harness
         .state_mut()
-        .open_in_a_space_node(editor, &folder.join("readme.md"))
+        .open_in_a_realm_node(editor, &folder.join("readme.md"))
         .expect("the file opens in the node");
-    did(&mut harness, &format!("space connect {terminal} {browser}"));
-    did(&mut harness, &format!("space connect {terminal} {explorer}"));
-    did(&mut harness, &format!("space connect {terminal} {editor}"));
-    did(&mut harness, "space camera --fit");
+    did(&mut harness, &format!("realm connect {terminal} {browser}"));
+    did(&mut harness, &format!("realm connect {terminal} {explorer}"));
+    did(&mut harness, &format!("realm connect {terminal} {editor}"));
+    did(&mut harness, "realm camera --fit");
     steady(&mut harness);
     harness
 }
@@ -68,16 +68,16 @@ fn a_canvas() -> Harness<'static, UnluminousApp> {
 #[test]
 fn an_empty_canvas_says_how_to_put_something_on_it() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     steady(&mut harness);
-    harness.snapshot(shot("space_empty").as_str());
+    harness.snapshot(shot("realm_empty").as_str());
 }
 
 /// One node of each of the four kinds, wired to the terminal that may drive them.
 #[test]
 fn a_canvas_with_one_node_of_each_kind() {
     let mut harness = a_canvas();
-    harness.snapshot(shot("space_nodes").as_str());
+    harness.snapshot(shot("realm_nodes").as_str());
 }
 
 /// One terminal node at its own size, which is what a canvas looks like while somebody is using it.
@@ -87,28 +87,28 @@ fn a_canvas_with_one_node_of_each_kind() {
 #[test]
 fn a_terminal_node_at_the_size_a_person_works_at() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let terminal = harness.state_mut().new_detached_space_node(
-        unluminous_app::services::space::Kind::Terminal,
+    did(&mut harness, "realm show");
+    let terminal = harness.state_mut().new_detached_realm_node(
+        unluminous_app::services::realm::Kind::Terminal,
         egui::pos2(60.0, 40.0),
     );
     // Carriage returns as well as line feeds, because a terminal is a grid: a line feed on its own
     // moves down without going back to the first column, and the screenshot showed exactly that as a
     // staircase. **A Rust string literal folds a real CRLF in the source down to one `\n`**, so the
     // escapes have to be written out rather than typed in.
-    harness.state_mut().feed_a_space_terminal(
+    harness.state_mut().feed_a_realm_terminal(
         terminal,
         b"$ claude\r\n\r\n  Welcome to Claude Code\r\n\r\n\
-          > read crates/unluminous-app/src/app/space.rs\r\n",
+          > read crates/unluminous-app/src/app/realm.rs\r\n",
     );
-    let browser = harness.state_mut().new_detached_space_node(
-        unluminous_app::services::space::Kind::Browser,
+    let browser = harness.state_mut().new_detached_realm_node(
+        unluminous_app::services::realm::Kind::Browser,
         egui::pos2(740.0, 40.0),
     );
-    did(&mut harness, &format!("space connect {terminal} {browser} --pipe off"));
-    did(&mut harness, &format!("space focus {terminal}"));
+    did(&mut harness, &format!("realm connect {terminal} {browser} --pipe off"));
+    did(&mut harness, &format!("realm focus {terminal}"));
     steady(&mut harness);
-    harness.snapshot(shot("space_working").as_str());
+    harness.snapshot(shot("realm_working").as_str());
 }
 
 /// The same canvas zoomed out, which is what the camera is for: the nodes are smaller and the dot
@@ -116,19 +116,19 @@ fn a_terminal_node_at_the_size_a_person_works_at() {
 #[test]
 fn the_canvas_zoomed_out() {
     let mut harness = a_canvas();
-    did(&mut harness, "space camera --zoom 0.4");
+    did(&mut harness, "realm camera --zoom 0.4");
     steady(&mut harness);
-    harness.snapshot(shot("space_zoomed_out").as_str());
+    harness.snapshot(shot("realm_zoomed_out").as_str());
 }
 
 /// The modal a right click opens: a search field and the four kinds under it.
 #[test]
 fn the_add_node_modal() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    did(&mut harness, "action run space-add");
+    did(&mut harness, "realm show");
+    did(&mut harness, "action run realm-add");
     steady(&mut harness);
-    harness.snapshot(shot("space_add_modal").as_str());
+    harness.snapshot(shot("realm_add_modal").as_str());
 }
 
 /// With the decoration switched off the canvas draws flat, in the same frame.
@@ -141,7 +141,7 @@ fn the_canvas_with_its_decoration_switched_off() {
     let mut harness = a_canvas();
     did(&mut harness, "settings set plugins.chrome false");
     steady(&mut harness);
-    harness.snapshot(shot("space_flat").as_str());
+    harness.snapshot(shot("realm_flat").as_str());
 }
 
 /// Everything a person can do on the canvas, done from the command line instead.
@@ -152,74 +152,80 @@ fn the_canvas_with_its_decoration_switched_off() {
 #[test]
 fn the_canvas_can_be_read_and_changed_entirely_from_the_command_line() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    assert!(harness.state().space.visible, "`space show` really shows it");
+    did(&mut harness, "realm show");
+    assert!(harness.state().realm.visible, "`realm show` really shows it");
 
     // Two nodes, placed and sized by hand.
-    let first = did(&mut harness, "space add folder --x 40 --y 40 --width 300 --height 320");
+    let first = did(&mut harness, "realm add folder --x 40 --y 40 --width 300 --height 320");
     let node = first["node"].as_u64().expect("a node id");
-    did(&mut harness, &format!("space move {node} --x 120 --y 60"));
-    let sized = did(&mut harness, &format!("space size {node} --width 260 --height 200"));
+    did(&mut harness, &format!("realm move {node} --x 120 --y 60"));
+    let sized = did(&mut harness, &format!("realm size {node} --width 260 --height 200"));
     assert_eq!(sized["width"], 260.0);
-    did(&mut harness, &format!("space title {node} the project"));
-    let second = did(&mut harness, "space add browser --x 500 --y 60");
+    did(&mut harness, &format!("realm title {node} the project"));
+    let second = did(&mut harness, "realm add browser --x 500 --y 60");
     let other = second["node"].as_u64().expect("a node id");
 
     // A node is never made smaller than its kind allows, and the reply says what it really became.
-    let squashed = did(&mut harness, &format!("space size {node} --width 10 --height 10"));
+    let squashed = did(&mut harness, &format!("realm size {node} --width 10 --height 10"));
     assert!(squashed["width"].as_f64().expect("a width") > 10.0, "clamped, and it says so");
-    did(&mut harness, &format!("space size {node} --width 260 --height 200"));
+    did(&mut harness, &format!("realm size {node} --width 260 --height 200"));
 
     // Wiring, and the permission that comes with it.
-    let wired = did(&mut harness, &format!("space connect {node} {other}"));
+    let wired = did(&mut harness, &format!("realm connect {node} {other}"));
     let edge = wired["connection"].as_u64().expect("a connection id");
-    let connections = did(&mut harness, &format!("space connections --from {node}"));
+    let connections = did(&mut harness, &format!("realm connections --from {node}"));
     assert_eq!(connections["connections"][0]["to"], other);
     // The other way round there is no wire, so a command acting as the browser is refused.
-    let refusal = refused(&mut harness, &format!("space folder {node} rows --from {other}"));
+    let refusal = refused(&mut harness, &format!("realm folder {node} rows --from {other}"));
     assert_eq!(refusal, "refused");
     // And with no `--from` at all it is the window's own agent, which may reach everything.
-    let rows = did(&mut harness, &format!("space folder {node} rows"));
+    let rows = did(&mut harness, &format!("realm folder {node} rows"));
     assert!(rows["rows"].as_array().expect("rows").len() > 1, "the project's own files");
 
     // The camera.
-    did(&mut harness, "space camera --x -40 --y 20 --zoom 0.75");
-    let camera = harness.state().space.space.current().camera;
+    did(&mut harness, "realm camera --x -40 --y 20 --zoom 0.75");
+    let camera = harness.state().realm.realm.camera;
     assert_eq!(camera.zoom, 0.75);
     assert_eq!(camera.at, egui::pos2(-40.0, 20.0));
     // A zoom nobody could read is clamped rather than believed.
-    did(&mut harness, "space camera --zoom 90");
-    assert_eq!(harness.state().space.space.current().camera.zoom, 2.5);
+    did(&mut harness, "realm camera --zoom 90");
+    assert_eq!(harness.state().realm.realm.camera.zoom, 2.5);
 
-    // The views.
-    did(&mut harness, "space new-view Rendering");
-    assert_eq!(harness.state().space.space.current().name, "Rendering");
-    assert!(harness.state().space.space.current().nodes.is_empty(), "a fresh view is empty");
-    did(&mut harness, "space open-view Main");
-    assert_eq!(harness.state().space.space.current().nodes.len(), 2);
-    let copied = did(&mut harness, "space duplicate-view Main");
-    assert!(copied["view"].as_u64().is_some());
-    assert_eq!(harness.state().space.space.current().name, "Main 2");
-    assert_eq!(harness.state().space.space.current().nodes.len(), 2, "the nodes came with it");
-    // By its id, because `Main 2` is two words on a command line and a name is one argument.
-    let copy = harness.state().space.space.current_id();
-    did(&mut harness, &format!("space rename-view {copy} Second"));
-    assert_eq!(harness.state().space.space.current().name, "Second");
-    did(&mut harness, "space delete-view Second");
-    assert_eq!(harness.state().space.space.views().len(), 2);
+    // The realms, which since `task-2202` are files: kept in memory here, because a window nobody gave a
+    // project writes none.
+    did(&mut harness, "realm new Rendering");
+    assert_eq!(harness.state().realm.realm.title(), "Rendering");
+    assert!(harness.state().realm.realm.nodes.is_empty(), "a fresh realm is empty");
+    did(&mut harness, "realm open main");
+    assert_eq!(harness.state().realm.realm.nodes.len(), 2, "switching back loses nothing");
+    let copied = did(&mut harness, "realm duplicate main");
+    assert_eq!(copied["path"], ".realm-files/main copy.realm");
+    assert_eq!(harness.state().realm.realm.title(), "main copy");
+    assert_eq!(harness.state().realm.realm.nodes.len(), 2, "the nodes came with it");
+    did(&mut harness, r#"realm rename "main copy" Second"#);
+    assert_eq!(harness.state().realm.realm.title(), "Second");
+    did(&mut harness, "realm delete Second");
+    let listed = did(&mut harness, "realm list");
+    let names: Vec<&str> = listed["realms"]
+        .as_array()
+        .expect("a list")
+        .iter()
+        .filter_map(|realm| realm["name"].as_str())
+        .collect();
+    assert_eq!(names, vec!["main", "Rendering"]);
 
-    // And back on the first view, taking things away.
-    did(&mut harness, "space open-view Main");
-    did(&mut harness, &format!("space disconnect {edge}"));
-    assert!(harness.state().space.space.current().edges.is_empty());
-    did(&mut harness, &format!("space remove {other}"));
-    assert_eq!(harness.state().space.space.current().nodes.len(), 1);
+    // And back on the first realm, taking things away.
+    did(&mut harness, "realm open main");
+    did(&mut harness, &format!("realm disconnect {edge}"));
+    assert!(harness.state().realm.realm.edges.is_empty());
+    did(&mut harness, &format!("realm remove {other}"));
+    assert_eq!(harness.state().realm.realm.nodes.len(), 1);
 
     // The whole canvas as data, which is what an agent reads first.
-    let view = did(&mut harness, "space view");
-    assert_eq!(view["views"][0]["nodes"][0]["title"], "the project");
-    did(&mut harness, "space hide");
-    assert!(!harness.state().space.visible);
+    let view = did(&mut harness, "realm view");
+    assert_eq!(view["nodes"][0]["title"], "the project");
+    did(&mut harness, "realm hide");
+    assert!(!harness.state().realm.visible);
 }
 
 /// A File Editor node is an ordinary tab whose home is that node.
@@ -231,10 +237,10 @@ fn the_canvas_can_be_read_and_changed_entirely_from_the_command_line() {
 fn a_file_editor_node_is_a_tab_that_lives_on_the_node() {
     let folder = sample_folder();
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let made = did(&mut harness, "space add editor --x 40 --y 40");
+    did(&mut harness, "realm show");
+    let made = did(&mut harness, "realm add editor --x 40 --y 40");
     let node = made["node"].as_u64().expect("a node id");
-    did(&mut harness, &format!("space editor {node} readme.md"));
+    did(&mut harness, &format!("realm editor {node} readme.md"));
     steady(&mut harness);
 
     let index = harness.state().files.tab_in_node(node).expect("the tab lives on the node");
@@ -256,7 +262,7 @@ fn a_file_editor_node_is_a_tab_that_lives_on_the_node() {
     assert_eq!(on_a_node.len(), 1, "the node's tab is listed, and says which node it is on");
 
     // Taking the node away closes its tab, and the editing area still has one.
-    did(&mut harness, &format!("space remove {node}"));
+    did(&mut harness, &format!("realm remove {node}"));
     steady(&mut harness);
     assert!(harness.state().files.tab_in_node(node).is_none());
     assert!(!harness.state().files.is_empty(), "the window always has a tab to type into");
@@ -272,7 +278,7 @@ fn let_the_zoom_settle(harness: &mut Harness<'static, UnluminousApp>) {
     // panic here instead, because a glide asks for another frame and it gives up after four.
     harness.step();
     for _ in 0..120 {
-        if harness.state().space.glide.is_none() {
+        if harness.state().realm.glide.is_none() {
             return;
         }
         harness.step();
@@ -282,8 +288,8 @@ fn let_the_zoom_settle(harness: &mut Harness<'static, UnluminousApp>) {
 
 /// Where a world point is drawn, for a test that has to press one.
 fn on_the_canvas(harness: &Harness<'static, UnluminousApp>, world: egui::Pos2) -> egui::Pos2 {
-    let body = harness.state().space.body;
-    harness.state().space.space.current().camera.to_screen(body.min, world)
+    let body = harness.state().realm.body;
+    harness.state().realm.realm.camera.to_screen(body.min, world)
 }
 
 /// `task-1945`: *"if I click a terminal node, etc, the node should be given focus."*
@@ -296,23 +302,23 @@ fn on_the_canvas(harness: &Harness<'static, UnluminousApp>, world: egui::Pos2) -
 #[test]
 fn a_press_anywhere_in_a_node_chooses_it() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let board = did(&mut harness, "space add tasks --x 40 --y 40 --width 700 --height 480")["node"]
+    did(&mut harness, "realm show");
+    let board = did(&mut harness, "realm add tasks --x 40 --y 40 --width 700 --height 480")["node"]
         .as_u64()
         .expect("a node id");
-    let chat = did(&mut harness, "space add chat --x 820 --y 40 --width 420 --height 420")["node"]
+    let chat = did(&mut harness, "realm add chat --x 820 --y 40 --width 420 --height 420")["node"]
         .as_u64()
         .expect("a node id");
-    did(&mut harness, &format!("space focus {chat}"));
+    did(&mut harness, &format!("realm focus {chat}"));
     steady(&mut harness);
-    assert_eq!(harness.state().space.space.chosen(), Some(chat));
+    assert_eq!(harness.state().realm.realm.chosen(), Some(chat));
 
     // Well inside the board's own body, where one of its lanes is drawn - not on the header, not on a
     // grip, and not on anything the board reports a choice from.
     let inside = on_the_canvas(&harness, egui::pos2(300.0, 300.0));
     drove(&mut harness, &format!("input click {} {}", inside.x, inside.y));
     assert_eq!(
-        harness.state().space.space.chosen(),
+        harness.state().realm.realm.chosen(),
         Some(board),
         "a press inside the board chose the board"
     );
@@ -321,7 +327,7 @@ fn a_press_anywhere_in_a_node_chooses_it() {
     let inside = on_the_canvas(&harness, egui::pos2(1000.0, 300.0));
     drove(&mut harness, &format!("input click {} {}", inside.x, inside.y));
     assert_eq!(
-        harness.state().space.space.chosen(),
+        harness.state().realm.realm.chosen(),
         Some(chat),
         "and a press inside the chat node chose that one"
     );
@@ -331,20 +337,20 @@ fn a_press_anywhere_in_a_node_chooses_it() {
 #[test]
 fn dragging_a_nodes_header_moves_the_node() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let made = did(&mut harness, "space add folder --x 60 --y 60 --width 300 --height 240");
+    did(&mut harness, "realm show");
+    let made = did(&mut harness, "realm add folder --x 60 --y 60 --width 300 --height 240");
     let node = made["node"].as_u64().expect("a node id");
     steady(&mut harness);
 
-    let was = harness.state().space.space.current().camera;
+    let was = harness.state().realm.realm.camera;
     let from = on_the_canvas(&harness, egui::pos2(180.0, 72.0));
     let to = egui::pos2(from.x + 150.0, from.y + 90.0);
     drag(&mut harness, from, to);
 
-    let now = harness.state().space.space.current().node(node).expect("it is there").at;
+    let now = harness.state().realm.realm.node(node).expect("it is there").at;
     assert!((now.x - 210.0).abs() < 2.0, "it moved across: {now:?}");
     assert!((now.y - 150.0).abs() < 2.0, "and down: {now:?}");
-    assert_eq!(harness.state().space.space.current().camera, was, "the canvas itself did not move");
+    assert_eq!(harness.state().realm.realm.camera, was, "the canvas itself did not move");
 }
 
 /// Dragging a node's edge resizes it and leaves the opposite edge exactly where it was.
@@ -355,16 +361,16 @@ fn dragging_a_nodes_header_moves_the_node() {
 #[test]
 fn dragging_a_nodes_left_edge_moves_that_edge_and_no_other() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let made = did(&mut harness, "space add folder --x 200 --y 60 --width 300 --height 240");
+    did(&mut harness, "realm show");
+    let made = did(&mut harness, "realm add folder --x 200 --y 60 --width 300 --height 240");
     let node = made["node"].as_u64().expect("a node id");
     steady(&mut harness);
-    let was = harness.state().space.space.current().node(node).expect("it is there").rect();
+    let was = harness.state().realm.realm.node(node).expect("it is there").rect();
 
     let from = on_the_canvas(&harness, egui::pos2(200.0, 180.0));
     drag(&mut harness, from, egui::pos2(from.x - 60.0, from.y));
 
-    let now = harness.state().space.space.current().node(node).expect("it is there").rect();
+    let now = harness.state().realm.realm.node(node).expect("it is there").rect();
     assert!((now.left() - 140.0).abs() < 2.0, "the left edge moved: {now:?}");
     assert!((now.right() - was.right()).abs() < 0.01, "the right edge did not");
     assert!((now.top() - was.top()).abs() < 0.01 && (now.bottom() - was.bottom()).abs() < 0.01);
@@ -374,13 +380,13 @@ fn dragging_a_nodes_left_edge_moves_that_edge_and_no_other() {
 #[test]
 fn pulling_a_wire_from_one_port_to_another_connects_the_two_nodes() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let first = did(&mut harness, "space add folder --x 40 --y 60 --width 260 --height 200");
-    let second = did(&mut harness, "space add folder --x 500 --y 60 --width 260 --height 200");
+    did(&mut harness, "realm show");
+    let first = did(&mut harness, "realm add folder --x 40 --y 60 --width 260 --height 200");
+    let second = did(&mut harness, "realm add folder --x 500 --y 60 --width 260 --height 200");
     let (from, to) =
         (first["node"].as_u64().expect("a node id"), second["node"].as_u64().expect("a node id"));
     steady(&mut harness);
-    assert!(harness.state().space.space.current().edges.is_empty());
+    assert!(harness.state().realm.realm.edges.is_empty());
 
     // Out of the first node's output port, which is the middle of its right hand edge, and into the
     // second node's input port, which is the middle of its left one.
@@ -388,40 +394,40 @@ fn pulling_a_wire_from_one_port_to_another_connects_the_two_nodes() {
     let into = on_the_canvas(&harness, egui::pos2(500.0, 160.0));
     drag(&mut harness, out, into);
 
-    let edges = &harness.state().space.space.current().edges;
+    let edges = &harness.state().realm.realm.edges;
     assert_eq!(edges.len(), 1, "one wire, from the port that was pulled to the port it landed on");
     assert_eq!(edges[0].from, from);
     assert_eq!(edges[0].to, to);
-    assert!(harness.state().space.space.may_reach(from, to), "and it grants what a wire grants");
+    assert!(harness.state().realm.realm.may_reach(from, to), "and it grants what a wire grants");
 }
 
 /// A wire let go over empty canvas connects nothing, which is the promise every drag in Unluminous makes.
 #[test]
 fn a_wire_let_go_over_nothing_is_a_drag_that_was_thought_better_of() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    did(&mut harness, "space add folder --x 40 --y 60 --width 260 --height 200");
-    did(&mut harness, "space add folder --x 500 --y 60 --width 260 --height 200");
+    did(&mut harness, "realm show");
+    did(&mut harness, "realm add folder --x 40 --y 60 --width 260 --height 200");
+    did(&mut harness, "realm add folder --x 500 --y 60 --width 260 --height 200");
     steady(&mut harness);
 
     let out = on_the_canvas(&harness, egui::pos2(300.0, 160.0));
     drag(&mut harness, out, egui::pos2(out.x + 40.0, out.y + 160.0));
-    assert!(harness.state().space.space.current().edges.is_empty(), "nothing was connected");
+    assert!(harness.state().realm.realm.edges.is_empty(), "nothing was connected");
 }
 
 /// Dragging the empty canvas pans it, and the point under the pointer comes with it.
 #[test]
 fn dragging_the_empty_canvas_pans_it() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     steady(&mut harness);
-    let body = harness.state().space.body;
+    let body = harness.state().realm.body;
     let held = egui::pos2(body.center().x, body.center().y);
-    let was = harness.state().space.space.current().camera.to_world(body.min, held);
+    let was = harness.state().realm.realm.camera.to_world(body.min, held);
 
     drag(&mut harness, held, egui::pos2(held.x - 80.0, held.y + 40.0));
 
-    let camera = harness.state().space.space.current().camera;
+    let camera = harness.state().realm.realm.camera;
     let now = camera.to_world(body.min, egui::pos2(held.x - 80.0, held.y + 40.0));
     assert!(
         (now - was).length() < 1.0,
@@ -437,30 +443,30 @@ fn dragging_the_empty_canvas_pans_it() {
 /// prompt.
 #[test]
 fn a_terminal_node_is_called_after_the_command_it_runs() {
-    use unluminous_app::services::space::{Kind, State};
+    use unluminous_app::services::realm::{Kind, State};
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
-    harness.state_mut().space.space.change(node, |state| {
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    harness.state_mut().realm.realm.change(node, |state| {
         if let State::Terminal(terminal) = state {
             // What `codex` really becomes on Windows: `cmd.exe /c C:/nvm4w/nodejs/codex.cmd`.
             terminal.command = "codex --search".to_owned();
         }
     });
     steady(&mut harness);
-    let found = harness.state().space.space.current().node(node).expect("it is there").clone();
+    let found = harness.state().realm.realm.node(node).expect("it is there").clone();
     assert_eq!(harness.state().name_of_a_node(&found), "codex");
 
     // A name somebody typed still wins, which is the rule a terminal tab's name already keeps.
-    harness.state_mut().space.space.title_node(node, "the reviewer");
-    let found = harness.state().space.space.current().node(node).expect("it is there").clone();
+    harness.state_mut().realm.realm.title_node(node, "the reviewer");
+    let found = harness.state().realm.realm.node(node).expect("it is there").clone();
     assert_eq!(found.title, "the reviewer");
 
     // And a node with no command of its own is called after the shell that is running in it.
     let shell =
-        harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(700.0, 40.0));
+        harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(700.0, 40.0));
     steady(&mut harness);
-    let found = harness.state().space.space.current().node(shell).expect("it is there").clone();
+    let found = harness.state().realm.realm.node(shell).expect("it is there").clone();
     assert!(!harness.state().name_of_a_node(&found).is_empty());
 }
 
@@ -468,16 +474,16 @@ fn a_terminal_node_is_called_after_the_command_it_runs() {
 ///
 /// Measured on a live window: with a File Editor node chosen, `browser open` put the page **inside**
 /// that node, where nothing drew it and nothing could reach it. A node shows one thing, put there
-/// deliberately by `space editor`; every other way of opening a tab is somebody asking for the
+/// deliberately by `realm editor`; every other way of opening a tab is somebody asking for the
 /// editing area.
 #[test]
 fn a_tab_opened_while_a_node_has_the_keyboard_goes_to_the_editing_area() {
     let folder = sample_folder();
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let made = did(&mut harness, "space add editor --x 40 --y 40");
+    did(&mut harness, "realm show");
+    let made = did(&mut harness, "realm add editor --x 40 --y 40");
     let node = made["node"].as_u64().expect("a node id");
-    did(&mut harness, &format!("space editor {node} readme.md"));
+    did(&mut harness, &format!("realm editor {node} readme.md"));
     steady(&mut harness);
     assert_eq!(harness.state().files.focus().node(), Some(node), "the node has the keyboard");
 
@@ -505,14 +511,14 @@ fn every_panel_shows_with_no_editing_area() {
     let mut harness = harness("");
     // One panel on a strip and one on a column, which is the arrangement that broke. The canvas along the
     // bottom, the explorer down the left.
-    did(&mut harness, "space show");
-    // **A detached node rather than `space add terminal`.** `task-1922`: that command starts a real
+    did(&mut harness, "realm show");
+    // **A detached node rather than `realm add terminal`.** `task-1922`: that command starts a real
     // shell, and this picture then holds whatever PowerShell had printed by the frame it was taken
     // on -- its version banner, or nothing at all, depending on the machine and the moment. Measured
     // here: the same commit produced both. It is the rule the terminal's own screenshot tests have
     // kept since `task-1654`, applied to a node.
-    harness.state_mut().new_detached_space_node(
-        unluminous_app::services::space::Kind::Terminal,
+    harness.state_mut().new_detached_realm_node(
+        unluminous_app::services::realm::Kind::Terminal,
         egui::pos2(40.0, 30.0),
     );
     did(&mut harness, "action run toggle-editor");
@@ -520,36 +526,36 @@ fn every_panel_shows_with_no_editing_area() {
 
     // Both are on the screen, which is what the arithmetic used to make impossible.
     let explorer = harness.state().panel_area(unluminous_app::app::dock::Panel::Explorer);
-    let canvas = harness.state().panel_area(unluminous_app::app::dock::Panel::Space);
+    let canvas = harness.state().panel_area(unluminous_app::app::dock::Panel::Realm);
     assert!(explorer.height() > 1.0, "the explorer is {explorer:?}");
     assert!(canvas.height() > 1.0, "the canvas is {canvas:?}");
-    harness.snapshot(shot("space_with_every_panel_and_no_editing_area").as_str());
+    harness.snapshot(shot("realm_with_every_panel_and_no_editing_area").as_str());
 }
 
 /// A browser node draws its toolbar before it has a page, with the three buttons dimmed.
 #[test]
 fn a_browser_node_draws_its_toolbar_before_it_has_a_page() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 30.0));
-    did(&mut harness, &format!("space size {node} --width 760 --height 420"));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Browser, egui::pos2(40.0, 30.0));
+    did(&mut harness, &format!("realm size {node} --width 760 --height 420"));
     steady(&mut harness);
-    harness.snapshot(shot("space_browser_empty").as_str());
+    harness.snapshot(shot("realm_browser_empty").as_str());
 }
 
 /// A File Editor node with three tabs, and one of them chosen.
 #[test]
 fn an_editor_nodes_tabs() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space size {node} --width 800 --height 420"));
-    did(&mut harness, &format!("space editor {node} readme.md"));
-    did(&mut harness, &format!("space editor {node} notes.txt"));
-    did(&mut harness, &format!("space editor {node} program.rs"));
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm size {node} --width 800 --height 420"));
+    did(&mut harness, &format!("realm editor {node} readme.md"));
+    did(&mut harness, &format!("realm editor {node} notes.txt"));
+    did(&mut harness, &format!("realm editor {node} program.rs"));
     steady(&mut harness);
-    harness.snapshot(shot("space_editor_node_tabs").as_str());
+    harness.snapshot(shot("realm_editor_node_tabs").as_str());
 }
 
 /// A folder node dragged so that it would cover the rail, with its rows stopping at the rail's edge.
@@ -560,30 +566,30 @@ fn an_editor_nodes_tabs() {
 /// everything else there paints through `painter_at`, which intersects.
 #[test]
 fn a_folder_node_stops_at_the_rail() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(0.0, 20.0));
-    did(&mut harness, &format!("space size {node} --width 320 --height 380"));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Folder, egui::pos2(0.0, 20.0));
+    did(&mut harness, &format!("realm size {node} --width 320 --height 380"));
     // Left of the canvas's own left edge, so part of the node is over the rail.
-    did(&mut harness, &format!("space move {node} --x -90 --y 20"));
+    did(&mut harness, &format!("realm move {node} --x -90 --y 20"));
     steady(&mut harness);
-    harness.snapshot(shot("space_folder_node_over_the_rail").as_str());
+    harness.snapshot(shot("realm_folder_node_over_the_rail").as_str());
 }
 
 /// A File Editor node holds more than one tab, and closing the last leaves it asking for a file.
 ///
 /// `task-1905`: *"This should be just like our editing area, where I can see and edit files in multiple
-/// tabs."* It held one — `open_in_a_space_node` closed whatever was there before opening the next — so
-/// this fails on the code as it was, where the second `space editor` left one tab rather than two.
+/// tabs."* It held one — `open_in_a_realm_node` closed whatever was there before opening the next — so
+/// this fails on the code as it was, where the second `realm editor` left one tab rather than two.
 #[test]
 fn an_editor_node_holds_more_than_one_tab() {
     let folder = sample_folder();
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add editor --x 40 --y 40")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space editor {node} readme.md"));
-    did(&mut harness, &format!("space editor {node} notes.txt"));
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add editor --x 40 --y 40")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm editor {node} readme.md"));
+    did(&mut harness, &format!("realm editor {node} notes.txt"));
     steady(&mut harness);
 
     let tabs = harness.state().files.tabs_in_node(node);
@@ -593,7 +599,7 @@ fn an_editor_node_holds_more_than_one_tab() {
     assert_eq!(harness.state().files.at(showing).path(), Some(folder.join("notes.txt").as_path()));
 
     // And asking for one that is already there shows it rather than opening it twice.
-    did(&mut harness, &format!("space editor {node} readme.md"));
+    did(&mut harness, &format!("realm editor {node} readme.md"));
     steady(&mut harness);
     assert_eq!(harness.state().files.tabs_in_node(node).len(), 2, "no third tab");
     let showing = harness.state().files.tab_in_node(node).expect("one is showing");
@@ -611,15 +617,15 @@ fn an_editor_node_holds_more_than_one_tab() {
 #[test]
 fn a_nodes_font_reaches_every_tab_in_it_and_leaves_with_none_of_them() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space size {node} --width 700 --height 380"));
-    did(&mut harness, &format!("space editor {node} readme.md"));
-    did(&mut harness, &format!("space editor {node} notes.txt"));
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm size {node} --width 700 --height 380"));
+    did(&mut harness, &format!("realm editor {node} readme.md"));
+    did(&mut harness, &format!("realm editor {node} notes.txt"));
     steady(&mut harness);
 
     // A size of the node's own, well clear of the window's.
-    did(&mut harness, &format!("space zoom {node} --factor 30"));
+    did(&mut harness, &format!("realm zoom {node} --factor 30"));
     steady(&mut harness);
     steady(&mut harness);
     let showing = harness.state().files.tab_in_node(node).expect("one is showing");
@@ -654,7 +660,7 @@ fn a_nodes_font_reaches_every_tab_in_it_and_leaves_with_none_of_them() {
     assert_eq!(moved, None, "a tab in a pane is set in the window's own font");
 
     // **And putting the node back to the window's size really restyles.**
-    did(&mut harness, &format!("space zoom {node} --reset"));
+    did(&mut harness, &format!("realm zoom {node} --reset"));
     steady(&mut harness);
     steady(&mut harness);
     let showing = harness.state().files.tab_in_node(node).expect("one is showing");
@@ -669,15 +675,15 @@ fn a_nodes_font_reaches_every_tab_in_it_and_leaves_with_none_of_them() {
 #[test]
 fn closing_a_node_closes_every_tab_on_it() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space editor {node} readme.md"));
-    did(&mut harness, &format!("space editor {node} notes.txt"));
-    did(&mut harness, &format!("space editor {node} program.rs"));
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm editor {node} readme.md"));
+    did(&mut harness, &format!("realm editor {node} notes.txt"));
+    did(&mut harness, &format!("realm editor {node} program.rs"));
     steady(&mut harness);
     assert_eq!(harness.state().files.tabs_in_node(node).len(), 3);
 
-    did(&mut harness, &format!("space remove {node}"));
+    did(&mut harness, &format!("realm remove {node}"));
     steady(&mut harness);
     assert!(
         harness.state().files.tabs_on_nodes().is_empty(),
@@ -687,13 +693,13 @@ fn closing_a_node_closes_every_tab_on_it() {
     assert!(harness.state().files.iter().any(|file| file.home.pane().is_some()));
 
     // The same for deleting a whole view, which closes every node on it.
-    did(&mut harness, "space new-view Second");
-    let other = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space editor {other} readme.md"));
-    did(&mut harness, &format!("space editor {other} notes.txt"));
+    did(&mut harness, "realm new Second");
+    let other = did(&mut harness, "realm add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm editor {other} readme.md"));
+    did(&mut harness, &format!("realm editor {other} notes.txt"));
     steady(&mut harness);
     assert_eq!(harness.state().files.tabs_in_node(other).len(), 2);
-    did(&mut harness, "space delete-view Second");
+    did(&mut harness, "realm delete Second");
     steady(&mut harness);
     assert!(
         harness.state().files.tabs_on_nodes().is_empty(),
@@ -706,9 +712,9 @@ fn closing_a_node_closes_every_tab_on_it() {
 /// `task-1914`: *"Im unable to edit files in file editor. I should be able to type, etc."*
 ///
 /// `show_editor` asked whether `Focus` was `Focus::Editor` before it read a key, and clicking in a node
-/// leaves it at `Focus::Space` — so the click frame placed the caret and every frame after it dropped the
+/// leaves it at `Focus::Realm` — so the click frame placed the caret and every frame after it dropped the
 /// key. What it asks now is **where the tab being drawn lives**: a pane answers to `Focus::Editor` and a
-/// node to `Focus::Space`, which is what `focused` already decided for it.
+/// node to `Focus::Realm`, which is what `focused` already decided for it.
 ///
 /// The keys are given to the window rather than to a synthesised press inside the node, because a node's
 /// contents are drawn into a transformed sublayer — the reason `open_from_a_folder_node_for_a_test` exists.
@@ -716,12 +722,12 @@ fn closing_a_node_closes_every_tab_on_it() {
 #[test]
 fn a_file_editor_node_takes_the_keyboard_and_the_letters_reach_its_file() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space size {node} --width 620 --height 320"));
-    did(&mut harness, &format!("space editor {node} notes.txt"));
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm size {node} --width 620 --height 320"));
+    did(&mut harness, &format!("realm editor {node} notes.txt"));
     // Which is what a click in the node does: it chooses the node and hands the keyboard to the canvas.
-    did(&mut harness, &format!("space focus {node}"));
+    did(&mut harness, &format!("realm focus {node}"));
     steady(&mut harness);
     let index = harness.state().files.tab_in_node(node).expect("the node has the file");
     let was = harness.state().files.at(index).document.text().to_string();
@@ -758,18 +764,18 @@ fn a_tab_dropped_on_the_empty_canvas_becomes_a_node() {
     use unluminous_app::app::files::Home;
     let folder = sample_folder();
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     did(&mut harness, "tab open readme.md --permanent");
     steady(&mut harness);
     let carried = harness.state().files.index_of(&folder.join("readme.md")).expect("it is open");
     assert!(harness.state().files.at(carried).home.pane().is_some(), "it starts in a pane");
-    let nodes_before = harness.state().space.space.current().nodes.len();
+    let nodes_before = harness.state().realm.realm.nodes.len();
 
-    let middle = harness.state().space.body.center();
+    let middle = harness.state().realm.body.center();
     let node = harness.state_mut().break_a_tab_out_onto_the_canvas(carried, middle);
     steady(&mut harness);
     assert_eq!(
-        harness.state().space.space.current().nodes.len(),
+        harness.state().realm.realm.nodes.len(),
         nodes_before + 1,
         "a node was made where it was let go",
     );
@@ -778,9 +784,9 @@ fn a_tab_dropped_on_the_empty_canvas_becomes_a_node() {
     assert_eq!(harness.state().files.at(moved).home, Home::Node(node), "and the tab lives on it");
     // The node is under the pointer rather than starting at it, so what is where the drop happened is the
     // node's own header - the part it is dragged by.
-    let made = harness.state().space.space.current().node(node).cloned().expect("the node");
-    let camera = harness.state().space.space.current().camera;
-    let on_screen = camera.rect_to_screen(harness.state().space.body.min, made.rect());
+    let made = harness.state().realm.realm.node(node).cloned().expect("the node");
+    let camera = harness.state().realm.realm.camera;
+    let on_screen = camera.rect_to_screen(harness.state().realm.body.min, made.rect());
     assert!(
         on_screen.contains(middle),
         "the node covers the point it was let go at: {on_screen:?}"
@@ -803,18 +809,18 @@ fn a_file_dropped_on_the_canvas_opens_as_a_node_or_as_a_tab() {
     use unluminous_app::app::files::Home;
     let folder = sample_folder();
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     steady(&mut harness);
-    let nodes_before = harness.state().space.space.current().nodes.len();
+    let nodes_before = harness.state().realm.realm.nodes.len();
 
     // Nothing under the pointer: a node of its own, holding the file.
-    let middle = harness.state().space.body.center();
+    let middle = harness.state().realm.body.center();
     let made = harness
         .state_mut()
         .drop_a_file_onto_the_canvas(&folder.join("readme.md"), middle)
         .expect("a node was made");
     steady(&mut harness);
-    assert_eq!(harness.state().space.space.current().nodes.len(), nodes_before + 1);
+    assert_eq!(harness.state().realm.realm.nodes.len(), nodes_before + 1);
     let opened = harness.state().files.index_of(&folder.join("readme.md")).expect("it is open");
     assert_eq!(harness.state().files.at(opened).home, Home::Node(made));
 
@@ -836,7 +842,7 @@ fn a_file_dropped_on_the_canvas_opens_as_a_node_or_as_a_tab() {
     steady(&mut harness);
     assert_eq!(onto, made, "it landed on the node it was let go over");
     assert_eq!(
-        harness.state().space.space.current().nodes.len(),
+        harness.state().realm.realm.nodes.len(),
         nodes_before + 1,
         "and no second node was made",
     );
@@ -914,19 +920,19 @@ fn a_drag_sent_through_input_moves_a_divider() {
 /// say which node it is, which is the one thing the connection half of the ticket needs.
 #[test]
 fn a_chat_node_holds_its_own_conversation_and_comes_back_on_it() {
-    use unluminous_app::services::space::{Kind, State};
+    use unluminous_app::services::realm::{Kind, State};
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let one = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
-    let two = did(&mut harness, "space add chat --x 520 --y 20")["node"].as_u64().expect("id");
+    did(&mut harness, "realm show");
+    let one = did(&mut harness, "realm add chat --x 20 --y 20")["node"].as_u64().expect("id");
+    let two = did(&mut harness, "realm add chat --x 520 --y 20")["node"].as_u64().expect("id");
     steady(&mut harness);
 
     assert_eq!(
-        harness.state().space.space.current().node(one).expect("it is there").kind(),
+        harness.state().realm.realm.node(one).expect("it is there").kind(),
         Kind::Chat
     );
-    let first = harness.state().space.live.chat(one).map(|chat| chat.conversation_id().to_owned());
-    let second = harness.state().space.live.chat(two).map(|chat| chat.conversation_id().to_owned());
+    let first = harness.state().realm.live.chat(one).map(|chat| chat.conversation_id().to_owned());
+    let second = harness.state().realm.live.chat(two).map(|chat| chat.conversation_id().to_owned());
     let first = first.expect("the node opened a chat of its own the first time it was drawn");
     let second = second.expect("and so did the second node");
     assert_ne!(first, second, "two chat nodes are two agents, not two views of one");
@@ -934,15 +940,15 @@ fn a_chat_node_holds_its_own_conversation_and_comes_back_on_it() {
     // **Written down**, so a canvas comes back with each agent where it was left rather than every one of
     // them on the newest conversation, which is what the pane does because there is one of it.
     let recorded =
-        match &harness.state().space.space.current().node(one).expect("it is there").state {
+        match &harness.state().realm.realm.node(one).expect("it is there").state {
             State::Chat(chat) => chat.conversation.clone(),
             other => panic!("a chat node holds a chat state, not {other:?}"),
         };
     assert_eq!(recorded, first, "the node records which conversation it is on");
 
-    // And `space list` reads it back, which is the half of Unluminous's rule that says an agent reaches
+    // And `realm list` reads it back, which is the half of Unluminous's rule that says an agent reaches
     // what a person sees.
-    let listed = did(&mut harness, "space list").to_string();
+    let listed = did(&mut harness, "realm view").to_string();
     assert_eq!(
         listed.matches("\"kind\":\"chat\"").count(),
         2,
@@ -952,19 +958,19 @@ fn a_chat_node_holds_its_own_conversation_and_comes_back_on_it() {
 
 /// A chat node's tool call is asked from that node, so its wires are what it may reach.
 ///
-/// A terminal node carries `UNLUMINOUS_SPACE_NODE` in its environment and the client sends it, which is
-/// what makes `space here` answer about that node and every `space` command it sends carry `--from`. A chat
+/// A terminal node carries `UNLUMINOUS_REALM_NODE` in its environment and the client sends it, which is
+/// what makes `realm here` answer about that node and every `realm` command it sends carry `--from`. A chat
 /// node has no client and no environment, so the window fills the same two in before the call is run.
 ///
 /// **Only where the command really names the key**, read from the catalogue: `task-1804`'s rule is that a
-/// key a command does not name is a usage refusal, so filling one in blindly would turn `space list` into
+/// key a command does not name is a usage refusal, so filling one in blindly would turn `realm list` into
 /// an error. And only when the model did not say, so an agent that names a `--from` of its own is answered
 /// or refused on its own terms.
 #[test]
 fn a_chat_nodes_tool_call_is_asked_from_its_own_node() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let chat = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
+    did(&mut harness, "realm show");
+    let chat = did(&mut harness, "realm add chat --x 20 --y 20")["node"].as_u64().expect("id");
     steady(&mut harness);
 
     let asked =
@@ -973,23 +979,23 @@ fn a_chat_nodes_tool_call_is_asked_from_its_own_node() {
             harness.state().what_a_chat_node_is_asking_about(chat, command, map)
         };
 
-    // `space here` is the one command that asks *which node is calling*.
-    let here = asked(&harness, "space.here", serde_json::json!({}));
-    assert_eq!(here["node"], serde_json::json!(chat), "space here is asked as this node");
+    // `realm here` is the one command that asks *which node is calling*.
+    let here = asked(&harness, "realm.here", serde_json::json!({}));
+    assert_eq!(here["node"], serde_json::json!(chat), "realm here is asked as this node");
 
-    // Every other `space` command asks what the caller may reach.
-    let send = asked(&harness, "space.send", serde_json::json!({ "node": 9, "text": "hello" }));
+    // Every other `realm` command asks what the caller may reach.
+    let send = asked(&harness, "realm.send", serde_json::json!({ "node": 9, "text": "hello" }));
     assert_eq!(send["from"], serde_json::json!(chat), "and the rest are asked from it");
     assert_eq!(send["node"], serde_json::json!(9), "the target it named is left alone");
 
     // A `from` the model named is its own, and is answered or refused on its merits.
-    let named = asked(&harness, "space.send", serde_json::json!({ "node": 9, "from": 3 }));
+    let named = asked(&harness, "realm.send", serde_json::json!({ "node": 9, "from": 3 }));
     assert_eq!(named["from"], serde_json::json!(3), "a from it named is not overwritten");
 
     // A command that names neither is left exactly as it is: a key a command does not have is a usage
     // refusal, so filling one in would turn a working call into an error.
-    let listed = asked(&harness, "space.list", serde_json::json!({}));
-    assert!(listed.is_empty(), "space list names no from and gets none: {listed:?}");
+    let listed = asked(&harness, "realm.list", serde_json::json!({}));
+    assert!(listed.is_empty(), "realm list names no from and gets none: {listed:?}");
     let opened = asked(&harness, "tab.open", serde_json::json!({ "path": "readme.md" }));
     assert!(!opened.contains_key("from"), "and neither does a command outside the canvas");
 }
@@ -998,19 +1004,19 @@ fn a_chat_nodes_tool_call_is_asked_from_its_own_node() {
 ///
 /// Unluminous's rule is that everything a person can do in this window an agent can do too, through the same
 /// code — so a chat node that could only be typed into would be the one surface in the window with no way
-/// in. `space chat` forwards to `UiProvider::command`, which is what `plugins run agent-chat` already
+/// in. `realm chat` forwards to `UiProvider::command`, which is what `plugins run agent-chat` already
 /// calls, so the verbs are not a second list and the two cannot answer differently. What it adds is
 /// *whose* conversation: the pane has one and each node has one of its own.
 #[test]
 fn a_chat_node_answers_the_command_line_about_its_own_conversation() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add chat --x 20 --y 20")["node"].as_u64().expect("id");
     let terminal =
-        did(&mut harness, "space add terminal --x 700 --y 20")["node"].as_u64().expect("id");
+        did(&mut harness, "realm add terminal --x 700 --y 20")["node"].as_u64().expect("id");
     steady(&mut harness);
 
-    let state = did(&mut harness, &format!("space chat {node} state"));
+    let state = did(&mut harness, &format!("realm chat {node} state"));
     assert_eq!(state["node"], serde_json::json!(node), "the answer names the node it is about");
     assert_eq!(
         state["busy"],
@@ -1020,26 +1026,26 @@ fn a_chat_node_answers_the_command_line_about_its_own_conversation() {
 
     // A new conversation is a new conversation on **this** node, and the canvas records it.
     let was =
-        harness.state().space.live.chat(node).expect("it opened").conversation_id().to_owned();
-    let made = did(&mut harness, &format!("space chat {node} new"));
+        harness.state().realm.live.chat(node).expect("it opened").conversation_id().to_owned();
+    let made = did(&mut harness, &format!("realm chat {node} new"));
     steady(&mut harness);
     let now =
-        harness.state().space.live.chat(node).expect("still there").conversation_id().to_owned();
+        harness.state().realm.live.chat(node).expect("still there").conversation_id().to_owned();
     assert_ne!(now, was, "`new` moved it to another conversation");
     assert_eq!(made["id"], serde_json::json!(now), "and the reply named the one it moved to");
     let recorded =
-        match &harness.state().space.space.current().node(node).expect("it is there").state {
-            unluminous_app::services::space::State::Chat(chat) => chat.conversation.clone(),
+        match &harness.state().realm.realm.node(node).expect("it is there").state {
+            unluminous_app::services::realm::State::Chat(chat) => chat.conversation.clone(),
             other => panic!("a chat node holds a chat state, not {other:?}"),
         };
     assert_eq!(recorded, now, "the canvas wrote down where the node ended up");
 
     // A node that is not a chat is refused by kind, which is `a_reachable_node`'s own answer.
-    let refused = run(&mut harness, &format!("space chat {terminal} state"));
+    let refused = run(&mut harness, &format!("realm chat {terminal} state"));
     assert!(!refused.ok, "a terminal node has no conversation");
 
     // And a verb the chat has not got is refused with the chat's own words rather than swallowed.
-    let unknown = run(&mut harness, &format!("space chat {node} nonsense"));
+    let unknown = run(&mut harness, &format!("realm chat {node} nonsense"));
     assert!(!unknown.ok, "an unknown verb is refused: {}", unknown.message);
 }
 
@@ -1051,13 +1057,13 @@ fn a_chat_node_answers_the_command_line_about_its_own_conversation() {
 /// without the other. Two Tasks nodes therefore show the same board, which they should, because there is one.
 #[test]
 fn a_tasks_node_draws_the_windows_own_board() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add tasks --x 20 --y 20")["node"].as_u64().expect("id");
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add tasks --x 20 --y 20")["node"].as_u64().expect("id");
     steady(&mut harness);
     assert_eq!(
-        harness.state().space.space.current().node(node).expect("it is there").kind(),
+        harness.state().realm.realm.node(node).expect("it is there").kind(),
         Kind::Tasks
     );
     // The node is what opened the provider: nothing has pressed the rail button and no pane is showing.
@@ -1078,11 +1084,11 @@ fn a_tab_is_dragged_between_a_node_and_a_pane() {
     use unluminous_app::app::files::Home;
     let folder = sample_folder();
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space size {node} --width 700 --height 380"));
-    did(&mut harness, &format!("space editor {node} readme.md"));
-    did(&mut harness, &format!("space editor {node} notes.txt"));
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm size {node} --width 700 --height 380"));
+    did(&mut harness, &format!("realm editor {node} readme.md"));
+    did(&mut harness, &format!("realm editor {node} notes.txt"));
     steady(&mut harness);
     assert_eq!(harness.state().files.tabs_in_node(node).len(), 2);
 
@@ -1123,16 +1129,16 @@ fn a_tab_is_dragged_between_a_node_and_a_pane() {
 /// already open, or open a new tab in the connected file view node."*
 #[test]
 fn a_double_click_in_a_folder_node_opens_a_wired_editor_node() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let folder = sample_folder();
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let tree = did(&mut harness, "space add folder --x 40 --y 40")["node"].as_u64().expect("id");
+    did(&mut harness, "realm show");
+    let tree = did(&mut harness, "realm add folder --x 40 --y 40")["node"].as_u64().expect("id");
     steady(&mut harness);
 
-    // Nothing is wired, so `space folder open` — which is what the double click reaches — makes an editor
+    // Nothing is wired, so `realm folder open` — which is what the double click reaches — makes an editor
     // node beside it and wires it.
-    let answer = did(&mut harness, &format!("space folder {tree} open --path readme.md"));
+    let answer = did(&mut harness, &format!("realm folder {tree} open --path readme.md"));
     steady(&mut harness);
     // With no editor node wired the file goes to the editing area, which is the single click's own answer;
     // the double click is what makes one. So drive the node's own path.
@@ -1142,17 +1148,15 @@ fn a_double_click_in_a_folder_node_opens_a_wired_editor_node() {
 
     let made = harness
         .state()
-        .space
-        .space
-        .current()
+        .realm
+        .realm
         .reaches(tree)
         .into_iter()
         .find(|node| {
             harness
                 .state()
-                .space
-                .space
-                .current()
+                .realm
+                .realm
                 .node(*node)
                 .is_some_and(|n| n.kind() == Kind::Editor)
         })
@@ -1166,9 +1170,8 @@ fn a_double_click_in_a_folder_node_opens_a_wired_editor_node() {
     assert_eq!(harness.state().files.tabs_in_node(made).len(), 2);
     let editors = harness
         .state()
-        .space
-        .space
-        .current()
+        .realm
+        .realm
         .nodes
         .iter()
         .filter(|node| node.kind() == Kind::Editor)
@@ -1183,18 +1186,18 @@ fn a_double_click_in_a_folder_node_opens_a_wired_editor_node() {
 /// fails on the code as it was in both directions — the node's size did not move and the camera's did.
 #[test]
 fn the_modifier_wheel_over_a_node_zooms_the_node_and_not_the_camera() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
-    did(&mut harness, &format!("space size {node} --width 500 --height 320"));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    did(&mut harness, &format!("realm size {node} --width 500 --height 320"));
     steady(&mut harness);
-    let camera_was = harness.state().space.space.current().camera;
+    let camera_was = harness.state().realm.realm.camera;
     let font_was =
-        did(&mut harness, &format!("space font {node}"))["size"].as_f64().expect("a size");
+        did(&mut harness, &format!("realm font {node}"))["size"].as_f64().expect("a size");
 
     // The pinch, over the node. `zoom_delta` is what `Ctrl`/`Cmd` with the wheel becomes.
-    let body = harness.state().space.body;
+    let body = harness.state().realm.body;
     let over_the_node = camera_was.to_screen(body.min, egui::pos2(200.0, 160.0));
     harness.input_mut().events.push(egui::Event::PointerMoved(over_the_node));
     steady(&mut harness);
@@ -1203,9 +1206,9 @@ fn the_modifier_wheel_over_a_node_zooms_the_node_and_not_the_camera() {
     pump(&mut harness);
 
     let font_now =
-        did(&mut harness, &format!("space font {node}"))["size"].as_f64().expect("a size");
+        did(&mut harness, &format!("realm font {node}"))["size"].as_f64().expect("a size");
     assert!(font_now > font_was, "the node's letters should be bigger: {font_was} -> {font_now}");
-    let camera_now = harness.state().space.space.current().camera;
+    let camera_now = harness.state().realm.realm.camera;
     assert_eq!(camera_now.zoom, camera_was.zoom, "and the canvas did not zoom with it");
     // And the window's own terminal setting is untouched, which is what makes it the node's own.
     assert_eq!(harness.state().settings.terminal_font_size, {
@@ -1219,16 +1222,16 @@ fn the_modifier_wheel_over_a_node_zooms_the_node_and_not_the_camera() {
 /// The other half of the rule above, so the change cannot quietly take the canvas's own zoom away.
 #[test]
 fn the_modifier_wheel_over_the_empty_canvas_still_zooms_the_camera() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
-    did(&mut harness, &format!("space size {node} --width 300 --height 200"));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    did(&mut harness, &format!("realm size {node} --width 300 --height 200"));
     steady(&mut harness);
-    let camera_was = harness.state().space.space.current().camera;
+    let camera_was = harness.state().realm.realm.camera;
 
     // Well clear of the node, over the ground.
-    let body = harness.state().space.body;
+    let body = harness.state().realm.body;
     let empty = egui::pos2(body.right() - 60.0, body.bottom() - 60.0);
     harness.input_mut().events.push(egui::Event::PointerMoved(empty));
     steady(&mut harness);
@@ -1236,7 +1239,7 @@ fn the_modifier_wheel_over_the_empty_canvas_still_zooms_the_camera() {
     pump(&mut harness);
     pump(&mut harness);
 
-    let camera_now = harness.state().space.space.current().camera;
+    let camera_now = harness.state().realm.realm.camera;
     assert!(camera_now.zoom > camera_was.zoom, "the canvas is at {}", camera_now.zoom);
 }
 
@@ -1250,28 +1253,28 @@ fn the_zoom_buttons_step_the_camera_and_the_reading_resets_it() {
     let mut harness = a_canvas();
     // `a_canvas` fits everything in view, so it opens at whatever zoom that took. Put it at one, which is
     // where the reading says 100%.
-    did(&mut harness, "space camera --zoom 1");
+    did(&mut harness, "realm camera --zoom 1");
     steady(&mut harness);
-    let was = harness.state().space.space.current().camera.zoom;
+    let was = harness.state().realm.realm.camera.zoom;
     assert_eq!(was, 1.0);
 
     harness.get_by_label("Zoom in").click();
     let_the_zoom_settle(&mut harness);
-    let bigger = harness.state().space.space.current().camera.zoom;
+    let bigger = harness.state().realm.realm.camera.zoom;
     assert!(bigger > was, "zoom in should have zoomed in, it is at {bigger}");
 
     harness.get_by_label("Zoom out").click();
     let_the_zoom_settle(&mut harness);
-    let back = harness.state().space.space.current().camera.zoom;
+    let back = harness.state().realm.realm.camera.zoom;
     assert!((back - was).abs() < 0.001, "one notch each way is where it started, it is at {back}");
 
     // The reading is a button, and its name carries the number so a test reads the zoom out of the
     // accessibility tree rather than out of a picture.
-    did(&mut harness, "space camera --zoom 2");
+    did(&mut harness, "realm camera --zoom 2");
     steady(&mut harness);
     harness.get_by_label_contains("Reset zoom").click();
     let_the_zoom_settle(&mut harness);
-    assert_eq!(harness.state().space.space.current().camera.zoom, 1.0);
+    assert_eq!(harness.state().realm.realm.camera.zoom, 1.0);
 }
 
 /// `task-1945`: the wheel moves the camera through the notch rather than jumping it.
@@ -1282,35 +1285,35 @@ fn the_zoom_buttons_step_the_camera_and_the_reading_resets_it() {
 #[test]
 fn a_wheel_notch_glides_the_camera_rather_than_jumping_it() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    did(&mut harness, "space camera --zoom 1");
+    did(&mut harness, "realm show");
+    did(&mut harness, "realm camera --zoom 1");
     steady(&mut harness);
-    let body = harness.state().space.body;
+    let body = harness.state().realm.body;
     let middle = body.center();
 
     drove(&mut harness, &format!("input move {} {}", middle.x, middle.y));
     drove(&mut harness, "input wheel 1");
-    let heading = harness.state().space.glide.map(|(wanted, _)| wanted).expect("a glide started");
+    let heading = harness.state().realm.glide.map(|(wanted, _)| wanted).expect("a glide started");
     assert!(heading > 1.0, "the wheel aimed the camera in: {heading}");
 
     // The frame the notch landed on is **between** the two zooms, which is the whole of the report.
-    let part_way = harness.state().space.space.current().camera.zoom;
+    let part_way = harness.state().realm.realm.camera.zoom;
     assert!(
         part_way > 1.0 && part_way < heading,
         "the camera was part of the way there rather than at either end: {part_way}"
     );
 
     let_the_zoom_settle(&mut harness);
-    let arrived = harness.state().space.space.current().camera.zoom;
+    let arrived = harness.state().realm.realm.camera.zoom;
     assert!((arrived - heading).abs() < 0.001, "and it arrived: {arrived} against {heading}");
-    assert!(harness.state().space.glide.is_none(), "and stopped asking for frames");
+    assert!(harness.state().realm.glide.is_none(), "and stopped asking for frames");
 
     // A command sets it outright, because a script that had to wait out an animation to read back what
     // it just set is a script with a race in it.
-    let answer = did(&mut harness, "space camera --zoom 2");
+    let answer = did(&mut harness, "realm camera --zoom 2");
     assert_eq!(answer["zoom"], serde_json::json!(2.0));
-    assert_eq!(harness.state().space.space.current().camera.zoom, 2.0);
-    assert!(harness.state().space.glide.is_none());
+    assert_eq!(harness.state().realm.realm.camera.zoom, 2.0);
+    assert!(harness.state().realm.glide.is_none());
 }
 
 /// A picture of the two buttons and the reading, at 100% and at the bottom of the ladder.
@@ -1321,36 +1324,36 @@ fn a_wheel_notch_glides_the_camera_rather_than_jumping_it() {
 fn the_canvas_zoom_controls() {
     let mut harness = a_canvas();
     steady(&mut harness);
-    harness.snapshot(shot("space_zoom_controls").as_str());
-    did(&mut harness, "space camera --zoom 0.25");
+    harness.snapshot(shot("realm_zoom_controls").as_str());
+    did(&mut harness, "realm camera --zoom 0.25");
     steady(&mut harness);
-    harness.snapshot(shot("space_zoom_controls_at_the_end_of_the_ladder").as_str());
+    harness.snapshot(shot("realm_zoom_controls_at_the_end_of_the_ladder").as_str());
 }
 
-/// `space here` names every node it is wired to and the command that drives each one.
+/// `realm here` names every node it is wired to and the command that drives each one.
 ///
 /// `task-1905` §2: an agent in a terminal node *"doesn't seem to know that a web node is connected to
 /// it"*, and the capture shows it spending nine tool calls and two shell commands working that out.
 /// Everything it needed was reachable and none of it was reached, which is `CLAUDE.md`'s own distinction.
 ///
 /// **The commands are the point rather than the node ids.** `task-1695` measured a model handed an id and
-/// left to work out which of twenty-three `space` verbs applies to a browser: it reached for `bash`.
+/// left to work out which of twenty-three `realm` verbs applies to a browser: it reached for `bash`.
 #[test]
-fn space_here_names_every_node_it_is_wired_to_and_the_command_for_each() {
+fn realm_here_names_every_node_it_is_wired_to_and_the_command_for_each() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let agent = did(&mut harness, "space add terminal --x 40 --y 40")["node"].as_u64().expect("id");
-    let page = did(&mut harness, "space add browser --x 700 --y 40")["node"].as_u64().expect("id");
-    let tree = did(&mut harness, "space add folder --x 40 --y 500")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space connect {agent} {page}"));
-    did(&mut harness, &format!("space connect {agent} {tree}"));
+    did(&mut harness, "realm show");
+    let agent = did(&mut harness, "realm add terminal --x 40 --y 40")["node"].as_u64().expect("id");
+    let page = did(&mut harness, "realm add browser --x 700 --y 40")["node"].as_u64().expect("id");
+    let tree = did(&mut harness, "realm add folder --x 40 --y 500")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm connect {agent} {page}"));
+    did(&mut harness, &format!("realm connect {agent} {tree}"));
     // Something wired *into* the agent as well, so the two directions are told apart.
     let other =
-        did(&mut harness, "space add terminal --x 700 --y 500")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space connect {other} {agent}"));
+        did(&mut harness, "realm add terminal --x 700 --y 500")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm connect {other} {agent}"));
     steady(&mut harness);
 
-    let answer = did(&mut harness, &format!("space here --node {agent}"));
+    let answer = did(&mut harness, &format!("realm here --node {agent}"));
     assert_eq!(answer["node"], agent);
     assert_eq!(answer["inANode"], true);
     assert_eq!(answer["kind"], "terminal");
@@ -1362,10 +1365,10 @@ fn space_here_names_every_node_it_is_wired_to_and_the_command_for_each() {
     // The command, written out with both ids in it and `--from` already there.
     assert_eq!(
         for_the_page["command"],
-        format!("space browser {page} go --url <address> --from {agent}")
+        format!("realm browser {page} go --url <address> --from {agent}")
     );
     let for_the_tree = reaches.iter().find(|one| one["node"] == tree).expect("the folder");
-    assert_eq!(for_the_tree["command"], format!("space folder {tree} rows --from {agent}"));
+    assert_eq!(for_the_tree["command"], format!("realm folder {tree} rows --from {agent}"));
 
     // And what is wired *into* it is a separate list, because an edge is one way round.
     let reached_by = answer["reachedBy"].as_array().expect("what reaches it").clone();
@@ -1373,44 +1376,44 @@ fn space_here_names_every_node_it_is_wired_to_and_the_command_for_each() {
     assert_eq!(reached_by[0]["node"], other);
 }
 
-/// Outside a node `space here` answers rather than refusing.
+/// Outside a node `realm here` answers rather than refusing.
 ///
 /// The window's own agent runs it too, and a refusal there would be a refusal about nothing — which is
 /// `picture::from_the_clipboard`'s rule, where the absence is the ordinary case.
 #[test]
-fn space_here_outside_a_node_says_so_rather_than_refusing() {
+fn realm_here_outside_a_node_says_so_rather_than_refusing() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    // No `--node`, which is what a client with no `UNLUMINOUS_SPACE_NODE` sends.
-    let answer = did(&mut harness, "space here");
+    did(&mut harness, "realm show");
+    // No `--node`, which is what a client with no `UNLUMINOUS_REALM_NODE` sends.
+    let answer = did(&mut harness, "realm here");
     assert_eq!(answer["inANode"], false);
     assert!(answer["node"].is_null());
 }
 
 /// A terminal node's environment says which node it is **and** that there is a command to run.
 ///
-/// `task-1905`: `UNLUMINOUS_SPACE_NODE` was already there and nothing suggested looking at it. An agent
+/// `task-1905`: `UNLUMINOUS_REALM_NODE` was already there and nothing suggested looking at it. An agent
 /// that runs `env` — which `claude` does, and the report's capture shows it doing — reads values, and a
 /// number tells it nothing it can act on.
 #[test]
 fn a_node_agents_environment_points_at_the_command_that_orients_it() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(40.0, 40.0));
     steady(&mut harness);
     let settings =
-        harness.state().space_terminal_settings(node, "a-fresh-id").expect("a terminal node");
+        harness.state().realm_terminal_settings(node, "a-fresh-id").expect("a terminal node");
     let named = |name: &str| {
         settings.env.iter().find(|(held, _)| held == name).map(|(_, value)| value.clone())
     };
-    assert_eq!(named("UNLUMINOUS_SPACE_NODE").as_deref(), Some(node.to_string().as_str()));
-    let hint = named("UNLUMINOUS_SPACE_HINT").expect("the sentence that points at the command");
-    assert!(hint.contains("space here"), "{hint}");
+    assert_eq!(named("UNLUMINOUS_REALM_NODE").as_deref(), Some(node.to_string().as_str()));
+    let hint = named("UNLUMINOUS_REALM_HINT").expect("the sentence that points at the command");
+    assert!(hint.contains("realm here"), "{hint}");
     assert!(hint.contains(&node.to_string()), "{hint}");
 
     // **And where `unluminous-cli` is, and which window to drive.** Found by driving the real window:
-    // `unluminous-cli` is on nobody's `PATH`, so `unluminous-cli space here` typed in a node answered
+    // `unluminous-cli` is on nobody's `PATH`, so `unluminous-cli realm here` typed in a node answered
     // `zsh: command not found` — the very command §2 tells an agent to run first. The Agent-Tasks board
     // already carries both, and the hint names the variables rather than a bare command.
     let cli = named(unluminous_app::services::agent_tasks::agent::ENV_CLI)
@@ -1448,7 +1451,7 @@ fn a_node_agents_environment_points_at_the_command_that_orients_it() {
             "there is nothing beside this binary to put on a PATH, so nothing is put there"
         ),
     }
-    assert!(hint.contains("unluminous-cli space here"), "{hint}");
+    assert!(hint.contains("unluminous-cli realm here"), "{hint}");
 }
 
 /// With two folder nodes overlapping, the wheel goes to the one on top.
@@ -1459,28 +1462,28 @@ fn a_node_agents_environment_points_at_the_command_that_orients_it() {
 /// is decided once now, before any of them is drawn.
 #[test]
 fn the_wheel_over_two_overlapping_folder_nodes_goes_to_the_one_on_top() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     let many = std::env::temp_dir().join("unluminous-folder-node-overlap");
     let _ = std::fs::create_dir_all(&many);
     for number in 0..60 {
         let _ = std::fs::write(many.join(format!("file-{number:02}.txt")), "x");
     }
     // Two nodes on the same spot. The second is added later, so it is later in the list and on top.
-    let under = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(20.0, 20.0));
-    let over = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(40.0, 40.0));
+    let under = harness.state_mut().new_detached_realm_node(Kind::Folder, egui::pos2(20.0, 20.0));
+    let over = harness.state_mut().new_detached_realm_node(Kind::Folder, egui::pos2(40.0, 40.0));
     for node in [under, over] {
-        did(&mut harness, &format!("space size {node} --width 320 --height 300"));
-        did(&mut harness, &format!("space folder {node} root --path {}", many.display()));
+        did(&mut harness, &format!("realm size {node} --width 320 --height 300"));
+        did(&mut harness, &format!("realm folder {node} root --path {}", many.display()));
     }
     // Nothing chosen, so what decides is the drawing order alone.
-    harness.state_mut().space.space.choose(None);
+    harness.state_mut().realm.realm.choose(None);
     steady(&mut harness);
 
     // A point inside both of them.
-    let body = harness.state().space.body;
-    let camera = harness.state().space.space.current().camera;
+    let body = harness.state().realm.body;
+    let camera = harness.state().realm.realm.camera;
     let shared = camera.to_screen(body.min, egui::pos2(140.0, 160.0));
     harness.input_mut().events.push(egui::Event::PointerMoved(shared));
     steady(&mut harness);
@@ -1494,12 +1497,12 @@ fn the_wheel_over_two_overlapping_folder_nodes_goes_to_the_one_on_top() {
     pump(&mut harness);
 
     assert!(
-        harness.state().space.live.scroll_of(over) > 20.0,
+        harness.state().realm.live.scroll_of(over) > 20.0,
         "the node on top should have scrolled, it is at {}",
-        harness.state().space.live.scroll_of(over),
+        harness.state().realm.live.scroll_of(over),
     );
     assert_eq!(
-        harness.state().space.live.scroll_of(under),
+        harness.state().realm.live.scroll_of(under),
         0.0,
         "and the one underneath should not have moved",
     );
@@ -1517,23 +1520,23 @@ fn the_wheel_over_two_overlapping_folder_nodes_goes_to_the_one_on_top() {
 /// nothing else here would notice.
 #[test]
 fn the_modifier_wheel_over_a_folder_node_zooms_it_without_also_scrolling_it() {
-    use unluminous_app::services::space::{Kind, State};
+    use unluminous_app::services::realm::{Kind, State};
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     let many = std::env::temp_dir().join("unluminous-folder-node-modifier");
     let _ = std::fs::create_dir_all(&many);
     for number in 0..60 {
         let _ = std::fs::write(many.join(format!("file-{number:02}.txt")), "x");
     }
-    let node = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(20.0, 20.0));
-    did(&mut harness, &format!("space size {node} --width 320 --height 300"));
-    did(&mut harness, &format!("space folder {node} root --path {}", many.display()));
+    let node = harness.state_mut().new_detached_realm_node(Kind::Folder, egui::pos2(20.0, 20.0));
+    did(&mut harness, &format!("realm size {node} --width 320 --height 300"));
+    did(&mut harness, &format!("realm folder {node} root --path {}", many.display()));
     steady(&mut harness);
-    assert_eq!(harness.state().space.live.scroll_of(node), 0.0);
+    assert_eq!(harness.state().realm.live.scroll_of(node), 0.0);
 
     // The wheel **with the zoom modifier**, which arrives as both a `Zoom` and a `MouseWheel`.
-    let body = harness.state().space.body;
-    let camera = harness.state().space.space.current().camera;
+    let body = harness.state().realm.body;
+    let camera = harness.state().realm.realm.camera;
     let over = camera.to_screen(body.min, egui::pos2(120.0, 160.0));
     harness.input_mut().events.push(egui::Event::PointerMoved(over));
     steady(&mut harness);
@@ -1548,13 +1551,13 @@ fn the_modifier_wheel_over_a_folder_node_zooms_it_without_also_scrolling_it() {
     pump(&mut harness);
     pump(&mut harness);
 
-    let zoom = match &harness.state().space.space.current().node(node).expect("the node").state {
+    let zoom = match &harness.state().realm.realm.node(node).expect("the node").state {
         State::Folder(folder) => folder.zoom,
         other => panic!("{other:?}"),
     };
     assert!(zoom > 1.0, "the node's rows should be bigger, its zoom is {zoom}");
     assert_eq!(
-        harness.state().space.live.scroll_of(node),
+        harness.state().realm.live.scroll_of(node),
         0.0,
         "and one gesture must not also scroll the rows"
     );
@@ -1567,19 +1570,19 @@ fn the_modifier_wheel_over_a_folder_node_zooms_it_without_also_scrolling_it() {
 /// a node has to keep it: the whole of that module is written so a project opens rather than complaining.
 #[test]
 fn a_node_whose_file_has_gone_comes_back_without_it() {
-    use unluminous_app::services::space::State;
+    use unluminous_app::services::realm::State;
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screenshot-gone-file");
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space editor {node} readme.md"));
-    did(&mut harness, &format!("space editor {node} notes.txt"));
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm editor {node} readme.md"));
+    did(&mut harness, &format!("realm editor {node} notes.txt"));
     for _ in 0..4 {
         steady(&mut harness);
     }
-    let space = harness.state().space.space.clone();
-    unluminous_app::services::space::store::save(&folder, &space).expect("written");
+    let realm = harness.state().realm.realm.clone();
+    unluminous_app::services::realm::store::save(&folder, &mut realm.clone()).expect("written");
     drop(harness);
 
     // One of the two files is gone, which is what a checkout, a rebase or somebody's own `rm` does.
@@ -1606,7 +1609,7 @@ fn a_node_whose_file_has_gone_comes_back_without_it() {
         "the file that has gone should not be, and the node holds {open:?}",
     );
     // And the canvas still has its node, rather than the whole thing having been refused.
-    match &second.state().space.space.current().node(node).expect("the node").state {
+    match &second.state().realm.realm.node(node).expect("the node").state {
         State::Editor(_) => {}
         other => panic!("{other:?}"),
     }
@@ -1617,38 +1620,37 @@ fn a_node_whose_file_has_gone_comes_back_without_it() {
 ///
 /// Found by driving the installed build: a canvas whose two views each had an editor node naming the same
 /// file lost that tab from one of them, because `OpenFiles::open`'s rule is that a file already open is
-/// *shown* rather than opened twice — so `open_in_a_space_node` **moves** the tab, and bringing a view to life
+/// *shown* rather than opened twice — so `open_in_a_realm_node` **moves** the tab, and bringing a view to life
 /// stole the file from the node on the view being left. Measured: three paths on one node became two after
 /// switching away and back. `task-1906`.
 #[test]
 fn switching_views_does_not_take_a_tab_off_a_node() {
-    use unluminous_app::services::space::State;
+    use unluminous_app::services::realm::State;
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screenshot-two-views");
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
-    did(&mut harness, "space show");
-    let here = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space editor {here} readme.md"));
-    did(&mut harness, &format!("space editor {here} notes.txt"));
+    did(&mut harness, "realm show");
+    let here = did(&mut harness, "realm add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm editor {here} readme.md"));
+    did(&mut harness, &format!("realm editor {here} notes.txt"));
     // A second view whose own editor node names one of the same files, which is what somebody working on one
     // file across two canvases really does.
-    did(&mut harness, "space new-view Second");
-    let there = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space editor {there} notes.txt"));
+    did(&mut harness, "realm new Second");
+    let there = did(&mut harness, "realm add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm editor {there} notes.txt"));
     for _ in 0..4 {
         steady(&mut harness);
     }
 
     // Back to the first, which is where the tab used to disappear.
-    did(&mut harness, "space open-view Main");
+    did(&mut harness, "realm open main");
     for _ in 0..6 {
         steady(&mut harness);
     }
     let node = harness
         .state()
-        .space
-        .space
-        .current()
+        .realm
+        .realm
         .node(here)
         .expect("the node is on the view that is showing")
         .clone();
@@ -1666,25 +1668,25 @@ fn switching_views_does_not_take_a_tab_off_a_node() {
     std::fs::remove_dir_all(&folder).ok();
 }
 
-/// The space manager lists every canvas in the project, and opening one shows it.
+/// The realm manager lists every canvas in the project, and opening one shows it.
 ///
 /// `task-1906`: *"i need a space/view manager modal so i can open other saved spaces/tabs."* `view_bar` has
 /// always broken out of its loop when a chip would not fit, so past about six views the rest were not merely
 /// hard to reach — they were not drawn and nothing said so.
 #[test]
-fn the_space_manager_lists_every_canvas_and_opens_one() {
+fn the_realm_manager_lists_every_canvas_and_opens_one() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    did(&mut harness, "space new-view Rendering");
-    did(&mut harness, "space new-view Notes");
-    did(&mut harness, "space open-view Main");
+    did(&mut harness, "realm show");
+    did(&mut harness, "realm new Rendering");
+    did(&mut harness, "realm new Notes");
+    did(&mut harness, "realm open main");
     steady(&mut harness);
 
-    did(&mut harness, "space manage");
+    did(&mut harness, "realm manage");
     steady(&mut harness);
     // Every view is a row, found by name, and the one showing says so.
-    for name in ["Main", "Rendering", "Notes"] {
-        harness.get_by_label(&format!("Space: {name}"));
+    for name in ["main", "Rendering", "Notes"] {
+        harness.get_by_label(&format!("Realm: {name}"));
     }
 
     // Opening one shows it, which is what the modal is for. `Enter` on the highlighted row rather than a
@@ -1694,33 +1696,33 @@ fn the_space_manager_lists_every_canvas_and_opens_one() {
     steady(&mut harness);
     harness.key_press(egui::Key::Enter);
     steady(&mut harness);
-    assert_eq!(harness.state().space.space.current().name, "Rendering");
-    // And the modal is closed, because opening a space is finishing with the list.
-    assert!(harness.state().space.managing.is_none());
+    assert_eq!(harness.state().realm.realm.title(), "Notes", "the second row, in name order");
+    // And the modal is closed, because opening a realm is finishing with the list.
+    assert!(harness.state().realm.managing.is_none());
 }
 
 /// A picture of the manager, and of it with a name typed into its search box.
 #[test]
-fn the_space_manager() {
+fn the_realm_manager() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     for name in ["Rendering", "Notes", "Scratch"] {
-        did(&mut harness, &format!("space new-view {name}"));
+        did(&mut harness, &format!("realm new {name}"));
     }
-    did(&mut harness, "space open-view Main");
+    did(&mut harness, "realm open main");
     // Detached, so the node draws nothing a real shell decided. See
     // `every_panel_shows_with_no_editing_area` for the measurement.
-    harness.state_mut().new_detached_space_node(
-        unluminous_app::services::space::Kind::Terminal,
+    harness.state_mut().new_detached_realm_node(
+        unluminous_app::services::realm::Kind::Terminal,
         egui::pos2(40.0, 30.0),
     );
-    did(&mut harness, "space manage");
+    did(&mut harness, "realm manage");
     steady(&mut harness);
-    harness.snapshot(shot("space_manager").as_str());
+    harness.snapshot(shot("realm_manager").as_str());
 
-    harness.get_by_label("Find a space").type_text("no");
+    harness.get_by_label("Find a realm").type_text("no");
     steady(&mut harness);
-    harness.snapshot(shot("space_manager_filtered").as_str());
+    harness.snapshot(shot("realm_manager_filtered").as_str());
 }
 
 /// An agent node is given a conversation id, and comes back resumed onto it.
@@ -1743,19 +1745,19 @@ fn the_space_manager() {
 /// which pins the two halves against each other in every combination.
 #[test]
 fn an_agent_node_is_started_on_the_session_it_was_left_on() {
-    use unluminous_app::services::space::State;
+    use unluminous_app::services::realm::State;
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     // A node naming an agent that takes an id. Whether it really starts is a fact about the machine, and
     // nothing below depends on it.
-    let node = did(&mut harness, "space add terminal --x 40 --y 30 --command claude")["node"]
+    let node = did(&mut harness, "realm add terminal --x 40 --y 30 --command claude")["node"]
         .as_u64()
         .expect("id");
     steady(&mut harness);
 
     let line = harness
         .state()
-        .space_terminal_settings(node, "a-fresh-id")
+        .realm_terminal_settings(node, "a-fresh-id")
         .expect("a terminal node builds a command line");
     let said = line.args.join(" ");
     // **A run that is not a resume asks for a fresh id**, which is what `Restart` means and what the real path
@@ -1770,14 +1772,14 @@ fn an_agent_node_is_started_on_the_session_it_was_left_on() {
     // on the node by hand for the reason above: a node that never started has none, and what is under test
     // here is the command line built from one rather than where the one came from.
     let was = "the-conversation-it-was-left-on";
-    harness.state_mut().space.space.change(node, |state| {
+    harness.state_mut().realm.realm.change(node, |state| {
         if let State::Terminal(terminal) = state {
             terminal.session = was.to_owned();
         }
     });
     let resumed = harness
         .state()
-        .space_terminal_settings_resuming(node)
+        .realm_terminal_settings_resuming(node)
         .expect("a terminal node builds a command line");
     let said = resumed.args.join(" ");
     assert!(
@@ -1790,18 +1792,18 @@ fn an_agent_node_is_started_on_the_session_it_was_left_on() {
 /// A shell node is given no conversation, because a shell has none and would refuse the argument.
 #[test]
 fn a_shell_node_is_given_no_session() {
-    use unluminous_app::services::space::State;
+    use unluminous_app::services::realm::State;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add terminal --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add terminal --x 40 --y 30")["node"].as_u64().expect("id");
     steady(&mut harness);
-    match &harness.state().space.space.current().node(node).expect("the node").state {
+    match &harness.state().realm.realm.node(node).expect("the node").state {
         State::Terminal(terminal) => {
             assert!(terminal.session.is_empty(), "a shell was handed a conversation id");
         }
         other => panic!("{other:?}"),
     }
-    let line = harness.state().space_terminal_settings(node, "a-fresh-id").expect("a command line");
+    let line = harness.state().realm_terminal_settings(node, "a-fresh-id").expect("a command line");
     let said = line.args.join(" ");
     assert!(!said.contains("--session-id"), "a shell would refuse to start: {said:?}");
 }
@@ -1814,7 +1816,7 @@ fn a_shell_node_is_given_no_session() {
 /// at byte zero. And `Editor::path` was one path, where a node holds a strip of tabs since `task-1905`.
 #[test]
 fn everything_a_node_was_left_holding_comes_back() {
-    use unluminous_app::services::space::{Kind, State};
+    use unluminous_app::services::realm::{Kind, State};
     // **A folder of its own, because this test makes the window write into it.** `restore_project` is what
     // turns writing on — `remembers_this_project` — and `sample_folder` is shared behind a `OnceLock` by
     // every test that wants a project. Writing a `space.conf` into it left a canvas of nodes in a fixture
@@ -1824,11 +1826,11 @@ fn everything_a_node_was_left_holding_comes_back() {
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screenshot-node-state");
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
-    did(&mut harness, "space show");
-    let editor = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space editor {editor} readme.md"));
-    did(&mut harness, &format!("space editor {editor} notes.txt"));
-    did(&mut harness, &format!("space editor {editor} program.rs"));
+    did(&mut harness, "realm show");
+    let editor = did(&mut harness, "realm add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm editor {editor} readme.md"));
+    did(&mut harness, &format!("realm editor {editor} notes.txt"));
+    did(&mut harness, &format!("realm editor {editor} program.rs"));
     // The one in the middle is what is being read, part way down.
     let tabs = harness.state().files.tabs_in_node(editor);
     let middle = tabs[1];
@@ -1840,13 +1842,13 @@ fn everything_a_node_was_left_holding_comes_back() {
         .document
         .apply(unluminous_core::Command::PlaceCaret { offset: 3, extend: false });
     let folder_node =
-        harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(700.0, 30.0));
+        harness.state_mut().new_detached_realm_node(Kind::Folder, egui::pos2(700.0, 30.0));
     for _ in 0..4 {
         steady(&mut harness);
     }
     // The folder node's scroll is read back off its own `ScrollArea` every frame, so it is set after the
     // frames for the same reason the editor's is: the sample folder has seven rows and nothing to scroll.
-    harness.state_mut().space.live.scroll_to(folder_node, 120.0);
+    harness.state_mut().realm.live.scroll_to(folder_node, 120.0);
     // **The scroll is set after the frames**, because the editing area clamps a tab's scroll to what its
     // document is tall enough to need — and the sample files are two lines, so drawing puts a made up scroll
     // straight back to zero. What is asserted below is that the number reaches `space.conf`, which is the
@@ -1855,12 +1857,12 @@ fn everything_a_node_was_left_holding_comes_back() {
     harness.state_mut().note_where_the_nodes_are_reading();
 
     // Written down, which is what closing the window does.
-    let space = harness.state().space.space.clone();
-    unluminous_app::services::space::store::save(&folder, &space).expect("written");
+    let realm = harness.state().realm.realm.clone();
+    unluminous_app::services::realm::store::save(&folder, &mut realm.clone()).expect("written");
 
     // And read back, which is what opening it again does.
-    let back = unluminous_app::services::space::store::load(&folder);
-    let node = back.current().node(editor).expect("the editor node came back");
+    let back = unluminous_app::services::realm::store::load(&folder, std::path::Path::new(".realm-files/main.realm")).expect("the realm reads");
+    let node = back.node(editor).expect("the editor node came back");
     match &node.state {
         State::Editor(state) => {
             assert_eq!(state.paths.len(), 3, "every tab came back, not one of them");
@@ -1875,7 +1877,7 @@ fn everything_a_node_was_left_holding_comes_back() {
         }
         other => panic!("{other:?}"),
     }
-    let node = back.current().node(folder_node).expect("the folder node came back");
+    let node = back.node(folder_node).expect("the folder node came back");
     match &node.state {
         State::Folder(state) => {
             assert!(
@@ -1897,12 +1899,12 @@ fn everything_a_node_was_left_holding_comes_back() {
     // **And opening a project changes nothing about the canvas, so nothing is written.** Bringing a view to
     // life opens each of a node's tabs in turn and every one of those calls `remember_a_nodes_tabs`, which
     // compares the tabs open *so far* against the whole saved list — so the first path made that comparison
-    // say the list had changed, and `Space::change` marks the canvas dirty whatever the closure did. A window
+    // say the list had changed, and `Realm::change` marks the canvas dirty whatever the closure did. A window
     // that opened this project and touched nothing therefore rewrote `space.conf` with byte-identical
-    // content, which is the rule `Space::is_dirty` exists to keep. The Codex Sol review found it.
+    // content, which is the rule `Realm::is_dirty` exists to keep. The Codex Sol review found it.
     second.state_mut().bring_the_current_view_to_life();
     assert!(
-        !second.state().space.space.is_dirty(),
+        !second.state().realm.realm.is_dirty(),
         "opening a project asked for space.conf to be written again, having changed nothing in it",
     );
     // **And a folder node's rows come back where they were scrolled to.** This is the assertion that was
@@ -1917,9 +1919,9 @@ fn everything_a_node_was_left_holding_comes_back() {
     // What is being checked is that bringing a view to life hands the saved number over at all.
     second.state_mut().bring_the_current_view_to_life();
     assert!(
-        (second.state().space.live.scroll_of(folder_node) - 120.0).abs() < 1.0,
+        (second.state().realm.live.scroll_of(folder_node) - 120.0).abs() < 1.0,
         "the folder node's rows came back at {} rather than where they were scrolled to",
-        second.state().space.live.scroll_of(folder_node),
+        second.state().realm.live.scroll_of(folder_node),
     );
     for _ in 0..8 {
         steady(&mut second);
@@ -1928,8 +1930,8 @@ fn everything_a_node_was_left_holding_comes_back() {
     // window came up, wrote an empty tab list over the saved one on its first frames, and only *then* opened
     // the tabs — so reading the canvas in memory looked right while the file on disk had been emptied. A
     // third window would then have opened nothing at all.
-    let after = unluminous_app::services::space::store::load(&folder);
-    match &after.current().node(editor).expect("the node is in the file").state {
+    let after = unluminous_app::services::realm::store::load(&folder, std::path::Path::new(".realm-files/main.realm")).expect("the realm reads");
+    match &after.node(editor).expect("the node is in the file").state {
         State::Editor(state) => {
             assert_eq!(
                 state.paths.len(),
@@ -1941,9 +1943,8 @@ fn everything_a_node_was_left_holding_comes_back() {
     }
     let node = second
         .state()
-        .space
-        .space
-        .current()
+        .realm
+        .realm
         .node(editor)
         .expect("the editor node is on the restored canvas")
         .clone();
@@ -1961,34 +1962,35 @@ fn everything_a_node_was_left_holding_comes_back() {
     std::fs::remove_dir_all(&folder).ok();
 }
 
-/// The last thing done on a view is recorded even when the same frame switched away from it.
+/// The last thing done on a realm is recorded even when the same frame switched to another.
 ///
 /// What `note_where_the_nodes_are_reading` writes down is derived from the live state, and it only ever walks
-/// the view that is **showing**. So a frame that both moved something and switched view — a wheel and a chip in
-/// one input frame — left that movement unrecorded, because by the next frame the old view was no longer the
-/// one being walked. `task-1906`, found by the Codex Sol review.
+/// the realm that is **open**. So a frame that both moved something and switched — a wheel and a chip in one
+/// input frame — could leave that movement unrecorded. `task-1906` found it for views, found by the Codex Sol
+/// review; since `task-2202` a realm is a file and `open_a_realm` reads the nodes before it writes the realm
+/// it is leaving.
 #[test]
-fn what_was_done_on_a_view_is_kept_when_the_same_frame_switches_away() {
-    use unluminous_app::services::space::State;
+fn what_was_done_on_a_realm_is_kept_when_the_same_frame_switches_away() {
+    use unluminous_app::services::realm::State;
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screenshot-view-switch");
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
-    did(&mut harness, "space show");
-    let first = harness.state().space.space.current_id();
-    let editor = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space editor {editor} readme.md"));
-    did(&mut harness, &format!("space editor {editor} notes.txt"));
-    // A second view to switch to.
-    did(&mut harness, "space new-view");
-    let second = harness.state().space.space.current_id();
+    did(&mut harness, "realm show");
+    let first = harness.state().realm.realm.path.clone();
+    let editor = did(&mut harness, "realm add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm editor {editor} readme.md"));
+    did(&mut harness, &format!("realm editor {editor} notes.txt"));
+    // A second realm to switch to.
+    did(&mut harness, "realm new Second");
+    let second = harness.state().realm.realm.path.clone();
     assert_ne!(first, second);
-    did(&mut harness, &format!("space open-view {first}"));
+    did(&mut harness, "realm open main");
     for _ in 0..6 {
         steady(&mut harness);
     }
 
-    // The caret is moved and the view is switched **with no frame in between**, which is what one input frame
-    // holding both looks like from the model's side.
+    // The caret is moved and the realm is switched **with no frame in between**, which is what one input
+    // frame holding both looks like from the model's side.
     let tabs = harness.state().files.tabs_in_node(editor);
     let showing = tabs[1];
     harness.state_mut().files.show(showing);
@@ -1998,28 +2000,16 @@ fn what_was_done_on_a_view_is_kept_when_the_same_frame_switches_away() {
         .at_mut(showing)
         .document
         .apply(unluminous_core::Command::PlaceCaret { offset: 5, extend: false });
-    harness.state_mut().space.space.show_view(second);
-    for _ in 0..4 {
-        steady(&mut harness);
-    }
+    did(&mut harness, "realm open Second");
+    assert_eq!(harness.state().realm.realm.path, second);
 
-    // And the caret it was left at is what the view it was left on records.
-    let kept = harness
-        .state()
-        .space
-        .space
-        .view(first)
-        .expect("the view is still there")
-        .nodes
-        .iter()
-        .find(|node| node.id == editor)
-        .map(|node| node.state.clone())
-        .expect("the node is still on it");
-    match kept {
+    // And the caret it was left at is what the realm it was left on records, on disk.
+    let kept = unluminous_app::services::realm::store::load(&folder, &first).expect("the first realm reads");
+    match &kept.node(editor).expect("the node is still on it").state {
         State::Editor(held) => {
             assert_eq!(
                 held.caret, 5,
-                "the last thing done on a view was lost because the same frame switched away from it",
+                "the last thing done on a realm was lost because the same frame switched away from it",
             );
         }
         other => panic!("{other:?}"),
@@ -2030,29 +2020,29 @@ fn what_was_done_on_a_view_is_kept_when_the_same_frame_switches_away() {
 /// A canvas that nothing changed is not written again, however many frames go by.
 ///
 /// `task-1906` fills in three fields from the live state every frame — a node's caret, its two scrolls and its
-/// list of tabs — and `Space::change` marks the canvas dirty **whatever the closure did**. So asking inside
-/// the closure would write `space.conf` sixty times a second, which is the one thing `Space::is_dirty` exists
+/// list of tabs — and `Realm::change` marks the canvas dirty **whatever the closure did**. So asking inside
+/// the closure would write `space.conf` sixty times a second, which is the one thing `Realm::is_dirty` exists
 /// to prevent. The comparison happens before `change` is called, and this is what says so.
 #[test]
 fn a_canvas_nothing_changed_is_not_written_again() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let editor = did(&mut harness, "space add editor --x 40 --y 30")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space editor {editor} readme.md"));
-    harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(700.0, 30.0));
+    did(&mut harness, "realm show");
+    let editor = did(&mut harness, "realm add editor --x 40 --y 30")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm editor {editor} readme.md"));
+    harness.state_mut().new_detached_realm_node(Kind::Folder, egui::pos2(700.0, 30.0));
     for _ in 0..4 {
         steady(&mut harness);
     }
 
     // Written down, so the canvas is clean.
-    harness.state_mut().space.space.written();
-    assert!(!harness.state().space.space.is_dirty());
+    harness.state_mut().realm.realm.written();
+    assert!(!harness.state().realm.realm.is_dirty());
     // And a run of frames with nobody touching anything leaves it clean.
     for _ in 0..6 {
         steady(&mut harness);
         assert!(
-            !harness.state().space.space.is_dirty(),
+            !harness.state().realm.realm.is_dirty(),
             "an idle canvas asked to be written again, which is a file written sixty times a second",
         );
     }
@@ -2067,12 +2057,12 @@ fn a_canvas_nothing_changed_is_not_written_again() {
 /// place it did not.
 #[test]
 fn a_folder_nodes_rows_carry_the_same_icons_the_panel_draws() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let folder = sample_folder();
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(20.0, 20.0));
-    did(&mut harness, &format!("space size {node} --width 320 --height 380"));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Folder, egui::pos2(20.0, 20.0));
+    did(&mut harness, &format!("realm size {node} --width 320 --height 380"));
     steady(&mut harness);
 
     // The Rust plugin claims `.rs` and ships an icon, so `program.rs` has one — which is the row the report
@@ -2091,7 +2081,7 @@ fn a_folder_nodes_rows_carry_the_same_icons_the_panel_draws() {
     }
     // Beside the panel showing the same folder, which is the comparison the report makes.
     steady(&mut harness);
-    harness.snapshot(shot("space_folder_node_icons").as_str());
+    harness.snapshot(shot("realm_folder_node_icons").as_str());
 }
 
 /// A folder node scrolls with the wheel, and the canvas behind it does not move.
@@ -2104,9 +2094,9 @@ fn a_folder_nodes_rows_carry_the_same_icons_the_panel_draws() {
 /// It fails on the code as it was, where the offset is zero however far the wheel is turned.
 #[test]
 fn a_folder_node_scrolls_with_the_wheel() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     // A folder with far more rows in it than the node is tall, so there is something to scroll. The
     // sample folder has seven, which fits.
     let many = std::env::temp_dir().join("unluminous-folder-node-scroll");
@@ -2114,15 +2104,15 @@ fn a_folder_node_scrolls_with_the_wheel() {
     for number in 0..60 {
         let _ = std::fs::write(many.join(format!("file-{number:02}.txt")), "x");
     }
-    let node = harness.state_mut().new_detached_space_node(Kind::Folder, egui::pos2(20.0, 20.0));
-    did(&mut harness, &format!("space size {node} --width 320 --height 300"));
-    did(&mut harness, &format!("space folder {node} root --path {}", many.display()));
+    let node = harness.state_mut().new_detached_realm_node(Kind::Folder, egui::pos2(20.0, 20.0));
+    did(&mut harness, &format!("realm size {node} --width 320 --height 300"));
+    did(&mut harness, &format!("realm folder {node} root --path {}", many.display()));
     steady(&mut harness);
-    assert_eq!(harness.state().space.live.scroll_of(node), 0.0);
-    let camera_was = harness.state().space.space.current().camera;
+    assert_eq!(harness.state().realm.live.scroll_of(node), 0.0);
+    let camera_was = harness.state().realm.realm.camera;
 
     // The wheel over the node's own rows, which is what a person does.
-    let body = harness.state().space.body;
+    let body = harness.state().realm.body;
     let over_the_rows = camera_was.to_screen(body.min, egui::pos2(120.0, 160.0));
     harness.input_mut().events.push(egui::Event::PointerMoved(over_the_rows));
     steady(&mut harness);
@@ -2138,12 +2128,12 @@ fn a_folder_node_scrolls_with_the_wheel() {
     pump(&mut harness);
     pump(&mut harness);
 
-    let scrolled = harness.state().space.live.scroll_of(node);
+    let scrolled = harness.state().realm.live.scroll_of(node);
     assert!(scrolled > 20.0, "the node's rows should have scrolled, they are at {scrolled}");
     // **And the canvas did not move with it.** A wheel the node took is taken out of the frame, which is
     // what `egui::ScrollArea` does when it takes one: without that, one gesture would scroll the rows and
     // pan the canvas at the same time.
-    let camera_now = harness.state().space.space.current().camera;
+    let camera_now = harness.state().realm.realm.camera;
     assert_eq!(camera_now.at, camera_was.at, "the canvas stayed where it was");
     assert_eq!(camera_now.zoom, camera_was.zoom);
     let _ = std::fs::remove_dir_all(&many);
@@ -2159,13 +2149,13 @@ fn a_folder_node_scrolls_with_the_wheel() {
 /// `has_focus()` was asking a condition that cannot be true, so nothing was ever sent; and the branch
 /// that keeps the field showing where the page is then ran on that same frame and wiped what was typed.
 ///
-/// It fails on the code as it was: `space browser url` answered with nothing.
+/// It fails on the code as it was: `realm browser url` answered with nothing.
 #[test]
 fn an_address_typed_into_a_browser_node_is_opened() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 40.0));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Browser, egui::pos2(40.0, 40.0));
     steady(&mut harness);
 
     // The control a person uses, found by its name, given the keyboard and typed into.
@@ -2184,7 +2174,7 @@ fn an_address_typed_into_a_browser_node_is_opened() {
     steady(&mut harness);
 
     // The node is pointed at it, and what is in the bar is what the page is.
-    let held = harness.state().space.live.browser(node);
+    let held = harness.state().realm.live.browser(node);
     match held {
         // On a platform with a browser engine the tab is made and the address is its own.
         Some(tab) => assert!(
@@ -2203,9 +2193,9 @@ fn an_address_typed_into_a_browser_node_is_opened() {
                 panic!("a supported platform made no tab");
             }
             let state =
-                harness.state().space.space.current().node(node).cloned().expect("the node");
+                harness.state().realm.realm.node(node).cloned().expect("the node");
             match &state.state {
-                unluminous_app::services::space::State::Browser(browser) => {
+                unluminous_app::services::realm::State::Browser(browser) => {
                     assert!(browser.typed.contains("example.com/typed"), "the address was kept");
                 }
                 other => panic!("{other:?}"),
@@ -2223,11 +2213,11 @@ fn an_address_typed_into_a_browser_node_is_opened() {
 /// `BrowserHost` refused the navigation as "not the one showing".
 #[test]
 fn a_half_typed_address_survives_losing_the_focus() {
-    use unluminous_app::services::space::{Kind, State};
+    use unluminous_app::services::realm::{Kind, State};
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 30.0));
-    harness.state_mut().new_detached_space_page(node, "https://example.com/first").expect("a tab");
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Browser, egui::pos2(40.0, 30.0));
+    harness.state_mut().new_detached_realm_page(node, "https://example.com/first").expect("a tab");
     steady(&mut harness);
 
     harness.get_by_label("Address").focus();
@@ -2244,7 +2234,7 @@ fn a_half_typed_address_survives_losing_the_focus() {
     for _ in 0..3 {
         pump(&mut harness);
     }
-    let typed = match &harness.state().space.space.current().node(node).expect("the node").state {
+    let typed = match &harness.state().realm.realm.node(node).expect("the node").state {
         State::Browser(browser) => browser.typed.clone(),
         other => panic!("{other:?}"),
     };
@@ -2260,7 +2250,7 @@ fn a_half_typed_address_survives_losing_the_focus() {
     for _ in 0..3 {
         pump(&mut harness);
     }
-    let typed = match &harness.state().space.space.current().node(node).expect("the node").state {
+    let typed = match &harness.state().realm.realm.node(node).expect("the node").state {
         State::Browser(browser) => browser.typed.clone(),
         other => panic!("{other:?}"),
     };
@@ -2283,27 +2273,27 @@ fn a_half_typed_address_survives_losing_the_focus() {
 /// picture Unluminous takes holds one.
 #[test]
 fn a_browser_nodes_page_is_placed_inside_the_node() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(120.0, 90.0));
-    did(&mut harness, &format!("space size {node} --width 520 --height 360"));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Browser, egui::pos2(120.0, 90.0));
+    did(&mut harness, &format!("realm size {node} --width 520 --height 360"));
     harness
         .state_mut()
-        .new_detached_space_page(node, "https://example.com/")
+        .new_detached_realm_page(node, "https://example.com/")
         .expect("a tab with no view behind it");
     steady(&mut harness);
 
-    let body = harness.state().space.body;
+    let body = harness.state().realm.body;
     let placements = harness.state().browser_placements();
     let page = placements.first().copied().expect("the node's page was placed").area;
     // Inside the canvas, which is what "contained to the node" means at the outer edge.
     assert!(body.contains_rect(page), "the page is at {page:?} and the canvas is {body:?}");
     // And inside the node itself, under its own toolbar.
-    let camera = harness.state().space.space.current().camera;
+    let camera = harness.state().realm.realm.camera;
     let on_screen = camera.rect_to_screen(
         body.min,
-        harness.state().space.space.current().node(node).expect("the node").rect(),
+        harness.state().realm.realm.node(node).expect("the node").rect(),
     );
     assert!(
         on_screen.contains_rect(page),
@@ -2320,37 +2310,37 @@ fn a_browser_nodes_page_is_placed_inside_the_node() {
     // cropping it, so a page laid out against that viewport reflows, and what was drawn was not a picture of
     // the page. The pan this test used to make took 80 of the page's 520 points off the left edge, which is
     // exactly the case that is now put away.
-    did(&mut harness, "space camera --x 40 --y 150");
+    did(&mut harness, "realm camera --x 40 --y 150");
     steady(&mut harness);
     let panned = harness.state().browser_placements().first().copied().expect("still placed").area;
     assert_ne!(panned.min, was.min, "the page should have moved with the canvas");
     let node_now = camera_of(&harness).rect_to_screen(
-        harness.state().space.body.min,
-        harness.state().space.space.current().node(node).expect("the node").rect(),
+        harness.state().realm.body.min,
+        harness.state().realm.realm.node(node).expect("the node").rect(),
     );
     assert!(
         node_now.contains_rect(panned),
         "after a pan the page is {panned:?} and the node {node_now:?}"
     );
-    did(&mut harness, "space camera --x 0 --y 0");
+    did(&mut harness, "realm camera --x 0 --y 0");
     steady(&mut harness);
 
     // **And it follows the zoom**: a canvas at half the size draws a node half as wide, and a page that
     // kept its world size would hang out of it.
-    did(&mut harness, "space camera --zoom 0.5");
+    did(&mut harness, "realm camera --zoom 0.5");
     steady(&mut harness);
     let smaller = harness.state().browser_placements().first().copied().expect("still placed").area;
     assert!(smaller.width() < was.width() * 0.75, "the page was {was:?} and is now {smaller:?}");
     let on_screen = camera_of(&harness).rect_to_screen(
-        harness.state().space.body.min,
-        harness.state().space.space.current().node(node).expect("the node").rect(),
+        harness.state().realm.body.min,
+        harness.state().realm.realm.node(node).expect("the node").rect(),
     );
     assert!(on_screen.contains_rect(smaller), "at half the zoom the page is {smaller:?}");
 }
 
 /// The camera the canvas is being looked at from, for the test above.
-fn camera_of(harness: &Harness<'static, UnluminousApp>) -> unluminous_app::services::space::Camera {
-    harness.state().space.space.current().camera
+fn camera_of(harness: &Harness<'static, UnluminousApp>) -> unluminous_app::services::realm::Camera {
+    harness.state().realm.realm.camera
 }
 
 /// Two browser nodes: one renders and the other says so, and only the rendering one is placed.
@@ -2361,21 +2351,21 @@ fn camera_of(harness: &Harness<'static, UnluminousApp>) -> unluminous_app::servi
 /// not hand over a placement: two placements for one view would ask the host to point it at both.
 #[test]
 fn only_one_browser_node_is_placed_however_many_there_are() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let first = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 30.0));
+    did(&mut harness, "realm show");
+    let first = harness.state_mut().new_detached_realm_node(Kind::Browser, egui::pos2(40.0, 30.0));
     let second =
-        harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 420.0));
-    did(&mut harness, &format!("space size {first} --width 400 --height 300"));
-    did(&mut harness, &format!("space size {second} --width 400 --height 300"));
+        harness.state_mut().new_detached_realm_node(Kind::Browser, egui::pos2(40.0, 420.0));
+    did(&mut harness, &format!("realm size {first} --width 400 --height 300"));
+    did(&mut harness, &format!("realm size {second} --width 400 --height 300"));
     let one = harness
         .state_mut()
-        .new_detached_space_page(first, "https://example.com/one")
+        .new_detached_realm_page(first, "https://example.com/one")
         .expect("a tab");
     let two = harness
         .state_mut()
-        .new_detached_space_page(second, "https://example.com/two")
+        .new_detached_realm_page(second, "https://example.com/two")
         .expect("a tab");
     assert_ne!(one, two, "two nodes, two tabs");
     steady(&mut harness);
@@ -2392,14 +2382,14 @@ fn only_one_browser_node_is_placed_however_many_there_are() {
         // **The part that may be painted, not the whole page.** Since `task-1914` a placement carries
         // both: `area` is the node wherever it is, because that is what the page lays itself out against,
         // and `visible` is what the platform crops it to. The canvas is the ceiling for the second.
-        assert!(harness.state().space.body.contains_rect(rect), "tab {id} is outside the canvas");
+        assert!(harness.state().realm.body.contains_rect(rect), "tab {id} is outside the canvas");
     }
 }
 
 /// A page that finished loading says so on a **node**, and its history steps.
 ///
 /// `task-1905` is the report, and this is the fault behind two halves of it: `browser_tab` and
-/// `change_browser_tab` both walked `self.files`, and a node's tab lives in `space::live::Live::browsers`,
+/// `change_browser_tab` both walked `self.files`, and a node's tab lives in `realm::live::Live::browsers`,
 /// so every `BrowserEvent` was dropped for a node. The title never arrived, `loading` was set once and
 /// never cleared, and `Back` answered "there is nowhere for this tab to go that way" however many pages
 /// had been visited, because the history had one entry in it.
@@ -2408,13 +2398,13 @@ fn only_one_browser_node_is_placed_however_many_there_are() {
 #[test]
 fn a_page_that_finished_loading_says_so_on_a_node() {
     use unluminous_app::services::browser::BrowserEvent;
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(40.0, 40.0));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Browser, egui::pos2(40.0, 40.0));
     let tab = harness
         .state_mut()
-        .new_detached_space_page(node, "https://example.com/one")
+        .new_detached_realm_page(node, "https://example.com/one")
         .expect("a tab with no view behind it");
 
     // The three the engine really sends, fed by hand because there is no engine in a test.
@@ -2423,7 +2413,7 @@ fn a_page_that_finished_loading_says_so_on_a_node() {
         BrowserEvent::LoadFinished { id: tab, url: "https://example.com/one".to_owned() },
         BrowserEvent::Title { id: tab, title: "The First Page".to_owned() },
     ]);
-    let held = harness.state().space.live.browser(node).cloned().expect("the node's tab");
+    let held = harness.state().realm.live.browser(node).cloned().expect("the node's tab");
     assert_eq!(held.title, "The First Page", "the title reached the node's own tab");
     assert!(!held.loading, "and it is no longer loading");
 
@@ -2432,7 +2422,7 @@ fn a_page_that_finished_loading_says_so_on_a_node() {
         id: tab,
         url: "https://example.com/two".to_owned(),
     }]);
-    let held = harness.state().space.live.browser(node).cloned().expect("the node's tab");
+    let held = harness.state().realm.live.browser(node).cloned().expect("the node's tab");
     assert_eq!(held.current_url(), "https://example.com/two");
     assert!(held.can_go_back(), "two pages is a history");
 }
@@ -2441,33 +2431,33 @@ fn a_page_that_finished_loading_says_so_on_a_node() {
 ///
 /// The `task-1904` review's second finding: choosing a view changed the model and nothing else, so a
 /// terminal on it had no session, a browser no page and an editor no file. It is asked rather than
-/// told — `catch_the_space_up` notices that the view showing is not the one it last brought to life —
+/// told — `catch_the_realm_up` notices that the view showing is not the one it last brought to life —
 /// which is `follow_the_open_file`'s rule, so the next way of changing a view cannot forget.
 #[test]
 fn choosing_a_view_starts_what_is_on_it() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let folder = sample_folder();
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
 
     // A second view with an editor node on it, pointed at a file.
-    did(&mut harness, "space new-view Reading");
-    let made = did(&mut harness, "space add editor --x 40 --y 40");
+    did(&mut harness, "realm new Reading");
+    let made = did(&mut harness, "realm add editor --x 40 --y 40");
     let node = made["node"].as_u64().expect("a node id");
-    did(&mut harness, &format!("space editor {node} readme.md"));
+    did(&mut harness, &format!("realm editor {node} readme.md"));
     steady(&mut harness);
     assert!(harness.state().files.tab_in_node(node).is_some());
 
     // Away to the first view, which closes the node's tab because the node is not on it.
-    did(&mut harness, "space open-view Main");
+    did(&mut harness, "realm open main");
     steady(&mut harness);
 
     // And back. Without the fix the node came back empty and said so.
-    did(&mut harness, "space open-view Reading");
+    did(&mut harness, "realm open Reading");
     steady(&mut harness);
     let index = harness.state().files.tab_in_node(node).expect("the node has its file again");
     assert_eq!(harness.state().files.at(index).path(), Some(folder.join("readme.md").as_path()));
-    assert_eq!(harness.state().space.space.current().nodes[0].kind(), Kind::Editor);
+    assert_eq!(harness.state().realm.realm.nodes[0].kind(), Kind::Editor);
 }
 
 /// The canvas is written down when it changes and read back when the project opens.
@@ -2476,58 +2466,58 @@ fn a_canvas_comes_back_when_the_project_is_opened_again() {
     // **A folder of its own, not one inside `sample_folder()`.** This test writes a project folder and a
     // canvas file into it, and `sample_folder()` is the fixture every other test's explorer is a picture
     // of — so a subfolder created here appeared in all of them, and measured on a clean `a7902ed` it
-    // failed about a hundred and thirty screenshot tests with an extra `space-round-trip` row in the
+    // failed about a hundred and thirty screenshot tests with an extra `realm-round-trip` row in the
     // tree. It is also a race: the row is there or not depending on whether this test has run yet.
     //
     // `sample_folder()` is written once behind a `OnceLock` for exactly this reason, and adding to it
     // afterwards is the same fault from the other side. `git_folder(name)`'s rule — a fixture a test
     // writes to is named after that test — is what this follows.
-    let folder = std::env::temp_dir().join("unluminous-space-round-trip");
+    let folder = std::env::temp_dir().join("unluminous-realm-round-trip");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the folder");
-    let mut space = unluminous_app::services::space::Space::new();
-    let node = space.add_node(
-        unluminous_app::services::space::Kind::Terminal,
+    let mut realm = unluminous_app::services::realm::Realm::default();
+    let node = realm.add_node(
+        unluminous_app::services::realm::Kind::Terminal,
         egui::pos2(120.0, 40.0),
         Some(&folder),
     );
-    space.title_node(node, "the agent");
-    let second = space.add_node(
-        unluminous_app::services::space::Kind::Browser,
+    realm.title_node(node, "the agent");
+    let second = realm.add_node(
+        unluminous_app::services::realm::Kind::Browser,
         egui::pos2(800.0, 40.0),
         Some(&folder),
     );
-    space.connect(node, second, unluminous_app::services::space::Pipe::Off).expect("wired");
-    unluminous_app::services::space::store::save(&folder, &space).expect("saved");
+    realm.connect(node, second, unluminous_app::services::realm::Pipe::Off).expect("wired");
+    unluminous_app::services::realm::store::save(&folder, &mut realm.clone()).expect("saved");
 
-    let back = unluminous_app::services::space::store::load(&folder);
-    assert_eq!(back.current().nodes.len(), 2);
-    assert_eq!(back.current().nodes[0].title, "the agent");
-    assert_eq!(back.current().edges.len(), 1);
-    assert_eq!(back.current().nodes[0].at, egui::pos2(120.0, 40.0));
+    let back = unluminous_app::services::realm::store::load(&folder, std::path::Path::new(".realm-files/main.realm")).expect("the realm reads");
+    assert_eq!(back.nodes.len(), 2);
+    assert_eq!(back.nodes[0].title, "the agent");
+    assert_eq!(back.edges.len(), 1);
+    assert_eq!(back.nodes[0].at, egui::pos2(120.0, 40.0));
 }
 
 /// A bare host sent to a node that already has a page is given a scheme.
 ///
 /// `task-1907`: *"the browser node is on example.com and if i type google.com and enter, nothing happens."*
-/// `BrowserLocation::parse` turns `google.com` into `https://google.com/` and `send_a_space_browser_to` then
+/// `BrowserLocation::parse` turns `google.com` into `https://google.com/` and `send_a_realm_browser_to` then
 /// handed the **typed** text to the view, where wry passes an unknown scheme to `Navigate` and it is refused in
-/// silence. Measured on the installed 0.39.1: the reply said the node had gone and `space browser url` said it
+/// silence. Measured on the installed 0.39.1: the reply said the node had gone and `realm browser url` said it
 /// was still on the page before.
 ///
 /// The first address a node is given always worked, because a node with no tab yet falls through to
-/// `open_a_space_browser`, which passes the parsed location to `open_tab`. So this opens a page first.
+/// `open_a_realm_browser`, which passes the parsed location to `open_tab`. So this opens a page first.
 #[test]
 fn a_bare_host_sent_to_a_node_that_already_has_a_page_is_given_a_scheme() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add browser --x 40 --y 40")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space browser {node} go --url https://example.com/"));
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add browser --x 40 --y 40")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm browser {node} go --url https://example.com/"));
     steady(&mut harness);
 
-    did(&mut harness, &format!("space browser {node} go --url google.com"));
+    did(&mut harness, &format!("realm browser {node} go --url google.com"));
     steady(&mut harness);
-    let answer = did(&mut harness, &format!("space browser {node} url"));
+    let answer = did(&mut harness, &format!("realm browser {node} url"));
     assert_eq!(
         answer["url"], "https://google.com/",
         "the bare host was given a scheme and the tab really moved"
@@ -2538,26 +2528,26 @@ fn a_bare_host_sent_to_a_node_that_already_has_a_page_is_given_a_scheme() {
 ///
 /// A window has one native view, so `BrowserHost::navigate` refuses a tab that is not the one showing — an
 /// honest refusal that `task-1907` found had been throwing the address away while the node's own record was
-/// changed anyway. Measured on the installed build with two browser nodes: `space list` said the node was on
-/// `https://example.org/` and `space browser url` said `https://google.com/`, for ever.
+/// changed anyway. Measured on the installed build with two browser nodes: `realm list` said the node was on
+/// `https://example.org/` and `realm browser url` said `https://google.com/`, for ever.
 #[test]
 fn a_browser_node_that_is_not_rendering_still_records_where_it_was_sent() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let first = did(&mut harness, "space add browser --x 40 --y 40")["node"].as_u64().expect("id");
+    did(&mut harness, "realm show");
+    let first = did(&mut harness, "realm add browser --x 40 --y 40")["node"].as_u64().expect("id");
     let second =
-        did(&mut harness, "space add browser --x 700 --y 40")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space browser {first} go --url https://example.com/"));
-    did(&mut harness, &format!("space browser {second} go --url https://example.org/"));
+        did(&mut harness, "realm add browser --x 700 --y 40")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm browser {first} go --url https://example.com/"));
+    did(&mut harness, &format!("realm browser {second} go --url https://example.org/"));
     steady(&mut harness);
 
     // The first node is the one being read now, so the second is the one that cannot be driven.
-    did(&mut harness, &format!("space focus {first}"));
+    did(&mut harness, &format!("realm focus {first}"));
     steady(&mut harness);
-    did(&mut harness, &format!("space browser {second} go --url https://example.net/"));
+    did(&mut harness, &format!("realm browser {second} go --url https://example.net/"));
     steady(&mut harness);
 
-    let answer = did(&mut harness, &format!("space browser {second} url"));
+    let answer = did(&mut harness, &format!("realm browser {second} url"));
     assert_eq!(
         answer["url"], "https://example.net/",
         "the tab knows where it should be even though the view could not be driven there"
@@ -2566,21 +2556,21 @@ fn a_browser_node_that_is_not_rendering_still_records_where_it_was_sent() {
 
 /// A node's own record and its page agree about where it is.
 ///
-/// The two disagreeing is what made this hard to attribute: `space list` reads the node's state and
-/// `space browser url` reads the live tab, and `send_a_space_browser_to` recorded the address before it
+/// The two disagreeing is what made this hard to attribute: `realm list` reads the node's state and
+/// `realm browser url` reads the live tab, and `send_a_realm_browser_to` recorded the address before it
 /// navigated — so a navigation that did not happen left the two saying different things, and `space.conf` was
 /// written from the one that was wrong.
 #[test]
 fn a_nodes_own_record_and_its_page_agree_about_where_it_is() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add browser --x 40 --y 40")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space browser {node} go --url https://example.com/"));
-    did(&mut harness, &format!("space browser {node} go --url example.org"));
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add browser --x 40 --y 40")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm browser {node} go --url https://example.com/"));
+    did(&mut harness, &format!("realm browser {node} go --url example.org"));
     steady(&mut harness);
 
-    let page = did(&mut harness, &format!("space browser {node} url"))["url"].clone();
-    let listed = did(&mut harness, "space list")["views"][0]["nodes"]
+    let page = did(&mut harness, &format!("realm browser {node} url"))["url"].clone();
+    let listed = did(&mut harness, "realm view")["nodes"]
         .as_array()
         .expect("the nodes")
         .iter()
@@ -2600,16 +2590,16 @@ fn a_nodes_own_record_and_its_page_agree_about_where_it_is() {
 /// from the type size and hands to the layout.
 #[test]
 fn an_editor_node_at_its_own_size_has_a_gutter_at_that_size() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Editor, egui::pos2(40.0, 40.0));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Editor, egui::pos2(40.0, 40.0));
     steady(&mut harness);
-    did(&mut harness, &format!("space editor {node} program.rs"));
+    did(&mut harness, &format!("realm editor {node} program.rs"));
     steady(&mut harness);
 
     let narrow = harness.state().editor_area().left();
-    did(&mut harness, &format!("space zoom {node} --factor 40"));
+    did(&mut harness, &format!("realm zoom {node} --factor 40"));
     steady(&mut harness);
     let wide = harness.state().editor_area().left();
     assert!(wide > narrow, "the gutter grew with the node's own font: {narrow} to {wide}");
@@ -2655,22 +2645,22 @@ fn a_gutter_never_takes_more_than_its_share_of_the_pane() {
 /// metric would change the cell count and send a resize to the program on the far side.
 #[test]
 fn a_zoom_does_not_relayout_a_node() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     let terminal =
-        harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
-    harness.state_mut().feed_a_space_terminal(terminal, b"$ cargo test\r\n");
+        harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    harness.state_mut().feed_a_realm_terminal(terminal, b"$ cargo test\r\n");
     steady(&mut harness);
 
     let grid = |harness: &Harness<'static, UnluminousApp>| {
-        let session = harness.state().space.live.terminal(terminal).expect("its session");
+        let session = harness.state().realm.live.terminal(terminal).expect("its session");
         (session.size().rows, session.size().columns)
     };
     let at_one = grid(&harness);
 
     for zoom in ["1.5", "2.0", "0.5"] {
-        did(&mut harness, &format!("space camera --zoom {zoom}"));
+        did(&mut harness, &format!("realm camera --zoom {zoom}"));
         steady(&mut harness);
         assert_eq!(
             grid(&harness),
@@ -2686,11 +2676,11 @@ fn a_zoom_does_not_relayout_a_node() {
 /// rather than magnified. The furniture — the header, the gutter numbers, a folder node's rows — is `egui`
 /// galleys and is still scaled, which §3.2 of the design says plainly and which this picture is the record of.
 #[test]
-fn space_zoomed_in() {
+fn realm_zoomed_in() {
     let mut harness = a_canvas();
-    did(&mut harness, "space camera --zoom 2.0");
+    did(&mut harness, "realm camera --zoom 2.0");
     steady(&mut harness);
-    harness.snapshot(shot("space_zoomed_in").as_str());
+    harness.snapshot(shot("realm_zoomed_in").as_str());
 }
 
 /// A terminal node records the program running in it, and an agent can start it again.
@@ -2708,17 +2698,16 @@ fn space_zoomed_in() {
 /// `cargo run -p unluminous-terminal --example foreground_check`.
 #[test]
 fn a_terminal_node_records_the_program_running_in_it() {
-    use unluminous_app::services::space::{Kind, State};
+    use unluminous_app::services::realm::{Kind, State};
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(40.0, 40.0));
     steady(&mut harness);
 
     let running = |harness: &Harness<'static, UnluminousApp>| match harness
         .state()
-        .space
-        .space
-        .current()
+        .realm
+        .realm
         .node(node)
         .map(|found| &found.state)
     {
@@ -2729,13 +2718,13 @@ fn a_terminal_node_records_the_program_running_in_it() {
 
     // And what a restore reads out of `space.conf` is what an agent can act on, which is the rule that a thing
     // done by hand and the same thing done by an agent are the same thing.
-    harness.state_mut().space.space.change(node, |state| {
+    harness.state_mut().realm.realm.change(node, |state| {
         if let State::Terminal(terminal) = state {
             terminal.running = "echo".to_owned();
         }
     });
     steady(&mut harness);
-    let reply = run(&mut harness, &format!("space restart {node} --running"));
+    let reply = run(&mut harness, &format!("realm restart {node} --running"));
     assert!(reply.ok, "it started: {}", reply.message);
     assert!(
         reply.message.contains("echo"),
@@ -2747,12 +2736,12 @@ fn a_terminal_node_records_the_program_running_in_it() {
 /// And a node that was left at a prompt is refused rather than starting something.
 #[test]
 fn a_node_that_was_not_left_running_anything_is_refused_with_a_sentence() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(40.0, 40.0));
     steady(&mut harness);
-    let reply = run(&mut harness, &format!("space restart {node} --running"));
+    let reply = run(&mut harness, &format!("realm restart {node} --running"));
     assert!(!reply.ok, "a node at a prompt has nothing to start again");
     assert!(reply.message.contains("not left running"), "{}", reply.message);
 }
@@ -2774,16 +2763,16 @@ fn a_node_that_was_not_left_running_anything_is_refused_with_a_sentence() {
 /// ever held a page. What is asserted is the two rectangles the host is handed.
 #[test]
 fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(20.0, 20.0));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Browser, egui::pos2(20.0, 20.0));
     // Small enough to sit wholly inside the canvas at the camera's home, so the first reading is a page
     // nothing has cut and the ones after it are the same page with the edge taken off.
-    did(&mut harness, &format!("space size {node} --width 360 --height 220"));
+    did(&mut harness, &format!("realm size {node} --width 360 --height 220"));
     harness
         .state_mut()
-        .new_detached_space_page(node, "https://example.com/")
+        .new_detached_realm_page(node, "https://example.com/")
         .expect("a tab with no view behind it");
     steady(&mut harness);
     let whole = harness.state().browser_placements().first().copied().expect("the page is drawn");
@@ -2794,8 +2783,8 @@ fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
     // own width, and only the part of it inside the pane may be painted. The **node** is moved rather than
     // the camera, so the arithmetic is one anybody reading this can check: the camera is at the origin, so
     // a node at world x is drawn x points in from the canvas's left edge.
-    let body = harness.state().space.body;
-    did(&mut harness, &format!("space move {node} --x {} --y 20", body.width() - 180.0));
+    let body = harness.state().realm.body;
+    did(&mut harness, &format!("realm move {node} --x {} --y 20", body.width() - 180.0));
     steady(&mut harness);
     let cut =
         harness.state().browser_placements().first().copied().expect("the page is still drawn");
@@ -2814,7 +2803,7 @@ fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
 
     // Cut to a strip, and it is still a strip of the same page rather than a page put away - which is
     // what cropping means, and what `task-1908`'s report about a page vanishing near the edge asks for.
-    did(&mut harness, &format!("space move {node} --x {} --y 20", body.width() - 40.0));
+    did(&mut harness, &format!("realm move {node} --x {} --y 20", body.width() - 40.0));
     steady(&mut harness);
     let strip =
         harness.state().browser_placements().first().copied().expect("a strip is still a page");
@@ -2822,14 +2811,14 @@ fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
     assert!(strip.visible.width() < 100.0, "and a strip of it showing");
 
     // Right off the canvas there is nothing on the screen to place.
-    did(&mut harness, &format!("space move {node} --x {} --y 20", body.width() + 200.0));
+    did(&mut harness, &format!("realm move {node} --x {} --y 20", body.width() + 200.0));
     steady(&mut harness);
     assert!(
         harness.state().browser_placements().is_empty(),
         "a node with nothing of it on the canvas places no page"
     );
 
-    did(&mut harness, &format!("space move {node} --x 20 --y 20"));
+    did(&mut harness, &format!("realm move {node} --x 20 --y 20"));
     steady(&mut harness);
     let back = harness.state().browser_placements().first().copied().expect("the page comes back");
     assert_eq!(back.visible, back.area, "and it is whole again");
@@ -2841,19 +2830,19 @@ fn a_browser_page_cut_by_the_edge_keeps_its_whole_width() {
 /// reopened it was back at hacker news."* A click inside a page navigates the view and
 /// `BrowserTab::arrived_at` records that on the **tab** — but `Browser::url` is what `store::write` puts in
 /// `space.conf`, and nothing bridged the two. So the node was written down at the address it was *sent* to and
-/// came back there, while the toolbar and `space browser url` both showed the right page for as long as the
+/// came back there, while the toolbar and `realm browser url` both showed the right page for as long as the
 /// window was open, which is why it read as a save fault rather than a navigation one.
 ///
 /// `arrived_at` is what a click looks like from here: nothing asked for the page, so there is no `awaiting`.
 #[test]
 fn a_page_followed_to_a_new_address_is_what_the_node_comes_back_on() {
-    use unluminous_app::services::space::{Kind, State};
+    use unluminous_app::services::realm::{Kind, State};
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Browser, egui::pos2(60.0, 60.0));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Browser, egui::pos2(60.0, 60.0));
     harness
         .state_mut()
-        .new_detached_space_page(node, "https://news.ycombinator.com/")
+        .new_detached_realm_page(node, "https://news.ycombinator.com/")
         .expect("a tab with no view behind it");
     // **The view has to be alive before anything derived from it is written down**, which is `task-1906` §4.5's
     // guard: before the nodes are running the live state is empty, and writing it would put nothing over the
@@ -2863,9 +2852,8 @@ fn a_page_followed_to_a_new_address_is_what_the_node_comes_back_on() {
 
     let recorded = |harness: &Harness<'static, UnluminousApp>| match harness
         .state()
-        .space
-        .space
-        .current()
+        .realm
+        .realm
         .node(node)
         .map(|found| &found.state)
     {
@@ -2875,7 +2863,7 @@ fn a_page_followed_to_a_new_address_is_what_the_node_comes_back_on() {
     assert_eq!(recorded(&harness), "https://news.ycombinator.com/");
 
     // A click inside the page, which is an arrival nothing asked for.
-    let tab = harness.state().space.live.browser(node).expect("its tab").id;
+    let tab = harness.state().realm.live.browser(node).expect("its tab").id;
     harness.state_mut().arrived_at_for_tests(tab, "https://example.com/an-article".to_owned());
     steady(&mut harness);
 
@@ -2897,24 +2885,24 @@ fn a_page_followed_to_a_new_address_is_what_the_node_comes_back_on() {
 /// the project it is given, and `sample_folder` is shared by every test that wants one.
 #[test]
 fn a_terminal_node_comes_back_showing_what_was_on_it() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screen-replay");
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
     steady(&mut harness);
 
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(40.0, 40.0));
     harness
         .state_mut()
-        .feed_a_space_terminal(node, b"$ ls\r\ntotal 48\r\nsrc  tests  Cargo.toml\r\n$ ");
+        .feed_a_realm_terminal(node, b"$ ls\r\ntotal 48\r\nsrc  tests  Cargo.toml\r\n$ ");
     steady(&mut harness);
 
     // What the window would write on its way out.
     harness.state_mut().write_the_screens_down();
-    let saved = unluminous_app::services::space::store::screen_path(
+    let saved = unluminous_app::services::realm::store::screen_path(
         &folder,
-        unluminous_app::services::space::store::Screen::Node(node),
+        unluminous_app::services::realm::store::Screen::Node(node),
     );
     assert!(saved.is_file(), "the screen was written down at {}", saved.display());
 
@@ -2922,9 +2910,9 @@ fn a_terminal_node_comes_back_showing_what_was_on_it() {
     // the terminal from outside — the console host erases that on Windows — but printed by a program inside the
     // node's own console, so what a test can hold is the command line that program is given and the bytes it
     // will print.
-    let printing = unluminous_app::services::space::store::a_screen_to_print(
+    let printing = unluminous_app::services::realm::store::a_screen_to_print(
         &folder,
-        unluminous_app::services::space::store::Screen::Node(node),
+        unluminous_app::services::realm::store::Screen::Node(node),
     )
     .expect("there is a screen to print");
     assert_eq!(printing, saved, "and it is the file that was written down");
@@ -2961,32 +2949,32 @@ fn a_terminal_node_comes_back_showing_what_was_on_it() {
 /// to come back would replay a week-old screen for ever.
 #[test]
 fn a_screen_nobody_printed_is_not_kept_for_ever() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-screen-forgotten");
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
     steady(&mut harness);
 
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 40.0));
-    harness.state_mut().feed_a_space_terminal(node, b"$ ls\r\ntotal 48\r\n");
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    harness.state_mut().feed_a_realm_terminal(node, b"$ ls\r\ntotal 48\r\n");
     steady(&mut harness);
     harness.state_mut().write_the_screens_down();
 
-    let saved = unluminous_app::services::space::store::screen_path(
+    let saved = unluminous_app::services::realm::store::screen_path(
         &folder,
-        unluminous_app::services::space::store::Screen::Node(node),
+        unluminous_app::services::realm::store::Screen::Node(node),
     );
     assert!(saved.is_file(), "a screen was written down");
-    unluminous_app::services::space::store::forget_a_screen(
+    unluminous_app::services::realm::store::forget_a_screen(
         &folder,
-        unluminous_app::services::space::store::Screen::Node(node),
+        unluminous_app::services::realm::store::Screen::Node(node),
     );
     assert!(!saved.exists(), "and a node starting without it takes it away");
     assert!(
-        unluminous_app::services::space::store::a_screen_to_print(
+        unluminous_app::services::realm::store::a_screen_to_print(
             &folder,
-            unluminous_app::services::space::store::Screen::Node(node)
+            unluminous_app::services::realm::store::Screen::Node(node)
         )
         .is_none(),
         "so there is nothing to print"
@@ -3003,11 +2991,11 @@ fn a_screen_nobody_printed_is_not_kept_for_ever() {
 
 /// Where a node's body really is on the screen, which is what a click has to be aimed at.
 fn where_a_node_is(harness: &Harness<'static, UnluminousApp>, node: u64) -> egui::Rect {
-    let space = &harness.state().space;
-    let camera = space.space.current().camera;
-    let found = space.space.current().node(node).expect("the node is on the canvas").clone();
-    let parts = unluminous_app::components::space::parts_of(&found);
-    camera.rect_to_screen(space.body.min, parts.body)
+    let realm = &harness.state().realm;
+    let camera = realm.realm.camera;
+    let found = realm.realm.node(node).expect("the node is on the canvas").clone();
+    let parts = unluminous_app::components::realm::parts_of(&found);
+    camera.rect_to_screen(realm.body.min, parts.body)
 }
 
 /// A rectangle the accessibility tree reported for a control **inside a node**, as screen points.
@@ -3017,8 +3005,8 @@ fn where_a_node_is(harness: &Harness<'static, UnluminousApp>, node: u64) -> egui
 /// is nowhere near the point 50,581 of the window. `input` positions are the window's own points, which
 /// is what `window screenshot` writes out, so the two have to be put back together here.
 fn on_the_screen(harness: &Harness<'static, UnluminousApp>, rect: egui::Rect) -> egui::Rect {
-    let space = &harness.state().space;
-    space.space.current().camera.rect_to_screen(space.body.min, rect)
+    let realm = &harness.state().realm;
+    realm.realm.camera.rect_to_screen(realm.body.min, rect)
 }
 
 /// Who holds the keyboard, as `unluminous-cli status --section keyboard` answers it.
@@ -3034,12 +3022,12 @@ fn who_holds_the_keyboard(harness: &mut Harness<'static, UnluminousApp>) -> serd
 /// session dropped whatever was sent to it. `Session::sent_to_a_detached_session` is that gap closed.
 #[test]
 fn a_terminal_node_takes_the_keyboard_when_it_is_clicked() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = harness.state_mut().new_detached_space_node(Kind::Terminal, egui::pos2(40.0, 30.0));
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(40.0, 30.0));
     // Nothing chosen, which is the state a canvas that has just been read off disk is in.
-    harness.state_mut().space.space.choose(None);
+    harness.state_mut().realm.realm.choose(None);
     steady(&mut harness);
 
     let body = where_a_node_is(&harness, node);
@@ -3047,14 +3035,14 @@ fn a_terminal_node_takes_the_keyboard_when_it_is_clicked() {
     drove(&mut harness, &format!("input click {x} {y}"));
 
     let keyboard = who_holds_the_keyboard(&mut harness);
-    assert_eq!(keyboard["holder"], "space", "a click in a node hands the keyboard to the canvas");
+    assert_eq!(keyboard["holder"], "realm", "a click in a node hands the keyboard to the canvas");
     assert_eq!(keyboard["node"], serde_json::json!(node), "and chooses that node");
     assert_eq!(keyboard["textBox"], serde_json::json!(false), "no field is holding it");
 
     drove(&mut harness, "input text ls");
     let sent = harness
         .state()
-        .space
+        .realm
         .live
         .terminal(node)
         .expect("the node has a session")
@@ -3080,22 +3068,22 @@ fn a_project_that_comes_back_with_a_canvas_gives_it_the_keyboard() {
     {
         let mut harness = harness_in(&folder);
         harness.state_mut().restore_project();
-        did(&mut harness, "space show");
+        did(&mut harness, "realm show");
         let node =
-            did(&mut harness, "space add terminal --x 40 --y 30")["node"].as_u64().expect("id");
+            did(&mut harness, "realm add terminal --x 40 --y 30")["node"].as_u64().expect("id");
         harness.state_mut().editor_visible = false;
-        harness.state_mut().space.space.choose(Some(node));
+        harness.state_mut().realm.realm.choose(Some(node));
         steady(&mut harness);
     }
 
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
     steady(&mut harness);
-    assert!(harness.state().space.visible, "the canvas came back");
+    assert!(harness.state().realm.visible, "the canvas came back");
     assert!(!harness.state().editor_visible, "and the editing area is still away");
-    assert_eq!(harness.state().focus, Focus::Space, "so the canvas holds the keyboard");
+    assert_eq!(harness.state().focus, Focus::Realm, "so the canvas holds the keyboard");
     assert!(
-        harness.state().space.space.chosen().is_some(),
+        harness.state().realm.realm.chosen().is_some(),
         "and the node it was left on is chosen, so the first key press has somewhere to go",
     );
     let keyboard = who_holds_the_keyboard(&mut harness);
@@ -3116,14 +3104,14 @@ fn a_project_showing_both_leaves_the_keyboard_in_the_editing_area() {
     {
         let mut harness = harness_in(&folder);
         harness.state_mut().restore_project();
-        did(&mut harness, "space show");
+        did(&mut harness, "realm show");
         steady(&mut harness);
     }
 
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
     steady(&mut harness);
-    assert!(harness.state().space.visible, "the canvas came back");
+    assert!(harness.state().realm.visible, "the canvas came back");
     assert!(harness.state().editor_visible, "and so did the editing area");
     assert_eq!(harness.state().focus, Focus::Editor, "which keeps the keyboard");
 
@@ -3141,14 +3129,14 @@ fn which_node_was_chosen_comes_back_with_the_canvas() {
     let terminal = {
         let mut harness = harness_in(&folder);
         harness.state_mut().restore_project();
-        did(&mut harness, "space show");
+        did(&mut harness, "realm show");
         let terminal =
-            did(&mut harness, "space add terminal --x 40 --y 30")["node"].as_u64().expect("id");
+            did(&mut harness, "realm add terminal --x 40 --y 30")["node"].as_u64().expect("id");
         let editor =
-            did(&mut harness, "space add editor --x 700 --y 30")["node"].as_u64().expect("id");
-        did(&mut harness, &format!("space editor {editor} readme.md"));
+            did(&mut harness, "realm add editor --x 700 --y 30")["node"].as_u64().expect("id");
+        did(&mut harness, &format!("realm editor {editor} readme.md"));
         // Left on the terminal, which is not the node the restore will open a file into.
-        did(&mut harness, &format!("space focus {terminal}"));
+        did(&mut harness, &format!("realm focus {terminal}"));
         steady(&mut harness);
         terminal
     };
@@ -3157,7 +3145,7 @@ fn which_node_was_chosen_comes_back_with_the_canvas() {
     harness.state_mut().restore_project();
     steady(&mut harness);
     assert_eq!(
-        harness.state().space.space.chosen(),
+        harness.state().realm.realm.chosen(),
         Some(terminal),
         "the canvas came back on the node it was left on, not on the one whose file was opened",
     );
@@ -3184,13 +3172,13 @@ fn which_node_was_chosen_comes_back_with_the_canvas() {
 #[test]
 fn a_chat_node_sends_on_enter_rather_than_putting_a_new_line_in_the_draft() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add chat --x 10 --y 10")["node"].as_u64().expect("id");
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add chat --x 10 --y 10")["node"].as_u64().expect("id");
     // Small enough to be **inside the pane**, because a node's contents are clipped to it: a composer
     // hanging below the canvas is drawn nowhere and can be clicked nowhere.
-    did(&mut harness, &format!("space size {node} --width 520 --height 430"));
+    did(&mut harness, &format!("realm size {node} --width 520 --height 430"));
     steady(&mut harness);
-    if let Some(chat) = harness.state_mut().space.live.chat_mut(node) {
+    if let Some(chat) = harness.state_mut().realm.live.chat_mut(node) {
         let _ = chat.configuration_mut().choose("claude");
         chat.configuration_mut().providers[0].command = NO_SUCH_AGENT.to_owned();
     }
@@ -3204,13 +3192,13 @@ fn a_chat_node_sends_on_enter_rather_than_putting_a_new_line_in_the_draft() {
 
     drove(&mut harness, "input text hello");
     let draft = |harness: &Harness<'static, UnluminousApp>| {
-        harness.state().space.live.chat(node).expect("the node has a chat").draft.clone()
+        harness.state().realm.live.chat(node).expect("the node has a chat").draft.clone()
     };
     assert_eq!(draft(&harness), "hello", "the letters reached this node's own draft");
 
     // Shift+Enter is a new line: nothing is sent and nothing is refused.
     drove(&mut harness, "input key Enter --shift");
-    let after = did(&mut harness, &format!("space chat {node} state"));
+    let after = did(&mut harness, &format!("realm chat {node} state"));
     assert!(after["problem"].is_null(), "shift+enter did not try to send: {after}");
     assert_eq!(
         draft(&harness),
@@ -3222,7 +3210,7 @@ fn a_chat_node_sends_on_enter_rather_than_putting_a_new_line_in_the_draft() {
     // Enter sends, which here is refused before anything is started — and the refusal names the program
     // it would have run, which is the only way this test can tell "it sent" from "it did nothing".
     drove(&mut harness, "input key Enter");
-    let after = did(&mut harness, &format!("space chat {node} state"));
+    let after = did(&mut harness, &format!("realm chat {node} state"));
     let problem = after["problem"].as_str().expect("Enter asked for a send, and it was refused");
     assert!(problem.contains(NO_SUCH_AGENT), "the refusal names the program: {problem}");
 }
@@ -3236,10 +3224,10 @@ fn a_chat_node_sends_on_enter_rather_than_putting_a_new_line_in_the_draft() {
 #[test]
 fn the_tasks_node_search_takes_what_is_typed_into_it() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add tasks --x 10 --y 10")["node"].as_u64().expect("id");
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add tasks --x 10 --y 10")["node"].as_u64().expect("id");
     // Inside the pane, because a node's contents are clipped to it. See `on_the_screen`.
-    did(&mut harness, &format!("space size {node} --width 860 --height 440"));
+    did(&mut harness, &format!("realm size {node} --width 860 --height 440"));
     steady(&mut harness);
 
     // Found by its name rather than by arithmetic over the board's own measurements, which is what
@@ -3271,7 +3259,7 @@ fn the_tasks_node_search_takes_what_is_typed_into_it() {
 #[test]
 fn the_title_bar_can_still_be_dragged_while_a_pane_is_maximised() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     steady(&mut harness);
     let before = harness.get_by_label("Move window").rect();
     assert!(before.width() > 100.0, "the bar has a drag area to begin with: {before:?}");
@@ -3313,13 +3301,13 @@ fn pixels_in(harness: &mut Harness<'static, UnluminousApp>, band: egui::Rect) ->
 #[test]
 fn a_node_scrolled_off_the_canvas_draws_nothing_outside_the_pane() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add tasks --x 10 --y 10")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space size {node} --width 860 --height 440"));
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add tasks --x 10 --y 10")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm size {node} --width 860 --height 440"));
     steady(&mut harness);
 
     // The editing area above the canvas, which nothing on the canvas may reach.
-    let body = harness.state().space.body;
+    let body = harness.state().realm.body;
     let above = egui::Rect::from_min_max(
         egui::pos2(body.left() + 20.0, body.top() - 120.0),
         egui::pos2(body.right() - 20.0, body.top() - 8.0),
@@ -3327,7 +3315,7 @@ fn a_node_scrolled_off_the_canvas_draws_nothing_outside_the_pane() {
     let quiet = pixels_in(&mut harness, above);
 
     // The same canvas with the node dragged most of the way off the top edge.
-    did(&mut harness, "space camera --y 300");
+    did(&mut harness, "realm camera --y 300");
     steady(&mut harness);
     let now = pixels_in(&mut harness, above);
     assert_eq!(quiet.len(), now.len(), "the same band both times");
@@ -3343,7 +3331,7 @@ fn a_node_scrolled_off_the_canvas_draws_nothing_outside_the_pane() {
 #[test]
 fn a_folder_node_draws_no_file_count_over_its_own_edge() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     steady(&mut harness);
     assert_eq!(
         harness.query_all_by_label("File count").count(),
@@ -3351,7 +3339,7 @@ fn a_folder_node_draws_no_file_count_over_its_own_edge() {
         "the explorer panel counts the project's files",
     );
 
-    did(&mut harness, "space add folder --x 10 --y 10");
+    did(&mut harness, "realm add folder --x 10 --y 10");
     steady(&mut harness);
     assert_eq!(
         harness.query_all_by_label("File count").count(),
@@ -3370,9 +3358,9 @@ fn a_folder_node_draws_no_file_count_over_its_own_edge() {
 fn an_address_bar_draws_its_text_inside_its_own_box() {
     let mut harness = harness("");
     did(&mut harness, "settings set appearance.ui.font.size 24");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add browser --x 10 --y 10")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space size {node} --width 620 --height 300"));
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add browser --x 10 --y 10")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm size {node} --width 620 --height 300"));
     steady(&mut harness);
 
     let address = harness.get_by_label("Address").rect();
@@ -3382,8 +3370,8 @@ fn an_address_bar_draws_its_text_inside_its_own_box() {
     );
     // And inside the node, which is the half the report could see: the strip used to reach past the
     // field's own border and the top of the words was cut off by it.
-    let found = harness.state().space.space.current().node(node).expect("it is there").clone();
-    let parts = unluminous_app::components::space::parts_of(&found);
+    let found = harness.state().realm.realm.node(node).expect("it is there").clone();
+    let parts = unluminous_app::components::realm::parts_of(&found);
     assert!(
         parts.body.contains_rect(address),
         "the address box is inside the node: {address:?} in {:?}",
@@ -3399,18 +3387,18 @@ fn an_address_bar_draws_its_text_inside_its_own_box() {
 /// header and a composer with no room between them.
 #[test]
 fn a_chat_node_at_its_smallest_keeps_the_composer_inside_it() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
     did(&mut harness, "settings set appearance.ui.font.size 24");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add chat --x 10 --y 10")["node"].as_u64().expect("id");
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add chat --x 10 --y 10")["node"].as_u64().expect("id");
     let smallest = Kind::Chat.smallest();
-    did(&mut harness, &format!("space size {node} --width {} --height {}", smallest.x, smallest.y));
+    did(&mut harness, &format!("realm size {node} --width {} --height {}", smallest.x, smallest.y));
     steady(&mut harness);
 
-    let found = harness.state().space.space.current().node(node).expect("it is there").clone();
+    let found = harness.state().realm.realm.node(node).expect("it is there").clone();
     assert_eq!(found.size, smallest, "a node cannot be dragged below its kind's own floor");
-    let parts = unluminous_app::components::space::parts_of(&found);
+    let parts = unluminous_app::components::realm::parts_of(&found);
     let composer = harness.get_by_label("Message").rect();
     assert!(
         parts.body.contains_rect(composer),
@@ -3435,22 +3423,22 @@ fn a_chat_node_at_its_smallest_keeps_the_composer_inside_it() {
 #[test]
 fn the_wheel_over_a_chat_node_scrolls_its_conversation() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space size {node} --width 460 --height 360"));
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add chat --x 20 --y 20")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm size {node} --width 460 --height 360"));
     steady(&mut harness);
     a_long_conversation_on(&mut harness, node);
 
     let (was, most, list) = {
-        let chat = harness.state().space.live.chat(node).expect("the node has a chat");
+        let chat = harness.state().realm.live.chat(node).expect("the node has a chat");
         (chat.ui.scrolled, chat.ui.scrollable, chat.ui.list_rect)
     };
     assert!(most > 60.0, "there is far more conversation than node, and it can scroll {most}");
     assert!(was > 60.0, "and it is at the bottom of it, at {was}");
     let list = list.expect("the transcript wrote down where it drew");
 
-    let camera_was = harness.state().space.space.current().camera;
-    let body = harness.state().space.body;
+    let camera_was = harness.state().realm.realm.camera;
+    let body = harness.state().realm.body;
     let over_the_transcript = camera_was.to_screen(body.min, list.center());
     harness.input_mut().events.push(egui::Event::PointerMoved(over_the_transcript));
     steady(&mut harness);
@@ -3465,12 +3453,12 @@ fn the_wheel_over_a_chat_node_scrolls_its_conversation() {
     pump(&mut harness);
     pump(&mut harness);
 
-    let now = harness.state().space.live.chat(node).expect("the node has a chat").ui.scrolled;
+    let now = harness.state().realm.live.chat(node).expect("the node has a chat").ui.scrolled;
     assert!(now < was - 60.0, "the conversation moved: it was at {was} and is at {now}");
     // **And the canvas did not move with it.** A wheel the node took is taken out of the frame, which is
     // what `egui::ScrollArea` does when it takes one; and the canvas's own zoom asks whether the pointer
     // is over a node before it reads the wheel at all.
-    let camera_now = harness.state().space.space.current().camera;
+    let camera_now = harness.state().realm.realm.camera;
     assert_eq!(camera_now.at, camera_was.at, "the canvas stayed where it was");
     assert_eq!(camera_now.zoom, camera_was.zoom);
 }
@@ -3483,20 +3471,20 @@ fn the_wheel_over_a_chat_node_scrolls_its_conversation() {
 #[test]
 fn the_wheel_over_a_chat_node_scrolls_by_the_nodes_own_points() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    let node = did(&mut harness, "space add chat --x 20 --y 20")["node"].as_u64().expect("id");
-    did(&mut harness, &format!("space size {node} --width 460 --height 360"));
-    did(&mut harness, "space camera --zoom 0.5");
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add chat --x 20 --y 20")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm size {node} --width 460 --height 360"));
+    did(&mut harness, "realm camera --zoom 0.5");
     steady(&mut harness);
     a_long_conversation_on(&mut harness, node);
 
     let (was, list) = {
-        let chat = harness.state().space.live.chat(node).expect("the node has a chat");
+        let chat = harness.state().realm.live.chat(node).expect("the node has a chat");
         (chat.ui.scrolled, chat.ui.list_rect.expect("the transcript drew"))
     };
-    let camera = harness.state().space.space.current().camera;
+    let camera = harness.state().realm.realm.camera;
     assert!((camera.zoom - 0.5).abs() < 0.01, "the canvas is at {}", camera.zoom);
-    let body = harness.state().space.body;
+    let body = harness.state().realm.body;
     harness
         .input_mut()
         .events
@@ -3511,7 +3499,7 @@ fn the_wheel_over_a_chat_node_scrolls_by_the_nodes_own_points() {
     pump(&mut harness);
     pump(&mut harness);
 
-    let now = harness.state().space.live.chat(node).expect("the node has a chat").ui.scrolled;
+    let now = harness.state().realm.live.chat(node).expect("the node has a chat").ui.scrolled;
     let moved = was - now;
     assert!(
         (moved - 200.0).abs() < 20.0,
@@ -3521,7 +3509,7 @@ fn the_wheel_over_a_chat_node_scrolls_by_the_nodes_own_points() {
 
 /// A conversation far taller than any node, so there is something to scroll.
 fn a_long_conversation_on(harness: &mut Harness<'static, UnluminousApp>, node: u64) {
-    if let Some(chat) = harness.state_mut().space.live.chat_mut(node) {
+    if let Some(chat) = harness.state_mut().realm.live.chat_mut(node) {
         for number in 0..40 {
             let id = chat.session_mut().chat.next_id();
             chat.session_mut().chat.push(unluminous_chat::Message::said(
@@ -3547,22 +3535,22 @@ fn a_long_conversation_on(harness: &mut Harness<'static, UnluminousApp>, node: u
 /// `show_a_node_body` deliberately does not — and this is what would fail if somebody added it.
 #[test]
 fn the_wheel_over_a_file_editor_node_moves_its_page() {
-    use unluminous_app::services::space::Kind;
+    use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     let long: String = (0..400).map(|line| format!("Line {line} of a long file.\n")).collect();
     let file = std::env::temp_dir().join("unluminous-editor-node-scroll.txt");
     std::fs::write(&file, long).expect("a long file");
-    let node = harness.state_mut().new_detached_space_node(Kind::Editor, egui::pos2(20.0, 20.0));
-    did(&mut harness, &format!("space size {node} --width 460 --height 360"));
-    harness.state_mut().open_in_a_space_node(node, &file).expect("the file opens in the node");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Editor, egui::pos2(20.0, 20.0));
+    did(&mut harness, &format!("realm size {node} --width 460 --height 360"));
+    harness.state_mut().open_in_a_realm_node(node, &file).expect("the file opens in the node");
     steady(&mut harness);
 
     let index = harness.state().files.tab_in_node(node).expect("the node has a tab");
     assert_eq!(harness.state().files.at(index).scroll, 0.0, "it starts at the top");
 
-    let camera_was = harness.state().space.space.current().camera;
-    let body = harness.state().space.body;
+    let camera_was = harness.state().realm.realm.camera;
+    let body = harness.state().realm.body;
     let over_the_page = camera_was.to_screen(body.min, egui::pos2(240.0, 220.0));
     harness.input_mut().events.push(egui::Event::PointerMoved(over_the_page));
     steady(&mut harness);
@@ -3577,8 +3565,369 @@ fn the_wheel_over_a_file_editor_node_moves_its_page() {
 
     let scrolled = harness.state().files.at(index).scroll;
     assert!(scrolled > 60.0, "the page moved down, it is at {scrolled}");
-    let camera_now = harness.state().space.space.current().camera;
+    let camera_now = harness.state().realm.realm.camera;
     assert_eq!(camera_now.zoom, camera_was.zoom, "and the canvas did not zoom under it");
     assert_eq!(camera_now.at, camera_was.at);
     let _ = std::fs::remove_file(&file);
+}
+
+// ------------------------------------------------------------- realm files (`task-2202`)
+//
+// §8 items 11 to 20 of `tasks/task-2199-realm-tdd.md`: the rename, the realm bar, the explorer and the
+// plugin, the four new kinds, a kind this build does not know, a realm a newer build wrote, and the import
+// of `space.conf`. Each project is a folder of its own under the system's temporary folder, because these
+// tests write realm files and `sample_folder` is shared by every other test.
+
+/// A project of its own, with `files` in it, opened in a window that remembers it, so realm files are
+/// written as they would be in the released binary.
+fn a_realm_project(
+    name: &str,
+    files: &[(&str, &[u8])],
+) -> (std::path::PathBuf, Harness<'static, UnluminousApp>) {
+    let folder =
+        std::env::temp_dir().join(format!("unluminous-realm-{name}-{}", std::process::id()));
+    std::fs::remove_dir_all(&folder).ok();
+    std::fs::create_dir_all(&folder).expect("make the project");
+    std::fs::write(folder.join("readme.md"), "# A project\n").expect("write the readme");
+    for (file, bytes) in files {
+        let at = folder.join(file);
+        if let Some(parent) = at.parent() {
+            std::fs::create_dir_all(parent).expect("make the folders above the file");
+        }
+        std::fs::write(&at, bytes).unwrap_or_else(|_| panic!("write {file}"));
+    }
+    let mut harness = harness_in(&folder);
+    harness.state_mut().restore_project();
+    steady(&mut harness);
+    (folder, harness)
+}
+
+/// A 64 by 64 picture, half one colour and half the other, so a fitted one is recognisable in a picture.
+fn a_picture() -> Vec<u8> {
+    let mut picture = image::RgbaImage::new(64, 64);
+    for (x, _, pixel) in picture.enumerate_pixels_mut() {
+        *pixel = match x < 32 {
+            true => image::Rgba([0x22, 0xB8, 0xE6, 255]),
+            false => image::Rgba([0xD9, 0x46, 0xEF, 255]),
+        };
+    }
+    let mut bytes = Vec::new();
+    picture
+        .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+        .expect("encode the picture");
+    bytes
+}
+
+/// The id of the node a `realm add` made.
+fn added(harness: &mut Harness<'static, UnluminousApp>, line: &str) -> u64 {
+    did(harness, line)["node"].as_u64().expect("an id")
+}
+
+/// The names in a menu, for asserting which rows are there.
+fn names_in(entries: &[unluminous_app::app::actions::Entry]) -> Vec<String> {
+    entries
+        .iter()
+        .map(|entry| match entry {
+            unluminous_app::app::actions::Entry::Item { name, .. } => name.clone(),
+            unluminous_app::app::actions::Entry::Submenu { name, .. } => name.clone(),
+            _ => String::new(),
+        })
+        .collect()
+}
+
+/// Item 11: `View -> Realm` shows the panel, and the rail and the docking menu say Realm.
+#[test]
+fn the_realm_is_called_the_realm_on_the_menu_the_rail_and_the_docking_menu() {
+    let mut harness = harness("");
+    let menus = unluminous_app::app::actions::menus(&harness.state().menu_state());
+    let view = menus.iter().find(|menu| menu.name == "View").expect("a View menu");
+    let names = names_in(&view.entries);
+    assert!(names.iter().any(|name| name == "Realm"), "{names:?}");
+    assert!(!names.iter().any(|name| name.contains("Infinite")), "{names:?}");
+    choose(
+        &mut harness,
+        unluminous_app::app::actions::Action::Realm(
+            unluminous_app::app::actions::RealmAction::Toggle,
+        ),
+    );
+    steady(&mut harness);
+    assert!(harness.state().realm.visible, "the menu entry shows the panel");
+    harness.get_by_label("Realm");
+    let docking = names_in(&unluminous_app::app::actions::panel_menu(&harness.state().menu_state(), unluminous_app::app::dock::Panel::Realm));
+    assert!(!docking.iter().any(|name| name.contains("Space")), "{docking:?}");
+}
+
+/// Item 12: the realm bar lists the project's realm files, a chip switches to one, and New and Rename work
+/// on the files themselves.
+#[test]
+fn the_realm_bar_lists_the_realm_files_and_new_and_rename_change_them_on_disk() {
+    let empty: &[u8] = b"realm.format = 1\nrealm.reader = 1\nrealm.writer = 1\n";
+    let (folder, mut harness) = a_realm_project(
+        "bar",
+        &[(".realm-files/main.realm", empty), (".realm-files/architecture.realm", empty)],
+    );
+    did(&mut harness, "realm show");
+    steady(&mut harness);
+    harness.get_by_label("Realm tab: main");
+    harness.get_by_label("Realm tab: architecture").click();
+    steady(&mut harness);
+    assert_eq!(harness.state().realm.realm.title(), "architecture");
+
+    did(&mut harness, "realm new Plans");
+    assert!(folder.join(".realm-files/Plans.realm").is_file(), "New writes the file");
+    assert_eq!(harness.state().realm.realm.title(), "Plans", "and opens it");
+    did(&mut harness, "realm rename Plans Designs");
+    assert!(!folder.join(".realm-files/Plans.realm").exists());
+    assert!(folder.join(".realm-files/Designs.realm").is_file(), "Rename moves the file");
+    let text = std::fs::read_to_string(folder.join(".realm-files/Designs.realm")).expect("read it");
+    assert!(text.contains("realm.name = Designs"), "{text}");
+    steady(&mut harness);
+    harness.snapshot(shot("realm_bar").as_str());
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Item 13: a `.realm` file opens in the panel from the explorer, `.realm-files` is listed and
+/// `.unluminous` is not, and switching the plugin off takes the panel and the icon away.
+#[test]
+fn a_realm_file_opens_from_the_explorer_and_the_plugin_is_the_switch() {
+    let (folder, mut harness) = a_realm_project(
+        "explorer",
+        &[("a.realm", b"realm.format = 1\n"), (".realm-files/kept.realm", b"realm.format = 1\n")],
+    );
+    harness.get_by_label(".realm-files");
+    assert!(harness.query_by_label(".unluminous").is_none(), ".unluminous stays hidden");
+    assert_eq!(
+        harness.state().plugins.for_path(&folder.join("a.realm")).map(|plugin| plugin.id.clone()),
+        Some("realm".to_owned()),
+        "the row carries the plugin's icon"
+    );
+    double_click(&mut harness, "a.realm");
+    steady(&mut harness);
+    assert!(harness.state().realm.visible, "the panel shows");
+    assert_eq!(harness.state().realm.realm.path, std::path::Path::new("a.realm"), "on that realm");
+    assert!(harness.state().files.index_of(&folder.join("a.realm")).is_none(), "not as text");
+
+    did(&mut harness, "plugins disable realm");
+    steady(&mut harness);
+    assert!(!harness.state().realm.visible, "the panel goes with the plugin");
+    assert!(harness.query_by_label(".realm-files").is_none(), "and so does the folder");
+    assert!(harness.state().plugins.for_path(&folder.join("a.realm")).is_none(), "and the icon");
+    assert_eq!(refused(&mut harness, "realm show"), "refused");
+    did(&mut harness, "plugins enable realm");
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Item 14: a picture node draws a 64 by 64 picture fitted to the node, and names it relative to the
+/// project.
+#[test]
+fn a_picture_node_draws_its_picture_fitted() {
+    let picture = a_picture();
+    let (folder, mut harness) = a_realm_project("image", &[("design/cover.png", &picture)]);
+    did(&mut harness, "realm show");
+    let node = added(&mut harness, "realm add image design/cover.png --x 40 --y 30");
+    did(&mut harness, &format!("realm size {node} --width 320 --height 220"));
+    did(&mut harness, "realm camera --zoom 1");
+    for _ in 0..4 {
+        steady(&mut harness);
+    }
+    harness.get_by_label("Picture: cover.png");
+    let written =
+        std::fs::read_to_string(folder.join(".realm-files/main.realm")).expect("the realm");
+    assert!(written.contains(".file = design/cover.png"), "relative, with /: {written}");
+    assert!(written.contains(".kind = image"), "{written}");
+    harness.snapshot(shot("realm_image_node").as_str());
+    assert_eq!(
+        refused(&mut harness, "realm add image ../outside.png"),
+        "refused",
+        "a file outside the project is refused"
+    );
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Item 15: a note named Plan makes `.realm-files/main/Plan.md`, its header names the file, its three view
+/// buttons are in the header, and the preview draws what was typed and is written to the realm.
+#[test]
+fn a_note_is_a_markdown_file_with_its_three_views_in_its_header() {
+    let (folder, mut harness) = a_realm_project("note", &[]);
+    did(&mut harness, "realm show");
+    let node = added(&mut harness, "realm add note Plan --x 40 --y 30");
+    steady(&mut harness);
+    let file = folder.join(".realm-files/main/Plan.md");
+    assert!(file.is_file(), "the note's file is made");
+    harness.get_by_label("Node: Plan.md");
+    for label in
+        ["Raw Markdown in Plan.md", "Side by side in Plan.md", "Markdown preview in Plan.md"]
+    {
+        harness.get_by_label(label);
+    }
+    let index = harness.state().files.tab_in_node(node).expect("the note has its tab");
+    harness
+        .state_mut()
+        .files
+        .at_mut(index)
+        .document
+        .apply(unluminous_core::Command::Insert("# Hi\n".to_owned()));
+    harness.get_by_label("Markdown preview in Plan.md").click_accesskit();
+    for _ in 0..4 {
+        steady(&mut harness);
+    }
+    let index = harness.state().files.tab_in_node(node).expect("the note has its tab");
+    assert_eq!(
+        harness.state().files.at(index).view_mode,
+        unluminous_app::app::ViewMode::Preview
+    );
+    let written =
+        std::fs::read_to_string(folder.join(".realm-files/main.realm")).expect("the realm");
+    assert!(written.contains(".view = preview"), "{written}");
+    harness.snapshot(shot("realm_note_preview").as_str());
+    did(&mut harness, &format!("realm note view {node} raw"));
+    let index = harness.state().files.tab_in_node(node).expect("the note has its tab");
+    assert_eq!(harness.state().files.at(index).view_mode, unluminous_app::app::ViewMode::Raw);
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Item 16: a sound node's play button becomes a pause button, its time moves while it plays, and pausing
+/// it writes where it was to the sidecar. The window a test builds plays through `SilentPlayer`.
+#[test]
+fn a_sound_node_plays_pauses_and_remembers_where_it_was() {
+    let wav = unluminous_app::services::realm::player::a_silent_wav(1.0);
+    let (folder, mut harness) = a_realm_project("audio", &[("one.wav", &wav)]);
+    did(&mut harness, "realm show");
+    let node = added(&mut harness, "realm add audio one.wav --x 40 --y 30");
+    steady(&mut harness);
+    harness.get_by_label("Play one.wav").click_accesskit();
+    steady(&mut harness);
+    harness.get_by_label("Pause one.wav");
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    pump(&mut harness);
+    let paused = did(&mut harness, &format!("realm pause {node}"));
+    let at = paused["position"].as_f64().expect("a position");
+    assert!(at > 0.1, "it moved while it played: {at}");
+    assert_eq!(paused["duration"].as_f64(), Some(1.0));
+    for _ in 0..4 {
+        steady(&mut harness);
+    }
+    harness.get_by_label("Play one.wav");
+    let sidecar = unluminous_app::services::realm::store::sidecar_path(
+        &folder,
+        std::path::Path::new(".realm-files/main.realm"),
+    );
+    let remembered = std::fs::read_to_string(&sidecar).expect("the sidecar");
+    assert!(remembered.contains(".position = "), "{remembered}");
+    did(&mut harness, &format!("realm seek {node} 0.5"));
+    did(&mut harness, &format!("realm volume {node} 0.25"));
+    for _ in 0..4 {
+        steady(&mut harness);
+    }
+    let written =
+        std::fs::read_to_string(folder.join(".realm-files/main.realm")).expect("the realm");
+    assert!(written.contains(".volume = 0.25"), "{written}");
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Item 17: a video node draws its placeholder until it is chosen, and chosen it asks for the window's
+/// native view on `unluminous://realm/video/<id>`. The view itself is never in a picture.
+#[test]
+fn a_video_node_shows_a_placeholder_until_it_is_chosen() {
+    let (folder, mut harness) = a_realm_project("video", &[("clip.mp4", b"not really a video")]);
+    did(&mut harness, "realm show");
+    let node = added(&mut harness, "realm add video clip.mp4 --x 40 --y 30");
+    harness.state_mut().realm.realm.choose(None);
+    for _ in 0..2 {
+        steady(&mut harness);
+    }
+    harness.snapshot(shot("realm_video_placeholder").as_str());
+    harness.get_by_label("Show video clip.mp4").click_accesskit();
+    steady(&mut harness);
+    let tab = harness.state().realm.live.browser(node).cloned().expect("a tab on the one view");
+    assert_eq!(tab.current_url(), format!("unluminous://realm/video/{node}"));
+    assert!(
+        harness.state().browser_placements().iter().any(|placement| placement.id == tab.id),
+        "and the view is asked for"
+    );
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Item 18: a node of a kind this build does not know is drawn as a placeholder, can be moved, and keeps
+/// every key it was written with.
+#[test]
+fn a_node_this_build_does_not_know_is_drawn_and_written_back_whole() {
+    let realm: &[u8] = b"realm.format = 1\nnode.0000abcd.kind = hologram\nnode.0000abcd.beam = violet\nnode.0000abcd.x = 40.0\nnode.0000abcd.y = 30.0\n";
+    let (folder, mut harness) = a_realm_project("unknown", &[(".realm-files/main.realm", realm)]);
+    did(&mut harness, "realm show");
+    steady(&mut harness);
+    harness.get_by_label("Unknown node: hologram");
+    harness.snapshot(shot("realm_unknown_node").as_str());
+    did(&mut harness, &format!("realm move {} --x 400 --y 30", 0xabcd));
+    for _ in 0..4 {
+        steady(&mut harness);
+    }
+    let written =
+        std::fs::read_to_string(folder.join(".realm-files/main.realm")).expect("the realm");
+    assert!(written.contains("node.0000abcd.beam = violet"), "{written}");
+    assert!(written.contains("node.0000abcd.x = 400.0"), "{written}");
+    let info = did(&mut harness, "realm info");
+    assert_eq!(info["unknownKinds"][0], "hologram");
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Item 19: a realm a newer Unluminous wrote shows the banner, refuses a change, and is not written.
+#[test]
+fn a_realm_a_newer_unluminous_wrote_is_read_only_and_never_written() {
+    let realm: &[u8] = b"realm.format = 1\nrealm.writer = 2\nnode.00000001.kind = browser\nnode.00000001.x = 40.0\nnode.00000001.y = 30.0\n";
+    let (folder, mut harness) = a_realm_project("newer", &[(".realm-files/main.realm", realm)]);
+    let file = folder.join(".realm-files/main.realm");
+    let stamp = std::fs::metadata(&file).and_then(|about| about.modified()).expect("a stamp");
+    did(&mut harness, "realm show");
+    steady(&mut harness);
+    harness.get_by_label(
+        "Read only: Written by a newer Unluminous, which saves realm format 2. Open for reading only.",
+    );
+    refused(&mut harness, "realm title 1 Renamed");
+    refused(&mut harness, "realm add browser");
+    did(&mut harness, "realm camera --zoom 0.5");
+    for _ in 0..6 {
+        steady(&mut harness);
+    }
+    assert_eq!(
+        std::fs::metadata(&file).and_then(|about| about.modified()).expect("a stamp"),
+        stamp
+    );
+    assert_eq!(std::fs::read(&file).expect("read it"), realm.to_vec(), "the file is untouched");
+    let info = did(&mut harness, "realm info");
+    assert!(
+        info["access"].as_str().is_some_and(|access| access.starts_with("read only")),
+        "{info}"
+    );
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Item 20: a project with a `space.conf` and no realm files opens on the realm the view that was showing
+/// became, and `space.conf` is left where it is.
+#[test]
+fn opening_a_project_with_a_space_conf_imports_it_and_shows_the_view_that_was_current() {
+    let legacy = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/realm/space.conf"),
+    )
+    .expect("the fixture");
+    let (folder, mut harness) =
+        a_realm_project("import", &[(".unluminous/space.conf", &legacy)]);
+    for name in ["main", "rendering", "main 2"] {
+        assert!(folder.join(format!(".realm-files/{name}.realm")).is_file(), "{name} was made");
+    }
+    assert_eq!(
+        harness.state().realm.realm.path,
+        std::path::Path::new(".realm-files/rendering.realm"),
+        "the view that was current is the realm showing"
+    );
+    assert_eq!(std::fs::read(folder.join(".unluminous/space.conf")).expect("still there"), legacy);
+    did(&mut harness, "realm show");
+    for _ in 0..2 {
+        steady(&mut harness);
+    }
+    let workspace = std::fs::read_to_string(folder.join(".unluminous/workspace.conf"))
+        .expect("the workspace");
+    assert!(workspace.contains("realm.imported = true"), "{workspace}");
+    assert!(workspace.contains("realm.current = .realm-files/rendering.realm"), "{workspace}");
+    std::fs::remove_dir_all(&folder).ok();
 }

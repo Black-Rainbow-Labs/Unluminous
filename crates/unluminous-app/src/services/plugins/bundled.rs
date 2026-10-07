@@ -54,6 +54,13 @@ pub const ALL: &[(&str, &str, Option<&[u8]>)] = &[
         include_str!("../../../plugins/sql/plugin.conf"),
         Some(include_bytes!("../../../plugins/sql/icon.png")),
     ),
+    // The Realm, `task-2202`. A `ui` plugin whose provider is the window itself: it claims `.realm`, gives
+    // those files this icon, shows `.realm-files/` in the explorer, and is the switch for the Realm panel.
+    (
+        "realm",
+        include_str!("../../../plugins/realm/plugin.conf"),
+        Some(include_bytes!("../../../plugins/realm/icon.png")),
+    ),
     (
         "mermaid",
         include_str!("../../../plugins/mermaid/plugin.conf"),

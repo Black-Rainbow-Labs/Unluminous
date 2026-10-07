@@ -829,6 +829,8 @@ pub fn provider(name: &str) -> Option<Box<dyn UiProvider>> {
         "agent-tasks" => Some(Box::new(crate::services::agent_tasks::AgentTasks::new())),
         "agent-chat" => Some(Box::new(crate::services::agent_chat::AgentChat::new())),
         "database" => Some(Box::new(crate::services::database::DatabaseExplorer::new())),
+        // Drawn by the window itself — see `plugins::CORE_PROVIDERS`.
+        "realm" => None,
         _ => None,
     }
 }
@@ -843,7 +845,7 @@ mod tests {
         // The registry is a list of names and this is the code behind them. A name with no code would
         // load a manifest whose pane is permanently empty, which is the exact outcome checking the
         // name against a registry exists to prevent.
-        for name in UI_PROVIDERS {
+        for name in UI_PROVIDERS.iter().filter(|name| !crate::services::plugins::CORE_PROVIDERS.contains(name)) {
             let built =
                 provider(name).unwrap_or_else(|| panic!("{name} is registered with no code"));
             assert_eq!(built.id(), *name, "a provider should know its own name");

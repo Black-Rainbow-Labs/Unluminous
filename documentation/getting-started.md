@@ -90,7 +90,8 @@ people on one folder do not fight over one file. What is in it:
 | `highlights.txt` | every marked passage in the project, as `<start> <end> <#rrggbbaa> <path>` |
 | `breakpoints.conf` | every breakpoint, as the byte offset of its line's start |
 | `run-configurations.conf` | the run configurations that were kept |
-| `space.conf` | the canvas: its views, its nodes, their connections and where the camera was |
+| `realms/<path>.conf` | for each realm, what one person was doing in it: the camera, the chosen node, each terminal's session, where each sound or video was paused |
+| `space.conf` | the canvas as builds before realm files kept it. Read once, to make the realm files, and never written or deleted. |
 
 Paths are written relative to the project wherever they are inside it, so a project that moves still
 opens the files it was left with. Only the released binary reads or writes any of it: a test must not

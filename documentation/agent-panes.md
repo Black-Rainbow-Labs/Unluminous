@@ -146,7 +146,7 @@ unluminous-cli plugins view agent-chat --json
 would stop the window drawing for the length of a model's answer. `state` says when it has finished,
 which is the shape `run start` and `run output` already have.
 
-On the canvas, `space chat <node> <verb>` forwards to the same function, so the verbs are not a second
+On the canvas, `realm chat <node> <verb>` forwards to the same function, so the verbs are not a second
 list and the two cannot answer differently. What it adds is *whose* conversation.
 
 ## Agent-Tasks

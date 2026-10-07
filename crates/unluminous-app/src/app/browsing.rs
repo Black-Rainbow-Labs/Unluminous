@@ -82,12 +82,12 @@ impl UnluminousApp {
                 return;
             }
             // **An address typed into the toolbar's own field.** It goes wherever the tab is: a node's
-            // tab through `send_a_space_browser_to`, which keeps the node's history for a remote address
+            // tab through `send_a_realm_browser_to`, which keeps the node's history for a remote address
             // and opens a fresh tab for a local one, and the editing area's through `open_browser`.
             // Both resolve through `BrowserLocation::parse` rather than handing the text to the view.
             BrowserCommand::Go(address) => {
-                let answer = match self.space.live.node_of_browser(id) {
-                    Some(node) => self.send_a_space_browser_to(node, address.trim()),
+                let answer = match self.realm.live.node_of_browser(id) {
+                    Some(node) => self.send_a_realm_browser_to(node, address.trim()),
                     None => self.open_browser(address.trim()).map(|_| ()),
                 };
                 if let Err(problem) = answer {
@@ -128,7 +128,7 @@ impl UnluminousApp {
             .iter()
             .filter_map(|file| file.browser.as_ref())
             .find(|tab| tab.id == id)
-            .or_else(|| self.space.live.browsers().find(|tab| tab.id == id))
+            .or_else(|| self.realm.live.browsers().find(|tab| tab.id == id))
     }
 
     /// Apply browser callbacks to ordinary tab state and open requested popup URLs as Unluminous tabs.
@@ -152,6 +152,13 @@ impl UnluminousApp {
                     let _ = self.open_browser(&url);
                 }
                 BrowserEvent::Title { id, title } => {
+                    // A video node's page says where it is in its title, which is how the position reaches
+                    // the realm's sidecar with no script callback. `task-2202`.
+                    if let Some(node) = self.realm.live.node_of_browser(id) {
+                        if let Some(report) = crate::services::browser::read_a_video_title(&title) {
+                            self.realm.live.report_a_video(node, report);
+                        }
+                    }
                     self.change_browser_tab(id, |tab| tab.title = title)
                 }
                 BrowserEvent::LoadStarted { id, .. } => {
@@ -175,8 +182,8 @@ impl UnluminousApp {
             change(tab);
             return;
         }
-        if let Some(node) = self.space.live.node_of_browser(id) {
-            if let Some(tab) = self.space.live.browser_mut(node) {
+        if let Some(node) = self.realm.live.node_of_browser(id) {
+            if let Some(tab) = self.realm.live.browser_mut(node) {
                 change(tab);
             }
         }

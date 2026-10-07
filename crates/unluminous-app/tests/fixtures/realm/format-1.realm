@@ -1,0 +1,36 @@
+Unluminous realm: an infinite canvas in this project.
+# A format 1 realm as somebody might have written it by hand: keys out of order, spacing loose,
+# a key from a newer Unluminous on a node, a kind this build does not know, and no z on one node.
+realm.format=1
+realm.reader = 1
+realm.writer = 1
+realm.needs =
+realm.name = Architecture
+node.3f9a1c2d.kind = note
+node.3f9a1c2d.x = 120
+node.3f9a1c2d.y = -40
+node.3f9a1c2d.width = 420
+node.3f9a1c2d.height = 300
+node.3f9a1c2d.z = 4
+node.3f9a1c2d.title = Plan
+node.3f9a1c2d.file = .realm-files/architecture/plan.md
+node.3f9a1c2d.view = preview
+node.8d2b7e1c.kind = image
+node.8d2b7e1c.x = 600.0
+node.8d2b7e1c.y = -40.0
+node.8d2b7e1c.width = 320.0
+node.8d2b7e1c.height = 200.0
+node.8d2b7e1c.z = 5
+node.8d2b7e1c.file = design/cover.png
+node.8d2b7e1c.fit = contain
+node.8d2b7e1c.glow = soft
+node.c0ffee01.kind = audio
+node.c0ffee01.file = .realm-files/architecture/intro.mp3
+node.c0ffee01.volume = 0.8
+node.c0ffee01.loop = false
+node.0badcafe.kind = hologram
+node.0badcafe.beam = violet
+node.0badcafe.z = 9
+edge.e9a8b7c6.from = 3f9a1c2d
+edge.e9a8b7c6.to = 8d2b7e1c
+edge.e9a8b7c6.pipe = off

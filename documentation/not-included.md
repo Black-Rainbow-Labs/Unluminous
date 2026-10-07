@@ -95,7 +95,7 @@ run configuration in the run tile rather than a silent download.
 
 **A screenshot that contains the page.** A rendered page is a native child window the operating system
 composites on top of the surface a screenshot captures, so `window screenshot` has never held one and
-`space browser <node> shot` does not either. Measured rather than assumed.
+`realm browser <node> shot` does not either. Measured rather than assumed.
 
 **A JavaScript host bridge.** Local HTML uses a project origin, every requested resource is resolved
 under the registered canonical root, traversal and write methods are refused, and nothing is exposed

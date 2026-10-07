@@ -88,8 +88,8 @@ pub fn reveal_command(path: &Path) -> Command {
 /// Measured against the real Explorer:
 ///
 /// ```text
-/// "/select,C:\a space here\page.html"   -> file:///C:/Users/jason/Documents
-/// /select,"C:\a space here\page.html"   -> the right folder, with the file selected
+/// "/select,C:\a realm here\page.html"   -> file:///C:/Users/jason/Documents
+/// /select,"C:\a realm here\page.html"   -> the right folder, with the file selected
 /// ```
 ///
 /// `raw_arg` is what puts an argument on the command line as written. Quoting is Windows' own escape
@@ -218,10 +218,10 @@ mod tests {
         if !cfg!(windows) {
             return;
         }
-        let command = reveal_command(Path::new(r"C:\a space here\page.html"));
+        let command = reveal_command(Path::new(r"C:\a realm here\page.html"));
         let arguments: Vec<String> =
             command.get_args().map(|arg| arg.to_string_lossy().to_string()).collect();
-        assert_eq!(arguments, vec![r#"/select,"C:\a space here\page.html""#.to_owned()]);
+        assert_eq!(arguments, vec![r#"/select,"C:\a realm here\page.html""#.to_owned()]);
     }
 
     #[test]

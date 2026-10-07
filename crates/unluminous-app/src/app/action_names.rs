@@ -12,7 +12,7 @@
 //! changes with the state and a name that changed with the state would be useless in a script.
 //!
 //! Five actions are **refused** from the command line. `open-folder`, `open-file`, `open-web-address`,
-//! `save-as` and `space-choose-folder` each open the platform's own file chooser and then wait for
+//! `save-as` and `realm-choose-folder` each open the platform's own file chooser and then wait for
 //! somebody to click in it, which from a script is a window that never closes. Each has a command that
 //! takes the path instead, and the refusal says which — [`Action::instead_of_a_file_chooser`] is the
 //! list, and a test asserts every entry in it.
@@ -94,9 +94,9 @@ impl Action {
             Action::FillSide(side) => format!("fill-{}", side.name()),
             Action::ResetPanelLayout => "reset-panel-layout".to_owned(),
             // The canvas's own actions, `task-1904`. One name a variant, spelled the way every other
-            // name here is, so `unluminous-cli action run space-add-terminal` works the day the entry
+            // name here is, so `unluminous-cli action run realm-add-terminal` works the day the entry
             // is written.
-            Action::Space(what) => format!("space-{}", what.name()),
+            Action::Realm(what) => format!("realm-{}", what.name()),
             Action::Run(what) => format!("run-{}", what.name()),
             Action::Debug(what) => format!("debug-{}", what.name()),
             Action::CloseTab => "close-tab".to_owned(),
@@ -155,8 +155,8 @@ impl Action {
         }
         // The canvas's own, `task-1904`. Before `debug-`, which is only an ordering on the page:
         // no name is a prefix of another's, because every area's prefix is its own word.
-        if let Some(rest) = name.strip_prefix("space-") {
-            return crate::app::actions::SpaceAction::from_name(rest).map(Action::Space);
+        if let Some(rest) = name.strip_prefix("realm-") {
+            return crate::app::actions::RealmAction::from_name(rest).map(Action::Realm);
         }
         if let Some(rest) = name.strip_prefix("debug-") {
             // The argument names a **configuration** here rather than a file, exactly as it does for
@@ -313,7 +313,11 @@ impl Action {
             "save-as" => Some("tab save-as <path>"),
             // `task-1905`: a Folder View node's `Choose Folder...` opens the platform's chooser too, so it
             // is refused from a script with the command that takes the folder directly. Fifth of five.
-            "space-choose-folder" => Some("space folder <node> root --path <folder>"),
+            "realm-choose-folder" => Some("realm folder <node> root --path <folder>"),
+            // `task-2202`: a picture, a sound and a video are chosen through the same chooser.
+            "realm-add-image" => Some("realm add image <path>"),
+            "realm-add-audio" => Some("realm add audio <path>"),
+            "realm-add-video" => Some("realm add video <path>"),
             _ => None,
         }
     }
@@ -617,8 +621,8 @@ mod tests {
         // `task-1905`'s own: a Folder View node's folder is chosen through the platform's dialog, which is
         // a window nobody is looking at when a script asks for it.
         assert_eq!(
-            Action::instead_of_a_file_chooser("space-choose-folder"),
-            Some("space folder <node> root --path <folder>")
+            Action::instead_of_a_file_chooser("realm-choose-folder"),
+            Some("realm folder <node> root --path <folder>")
         );
         assert_eq!(Action::instead_of_a_file_chooser("save"), None, "Save needs no chooser");
     }

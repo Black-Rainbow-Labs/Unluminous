@@ -594,6 +594,24 @@ impl UnluminousApp {
             }
             return self.show_picture(ui, area);
         }
+        self.show_a_document_in(ui, area, focused, "preview")
+    }
+
+    /// The tab that is showing, in whichever of its three views it is in: the source, the preview, or the
+    /// two side by side with a divider between them.
+    ///
+    /// **One function for a tab in a pane and a note node on the canvas** (`task-2202`), so the two cannot
+    /// draw a Markdown file two different ways. A note node borrows the focus the way a File Editor node does,
+    /// so `files.active()` is its tab while this runs. `divider` names the divider between the halves, which
+    /// is `preview` for the editing area and the note's own name on the canvas, because two controls must not
+    /// share a name. Answers whether the source took the keyboard.
+    pub(crate) fn show_a_document_in(
+        &mut self,
+        ui: &mut egui::Ui,
+        area: Rect,
+        focused: bool,
+        divider: &str,
+    ) -> bool {
         match self.view_mode() {
             ViewMode::Raw => return self.show_editor(ui, area, focused),
             ViewMode::Preview => {
@@ -617,7 +635,7 @@ impl UnluminousApp {
                     Pos2::new(right.left(), right.top()),
                     Vec2::new(1.0, right.height()),
                 );
-                let drag = splitter::show(ui, edge, "preview", splitter::Axis::Upright);
+                let drag = splitter::show(ui, edge, divider, splitter::Axis::Upright);
                 if drag.delta != 0.0 && area.width() > 0.0 {
                     self.panes.preview_fraction =
                         (fraction + drag.delta / area.width()).clamp(0.15, 0.85);
@@ -946,8 +964,8 @@ impl UnluminousApp {
         // `show_an_editor_node`, which borrows `OpenFiles::focus` to the node for as long as it is drawn.
         //
         // Asking only for `Focus::Editor` is what `task-1914` reports as *"Im unable to edit files in file
-        // editor"*: clicking in a node put the caret there, `take_the_keyboard_for_the_space` set
-        // `Focus::Space`, and from the next frame on every key was dropped. The click frame worked, which is
+        // editor"*: clicking in a node put the caret there, `take_the_keyboard_for_the_realm` set
+        // `Focus::Realm`, and from the next frame on every key was dropped. The click frame worked, which is
         // why it read as the caret being drawn and nothing being typed.
         //
         // The two are told apart by where the tab being drawn lives rather than by a flag, so a pane drawn
@@ -955,7 +973,7 @@ impl UnluminousApp {
         let has_keyboard = focused
             && match self.focus {
                 Focus::Editor => true,
-                Focus::Space => self.files.focus().node().is_some(),
+                Focus::Realm => self.files.focus().node().is_some(),
                 _ => false,
             };
         let text_width = (area.width() - padding - size::EDITOR_PADDING_X).max(50.0);

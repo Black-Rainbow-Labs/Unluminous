@@ -2177,80 +2177,135 @@ fn drive_the_canvas(coverage: &mut Coverage) {
     let mut harness = harness_in(&dispatch_folder());
     let c = coverage;
 
-    c.works(&mut harness, "space show");
-    c.works(&mut harness, "space view --json");
-    c.works(&mut harness, "space list");
-    c.works(&mut harness, "space here");
-    c.works(&mut harness, "space views");
-    c.works(&mut harness, "space manage");
-    c.works(&mut harness, "space camera --fit");
-    c.works(&mut harness, "space new-view Rendering");
-    c.works(&mut harness, "space open-view Rendering");
-    c.refuses(&mut harness, "space open-view Nosuchview");
-    c.works(&mut harness, "space rename-view Rendering Second");
-    c.works(&mut harness, "space duplicate-view Second");
-    c.works(&mut harness, "space delete-view Second");
-    c.refuses(&mut harness, "space delete-view Nosuchview");
-    c.sets_up(&mut harness, "space open-view Main");
+    c.works(&mut harness, "realm show");
+    c.works(&mut harness, "realm view --json");
+    c.works(&mut harness, "realm nodes");
+    c.works(&mut harness, "realm here");
+    c.works(&mut harness, "realm list");
+    c.works(&mut harness, "realm info");
+    c.works(&mut harness, "realm manage");
+    c.works(&mut harness, "realm camera --fit");
+    c.works(&mut harness, "realm new Rendering");
+    c.works(&mut harness, "realm open Rendering");
+    c.refuses(&mut harness, "realm open Nosuchrealm");
+    c.works(&mut harness, "realm rename Rendering Second");
+    c.works(&mut harness, "realm duplicate Second");
+    c.works(&mut harness, "realm delete Second");
+    c.refuses(&mut harness, "realm delete Nosuchrealm");
+    // A window with no space.conf has nothing to import, and says so rather than making something up.
+    c.refuses(&mut harness, "realm import");
+    c.sets_up(&mut harness, "realm open main");
 
     // **Detached nodes for the three that would start something.** A terminal node runs a real shell
-    // and a browser node wants a web view; `new_detached_space_node` is `task-1904`'s own answer, and
-    // it is what `tests/canvas_space.rs` builds every one of its nodes with.
-    let terminal = harness.state_mut().new_detached_space_node(
-        unluminous_app::services::space::Kind::Terminal,
+    // and a browser node wants a web view; `new_detached_realm_node` is `task-1904`'s own answer, and
+    // it is what `tests/canvas_realm.rs` builds every one of its nodes with.
+    let terminal = harness.state_mut().new_detached_realm_node(
+        unluminous_app::services::realm::Kind::Terminal,
         egui::pos2(40.0, 40.0),
     );
-    let browser = harness.state_mut().new_detached_space_node(
-        unluminous_app::services::space::Kind::Browser,
+    let browser = harness.state_mut().new_detached_realm_node(
+        unluminous_app::services::realm::Kind::Browser,
         egui::pos2(400.0, 40.0),
     );
-    let tree = harness.state_mut().new_detached_space_node(
-        unluminous_app::services::space::Kind::Folder,
+    let tree = harness.state_mut().new_detached_realm_node(
+        unluminous_app::services::realm::Kind::Folder,
         egui::pos2(40.0, 300.0),
     );
     steady(&mut harness);
-    let editor = did(&mut harness, "space add editor --path src/main.rs")["node"]
+    let editor = did(&mut harness, "realm add editor --path src/main.rs")["node"]
         .as_u64()
         .expect("the node the command made");
-    let chat = did(&mut harness, "space add chat")["node"].as_u64().expect("the chat node");
-    let tasks = did(&mut harness, "space add tasks")["node"].as_u64().expect("the tasks node");
-    c.refuses(&mut harness, "space add nonsense");
+    let chat = did(&mut harness, "realm add chat")["node"].as_u64().expect("the chat node");
+    let tasks = did(&mut harness, "realm add tasks")["node"].as_u64().expect("the tasks node");
+    c.refuses(&mut harness, "realm add nonsense");
 
     for (line, refusal) in [
-        (format!("space move {terminal} --x 60"), "space move 99 --x 60"),
-        (format!("space size {terminal} --width 500"), "space size 99 --width 500"),
-        (format!("space title {terminal} named"), "space title 99 named"),
-        (format!("space focus {terminal}"), "space focus 99"),
-        (format!("space font {terminal} --size 16"), "space font 99 --size 16"),
-        (format!("space zoom {terminal} --bigger"), "space zoom 99 --bigger"),
-        (format!("space send {terminal} hello"), "space send 99 hello"),
-        (format!("space read {terminal}"), "space read 99"),
-        (format!("space restart {terminal}"), "space restart 99"),
-        (format!("space editor {editor} src/other.rs"), "space editor 99 src/other.rs"),
-        (format!("space folder {tree} rows"), "space folder 99 rows"),
-        (format!("space chat {chat} state"), "space chat 99 state"),
+        (format!("realm move {terminal} --x 60"), "realm move 99 --x 60"),
+        (format!("realm size {terminal} --width 500"), "realm size 99 --width 500"),
+        (format!("realm title {terminal} named"), "realm title 99 named"),
+        (format!("realm focus {terminal}"), "realm focus 99"),
+        (format!("realm font {terminal} --size 16"), "realm font 99 --size 16"),
+        (format!("realm zoom {terminal} --bigger"), "realm zoom 99 --bigger"),
+        (format!("realm send {terminal} hello"), "realm send 99 hello"),
+        (format!("realm read {terminal}"), "realm read 99"),
+        (format!("realm restart {terminal}"), "realm restart 99"),
+        (format!("realm editor {editor} src/other.rs"), "realm editor 99 src/other.rs"),
+        (format!("realm folder {tree} rows"), "realm folder 99 rows"),
+        (format!("realm chat {chat} state"), "realm chat 99 state"),
         (
-            format!("space address {browser} https://example.com/"),
-            "space address 99 https://example.com/",
+            format!("realm address {browser} https://example.com/"),
+            "realm address 99 https://example.com/",
         ),
-        (format!("space browser {browser} url"), "space browser 99 url"),
-        (format!("space here --node {terminal}"), "space here --node 99"),
+        (format!("realm browser {browser} url"), "realm browser 99 url"),
+        (format!("realm here --node {terminal}"), "realm here --node 99"),
     ] {
         c.works(&mut harness, &line);
         c.refuses(&mut harness, refusal);
     }
 
-    c.works(&mut harness, &format!("space connect {terminal} {editor}"));
-    c.refuses(&mut harness, "space connect 99 98");
-    let connections = did(&mut harness, "space connections --json");
+    c.works(&mut harness, &format!("realm connect {terminal} {editor}"));
+    c.refuses(&mut harness, "realm connect 99 98");
+    let connections = did(&mut harness, "realm connections --json");
     let connection = connections["connections"][0]["connection"]
         .as_u64()
         .expect("the connection that was just made");
-    c.works(&mut harness, &format!("space disconnect {connection}"));
-    c.refuses(&mut harness, "space disconnect 99");
-    c.works(&mut harness, &format!("space remove {tasks}"));
-    c.refuses(&mut harness, "space remove 99");
-    c.works(&mut harness, "space hide");
+    c.works(&mut harness, &format!("realm disconnect {connection}"));
+    c.refuses(&mut harness, "realm disconnect 99");
+    c.works(&mut harness, &format!("realm remove {tasks}"));
+    c.refuses(&mut harness, "realm remove 99");
+    c.works(&mut harness, "realm hide");
+    drive_the_realm_files(c);
+}
+
+/// The import of a `space.conf`, and the four kinds of node `task-2202` added, in a project of their own,
+/// because the import writes realm files and the media have to be real files in the project.
+fn drive_the_realm_files(c: &mut Coverage) {
+    let folder = std::env::temp_dir().join(format!("unluminous-cli-realm-{}", std::process::id()));
+    std::fs::remove_dir_all(&folder).ok();
+    std::fs::create_dir_all(folder.join(".unluminous")).expect("make the project");
+    std::fs::copy(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/realm/space.conf"),
+        folder.join(".unluminous/space.conf"),
+    )
+    .expect("copy the space.conf fixture");
+    let wav = unluminous_app::services::realm::player::a_silent_wav(2.0);
+    std::fs::write(folder.join("one.wav"), wav).expect("write the sound");
+    std::fs::write(folder.join("clip.mp4"), b"not really a video").expect("write the video");
+    let mut picture = Vec::new();
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([0x22, 0xB8, 0xE6, 255]))
+        .write_to(&mut std::io::Cursor::new(&mut picture), image::ImageFormat::Png)
+        .expect("encode the picture");
+    std::fs::write(folder.join("cover.png"), picture).expect("write the picture");
+
+    let mut harness = harness_in(&folder);
+    c.works(&mut harness, "realm show");
+    c.works(&mut harness, "realm import");
+    // A second import writes nothing: every file is already there, and it never overwrites one.
+    let again = did(&mut harness, "realm import");
+    assert_eq!(again["written"].as_array().map(Vec::len), Some(0), "{again}");
+    c.sets_up(&mut harness, "realm open main");
+
+    let image = did(&mut harness, "realm add image cover.png")["node"].as_u64().expect("the image");
+    did(&mut harness, "realm add video clip.mp4");
+    let sound = did(&mut harness, "realm add audio one.wav")["node"].as_u64().expect("the sound");
+    let note = did(&mut harness, "realm add note Plan")["node"].as_u64().expect("the note");
+    c.refuses(&mut harness, "realm add image ../outside.png");
+    steady(&mut harness);
+
+    c.works(&mut harness, &format!("realm note view {note} preview"));
+    c.refuses(&mut harness, &format!("realm note view {image} preview"));
+    for (line, refusal) in [
+        (format!("realm play {sound}"), format!("realm play {image}")),
+        (format!("realm seek {sound} 1.5"), format!("realm seek {image} 1.5")),
+        (format!("realm volume {sound} 0.5"), format!("realm volume {sound} 3")),
+        (format!("realm pause {sound}"), "realm pause 99".to_owned()),
+    ] {
+        c.works(&mut harness, &line);
+        c.refuses(&mut harness, &refusal);
+    }
+    c.works(&mut harness, "realm hide");
+    drop(harness);
+    std::fs::remove_dir_all(&folder).ok();
 }
 
 /// The debugger, against a session with no adapter behind it.
@@ -2833,7 +2888,7 @@ fn a_newer_version_is_offered_and_dont_ask_again_declines_that_version() {
 /// here, in the crate the catalogue cannot see. `docs/protocol.md` is generated against the
 /// declaration, and the declaration was wrong in both directions before this: it named `launch`,
 /// which the client answers itself and no window ever sees, and it omitted `status`, `git status`,
-/// the five `input` commands and `space browser <node> shot`.
+/// the five `input` commands and `realm browser <node> shot`.
 ///
 /// Driven rather than read, for the ones a test window can drive: `run_command_line` answers `None`
 /// for a command the window held, which is the property itself.

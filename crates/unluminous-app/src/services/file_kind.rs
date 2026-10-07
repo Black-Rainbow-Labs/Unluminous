@@ -171,7 +171,7 @@ const BINARY_EXTENSIONS: &[&str] = &[
 
 /// Extensions Unluminous can show as a picture. Every one of them is a format the `image` crate is built
 /// with, so a name here that the decoder does not know would be a tab that opens and stays empty.
-const IMAGE_EXTENSIONS: &[&str] =
+pub const IMAGE_EXTENSIONS: &[&str] =
     &["png", "jpg", "jpeg", "gif", "bmp", "ico", "webp", "tif", "tiff"];
 
 /// Names with no extension that are text, so the file does not have to be read to find out.

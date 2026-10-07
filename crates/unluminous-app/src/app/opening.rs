@@ -37,6 +37,7 @@ impl UnluminousApp {
         // A fresh tree knows nothing of the settings, and the folder it has just read may be a
         // different repository with a different `.gitignore`.
         self.tree.set_exclude(&self.settings.exclude);
+        self.tree.set_shows(self.plugins.explorer_shows());
         self.filter.clear();
         self.explorer_visible = true;
         self.terminal.tabs.settings.working_directory = Some(folder.to_path_buf());
@@ -125,6 +126,15 @@ impl UnluminousApp {
     /// The message is still set, because the person at the window still needs it. What is added is
     /// that the reason is *returned* as well, so a caller can tell.
     pub(crate) fn open_path_in_tab(&mut self, path: &Path, permanent: bool) -> Result<(), String> {
+        // **A file a ui plugin claims opens where that plugin draws it**, before it is asked whether it is
+        // text. `task-2202`: a `.realm` file opens in the Realm panel, on that realm, rather than as the
+        // `name = value` lines it is made of. `tab open`, a double click in the explorer, `Go to File` and a
+        // drop all come through here, so they all do the same.
+        if self.plugins.opens_elsewhere(path) == Some("realm") {
+            let relative = crate::services::project_state::relative(self.tree.root(), path);
+            self.show_a_panel(crate::app::dock::Panel::Realm, true);
+            return self.open_a_realm(&relative);
+        }
         if let Err(refusal) = file_kind::openable(path) {
             let reason = format!("{}: {}", path.display(), refusal.reason());
             self.message = Some(reason.clone());
@@ -227,6 +237,7 @@ impl UnluminousApp {
     /// `close_tab` does, because writing a file in order to throw it away is not a thing to do. The
     /// project's marks for those paths go with them, and the index is told the project changed.
     pub fn delete_path(&mut self, path: &Path) {
+        self.a_realm_file_is_going(path);
         match recycle::delete(path) {
             Ok(()) => {
                 let gone: Vec<PathBuf> = self
@@ -244,6 +255,7 @@ impl UnluminousApp {
                 if self.selected.as_deref() == Some(path) {
                     self.selected = path.parent().map(Path::to_path_buf);
                 }
+                self.a_realm_file_went(path);
                 self.tree.reload();
                 self.the_project_changed_on_disk();
                 let name = path
@@ -296,6 +308,7 @@ impl UnluminousApp {
         // at its new path rather than at one with nothing behind it.
         self.retarget_the_tabs(&plan.moved);
         self.marks.moved(&plan.moved);
+        self.a_realm_file_moved(from, to);
         let report = self.apply_a_move(&plan);
         self.tree.reload();
         if let Some(folder) = to.parent() {

@@ -315,7 +315,7 @@ pub struct BrowserPlacement {
     ///
     /// **A native child cannot be transformed**, so the canvas spends its camera on the page's own zoom:
     /// a node at half the camera's scale draws a page half the size rather than reflowing it at half the
-    /// width. `app::space::show_a_browser_node` works out the product of the node's own zoom and the
+    /// width. `app::realm::show_a_browser_node` works out the product of the node's own zoom and the
     /// camera's, and it used to send it straight to the engine from inside the egui pass — while the
     /// bounds went to the engine from `raw_input_hook`, **before** the pass, off the placement the
     /// *previous* frame recorded.
@@ -438,6 +438,21 @@ impl BrowserHost {
         }
     }
 
+    /// The videos the realm's video nodes play. `task-2202`.
+    pub fn media(&self) -> &MediaStore {
+        self.resources.media()
+    }
+
+    /// Run a script in the page the native view is showing, when it is showing tab `id`. Refused otherwise,
+    /// because a script meant for one page must not run in another. `task-2202`: how `realm play` reaches a
+    /// video that is showing.
+    pub fn evaluate(&self, id: u64, script: &str) -> Result<(), String> {
+        if self.showing() != Some(id) {
+            return Err("That page is not the one showing.".to_owned());
+        }
+        self.native.evaluate(script)
+    }
+
     /// Allocate a stable id and register any local root before the page can request an asset.
     pub fn open_tab(&mut self, location: BrowserLocation) -> BrowserTab {
         let id = self.next_id;
@@ -512,7 +527,7 @@ impl BrowserHost {
     /// How big the tab that is showing draws its page.
     ///
     /// A window has one native view, so only the tab it is pointed at can be zoomed — which is why a
-    /// node's zoom is remembered in `space::live::Live` and applied again when the view moves to it.
+    /// node's zoom is remembered in `realm::live::Live` and applied again when the view moves to it.
     pub fn zoom(&self, id: u64, factor: f64) -> Result<(), String> {
         self.for_the_showing_tab(id)?;
         self.native.zoom(factor)
@@ -731,12 +746,190 @@ struct LocalRoot {
 
 /// Static resources available to local browser tabs, shared with Wry's protocol callbacks.
 #[derive(Debug, Clone)]
-struct LocalResourceStore(Arc<Mutex<HashMap<u64, LocalRoot>>>);
+struct LocalResourceStore(Arc<Mutex<HashMap<u64, LocalRoot>>>, MediaStore);
+
+/// The videos a Realm's video nodes play, by node id. `task-2202`, §5.4 of `tasks/task-2199-realm-tdd.md`.
+///
+/// **A file is served by the node that names it, never by a path in the address.** The page a video node
+/// shows is `unluminous://realm/video/<node>` and the file is `unluminous://realm/media/<node>`, and both are
+/// answered from this map, which the window fills with the files the open realm's video nodes name after
+/// `store::inside` has checked each one is in the project. A page asking for any other number gets a 404.
+#[derive(Debug, Clone, Default)]
+pub struct MediaStore(Arc<Mutex<HashMap<u64, MediaPage>>>);
+
+/// What one video node's page plays and how.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MediaPage {
+    pub file: PathBuf,
+    pub volume: f32,
+    pub looping: bool,
+    pub muted: bool,
+    /// Where to start, in seconds.
+    pub position: f32,
+    /// Whether to start playing as soon as it has loaded, which is what `realm play` on a video nobody is
+    /// looking at asks for.
+    pub autoplay: bool,
+}
+
+impl MediaStore {
+    /// Name the file a video node plays, or change how it plays it.
+    pub fn register(&self, node: u64, page: MediaPage) {
+        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(node, page);
+    }
+
+    /// Forget a video node, so its page and its file are no longer served.
+    pub fn forget(&self, node: u64) {
+        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).remove(&node);
+    }
+
+    fn page(&self, node: u64) -> Option<MediaPage> {
+        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&node).cloned()
+    }
+
+    /// Answer a request to the `realm` origin, or `None` when it is for another one.
+    fn serve(&self, method: &str, uri: &str, range: Option<&str>) -> Option<ResourceReply> {
+        let url = Url::parse(uri).ok()?;
+        let host = url.host_str()?;
+        if host != "realm" && host != "unluminous.realm" {
+            return None;
+        }
+        if method != "GET" && method != "HEAD" {
+            return Some(ResourceReply::empty(405));
+        }
+        let mut parts = url.path().trim_matches('/').split('/');
+        let (which, node) = (parts.next()?, parts.next()?);
+        let Some(node) = node.parse::<u64>().ok() else { return Some(ResourceReply::empty(404)) };
+        let Some(page) = self.page(node) else { return Some(ResourceReply::empty(404)) };
+        Some(match which {
+            "video" => ResourceReply {
+                status: 200,
+                mime: "text/html; charset=utf-8".to_owned(),
+                bytes: match method {
+                    "HEAD" => Vec::new(),
+                    _ => video_page(node, &page).into_bytes(),
+                },
+                headers: Vec::new(),
+            },
+            "media" => media_reply(&page.file, method, range),
+            _ => ResourceReply::empty(404),
+        })
+    }
+}
+
+/// The page a video node shows: the video and the browser's own controls, filling the node, and a title that
+/// says where it is, which is how the window learns the position without a script callback. `task-2202`.
+pub fn video_page(node: u64, page: &MediaPage) -> String {
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>realm 0 0 0</title><style>\
+         html,body{{margin:0;height:100%;background:#000;overflow:hidden}}\
+         video{{width:100%;height:100%;object-fit:contain;display:block}}</style></head><body>\
+         <video id=\"v\" controls preload=\"metadata\" src=\"../media/{node}\"></video><script>\
+         const v=document.getElementById('v');v.volume={volume};v.loop={looping};v.muted={muted};\
+         v.addEventListener('loadedmetadata',()=>{{v.currentTime={position};if({autoplay}){{v.play();}}}});\
+         const say=()=>{{document.title='realm '+v.currentTime.toFixed(1)+' '+(v.paused?0:1)+' '+(v.duration||0).toFixed(1);}};\
+         ['timeupdate','play','pause','seeked','loadedmetadata'].forEach(e=>v.addEventListener(e,say));\
+         </script></body></html>",
+        volume = page.volume.clamp(0.0, 1.0),
+        looping = page.looping,
+        muted = page.muted,
+        position = page.position.max(0.0),
+        autoplay = page.autoplay,
+    )
+}
+
+/// What a video page's title says about where it is: `realm <seconds> <1 when playing> <length>`.
+pub fn read_a_video_title(title: &str) -> Option<(f32, bool, f32)> {
+    let mut words = title.strip_prefix("realm ")?.split_whitespace();
+    let position = words.next()?.parse().ok()?;
+    let playing = words.next()? == "1";
+    let length = words.next()?.parse().ok()?;
+    Some((position, playing, length))
+}
+
+/// The largest piece of a file one answer carries when the page asked for "the rest of it".
+///
+/// A video is not read whole into memory: a player asks for `bytes=0-` and then for what it needs, and an
+/// answer of a few megabytes at a time is what keeps a two gigabyte file from being two gigabytes of memory.
+const MEDIA_CHUNK: u64 = 4 * 1024 * 1024;
+
+/// A media file, or the part of it a `Range` header asks for.
+///
+/// **A `Range` is answered with 206**, which is not optional: without it WebView2 and WKWebView cannot seek,
+/// and WKWebView will not play at all. §5.4.
+pub fn media_reply(file: &Path, method: &str, range: Option<&str>) -> ResourceReply {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut opened) = std::fs::File::open(file) else { return ResourceReply::empty(404) };
+    let total = opened.metadata().map(|about| about.len()).unwrap_or(0);
+    let mime = mime_guess::from_path(file).first_or_octet_stream().essence_str().to_owned();
+    let asked = range.and_then(|range| byte_range(range, total));
+    let (start, end, status) = match (range, asked) {
+        (Some(_), None) => {
+            return ResourceReply {
+                status: 416,
+                mime,
+                bytes: Vec::new(),
+                headers: vec![("Content-Range", format!("bytes */{total}"))],
+            };
+        }
+        (Some(_), Some((start, end))) => (start, end, 206),
+        (None, _) => (0, total.saturating_sub(1), 200),
+    };
+    let length = if total == 0 { 0 } else { end - start + 1 };
+    let mut bytes = Vec::new();
+    if method != "HEAD" && length > 0 {
+        bytes.resize(length as usize, 0);
+        if opened.seek(SeekFrom::Start(start)).is_err() || opened.read_exact(&mut bytes).is_err() {
+            return ResourceReply::empty(500);
+        }
+    }
+    let mut headers = vec![("Accept-Ranges", "bytes".to_owned())];
+    if status == 206 {
+        headers.push(("Content-Range", format!("bytes {start}-{end}/{total}")));
+    }
+    ResourceReply { status, mime, bytes, headers }
+}
+
+/// The first and last byte a `Range: bytes=...` header asks for, within a file `total` bytes long.
+///
+/// One range only, which is what a media element asks for. An open ended range is cut to [`MEDIA_CHUNK`].
+pub fn byte_range(header: &str, total: u64) -> Option<(u64, u64)> {
+    let spec = header.trim().strip_prefix("bytes=")?.split(',').next()?.trim();
+    let (from, to) = spec.split_once('-')?;
+    if total == 0 {
+        return None;
+    }
+    let (start, end) = match (from.trim(), to.trim()) {
+        ("", suffix) => {
+            let suffix: u64 = suffix.parse().ok()?;
+            (total.saturating_sub(suffix), total - 1)
+        }
+        (from, "") => {
+            let start: u64 = from.parse().ok()?;
+            (start, (start + MEDIA_CHUNK - 1).min(total - 1))
+        }
+        (from, to) => (from.parse().ok()?, to.parse::<u64>().ok()?.min(total - 1)),
+    };
+    (start <= end && start < total).then_some((start, end))
+}
 
 impl LocalResourceStore {
     /// An empty registry that opens no file and starts no thread.
     fn new() -> Self {
-        Self(Arc::new(Mutex::new(HashMap::new())))
+        Self(Arc::new(Mutex::new(HashMap::new())), MediaStore::default())
+    }
+
+    /// The videos this store serves for the realm's video nodes.
+    fn media(&self) -> &MediaStore {
+        &self.1
+    }
+
+    /// Answer one request to the custom origin: a video node's page or its file, or a local tab's resource.
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+    fn serve(&self, id: u64, method: &str, uri: &str, range: Option<&str>) -> ResourceReply {
+        match self.1.serve(method, uri, range) {
+            Some(reply) => reply,
+            None => self.resolve(id, method, uri),
+        }
     }
 
     /// Register the one canonical root a local tab may read under.
@@ -786,6 +979,7 @@ impl LocalResourceStore {
             status: 200,
             mime,
             bytes: if method == "HEAD" { Vec::new() } else { bytes },
+            headers: Vec::new(),
         }
     }
 
@@ -854,17 +1048,19 @@ impl LocalResourceStore {
 /// Unreachable where there is no web view. See [`LocalRoot`].
 #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ResourceReply {
-    status: u16,
-    mime: String,
-    bytes: Vec<u8>,
+pub struct ResourceReply {
+    pub status: u16,
+    pub mime: String,
+    pub bytes: Vec<u8>,
+    /// Anything else the answer needs, which is `Content-Range` and `Accept-Ranges` for a video.
+    pub headers: Vec<(&'static str, String)>,
 }
 
 impl ResourceReply {
     /// A response with no body, used for misses and refused methods.
     #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     fn empty(status: u16) -> Self {
-        Self { status, mime: "text/plain; charset=utf-8".to_owned(), bytes: Vec::new() }
+        Self { status, mime: "text/plain; charset=utf-8".to_owned(), bytes: Vec::new(), headers: Vec::new() }
     }
 }
 
@@ -1171,6 +1367,15 @@ mod native {
                 .map_err(|problem| format!("The browser could not navigate: {problem}"))
         }
 
+        /// Run a script in the page the view is on.
+        pub fn evaluate(&self, script: &str) -> Result<(), String> {
+            let view =
+                self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
+            view.webview
+                .evaluate_script(script)
+                .map_err(|problem| format!("The page could not be asked: {problem}"))
+        }
+
         /// Reload the page the view is on.
         pub fn reload(&self) -> Result<(), String> {
             let view =
@@ -1207,14 +1412,17 @@ mod native {
         showing: u64,
         request: wry::http::Request<Vec<u8>>,
     ) -> wry::http::Response<Cow<'static, [u8]>> {
+        let range = request.headers().get("range").and_then(|value| value.to_str().ok());
         let reply =
-            resources.resolve(showing, request.method().as_str(), &request.uri().to_string());
-        wry::http::Response::builder()
+            resources.serve(showing, request.method().as_str(), &request.uri().to_string(), range);
+        let mut response = wry::http::Response::builder()
             .status(reply.status)
             .header("Content-Type", reply.mime)
-            .header("Cache-Control", "no-store")
-            .body(Cow::Owned(reply.bytes))
-            .expect("resource response")
+            .header("Cache-Control", "no-store");
+        for (name, value) in &reply.headers {
+            response = response.header(*name, value);
+        }
+        response.body(Cow::Owned(reply.bytes)).expect("resource response")
     }
 
     /// Keep the view inside its pane and change native state only when the answer moved.
@@ -1523,6 +1731,10 @@ mod native {
         }
         /// Refuse reloading for the same reason.
         pub fn reload(&self) -> Result<(), String> {
+            Err(UNSUPPORTED.to_owned())
+        }
+
+        pub fn evaluate(&self, _script: &str) -> Result<(), String> {
             Err(UNSUPPORTED.to_owned())
         }
         /// And zooming, which is the engine's own number.

@@ -69,8 +69,8 @@ pub mod bundled;
 pub use grammar::{scheme_of, Grammars};
 pub use manifest::{colour, parse};
 pub use registries::{
-    CHROME, DEBUGGERS, ICON_SETS, PANE_CONDITIONS, PANE_ICONS, PROJECT_RUNNERS, RENDERERS,
-    UI_PROVIDERS,
+    CHROME, CORE_PROVIDERS, DEBUGGERS, ICON_SETS, PANE_CONDITIONS, PANE_ICONS, PROJECT_RUNNERS,
+    RENDERERS, UI_PROVIDERS,
 };
 pub use store::{Plugins, FOLDER};
 pub use types::{

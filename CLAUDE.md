@@ -892,7 +892,7 @@ arguments that names one, so `sprint-rename August 2nd Half September` needs no 
 
 ### The plus sits after the last view, which is where a browser puts it
 
-`components::space::view_bar` drew it at `area.right() - 18.0`, past the zoom controls at the far end of
+`components::realm::view_bar` drew it at `area.right() - 18.0`, past the zoom controls at the far end of
 the bar — so the one control that acts on the row of tabs was the furthest thing in the window from the row
 of tabs. `task-2004`: *"The + sign to add a new view to base of infinite space should be on the right of the
 last view/tab, similar to Firefox browser."* It is at the pen now, after the last chip and after the `+N
@@ -900,7 +900,7 @@ more` row when there is one, kept clear of the zoom controls so a full bar does 
 
 ## The canvas is a fifth panel, and a node is where a tab can live
 
-`task-1904` asks for a new view called the **Base of Infinite Space**: an infinite canvas holding a
+`task-1904` asks for a new view called the **Realm**: an infinite canvas holding a
 terminal, a web page, a folder tree and a file editor, wired together so an agent running in a
 terminal node can drive what it is connected to. `tasks/task-1904-base-of-infinite-space-tdd.md` is
 the design and Chordical's own node graph is the picture it is measured against, redrawn in the dark
@@ -910,7 +910,7 @@ neumorphism the board is in.
 components, it probably makes sense to have this be core functionality"*. The stronger reason is that
 three of its four node kinds need something a provider cannot reach — `OpenFiles`, a `Document`, and
 the one native browser child the window owns. What it keeps from the plugin shape is everything
-`pane.*` buys: `app::dock::Panel` gained a fifth variant, `Panel::Space`, so the rail button, the four
+`pane.*` buys: `app::dock::Panel` gained a fifth variant, `Panel::Realm`, so the rail button, the four
 `Move to` rows, the drop bands, the divider and `Cmd`+`Shift`+`M` all arrived with no code of their
 own. `settings::Panes` said of itself that "a fifth panel would be a fifth arm here and nowhere else",
 and it was.
@@ -936,14 +936,14 @@ blame, `Ctrl+F`, go to definition, `editor text` and `tab save` all work with no
 pane, cannot leave one empty and is not renumbered into one. `move_to_node` leaves a fresh untitled tab
 behind when it takes the last one, which is `close`'s own promise.
 
-**A connection grants control, and carries text only when it is asked to.** `space browser`, `space
-folder`, `space editor` and `space send` all take `--from`, and a node that is not wired to its target
+**A connection grants control, and carries text only when it is asked to.** `realm browser`, `space
+folder`, `realm editor` and `realm send` all take `--from`, and a node that is not wired to its target
 is refused with the list of what it *is* wired to; a command with no `--from` is the window's own agent
-and may reach everything. Each terminal node's environment carries `UNLUMINOUS_SPACE_NODE`, so an agent
+and may reach everything. Each terminal node's environment carries `UNLUMINOUS_REALM_NODE`, so an agent
 started in one knows which node it is without being told. `Edge::pipe` is off unless somebody turns it
 on, because a shell's output is its prompt and its escape sequences as well as its answers — and **a
 line that arrived through a pipe is never sent back out**, which is the one rule that stops two
-terminals wired both ways looping for ever. `services::space::pipe` is that rule and its test.
+terminals wired both ways looping for ever. `services::realm::pipe` is that rule and its test.
 
 **And `unluminous-cli` is on a node's own `PATH`, in front of whatever was there.** `task-2004`:
 *"Agent's in the base of infinite space don't seem to have the cli, or don't understand the unluminous
@@ -952,7 +952,7 @@ installation folder — and the variables that said where it is were never read,
 agent run `env`. So the name an agent guesses is the name that works, and `--instance` defaults from
 `UNLUMINOUS_INSTANCE`, so a machine with two windows open is not an ambiguous question.
 `agent_tasks::how_to_reach_this_window` is the one answer a terminal node, a chat node's agent and a
-ticket's agent all use, and the `space` preamble in the catalogue says the bare command now, because the
+ticket's agent all use, and the `realm` preamble in the catalogue says the bare command now, because the
 catalogue is what an agent reads.
 
 **One browser node renders at a time**, because a window has one native child view: the others draw the
@@ -962,7 +962,7 @@ editing area's are, in `raw_input_hook`, for the same reason.
 
 **And no screenshot Unluminous takes contains a page.** A rendered page is a native child window the
 operating system composites on top of the surface `ViewportCommand::Screenshot` captures, so `window
-screenshot` has never held one and `space browser <node> shot` does not either — what it photographs is
+screenshot` has never held one and `realm browser <node> shot` does not either — what it photographs is
 the node, its address bar and where it is on the canvas. Measured on 0.39.0 rather than assumed: the
 same `unluminous://` page in the editing area's own browser tab, at full height, comes back as an empty
 rectangle while two dozen `msedgewebview2` processes are running. A picture that really held the page
@@ -996,8 +996,8 @@ exists for — `claude` starts programs for its own tools, so a node running it 
 was recorded as running `bash`. Until `task-1912` this answered `None` on Windows, so a node where somebody
 typed `claude` came back a bare shell and resumed no conversation.
 
-**The canvas is written when it changes and not on every frame.** `Space::is_dirty` is set by every
-mutation and cleared by the write, so dragging a node writes `.unluminous/space.conf` once at the end
+**The canvas is written when it changes and not on every frame.** `Realm::is_dirty` is set by every
+mutation and cleared by the write, so dragging a node writes its `.realm` file once at the end
 rather than sixty times a second — which is the one thing this deliberately does not copy from
 `project_state`, which writes every frame. What comes back is a canvas, not a moment: a terminal node
 returns as a fresh session running the same command in the same folder, which is `project_state`'s own
@@ -1010,10 +1010,34 @@ running would keep an idle window drawing for as long as a shell sat at its prom
 the first screenshot test panic on `Harness::run exceeded max_steps`. What genuinely needs a frame is
 reading a pipe, which is a poll on a clock.
 
-`unluminous-cli space` is the agent's half — twenty four commands since `task-1914` added `space chat`,
+`unluminous-cli realm` is the agent's half — twenty four commands since `task-1914` added `realm chat`,
 every one of them going through the same function the pointer does. The MCP grouped schema grew from
 18,511 tokens to 20,365 to hold the first twenty three, which is the largest single move that number has
 made; it is 21,801 today and is recorded beside the others in `mcp::tools`.
+
+### A realm is a file in the project (`task-2202`)
+
+`tasks/task-2199-realm-tdd.md` is the design. Each realm is a `.realm` file, kept in `.realm-files/` by
+default, and `services::realm::store` reads and writes it. Four rules to keep:
+
+- **What the realm is goes in the file, and what one person was doing in it goes in the sidecar**,
+  `.unluminous/realms/<path>.conf`: the camera, the chosen node, sessions, carets and where a sound was
+  paused. A save whose text matches what is on the disk writes nothing, so looking at a realm leaves
+  `git status` clean.
+- **A key or a kind this build does not know is kept and written back.** `realm.reader` refuses,
+  `realm.writer` and `realm.needs` open read only, and `CHANGES_THE_FILE` in `cli_realm.rs` is the
+  list of commands refused while a realm is read only.
+- **`space.conf` is imported once and never written or deleted.** `store::import` never overwrites a
+  realm file, and `realm.imported` in `workspace.conf` stops a deleted realm coming back.
+- **A control inside a node takes an id of its own**, `egui::Id::new((salt, node))`, never
+  `ui.id().with(..)`: a node's `Ui` id is not the same from one frame to the next, so an accessibility
+  click aimed at last frame's id reached nothing.
+
+The `realm` plugin is the switch for all of it: `ui.provider = realm` is in `plugins::CORE_PROVIDERS`,
+because the window draws the panel, and the plugin contributes `ui.extensions = .realm` and
+`explorer.shows = .realm-files`. A sound is played by `rodio` through the `Player` trait, and a window
+a test builds plays through `SilentPlayer`. A video plays in the one web view, on
+`unluminous://realm/video/<id>`, with its file served by node id at `unluminous://realm/media/<id>`.
 
 ### Six kinds of node, and the two that were added are not the same shape as each other
 
@@ -1027,15 +1051,15 @@ the tool blocks all arrive with no code of their own. What differs is which chat
 is the whole of what the ticket's second sentence needs: *"a node that is able to connect similar to our
 terminal with claude etc so the agent knows how to control/read/etc the nodes it's connected to."* Two
 views of one conversation are one agent that cannot say which node it is. Which conversation each node is
-on is written to `space.conf`, because a canvas whose agents all reopened the newest would come back as
+on is written to the realm's sidecar, because a canvas whose agents all reopened the newest would come back as
 several views of one.
 
-**And the wiring is filled in rather than hoped for.** A terminal node carries `UNLUMINOUS_SPACE_NODE`
+**And the wiring is filled in rather than hoped for.** A terminal node carries `UNLUMINOUS_REALM_NODE`
 and the client sends it; a chat node has no client and no environment, so
 `what_a_chat_node_is_asking_about` puts the node id into the call before it runs — `node` for
-`space here`, which is the one command that asks *which node is calling*, and `from` for every other one.
+`realm here`, which is the one command that asks *which node is calling*, and `from` for every other one.
 It is read from the catalogue rather than from a list, because `task-1804`'s rule is that a key a command
-does not name is a usage refusal, so filling one in blindly would turn `space list` into an error; and a
+does not name is a usage refusal, so filling one in blindly would turn `realm list` into an error; and a
 `from` the model named is left alone, so an agent asking about a node it is not wired to is refused
 exactly as one typing at a terminal is.
 
@@ -1047,7 +1071,7 @@ resurrecting it, which is `Plugins::renders`' rule about a Mermaid diagram.
 
 **And a chat node is driven from the command line**, which is not a nicety either: everything a person
 can do in this window an agent can do too, and a chat that could only be typed into would be the one
-surface with no way in. `space chat <node> <verb>` forwards to `UiProvider::command` — the same function
+surface with no way in. `realm chat <node> <verb>` forwards to `UiProvider::command` — the same function
 `plugins run agent-chat` calls — so the verbs are not a second list and the two cannot answer
 differently. What it adds is *whose* conversation. The board needs no such command, because there is one
 board and `plugins run agent-tasks` already reaches it.
@@ -1167,9 +1191,9 @@ somewhere else entirely.
 ### The editing area asks where the tab it is drawing lives
 
 `show_editor` gated the keyboard on `Focus::Editor`, and clicking in a File Editor node ends at
-`Focus::Space` — so the click frame placed the caret and every frame after it dropped the key, which is
+`Focus::Realm` — so the click frame placed the caret and every frame after it dropped the key, which is
 `task-1914`'s *"Im unable to edit files in file editor."* It asks `OpenFiles::focus` now: a pane answers to
-`Focus::Editor` and a node to `Focus::Space`. Told apart by where the tab being drawn lives rather than by
+`Focus::Editor` and a node to `Focus::Realm`. Told apart by where the tab being drawn lives rather than by
 a flag, so a pane drawn while the canvas holds the keyboard answers no without either caller remembering to
 say so.
 
@@ -1189,8 +1213,8 @@ so one field somebody cannot get out of reads as the whole window having stopped
 
 Two rules came out of measuring with it, and neither is about a node being broken.
 
-**A canvas that comes back has somewhere for the first key press to go.** `View::chosen` is written to
-`space.conf`, and `bring_the_current_view_to_life` puts the saved choice back after it has opened each
+**A canvas that comes back has somewhere for the first key press to go.** `Realm::chosen` is written to
+the realm's sidecar, and `bring_the_current_view_to_life` puts the saved choice back after it has opened each
 node's tabs — opening a file into a node chooses that node, because opening a file into a node is using
 it, so a canvas with a File Editor node came back with the keyboard there whatever it was left on and one
 with none came back with the keyboard nowhere at all.
@@ -1295,7 +1319,7 @@ below. The footer is named `File count` now, which is what made a test of it pos
 
 `app::panels::move_a_divider_by_sharing` grows a side by taking what it gains off the side facing it, and —
 since `task-1907` — off the editing area as well. `task-2004` reports what those two miss: *"I also have
-problems resizing the terminal pane to be taller. it shrinks just fine, but with Base of Infinite Space
+problems resizing the terminal pane to be taller. it shrinks just fine, but with Realm
 pane above it, i can't resize it."*
 
 Three causes, and the sweep that found them is in `crates/unluminous-app/tests/panel_docking.rs` — the
@@ -2298,7 +2322,7 @@ measured again. It was over that when first written (6.6 ms), and the fix was re
 than capping the pool: the dedup was a linear search over the rows already kept, the alignment table
 and the candidate's characters were three allocations *per candidate*, and the sort comparator counted
 every name's characters at every comparison. 4.59 ms when that was written; **3.89 ms today**, on
-`app/space.rs`, which is 231 KB and is the largest file a language plugin claims here now.
+`app/realm.rs`, which is 231 KB and is the largest file a language plugin claims here now.
 
 **And `task-1984` C12 capped the pool after all**, which is the one thing that passage said the fix
 had not been. The budget is about gathering, scoring and sorting a stem, and it was broken by the
@@ -2311,7 +2335,7 @@ own keywords are the smallest and are always right. That is §7's own instructio
 capping the pool (an honest `LIMIT`, the references modal's pattern), not a thread"*.
 
 **The read is a separate number and §7 sets no figure for it**, which the example had been adding to
-the stem cost and holding to the stem's budget. Reading `app/space.rs` into `FileSymbols` and its
+the stem cost and holding to the stem's budget. Reading `app/realm.rs` into `FileSymbols` and its
 distinct words is **3.82 ms** once a text revision, so a whole keystroke is about 7.7 ms and the part
 that is bounded is bounded. Where that number goes next is the read, not the pool.
 
@@ -3887,10 +3911,10 @@ arrived and sat there: `task-1945`'s *"chunky/not smooth"*. `Camera::glide` is o
 a person reads as a step of zoom is the ratio. **The point it is about is remembered with it**, because the
 pointer moves during a glide and `zoom_to`'s rule has to hold against where the gesture started. **A frame
 with no time in it finishes the glide**, so a context whose `stable_dt` is zero cannot ask for another frame
-for ever. And **`space camera --zoom` sets both at once**, because a script that had to wait out an animation
+for ever. And **`realm camera --zoom` sets both at once**, because a script that had to wait out an animation
 to read back what it just set is a script with a race in it.
 
-`SpaceState` holds it rather than `Camera`, because `Camera` is what `space.conf` writes and what a test
+`RealmState` holds it rather than `Camera`, because `Camera` is what the sidecar writes and what a test
 compares: a canvas reopened tomorrow is at a zoom, not on its way to one.
 
 ## A terminal tab comes back in its folder showing what was on it
@@ -4513,9 +4537,9 @@ editing area away was safe only because the restore had already put the editing 
 from `show_a_panel`, from each of the three tiles and from `show_the_plugin_pane`, so the routes that
 reach a tile directly — `Action::ToggleTerminal`, `unluminous-cli terminal hide` — keep it too.
 
-`SpaceAction::Toggle` asked `was_showing`, which answers with the arrangement the maximise is holding
+`RealmAction::Toggle` asked `was_showing`, which answers with the arrangement the maximise is holding
 rather than with what is on the screen. That was right while leaving a maximise restored it and wrong
-afterwards, so it reads `space.visible`. Nothing else asked.
+afterwards, so it reads `realm.visible`. Nothing else asked.
 
 `every_panel_toggle_changes_only_the_panel_it_names` walks `Panel::all` rather than naming three panels,
 so a seventh panel is covered the day it is added, and two things it does **not** treat as violations are
@@ -5096,7 +5120,7 @@ not one character arrived. And a chat node's composer, which is a `TextEdit` ins
 sublayer, took the same click and the same letters.
 
 **`input` is the last resort, not the first.** A command that names the thing — `action run`, `tab open`,
-`space editor` — reaches the same code and does not depend on where anything was drawn. `input` is for
+`realm editor` — reaches the same code and does not depend on where anything was drawn. `input` is for
 the gestures there is no other command for: a drag, a right click on a particular row, a press in a text
 box.
 
@@ -5443,7 +5467,7 @@ trade that away to be a shade nearer a screenshot.
   says a pseudoconsole owns the screen and erases anything drawn onto it from outside, the shim that prints a
   node's screen inside its own console and why it has to be the console program, the scrollback that five
   commands need, and the process walk that finally answers what a node is running on Windows.
-- `tasks/task-1904-base-of-infinite-space-tdd.md` — the Base of Infinite Space: why the canvas is a
+- `tasks/task-1904-base-of-infinite-space-tdd.md` — the Realm: why the canvas is a
   fifth core panel rather than a plugin, how a zoom costs a matrix rather than a relayout and what
   that costs in return, the two coordinate systems a node is drawn in, `OpenFile::home` and what it
   buys a File Editor node, what a connection means and the echo rule that stops two terminals looping,

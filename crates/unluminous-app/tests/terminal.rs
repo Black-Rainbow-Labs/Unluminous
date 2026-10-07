@@ -109,9 +109,9 @@ fn a_terminal_tab_comes_back_in_its_folder_showing_what_was_on_it() {
 
     // What the window would write on its way out.
     harness.state_mut().write_the_tab_screens_down();
-    let saved = unluminous_app::services::space::store::screen_path(
+    let saved = unluminous_app::services::realm::store::screen_path(
         &folder,
-        unluminous_app::services::space::store::Screen::Tab(0),
+        unluminous_app::services::realm::store::Screen::Tab(0),
     );
     assert!(saved.is_file(), "the tab's screen was written down at {}", saved.display());
     assert!(
@@ -122,9 +122,9 @@ fn a_terminal_tab_comes_back_in_its_folder_showing_what_was_on_it() {
 
     // And that there is a screen for the tab to be started with, which is the same shim a node uses: a
     // screen written into the emulator from outside is erased by the console host, `task-1912`.
-    let printing = unluminous_app::services::space::store::a_screen_to_print(
+    let printing = unluminous_app::services::realm::store::a_screen_to_print(
         &folder,
-        unluminous_app::services::space::store::Screen::Tab(0),
+        unluminous_app::services::realm::store::Screen::Tab(0),
     )
     .expect("there is a screen to print");
     assert_eq!(printing, saved);

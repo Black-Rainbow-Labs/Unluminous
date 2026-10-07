@@ -73,7 +73,7 @@ use crate::theme::size;
 // with no change at all, which is what lets every one of them keep `use super::*;` as its only import
 // from this file. `space.rs` is the one area that already lived in a file of its own before this
 // split, as a sibling of `cli` rather than a child of it, which is why its own dispatch entry,
-// `cli_space`, was already `pub(crate)` -- the same reason every dispatch entry below needs it.
+// `cli_realm`, was already `pub(crate)` -- the same reason every dispatch entry below needs it.
 mod cli_action;
 mod cli_debug;
 mod cli_editor;
@@ -86,7 +86,7 @@ mod cli_plugins;
 mod cli_run;
 mod cli_search;
 mod cli_settings;
-mod cli_space;
+mod cli_realm;
 mod cli_tab;
 mod cli_terminal;
 mod cli_window;
@@ -183,7 +183,7 @@ pub(crate) enum ToolCaller {
     /// A plugin's pane or tab, by the plugin's id.
     Plugin(String),
     /// A chat node on the canvas, which holds a chat of its own.
-    Node(crate::services::space::NodeId),
+    Node(crate::services::realm::NodeId),
 }
 
 /// A tool call whose command answers on a later frame. `task-2096`.
@@ -790,7 +790,7 @@ impl UnluminousApp {
                 }
             }
             ToolCaller::Node(node) => {
-                if let Some(chat) = self.space.live.chat_mut(*node) {
+                if let Some(chat) = self.realm.live.chat_mut(*node) {
                     crate::services::plugin_ui::UiProvider::answered(chat, id, answer);
                 }
             }
@@ -820,7 +820,7 @@ impl UnluminousApp {
             "highlight" => self.cli_highlight(request, verb),
             "fold" => self.cli_fold(request, verb),
             "panel" => self.cli_panel(request, verb),
-            "space" => self.cli_space(request, verb, ctx),
+            "realm" => self.cli_realm(request, verb, ctx),
             "terminal" => self.cli_terminal(request, verb),
             "run" => self.cli_run(request, verb),
             "debug" => self.cli_debug(request, verb),
@@ -1169,12 +1169,12 @@ impl crate::app::UnluminousApp {
                 crate::app::Focus::Editor => "editor",
                 crate::app::Focus::Explorer => "explorer",
                 crate::app::Focus::Terminal => "terminal",
-                crate::app::Focus::Space => "space",
+                crate::app::Focus::Realm => "realm",
                 crate::app::Focus::Plugin => "plugin",
             },
             "textBox": crate::app::text_box_has_the_keyboard(ctx),
             "modal": crate::app::a_modal_has_the_keyboard(ctx),
-            "node": self.space.chosen(),
+            "node": self.realm.chosen(),
             "pane": self.files.focus().pane(),
         })
     }

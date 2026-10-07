@@ -39,7 +39,7 @@ pub fn parse(values: &Values, bundled: bool) -> Result<Plugin, String> {
             ))
         }
     };
-    let extensions: Vec<String> = list(values, "language.extensions")
+    let mut extensions: Vec<String> = list(values, "language.extensions")
         .into_iter()
         .map(|extension| extension.trim_start_matches('.').to_lowercase())
         .collect();
@@ -52,6 +52,9 @@ pub fn parse(values: &Values, bundled: bool) -> Result<Plugin, String> {
         );
     }
     let contributions = contributions(values, kind)?;
+    // A ui plugin's file types are claimed the way a language's are, so `Plugins::for_path` gives its icon to
+    // the explorer and the tabs. `task-2202`.
+    extensions.extend(contributions.extensions.iter().cloned());
     // Checked against what this version can actually draw, for the same reason `plugin.kind` is: a
     // manifest naming a picture Unluminous does not have should say so rather than load as a language
     // whose files silently never draw.
@@ -154,7 +157,24 @@ fn contributions(values: &Values, kind: Kind) -> Result<Contributions, String> {
         tab: tab(values),
         menu: menu(values)?,
         page: page(values)?,
+        extensions: list(values, "ui.extensions")
+            .into_iter()
+            .map(|extension| extension.trim_start_matches('.').to_lowercase())
+            .filter(|extension| !extension.is_empty())
+            .collect(),
+        explorer_shows: list(values, "explorer.shows")
+            .into_iter()
+            .map(|folder| folder.trim().trim_matches('/').to_owned())
+            .filter(|folder| folder.starts_with('.') && !folder.contains(['/', '\\']))
+            .collect(),
     };
+    // A folder a plugin may show is one dot folder by name; `.git` and `.unluminous` are never offered,
+    // because one is git's and the other is what this machine remembers, and neither is the project's.
+    if let Some(refused) =
+        found.explorer_shows.iter().find(|folder| matches!(folder.as_str(), ".git" | ".unluminous"))
+    {
+        return Err(format!("explorer.shows names {refused}, which the explorer never lists"));
+    }
     // A key that asks for something the manifest did not declare is a line that does nothing, and a line
     // that does nothing silently is what every refusal here exists to prevent.
     only_known_keys(values)?;
@@ -428,7 +448,8 @@ const KNOWN_KEYS: &[(&str, &[&str])] = &[
     ),
     ("run.", &["file", "project"]),
     ("debug.", &["adapter"]),
-    ("ui.", &["provider", "chrome"]),
+    ("ui.", &["provider", "chrome", "extensions"]),
+    ("explorer.", &["shows"]),
     ("pane.", &["id", "label", "icon", "side", "group", "tile", "width", "height", "applies"]),
     ("tab.", &["id", "label", "icon"]),
     ("settings.", &["page", "icon"]),

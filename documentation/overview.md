@@ -297,21 +297,23 @@ it — which is the client's own work, because the protocol has no request for i
 
 ![A program stopped on a breakpoint, with the call stack, the variables and the inline values](images/30-debugger.jpg)
 
-## The Base of Infinite Space
+## The Realm
 
-A fifth panel holding an infinite canvas, and six kinds of node that can live on it: a terminal, a web
-page, a folder tree, a file editor, an agent chat and the task board. Nodes are wired to each other,
-and a connection is what lets an agent running in a terminal node act on the node it is wired to.
+A fifth panel holding an infinite canvas, and ten kinds of node that can live on it: a terminal, a web
+page, a folder tree, a file editor, an agent chat, the task board, a picture, a note, a sound and a
+video. Nodes are wired to each other, and a connection is what lets an agent running in a terminal node
+act on the node it is wired to. Each realm is a `.realm` file in the project, so it is committed and
+shared like any other file.
 
 The zoom costs a matrix rather than a relayout — each node draws into a layer of its own carrying the
 camera — so a terminal keeps its cell count and an editor keeps its line breaks while the canvas is
 scaled.
 
 Below, four nodes: an agent's terminal wired to a file editor, a folder tree and the task board. What
-the terminal has printed is `unluminous-cli space list`, which is the canvas reading itself back —
+the terminal has printed is `unluminous-cli realm list`, which is the canvas reading itself back —
 four nodes, their sizes, and which three the first one is connected to.
 
-![Four nodes on the canvas, wired together, with the terminal printing the canvas back](images/27-base-of-infinite-space.jpg)
+![Four nodes on the canvas, wired together, with the terminal printing the canvas back](images/27-realm.jpg)
 
 ## The agent panes
 

@@ -183,12 +183,12 @@ pub enum Action {
     FillSide(crate::app::dock::Side),
     /// Put every panel back where a new Unluminous has it.
     ResetPanelLayout,
-    /// Something about the Base of Infinite Space — `task-1904`.
+    /// Something about the Realm — `task-1904`.
     ///
     /// One variant carrying a second enum rather than a dozen variants here, because every one of them
     /// is about the canvas and `Action` is already long enough that a reader scrolls it. `GitAction`
     /// set the precedent and `run_action` dispatches the same way.
-    Space(SpaceAction),
+    Realm(RealmAction),
     /// Anything on the Run menu, or on the run widget in the title bar.
     Run(RunAction),
     /// Anything on the Run menu's debug half, the debug tile or the gutter's own menu.
@@ -857,24 +857,24 @@ pub fn key_name(key: egui::Key) -> &'static str {
 /// drawn, so the entries are parameterless and the `View` menu, the keyboard and `unluminous-cli
 /// action run` can all ask for them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SpaceAction {
+pub enum RealmAction {
     /// Show or hide the canvas.
     Toggle,
     /// Put a node of this kind on the canvas, in the middle of what is showing.
-    Add(crate::services::space::Kind),
+    Add(crate::services::realm::Kind),
     /// Move the camera so every node is on the screen at once.
     Fit,
     /// Open the modal that asks which node to add.
     OpenAddModal,
-    NewView,
+    NewRealm,
     /// Open the modal that lists every canvas in this project — `task-1906`.
     ///
     /// A command whose whole job is to put a control in front of somebody, which is `OpenAddModal`'s shape
     /// and is what makes it reachable from `action list` and testable without a synthesised click.
     Manage,
-    RenameView,
-    DuplicateView,
-    DeleteView,
+    RenameRealm,
+    DuplicateRealm,
+    DeleteRealm,
     RenameNode,
     CloseNode,
     /// Ask for the folder a Folder View node shows.
@@ -902,34 +902,34 @@ pub enum SpaceAction {
     CarryLines(bool),
 }
 
-impl SpaceAction {
-    /// The action a name reads back as, which is what `action run space-add-terminal` needs.
+impl RealmAction {
+    /// The action a name reads back as, which is what `action run realm-add-terminal` needs.
     ///
     /// Written beside [`Self::name`] rather than in `action_names.rs`, because the two are inverses
     /// of each other and a test asserts that they are: a pair kept in two files is a pair that comes
     /// apart.
-    pub fn from_name(name: &str) -> Option<SpaceAction> {
+    pub fn from_name(name: &str) -> Option<RealmAction> {
         if let Some(kind) = name.strip_prefix("add-") {
-            return crate::services::space::Kind::from_name(kind).map(SpaceAction::Add);
+            return crate::services::realm::Kind::from_name(kind).map(RealmAction::Add);
         }
         Some(match name {
-            "toggle" => SpaceAction::Toggle,
-            "fit" => SpaceAction::Fit,
-            "add" => SpaceAction::OpenAddModal,
-            "new-view" => SpaceAction::NewView,
-            "manage" => SpaceAction::Manage,
-            "rename-view" => SpaceAction::RenameView,
-            "duplicate-view" => SpaceAction::DuplicateView,
-            "delete-view" => SpaceAction::DeleteView,
-            "rename-node" => SpaceAction::RenameNode,
-            "close-node" => SpaceAction::CloseNode,
-            "choose-folder" => SpaceAction::ChooseFolder,
-            "restart-node" => SpaceAction::RestartNode,
-            "resume-session" => SpaceAction::ResumeSession,
-            "start-what-was-running" => SpaceAction::StartWhatWasRunning,
-            "disconnect" => SpaceAction::Disconnect,
-            "carry-lines" => SpaceAction::CarryLines(true),
-            "stop-carrying-lines" => SpaceAction::CarryLines(false),
+            "toggle" => RealmAction::Toggle,
+            "fit" => RealmAction::Fit,
+            "add" => RealmAction::OpenAddModal,
+            "new-realm" => RealmAction::NewRealm,
+            "manage" => RealmAction::Manage,
+            "rename-realm" => RealmAction::RenameRealm,
+            "duplicate-realm" => RealmAction::DuplicateRealm,
+            "delete-realm" => RealmAction::DeleteRealm,
+            "rename-node" => RealmAction::RenameNode,
+            "close-node" => RealmAction::CloseNode,
+            "choose-folder" => RealmAction::ChooseFolder,
+            "restart-node" => RealmAction::RestartNode,
+            "resume-session" => RealmAction::ResumeSession,
+            "start-what-was-running" => RealmAction::StartWhatWasRunning,
+            "disconnect" => RealmAction::Disconnect,
+            "carry-lines" => RealmAction::CarryLines(true),
+            "stop-carrying-lines" => RealmAction::CarryLines(false),
             _ => return None,
         })
     }
@@ -937,23 +937,23 @@ impl SpaceAction {
     /// The name the command line calls this, after `space-`.
     pub fn name(self) -> String {
         match self {
-            SpaceAction::Toggle => "toggle".to_owned(),
-            SpaceAction::Add(kind) => format!("add-{}", kind.name()),
-            SpaceAction::Fit => "fit".to_owned(),
-            SpaceAction::OpenAddModal => "add".to_owned(),
-            SpaceAction::NewView => "new-view".to_owned(),
-            SpaceAction::Manage => "manage".to_owned(),
-            SpaceAction::RenameView => "rename-view".to_owned(),
-            SpaceAction::DuplicateView => "duplicate-view".to_owned(),
-            SpaceAction::DeleteView => "delete-view".to_owned(),
-            SpaceAction::RenameNode => "rename-node".to_owned(),
-            SpaceAction::CloseNode => "close-node".to_owned(),
-            SpaceAction::ChooseFolder => "choose-folder".to_owned(),
-            SpaceAction::RestartNode => "restart-node".to_owned(),
-            SpaceAction::ResumeSession => "resume-session".to_owned(),
-            SpaceAction::StartWhatWasRunning => "start-what-was-running".to_owned(),
-            SpaceAction::Disconnect => "disconnect".to_owned(),
-            SpaceAction::CarryLines(on) => match on {
+            RealmAction::Toggle => "toggle".to_owned(),
+            RealmAction::Add(kind) => format!("add-{}", kind.name()),
+            RealmAction::Fit => "fit".to_owned(),
+            RealmAction::OpenAddModal => "add".to_owned(),
+            RealmAction::NewRealm => "new-realm".to_owned(),
+            RealmAction::Manage => "manage".to_owned(),
+            RealmAction::RenameRealm => "rename-realm".to_owned(),
+            RealmAction::DuplicateRealm => "duplicate-realm".to_owned(),
+            RealmAction::DeleteRealm => "delete-realm".to_owned(),
+            RealmAction::RenameNode => "rename-node".to_owned(),
+            RealmAction::CloseNode => "close-node".to_owned(),
+            RealmAction::ChooseFolder => "choose-folder".to_owned(),
+            RealmAction::RestartNode => "restart-node".to_owned(),
+            RealmAction::ResumeSession => "resume-session".to_owned(),
+            RealmAction::StartWhatWasRunning => "start-what-was-running".to_owned(),
+            RealmAction::Disconnect => "disconnect".to_owned(),
+            RealmAction::CarryLines(on) => match on {
                 true => "carry-lines".to_owned(),
                 false => "stop-carrying-lines".to_owned(),
             },
@@ -1094,25 +1094,27 @@ pub struct MenuState {
     pub line_numbers: bool,
     pub terminal_visible: bool,
     pub terminal_tabs: usize,
-    /// Whether the Base of Infinite Space is showing — `task-1904`.
-    pub space_visible: bool,
+    /// Whether the Realm is showing — `task-1904`.
+    pub realm_visible: bool,
+    /// Whether the Realm plugin is switched on. Off, its row and its submenu are absent. `task-2202`.
+    pub realm_available: bool,
     /// What the chosen node is, when one is chosen, and whether it has a session to resume.
     ///
     /// The menu is about the node in hand, so the rows that cannot apply to it are absent: `Restart`
     /// and `Resume session` mean nothing on a web page, which is Unluminous's rule that a control
     /// which cannot apply is not drawn at all.
-    pub space_node: Option<(crate::services::space::Kind, bool)>,
+    pub realm_node: Option<(crate::services::realm::Kind, bool)>,
     /// The program the chosen terminal node was left running, when it was left running one.
     ///
     /// **A separate field rather than a third item in the tuple above**, because it answers a different
-    /// question: `space_node`'s bool is whether there is a *conversation* to resume, and this is whether there
+    /// question: `realm_node`'s bool is whether there is a *conversation* to resume, and this is whether there
     /// is a *program* to offer. A node can have either, both or neither — a shell somebody typed `claude` into
     /// has the program and no conversation, and a node whose command is `claude` has both. `task-1907`.
-    pub space_node_running: String,
+    pub realm_node_running: String,
     /// Whether the connection in hand carries lines, which is what ticks its row.
-    pub space_pipe: bool,
+    pub realm_pipe: bool,
     /// How many views the canvas has, which is what dims `Delete View` on the last one.
-    pub space_views: usize,
+    pub realm_views: usize,
     /// True when the folder that is open is in a git repository. With none, every git entry is
     /// dimmed rather than absent, so the menu does not change shape depending on where you are.
     pub in_repository: bool,
@@ -2106,22 +2108,22 @@ fn view_menu(state: &MenuState) -> Menu {
                 Action::ToggleDebugTile,
             )
             .checked(state.debug_tile_visible),
-            // The Base of Infinite Space — `task-1904`. One row that shows it and a submenu for the
+            // The Realm — `task-1904`. One row that shows it and a submenu for the
             // things somebody looks for in a menu once the canvas is in front of them. It is a
             // submenu rather than eight more rows for `task-1686`'s reason: a submenu here is drawn
             // inline, and this menu is already long enough to scroll in a small window.
             Entry::item(
-                if state.space_visible {
-                    "Hide Base of Infinite Space"
+                if state.realm_visible {
+                    "Hide Realm"
                 } else {
-                    "Base of Infinite Space"
+                    "Realm"
                 },
-                Action::Space(SpaceAction::Toggle),
+                Action::Realm(RealmAction::Toggle),
             )
-            .checked(state.space_visible),
+            .checked(state.realm_visible),
             Entry::Submenu {
-                name: "Base of Infinite Space".to_owned(),
-                entries: space_menu(state),
+                name: "Realm".to_owned(),
+                entries: realm_menu(state),
             },
             // The one row of `task-1697` that is worth a place in the bar. Moving a panel is a drag,
             // or its own right click menu, or `unluminous-cli panel dock`; putting them all back is the
@@ -2132,7 +2134,21 @@ fn view_menu(state: &MenuState) -> Menu {
                 .enabled(state.terminal_tabs > 0),
             Entry::item("Rename Terminal Tab...", Action::RenameTerminalTab)
                 .enabled(state.terminal_tabs > 0),
-        ],
+        ]
+        .into_iter()
+        // **Absent while the Realm plugin is off**, which is Unluminous's rule for a control that cannot
+        // apply: the plugin is the switch for the panel, the way Agent-Tasks is for its pane. `task-2202`.
+        .filter(|entry| state.realm_available || !is_about_the_realm(entry))
+        .collect(),
+    }
+}
+
+/// Whether a `View` menu row is the Realm's own: its toggle or its submenu.
+fn is_about_the_realm(entry: &Entry) -> bool {
+    match entry {
+        Entry::Submenu { name, .. } => name == "Realm",
+        Entry::Item { action, .. } => matches!(action, Action::Realm(RealmAction::Toggle)),
+        _ => false,
     }
 }
 
@@ -2195,41 +2211,41 @@ pub fn terminal_tab_menu() -> Vec<Entry> {
     ]
 }
 
-/// What the `View -> Base of Infinite Space` submenu holds — `task-1904`.
+/// What the `View -> Realm` submenu holds — `task-1904`.
 ///
 /// The rows that are about one node are here too, and are **dimmed** rather than absent when nothing
 /// is chosen: a submenu that changed shape as a node was clicked would be a submenu whose rows moved
 /// under the pointer. A row that could never apply to the chosen node is a different question and is
-/// absent — see [`space_node_menu`].
-pub fn space_menu(state: &MenuState) -> Vec<Entry> {
+/// absent — see [`realm_node_menu`].
+pub fn realm_menu(state: &MenuState) -> Vec<Entry> {
     let mut entries = vec![
-        Entry::item("Add Node...", Action::Space(SpaceAction::OpenAddModal)),
-        Entry::item("Fit Everything in View", Action::Space(SpaceAction::Fit)),
+        Entry::item("Add Node...", Action::Realm(RealmAction::OpenAddModal)),
+        Entry::item("Fit Everything in View", Action::Realm(RealmAction::Fit)),
         Entry::Separator,
     ];
-    for kind in crate::services::space::Kind::ALL {
+    for kind in crate::services::realm::Kind::ALL {
         entries.push(Entry::item(
             &format!("Add {}", kind.label()),
-            Action::Space(SpaceAction::Add(kind)),
+            Action::Realm(RealmAction::Add(kind)),
         ));
     }
     entries.push(Entry::Separator);
-    entries.push(Entry::item("Spaces...", Action::Space(SpaceAction::Manage)));
-    entries.push(Entry::item("New View", Action::Space(SpaceAction::NewView)));
-    entries.push(Entry::item("Rename View...", Action::Space(SpaceAction::RenameView)));
-    entries.push(Entry::item("Duplicate View", Action::Space(SpaceAction::DuplicateView)));
+    entries.push(Entry::item("Realms...", Action::Realm(RealmAction::Manage)));
+    entries.push(Entry::item("New Realm", Action::Realm(RealmAction::NewRealm)));
+    entries.push(Entry::item("Rename Realm...", Action::Realm(RealmAction::RenameRealm)));
+    entries.push(Entry::item("Duplicate Realm", Action::Realm(RealmAction::DuplicateRealm)));
     entries.push(
-        Entry::item("Delete View", Action::Space(SpaceAction::DeleteView))
-            .enabled(state.space_views > 1),
+        Entry::item("Delete Realm", Action::Realm(RealmAction::DeleteRealm))
+            .enabled(state.realm_views > 0),
     );
     entries.push(Entry::Separator);
     entries.push(
-        Entry::item("Rename Node...", Action::Space(SpaceAction::RenameNode))
-            .enabled(state.space_node.is_some()),
+        Entry::item("Rename Node...", Action::Realm(RealmAction::RenameNode))
+            .enabled(state.realm_node.is_some()),
     );
     entries.push(
-        Entry::item("Close Node", Action::Space(SpaceAction::CloseNode))
-            .enabled(state.space_node.is_some()),
+        Entry::item("Close Node", Action::Realm(RealmAction::CloseNode))
+            .enabled(state.realm_node.is_some()),
     );
     entries
 }
@@ -2240,55 +2256,55 @@ pub fn space_menu(state: &MenuState) -> Vec<Entry> {
 /// which is Unluminous's rule for a control that can never apply — the `F` button is not drawn for a
 /// `.rs` file for the same reason. `Resume session` is absent again when the node's program never
 /// named a conversation, because there is nothing to resume.
-pub fn space_node_menu(state: &MenuState) -> Vec<Entry> {
-    let mut entries = vec![Entry::item("Rename...", Action::Space(SpaceAction::RenameNode))];
-    if let Some((crate::services::space::Kind::Terminal, session)) = state.space_node {
-        entries.push(Entry::item("Restart", Action::Space(SpaceAction::RestartNode)));
+pub fn realm_node_menu(state: &MenuState) -> Vec<Entry> {
+    let mut entries = vec![Entry::item("Rename...", Action::Realm(RealmAction::RenameNode))];
+    if let Some((crate::services::realm::Kind::Terminal, session)) = state.realm_node {
+        entries.push(Entry::item("Restart", Action::Realm(RealmAction::RestartNode)));
         if session {
-            entries.push(Entry::item("Resume Session", Action::Space(SpaceAction::ResumeSession)));
+            entries.push(Entry::item("Resume Session", Action::Realm(RealmAction::ResumeSession)));
         }
         // **What the node was left running, named in the row.** `task-1907` asks for *"the exact session as
         // though I never closed anything"*, and a node whose shell had `claude` typed into it comes back as a
         // shell — so the row says which program, because `Start What Was Running` would make somebody guess.
         // Absent when the node was at a prompt, which is the ordinary case and the rule that keeps `Resume
         // Session` off a node with no conversation.
-        if !state.space_node_running.trim().is_empty() {
+        if !state.realm_node_running.trim().is_empty() {
             entries.push(Entry::item(
-                &format!("Start {} Again", state.space_node_running.trim()),
-                Action::Space(SpaceAction::StartWhatWasRunning),
+                &format!("Start {} Again", state.realm_node_running.trim()),
+                Action::Realm(RealmAction::StartWhatWasRunning),
             ));
         }
     }
     // **Which folder this node shows**, `task-1905`, and absent on every other kind because a terminal
     // and a web page have no folder to choose.
-    if let Some((crate::services::space::Kind::Folder, _)) = state.space_node {
-        entries.push(Entry::item("Choose Folder...", Action::Space(SpaceAction::ChooseFolder)));
+    if let Some((crate::services::realm::Kind::Folder, _)) = state.realm_node {
+        entries.push(Entry::item("Choose Folder...", Action::Realm(RealmAction::ChooseFolder)));
     }
     entries.push(Entry::Separator);
-    entries.push(Entry::item("Close", Action::Space(SpaceAction::CloseNode)));
+    entries.push(Entry::item("Close", Action::Realm(RealmAction::CloseNode)));
     entries
 }
 
 /// What a connection's own right click menu holds.
-pub fn space_wire_menu(state: &MenuState) -> Vec<Entry> {
+pub fn realm_wire_menu(state: &MenuState) -> Vec<Entry> {
     vec![
-        Entry::item("Carry Lines", Action::Space(SpaceAction::CarryLines(!state.space_pipe)))
-            .checked(state.space_pipe),
+        Entry::item("Carry Lines", Action::Realm(RealmAction::CarryLines(!state.realm_pipe)))
+            .checked(state.realm_pipe),
         Entry::Separator,
-        Entry::item("Disconnect", Action::Space(SpaceAction::Disconnect)),
+        Entry::item("Disconnect", Action::Realm(RealmAction::Disconnect)),
     ]
 }
 
-/// What a view's own chip holds, which is the four things the ticket asks for by name.
-pub fn space_view_menu(state: &MenuState) -> Vec<Entry> {
+/// What a realm's own chip on the realm bar holds, which is the four things `task-1904` asks for by name.
+pub fn realm_view_menu(state: &MenuState) -> Vec<Entry> {
     vec![
-        Entry::item("Rename...", Action::Space(SpaceAction::RenameView)),
-        Entry::item("Duplicate", Action::Space(SpaceAction::DuplicateView)),
+        Entry::item("Rename...", Action::Realm(RealmAction::RenameRealm)),
+        Entry::item("Duplicate", Action::Realm(RealmAction::DuplicateRealm)),
         Entry::Separator,
-        Entry::item("Delete", Action::Space(SpaceAction::DeleteView))
-            .enabled(state.space_views > 1),
+        Entry::item("Delete", Action::Realm(RealmAction::DeleteRealm))
+            .enabled(state.realm_views > 0),
         Entry::Separator,
-        Entry::item("New View", Action::Space(SpaceAction::NewView)),
+        Entry::item("New Realm", Action::Realm(RealmAction::NewRealm)),
     ]
 }
 
@@ -2761,14 +2777,14 @@ mod tests {
     /// that keeps `Restart` off a browser node.
     #[test]
     fn a_node_offers_to_start_what_it_was_left_running_and_names_it() {
-        use crate::services::space::Kind;
+        use crate::services::realm::Kind;
         let running = |kind: Kind, program: &str| {
             let state = MenuState {
-                space_node: Some((kind, false)),
-                space_node_running: program.to_owned(),
+                realm_node: Some((kind, false)),
+                realm_node_running: program.to_owned(),
                 ..MenuState::default()
             };
-            names(&space_node_menu(&state))
+            names(&realm_node_menu(&state))
         };
 
         let rows = running(Kind::Terminal, "claude");
@@ -2796,15 +2812,15 @@ mod tests {
     /// same reading that keeps `Restart` off a browser node.
     #[test]
     fn choosing_a_folder_is_offered_on_a_folder_node_and_on_no_other_kind() {
-        use crate::services::space::Kind;
+        use crate::services::realm::Kind;
         for kind in Kind::ALL {
-            let state = MenuState { space_node: Some((kind, false)), ..MenuState::default() };
-            let rows = names(&space_node_menu(&state));
+            let state = MenuState { realm_node: Some((kind, false)), ..MenuState::default() };
+            let rows = names(&realm_node_menu(&state));
             let offered = rows.iter().any(|row| row == "Choose Folder...");
             assert_eq!(offered, kind == Kind::Folder, "a {} node offered {rows:?}", kind.name());
         }
         // And with no node chosen at all there is nothing to choose a folder for.
-        let rows = names(&space_node_menu(&MenuState::default()));
+        let rows = names(&realm_node_menu(&MenuState::default()));
         assert!(!rows.iter().any(|row| row == "Choose Folder..."));
     }
 

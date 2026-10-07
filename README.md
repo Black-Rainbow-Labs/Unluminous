@@ -168,10 +168,12 @@ with no adapter installed is one sentence naming what was looked for and the com
 reporting, and the shell a person actually uses rather than whatever `COMSPEC` says. A tab comes back
 in the folder it was in, showing what was on it. → [The terminal](documentation/the-terminal.md)
 
-**An infinite canvas.** Six kinds of node — a terminal, a web page, a folder tree, a file editor, an
-agent chat and the task board — wired to each other, where a connection is what lets an agent running
-in a terminal node act on the node it is wired to. A zoom costs a matrix rather than a relayout. →
-[The Base of Infinite Space](documentation/the-canvas.md)
+**An infinite canvas.** Ten kinds of node — a terminal, a web page, a folder tree, a file editor, an
+agent chat, the task board, a picture, a note, a sound and a video — wired to each other, where a
+connection is what lets an agent running in a terminal node act on the node it is wired to. Each realm
+is a `.realm` file in the project, so it is committed and shared with the code. A zoom costs a matrix
+rather than a relayout. →
+[The Realm](documentation/the-realm.md)
 
 **Agents beside your work.** A chat pane that runs the `claude` or `codex` already installed on this
 machine, so Unluminous holds no key at all and the agent brings its own tools and its own permission
@@ -196,7 +198,7 @@ them.
 | [Editing](documentation/editing.md) | text, files, encodings, find and replace, highlights, folding, Markdown, diagrams |
 | [Writing code in it](documentation/writing-code.md) | tabs, completion, navigation, git, running, the debugger |
 | [The terminal](documentation/the-terminal.md) | the tile, the tabs, which shell, and how one comes back |
-| [The Base of Infinite Space](documentation/the-canvas.md) | the canvas, its six node kinds, and what a connection grants |
+| [The Realm](documentation/the-realm.md) | the canvas, its six node kinds, and what a connection grants |
 | [The agent panes](documentation/agent-panes.md) | Agent-Chat and Agent-Tasks |
 | [The Database plugin](documentation/database.md) | the tree, a grid, a console, a pending change |
 | [For AI agents](documentation/for-ai-agents.md) | the contract, how it is enforced, and what a study found |

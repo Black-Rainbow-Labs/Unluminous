@@ -93,7 +93,7 @@ fn the_board_contributes_a_pane_and_no_tab() {
         .collect();
     assert_eq!(
         names,
-        ["explorer", "terminal", "run", "debug", "space"],
+        ["explorer", "terminal", "run", "debug", "realm"],
         "`panel list` is Unluminous\'s own five; a contributed pane is moved with `plugins pane`: {names:?}"
     );
 

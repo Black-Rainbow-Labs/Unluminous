@@ -116,6 +116,11 @@ egui = "0.36"
 eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "accesskit"] }
 fontdb = "0.24"
 ab_glyph = "0.2"
+# A Realm's sound nodes. `task-2202`, §5.4 of `tasks/task-2199-realm-tdd.md`. Pure Rust: `cpal` for the output
+# device and `symphonia` for the decoders, so it builds on Windows and macOS with no SDK and fetches nothing
+# when it runs. Only playback, and only the formats a sound node offers: MP3, FLAC, Ogg Vorbis, WAV, and AAC
+# in an MP4 container for `.m4a`. No recording, so no microphone permission is ever asked for.
+rodio = { version = "0.22", default-features = false, features = ["playback", "mp3", "flac", "vorbis", "wav", "mp4"] }
 arboard = "3.6"
 egui_kittest = { version = "0.36", features = ["wgpu", "snapshot", "eframe"] }
 image = { version = "0.25", default-features = false, features = [

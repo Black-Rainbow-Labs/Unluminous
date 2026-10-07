@@ -118,8 +118,8 @@ pub fn beside_this_program(name: &str) -> String {
 ///
 /// **`unluminous-cli` is on nobody's `PATH`.** On macOS it is inside the application bundle beside
 /// `unluminous` and on Windows in the installation folder, so an agent told to run
-/// `unluminous-cli space here` answers `command not found`. The answer until `task-2004` was three
-/// variables — [`agent::ENV_CLI`], [`agent::ENV_INSTANCE`] and a sentence in `UNLUMINOUS_SPACE_HINT`
+/// `unluminous-cli realm here` answers `command not found`. The answer until `task-2004` was three
+/// variables — [`agent::ENV_CLI`], [`agent::ENV_INSTANCE`] and a sentence in `UNLUMINOUS_REALM_HINT`
 /// saying to use them — and the report is what that was worth: *"Agent's in the base of infinite space
 /// don't seem to have the cli, or don't understand the unluminous cli."* Nothing makes an agent run
 /// `env`, so the sentence was never read, and the name it guesses was the name that did not work.

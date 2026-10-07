@@ -27,7 +27,7 @@ three panes it carries, then how it is built.
 | 5 | [Editing](editing.md) | text, formatting, files, encodings, find and replace, highlights, folding, Markdown and diagrams |
 | 6 | [Writing code in it](writing-code.md) | line numbers, tabs, completion, definitions and references and rename, git, running, the debugger |
 | 7 | [The terminal](the-terminal.md) | the tile, the tabs, which shell, what the emulator handles, and how a tab comes back |
-| 8 | [The Base of Infinite Space](the-canvas.md) | the canvas: six kinds of node, what a connection grants, and how it is driven |
+| 8 | [The Realm](the-realm.md) | the canvas: realm files, ten kinds of node, what a connection grants, and how it is driven |
 | 9 | [The agent panes](agent-panes.md) | Agent-Chat and Agent-Tasks: what runs, what a key is, and what a model may call |
 | | [The Database plugin in pictures](database.md) | the tree, a grid, a console, a pending change, and adding a data source |
 

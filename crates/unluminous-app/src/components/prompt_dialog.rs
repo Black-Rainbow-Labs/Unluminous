@@ -49,13 +49,19 @@ pub enum Purpose {
     /// The number rather than "the tab that is showing", because a prompt is answered on some later
     /// frame and the tab that is showing is a thing that can change in between.
     RenameTerminalTab(usize),
-    /// Call this node on the Base of Infinite Space whatever is typed - `task-1904`.
+    /// Call this node on the Realm whatever is typed - `task-1904`.
     ///
     /// The node's id rather than "the node that is chosen", which is `RenameTerminalTab`'s own reason:
     /// a prompt is answered on some later frame and what is chosen can change in between.
-    RenameSpaceNode(u64),
-    /// Call this view on the Base of Infinite Space whatever is typed.
-    RenameSpaceView(u64),
+    RenameRealmNode(u64),
+    /// Make a note called whatever is typed, at this place on the canvas in world points. `task-2202`.
+    NewNote(i32, i32),
+    /// Rename the file this note node shows to whatever is typed. `task-2202`.
+    RenameNote(u64),
+    /// Rename the realm file at this path in the project to whatever is typed. `task-2202`.
+    RenameRealmView(std::path::PathBuf),
+    /// Make a realm called whatever is typed, in `.realm-files/`. `task-2202`.
+    NewRealm,
     /// Put the caret on the line that is typed, which may be `42` or `42:5` — `task-1922` WP4.
     ///
     /// The one purpose here that is not a name for something. It is this prompt rather than a modal

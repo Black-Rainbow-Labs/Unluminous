@@ -4,8 +4,8 @@
 //!
 //! *"I need a url address bar and back/forward and reload buttons at the top."* A browser node on the
 //! canvas drew none of them, because the window returned before reaching this function whenever the node
-//! had no tab yet — and the only ways to give a node a tab were `space browser <node> go --url …` and
-//! `space add browser --url …`. So the node in the report is not a node whose toolbar is missing; it is a
+//! had no tab yet — and the only ways to give a node a tab were `realm browser <node> go --url …` and
+//! `realm add browser --url …`. So the node in the report is not a node whose toolbar is missing; it is a
 //! node with no toolbar because it has no page, and no way to get one.
 //!
 //! So the toolbar is the node's own furniture, in the same way a terminal node's header is: it is drawn
@@ -272,7 +272,7 @@ fn address_field(
     if response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Escape)) {
         *toolbar.editing = false;
     }
-    // The field says where the page is, so it follows a redirect, a link and `space browser … go` without
+    // The field says where the page is, so it follows a redirect, a link and `realm browser … go` without
     // the caller having to write it back.
     //
     // **Only while nothing has been typed over it**, which is the difference between following the page and

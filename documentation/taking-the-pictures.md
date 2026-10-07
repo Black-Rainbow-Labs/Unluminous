@@ -9,7 +9,7 @@ pwsh tools/documentation/capture.ps1
 
 It builds the project the pictures are of, opens a window on it, drives that window into each state,
 photographs it, and writes the finished picture into `documentation/images/`. It takes about eleven
-minutes for the whole gallery. `-Only 04-code,27-base-of-infinite-space` takes some of them, `-List`
+minutes for the whole gallery. `-Only 04-code,27-realm` takes some of them, `-List`
 prints their names, and `-KeepOpen` leaves the window running so a position can be worked out.
 
 **It does not take the keyboard, move the pointer, switch the virtual desktop or need anything else
@@ -118,7 +118,7 @@ All four were found by opening every picture, which is the one step this file ca
   The loop that closed the tabs stopped when one was left, because closing the last leaves an empty
   untitled tab — so the last file stayed open, and formatting is not a text change, so nothing
   discarded it. It closes that one too now, and the formatting picture runs last.
-- **`space add editor --path src/theme.rs` moves that tab onto the canvas node.** A tab that lives on
+- **`realm add editor --path src/theme.rs` moves that tab onto the canvas node.** A tab that lives on
   a node is in no pane, so the picture after the canvas one opened an empty untitled tab. Every node
   is removed on reset.
 - **The run configuration added by the run and debug pictures widened the widget at the right of the

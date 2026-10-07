@@ -515,7 +515,8 @@ impl UnluminousApp {
                 git_open: self.git.as_ref().is_some_and(|git| git.panel.open),
                 in_repository: self.repository_controls_apply(),
                 terminal_visible: self.terminal.visible,
-                space_visible: self.space.visible,
+                realm_visible: self.realm.visible,
+                realm_available: self.realm_is_on(),
                 run_visible: self.run.visible,
                 debug_visible: self.debug_panel.visible,
             };
@@ -642,7 +643,7 @@ impl UnluminousApp {
     fn show_the_explorer(&mut self, ui: &mut egui::Ui, places: &FramePlaces) {
         let explorer_rect = places.explorer_rect;
         // **A rectangle with no room in it is not drawn**, which is the guard `show_the_plugin_panes` and
-        // `show_the_space` already have and which the explorer was the one panel without: it was drawn
+        // `show_the_realm` already have and which the explorer was the one panel without: it was drawn
         // into nothing, registering a filter box and row interactions at no size at all. One threshold
         // and one rule for all three panels rather than three. `task-1905`.
         if self.explorer_visible && explorer_rect.width() > 1.0 && explorer_rect.height() > 1.0 {
@@ -833,7 +834,7 @@ impl UnluminousApp {
         // And the canvas's, in the same place and for the same reason - `task-1904`. A folder node
         // has a cursor of its own, and `Escape` there means "give the keyboard back" exactly as it
         // does in the explorer and in the terminal.
-        if let Some(chosen) = self.route_the_space_keys(ui) {
+        if let Some(chosen) = self.route_the_realm_keys(ui) {
             *action = Some(chosen);
         }
         // And `Alt+Up` and `Alt+Down`, the one WP4 chord pair with no menu entry — so the menu's own
@@ -1061,16 +1062,16 @@ impl UnluminousApp {
         self.show_the_plugin_modals(ui);
     }
 
-    /// The Base of Infinite Space, its modal, its manager and its menu - `task-1904`.
+    /// The Realm, its modal, its manager and its menu - `task-1904`.
     fn show_the_canvas(&mut self, ui: &mut egui::Ui, action: &mut Option<Action>) {
-        // The Base of Infinite Space - `task-1904`. Drawn where the plugin panes are for the same
+        // The Realm - `task-1904`. Drawn where the plugin panes are for the same
         // reason: it is laid out by the same arithmetic as every other panel and cannot overlap one.
-        if self.space.visible {
-            self.show_the_space(ui);
+        if self.realm.visible {
+            self.show_the_realm(ui);
         }
-        self.show_the_space_modal(ui);
-        self.show_the_space_manager(ui);
-        if let Some(chosen) = self.show_the_space_menu(ui) {
+        self.show_the_realm_modal(ui);
+        self.show_the_realm_manager(ui);
+        if let Some(chosen) = self.show_the_realm_menu(ui) {
             *action = Some(chosen);
         }
     }
@@ -2046,7 +2047,7 @@ impl UnluminousApp {
         // And the canvas, which says for itself whether anything on it changed - `task-1904`. Written
         // at the end of a frame on which something moved rather than on every frame, or dragging a
         // node would write a file sixty times a second.
-        self.write_the_space_if_it_changed(now);
+        self.write_the_realm_if_it_changed(now);
         // And what is marked in its files, on exactly the same terms.
         let settled = !ui.input(|input| input.pointer.any_down());
         self.remember_the_marks(settled);
@@ -2189,7 +2190,7 @@ impl UnluminousApp {
             // Another step is waiting and nothing else will ask for the frame it needs.
             ctx.request_repaint();
         }
-        let on_the_canvas = self.space.live.browsers().count();
+        let on_the_canvas = self.realm.live.browsers().count();
         if self.files.iter().all(|file| file.browser.is_none())
             && on_the_canvas == 0
             && !self.browser.has_views()
@@ -2203,7 +2204,7 @@ impl UnluminousApp {
             .files
             .iter()
             .filter_map(|file| file.browser.clone())
-            .chain(self.space.live.browsers().cloned())
+            .chain(self.realm.live.browsers().cloned())
             .collect();
         let occluders = self.occluding_rects(ctx);
         let mut placements = self.browser_placements.clone();

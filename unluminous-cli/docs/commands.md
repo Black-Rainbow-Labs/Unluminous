@@ -1553,177 +1553,203 @@ Put every panel back where a new Unluminous has it: the explorer down the left, 
 unluminous-cli panel reset
 ```
 
-## space — the Base of Infinite Space: a canvas of terminals, web pages, folder trees and file editors, wired together
+## realm — the Realm: canvases of terminals, web pages, folder trees, file editors, notes, pictures, sounds and videos, wired together and kept as .realm files in the project
 
-If `UNLUMINOUS_SPACE_NODE` is set in your environment you are running inside a node on this canvas, and `space here` is the first thing to run: it says which node you are, which nodes you are wired to, and the command that drives each of them. `unluminous-cli` is on your PATH inside a node and already knows which window to drive, so `unluminous-cli space here` is the whole command - no path and no `--instance`. (`$UNLUMINOUS_CLI` and `$UNLUMINOUS_INSTANCE` are set too, for a program that wants them.) You may act on the nodes you are wired to and no others, so every command you send carries `--from <your node>`. The Base of Infinite Space is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `space browser`, `space folder`, `space editor` and `space send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `space view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.
+If `UNLUMINOUS_REALM_NODE` is set in your environment you are running inside a node on this canvas, and `realm here` is the first thing to run: it says which node you are, which nodes you are wired to, and the command that drives each of them. `unluminous-cli` is on your PATH inside a node and already knows which window to drive, so `unluminous-cli realm here` is the whole command - no path and no `--instance`. (`$UNLUMINOUS_CLI` and `$UNLUMINOUS_INSTANCE` are set too, for a program that wants them.) You may act on the nodes you are wired to and no others, so every command you send carries `--from <your node>`. The Realm is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `realm browser`, `realm folder`, `realm editor` and `realm send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `realm view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.
 
-### space show
+### realm show
 
 ```
-unluminous-cli space show
+unluminous-cli realm show
 ```
 
-Show the Base of Infinite Space, the canvas of nodes, and give it the keyboard.
+Show the Realm, the canvas of nodes, and give it the keyboard.
 
 ```sh
-unluminous-cli space show
+unluminous-cli realm show
 ```
 
-### space hide
+### realm hide
 
 ```
-unluminous-cli space hide
+unluminous-cli realm hide
 ```
 
 Put the canvas away. Everything running on it keeps running.
 
 ```sh
-unluminous-cli space hide
+unluminous-cli realm hide
 ```
 
-### space here
+### realm here
 
 ```
-unluminous-cli space here [--node <node>]
+unluminous-cli realm here [--node <node>]
 ```
 
-Which node this command is running inside, what that node is wired to, and the command that drives each of them. Run this **first** when `UNLUMINOUS_SPACE_NODE` is set in your environment: it is the one command that answers where you are, because the answer depends on which process is asking. Outside a node it says so and says what that means — every node is reachable and no `--from` is needed, which is the window's own agent.
+Which node this command is running inside, what that node is wired to, and the command that drives each of them. Run this **first** when `UNLUMINOUS_REALM_NODE` is set in your environment: it is the one command that answers where you are, because the answer depends on which process is asking. Outside a node it says so and says what that means — every node is reachable and no `--from` is needed, which is the window's own agent.
 
-- `--node <node>` — Answer about this node rather than the one this process is in. Filled in from UNLUMINOUS_SPACE_NODE when it is not given, which is the ordinary case and needs nothing.
+- `--node <node>` — Answer about this node rather than the one this process is in. Filled in from UNLUMINOUS_REALM_NODE when it is not given, which is the ordinary case and needs nothing.
 
 ```sh
-unluminous-cli space here
-unluminous-cli space here --json
+unluminous-cli realm here
+unluminous-cli realm here --json
 ```
 
-### space view
+### realm view
 
 ```
-unluminous-cli space view
+unluminous-cli realm view
 ```
 
-The whole canvas as data: every view, every node with its kind, its title, where it is and how big it is, and every connection. This is what to read before acting on a node, because everything else here names one by the id this prints.
+The realm that is open, as data: its file, whether it can be changed, every node with its kind, its title, where it is and how big it is, and every connection. This is what to read before acting on a node, because everything else here names one by the id this prints.
 
 ```sh
-unluminous-cli space view --json
+unluminous-cli realm view --json
 ```
 
-### space list
+### realm nodes
 
 ```
-unluminous-cli space list
+unluminous-cli realm nodes
 ```
 
-The nodes on the view that is showing, one a line: id, kind, title, place, size, and what each is connected to.
+The nodes on the realm that is open, one a line: id, kind, title, place, size, and what each is connected to.
 
 ```sh
-unluminous-cli space list
+unluminous-cli realm nodes
 ```
 
-### space manage
+### realm manage
 
 ```
-unluminous-cli space manage
+unluminous-cli realm manage
 ```
 
-Open the modal that lists every canvas in this project, with a search box over it. What it lists is this project's views — `space views` is the same list as data. A canvas belongs to the project it was made in, because its nodes name that project's files, so the modal's last button opens another project in a window of its own rather than pretending to open its canvas here.
+Open the modal that lists every realm file in this project, with a search box over it. `realm list` is the same list as data. A realm belongs to the project it was made in, because its nodes name that project's files, so the modal's last button opens another project in a window of its own.
 
 ```sh
-unluminous-cli space manage
+unluminous-cli realm manage
 ```
 
-### space views
+### realm list
 
 ```
-unluminous-cli space views
+unluminous-cli realm list
 ```
 
-Every view this project's canvas has, with which one is showing and how many nodes each holds.
+Every .realm file in this project, with which one is open and how many nodes each holds. New realms are made in .realm-files/, and a .realm file anywhere in the project is listed.
 
 ```sh
-unluminous-cli space views
+unluminous-cli realm list --json
 ```
 
-### space open-view
+### realm open
 
 ```
-unluminous-cli space open-view <view>
+unluminous-cli realm open <realm>
 ```
 
-Show one of the canvas's views. A view is named by the name on its chip or by its id.
+Show a realm file in the panel, writing the one that was open first. One realm is open at a time.
 
-- `view` — The view's name, or its id.
+- `realm` — The realm's name, or its path in the project.
 
 ```sh
-unluminous-cli space open-view Rendering
+unluminous-cli realm open architecture
+unluminous-cli realm open .realm-files/architecture.realm
 ```
 
-### space new-view
+### realm new
 
 ```
-unluminous-cli space new-view [name]
+unluminous-cli realm new [name]
 ```
 
-Make another view and show it. A name already in use is numbered rather than refused.
+Make an empty realm in .realm-files/ and open it. Refused when a realm by that name is already there, because nothing is ever written over.
 
-- `name` (optional) — What to call it. `View` when it is not given.
+- `name` (optional) — What to call it. `Realm` when it is not given.
 
 ```sh
-unluminous-cli space new-view Rendering
+unluminous-cli realm new Architecture
 ```
 
-### space rename-view
+### realm rename
 
 ```
-unluminous-cli space rename-view <view> <name>
+unluminous-cli realm rename <realm> <name>
 ```
 
-Call a view something else.
+Rename a realm's file. What this machine remembers about it goes with it.
 
-- `view` — The view's name, or its id.
+- `realm` — The realm's name, or its path in the project.
 - `name` — What to call it.
 
 ```sh
-unluminous-cli space rename-view Main Rendering
+unluminous-cli realm rename main Architecture
 ```
 
-### space duplicate-view
+### realm duplicate
 
 ```
-unluminous-cli space duplicate-view <view>
+unluminous-cli realm duplicate [realm]
 ```
 
-Copy a view, its nodes, its connections and its camera under new ids, and show the copy. The nodes are copies: a terminal on the copy is a second terminal rather than a second drawing of one.
+Copy a realm to `<name> copy.realm` beside it, every node and connection under new ids, and open the copy. The nodes are copies: a terminal on the copy is a second terminal rather than a second drawing of one.
 
-- `view` — The view's name, or its id.
+- `realm` (optional) — The realm's name, or its path in the project. The open one when it is not given.
 
 ```sh
-unluminous-cli space duplicate-view Main
+unluminous-cli realm duplicate main
 ```
 
-### space delete-view
+### realm delete
 
 ```
-unluminous-cli space delete-view <view>
+unluminous-cli realm delete [realm]
 ```
 
-Throw a view away, stopping every program on it. Refused on the last one, because a canvas always has a view.
+Delete a realm's file the way the explorer deletes one, to the Recycle Bin on Windows, with what this machine remembered about it. When it was the open one, another realm opens.
 
-- `view` — The view's name, or its id.
+- `realm` (optional) — The realm's name, or its path in the project. The open one when it is not given.
 
 ```sh
-unluminous-cli space delete-view Rendering
+unluminous-cli realm delete Scratch
 ```
 
-### space add
+### realm import
 
 ```
-unluminous-cli space add <terminal|browser|folder|editor|chat|tasks> [--x <points>] [--y <points>] [--width <points>] [--height <points>] [--title <text>] [--command <text>] [--url <address>] [--root <path>] [--path <path>]
+unluminous-cli realm import
 ```
 
-Put a node on the view that is showing and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with `unluminous-cli` on its PATH and pointed at this window, UNLUMINOUS_SPACE_NODE set to its id so an agent started in it knows which node it is, UNLUMINOUS_SPACE_HINT saying what to run first, and UNLUMINOUS_CLI and UNLUMINOUS_INSTANCE for a program that wants the path and the window outright.
+Turn .unluminous/space.conf, where the canvas was kept before realm files, into one .realm file a view under .realm-files/. Nothing is deleted and nothing is written over: a realm file that is already there is left alone and named in the answer. A project is imported once by itself the first time it opens; this is the same conversion by hand.
 
-- `kind` — terminal, browser, folder, editor, chat or tasks.
+```sh
+unluminous-cli realm import
+```
+
+### realm info
+
+```
+unluminous-cli realm info
+```
+
+What the open realm's file says about which Unluminous may read and write it: its format, the reader and writer it needs, the features it needs, whether it can be changed here and why not, how many nodes it holds, and the kinds of node on it this Unluminous does not know. This is how to find out why a realm is read only.
+
+```sh
+unluminous-cli realm info --json
+```
+
+### realm add
+
+```
+unluminous-cli realm add <terminal|browser|folder|editor|chat|tasks|image|audio|video|note> [file] [--x <points>] [--y <points>] [--width <points>] [--height <points>] [--title <text>] [--command <text>] [--url <address>] [--root <path>] [--path <path>]
+```
+
+Put a node on the realm that is open and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with `unluminous-cli` on its PATH and pointed at this window, UNLUMINOUS_REALM_NODE set to its id so an agent started in it knows which node it is, UNLUMINOUS_REALM_HINT saying what to run first, and UNLUMINOUS_CLI and UNLUMINOUS_INSTANCE for a program that wants the path and the window outright. An image, audio or video node shows a file in this project, named as the second argument; a note node makes a Markdown file of that name in .realm-files/<realm>/, or shows an existing .md file when it is given one.
+
+- `kind` — terminal, browser, folder, editor, chat, tasks, image, audio, video or note.
+- `file` (optional) — An image, audio or video node: the file in this project it shows. A note node: a name for a new note, or the path of an existing .md file.
 
 - `--x <points>` — Where to put it, in canvas points. The middle of what is showing when it is not given.
 - `--y <points>` — The same, down the canvas.
@@ -1736,32 +1762,34 @@ Put a node on the view that is showing and answer with its id. A terminal node s
 - `--path <path>` — An editor node: which file to open.
 
 ```sh
-unluminous-cli space add terminal --command claude
-unluminous-cli space add browser --url https://example.com/
-unluminous-cli space add editor --path src/main.rs --x 900 --y 40
+unluminous-cli realm add terminal --command claude
+unluminous-cli realm add browser --url https://example.com/
+unluminous-cli realm add editor --path src/main.rs --x 900 --y 40
+unluminous-cli realm add image design/cover.png
+unluminous-cli realm add note Plan
 ```
 
-### space move
+### realm move
 
 ```
-unluminous-cli space move <node> [--x <points>] [--y <points>]
+unluminous-cli realm move <node> [--x <points>] [--y <points>]
 ```
 
 Move a node to a place on the canvas, in canvas points.
 
-- `node` — The node's id, from `space list`.
+- `node` — The node's id, from `realm list`.
 
 - `--x <points>` — Where its left hand edge goes.
 - `--y <points>` — Where its top edge goes.
 
 ```sh
-unluminous-cli space move 7 --x 320 --y 180
+unluminous-cli realm move 7 --x 320 --y 180
 ```
 
-### space size
+### realm size
 
 ```
-unluminous-cli space size <node> [--width <points>] [--height <points>]
+unluminous-cli realm size <node> [--width <points>] [--height <points>]
 ```
 
 Resize a node. It is never made smaller than its kind allows, and the reply says what size it really came out.
@@ -1772,13 +1800,13 @@ Resize a node. It is never made smaller than its kind allows, and the reply says
 - `--height <points>` — How tall.
 
 ```sh
-unluminous-cli space size 7 --width 900 --height 520
+unluminous-cli realm size 7 --width 900 --height 520
 ```
 
-### space title
+### realm title
 
 ```
-unluminous-cli space title <node> <title>
+unluminous-cli realm title <node> <title>
 ```
 
 Call a node something else. An empty name puts it back to being called after what it holds.
@@ -1787,13 +1815,13 @@ Call a node something else. An empty name puts it back to being called after wha
 - `title` — What the header says. Everything after it on the line belongs to it.
 
 ```sh
-unluminous-cli space title 7 the agent
+unluminous-cli realm title 7 the agent
 ```
 
-### space remove
+### realm remove
 
 ```
-unluminous-cli space remove <node>
+unluminous-cli realm remove <node>
 ```
 
 Take a node off the canvas, stopping whatever was running in it. A file editor node's tab is closed, which writes it first if it was edited.
@@ -1801,13 +1829,13 @@ Take a node off the canvas, stopping whatever was running in it. A file editor n
 - `node` — The node's id.
 
 ```sh
-unluminous-cli space remove 7
+unluminous-cli realm remove 7
 ```
 
-### space focus
+### realm focus
 
 ```
-unluminous-cli space focus <node>
+unluminous-cli realm focus <node>
 ```
 
 Choose a node, bring it to the front and give it the keyboard.
@@ -1815,13 +1843,13 @@ Choose a node, bring it to the front and give it the keyboard.
 - `node` — The node's id.
 
 ```sh
-unluminous-cli space focus 7
+unluminous-cli realm focus 7
 ```
 
-### space connect
+### realm connect
 
 ```
-unluminous-cli space connect <from> <to> [--pipe <lines>]
+unluminous-cli realm connect <from> <to> [--pipe <lines>]
 ```
 
 Wire one node's output to another's input. A connection is what lets an agent in a terminal node act on the node it is wired to; with `--pipe lines` it also types each line the first node's program writes into the second node's terminal.
@@ -1832,28 +1860,28 @@ Wire one node's output to another's input. A connection is what lets an agent in
 - `--pipe <lines>` — Carry text as well as permission. Only into a terminal node, because only a terminal has an input to type into.
 
 ```sh
-unluminous-cli space connect 7 9
-unluminous-cli space connect 7 9 --pipe lines
+unluminous-cli realm connect 7 9
+unluminous-cli realm connect 7 9 --pipe lines
 ```
 
-### space disconnect
+### realm disconnect
 
 ```
-unluminous-cli space disconnect <connection>
+unluminous-cli realm disconnect <connection>
 ```
 
-Take a connection away, by its id from `space connections`.
+Take a connection away, by its id from `realm connections`.
 
 - `connection` — The connection's id.
 
 ```sh
-unluminous-cli space disconnect 12
+unluminous-cli realm disconnect 12
 ```
 
-### space connections
+### realm connections
 
 ```
-unluminous-cli space connections [--from <node>]
+unluminous-cli realm connections [--from <node>]
 ```
 
 Every connection on the view that is showing: its id, which node it leaves, which it arrives at, and whether it carries lines. `--from` narrows it to one node's own, which is what an agent in a terminal node asks to find out what it may act on.
@@ -1861,13 +1889,13 @@ Every connection on the view that is showing: its id, which node it leaves, whic
 - `--from <node>` — Only the connections leaving this node.
 
 ```sh
-unluminous-cli space connections --from 7
+unluminous-cli realm connections --from 7
 ```
 
-### space camera
+### realm camera
 
 ```
-unluminous-cli space camera [--x <points>] [--y <points>] [--zoom <factor>] [--fit]
+unluminous-cli realm camera [--x <points>] [--y <points>] [--zoom <factor>] [--fit]
 ```
 
 Pan and zoom the canvas. With `--fit` it moves so that every node is on the screen at once, which is how to find something that has been dragged out of sight.
@@ -1878,14 +1906,14 @@ Pan and zoom the canvas. With `--fit` it moves so that every node is on the scre
 - `--fit` — Put every node on the screen at once.
 
 ```sh
-unluminous-cli space camera --fit
-unluminous-cli space camera --zoom 0.5
+unluminous-cli realm camera --fit
+unluminous-cli realm camera --zoom 0.5
 ```
 
-### space send
+### realm send
 
 ```
-unluminous-cli space send <node> <text> [--from <node>]
+unluminous-cli realm send <node> <text> [--from <node>]
 ```
 
 Type a line into a terminal node and press Enter. `--from` says which node is asking, and a node may only send to a node it is wired to; with no `--from` it is the window's own and may reach any of them.
@@ -1896,14 +1924,14 @@ Type a line into a terminal node and press Enter. `--from` says which node is as
 - `--from <node>` — Which node is asking. It must be wired to the one it names.
 
 ```sh
-unluminous-cli space send 9 cargo test
-unluminous-cli space send 9 cargo test --from 7
+unluminous-cli realm send 9 cargo test
+unluminous-cli realm send 9 cargo test --from 7
 ```
 
-### space read
+### realm read
 
 ```
-unluminous-cli space read <node> [--tail <lines>]
+unluminous-cli realm read <node> [--tail <lines>]
 ```
 
 Read what a terminal node is showing: the scrollback as well as the screen, so the commands that have scrolled above the fold are in it. This is what `terminal read` is for the terminal panel, and it is the way to check what a node printed, what it came back showing after a project was reopened, and what an agent running in a node has said.
@@ -1913,34 +1941,34 @@ Read what a terminal node is showing: the scrollback as well as the screen, so t
 - `--tail <lines>` — Answer with only the last N lines.
 
 ```sh
-unluminous-cli space read 7
-unluminous-cli space read 7 --tail 40
+unluminous-cli realm read 7
+unluminous-cli realm read 7 --tail 40
 ```
 
-### space chat
+### realm chat
 
 ```
-unluminous-cli space chat <node> <new|send|stop|state|messages|last|attach|providers|use|history|open|remove|tools|view> [words] [--from <node>]
+unluminous-cli realm chat <node> <new|send|stop|state|messages|last|attach|providers|use|history|open|remove|tools|view> [words] [--from <node>]
 ```
 
 Drive an Agent Chat node's own conversation: `new`, `send`, `stop`, `state`, `messages`, `last`, `attach`, `providers`, `use`, `history`, `open`, `remove`, `tools` and `view`, which are the same verbs `plugins run agent-chat` has and reach the same code. The difference is whose conversation: each chat node holds one of its own, where `plugins run agent-chat` drives the pane's. Like the pane's, `send` does not wait - `state` says when the answer has arrived.
 
-- `node` — The chat node's id, from `space list`.
+- `node` — The chat node's id, from `realm list`.
 - `verb` — What to do: new, send, stop, state, messages, last, attach, providers, use, history, open, remove, tools or view.
 - `words` (optional) — What the verb takes: the message for `send`, the conversation id for `open`, `on` or `off` for `tools`. It is the rest of the line, so a message needs no quoting. Everything after it on the line belongs to it.
 
 - `--from <node>` — Which node is asking. It must be wired to the one it names.
 
 ```sh
-unluminous-cli space chat 7 state
-unluminous-cli space chat 7 send Summarise what this project does
-unluminous-cli space chat 7 last --json
+unluminous-cli realm chat 7 state
+unluminous-cli realm chat 7 send Summarise what this project does
+unluminous-cli realm chat 7 last --json
 ```
 
-### space restart
+### realm restart
 
 ```
-unluminous-cli space restart <node> [--resume] [--running]
+unluminous-cli realm restart <node> [--resume] [--running]
 ```
 
 Start a terminal node's program again in the same folder. With `--resume` it starts the agent on the conversation it named, which Claude takes and Codex does not. With `--running` it types the program the node was last seen running into the shell it already has, which is what a node comes back as when somebody typed an agent into a plain terminal rather than giving the node a command.
@@ -1951,14 +1979,14 @@ Start a terminal node's program again in the same folder. With `--resume` it sta
 - `--running` — Type what the node was last seen running into its shell, continuing an agent's most recent conversation in that folder. What is recorded is a program name rather than a command line, so its arguments are not restored.
 
 ```sh
-unluminous-cli space restart 7 --resume
-unluminous-cli space restart 7 --running
+unluminous-cli realm restart 7 --resume
+unluminous-cli realm restart 7 --running
 ```
 
-### space font
+### realm font
 
 ```
-unluminous-cli space font <node> [--size <points>] [--bigger] [--smaller] [--reset]
+unluminous-cli realm font <node> [--size <points>] [--bigger] [--smaller] [--reset]
 ```
 
 How big a terminal node's letters are. The ticket this canvas comes from asks for a size a node keeps for itself, so a node that has been given one follows it and one that has not follows `terminal.font.size`. With no flag at all it answers the size the node is drawn at.
@@ -1971,17 +1999,17 @@ How big a terminal node's letters are. The ticket this canvas comes from asks fo
 - `--reset` — Follow the terminal's own setting again.
 
 ```sh
-unluminous-cli space font 7 --size 16
-unluminous-cli space font 7 --smaller
+unluminous-cli realm font 7 --size 16
+unluminous-cli realm font 7 --smaller
 ```
 
-### space zoom
+### realm zoom
 
 ```
-unluminous-cli space zoom <node> [--factor <number>] [--bigger] [--smaller] [--reset] [--from <node>]
+unluminous-cli realm zoom <node> [--factor <number>] [--bigger] [--smaller] [--reset] [--from <node>]
 ```
 
-How big one node draws what it holds. Each kind walks the number that really decides its size: a terminal and a file editor a point size, a folder view, an agent chat and the tasks board a multiplier over everything they draw, and a web browser the page's own zoom. With no flag at all it answers the factor the node is drawn at. This is what the modifier wheel over a node does, and it changes nothing about the canvas's own zoom, which is `space camera`.
+How big one node draws what it holds. Each kind walks the number that really decides its size: a terminal and a file editor a point size, a folder view, an agent chat and the tasks board a multiplier over everything they draw, and a web browser the page's own zoom. With no flag at all it answers the factor the node is drawn at. This is what the modifier wheel over a node does, and it changes nothing about the canvas's own zoom, which is `realm camera`.
 
 - `node` — The node's id.
 
@@ -1992,17 +2020,17 @@ How big one node draws what it holds. Each kind walks the number that really dec
 - `--from <node>` — Which node is asking. It must be wired to the one it names.
 
 ```sh
-unluminous-cli space zoom 7 --bigger
-unluminous-cli space zoom 9 --factor 1.5
+unluminous-cli realm zoom 7 --bigger
+unluminous-cli realm zoom 9 --factor 1.5
 ```
 
-### space address
+### realm address
 
 ```
-unluminous-cli space address <node> <url> [--from <node>]
+unluminous-cli realm address <node> <url> [--from <node>]
 ```
 
-Type an address into a browser node's own address bar and enter it, which is what pressing Enter in that field does. `space browser <node> go` is the same navigation asked for directly; this exists so the control a person uses has a way in of its own.
+Type an address into a browser node's own address bar and enter it, which is what pressing Enter in that field does. `realm browser <node> go` is the same navigation asked for directly; this exists so the control a person uses has a way in of its own.
 
 - `node` — The browser node's id.
 - `url` — The address, or a path to a local page in this project.
@@ -2010,13 +2038,13 @@ Type an address into a browser node's own address bar and enter it, which is wha
 - `--from <node>` — Which node is asking. It must be wired to the one it names.
 
 ```sh
-unluminous-cli space address 9 https://example.com/
+unluminous-cli realm address 9 https://example.com/
 ```
 
-### space browser
+### realm browser
 
 ```
-unluminous-cli space browser <node> <go|back|forward|reload|url|shot> [--url <address>] [--from <node>] [--path <file>]
+unluminous-cli realm browser <node> <go|back|forward|reload|url|shot> [--url <address>] [--from <node>] [--path <file>]
 ```
 
 Drive a browser node: `go` to an address, `back`, `forward`, `reload`, `url` to read where it is, and `shot` to write a picture of the node to a file. A window renders one page at a time, so the node acted on is shown first. **`shot` photographs the node as Unluminous drew it and not the page inside it**: a rendered page is a native child window the operating system composites on top, and no picture taken from inside Unluminous contains one. Use it to see the node, its address bar and where it is on the canvas; use `url` to read the address, and the agent's own tools to read what a page says.
@@ -2029,14 +2057,14 @@ Drive a browser node: `go` to an address, `back`, `forward`, `reload`, `url` to 
 - `--path <file>` — Where to write the picture, for `shot`.
 
 ```sh
-unluminous-cli space browser 9 go --url https://example.com/ --from 7
-unluminous-cli space browser 9 url
+unluminous-cli realm browser 9 go --url https://example.com/ --from 7
+unluminous-cli realm browser 9 url
 ```
 
-### space folder
+### realm folder
 
 ```
-unluminous-cli space folder <node> <expand|collapse|select|open|root|rows> [--path <path>] [--from <node>]
+unluminous-cli realm folder <node> <expand|collapse|select|open|root|rows> [--path <path>] [--from <node>]
 ```
 
 Drive a folder node: `expand` and `collapse` a folder in it, `select` a row, `open` a file, `root` to point it at another folder, and `rows` to read what it is showing. `open` puts the file in a File Editor node this one is wired to when there is one, and in the editing area when there is not — which is what a double click in the node does. `root` is what the node's own `Choose Folder...` menu row calls, so several folder nodes can show several different folders.
@@ -2048,14 +2076,14 @@ Drive a folder node: `expand` and `collapse` a folder in it, `select` a row, `op
 - `--from <node>` — Which node is asking. It must be wired to the one it names.
 
 ```sh
-unluminous-cli space folder 11 expand --path crates/unluminous-app --from 7
-unluminous-cli space folder 11 rows
+unluminous-cli realm folder 11 expand --path crates/unluminous-app --from 7
+unluminous-cli realm folder 11 rows
 ```
 
-### space editor
+### realm editor
 
 ```
-unluminous-cli space editor <node> <path> [--from <node>]
+unluminous-cli realm editor <node> <path> [--from <node>]
 ```
 
 Put a file in a file editor node. A file already open somewhere else is moved into the node rather than opened twice, because two tabs on one file would be two documents over one path.
@@ -2066,7 +2094,91 @@ Put a file in a file editor node. A file already open somewhere else is moved in
 - `--from <node>` — Which node is asking. It must be wired to the one it names.
 
 ```sh
-unluminous-cli space editor 13 src/main.rs --from 7
+unluminous-cli realm editor 13 src/main.rs --from 7
+```
+
+### realm note
+
+```
+unluminous-cli realm note <view> <node> <raw|side|preview> [--from <node>]
+```
+
+Show a note node as its Markdown source (raw), as the source beside its preview (side), or as the preview alone (preview). The same three buttons are at the right of the note's header. The view is written in the realm file, because it is how the note is meant to be read.
+
+- `command` — view.
+- `node` — The note node's id.
+- `view` — raw, side or preview.
+
+- `--from <node>` — Which node is asking. It must be wired to the one it names.
+
+```sh
+unluminous-cli realm note view 13 preview
+```
+
+### realm play
+
+```
+unluminous-cli realm play <node> [--from <node>]
+```
+
+Play an audio or video node, and answer where it is and how long it is. A sound plays in the window itself, so every audio node can play at once. A video plays in the window's one web view, so playing one makes it the chosen node, and the video that was showing stops showing.
+
+- `node` — The audio or video node's id.
+
+- `--from <node>` — Which node is asking. It must be wired to the one it names.
+
+```sh
+unluminous-cli realm play 13
+```
+
+### realm pause
+
+```
+unluminous-cli realm pause <node> [--from <node>]
+```
+
+Pause an audio or video node where it is. Where it was paused is remembered on this machine and is where it starts next time.
+
+- `node` — The audio or video node's id.
+
+- `--from <node>` — Which node is asking. It must be wired to the one it names.
+
+```sh
+unluminous-cli realm pause 13
+```
+
+### realm seek
+
+```
+unluminous-cli realm seek <node> <seconds> [--from <node>]
+```
+
+Move an audio or video node to a time, in seconds from the start.
+
+- `node` — The audio or video node's id.
+- `seconds` — How far in, in seconds.
+
+- `--from <node>` — Which node is asking. It must be wired to the one it names.
+
+```sh
+unluminous-cli realm seek 13 42.5
+```
+
+### realm volume
+
+```
+unluminous-cli realm volume <node> <level> [--from <node>]
+```
+
+Set how loud an audio or video node plays, from 0 for silent to 1 for as loud as the file is. It is written in the realm file.
+
+- `node` — The audio or video node's id.
+- `level` — From 0 to 1.
+
+- `--from <node>` — Which node is asking. It must be wired to the one it names.
+
+```sh
+unluminous-cli realm volume 13 0.5
 ```
 
 ## input — clicking, typing and dragging in the window, without it being in front

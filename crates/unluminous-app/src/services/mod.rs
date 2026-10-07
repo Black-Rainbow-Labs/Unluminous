@@ -49,8 +49,8 @@ pub mod project_state;
 pub mod recycle;
 pub mod run_configurations;
 pub mod shell_integration;
-/// The Base of Infinite Space: the canvas of nodes `task-1904` asks for.
-pub mod space;
+/// The Realm: the canvas of nodes `task-1904` asks for.
+pub mod realm;
 pub mod store;
 pub mod symbol_index;
 pub mod system_files;

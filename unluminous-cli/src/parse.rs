@@ -304,8 +304,8 @@ pub fn parse(words: &[String]) -> Result<Typed, Problem> {
         ));
     }
 
-    // **`space here` is answered about the node this process is running in**, and only this process can
-    // know which that is: `UNLUMINOUS_SPACE_NODE` is in the *client's* environment, put there by the
+    // **`realm here` is answered about the node this process is running in**, and only this process can
+    // know which that is: `UNLUMINOUS_REALM_NODE` is in the *client's* environment, put there by the
     // window when it started the node's shell. So the client reads it and sends it, and the window answers
     // about the node it names. `task-1905`.
     //
@@ -313,7 +313,7 @@ pub fn parse(words: &[String]) -> Result<Typed, Problem> {
     // command, one variable, and a caller that passed `--node` itself is left alone. Doing this for `--from`
     // on every command was weighed and refused — it would make the same command line mean two things
     // depending on where it was typed.
-    if command.wire() == "space.here" && !arguments.contains_key("node") {
+    if command.wire() == "realm.here" && !arguments.contains_key("node") {
         if let Some(node) = the_node_this_process_is_in() {
             arguments.insert("node".to_owned(), Value::String(node));
         }
@@ -343,12 +343,15 @@ pub fn the_window_that_started_this_process() -> Option<String> {
     said.parse::<u32>().ok().map(|instance| instance.to_string())
 }
 
-/// The node this process was started in, from `UNLUMINOUS_SPACE_NODE`.
+/// The node this process was started in, from `UNLUMINOUS_REALM_NODE`.
+///
+/// `UNLUMINOUS_SPACE_NODE` is what a shell started before `task-2202` renamed the canvas was given, so
+/// it is still read when the new name is not set.
 ///
 /// A value that is not a number is ignored rather than refused: it is not something a caller typed, so a
 /// refusal would be about a variable somebody's shell happens to hold.
 fn the_node_this_process_is_in() -> Option<String> {
-    let said = std::env::var("UNLUMINOUS_SPACE_NODE").ok()?;
+    let said = std::env::var("UNLUMINOUS_REALM_NODE").or_else(|_| std::env::var("UNLUMINOUS_SPACE_NODE")).ok()?;
     let said = said.trim();
     said.parse::<u64>().ok().map(|node| node.to_string())
 }

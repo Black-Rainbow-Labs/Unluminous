@@ -906,7 +906,7 @@ impl AgentChat {
     ///
     /// Read back by a chat node so the canvas can write it down: a node that reopened the newest
     /// conversation would be a second view of whatever the pane last looked at, and a canvas of agents
-    /// would come back as several views of one. See `services::space::node::Chat::conversation`.
+    /// would come back as several views of one. See `services::realm::node::Chat::conversation`.
     pub fn conversation_id(&self) -> &str {
         &self.session.chat.id
     }

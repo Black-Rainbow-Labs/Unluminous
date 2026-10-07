@@ -212,8 +212,8 @@ impl UnluminousApp {
             // terminal's font size instead of having one - `task-1904`. The keys zoom about the
             // middle of the canvas, because the keyboard has no pointer; the wheel zooms about the
             // pointer, in `take_the_canvas_input`.
-            dock::Panel::Space => {
-                let body = self.space.body;
+            dock::Panel::Realm => {
+                let body = self.realm.body;
                 // **Aimed rather than set**, so the keys and the modifier wheel glide the way the plain
                 // wheel does — see `UnluminousApp::aim_the_zoom_at`. `task-1945`.
                 let wanted = self.aimed_zoom() * 1.1_f32.powi(steps);
@@ -297,8 +297,8 @@ impl UnluminousApp {
             dock::Panel::Terminal | dock::Panel::Run | dock::Panel::Debug => {
                 self.settings.terminal_font_size = settings::Settings::new().terminal_font_size;
             }
-            dock::Panel::Space => {
-                let body = self.space.body;
+            dock::Panel::Realm => {
+                let body = self.realm.body;
                 self.aim_the_zoom_at(1.0, body.center());
             }
             dock::Panel::Explorer | dock::Panel::Plugin(_) => {

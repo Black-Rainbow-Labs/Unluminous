@@ -1,6 +1,6 @@
-//! Drawing the Base of Infinite Space.
+//! Drawing the Realm.
 //!
-//! `tasks/task-1904-base-of-infinite-space-tdd.md` is the design and `services::space` is the model.
+//! `tasks/task-1904-base-of-infinite-space-tdd.md` is the design and `services::realm` is the model.
 //! Nothing here changes anything: each function takes a rectangle, draws, and reports what the person
 //! did in it, which is `components/`'s own rule — the state changes in `app`, so two parts of the
 //! canvas cannot disagree about what happened.
@@ -26,13 +26,15 @@ pub mod manager;
 
 use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Vec2};
 
-use crate::services::space::geometry::{self, Grip};
-use crate::services::space::{Camera, Kind, Node, Pipe, View, ViewId};
+use crate::services::realm::geometry::{self, Grip};
+use std::path::{Path, PathBuf};
+
+use crate::services::realm::{Camera, Kind, Node, Pipe, Realm};
 use crate::services::vello_canvas::{Chrome, Fill, Lift};
 use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, icon};
 
-/// The strip along the top of the pane that holds the views.
+/// The strip along the top of the pane that lists the project's realms.
 pub const VIEW_BAR: f32 = 30.0;
 /// A node's own header, in world points.
 pub const NODE_HEADER: f32 = 26.0;
@@ -50,20 +52,20 @@ const WIRE_SEGMENTS: usize = 28;
 /// How near a wire a right click has to be, in screen points.
 pub const WIRE_REACH: f32 = 7.0;
 
-/// What the strip of views reported.
+/// What the realm bar reported.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct BarOutcome {
-    /// A view was chosen.
-    pub show: Option<ViewId>,
+    /// A realm was chosen, named by its path in the project.
+    pub show: Option<PathBuf>,
     /// The plus was pressed.
     pub add: bool,
-    /// A view was right clicked: where the pointer was, and which one.
-    pub menu: Option<(Pos2, ViewId)>,
+    /// A realm was right clicked: where the pointer was, and which one.
+    pub menu: Option<(Pos2, PathBuf)>,
     /// The zoom buttons were pressed: -1 or 1, in notches.
     pub zoom: i32,
     /// The reading between them was pressed, which puts the zoom back to one.
     pub reset_zoom: bool,
-    /// The row saying how many views are not listed was pressed, which opens the manager.
+    /// The row saying how many realms are not listed was pressed, which opens the manager.
     pub manage: bool,
 }
 
@@ -79,23 +81,22 @@ const ZOOM_CONTROLS: f32 = 116.0;
 /// is the same sum the bar always made, with the plus moved from one end of it to the other.
 const PLUS: f32 = 28.0;
 
-/// The strip of views along the top of the canvas: one chip a view, the current one lit, and a plus.
+/// The realm bar along the top of the canvas: one chip a realm file in the project, the open one lit, and
+/// a plus. `task-2202`: it replaced the strip of views one for one, because a realm file is what a view
+/// was.
 ///
-/// The ticket asks to *"have multiple projects/views"* and to *"Edit project/view names, delete, create
-/// new, clone/duplicate"*. The four of those that are about one view are on its right click menu, which
-/// is where the explorer, the tabs and every panel in Unluminous already put the things that are about
-/// one row.
-/// `views` is a name and an id a canvas, which is all the bar draws.
+/// `task-1904` asked to *"Edit project/view names, delete, create new, clone/duplicate"*. The four of those
+/// that are about one realm are on its right click menu, which is where the explorer, the tabs and every
+/// panel in Unluminous already put the things that are about one row.
+/// `views` is a path and a name a realm, which is all the bar draws.
 ///
-/// **Not `&[View]`** (`task-1984` A8). A `View` holds every node on that canvas with every string in
-/// it, and the caller could not lend one while the rest of the window was borrowed -- so it deep
-/// copied every canvas the project has, on every frame, to draw a row of chips. Two fields is what
-/// the bar reads, and two fields is what it is given.
+/// **Not `&[Realm]`** (`task-1984` A8): only one realm is read at a time, and two fields is what the bar
+/// reads.
 pub fn view_bar(
     ui: &mut egui::Ui,
     area: Rect,
-    views: &[(ViewId, String)],
-    current: ViewId,
+    views: &[(PathBuf, String)],
+    current: &Path,
     zoom: f32,
     look: Look<'_>,
 ) -> BarOutcome {
@@ -113,7 +114,7 @@ pub fn view_bar(
     let mut pen = area.left() + 8.0;
     let mut drawn = 0usize;
     for (view_id, view_name) in views {
-        let (view_id, view_name) = (*view_id, view_name.as_str());
+        let (view_id, view_name) = (view_id.clone(), view_name.as_str());
         let width = chip_width(&painter, view_name);
         let chip = Rect::from_min_size(
             Pos2::new(pen, area.top() + 4.0),
@@ -126,7 +127,7 @@ pub fn view_bar(
         }
         drawn += 1;
         let on = view_id == current;
-        let response = ui.interact(chip, ui.id().with(("space-view", view_id)), Sense::click());
+        let response = ui.interact(chip, ui.id().with(("realm-view", &view_id)), Sense::click());
         if on {
             look.chrome.raised(chip, 6.0, Fill::Solid(look.card), Lift::Small);
         }
@@ -146,11 +147,13 @@ pub fn view_bar(
                 egui::WidgetType::Button,
                 true,
                 on,
-                format!("View: {}", view_name),
+                // Not `Realm: <name>`, which is the manager's row for the same realm: two controls must not
+                // share a name, and both can be on the screen at once.
+                format!("Realm tab: {}", view_name),
             )
         });
         if response.clicked() {
-            outcome.show = Some(view_id);
+            outcome.show = Some(view_id.clone());
         }
         if response.secondary_clicked() {
             if let Some(at) = response.interact_pointer_pos().or_else(|| response.hover_pos()) {
@@ -168,7 +171,7 @@ pub fn view_bar(
             Pos2::new(pen, area.top() + 4.0),
             Vec2::new(MORE_ROW - 6.0, area.height() - 9.0),
         );
-        let response = ui.interact(row, ui.id().with("space-views-more"), Sense::click());
+        let response = ui.interact(row, ui.id().with("realm-views-more"), Sense::click());
         if response.hovered() {
             ui.painter_at(area).rect_filled(row, CornerRadius::same(6), color::control());
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -182,7 +185,7 @@ pub fn view_bar(
             color::text_dim(),
         );
         response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Spaces, {said}"))
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Realms, {said}"))
         });
         if response.clicked() {
             outcome.manage = true;
@@ -199,7 +202,7 @@ pub fn view_bar(
         Pos2::new(plus_left + PLUS / 2.0 - 3.0, area.center().y),
         Vec2::splat(22.0),
     );
-    if crate::components::controls::icon_button(ui, plus, "New view", icon::plus) {
+    if crate::components::controls::icon_button(ui, plus, "New Realm", icon::plus) {
         outcome.add = true;
     }
     show_the_zoom_controls(ui, area, zoom, &mut outcome);
@@ -221,7 +224,7 @@ fn show_the_zoom_controls(ui: &mut egui::Ui, area: Rect, zoom: f32, outcome: &mu
     let mut right = area.right() - 34.0;
     let out = Rect::from_center_size(Pos2::new(right - 11.0, middle), Vec2::splat(22.0));
     // At the bottom of the ladder there is nowhere further out to go.
-    let can_zoom_out = zoom > crate::services::space::node::MIN_ZOOM + 0.001;
+    let can_zoom_out = zoom > crate::services::realm::node::MIN_ZOOM + 0.001;
     if dimmable_icon_button(ui, out, "Zoom out", icon::zoom_out, can_zoom_out) {
         outcome.zoom = -1;
     }
@@ -233,7 +236,7 @@ fn show_the_zoom_controls(ui: &mut egui::Ui, area: Rect, zoom: f32, outcome: &mu
         Pos2::new(right - 46.0, area.top() + 4.0),
         Pos2::new(right, area.bottom() - 5.0),
     );
-    let response = ui.interact(reading, ui.id().with("space-zoom-reading"), Sense::click());
+    let response = ui.interact(reading, ui.id().with("realm-zoom-reading"), Sense::click());
     if response.hovered() {
         ui.painter_at(area).rect_filled(reading, CornerRadius::same(6), color::control());
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -255,7 +258,7 @@ fn show_the_zoom_controls(ui: &mut egui::Ui, area: Rect, zoom: f32, outcome: &mu
     }
     right = reading.left() - 2.0;
     let into = Rect::from_center_size(Pos2::new(right - 11.0, middle), Vec2::splat(22.0));
-    let can_zoom_in = zoom < crate::services::space::node::MAX_ZOOM - 0.001;
+    let can_zoom_in = zoom < crate::services::realm::node::MAX_ZOOM - 0.001;
     if dimmable_icon_button(ui, into, "Zoom in", icon::zoom_in, can_zoom_in) {
         outcome.zoom = 1;
     }
@@ -364,7 +367,7 @@ pub struct WireOutcome {
 pub fn wires(
     ui: &mut egui::Ui,
     area: Rect,
-    view: &View,
+    view: &Realm,
     camera: &Camera,
     look: Look<'_>,
 ) -> WireOutcome {
@@ -472,6 +475,8 @@ pub struct NodeOutcome {
     pub closed: bool,
     /// The font buttons were pressed: -1 or 1. A terminal node only.
     pub font_step: i32,
+    /// One of a note node's three view buttons was pressed. `task-2202`.
+    pub view: Option<crate::services::realm::NoteView>,
     /// The header was right clicked: where the pointer was, in **screen** points.
     ///
     /// Screen rather than world, because what it is handed to is `egui::Popup`, which places a menu on the
@@ -498,7 +503,7 @@ pub struct Framing<'a> {
     /// True while a wire is in the air looking for an input port.
     pub wire_is_looking: bool,
     /// Which node that wire would land on, so a port lights up while it is the one.
-    pub landing: Option<crate::services::space::NodeId>,
+    pub landing: Option<crate::services::realm::NodeId>,
     /// What the header says when the node has not been renamed.
     pub fallback_title: &'a str,
 }
@@ -568,7 +573,7 @@ fn show_the_header(
     framing: Framing<'_>,
     outcome: &mut NodeOutcome,
 ) {
-    let salt = ("space-node-header", node.id);
+    let salt = ("realm-node-header", node.id);
     let response = ui.interact(header, ui.id().with(salt), Sense::click_and_drag());
     if response.dragged() {
         outcome.moved = Some(response.drag_delta());
@@ -617,6 +622,19 @@ fn show_the_header(
         outcome.closed = true;
     }
     right = close.left() - 2.0;
+    // **A note's three views, at the right of its header**, which is where the title bar draws the same
+    // three for a Markdown tab. `task-2202`. Named after the note, `Raw Markdown in Plan.md`, because the
+    // title bar's own three carry the bare names and two controls must not share one.
+    if let crate::services::realm::State::Note(note) = &node.state {
+        for view in crate::services::realm::NoteView::ALL.into_iter().rev() {
+            let button =
+                Rect::from_center_size(Pos2::new(right - 10.0, header.center().y), Vec2::splat(20.0));
+            if note_view_button(ui, button, view, note.view == view, &name) {
+                outcome.view = Some(view);
+            }
+            right = button.left() - 2.0;
+        }
+    }
     if node.kind() == Kind::Terminal {
         let smaller =
             Rect::from_center_size(Pos2::new(right - 9.0, header.center().y), Vec2::splat(18.0));
@@ -655,6 +673,48 @@ fn show_the_header(
     });
 }
 
+/// The view mode a note's view is, which is what the title bar's own buttons and `OpenFile::view_mode` use.
+pub fn view_mode_of(view: crate::services::realm::NoteView) -> crate::app::ViewMode {
+    match view {
+        crate::services::realm::NoteView::Raw => crate::app::ViewMode::Raw,
+        crate::services::realm::NoteView::Side => crate::app::ViewMode::SideBySide,
+        crate::services::realm::NoteView::Preview => crate::app::ViewMode::Preview,
+    }
+}
+
+/// The note view a tab's view mode is.
+pub fn note_view_of(mode: crate::app::ViewMode) -> crate::services::realm::NoteView {
+    match mode {
+        crate::app::ViewMode::Raw => crate::services::realm::NoteView::Raw,
+        crate::app::ViewMode::SideBySide => crate::services::realm::NoteView::Side,
+        crate::app::ViewMode::Preview => crate::services::realm::NoteView::Preview,
+    }
+}
+
+/// One of a note node's three view buttons: the title bar's drawing, named after the note.
+fn note_view_button(
+    ui: &mut egui::Ui,
+    area: Rect,
+    view: crate::services::realm::NoteView,
+    active: bool,
+    note: &str,
+) -> bool {
+    let mode = view_mode_of(view);
+    let label = mode.label_for(crate::services::file_kind::PreviewKind::Markdown);
+    let name = format!("{label} in {note}");
+    let response = ui.interact(area, ui.id().with(("realm-note-view", &name)), Sense::click());
+    let painter = ui.painter();
+    if active {
+        painter.rect_filled(area, egui::CornerRadius::same(4), color::accent());
+    } else if response.hovered() {
+        painter.rect_filled(area, egui::CornerRadius::same(4), color::control());
+    }
+    let tint = if active { color::text_strong() } else { color::text_control() };
+    icon::view_mode(painter, area.shrink(5.0), mode, tint);
+    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, active, &name));
+    response.clicked()
+}
+
 /// The drawn mark for each kind, which is the same picture the rail uses for the pane it stands for.
 fn kind_mark(kind: Kind) -> fn(&egui::Painter, Pos2, Color32) {
     match kind {
@@ -664,6 +724,11 @@ fn kind_mark(kind: Kind) -> fn(&egui::Painter, Pos2, Color32) {
         Kind::Editor => icon::editing_area,
         Kind::Chat => icon::chat,
         Kind::Tasks => icon::board,
+        Kind::Image => icon::photo,
+        Kind::Audio => icon::audio,
+        Kind::Video => icon::video,
+        Kind::Note => icon::text_page,
+        Kind::Unknown => icon::unknown,
     }
 }
 
@@ -682,7 +747,7 @@ fn show_the_ports(
     let output = node.output_port();
     let hit = Rect::from_center_size(output, Vec2::splat(PORT * 3.0));
     let response =
-        ui.interact(hit, ui.id().with(("space-port-out", node.id)), Sense::click_and_drag());
+        ui.interact(hit, ui.id().with(("realm-port-out", node.id)), Sense::click_and_drag());
     if response.dragged() {
         outcome.wiring = ui.ctx().pointer_latest_pos().and_then(|at| {
             ui.ctx().layer_transform_from_global(ui.layer_id()).map(|back| back * at)
@@ -753,7 +818,7 @@ fn show_the_grips(ui: &mut egui::Ui, node: &Node, framing: Framing<'_>, outcome:
             continue;
         }
         let response =
-            ui.interact(area, ui.id().with(("space-grip", node.id, grip.name())), Sense::drag());
+            ui.interact(area, ui.id().with(("realm-grip", node.id, grip.name())), Sense::drag());
         if response.hovered() || response.dragged() {
             ui.ctx().set_cursor_icon(grip.cursor());
         }
@@ -866,7 +931,7 @@ pub fn is_showing(node: &Node, pane: Rect, camera: &Camera) -> bool {
 /// asked for something else.
 pub fn font_size_of(node: &Node, fallback: f32) -> f32 {
     match &node.state {
-        crate::services::space::State::Terminal(terminal) if terminal.font_size > 0.0 => {
+        crate::services::realm::State::Terminal(terminal) if terminal.font_size > 0.0 => {
             terminal.font_size
         }
         _ => fallback,
@@ -881,7 +946,9 @@ pub fn font_size_of(node: &Node, fallback: f32) -> f32 {
 /// its own. `task-1905`.
 pub fn editor_font_size_of(node: &Node, fallback: f32) -> f32 {
     match &node.state {
-        crate::services::space::State::Editor(editor) if editor.font_size > 0.0 => editor.font_size,
+        crate::services::realm::State::Editor(editor) if editor.font_size > 0.0 => editor.font_size,
+        // A note is an editor on one Markdown file, and keeps its own size the same way. `task-2202`.
+        crate::services::realm::State::Note(note) if note.font_size > 0.0 => note.font_size,
         _ => fallback,
     }
 }
@@ -889,7 +956,7 @@ pub fn editor_font_size_of(node: &Node, fallback: f32) -> f32 {
 /// How much bigger or smaller than its usual size a folder node draws its rows.
 pub fn folder_zoom_of(node: &Node) -> f32 {
     match &node.state {
-        crate::services::space::State::Folder(folder) if folder.zoom > 0.0 => folder.zoom,
+        crate::services::realm::State::Folder(folder) if folder.zoom > 0.0 => folder.zoom,
         _ => 1.0,
     }
 }
@@ -906,26 +973,26 @@ pub const NODE_CORNER: f32 = 8.0;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::space::{Space, State};
+    use crate::services::realm::{Realm, State};
 
     #[test]
     fn a_node_is_drawn_only_when_it_can_be_seen() {
         let pane = Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(800.0, 600.0));
         let camera = Camera::default();
-        let mut space = Space::new();
-        let near = space.add_node(Kind::Folder, Pos2::new(100.0, 100.0), None);
-        let far = space.add_node(Kind::Folder, Pos2::new(9000.0, 9000.0), None);
-        let view = space.current();
+        let mut realm = Realm::default();
+        let near = realm.add_node(Kind::Folder, Pos2::new(100.0, 100.0), None);
+        let far = realm.add_node(Kind::Folder, Pos2::new(9000.0, 9000.0), None);
+        let view = realm;
         assert!(is_showing(view.node(near).expect("it is there"), pane, &camera));
         assert!(!is_showing(view.node(far).expect("it is there"), pane, &camera));
     }
 
     #[test]
     fn a_nodes_header_is_taken_out_of_its_top_and_never_out_of_more_than_it_has() {
-        let mut space = Space::new();
-        let id = space.add_node(Kind::Terminal, Pos2::new(10.0, 20.0), None);
-        space.resize_node(id, Vec2::new(400.0, 300.0));
-        let node = space.current().node(id).expect("it is there").clone();
+        let mut realm = Realm::default();
+        let id = realm.add_node(Kind::Terminal, Pos2::new(10.0, 20.0), None);
+        realm.resize_node(id, Vec2::new(400.0, 300.0));
+        let node = realm.node(id).expect("it is there").clone();
         let parts = parts_of(&node);
         assert_eq!(parts.header.height(), NODE_HEADER);
         assert_eq!(parts.body.top(), parts.header.bottom());
@@ -958,16 +1025,16 @@ mod tests {
 
     #[test]
     fn a_terminal_node_uses_its_own_font_size_only_once_it_has_been_given_one() {
-        let mut space = Space::new();
-        let id = space.add_node(Kind::Terminal, Pos2::ZERO, None);
-        let node = space.current().node(id).expect("it is there").clone();
+        let mut realm = Realm::default();
+        let id = realm.add_node(Kind::Terminal, Pos2::ZERO, None);
+        let node = realm.node(id).expect("it is there").clone();
         assert_eq!(font_size_of(&node, 14.0), 14.0, "the terminal's own setting");
-        space.change(id, |state| {
+        realm.change(id, |state| {
             if let State::Terminal(terminal) = state {
                 terminal.font_size = 20.0;
             }
         });
-        let node = space.current().node(id).expect("it is there").clone();
+        let node = realm.node(id).expect("it is there").clone();
         assert_eq!(font_size_of(&node, 14.0), 20.0);
     }
 
@@ -1005,10 +1072,10 @@ mod tests {
     /// graphics card, which is what `editor_view`'s own painting tests use.
     #[test]
     fn a_nodes_menu_is_reported_where_the_pointer_is_on_the_screen() {
-        let mut space = Space::new();
+        let mut realm = Realm::default();
         // A node well away from the canvas's origin, which is the case that showed the fault.
-        let id = space.add_node(Kind::Folder, Pos2::new(700.0, 460.0), None);
-        let node = space.current().node(id).expect("it is there").clone();
+        let id = realm.add_node(Kind::Folder, Pos2::new(700.0, 460.0), None);
+        let node = realm.node(id).expect("it is there").clone();
         // The pane, and a camera looking at the world origin — so world and screen differ by the pane's own
         // corner plus the node's place.
         let pane = Rect::from_min_size(Pos2::new(36.0, 216.0), Vec2::new(1100.0, 500.0));

@@ -68,7 +68,7 @@ feeding it real events, rendering it through the graphics card and writing a PNG
 | `window_and_chrome.rs` | the title bar, the rail, the panels, the modals, the settings, the themes |
 | `editor_formatting.rs` | the editing area, the formatting, the preview, the pictures |
 | `navigation.rs` | go to file, find in files, definitions, references, rename, completion, folding |
-| `canvas_space.rs` | the Base of Infinite Space |
+| `canvas_realm.rs` | the Realm |
 | `plugins_board_and_chat.rs` | Agent-Tasks and Agent-Chat |
 | `plugins_database.rs` | the Database plugin |
 | `syntax_and_plugins_basic.rs` | the colouring, and what each language plugin claims |

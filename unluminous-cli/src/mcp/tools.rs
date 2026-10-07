@@ -9,7 +9,7 @@
 //! ## Two shapes, and why there is a choice at all
 //!
 //! The catalogue grows with every ticket — it was a hundred and thirty-six commands when this table
-//! was first written, and `task-28`'s Agent-Tasks plugin and `task-1904`'s Base of Infinite Space
+//! was first written, and `task-28`'s Agent-Tasks plugin and `task-1904`'s Realm
 //! have each added an area's worth of verbs since. A tool definition costs an agent context on every
 //! conversation the server is connected to, before it reads a word of the question, so the two shapes
 //! were generated from the real catalogue and measured rather than guessed at.
@@ -1625,17 +1625,17 @@ mod tests {
         //            leaving the canvas unreachable from an agent would have been the one thing
         //            this repository's first rule does not allow.
         //
-        //   21,284   `task-1905`'s three: `space here`, which orients an agent running inside a node,
-        //            `space zoom` and `space address`. Measured rather than estimated, with the ceiling
-        //            moved to 22,000 afterwards. Most of it is `space here` and the two sentences added
-        //            to the area's own description saying that `UNLUMINOUS_SPACE_NODE` means you are in
+        //   21,284   `task-1905`'s three: `realm here`, which orients an agent running inside a node,
+        //            `realm zoom` and `realm address`. Measured rather than estimated, with the ceiling
+        //            moved to 22,000 afterwards. Most of it is `realm here` and the two sentences added
+        //            to the area's own description saying that `UNLUMINOUS_REALM_NODE` means you are in
         //            a node — and the whole point of those is that they are read *before* a question is
         //            asked. An agent that cannot find out where it is spends nine tool calls and two
         //            shell commands working it out, which is what that ticket measured on a real
         //            `claude`.
         //
         //   22,899   `task-1914`'s seven: the whole `input` area — a pointer and a keyboard that do not
-        //            need the window to be in front — and `space chat`, which drives an Agent Chat node's
+        //            need the window to be in front — and `realm chat`, which drives an Agent Chat node's
         //            own conversation. The ceiling moved to 23,500 afterwards. `input` is what makes a
         //            drag, a right click on a particular row and a press in a text box reachable at all:
         //            before it, the only way to produce one was synthetic operating system input, which

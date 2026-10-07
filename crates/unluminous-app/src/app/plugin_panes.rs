@@ -258,7 +258,7 @@ impl PluginUi {
     /// own folder under the settings folder, and the waker.
     ///
     /// **A function rather than a literal inside `opened`**, because the canvas opens one too: a chat node
-    /// holds an `AgentChat` of its own — see `services::space::node::Kind::Chat` — and it has to be opened
+    /// holds an `AgentChat` of its own — see `services::realm::node::Kind::Chat` — and it has to be opened
     /// with the same five things, out of the same folder, or the endpoints somebody configured in
     /// `Settings -> Agent-Chat` would not reach it.
     pub fn context_for(&self, plugin: &str) -> Context {
@@ -872,7 +872,7 @@ impl UnluminousApp {
         // away, must not lose what it printed, and a pipe between two of them has to be read whether
         // anybody is looking or not.
         let now = ctx.input(|input| input.time);
-        if self.catch_the_space_up(now, ctx) {
+        if self.catch_the_realm_up(now, ctx) {
             ctx.request_repaint_after(std::time::Duration::from_millis(120));
         }
     }
@@ -974,6 +974,12 @@ impl UnluminousApp {
     /// is the property `Plugins::renders` already gives a Mermaid diagram.
     pub fn refresh_the_plugins(&mut self) {
         self.plugin_ui.refresh(&self.plugins);
+        // The explorer's dot folders and the Realm panel both follow the plugins that are switched on.
+        // `task-2202`: the Realm plugin is the switch for the panel, the way Agent-Tasks is for its pane.
+        self.tree.set_shows(self.plugins.explorer_shows());
+        if !self.realm_is_on() && self.realm.visible {
+            self.show_a_panel(crate::app::dock::Panel::Realm, false);
+        }
         if let Some(folder) = self.store.as_ref().map(|store| store.folder().join("plugins")) {
             self.plugin_ui.set_settings_folder(folder);
         }

@@ -39,7 +39,7 @@
   `$Width` by `$Height` points.
 
 .PARAMETER Only
-  Take these pictures and no others, by name — `04-code`, `27-base-of-infinite-space`. Everything by
+  Take these pictures and no others, by name — `04-code`, `27-realm`. Everything by
   default. The window is opened once whatever is asked for.
 
 .PARAMETER KeepOpen
@@ -54,7 +54,7 @@
 
 .EXAMPLE
   pwsh tools/documentation/capture.ps1
-  pwsh tools/documentation/capture.ps1 -Only 27-base-of-infinite-space,29-agent-tasks -KeepOpen
+  pwsh tools/documentation/capture.ps1 -Only 27-realm,29-agent-tasks -KeepOpen
 #>
 [CmdletBinding()]
 param(
@@ -224,9 +224,8 @@ function Reset-Window {
     Try-Q pane unsplit-all
     # Every node, because a File Editor node holds a tab and a terminal node holds a shell, and a
     # canvas left over from one picture is a canvas the next one's `tab open` lands on.
-    foreach ($view in (Q space list --json | ConvertFrom-Json).result.views) {
-        foreach ($node in $view.nodes) { Try-Q space remove $node.id }
-    }
+    # The realm that is open, which is the only one a picture draws.
+    foreach ($node in (Q realm nodes --json | ConvertFrom-Json).result.nodes) { Try-Q realm remove $node.id }
     # `tab close` closes the one that is showing, and closing the last leaves an empty untitled tab.
     # It has to close that last one too: formatting a document is not a text change, so a readme left
     # open from one picture arrives at the next still bold and still centred.
@@ -236,7 +235,7 @@ function Reset-Window {
         if ($tabs.Count -eq 1 -and -not $tabs[0].path) { break }
         Try-Q tab close --discard
     }
-    Try-Q space hide
+    Try-Q realm hide
     Try-Q plugins pane agent-chat/chat --hide
     Try-Q plugins pane agent-tasks/board --hide
     Try-Q plugins run database revert
@@ -602,26 +601,26 @@ $Pictures = [ordered]@{
 
     # --- the canvas ---------------------------------------------------------------------------------------------
 
-    '27-base-of-infinite-space' = {
+    '27-realm' = {
         # The canvas is a panel like any other, so it is given the whole window by putting the two
         # that would share it away: the editing area, and the explorer.
-        Q space show | Out-Null
+        Q realm show | Out-Null
         Q explorer hide | Out-Null
         Q action run toggle-editor | Out-Null
         Settle 1500
-        $agent = (Q space add terminal --x 60 --y 60 --width 780 --height 470 --title 'An agent' --json | ConvertFrom-Json).result.node
-        $editor = (Q space add editor --path src/theme.rs --x 880 --y 60 --width 780 --height 470 --json | ConvertFrom-Json).result.node
-        $folder = (Q space add folder --x 60 --y 570 --width 480 --height 420 --json | ConvertFrom-Json).result.node
-        $board = (Q space add tasks --x 580 --y 570 --width 1080 --height 420 --json | ConvertFrom-Json).result.node
-        Q space connect $agent $editor | Out-Null
-        Q space connect $agent $folder | Out-Null
-        Q space connect $agent $board | Out-Null
+        $agent = (Q realm add terminal --x 60 --y 60 --width 780 --height 470 --title 'An agent' --json | ConvertFrom-Json).result.node
+        $editor = (Q realm add editor --path src/theme.rs --x 880 --y 60 --width 780 --height 470 --json | ConvertFrom-Json).result.node
+        $folder = (Q realm add folder --x 60 --y 570 --width 480 --height 420 --json | ConvertFrom-Json).result.node
+        $board = (Q realm add tasks --x 580 --y 570 --width 1080 --height 420 --json | ConvertFrom-Json).result.node
+        Q realm connect $agent $editor | Out-Null
+        Q realm connect $agent $folder | Out-Null
+        Q realm connect $agent $board | Out-Null
         Settle 2500
         # What the terminal node prints is the canvas reading itself back, which is the whole of what
         # a connection is for: the agent in that node can act on the three it is wired to.
-        Q space send $agent 'unluminous-cli space list' | Out-Null
+        Q realm send $agent 'unluminous-cli realm list' | Out-Null
         Settle 2500
-        Q space camera --fit | Out-Null
+        Q realm camera --fit | Out-Null
         Settle 1500
     }
 

@@ -2,7 +2,7 @@
 //!
 //! `cargo run -p unluminous-terminal --example foreground_check`
 //!
-//! `Session::foreground` is what makes a terminal node on the Base of Infinite Space come back running what it
+//! `Session::foreground` is what makes a terminal node on the Realm come back running what it
 //! was running — `task-1907` reports that a node with `claude` typed into its shell came back as a bare shell,
 //! because the node records the command it was *given* and nothing asked the terminal itself. The mechanism is
 //! `tcgetpgrp` on the pseudoterminal master plus the platform's name for a process id, and it cannot be a unit

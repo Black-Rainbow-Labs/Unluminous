@@ -61,14 +61,14 @@ pub enum Panel {
     Terminal,
     Run,
     Debug,
-    /// The Base of Infinite Space: the canvas of nodes `task-1904` asks for.
+    /// The Realm: the canvas of nodes `task-1904` asks for.
     ///
     /// A variant rather than a plugin slot, because the ticket asks for it to be core: three of its
     /// four node kinds need `OpenFiles`, a `Document` and the window's one native browser child, and a
     /// plugin can reach none of the three. What it keeps from the plugin shape is everything a
     /// manifest's `pane.*` keys buy — a side, an order, two measurements, a rail button and the four
     /// `Move to` rows — because all of those are this module's rather than a manifest's.
-    Space,
+    Realm,
     Plugin(u8),
 }
 
@@ -76,7 +76,7 @@ impl Panel {
     /// Unluminous's own five. A plugin's panes are not in it, because there is no compile time list of them;
     /// [`Panel::all`] is the one that includes them.
     pub const ALL: [Panel; 5] =
-        [Panel::Explorer, Panel::Terminal, Panel::Run, Panel::Debug, Panel::Space];
+        [Panel::Explorer, Panel::Terminal, Panel::Run, Panel::Debug, Panel::Realm];
 
     /// Unluminous's own five, then `contributed` plugin panes.
     ///
@@ -98,7 +98,7 @@ impl Panel {
             Panel::Terminal => 1,
             Panel::Run => 2,
             Panel::Debug => 3,
-            Panel::Space => 4,
+            Panel::Realm => 4,
             Panel::Plugin(slot) => 5 + (slot as usize).min(PLUGIN_PANES - 1),
         }
     }
@@ -121,7 +121,7 @@ impl Panel {
             Panel::Terminal => "terminal",
             Panel::Run => "run",
             Panel::Debug => "debug",
-            Panel::Space => "space",
+            Panel::Realm => "realm",
             // A slot's name, used only where a name is needed and no plugin is at hand: a divider's id
             // and a test. What the settings file and the command line call a contributed pane is its
             // `<plugin id>/<pane id>`, which the window resolves — see `Layout::read_from`.
@@ -143,7 +143,7 @@ impl Panel {
             Panel::Debug => "Debug tile",
             // What the rail's tooltip says and what the `Move to` menu is headed with, which is the
             // view's own name — `task-1904` names it and nothing else in the window is called this.
-            Panel::Space => "Base of Infinite Space",
+            Panel::Realm => "Realm",
             // A contributed pane's label comes from its manifest, so this is the fallback for a slot
             // with no plugin in it, which nothing draws.
             Panel::Plugin(_) => "Plugin pane",
@@ -158,11 +158,11 @@ impl Panel {
     ///
     /// It is what `task-1683`'s rule is really about: two grids in one strip are two half-sized
     /// grids, so a side shows one of these at a time. The explorer is a list and never competes.
-    /// **The Space is not one**, and that is a decision rather than an oversight: it holds several
+    /// **The Realm is not one**, and that is a decision rather than an oversight: it holds several
     /// character grids inside itself deliberately, so the rule that one strip shows one grid would put
     /// the terminal away every time the canvas was opened. It sits beside the terminal tile instead.
     pub fn is_a_tile(self) -> bool {
-        !matches!(self, Panel::Explorer | Panel::Space | Panel::Plugin(_))
+        !matches!(self, Panel::Explorer | Panel::Realm | Panel::Plugin(_))
     }
 
     /// The same question, told what the plugins' manifests said.
@@ -340,14 +340,14 @@ impl Layout {
         sides[1] = Side::Bottom;
         sides[2] = Side::Bottom;
         sides[3] = Side::Bottom;
-        sides[Panel::Space.index()] = Side::Bottom;
+        sides[Panel::Realm.index()] = Side::Bottom;
         let mut orders = [0; SLOTS];
         orders[2] = 1;
         orders[3] = 2;
         // After the three tiles along the bottom. It takes no room until somebody opens it, because
         // `regions` lays out only what is showing, which is why adding it leaves the default
         // arrangement exactly as it was — `the_default_layout_is_the_arithmetic_the_window_used_to_do_inline`.
-        orders[Panel::Space.index()] = 3;
+        orders[Panel::Realm.index()] = 3;
         let corners = [Side::Top, Side::Top, Side::Bottom, Side::Bottom];
         Self { sides, orders, corners, plugin_panes: 0 }
     }
@@ -503,12 +503,20 @@ impl Layout {
     fn read_built_in(values: &crate::services::store::Values) -> Layout {
         let mut layout = Layout::new();
         for panel in Panel::ALL {
-            if let Some(name) = values.text(&format!("panes.{}.side", panel.name())) {
+            // The Realm was `space` until `task-2202`, so a settings file written before then is
+            // read under the old name when the new one is not there. The new name is what is written.
+            let read = |measure: &str| {
+                let key = format!("panes.{}.{measure}", panel.name());
+                values.text(&key).or_else(|| {
+                    (panel == Panel::Realm).then(|| values.text(&format!("panes.space.{measure}"))).flatten()
+                })
+            };
+            if let Some(name) = read("side") {
                 if let Some(side) = Side::from_name(name.trim()) {
                     layout.sides[panel.index()] = side;
                 }
             }
-            if let Some(order) = values.number(&format!("panes.{}.order", panel.name())) {
+            if let Some(order) = read("order").and_then(|order| order.trim().parse::<f32>().ok()) {
                 layout.orders[panel.index()] = order.max(0.0) as usize;
             }
         }
@@ -1096,11 +1104,11 @@ mod tests {
     fn the_default_is_the_window_unluminous_has_always_had() {
         let layout = Layout::new();
         assert_eq!(layout.side_of(Panel::Explorer), Side::Left);
-        // The Base of Infinite Space is docked to the bottom too, after the three tiles, and takes
+        // The Realm is docked to the bottom too, after the three tiles, and takes
         // no room until somebody opens it - `regions` lays out only what is showing. `task-1904`.
         assert_eq!(
             layout.panels_on(Side::Bottom),
-            vec![Panel::Terminal, Panel::Run, Panel::Debug, Panel::Space]
+            vec![Panel::Terminal, Panel::Run, Panel::Debug, Panel::Realm]
         );
         assert!(layout.panels_on(Side::Right).is_empty());
         assert!(layout.panels_on(Side::Top).is_empty());
@@ -1140,7 +1148,7 @@ mod tests {
         layout.dock(Panel::Run, Side::Top, None);
         assert_eq!(
             layout.panels_on(Side::Bottom),
-            vec![Panel::Terminal, Panel::Debug, Panel::Space]
+            vec![Panel::Terminal, Panel::Debug, Panel::Realm]
         );
         assert_eq!(layout.order_of(Panel::Debug), 1);
     }

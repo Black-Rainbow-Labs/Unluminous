@@ -58,7 +58,9 @@ pub mod plugin_panes;
 mod preview;
 mod running;
 mod settings_changes;
-pub mod space;
+pub mod realm;
+pub mod realm_files;
+pub mod realm_nodes;
 pub mod symbols;
 mod terminals;
 mod updating;
@@ -303,12 +305,12 @@ pub enum Focus {
     Explorer,
     /// The terminal. Typing goes to the program running in it, and Tab and Escape go with it.
     Terminal,
-    /// The Base of Infinite Space. Typing goes to whichever node is chosen - `task-1904`.
+    /// The Realm. Typing goes to whichever node is chosen - `task-1904`.
     ///
     /// A sixth holder rather than a flag on the canvas, for the reason `Focus::Plugin` is a fifth: `Focus`
     /// is the one value that says who has the keyboard, and a canvas that kept its own would leave the
     /// editing area holding the keys as well, so one press would reach both.
-    Space,
+    Realm,
     /// A plugin's own pane or tab. Typing goes to whatever it has that takes keys.
     ///
     /// A fifth holder rather than a flag on the plugin, because `Focus` is the one value that says who has the
@@ -828,11 +830,11 @@ pub struct UnluminousApp {
     /// The last project and open file every provider was told about, so it is told only when it
     /// changes. See `tell_the_plugins_what_is_showing`.
     told_the_plugins: Option<(Option<PathBuf>, Option<PathBuf>)>,
-    /// The Base of Infinite Space: the canvas, what is running on it, and what is being dragged.
+    /// The Realm: the canvas, what is running on it, and what is being dragged.
     ///
     /// `task-1904`. Core rather than a plugin because three of its four node kinds need `OpenFiles`, a
     /// `Document` and the one native browser child, and a provider can reach none of the three.
-    pub space: space::SpaceState,
+    pub realm: realm::RealmState,
     /// One canvas per plugin surface that draws decoration `egui` cannot.
     ///
     /// The soft shadows, inset shadows and gradients of `services::vello_canvas`, rasterised only on the
@@ -1331,7 +1333,7 @@ pub struct UnluminousApp {
     /// reads: that function exists because a tab picked up in one place is dropped in another as often as
     /// not, and a node's strip left out of it is a tab that cannot be dragged out of a node at all.
     /// `task-1905`.
-    node_tab_strips: Vec<(crate::services::space::NodeId, Rect, file_tabs::Strip)>,
+    node_tab_strips: Vec<(crate::services::realm::NodeId, Rect, file_tabs::Strip)>,
     /// A file being carried out of a list, until the frame settles where it landed. See [`Drag`].
     file_drag: Drag<PathBuf>,
     /// Input that was asked for down the command line and has not reached a frame yet.
@@ -1403,7 +1405,9 @@ impl UnluminousApp {
         // own. See `services::frame_trace`.
         let plugins = Plugins::load(None).0;
         crate::services::frame_trace::mark("plugins");
-        let tree = FileTree::new(&folder);
+        let mut tree = FileTree::new(&folder);
+        // The dot folders a plugin shows, `.realm-files` among them. `task-2202`.
+        tree.set_shows(plugins.explorer_shows());
         crate::services::frame_trace::mark("file-tree");
         Self {
             layouts_built: 0,
@@ -1411,7 +1415,7 @@ impl UnluminousApp {
             plugin_wants_copied: None,
             plugins_ticked_at: None,
             plugin_ui: plugin_panes::PluginUi::default(),
-            space: space::SpaceState::default(),
+            realm: realm::RealmState::default(),
             told_the_plugins: None,
             canvases: crate::services::vello_canvas::Canvases::default(),
             files: OpenFiles::new(document),
@@ -1841,8 +1845,8 @@ impl UnluminousApp {
         // The canvases this project was left with - `task-1904`. Read here rather than at startup,
         // so a test neither reads nor writes a person's `.unluminous` folder; `restore_project` is
         // called from `main.rs` and by nothing else.
-        self.restore_the_space();
-        self.space.visible = state.space_visible;
+        self.restore_the_realm();
+        self.realm.visible = state.realm_visible;
         // **The keyboard goes to a surface that is on the screen.** `Focus::Editor` is what a window
         // starts on, and a project whose canvas fills the window has no editing area for the keys to
         // reach — so every key press went to a pane nobody could see, which `task-1914` reported as
@@ -1850,8 +1854,8 @@ impl UnluminousApp {
         //
         // The rule is the narrow one: where **both** are showing the editing area keeps the keyboard,
         // which is what a text editor should do and what every existing test asserts.
-        if self.space.visible && !self.editor_visible {
-            self.focus = Focus::Space;
+        if self.realm.visible && !self.editor_visible {
+            self.focus = Focus::Realm;
         }
         self.written_project = Some(self.project_state());
     }
@@ -1910,7 +1914,9 @@ impl UnluminousApp {
                 Maximise::No => self.editor_visible,
             },
             terminal_visible: self.was_showing(dock::Panel::Terminal, self.terminal.visible),
-            space_visible: self.was_showing(dock::Panel::Space, self.space.visible),
+            realm_visible: self.was_showing(dock::Panel::Realm, self.realm.visible),
+            realm_current: Some(self.realm.realm.path.clone()),
+            realm_imported: self.realm.imported,
             terminal_tabs: self.terminal.tabs.count(),
             // The names a person typed, and nothing else: `Tabs::names` would give back
             // `powershell.exe 2` for a tab nobody has named, which is a name the next run would
@@ -2167,7 +2173,7 @@ impl UnluminousApp {
     /// canvas has been drawn rather than after the panes alone — settled in the wrong place the list is
     /// empty every time it is read, and a tab can neither be dragged onto a node nor off one. A synthesised
     /// pointer cannot check that, because a node's strip is drawn into a transformed sublayer.
-    pub fn node_tab_strips_were_recorded(&self) -> Vec<(crate::services::space::NodeId, Rect)> {
+    pub fn node_tab_strips_were_recorded(&self) -> Vec<(crate::services::realm::NodeId, Rect)> {
         self.node_tab_strips.iter().map(|(node, rect, _)| (*node, *rect)).collect()
     }
 
@@ -2415,9 +2421,9 @@ impl eframe::App for UnluminousApp {
     fn on_exit(&mut self) {
         // **What each node holds, asked one last time before anything is killed.** It is read from the
         // pseudoterminal, the native view and the chat's own thread, all three of which answer nothing once
-        // they have been stopped. `space::Reading::OnTheWayOut` says which of the six values this moment can
+        // they have been stopped. `realm::Reading::OnTheWayOut` says which of the six values this moment can
         // answer for and why the other two are left out.
-        self.note_the_live_state_into_the_nodes(space::Reading::OnTheWayOut);
+        self.note_the_live_state_into_the_nodes(realm::Reading::OnTheWayOut);
         // **Before the sessions are killed**, because a screen is read out of a live terminal and a killed one
         // has nothing to read. `task-1908` for the canvas's terminals, `task-1945` for the tile's.
         self.write_the_screens_down();
@@ -2425,7 +2431,7 @@ impl eframe::App for UnluminousApp {
         self.run.kill_everything();
         // Every program a node started, killed rather than dropped - `Live::forget`'s own note, and
         // `task-1769`'s 119 orphaned shells.
-        self.space.live.stop_everything();
+        self.realm.live.stop_everything();
         // **Every modified tab, as a last resort** (`task-1984` A2). The two ways a person closes the
         // window ask `may_the_window_close` and stay open when a save failed, so by the time this runs
         // there is usually nothing left to write. What reaches here is the operating system closing
@@ -2437,7 +2443,7 @@ impl eframe::App for UnluminousApp {
         }
         // `f64::MAX` so a write that failed a moment ago is still tried: this is the last chance
         // there is, and the two second wait exists for a window that is still drawing.
-        self.write_the_space_if_it_changed(f64::MAX);
+        self.write_the_realm_if_it_changed(f64::MAX);
         self.write_settings();
         // `None`, so a geometry that has not settled is still written: this is the last chance there
         // is, and the wait exists for a window that is still moving.

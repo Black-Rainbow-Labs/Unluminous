@@ -367,8 +367,8 @@ impl UnluminousApp {
                     self.message = Some(format!("Terminal tab {index} is called {name}"));
                 }
             }
-            Purpose::RenameSpaceNode(node) => {
-                if self.space.space.title_node(node, name.trim()) {
+            Purpose::RenameRealmNode(node) => {
+                if self.realm.realm.title_node(node, name.trim()) {
                     self.message = Some(format!("That node is called {name}"));
                 }
             }
@@ -376,11 +376,24 @@ impl UnluminousApp {
                 Ok((line, column)) => self.message = Some(format!("Line {line}, column {column}")),
                 Err(problem) => self.message = Some(problem),
             },
-            Purpose::RenameSpaceView(view) => {
-                if self.space.space.rename_view(view, name.trim()) {
-                    self.message = Some(format!("That view is called {name}"));
+            Purpose::RenameRealmView(path) => match self.rename_a_realm(&path, &name) {
+                Ok(to) => self.message = Some(format!("The realm is {}", crate::services::realm::slashed(&to))),
+                Err(problem) => self.message = Some(problem),
+            },
+            Purpose::NewNote(x, y) => {
+                match self.new_note(&name, egui::pos2(x as f32, y as f32)) {
+                    Ok(_) => self.message = Some(format!("Made the note {}", name.trim())),
+                    Err(problem) => self.message = Some(problem),
                 }
             }
+            Purpose::RenameNote(node) => match self.rename_a_note(node, &name) {
+                Ok(to) => self.message = Some(format!("The note is {}", to.display())),
+                Err(problem) => self.message = Some(problem),
+            },
+            Purpose::NewRealm => match self.new_realm(&name) {
+                Ok(path) => self.message = Some(format!("Made {}", crate::services::realm::slashed(&path))),
+                Err(problem) => self.message = Some(problem),
+            },
         }
     }
 }

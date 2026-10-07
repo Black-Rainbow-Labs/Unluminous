@@ -76,8 +76,10 @@ pub struct RailState {
     /// the Git menu already follows.
     pub in_repository: bool,
     pub terminal_visible: bool,
-    /// True when the Base of Infinite Space is showing - `task-1904`.
-    pub space_visible: bool,
+    /// True when the Realm is showing - `task-1904`.
+    pub realm_visible: bool,
+    /// Whether the Realm plugin is switched on. Off, the button is absent. `task-2202`.
+    pub realm_available: bool,
     /// True when the run tile is the one showing at the bottom of the window.
     pub run_visible: bool,
     /// True when the debug tile is the one showing along the bottom.
@@ -205,18 +207,21 @@ pub fn show_with(
             None,
         ),
         (
-            // The Base of Infinite Space - `task-1904`. In the **top** group, because the rail's two
+            // The Realm - `task-1904`. In the **top** group, because the rail's two
             // groups say what a panel *is*: the bottom one holds the things that are a character
             // grid, and a canvas is a surface with several of them inside it rather than one.
-            "Base of Infinite Space",
-            icon::space,
-            state.space_visible,
+            "Realm",
+            icon::realm,
+            state.realm_visible,
             true,
-            Action::Space(crate::app::actions::SpaceAction::Toggle),
-            Some(crate::app::dock::Panel::Space),
+            Action::Realm(crate::app::actions::RealmAction::Toggle),
+            Some(crate::app::dock::Panel::Realm),
         ),
     ];
-    for (index, (name, draw, on, enabled, action, panel)) in top.into_iter().enumerate() {
+    // The Realm's button is absent while its plugin is off, which is the rule a plugin's own rail button
+    // keeps. `task-2202`.
+    let top = top.into_iter().filter(|(name, ..)| *name != "Realm" || state.realm_available);
+    for (index, (name, draw, on, enabled, action, panel)) in top.enumerate() {
         let centre = Pos2::new(centre_x, area.top() + MARGIN + BUTTON / 2.0 + index as f32 * STEP);
         let pressed = rail_button(ui, centre, name, draw, on, enabled);
         if pressed.clicked {

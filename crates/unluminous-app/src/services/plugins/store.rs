@@ -108,7 +108,9 @@ impl Plugins {
     /// that changes which plugins there are or which of them are on.
     fn settle(&mut self) {
         let mut by_extension: Vec<(String, Grammar)> = Vec::new();
-        for plugin in self.installed.iter().filter(|plugin| plugin.enabled) {
+        // A language's grammar only: a ui plugin claims a file type to open it somewhere else, and a grammar
+        // of nothing would colour the file as plain words if it were ever opened as text.
+        for plugin in self.installed.iter().filter(|plugin| plugin.enabled && plugin.kind == Kind::Language) {
             for extension in &plugin.extensions {
                 if by_extension.iter().any(|(known, _)| known == extension) {
                     continue; // the first plugin that claims an extension is the one `for_path` gives
@@ -205,6 +207,36 @@ impl Plugins {
         self.installed.iter().find(|plugin| plugin.enabled && plugin.claims(path))
     }
 
+    /// The core provider a switched on ui plugin opens `path` with, when one claims it through
+    /// `ui.extensions`. `task-2202`: `realm` for a `.realm` file, which opens in the Realm panel rather than as
+    /// text.
+    pub fn opens_elsewhere(&self, path: &Path) -> Option<&str> {
+        let extension = path.extension()?.to_str()?.to_lowercase();
+        self.installed
+            .iter()
+            .filter(|plugin| plugin.enabled)
+            .find(|plugin| plugin.contributions.extensions.contains(&extension))
+            .and_then(|plugin| plugin.contributions.provider.as_deref())
+    }
+
+    /// The dot folders the explorer lists, which is every `explorer.shows` of a switched on plugin.
+    pub fn explorer_shows(&self) -> Vec<String> {
+        let mut shown: Vec<String> = self
+            .installed
+            .iter()
+            .filter(|plugin| plugin.enabled)
+            .flat_map(|plugin| plugin.contributions.explorer_shows.iter().cloned())
+            .collect();
+        shown.sort();
+        shown.dedup();
+        shown
+    }
+
+    /// Whether the plugin called `id` is installed and switched on.
+    pub fn is_on(&self, id: &str) -> bool {
+        self.installed.iter().any(|plugin| plugin.id == id && plugin.enabled)
+    }
+
     /// True when some plugin that is switched on asks for the built-in renderer called `name`.
     ///
     /// The window asks this before it draws a diagram anywhere — a `.mmd` file's preview, and every
@@ -221,7 +253,7 @@ impl Plugins {
         if wanted.is_empty() {
             return None;
         }
-        self.installed.iter().filter(|plugin| plugin.enabled).find(|plugin| {
+        self.installed.iter().filter(|plugin| plugin.enabled && plugin.kind == Kind::Language).find(|plugin| {
             plugin.id == wanted
                 || plugin.name.to_lowercase() == wanted
                 || plugin.extensions.contains(&wanted)

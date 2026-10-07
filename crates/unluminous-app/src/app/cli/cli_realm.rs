@@ -1,6 +1,6 @@
-//! `space` — the agent's half of the Base of Infinite Space.
+//! `realm` — the agent's half of the Realm.
 //!
-//! **Moved here from `app/space.rs` by `task-1984` §3.6**, which found that file at 4,734 lines and
+//! **Moved here from `app/realm.rs` by `task-1984` §3.6**, which found that file at 4,734 lines and
 //! the largest in the crate. Every other area of the catalogue keeps its handlers in this folder;
 //! this one did not, and the canvas is the area with the most verbs in it. Nothing about what a
 //! command does changed in the move; only where its code lives did, which is the sentence
@@ -10,15 +10,15 @@ use super::*;
 
 use egui::{Pos2, Vec2};
 
-use crate::app::actions::SpaceAction;
-use crate::app::space::{drives, node_zoom_of, set_node_zoom};
-use crate::components::space::{self as space_view};
-use crate::services::space::{Kind, NodeId, Pipe, State};
+use crate::app::actions::RealmAction;
+use crate::app::realm::{drives, node_zoom_of, set_node_zoom};
+use crate::components::realm::{self as realm_view};
+use crate::services::realm::{Kind, NodeId, Pipe, State};
 
-/// The `space` area of `unluminous-cli`, which is the agent's half of the canvas.
+/// The `realm` area of `unluminous-cli`, which is the agent's half of the canvas.
 ///
-/// **Every one of these goes through the same functions the pointer does.** `space add` is what the
-/// right click modal calls, `space connect` is what letting a wire go calls, and `space remove` is
+/// **Every one of these goes through the same functions the pointer does.** `realm add` is what the
+/// right click modal calls, `realm connect` is what letting a wire go calls, and `realm remove` is
 /// what the close cross calls - which is `UnluminousApp::run_cli`'s own rule, that a thing done by
 /// hand and the same thing done by an agent are the same thing rather than two paths that agree
 /// today.
@@ -28,53 +28,79 @@ use crate::services::space::{Kind, NodeId, Pipe, State};
 /// window's own agent, which may drive everything. That is the ticket's *"the main agent for the IDE
 /// can control every single node"* beside its *"terminal node agents control the things they are
 /// connected to"*.
+/// The verbs that change what the open realm file says, refused while it is read only.
+const CHANGES_THE_FILE: &[&str] =
+    &["add", "move", "size", "title", "remove", "connect", "disconnect", "volume"];
+
 impl UnluminousApp {
-    pub(crate) fn cli_space(
+    pub(crate) fn cli_realm(
         &mut self,
         request: &Request,
         verb: &str,
         ctx: &egui::Context,
     ) -> Outcome {
+        // The Realm plugin is the switch for the panel and everything on it. `task-2202`.
+        if !self.realm_is_on() {
+            return no(request, code::REFUSED, self.the_realm_is_off());
+        }
+        // A realm a newer Unluminous wrote is open for reading only, so a command that would change what
+        // the file says is refused with the reason the banner gives. The camera, the chosen node and the
+        // players are this machine's, and stay free. `task-2202`.
+        if CHANGES_THE_FILE.contains(&verb) {
+            if let Some(why) = self.realm.realm.read_only_because() {
+                return no(request, code::REFUSED, format!("This realm is read only. {why}"));
+            }
+        }
         match verb {
-            "show" => self.cli_space_show(request),
-            "hide" => self.cli_space_hide(request),
-            "here" => self.cli_space_here(request),
-            "view" => ok(request, "The canvas.", self.space.space.as_json()),
-            "list" => self.cli_space_list(request),
-            "manage" => self.cli_space_manage(request),
-            "views" => self.cli_space_views(request),
-            "open-view" => match self.a_named_view(request) {
-                Ok(id) => {
-                    self.space.space.show_view(id);
-                    self.bring_the_current_view_to_life();
-                    done(request, format!("Showing {}.", self.space.space.current().name))
+            "show" => self.cli_realm_show(request),
+            "hide" => self.cli_realm_hide(request),
+            "here" => self.cli_realm_here(request),
+            "view" => ok(request, "The canvas.", self.realm.realm.as_json()),
+            "nodes" => self.cli_realm_nodes(request),
+            "manage" => self.cli_realm_manage(request),
+            "list" => self.cli_realm_list(request),
+            "open" => self.cli_realm_open(request),
+            "new" => self.cli_realm_new(request),
+            "rename" => self.cli_realm_rename(request),
+            "duplicate" => self.cli_realm_duplicate(request),
+            "delete" => self.cli_realm_delete(request),
+            "import" => self.cli_realm_import(request),
+            "info" => self.cli_realm_info(request),
+            "add" => self.cli_realm_add(request),
+            "move" => self.cli_realm_move(request),
+            "size" => self.cli_realm_size(request),
+            "title" => self.cli_realm_title(request),
+            "remove" => self.cli_realm_remove(request),
+            "focus" => self.cli_realm_focus(request),
+            "connect" => self.cli_realm_connect(request),
+            "disconnect" => self.cli_realm_disconnect(request),
+            "connections" => self.cli_realm_connections(request),
+            "camera" => self.cli_realm_camera(request),
+            "send" => self.cli_realm_send(request),
+            "chat" => self.cli_realm_chat(request),
+            "read" => self.cli_realm_read(request),
+            "restart" => self.cli_realm_restart(request),
+            "font" => self.cli_realm_font(request),
+            "zoom" => self.cli_realm_zoom(request),
+            "address" => self.cli_realm_address(request),
+            "browser" => self.cli_realm_browser(request, ctx),
+            "folder" => self.cli_realm_folder(request),
+            "editor" => self.cli_realm_editor(request),
+            "note" => self.cli_realm_note(request),
+            "play" => self.cli_realm_transport(request, crate::app::realm_nodes::Transport::Play),
+            "pause" => self.cli_realm_transport(request, crate::app::realm_nodes::Transport::Pause),
+            "seek" => match request.number("seconds") {
+                Some(seconds) => {
+                    self.cli_realm_transport(request, crate::app::realm_nodes::Transport::Seek(seconds as f32))
                 }
-                Err(outcome) => *outcome,
+                None => no(request, code::USAGE, "Say how many seconds in."),
             },
-            "new-view" => self.cli_space_new_view(request),
-            "rename-view" => self.cli_space_rename_view(request),
-            "duplicate-view" => self.cli_space_duplicate_view(request),
-            "delete-view" => self.cli_space_delete_view(request),
-            "add" => self.cli_space_add(request),
-            "move" => self.cli_space_move(request),
-            "size" => self.cli_space_size(request),
-            "title" => self.cli_space_title(request),
-            "remove" => self.cli_space_remove(request),
-            "focus" => self.cli_space_focus(request),
-            "connect" => self.cli_space_connect(request),
-            "disconnect" => self.cli_space_disconnect(request),
-            "connections" => self.cli_space_connections(request),
-            "camera" => self.cli_space_camera(request),
-            "send" => self.cli_space_send(request),
-            "chat" => self.cli_space_chat(request),
-            "read" => self.cli_space_read(request),
-            "restart" => self.cli_space_restart(request),
-            "font" => self.cli_space_font(request),
-            "zoom" => self.cli_space_zoom(request),
-            "address" => self.cli_space_address(request),
-            "browser" => self.cli_space_browser(request, ctx),
-            "folder" => self.cli_space_folder(request),
-            "editor" => self.cli_space_editor(request),
+            "volume" => match request.number("level") {
+                Some(level) if (0.0..=1.0).contains(&level) => {
+                    self.cli_realm_transport(request, crate::app::realm_nodes::Transport::Volume(level as f32))
+                }
+                _ => no(request, code::USAGE, "Say a volume from 0 to 1."),
+            },
             _ => unknown(request),
         }
     }
@@ -82,7 +108,7 @@ impl UnluminousApp {
     /// Which node this command came from, and what it may act on.
     ///
     /// **The one command whose answer depends on which process is asking**, which is why it is a command
-    /// rather than a paragraph: `UNLUMINOUS_SPACE_NODE` is in the *client's* environment, so the client
+    /// rather than a paragraph: `UNLUMINOUS_REALM_NODE` is in the *client's* environment, so the client
     /// reads it and sends it, and the window answers about the node it names.
     ///
     /// `task-1905` is the report — an agent in a terminal node spent nine tool calls and two shell
@@ -93,8 +119,8 @@ impl UnluminousApp {
     ///
     /// **Outside a node it is an answer rather than a refusal.** The window's own agent runs it too, and a
     /// refusal there would be a refusal about nothing — which is `picture::from_the_clipboard`'s rule.
-    fn cli_space_here(&self, request: &Request) -> Outcome {
-        let view = self.space.space.current();
+    fn cli_realm_here(&self, request: &Request) -> Outcome {
+        let view = &self.realm.realm;
         // The client puts what its own environment said here; the window has no way to know.
         let asking = request.number("node").map(|id| id as u64);
         let Some(asking) = asking else {
@@ -104,7 +130,7 @@ impl UnluminousApp {
                 vec![
                     "This command is not running inside a node on the canvas, so it is the window's own"
                         .to_owned(),
-                    "agent: every node is reachable and no --from is needed. `space list` is the nodes."
+                    "agent: every node is reachable and no --from is needed. `realm list` is the nodes."
                         .to_owned(),
                 ],
                 json!({ "node": Value::Null, "inANode": false, "reaches": [], "reachedBy": [] }),
@@ -115,7 +141,7 @@ impl UnluminousApp {
                 request,
                 code::NOT_FOUND,
                 format!(
-                    "UNLUMINOUS_SPACE_NODE says node {asking}, and there is no such node on {}. The canvas may have moved to another view.",
+                    "UNLUMINOUS_REALM_NODE says node {asking}, and there is no such node on {}. The canvas may have moved to another view.",
                     view.name
                 ),
             );
@@ -183,9 +209,9 @@ impl UnluminousApp {
         )
     }
 
-    /// The nodes on the view that is showing, one a line.
-    fn cli_space_list(&self, request: &Request) -> Outcome {
-        let view = self.space.space.current();
+    /// The nodes on the realm that is open, one a line.
+    fn cli_realm_nodes(&self, request: &Request) -> Outcome {
+        let view = &self.realm.realm;
         let rows: Vec<String> = view
             .nodes
             .iter()
@@ -215,50 +241,49 @@ impl UnluminousApp {
             "{} node{} on {}",
             rows.len(),
             if rows.len() == 1 { "" } else { "s" },
-            view.name
+            view.title()
         );
-        lines(request, message, rows, self.space.space.as_json())
+        lines(request, message, rows, self.realm.realm.as_json())
     }
 
-    /// Every view the canvas has.
-    fn cli_space_views(&self, request: &Request) -> Outcome {
-        let current = self.space.space.current_id();
-        let rows: Vec<String> = self
-            .space
-            .space
-            .views()
-            .iter()
-            .map(|view| {
-                format!(
-                    "{}{:<4} {:<24} {} node{}",
-                    if view.id == current { "*" } else { " " },
-                    view.id,
-                    view.name,
-                    view.nodes.len(),
-                    if view.nodes.len() == 1 { "" } else { "s" },
-                )
-            })
-            .collect();
-        let views: Vec<Value> = self
-            .space
-            .space
-            .views()
-            .iter()
-            .map(|view| {
-                json!({
-                    "view": view.id,
-                    "name": view.name,
-                    "nodes": view.nodes.len(),
-                    "connections": view.edges.len(),
-                    "showing": view.id == current,
-                })
-            })
-            .collect();
-        lines(request, format!("{} views", views.len()), rows, json!({ "views": views }))
+    /// Every realm file in the project, the open one marked. `task-2202`.
+    fn cli_realm_list(&mut self, request: &Request) -> Outcome {
+        self.list_the_realms();
+        let open = self.realm.realm.path.clone();
+        let mut rows = Vec::new();
+        let mut realms = Vec::new();
+        for path in &self.realm.files {
+            let showing = *path == open;
+            let (nodes, connections) = match showing {
+                true => (self.realm.realm.nodes.len(), self.realm.realm.edges.len()),
+                false => self.realm.counts.get(path).copied().unwrap_or((0, 0)),
+            };
+            let written = crate::services::realm::slashed(path);
+            rows.push(format!(
+                "{}{:<40} {} node{}",
+                if showing { "*" } else { " " },
+                written,
+                nodes,
+                if nodes == 1 { "" } else { "s" },
+            ));
+            realms.push(json!({
+                "path": written,
+                "name": crate::services::realm::title_of(path),
+                "nodes": nodes,
+                "connections": connections,
+                "showing": showing,
+            }));
+        }
+        lines(
+            request,
+            format!("{} realm{}", realms.len(), if realms.len() == 1 { "" } else { "s" }),
+            rows,
+            json!({ "current": crate::services::realm::slashed(&open), "realms": realms }),
+        )
     }
 
     /// Put a node on the canvas, and give it whatever its kind was told to hold.
-    fn cli_space_add(&mut self, request: &Request) -> Outcome {
+    fn cli_realm_add(&mut self, request: &Request) -> Outcome {
         let Some(name) = request.text("kind") else {
             return no(request, code::USAGE, "Say which kind of node.");
         };
@@ -270,52 +295,93 @@ impl UnluminousApp {
                 format!("There is no node called {name}. Unluminous has {}.", names.join(", ")),
             );
         };
-        self.show_a_panel(dock::Panel::Space, true);
+        self.show_a_panel(dock::Panel::Realm, true);
+        if let Some(why) = self.realm.realm.read_only_because() {
+            return no(request, code::REFUSED, why.to_owned());
+        }
         let middle = self.middle_of_the_canvas();
         let at = Pos2::new(
             request.number("x").map(|x| x as f32).unwrap_or(middle.x),
             request.number("y").map(|y| y as f32).unwrap_or(middle.y),
         );
-        let node = self.add_a_space_node(kind, at);
+        // **A picture, a sound, a video and a note are made around the file they show** (`task-2202`), so the
+        // file is the argument rather than something given afterwards.
+        let given = request.text("file").or_else(|| request.text("path"));
+        let node = match kind {
+            Kind::Image | Kind::Audio | Kind::Video => {
+                let Some(file) = given else {
+                    return no(
+                        request,
+                        code::USAGE,
+                        format!("Say which file in this project the {} node shows.", kind.name()),
+                    );
+                };
+                match self.add_a_file_node(kind, std::path::Path::new(file.trim()), at) {
+                    Ok(node) => node,
+                    Err(problem) => return no(request, code::REFUSED, problem),
+                }
+            }
+            Kind::Note => {
+                let given = given.unwrap_or_default();
+                let existing = self.tree.root().join(given.trim());
+                let made = match given.trim().to_lowercase().ends_with(".md") && existing.is_file() {
+                    true => self.add_a_file_node(kind, &existing, at),
+                    false => {
+                        let name = match given.trim() {
+                            "" => self.an_unused_note_name(),
+                            named => named.to_owned(),
+                        };
+                        self.new_note(&name, at)
+                    }
+                };
+                match made {
+                    Ok(node) => node,
+                    Err(problem) => return no(request, code::REFUSED, problem),
+                }
+            }
+            _ => self.add_a_realm_node(kind, at),
+        };
         if let (Some(width), Some(height)) = (request.number("width"), request.number("height")) {
-            self.space.space.resize_node(node, Vec2::new(width as f32, height as f32));
+            self.realm.realm.resize_node(node, Vec2::new(width as f32, height as f32));
         }
         if let Some(title) = request.text("title") {
-            self.space.space.title_node(node, title.trim());
+            self.realm.realm.title_node(node, title.trim());
         }
         // Whatever the kind was told to hold, applied through the same functions the window uses.
         let mut problem: Option<String> = None;
         if let Some(command) = request.text("command") {
-            self.space.space.change(node, |state| {
+            self.realm.realm.change(node, |state| {
                 if let State::Terminal(terminal) = state {
                     terminal.command = command.trim().to_owned();
                 }
             });
-            if let Err(refusal) = self.start_a_space_terminal(node, false) {
+            if let Err(refusal) = self.start_a_realm_terminal(node, false) {
                 problem = Some(refusal);
             }
         }
         if let Some(url) = request.text("url") {
-            if let Err(refusal) = self.open_a_space_browser(node, url.trim()) {
+            if let Err(refusal) = self.open_a_realm_browser(node, url.trim()) {
                 problem = Some(refusal);
             }
         }
         if let Some(root) = self.cli_path_argument(request, "root") {
-            self.space.space.change(node, |state| {
+            self.realm.realm.change(node, |state| {
                 if let State::Folder(folder) = state {
                     folder.root = Some(root.clone());
                 }
             });
-            self.space.live.forget(node);
+            self.realm.live.forget(node);
         }
-        if let Some(path) = self.cli_path_argument(request, "path") {
-            if let Err(refusal) = self.open_in_a_space_node(node, &path) {
-                problem = Some(refusal);
+        if kind == Kind::Editor {
+            if let Some(path) = self.cli_path_argument(request, "path") {
+                if let Err(refusal) = self.open_in_a_realm_node(node, &path) {
+                    problem = Some(refusal);
+                }
             }
         }
         // **The node is still there when part of what it was given failed**, and the reply says so:
         // a refusal that also took the node away would leave a caller with nothing to correct.
-        let made = self.space.space.current().node(node).cloned();
+        let made = self.realm.realm.node(node).cloned();
         let where_it_is = made.as_ref().map(|node| node.at).unwrap_or(at);
         let message = match &problem {
             Some(refusal) => format!("Added node {node}, but {refusal}"),
@@ -334,38 +400,38 @@ impl UnluminousApp {
         )
     }
 
-    fn cli_space_move(&mut self, request: &Request) -> Outcome {
+    fn cli_realm_move(&mut self, request: &Request) -> Outcome {
         let node = match self.a_named_node(request, "node") {
             Ok(node) => node,
             Err(outcome) => return *outcome,
         };
-        let Some(found) = self.space.space.current().node(node).cloned() else {
+        let Some(found) = self.realm.realm.node(node).cloned() else {
             return no(request, code::NOT_FOUND, format!("There is no node {node}."));
         };
         let at = Pos2::new(
             request.number("x").map(|x| x as f32).unwrap_or(found.at.x),
             request.number("y").map(|y| y as f32).unwrap_or(found.at.y),
         );
-        self.space.space.move_node(node, at);
+        self.realm.realm.move_node(node, at);
         ok(request, format!("Moved node {node}."), json!({ "node": node, "x": at.x, "y": at.y }))
     }
 
-    fn cli_space_size(&mut self, request: &Request) -> Outcome {
+    fn cli_realm_size(&mut self, request: &Request) -> Outcome {
         let node = match self.a_named_node(request, "node") {
             Ok(node) => node,
             Err(outcome) => return *outcome,
         };
-        let Some(found) = self.space.space.current().node(node).cloned() else {
+        let Some(found) = self.realm.realm.node(node).cloned() else {
             return no(request, code::NOT_FOUND, format!("There is no node {node}."));
         };
         let size = Vec2::new(
             request.number("width").map(|width| width as f32).unwrap_or(found.size.x),
             request.number("height").map(|height| height as f32).unwrap_or(found.size.y),
         );
-        self.space.space.resize_node(node, size);
+        self.realm.realm.resize_node(node, size);
         // What it really came out, because a kind has a smallest size and a caller that asked for
         // less deserves to be told what it got rather than that it worked.
-        let now = self.space.space.current().node(node).map(|node| node.size).unwrap_or(size);
+        let now = self.realm.realm.node(node).map(|node| node.size).unwrap_or(size);
         ok(
             request,
             format!("Node {node} is {} x {}.", now.x.round(), now.y.round()),
@@ -373,7 +439,7 @@ impl UnluminousApp {
         )
     }
 
-    fn cli_space_connect(&mut self, request: &Request) -> Outcome {
+    fn cli_realm_connect(&mut self, request: &Request) -> Outcome {
         let from = match self.a_named_node(request, "from") {
             Ok(node) => node,
             Err(outcome) => return *outcome,
@@ -395,10 +461,10 @@ impl UnluminousApp {
                 }
             },
         };
-        match self.space.space.connect(from, to, pipe) {
+        match self.realm.realm.connect(from, to, pipe) {
             Ok(edge) => {
                 if pipe == Pipe::Lines {
-                    self.space.live.follow_from_here(from);
+                    self.realm.live.follow_from_here(from);
                 }
                 ok(
                     request,
@@ -410,10 +476,10 @@ impl UnluminousApp {
         }
     }
 
-    fn cli_space_connections(&self, request: &Request) -> Outcome {
+    fn cli_realm_connections(&self, request: &Request) -> Outcome {
         let only = request.number("from").map(|id| id as u64);
-        let view = self.space.space.current();
-        let found: Vec<&crate::services::space::Edge> =
+        let view = &self.realm.realm;
+        let found: Vec<&crate::services::realm::Edge> =
             view.edges.iter().filter(|edge| only.is_none_or(|from| edge.from == from)).collect();
         let rows: Vec<String> = found
             .iter()
@@ -440,33 +506,33 @@ impl UnluminousApp {
         )
     }
 
-    fn cli_space_camera(&mut self, request: &Request) -> Outcome {
-        let body = self.space.body;
+    fn cli_realm_camera(&mut self, request: &Request) -> Outcome {
+        let body = self.realm.body;
         if request.switch("fit") {
-            let bounds = self.space.space.current().bounds();
-            self.space.space.current_mut().camera.fit(bounds, body.size(), 32.0);
+            let bounds = self.realm.realm.bounds();
+            self.realm.realm.camera.fit(bounds, body.size(), 32.0);
         }
-        let camera = self.space.space.current().camera;
+        let camera = self.realm.realm.camera;
         let at = Pos2::new(
             request.number("x").map(|x| x as f32).unwrap_or(camera.at.x),
             request.number("y").map(|y| y as f32).unwrap_or(camera.at.y),
         );
         let zoom = request.number("zoom").map(|zoom| zoom as f32).unwrap_or(camera.zoom);
         {
-            let camera = &mut self.space.space.current_mut().camera;
+            let camera = &mut self.realm.realm.camera;
             camera.at = at;
             // Through `zoom_to` rather than by assignment, so the ladder's ends are kept in one place
             // and a caller that asked for ten gets 2.5 rather than a canvas nobody can read.
             camera.zoom_to(zoom, body.min, body.min);
             camera.at = at;
         }
-        // **A command sets the camera outright**, glide and all: `space camera --zoom 2` answers 2.00 on
+        // **A command sets the camera outright**, glide and all: `realm camera --zoom 2` answers 2.00 on
         // the frame it lands, because a script that had to wait out an animation to read back what it just
         // set is a script with a race in it. The glide is the pointer's, the wheel's and the keys'.
         // `task-1945`.
-        self.space.glide = None;
-        self.space.space.touch();
-        let camera = self.space.space.current().camera;
+        self.realm.glide = None;
+        self.realm.realm.touch();
+        let camera = self.realm.realm.camera;
         ok(
             request,
             format!(
@@ -477,7 +543,7 @@ impl UnluminousApp {
         )
     }
 
-    fn cli_space_send(&mut self, request: &Request) -> Outcome {
+    fn cli_realm_send(&mut self, request: &Request) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Terminal) {
             Ok(node) => node,
             Err(outcome) => return *outcome,
@@ -485,13 +551,13 @@ impl UnluminousApp {
         let Some(text) = request.text("text") else {
             return no(request, code::USAGE, "Say what to type.");
         };
-        if !self.space.live.has_a_terminal(node) {
+        if !self.realm.live.has_a_terminal(node) {
             return no(request, code::REFUSED, format!("Node {node} has no terminal running."));
         }
         // Remembered as something typed in, so its echo is not piped back out - the rule in
-        // `services::space::pipe`, which a send by hand needs exactly as much as a pipe does.
-        self.space.live.typed_into(node, text.trim_end());
-        if let Some(session) = self.space.live.terminal(node) {
+        // `services::realm::pipe`, which a send by hand needs exactly as much as a pipe does.
+        self.realm.live.typed_into(node, text.trim_end());
+        if let Some(session) = self.realm.live.terminal(node) {
             session.send(format!("{}\r", text.trim_end()).into_bytes());
         }
         done(request, format!("Typed into node {node}."))
@@ -499,7 +565,7 @@ impl UnluminousApp {
 
     /// What a terminal node is showing, scrollback and all.
     ///
-    /// **The one thing an agent could not ask about.** `space view` answers with a node's command, folder,
+    /// **The one thing an agent could not ask about.** `realm view` answers with a node's command, folder,
     /// size and session id, and `terminal read` reads the terminal *panel* — so until `task-1912` there was no
     /// way at all to read a terminal node, which is the rule this repository opens with turned on its head. It
     /// is also why every measurement in that ticket had to be a photograph of a window.
@@ -517,7 +583,7 @@ impl UnluminousApp {
     /// A node that has never been drawn has no chat behind it yet, because a chat is opened lazily the
     /// first time its node is drawn — see `make_sure_a_node_has_a_chat`. That is a refusal naming the
     /// reason rather than a chat built here, so a canvas nobody has looked at still costs nothing.
-    fn cli_space_chat(&mut self, request: &Request) -> Outcome {
+    fn cli_realm_chat(&mut self, request: &Request) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Chat) {
             Ok(node) => node,
             Err(outcome) => return *outcome,
@@ -530,12 +596,12 @@ impl UnluminousApp {
             Some(words) if !words.trim().is_empty() => vec![words.trim().to_owned()],
             _ => Vec::new(),
         };
-        let Some(chat) = self.space.live.chat_mut(node) else {
+        let Some(chat) = self.realm.live.chat_mut(node) else {
             return no(
                 request,
                 code::REFUSED,
                 format!(
-                    "Node {node} has not been drawn yet, so it has no conversation. Show the canvas and scroll to it - `space focus {node}` does both."
+                    "Node {node} has not been drawn yet, so it has no conversation. Show the canvas and scroll to it - `realm focus {node}` does both."
                 ),
             );
         };
@@ -555,16 +621,16 @@ impl UnluminousApp {
         }
     }
 
-    fn cli_space_read(&mut self, request: &Request) -> Outcome {
+    fn cli_realm_read(&mut self, request: &Request) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Terminal) {
             Ok(node) => node,
             Err(outcome) => return *outcome,
         };
         // Take in whatever the program has written since the last frame, so a read straight after a send is
         // not looking at the screen as it was before the command ran. `cli_terminal_read`'s own rule.
-        self.space.live.catch_up();
+        self.realm.live.catch_up();
         let lines = request.whole("tail");
-        let Some(session) = self.space.live.terminal(node) else {
+        let Some(session) = self.realm.live.terminal(node) else {
             return no(request, code::REFUSED, format!("Node {node} has no terminal running."));
         };
         let text = session.written_text(lines);
@@ -576,13 +642,13 @@ impl UnluminousApp {
     /// Through [`UnluminousApp::step_a_node_font`] and the node's own state, which is what the two
     /// buttons on its header press - one path, so a size set from the command line and one set by
     /// hand are the same size.
-    fn cli_space_font(&mut self, request: &Request) -> Outcome {
+    fn cli_realm_font(&mut self, request: &Request) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Terminal) {
             Ok(node) => node,
             Err(outcome) => return *outcome,
         };
         if request.switch("reset") {
-            self.space.space.change(node, |state| {
+            self.realm.realm.change(node, |state| {
                 if let State::Terminal(terminal) = state {
                     terminal.font_size = 0.0;
                 }
@@ -596,7 +662,7 @@ impl UnluminousApp {
             if !(6.0..=96.0).contains(&wanted) {
                 return no(request, code::USAGE, "A terminal is set in 6 to 96 point.");
             }
-            self.space.space.change(node, |state| {
+            self.realm.realm.change(node, |state| {
                 if let State::Terminal(terminal) = state {
                     terminal.font_size = wanted;
                 }
@@ -606,10 +672,10 @@ impl UnluminousApp {
         } else if request.switch("smaller") {
             self.step_a_node_font(node, -1);
         }
-        let found = self.space.space.current().node(node).cloned();
+        let found = self.realm.realm.node(node).cloned();
         let size = found
             .as_ref()
-            .map(|node| space_view::font_size_of(node, self.settings.terminal_font_size))
+            .map(|node| realm_view::font_size_of(node, self.settings.terminal_font_size))
             .unwrap_or_default();
         let own = matches!(&found.map(|node| node.state), Some(State::Terminal(terminal)) if terminal.font_size > 0.0);
         ok(
@@ -623,13 +689,13 @@ impl UnluminousApp {
     ///
     /// Through [`UnluminousApp::zoom_a_node`], which is what the modifier wheel over a node presses — one
     /// path, so a size set from the command line and one set by hand are the same size.
-    fn cli_space_zoom(&mut self, request: &Request) -> Outcome {
+    fn cli_realm_zoom(&mut self, request: &Request) -> Outcome {
         let node = match self.a_named_node(request, "node") {
             Ok(node) => node,
             Err(outcome) => return *outcome,
         };
         if let Some(from) = request.number("from").map(|id| id as u64) {
-            if !self.space.space.may_reach(from, node) {
+            if !self.realm.realm.may_reach(from, node) {
                 return no(
                     request,
                     code::REFUSED,
@@ -637,19 +703,21 @@ impl UnluminousApp {
                 );
             }
         }
-        let Some(found) = self.space.space.current().node(node).cloned() else {
+        let Some(found) = self.realm.realm.node(node).cloned() else {
             return no(request, code::NOT_FOUND, format!("There is no node {node}."));
         };
         if request.switch("reset") {
-            self.space.space.change(node, |state| match state {
+            self.realm.realm.change(node, |state| match state {
                 State::Terminal(terminal) => terminal.font_size = 0.0,
                 State::Editor(editor) => editor.font_size = 0.0,
+                State::Note(note) => note.font_size = 0.0,
+                State::Image(image) => image.zoom = 1.0,
                 State::Folder(_) | State::Chat(_) | State::Tasks(_) => set_node_zoom(state, 1.0),
-                State::Browser(_) => {}
+                State::Browser(_) | State::Audio(_) | State::Video(_) | State::Unknown(_) => {}
             });
             if found.kind() == Kind::Browser {
-                self.space.live.set_page_zoom(node, 1.0);
-                if let Some(tab) = self.space.live.browser(node).map(|tab| tab.id) {
+                self.realm.live.set_page_zoom(node, 1.0);
+                if let Some(tab) = self.realm.live.browser(node).map(|tab| tab.id) {
                     let _ = self.browser.zoom(tab, 1.0);
                 }
             }
@@ -659,13 +727,14 @@ impl UnluminousApp {
                 return no(request, code::USAGE, "A zoom is a number above zero.");
             }
             match found.kind() {
-                Kind::Terminal | Kind::Editor => {
+                Kind::Terminal | Kind::Editor | Kind::Note => {
                     if !(6.0..=96.0).contains(&asked) {
                         return no(request, code::USAGE, "A point size is 6 to 96.");
                     }
-                    self.space.space.change(node, |state| match state {
+                    self.realm.realm.change(node, |state| match state {
                         State::Terminal(terminal) => terminal.font_size = asked,
                         State::Editor(editor) => editor.font_size = asked,
+                        State::Note(note) => note.font_size = asked,
                         _ => {}
                     });
                     if let Some(index) = self.files.tab_in_node(node) {
@@ -676,14 +745,28 @@ impl UnluminousApp {
                     if !(0.25..=4.0).contains(&asked) {
                         return no(request, code::USAGE, "This node's zoom is 0.25 to 4.");
                     }
-                    self.space.space.change(node, |state| set_node_zoom(state, asked));
+                    self.realm.realm.change(node, |state| set_node_zoom(state, asked));
+                }
+                Kind::Image => {
+                    if !(0.02..=40.0).contains(&asked) {
+                        return no(request, code::USAGE, "A picture's zoom is 0.02 to 40.");
+                    }
+                    self.realm.realm.change(node, |state| {
+                        if let State::Image(image) = state {
+                            image.zoom = asked;
+                            image.fit = crate::services::realm::Fit::Actual;
+                        }
+                    });
+                }
+                Kind::Audio | Kind::Video | Kind::Unknown => {
+                    return no(request, code::REFUSED, "This node has nothing to zoom.");
                 }
                 Kind::Browser => {
                     if !(0.25..=4.0).contains(&asked) {
                         return no(request, code::USAGE, "A page's zoom is 0.25 to 4.");
                     }
-                    self.space.live.set_page_zoom(node, asked);
-                    if let Some(tab) = self.space.live.browser(node).map(|tab| tab.id) {
+                    self.realm.live.set_page_zoom(node, asked);
+                    if let Some(tab) = self.realm.live.browser(node).map(|tab| tab.id) {
                         if let Err(problem) = self.browser.zoom(tab, f64::from(asked)) {
                             self.message = Some(problem);
                         }
@@ -695,35 +778,46 @@ impl UnluminousApp {
         } else if request.switch("smaller") {
             self.zoom_a_node(node, -1);
         }
-        let found = self.space.space.current().node(node).cloned();
+        let found = self.realm.realm.node(node).cloned();
         let (factor, own) = match found.as_ref().map(|node| &node.state) {
             Some(State::Terminal(terminal)) => (
-                space_view::font_size_of(
+                realm_view::font_size_of(
                     found.as_ref().expect("it is there"),
                     self.settings.terminal_font_size,
                 ),
                 terminal.font_size > 0.0,
             ),
             Some(State::Editor(editor)) => (
-                space_view::editor_font_size_of(
+                realm_view::editor_font_size_of(
                     found.as_ref().expect("it is there"),
                     self.settings.font_size,
                 ),
                 editor.font_size > 0.0,
             ),
+            Some(State::Note(note)) => (
+                realm_view::editor_font_size_of(
+                    found.as_ref().expect("it is there"),
+                    self.settings.font_size,
+                ),
+                note.font_size > 0.0,
+            ),
+            Some(State::Image(image)) => (image.zoom, (image.zoom - 1.0).abs() > 0.001),
+            Some(State::Audio(_) | State::Video(_) | State::Unknown(_)) => (1.0, false),
             Some(State::Folder(_) | State::Chat(_) | State::Tasks(_)) => {
                 let zoom = node_zoom_of(found.as_ref().expect("it is there"));
                 (zoom, (zoom - 1.0).abs() > 0.001)
             }
             Some(State::Browser(_)) => {
-                let zoom = self.space.live.page_zoom_of(node);
+                let zoom = self.realm.live.page_zoom_of(node);
                 (zoom, (zoom - 1.0).abs() > 0.001)
             }
             None => (1.0, false),
         };
         let walks = match found.as_ref().map(|node| node.kind()) {
             Some(Kind::Terminal) => "terminal.font.size",
-            Some(Kind::Editor) => "appearance.font.size",
+            Some(Kind::Editor | Kind::Note) => "appearance.font.size",
+            Some(Kind::Image) => "the picture's own zoom",
+            Some(Kind::Audio | Kind::Video | Kind::Unknown) => "nothing",
             Some(Kind::Folder) => "a multiplier over its rows",
             Some(Kind::Chat | Kind::Tasks) => "a multiplier over everything it draws",
             Some(Kind::Browser) => "the page's own zoom",
@@ -736,7 +830,7 @@ impl UnluminousApp {
         )
     }
 
-    fn cli_space_browser(&mut self, request: &Request, ctx: &egui::Context) -> Outcome {
+    fn cli_realm_browser(&mut self, request: &Request, ctx: &egui::Context) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Browser) {
             Ok(node) => node,
             Err(outcome) => return *outcome,
@@ -753,13 +847,13 @@ impl UnluminousApp {
                 let Some(url) = request.text("url") else {
                     return no(request, code::USAGE, "Say where to go, with --url.");
                 };
-                match self.send_a_space_browser_to(node, url.trim()) {
+                match self.send_a_realm_browser_to(node, url.trim()) {
                     Ok(()) => done(request, format!("Node {node} is going to {url}.")),
                     Err(problem) => no(request, code::FAILED, problem),
                 }
             }
             step @ ("back" | "forward") => {
-                let Some(tab) = self.space.live.browser(node).map(|tab| tab.id) else {
+                let Some(tab) = self.realm.live.browser(node).map(|tab| tab.id) else {
                     return no(request, code::REFUSED, format!("Node {node} has no page open."));
                 };
                 let command = match step {
@@ -770,13 +864,13 @@ impl UnluminousApp {
                 done(request, format!("Node {node} went {step}."))
             }
             "reload" => {
-                let Some(tab) = self.space.live.browser(node).map(|tab| tab.id) else {
+                let Some(tab) = self.realm.live.browser(node).map(|tab| tab.id) else {
                     return no(request, code::REFUSED, format!("Node {node} has no page open."));
                 };
                 self.run_browser_command(tab, crate::services::browser::BrowserCommand::Reload);
                 done(request, format!("Node {node} is reloading."))
             }
-            "url" => match self.space.live.browser(node) {
+            "url" => match self.realm.live.browser(node) {
                 Some(tab) => ok(
                     request,
                     tab.current_url().to_owned(),
@@ -792,24 +886,24 @@ impl UnluminousApp {
                         "Say where to write the picture, with --path.",
                     );
                 };
-                let Some(found) = self.space.space.current().node(node).cloned() else {
+                let Some(found) = self.realm.realm.node(node).cloned() else {
                     return no(request, code::NOT_FOUND, format!("There is no node {node}."));
                 };
                 // The node has to be **showing** to be photographed, because a picture is of the
                 // window as the operating system composited it and a native child view is part of
                 // that rather than something Unluminous can render on its own.
-                self.show_a_panel(dock::Panel::Space, true);
-                self.space.space.choose(Some(node));
-                self.space.space.raise(node);
-                let camera = self.space.space.current().camera;
-                let area = camera.rect_to_screen(self.space.body.min, found.rect());
+                self.show_a_panel(dock::Panel::Realm, true);
+                self.realm.realm.choose(Some(node));
+                self.realm.realm.raise(node);
+                let camera = self.realm.realm.camera;
+                let area = camera.rect_to_screen(self.realm.body.min, found.rect());
                 ctx.request_repaint();
                 Outcome::Hold(crate::app::cli::Waiting::Screenshot {
                     path,
                     until: std::time::Instant::now() + std::time::Duration::from_secs(10),
                     settled: std::time::Instant::now() + std::time::Duration::from_millis(250),
                     asked: false,
-                    crop: Some(area.intersect(self.space.body)),
+                    crop: Some(area.intersect(self.realm.body)),
                 })
             }
             other => no(
@@ -820,7 +914,7 @@ impl UnluminousApp {
         }
     }
 
-    fn cli_space_folder(&mut self, request: &Request) -> Outcome {
+    fn cli_realm_folder(&mut self, request: &Request) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Folder) {
             Ok(node) => node,
             Err(outcome) => return *outcome,
@@ -832,7 +926,7 @@ impl UnluminousApp {
                 "Say what to do: expand, collapse, select, open, root or rows.",
             );
         };
-        let Some(found) = self.space.space.current().node(node).cloned() else {
+        let Some(found) = self.realm.realm.node(node).cloned() else {
             return no(request, code::NOT_FOUND, format!("There is no node {node}."));
         };
         self.make_sure_a_node_has_a_tree(&found);
@@ -842,7 +936,7 @@ impl UnluminousApp {
                     return no(request, code::USAGE, "Say which folder, with --path.");
                 };
                 let wanted = open == "expand";
-                let Some(tree) = self.space.live.tree_mut(node) else {
+                let Some(tree) = self.realm.live.tree_mut(node) else {
                     return no(request, code::FAILED, "That node has no tree.");
                 };
                 let showing = tree.find(&path).map(|entry| entry.expanded).unwrap_or(false);
@@ -863,7 +957,7 @@ impl UnluminousApp {
                 let Some(path) = self.cli_path_argument(request, "path") else {
                     return no(request, code::USAGE, "Say which row, with --path.");
                 };
-                self.space.live.select_in_tree(node, Some(path.clone()));
+                self.realm.live.select_in_tree(node, Some(path.clone()));
                 done(request, format!("Node {node} is on {}.", path.display()))
             }
             "open" => {
@@ -873,15 +967,14 @@ impl UnluminousApp {
                 // **The same rule a double click keeps**: into a wired File Editor node when there is one,
                 // and into the editing area when there is not. One function, so the pointer and the agent
                 // cannot come to different answers. `task-1905`.
-                let wired = self.space.space.current().reaches(node).into_iter().find(|other| {
-                    self.space
-                        .space
-                        .current()
+                let wired = self.realm.realm.reaches(node).into_iter().find(|other| {
+                    self.realm
+                        .realm
                         .node(*other)
                         .is_some_and(|found| found.kind() == Kind::Editor)
                 });
                 match wired {
-                    Some(editor) => match self.open_in_a_space_node(editor, &path) {
+                    Some(editor) => match self.open_in_a_realm_node(editor, &path) {
                         Ok(()) => ok(
                             request,
                             format!("Opened {} in node {editor}.", path.display()),
@@ -909,7 +1002,7 @@ impl UnluminousApp {
                 done(request, format!("Node {node} is showing {}.", root.display()))
             }
             "rows" => {
-                let Some(tree) = self.space.live.tree(node) else {
+                let Some(tree) = self.realm.live.tree(node) else {
                     return no(request, code::FAILED, "That node has no tree.");
                 };
                 let rows: Vec<String> = tree
@@ -954,25 +1047,22 @@ impl UnluminousApp {
 
     // ------------------------------------------------------------------------------- naming things
 
-    /// The view a command named, by its name or by its id.
+    /// The realm a command named, by its path in the project or by its name. The open one when it named none.
     ///
     /// The error is boxed because `Outcome` carries the whole of `Waiting`, which clippy flags as too
     /// large to return unboxed.
-    fn a_named_view(&self, request: &Request) -> Result<u64, Box<Outcome>> {
-        let Some(name) = request.text("view") else {
-            return Err(Box::new(no(
-                request,
-                code::USAGE,
-                "Say which view, by its name or its id.",
-            )));
+    fn a_named_realm(&mut self, request: &Request, key: &str) -> Result<std::path::PathBuf, Box<Outcome>> {
+        let Some(name) = request.text(key) else {
+            return Ok(self.realm.realm.path.clone());
         };
-        self.space.space.view_named(name.trim()).ok_or_else(|| {
-            let names: Vec<&str> =
-                self.space.space.views().iter().map(|view| view.name.as_str()).collect();
+        self.list_the_realms();
+        self.a_realm_called(&name).ok_or_else(|| {
+            let names: Vec<String> =
+                self.realm.files.iter().map(|path| crate::services::realm::title_of(path)).collect();
             Box::new(no(
                 request,
                 code::NOT_FOUND,
-                format!("There is no view called {name}. This canvas has {}.", names.join(", ")),
+                format!("There is no realm called {name}. This project has {}.", names.join(", ")),
             ))
         })
     }
@@ -985,15 +1075,15 @@ impl UnluminousApp {
             return Err(Box::new(no(
                 request,
                 code::USAGE,
-                format!("Say which node, with `{argument}` and an id from `space list`."),
+                format!("Say which node, with `{argument}` and an id from `realm list`."),
             )));
         };
-        match self.space.space.current().node(id).is_some() {
+        match self.realm.realm.node(id).is_some() {
             true => Ok(id),
             false => Err(Box::new(no(
                 request,
                 code::NOT_FOUND,
-                format!("There is no node {id} on {}.", self.space.space.current().name),
+                format!("There is no node {id} on {}.", self.realm.realm.name),
             ))),
         }
     }
@@ -1013,7 +1103,7 @@ impl UnluminousApp {
         wanted: Kind,
     ) -> Result<NodeId, Box<Outcome>> {
         let node = self.a_named_node(request, argument)?;
-        let found = self.space.space.current().node(node).ok_or_else(|| {
+        let found = self.realm.realm.node(node).ok_or_else(|| {
             Box::new(no(request, code::NOT_FOUND, format!("There is no node {node}.")))
         })?;
         if found.kind() != wanted {
@@ -1030,17 +1120,17 @@ impl UnluminousApp {
         let Some(from) = request.number("from").map(|id| id as u64) else {
             return Ok(node);
         };
-        if self.space.space.current().node(from).is_none() {
+        if self.realm.realm.node(from).is_none() {
             return Err(Box::new(no(
                 request,
                 code::NOT_FOUND,
                 format!("There is no node {from}."),
             )));
         }
-        if self.space.space.may_reach(from, node) {
+        if self.realm.realm.may_reach(from, node) {
             return Ok(node);
         }
-        let reaches = self.space.space.current().reaches(from);
+        let reaches = self.realm.realm.reaches(from);
         Err(Box::new(no(
             request,
             code::REFUSED,
@@ -1054,135 +1144,293 @@ impl UnluminousApp {
         )))
     }
 
-    /// `show`. Split out of [`Self::cli_space`] by `task-1984` §3.6.
-    fn cli_space_show(&mut self, request: &Request) -> Outcome {
-        self.show_a_panel(dock::Panel::Space, true);
-        self.take_the_keyboard_for_the_space();
-        done(request, "The Base of Infinite Space is showing.")
+    /// `show`. Split out of [`Self::cli_realm`] by `task-1984` §3.6.
+    fn cli_realm_show(&mut self, request: &Request) -> Outcome {
+        self.show_a_panel(dock::Panel::Realm, true);
+        self.take_the_keyboard_for_the_realm();
+        done(request, "The Realm is showing.")
     }
 
-    /// `hide`. Split out of [`Self::cli_space`] by `task-1984` §3.6.
-    fn cli_space_hide(&mut self, request: &Request) -> Outcome {
-        self.show_a_panel(dock::Panel::Space, false);
+    /// `hide`. Split out of [`Self::cli_realm`] by `task-1984` §3.6.
+    fn cli_realm_hide(&mut self, request: &Request) -> Outcome {
+        self.show_a_panel(dock::Panel::Realm, false);
         done(request, "Put the canvas away.")
     }
 
-    /// `manage`. Split out of [`Self::cli_space`] by `task-1984` §3.6.
-    fn cli_space_manage(&mut self, request: &Request) -> Outcome {
-        self.run_a_space_action(SpaceAction::Manage);
-        done(request, "The space manager is open.")
+    /// `manage`. Split out of [`Self::cli_realm`] by `task-1984` §3.6.
+    fn cli_realm_manage(&mut self, request: &Request) -> Outcome {
+        self.run_a_realm_action(RealmAction::Manage);
+        done(request, "The realm manager is open.")
     }
 
-    /// `new-view`. Split out of [`Self::cli_space`] by `task-1984` §3.6.
-    fn cli_space_new_view(&mut self, request: &Request) -> Outcome {
-        let name = request.text("name").unwrap_or_else(|| "View".to_owned());
-        let id = self.space.space.add_view(&name);
-        self.space.space.show_view(id);
-        ok(
-            request,
-            format!("Made {}.", self.space.space.current().name),
-            json!({ "view": id, "name": self.space.space.current().name }),
-        )
+    /// `play`, `pause`, `seek` and `volume`: the same player the node's own controls drive. `task-2202`.
+    fn cli_realm_transport(&mut self, request: &Request, asked: crate::app::realm_nodes::Transport) -> Outcome {
+        let node = match self.a_named_node(request, "node") {
+            Ok(node) => node,
+            Err(outcome) => return *outcome,
+        };
+        if let Some(from) = request.number("from").map(|id| id as u64) {
+            if !self.realm.realm.may_reach(from, node) {
+                return no(request, code::REFUSED, format!("Node {from} is not connected to node {node}."));
+            }
+        }
+        match self.drive_a_sound(node, asked) {
+            Ok(state) => ok(
+                request,
+                format!(
+                    "Node {node} is {} at {} of {}.",
+                    if state.playing { "playing" } else { "paused" },
+                    crate::app::realm_nodes::clock(state.position),
+                    crate::app::realm_nodes::clock(state.duration),
+                ),
+                json!({
+                    "node": node,
+                    "playing": state.playing,
+                    "position": state.position,
+                    "duration": state.duration,
+                    "volume": state.volume,
+                }),
+            ),
+            Err(problem) => no(request, code::REFUSED, problem),
+        }
     }
 
-    /// `rename-view`. Split out of [`Self::cli_space`] by `task-1984` §3.6.
-    fn cli_space_rename_view(&mut self, request: &Request) -> Outcome {
-        let id = match self.a_named_view(request) {
-            Ok(id) => id,
+    /// `note view`: show a note as its source, beside its preview, or as its preview. `task-2202`.
+    fn cli_realm_note(&mut self, request: &Request) -> Outcome {
+        let node = match self.a_reachable_node(request, "node", Kind::Note) {
+            Ok(node) => node,
+            Err(outcome) => return *outcome,
+        };
+        let Some(view) = request.text("view").and_then(|view| crate::services::realm::NoteView::from_name(&view))
+        else {
+            return no(request, code::USAGE, "Say raw, side or preview.");
+        };
+        match self.set_a_notes_view(node, view) {
+            Ok(()) => ok(
+                request,
+                format!("Node {node} shows its {}.", match view {
+                    crate::services::realm::NoteView::Raw => "source",
+                    crate::services::realm::NoteView::Side => "source beside its preview",
+                    crate::services::realm::NoteView::Preview => "preview",
+                }),
+                json!({ "node": node, "view": view.name() }),
+            ),
+            Err(problem) => no(request, code::REFUSED, problem),
+        }
+    }
+
+    /// `open`: show a realm file in the panel. `task-2202`.
+    fn cli_realm_open(&mut self, request: &Request) -> Outcome {
+        let path = match self.a_named_realm(request, "realm") {
+            Ok(path) => path,
+            Err(outcome) => return *outcome,
+        };
+        self.show_a_panel(dock::Panel::Realm, true);
+        match self.open_a_realm(&path) {
+            Ok(()) => ok(
+                request,
+                format!("Showing {}.", crate::services::realm::slashed(&path)),
+                json!({ "path": crate::services::realm::slashed(&path) }),
+            ),
+            Err(problem) => no(request, code::REFUSED, problem),
+        }
+    }
+
+    /// `new`: make a realm in `.realm-files/` and open it. `task-2202`.
+    fn cli_realm_new(&mut self, request: &Request) -> Outcome {
+        let name = request.text("name").unwrap_or_default();
+        self.show_a_panel(dock::Panel::Realm, true);
+        match self.new_realm(&name) {
+            Ok(path) => ok(
+                request,
+                format!("Made {}.", crate::services::realm::slashed(&path)),
+                json!({
+                    "path": crate::services::realm::slashed(&path),
+                    "name": crate::services::realm::title_of(&path),
+                }),
+            ),
+            Err(problem) => no(request, code::REFUSED, problem),
+        }
+    }
+
+    /// `rename`: rename a realm's file, which its sidecar follows. `task-2202`.
+    fn cli_realm_rename(&mut self, request: &Request) -> Outcome {
+        let path = match self.a_named_realm(request, "realm") {
+            Ok(path) => path,
             Err(outcome) => return *outcome,
         };
         let Some(name) = request.text("name") else {
             return no(request, code::USAGE, "Say what to call it.");
         };
-        self.space.space.rename_view(id, &name);
-        let now = self.space.space.view(id).map(|view| view.name.clone()).unwrap_or_default();
-        ok(request, format!("Called it {now}."), json!({ "view": id, "name": now }))
+        match self.rename_a_realm(&path, &name) {
+            Ok(to) => ok(
+                request,
+                format!("It is {} now.", crate::services::realm::slashed(&to)),
+                json!({ "path": crate::services::realm::slashed(&to) }),
+            ),
+            Err(problem) => no(request, code::REFUSED, problem),
+        }
     }
 
-    /// `duplicate-view`. Split out of [`Self::cli_space`] by `task-1984` §3.6.
-    fn cli_space_duplicate_view(&mut self, request: &Request) -> Outcome {
-        let id = match self.a_named_view(request) {
-            Ok(id) => id,
+    /// `duplicate`: copy a realm under new ids and open the copy. `task-2202`.
+    fn cli_realm_duplicate(&mut self, request: &Request) -> Outcome {
+        let path = match self.a_named_realm(request, "realm") {
+            Ok(path) => path,
             Err(outcome) => return *outcome,
         };
-        match self.space.space.duplicate_view(id) {
-            Some(copy) => {
-                self.space.space.show_view(copy);
-                self.bring_the_current_view_to_life();
+        match self.duplicate_a_realm(&path) {
+            Ok(copy) => ok(
+                request,
+                format!("Copied it to {}.", crate::services::realm::slashed(&copy)),
+                json!({ "path": crate::services::realm::slashed(&copy) }),
+            ),
+            Err(problem) => no(request, code::REFUSED, problem),
+        }
+    }
+
+    /// `delete`: delete a realm file the way the explorer deletes one, with its sidecar. `task-2202`.
+    ///
+    /// **No question is asked**, because the command is the answer to it: an agent that sends `realm delete`
+    /// has said so, and the file goes wherever a deleted file goes on this platform rather than nowhere.
+    fn cli_realm_delete(&mut self, request: &Request) -> Outcome {
+        let path = match self.a_named_realm(request, "realm") {
+            Ok(path) => path,
+            Err(outcome) => return *outcome,
+        };
+        let file = self.tree.root().join(&path);
+        if !file.is_file() {
+            // A realm that was never written has nothing on disk to delete; forgetting it is the whole job.
+            self.a_realm_file_is_going(&file);
+            self.a_realm_file_went(&file);
+            return done(request, "It had never been written, so there was nothing to delete.");
+        }
+        self.delete_path(&file);
+        match file.exists() {
+            true => no(request, code::FAILED, self.message.clone().unwrap_or_default()),
+            false => done(request, format!("Deleted {}.", crate::services::realm::slashed(&path))),
+        }
+    }
+
+    /// `import`: turn `.unluminous/space.conf` into realm files, writing over nothing. `task-2202`.
+    fn cli_realm_import(&mut self, request: &Request) -> Outcome {
+        let root = self.tree.root().to_path_buf();
+        match crate::services::realm::store::import(&root) {
+            Ok(imported) => {
+                self.realm.imported = true;
+                self.list_the_realms();
+                self.the_project_changed_on_disk();
+                let written: Vec<String> =
+                    imported.written.iter().map(|path| crate::services::realm::slashed(path)).collect();
+                let skipped: Vec<String> =
+                    imported.skipped.iter().map(|path| crate::services::realm::slashed(path)).collect();
+                let left_alone = match skipped.len() {
+                    0 => String::new(),
+                    many => format!(", and left {many} that were already there alone"),
+                };
                 ok(
                     request,
-                    format!("Copied it to {}.", self.space.space.current().name),
-                    json!({ "view": copy }),
+                    format!(
+                        "Wrote {} realm file{}{left_alone}. space.conf is left where it is.",
+                        written.len(),
+                        if written.len() == 1 { "" } else { "s" },
+                    ),
+                    json!({
+                        "written": written,
+                        "skipped": skipped,
+                        "current": imported.current.map(|path| crate::services::realm::slashed(&path)),
+                    }),
                 )
             }
-            None => no(request, code::NOT_FOUND, "There is no such view."),
+            Err(problem) => no(request, code::NOT_FOUND, problem),
         }
     }
 
-    /// `delete-view`. Split out of [`Self::cli_space`] by `task-1984` §3.6.
-    fn cli_space_delete_view(&mut self, request: &Request) -> Outcome {
-        let id = match self.a_named_view(request) {
-            Ok(id) => id,
-            Err(outcome) => return *outcome,
+    /// `info`: what the open realm's file says about which Unluminous may read and write it. `task-2202`.
+    ///
+    /// This is how an agent finds out that a realm is read only and why, which the banner tells a person.
+    fn cli_realm_info(&self, request: &Request) -> Outcome {
+        let realm = &self.realm.realm;
+        let access = match (&self.realm.problem, realm.read_only_because()) {
+            (Some(problem), _) => format!("unreadable: {problem}"),
+            (None, Some(why)) => format!("read only: {why}"),
+            (None, None) => "edit".to_owned(),
         };
-        if self.space.space.views().len() < 2 {
-            return no(
-                request,
-                code::REFUSED,
-                "A canvas always has one view, so the last one cannot be deleted.",
-            );
-        }
-        self.delete_a_space_view(id);
-        done(request, "Deleted it.")
+        let unknown = realm.unknown_kinds();
+        let rows = vec![
+            format!("path      {}", crate::services::realm::slashed(&realm.path)),
+            format!("format    {}", realm.format.format),
+            format!("reader    {}", realm.format.reader),
+            format!("writer    {}", realm.format.writer),
+            format!("needs     {}", realm.format.needs.join(", ")),
+            format!("access    {access}"),
+            format!("nodes     {}", realm.nodes.len()),
+            format!("unknown   {}", unknown.join(", ")),
+        ];
+        lines(
+            request,
+            format!("{} is {access}.", crate::services::realm::slashed(&realm.path)),
+            rows,
+            json!({
+                "path": crate::services::realm::slashed(&realm.path),
+                "format": realm.format.format,
+                "reader": realm.format.reader,
+                "writer": realm.format.writer,
+                "needs": realm.format.needs,
+                "access": access,
+                "nodes": realm.nodes.len(),
+                "connections": realm.edges.len(),
+                "unknownKinds": unknown,
+            }),
+        )
     }
 
-    /// `title`. Split out of [`Self::cli_space`] by `task-1984` §3.6.
-    fn cli_space_title(&mut self, request: &Request) -> Outcome {
+    /// `title`. Split out of [`Self::cli_realm`] by `task-1984` §3.6.
+    fn cli_realm_title(&mut self, request: &Request) -> Outcome {
         let node = match self.a_named_node(request, "node") {
             Ok(node) => node,
             Err(outcome) => return *outcome,
         };
         let title = request.text("title").unwrap_or_default();
-        self.space.space.title_node(node, title.trim());
+        self.realm.realm.title_node(node, title.trim());
         done(request, format!("Called node {node} {title}."))
     }
 
-    /// `remove`. Split out of [`Self::cli_space`] by `task-1984` §3.6.
-    fn cli_space_remove(&mut self, request: &Request) -> Outcome {
+    /// `remove`. Split out of [`Self::cli_realm`] by `task-1984` §3.6.
+    fn cli_realm_remove(&mut self, request: &Request) -> Outcome {
         let node = match self.a_named_node(request, "node") {
             Ok(node) => node,
             Err(outcome) => return *outcome,
         };
-        self.close_a_space_node(node);
+        self.close_a_realm_node(node);
         done(request, format!("Took node {node} off the canvas."))
     }
 
-    /// `focus`. Split out of [`Self::cli_space`] by `task-1984` §3.6.
-    fn cli_space_focus(&mut self, request: &Request) -> Outcome {
+    /// `focus`. Split out of [`Self::cli_realm`] by `task-1984` §3.6.
+    fn cli_realm_focus(&mut self, request: &Request) -> Outcome {
         let node = match self.a_named_node(request, "node") {
             Ok(node) => node,
             Err(outcome) => return *outcome,
         };
-        self.show_a_panel(dock::Panel::Space, true);
-        self.space.space.choose(Some(node));
-        self.space.space.raise(node);
-        self.take_the_keyboard_for_the_space();
+        self.show_a_panel(dock::Panel::Realm, true);
+        self.realm.realm.choose(Some(node));
+        self.realm.realm.raise(node);
+        self.take_the_keyboard_for_the_realm();
         done(request, format!("Node {node} has the keyboard."))
     }
 
-    /// `disconnect`. Split out of [`Self::cli_space`] by `task-1984` §3.6.
-    fn cli_space_disconnect(&mut self, request: &Request) -> Outcome {
+    /// `disconnect`. Split out of [`Self::cli_realm`] by `task-1984` §3.6.
+    fn cli_realm_disconnect(&mut self, request: &Request) -> Outcome {
         let Some(edge) = request.number("connection").map(|id| id as u64) else {
             return no(request, code::USAGE, "Say which connection, by its id.");
         };
-        match self.space.space.disconnect(edge) {
+        match self.realm.realm.disconnect(edge) {
             true => done(request, format!("Took connection {edge} away.")),
             false => no(request, code::NOT_FOUND, format!("There is no connection {edge}.")),
         }
     }
 
-    /// `restart`. Split out of [`Self::cli_space`] by `task-1984` §3.6.
-    fn cli_space_restart(&mut self, request: &Request) -> Outcome {
+    /// `restart`. Split out of [`Self::cli_realm`] by `task-1984` §3.6.
+    fn cli_realm_restart(&mut self, request: &Request) -> Outcome {
         let node = match self.a_named_node(request, "node") {
             Ok(node) => node,
             Err(outcome) => return *outcome,
@@ -1192,25 +1440,25 @@ impl UnluminousApp {
         // `start_what_a_node_was_running`, so the program is typed into the shell the node has rather
         // than replacing it. `task-1907`.
         if request.switch("running") {
-            let was = self.space.chosen();
-            self.space.space.choose(Some(node));
+            let was = self.realm.chosen();
+            self.realm.realm.choose(Some(node));
             self.start_what_a_node_was_running();
             let answer = self.message.clone().unwrap_or_default();
-            self.space.space.choose(was);
+            self.realm.realm.choose(was);
             let started = answer.starts_with("Started ");
             return match started {
                 true => done(request, answer),
                 false => no(request, code::REFUSED, answer),
             };
         }
-        match self.start_a_space_terminal(node, request.switch("resume")) {
+        match self.start_a_realm_terminal(node, request.switch("resume")) {
             Ok(()) => done(request, format!("Started node {node} again.")),
             Err(problem) => no(request, code::FAILED, problem),
         }
     }
 
-    /// `address`. Split out of [`Self::cli_space`] by `task-1984` §3.6.
-    fn cli_space_address(&mut self, request: &Request) -> Outcome {
+    /// `address`. Split out of [`Self::cli_realm`] by `task-1984` §3.6.
+    fn cli_realm_address(&mut self, request: &Request) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Browser) {
             Ok(node) => node,
             Err(outcome) => return *outcome,
@@ -1219,9 +1467,9 @@ impl UnluminousApp {
             return no(request, code::USAGE, "Say which address.");
         };
         // Through the same function the field's own Enter reaches, which is `run_cli`'s rule.
-        match self.send_a_space_browser_to(node, url.trim()) {
+        match self.send_a_realm_browser_to(node, url.trim()) {
             Ok(()) => {
-                self.space.space.change(node, |state| {
+                self.realm.realm.change(node, |state| {
                     if let State::Browser(browser) = state {
                         browser.typed = url.trim().to_owned();
                     }
@@ -1232,8 +1480,8 @@ impl UnluminousApp {
         }
     }
 
-    /// `editor`. Split out of [`Self::cli_space`] by `task-1984` §3.6.
-    fn cli_space_editor(&mut self, request: &Request) -> Outcome {
+    /// `editor`. Split out of [`Self::cli_realm`] by `task-1984` §3.6.
+    fn cli_realm_editor(&mut self, request: &Request) -> Outcome {
         let node = match self.a_reachable_node(request, "node", Kind::Editor) {
             Ok(node) => node,
             Err(outcome) => return *outcome,
@@ -1241,7 +1489,7 @@ impl UnluminousApp {
         let Some(path) = self.cli_path_argument(request, "path") else {
             return no(request, code::USAGE, "Say which file.");
         };
-        match self.open_in_a_space_node(node, &path) {
+        match self.open_in_a_realm_node(node, &path) {
             Ok(()) => ok(
                 request,
                 format!("Opened {} in node {node}.", path.display()),

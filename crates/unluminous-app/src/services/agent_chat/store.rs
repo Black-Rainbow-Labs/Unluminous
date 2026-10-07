@@ -58,7 +58,7 @@ impl Store {
     /// written yet is not one of them -- a new chat is written when it has something in it -- so two
     /// made in one second got the same id. The second chat node on a canvas then shared the first
     /// one's conversation and whichever was written second wrote over the other, and it is why
-    /// `canvas_space.rs`'s `a_chat_node_holds_its_own_conversation_and_comes_back_on_it` was flaky.
+    /// `canvas_realm.rs`'s `a_chat_node_holds_its_own_conversation_and_comes_back_on_it` was flaky.
     ///
     /// Process wide rather than per `Store`, because a `Store` is made where it is needed rather than
     /// held: the canvas builds one per node. The disk is still asked, so an id is unique against a

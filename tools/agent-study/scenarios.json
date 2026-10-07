@@ -119,9 +119,9 @@
  "expect":"Uses the chat area to open the pane, say which providers are configured and read the transcript back, rather than saying it cannot see the pane.",
  "prompts":["Open the agent chat pane on the right, tell me which providers are configured, and read back whatever is in the transcript."]},
 
-{"id":"s27-space","area":"space","name":"Wire a terminal to a browser on the canvas and drive it",
- "expect":"Uses the space area to open the canvas, add two nodes, connect them, then drive the browser as the terminal node with --from and read the address back, rather than opening a tab or shelling out.",
- "prompts":["Open the Base of Infinite Space, put a terminal node and a web browser node on it, and connect the terminal to the browser.",
+{"id":"s27-space","area":"realm","name":"Wire a terminal to a browser on the canvas and drive it",
+ "expect":"Uses the realm area to open the canvas, add two nodes, connect them, then drive the browser as the terminal node with --from and read the address back, rather than opening a tab or shelling out.",
+ "prompts":["Open the Realm, put a terminal node and a web browser node on it, and connect the terminal to the browser.",
             "Now, acting as that terminal node, send the browser to https://example.com/ and tell me what address it ended up on."]},
 
 {"id":"s28-comment","area":"editor","name":"Comment a block out and put it back",
@@ -146,9 +146,9 @@
  "prompts":["What themes do I have, and what am I using?",
             "Put me in Monokai Pro, then tell me how to get back to what I had."]},
 
-{"id":"s32-chat-node","area":"space","name":"A chat node on the canvas, driven as itself",
- "expect":"Uses `space add chat` and then `space chat <node> …` rather than the panel's own `plugins run agent-chat`, which would drive whichever conversation the panel is on rather than this node's. Two views of one conversation is the thing the node exists not to be.",
- "prompts":["Open the Base of Infinite Space and put an agent chat node on it.",
+{"id":"s32-chat-node","area":"realm","name":"A chat node on the canvas, driven as itself",
+ "expect":"Uses `realm add chat` and then `realm chat <node> …` rather than the panel's own `plugins run agent-chat`, which would drive whichever conversation the panel is on rather than this node's. Two views of one conversation is the thing the node exists not to be.",
+ "prompts":["Open the Realm and put an agent chat node on it.",
             "Which conversation is that node on, and what providers could it use? Answer about that node rather than about the chat panel."]},
 
 {"id":"s33-code-search","area":"search","name":"Find code with the index rather than with grep",

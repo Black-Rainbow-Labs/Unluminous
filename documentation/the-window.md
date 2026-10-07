@@ -29,7 +29,7 @@ because the measurements come from `design/intial-design-screenshot.png`. Run
 
 ## The panels, and moving them
 
-Five panels: the explorer, the terminal, the run tile, the debug tile and the Base of Infinite Space,
+Five panels: the explorer, the terminal, the run tile, the debug tile and the Realm,
 plus one for each pane a plugin contributes. Any of them is dragged by its header to the top, bottom,
 left or right of the window, with four blue bands showing where it can go. The strong band is the
 layout run over the value the drop would produce, so the preview and the drop are one function and
@@ -88,7 +88,7 @@ to see it, or `unluminous-cli action list`, which is built by walking the same l
 | `Edit` | Undo, Redo, Cut, Copy, Paste, Select All, a `Highlight` submenu holding the four colours and the two ways of clearing one, Navigate Back and Forward, Settings. |
 | `Code` | Go to Definition, Find Usages, Rename, Complete Word, Reformat, comment and indentation, Go to Line, Go to Matching Bracket, and the line commands — duplicate, move, join and sort. Drawn for a file whose language can answer those questions. |
 | `Find` | Find Action, Find, Replace, Find Next, Find Previous, Find in Files. |
-| `View` | The three view modes, show or hide the explorer, the editing area and the line numbers, Maximise Pane, the font size, the tabs, Select Opened File, a `Split` submenu, a `Folding` submenu, the three tiles, the Base of Infinite Space and its own submenu, Reset Panel Layout, and the terminal tabs. |
+| `View` | The three view modes, show or hide the explorer, the editing area and the line numbers, Maximise Pane, the font size, the tabs, Select Opened File, a `Split` submenu, a `Folding` submenu, the three tiles, the Realm and its own submenu, Reset Panel Layout, and the terminal tabs. |
 | `Run` | Run, Stop, Rerun, Edit Configurations, and the debugger's entries. |
 | `Git` | Commit, Add, Exclude, Show Diff, Compare with Revision, Show History, Show Current Revision, Annotate with Git Blame, Rollback, Push, Pull, Fetch, Merge, Rebase, Branches, New Branch, New Tag, Reset HEAD, Stash, Unstash, Manage Remotes, Clone. Dimmed outside a repository, and it grows `Continue` and `Abort` while a merge or a rebase has stopped on a conflict. |
 | `Plugins` | What each installed plugin contributed. |

@@ -1,10 +1,9 @@
-//! The modal that lists every canvas in this project, so one can be found rather than scrolled past.
+//! The modal that lists every realm in this project, so one can be found rather than scrolled past.
 //!
-//! `task-1906` asks for *"a space/view manager modal so i can open other saved spaces/tabs"*, and §3 of
-//! `tasks/task-1906-space-state-and-manager-tdd.md` separates the two words in that: a **view** already
-//! exists and had no way to be seen past about six of them, and a **space** that outlives its project does
-//! not exist and is refused there with a reason. So this lists the views of the canvas that is open, and its
-//! footer opens another *project*, in a window of its own, because a project is a window.
+//! `task-1906` asked for *"a space/view manager modal so i can open other saved spaces/tabs"*. It listed the
+//! views inside `space.conf`; since `task-2202` a view is a `.realm` file, so it lists the project's realm
+//! files, and its footer still opens another *project*, in a window of its own, because a project is a
+//! window and a realm's nodes name that project's files.
 //!
 //! ## Why a modal at all, when the chips are already there
 //!
@@ -23,7 +22,10 @@
 use egui::{Align2, FontId, Pos2, Rect, Sense, Vec2};
 
 use crate::components::{controls, modal};
-use crate::services::space::ViewId;
+use std::path::PathBuf;
+
+/// A realm, named by where its file is in the project. `task-2202`: a realm file is what a view was.
+type ViewId = PathBuf;
 use crate::theme::{color, size};
 
 /// The size it opens at.
@@ -66,7 +68,7 @@ pub struct Outcome {
     pub show: Option<ViewId>,
     /// A row was right clicked: where the pointer was, and which view.
     pub menu: Option<(Pos2, ViewId)>,
-    /// `New Space` was pressed.
+    /// `New Realm` was pressed.
     pub add: bool,
     /// `Open Another Project...` was pressed.
     pub open_a_project: bool,
@@ -96,8 +98,8 @@ pub fn not_showing(total: usize, drawn: usize) -> usize {
 /// Draw the modal and report what was chosen.
 pub fn show(ctx: &egui::Context, state: &mut State, rows: &[Row]) -> Outcome {
     let mut outcome = Outcome::default();
-    let (_, closed) = modal::show(ctx, "unluminous-space-manager", WIDTH, HEIGHT, |ui, area| {
-        if modal::header(ui, area, "Spaces") {
+    let (_, closed) = modal::show(ctx, "unluminous-realm-manager", WIDTH, HEIGHT, |ui, area| {
+        if modal::header(ui, area, "Realms") {
             outcome.closed = true;
         }
         // The arrow keys and Enter are taken out of the frame's events before the field is drawn, because
@@ -132,7 +134,7 @@ pub fn show(ctx: &egui::Context, state: &mut State, rows: &[Row]) -> Outcome {
             Vec2::new(body.width(), FIELD),
         );
         let entry =
-            controls::search_field(ui, field, "Find a space", "Type a name", &mut state.filter);
+            controls::search_field(ui, field, "Find a realm", "Type a name", &mut state.filter);
         // The box has the keyboard from the moment the modal opens, because a search box that has to be
         // clicked before it can be typed into is a search box that gets typed past.
         if !entry.has_focus() {
@@ -153,13 +155,13 @@ pub fn show(ctx: &egui::Context, state: &mut State, rows: &[Row]) -> Outcome {
         show_the_rows(ui, list, &found, state, &mut outcome);
         if enter {
             if let Some(row) = found.get(state.highlighted) {
-                outcome.show = Some(row.id);
+                outcome.show = Some(row.id.clone());
             }
         }
 
         let summary = match rows.len() {
-            1 => "1 space".to_owned(),
-            many => format!("{many} spaces"),
+            1 => "1 realm".to_owned(),
+            many => format!("{many} realms"),
         };
         modal::label(
             &ui.painter_at(area),
@@ -173,7 +175,7 @@ pub fn show(ctx: &egui::Context, state: &mut State, rows: &[Row]) -> Outcome {
             11.0,
         );
         // The last button is the one Enter presses, which is `modal::footer`'s rule — so the one that opens
-        // a space is last and the two that do something else come before it.
+        // a realm is last and the two that do something else come before it.
         match modal::footer(
             ui,
             area,
@@ -187,7 +189,7 @@ pub fn show(ctx: &egui::Context, state: &mut State, rows: &[Row]) -> Outcome {
             Some(1) => outcome.add = true,
             Some(2) => {
                 if let Some(row) = found.get(state.highlighted) {
-                    outcome.show = Some(row.id);
+                    outcome.show = Some(row.id.clone());
                 }
             }
             _ => {}
@@ -212,7 +214,7 @@ fn show_the_rows(
 ) {
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area));
     child.set_clip_rect(ui.painter().clip_rect().intersect(area));
-    egui::ScrollArea::vertical().id_salt("space-manager-rows").show(&mut child, |ui| {
+    egui::ScrollArea::vertical().id_salt("realm-manager-rows").show(&mut child, |ui| {
         if found.is_empty() {
             ui.add_space(8.0);
             ui.label(
@@ -286,15 +288,15 @@ fn show_the_rows(
                     egui::WidgetType::Button,
                     true,
                     row.showing,
-                    format!("Space: {}", row.name),
+                    format!("Realm: {}", row.name),
                 )
             });
             if response.double_clicked() {
-                outcome.show = Some(row.id);
+                outcome.show = Some(row.id.clone());
             }
             if response.secondary_clicked() {
                 if let Some(at) = response.interact_pointer_pos().or_else(|| response.hover_pos()) {
-                    outcome.menu = Some((at, row.id));
+                    outcome.menu = Some((at, row.id.clone()));
                 }
             }
         }
@@ -307,9 +309,9 @@ mod tests {
 
     fn rows() -> Vec<Row> {
         vec![
-            Row { id: 1, name: "Main".to_owned(), nodes: 4, connections: 2, showing: true },
-            Row { id: 2, name: "Rendering".to_owned(), nodes: 7, connections: 5, showing: false },
-            Row { id: 3, name: "Notes".to_owned(), nodes: 1, connections: 0, showing: false },
+            Row { id: PathBuf::from("Main.realm"), name: "Main".to_owned(), nodes: 4, connections: 2, showing: true },
+            Row { id: PathBuf::from("Rendering.realm"), name: "Rendering".to_owned(), nodes: 7, connections: 5, showing: false },
+            Row { id: PathBuf::from("Notes.realm"), name: "Notes".to_owned(), nodes: 1, connections: 0, showing: false },
         ]
     }
 

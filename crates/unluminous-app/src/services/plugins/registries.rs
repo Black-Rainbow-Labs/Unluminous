@@ -53,7 +53,17 @@ pub const DEBUGGERS: &[&str] = &["lldb", "node"];
 /// is a pane, where it docks, what its button looks like and what its menu holds; the drawing shipped
 /// with the binary. So the most a manifest can do is name a provider that is already here, visibly,
 /// and nothing in a plugin is executed.
-pub const UI_PROVIDERS: &[&str] = &["agent-tasks", "agent-chat", "database"];
+pub const UI_PROVIDERS: &[&str] = &["agent-tasks", "agent-chat", "database", "realm"];
+
+/// The providers in [`UI_PROVIDERS`] whose surface is drawn by the window itself rather than by a
+/// `UiProvider` object. `task-2202`.
+///
+/// **The Realm is core and its plugin is the switch for it.** The canvas needs `OpenFiles`, the window's one
+/// native web view and the node bodies, which no provider can reach (`app::dock::Panel::Realm` says why), so
+/// the plugin contributes the `.realm` file type, its icon and the `.realm-files` folder, and switching the
+/// plugin off takes the panel, its rail button and its menu away the way switching Agent-Tasks off takes its
+/// pane away. A core provider builds no object and draws no plugin pane.
+pub const CORE_PROVIDERS: &[&str] = &["realm"];
 
 /// The renderers a plugin's `ui.chrome` may name for the decoration `egui` cannot draw.
 ///

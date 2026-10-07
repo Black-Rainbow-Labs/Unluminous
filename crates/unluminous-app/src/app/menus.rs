@@ -27,11 +27,12 @@ impl UnluminousApp {
     /// What the menus need to know about the window.
     pub fn menu_state(&self) -> MenuState {
         MenuState {
-            space_visible: self.was_showing(dock::Panel::Space, self.space.visible),
-            space_node: self.space.chosen().and_then(|node| {
-                self.space.space.current().node(node).map(|found| {
+            realm_visible: self.was_showing(dock::Panel::Realm, self.realm.visible),
+            realm_available: self.realm_is_on(),
+            realm_node: self.realm.chosen().and_then(|node| {
+                self.realm.realm.node(node).map(|found| {
                     let session = match &found.state {
-                        crate::services::space::State::Terminal(terminal) => {
+                        crate::services::realm::State::Terminal(terminal) => {
                             !terminal.session.is_empty()
                         }
                         _ => false,
@@ -40,24 +41,24 @@ impl UnluminousApp {
                 })
             }),
             // **What the chosen node was left running**, which is a different question from whether it has a
-            // conversation to resume — see `MenuState::space_node_running`. `task-1907`.
-            space_node_running: self
-                .space
+            // conversation to resume — see `MenuState::realm_node_running`. `task-1907`.
+            realm_node_running: self
+                .realm
                 .chosen()
-                .and_then(|node| self.space.space.current().node(node))
+                .and_then(|node| self.realm.realm.node(node))
                 .and_then(|found| match &found.state {
-                    crate::services::space::State::Terminal(terminal) => {
+                    crate::services::realm::State::Terminal(terminal) => {
                         Some(terminal.running.clone())
                     }
                     _ => None,
                 })
                 .unwrap_or_default(),
-            space_pipe: self.space.in_hand.wire.is_some_and(|edge| {
-                self.space.space.current().edges.iter().any(|other| {
-                    other.id == edge && other.pipe == crate::services::space::Pipe::Lines
+            realm_pipe: self.realm.in_hand.wire.is_some_and(|edge| {
+                self.realm.realm.edges.iter().any(|other| {
+                    other.id == edge && other.pipe == crate::services::realm::Pipe::Lines
                 })
             }),
-            space_views: self.space.space.views().len(),
+            realm_views: self.realm.files.len(),
 
             plugin_menus: self
                 .plugin_ui
@@ -227,7 +228,7 @@ impl UnluminousApp {
             | Action::Dock { .. }
             | Action::FillSide(_)
             | Action::ResetPanelLayout
-            | Action::Space(_) => self.a_view_entry(action),
+            | Action::Realm(_) => self.a_view_entry(action),
             Action::Run(_) | Action::Debug(_) => self.a_run_entry(action),
             Action::NewFile(_)
             | Action::NewFolder(_)
@@ -853,7 +854,7 @@ impl UnluminousApp {
                 self.fill_a_side(side, !fills);
             }
             Action::ResetPanelLayout => self.reset_the_panel_layout(),
-            Action::Space(what) => self.run_a_space_action(what),
+            Action::Realm(what) => self.run_a_realm_action(what),
             Action::ToggleRunTile => {
                 let showing = !self.run.visible;
                 self.show_the_run_tile(showing);

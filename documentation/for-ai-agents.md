@@ -176,7 +176,7 @@ Three things make it unnecessary, and each is a thing rather than a habit:
 
 `tools/drive-a-window.ps1` and `tools/drive-a-window.sh` start a window the right way on each
 platform. **`input` is the last resort, not the first**: a command that names the thing — `action run`,
-`tab open`, `space editor` — reaches the same code and does not depend on where anything was drawn.
+`tab open`, `realm editor` — reaches the same code and does not depend on where anything was drawn.
 `input` is for the gestures there is no other command for.
 
 [Taking the pictures](taking-the-pictures.md) is the whole documentation gallery driven that way,

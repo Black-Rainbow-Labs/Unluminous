@@ -57,6 +57,8 @@ arboard.workspace = true
 muda.workspace = true
 # Only the PNG decoder, for the pictures plugins put in front of their files.
 image.workspace = true
+# The Realm's sound nodes. See the workspace manifest for which formats and why.
+rodio.workspace = true
 # The Agent-Tasks plugin's board. One file on disk, with SQLite compiled in.
 rusqlite.workspace = true
 # The one request Unluminous makes on its own behalf: whether a newer release exists, asked only when

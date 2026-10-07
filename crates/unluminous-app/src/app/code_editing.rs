@@ -335,7 +335,7 @@ impl UnluminousApp {
         }
         let was = self.files.focus();
         let goes_to_a_node =
-            closed.home.node().is_some_and(|node| self.space.space.current().node(node).is_some());
+            closed.home.node().is_some_and(|node| self.realm.realm.node(node).is_some());
         if goes_to_a_node || closed.home.pane().is_some() {
             self.files.restore_focus(closed.home);
         }

@@ -40,8 +40,8 @@ impl UnluminousApp {
             if dropped {
                 self.files.drag_tab_to_node(file, node, position);
                 self.remember_a_nodes_tabs(node);
-                self.focus = Focus::Space;
-                self.space.space.choose(Some(node));
+                self.focus = Focus::Realm;
+                self.realm.realm.choose(Some(node));
                 return;
             }
             // **A node showing one file draws no strip**, so there is nowhere to put an insertion mark:
@@ -49,7 +49,7 @@ impl UnluminousApp {
             // instead, which says the same thing — this is where the tab would land.
             match strip.area.is_finite() {
                 true => file_tabs::insertion_mark(ui.painter(), &strip, position),
-                false => crate::components::space::landing_mark(ui.painter(), rect),
+                false => crate::components::realm::landing_mark(ui.painter(), rect),
             }
             return;
         }
@@ -63,7 +63,7 @@ impl UnluminousApp {
                 self.break_a_tab_out_onto_the_canvas(file, at);
                 return;
             }
-            crate::components::space::landing_mark(
+            crate::components::realm::landing_mark(
                 ui.painter(),
                 self.where_a_fresh_node_would_be(at),
             );
@@ -93,19 +93,18 @@ impl UnluminousApp {
     /// canvas is a panel laid out beside the editing area, so a point on it is never inside a pane, and a
     /// node on it is drawn over the canvas and is what the pointer is really over.
     fn canvas_would_take_a_drop_at(&self, at: Pos2) -> bool {
-        self.space.visible && self.space.body.contains(at)
+        self.realm.visible && self.realm.body.contains(at)
     }
 
     /// The rectangle a node made by a drop at `at` would cover on the screen, cut to the canvas.
     fn where_a_fresh_node_would_be(&self, at: Pos2) -> Rect {
-        let size = crate::services::space::Kind::Editor.opens_at();
+        let size = crate::services::realm::Kind::Editor.opens_at();
         let world = self.where_a_node_dropped_at_would_go(at);
-        self.space
-            .space
-            .current()
+        self.realm
+            .realm
             .camera
-            .rect_to_screen(self.space.body.min, Rect::from_min_size(world, size))
-            .intersect(self.space.body)
+            .rect_to_screen(self.realm.body.min, Rect::from_min_size(world, size))
+            .intersect(self.realm.body)
     }
 
     /// A tab let go on the empty canvas: a File Editor node of its own, with that tab in it.
@@ -118,13 +117,13 @@ impl UnluminousApp {
         &mut self,
         file: usize,
         at: Pos2,
-    ) -> crate::services::space::NodeId {
+    ) -> crate::services::realm::NodeId {
         let world = self.where_a_node_dropped_at_would_go(at);
-        let node = self.add_a_space_node(crate::services::space::Kind::Editor, world);
+        let node = self.add_a_realm_node(crate::services::realm::Kind::Editor, world);
         self.files.drag_tab_to_node(file, node, 0);
         self.remember_a_nodes_tabs(node);
-        self.focus = Focus::Space;
-        self.space.space.choose(Some(node));
+        self.focus = Focus::Realm;
+        self.realm.realm.choose(Some(node));
         node
     }
 
@@ -140,7 +139,7 @@ impl UnluminousApp {
         &mut self,
         path: &std::path::Path,
         at: Pos2,
-    ) -> Result<crate::services::space::NodeId, String> {
+    ) -> Result<crate::services::realm::NodeId, String> {
         let onto = self
             .node_tab_strips
             .iter()
@@ -150,10 +149,15 @@ impl UnluminousApp {
             Some(node) => node,
             None => {
                 let world = self.where_a_node_dropped_at_would_go(at);
-                self.add_a_space_node(crate::services::space::Kind::Editor, world)
+                // **A picture, a sound, a video or a Markdown file makes the node that shows it**, which is
+                // `task-2202`'s drop: anything else opens in a File Editor node, as it always did.
+                if let Some(kind) = crate::app::realm_nodes::kind_for_a_file(path) {
+                    return self.add_a_file_node(kind, path, world);
+                }
+                self.add_a_realm_node(crate::services::realm::Kind::Editor, world)
             }
         };
-        self.open_in_a_space_node(node, path)?;
+        self.open_in_a_realm_node(node, path)?;
         Ok(node)
     }
 
@@ -164,8 +168,8 @@ impl UnluminousApp {
     /// The pointer lands a header's height into the node and a little in from its left edge, so the thing
     /// under it after the drop is the node's own title bar — the part it is dragged by.
     fn where_a_node_dropped_at_would_go(&self, at: Pos2) -> Pos2 {
-        let camera = self.space.space.current().camera;
-        let world = camera.to_world(self.space.body.min, at);
+        let camera = self.realm.realm.camera;
+        let world = camera.to_world(self.realm.body.min, at);
         Pos2::new(world.x - 24.0, world.y - 12.0)
     }
 
@@ -205,6 +209,6 @@ impl UnluminousApp {
             .find(|(_, rect, _)| rect.contains(at))
             .map(|(_, rect, _)| *rect);
         let mark = over.unwrap_or_else(|| self.where_a_fresh_node_would_be(at));
-        crate::components::space::landing_mark(ui.painter(), mark);
+        crate::components::realm::landing_mark(ui.painter(), mark);
     }
 }

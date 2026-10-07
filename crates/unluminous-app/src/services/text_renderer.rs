@@ -124,7 +124,7 @@ pub struct AtlasGlyph {
 
 /// How many pixels one point is worth where the text being drawn will be composited.
 ///
-/// **1.0 everywhere but on the Base of Infinite Space.** A node there is drawn into an `egui` layer carrying
+/// **1.0 everywhere but on the Realm.** A node there is drawn into an `egui` layer carrying
 /// the camera as a `TSTransform`, and `epaint` applies that transform to the **finished shape**:
 /// `epaint::shapes::text_shape::transform` scales the vertices of an already-rasterised mesh and leaves
 /// `pixels_per_point` alone, so a glyph rasterised at 12 points and composited at 200% is a bitmap magnified
@@ -151,7 +151,7 @@ const RASTER_STEPS: f32 = 4.0;
 
 /// The smallest scale a glyph is rasterised at, which is the camera's own smallest zoom.
 ///
-/// See `services::space::node::MIN_ZOOM`. Kept as a number here rather than imported, because what it
+/// See `services::realm::node::MIN_ZOOM`. Kept as a number here rather than imported, because what it
 /// bounds is the atlas rather than the camera: a scale below this would ask for a glyph of a couple of
 /// pixels, and the two would have to be changed together anyway.
 const SMALLEST_RASTER: f32 = 0.25;
@@ -522,7 +522,7 @@ impl TextRenderer {
 
     /// Rasterise at `scale` pixels a point from here on.
     ///
-    /// What a node on the Base of Infinite Space sets around its contents, with the camera's zoom. Everything
+    /// What a node on the Realm sets around its contents, with the camera's zoom. Everything
     /// else leaves the renderer at [`Crispness::EXACT`] and is unchanged. **Always paired with
     /// [`Self::restore_compositing`]**, which is what stops a node's zoom reaching the pane drawn after it.
     pub fn composite_at(&self, scale: f32) {
@@ -1056,7 +1056,7 @@ mod crispness_tests {
     fn a_glyph_is_never_rasterised_smaller_than_it_is_composited() {
         // Every step of the canvas's own 1.1 ladder, from the bottom of the range to the top.
         // The canvas's own bounds, written out rather than imported: this module has no business depending on
-        // the canvas, and `Camera` clamps to these — see `services::space::node`.
+        // the canvas, and `Camera` clamps to these — see `services::realm::node`.
         let mut zoom = 0.25_f32;
         while zoom <= 2.5 {
             let scale = Crispness::at(zoom).raster_size(16.0) / 16.0;

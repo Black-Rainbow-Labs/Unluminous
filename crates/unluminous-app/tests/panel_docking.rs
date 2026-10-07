@@ -683,7 +683,7 @@ fn the_command_line_moves_a_panel_and_says_where_everything_is() {
 
     let listed = did(&mut harness, "panel list");
     let panels = listed["panels"].as_array().expect("a list of panels").clone();
-    // Five since `task-1904`: the Base of Infinite Space is a panel like the other four.
+    // Five since `task-1904`: the Realm is a panel like the other four.
     assert_eq!(panels.len(), 5, "every panel is listed, showing or not");
     let terminal = panels.iter().find(|it| it["panel"] == "terminal").expect("the terminal");
     assert_eq!(terminal["side"], "bottom");
@@ -785,21 +785,21 @@ fn every_menu_row_for_moving_a_panel_can_be_run_from_the_command_line() {
 fn a_bottom_strip_dragged_smaller_can_be_dragged_back_up() {
     use unluminous_app::app::dock::{Panel, Side};
     let mut harness = harness("");
-    did(&mut harness, "space show");
-    harness.state_mut().dock_the_panel(Panel::Space, Side::Bottom, None);
+    did(&mut harness, "realm show");
+    harness.state_mut().dock_the_panel(Panel::Realm, Side::Bottom, None);
     steady(&mut harness);
 
     let drawn = |harness: &Harness<'static, UnluminousApp>| {
-        harness.state().panel_rect_for_tests(Panel::Space).height()
+        harness.state().panel_rect_for_tests(Panel::Realm).height()
     };
     let was = drawn(&harness);
 
-    let handle = harness.get_by_label("Resize space").rect();
+    let handle = harness.get_by_label("Resize realm").rect();
     drag(&mut harness, handle.center(), egui::pos2(handle.center().x, handle.center().y + 150.0));
     let shorter = drawn(&harness);
     assert!(shorter < was - 130.0, "dragging down made it shorter: {was} to {shorter}");
 
-    let handle = harness.get_by_label("Resize space").rect();
+    let handle = harness.get_by_label("Resize realm").rect();
     drag(&mut harness, handle.center(), egui::pos2(handle.center().x, handle.center().y - 150.0));
     let taller = drawn(&harness);
     assert!(
@@ -818,7 +818,7 @@ fn a_bottom_strip_dragged_smaller_can_be_dragged_back_up() {
 fn a_divider_under_two_panels_moves_the_pointers_distance() {
     use unluminous_app::app::dock::{Panel, Side};
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     let slot = harness
         .state()
         .plugin_ui
@@ -826,14 +826,14 @@ fn a_divider_under_two_panels_moves_the_pointers_distance() {
         .expect("the board contributes a pane") as u8;
     did(&mut harness, "plugins pane agent-tasks/board --show");
     harness.state_mut().dock_the_panel(Panel::Plugin(slot), Side::Top, None);
-    harness.state_mut().dock_the_panel(Panel::Space, Side::Bottom, None);
+    harness.state_mut().dock_the_panel(Panel::Realm, Side::Bottom, None);
     steady(&mut harness);
 
     let drawn = |harness: &Harness<'static, UnluminousApp>| {
-        harness.state().panel_rect_for_tests(Panel::Space).height()
+        harness.state().panel_rect_for_tests(Panel::Realm).height()
     };
     let was = drawn(&harness);
-    let handle = harness.get_by_label("Resize space").rect();
+    let handle = harness.get_by_label("Resize realm").rect();
     drag(&mut harness, handle.center(), egui::pos2(handle.center().x, handle.center().y - 120.0));
     let now = drawn(&harness);
     assert!(
@@ -850,21 +850,21 @@ fn a_divider_under_two_panels_moves_the_pointers_distance() {
 fn two_panels_on_one_axis_always_add_up_to_the_room() {
     use unluminous_app::app::dock::{Panel, Side};
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     let slot = harness.state().plugin_ui.slot_of("agent-tasks/board").expect("the board") as u8;
     did(&mut harness, "plugins pane agent-tasks/board --show");
     harness.state_mut().dock_the_panel(Panel::Plugin(slot), Side::Top, None);
-    harness.state_mut().dock_the_panel(Panel::Space, Side::Bottom, None);
+    harness.state_mut().dock_the_panel(Panel::Realm, Side::Bottom, None);
     harness.state_mut().editor_visible = false;
     harness.state_mut().explorer_visible = false;
     steady(&mut harness);
 
     for dy in [-90.0f32, 140.0, -200.0, 60.0] {
-        let handle = harness.get_by_label("Resize space").rect();
+        let handle = harness.get_by_label("Resize realm").rect();
         drag(&mut harness, handle.center(), egui::pos2(handle.center().x, handle.center().y + dy));
         let body = harness.state().panes_area().height();
         let top = harness.state().panel_rect_for_tests(Panel::Plugin(slot)).height();
-        let bottom = harness.state().panel_rect_for_tests(Panel::Space).height();
+        let bottom = harness.state().panel_rect_for_tests(Panel::Realm).height();
         assert!(
             (top + bottom - body).abs() < 1.0,
             "after {dy}: {top} + {bottom} should fill {body}"
@@ -983,17 +983,17 @@ fn a_plugin_switched_off_while_a_pane_is_maximised_does_not_restore_the_wrong_on
 fn a_pane_toggle_inside_a_maximise_opens_that_pane_and_nothing_else() {
     use unluminous_app::app::dock::Panel;
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     steady(&mut harness);
     assert!(harness.state().editor_visible && harness.state().explorer_visible);
     assert!(!showing(&harness, "agent-chat/chat"), "the chat pane starts put away");
 
     // Two presses on the canvas's own header fill the window with it, which is the state the report is
     // about and the half that made it intermittent.
-    let header = harness.get_by_label("Move Base of Infinite Space").rect();
+    let header = harness.get_by_label("Move Realm").rect();
     double_click_at(&mut harness, header.center());
     steady(&mut harness);
-    assert_eq!(harness.state().maximised_pane(), Some(Some(Panel::Space)));
+    assert_eq!(harness.state().maximised_pane(), Some(Some(Panel::Realm)));
     assert!(!harness.state().editor_visible, "the editing area is away");
     assert!(!harness.state().explorer_visible, "and so is the explorer");
 
@@ -1002,7 +1002,7 @@ fn a_pane_toggle_inside_a_maximise_opens_that_pane_and_nothing_else() {
     steady(&mut harness);
 
     assert!(showing(&harness, "agent-chat/chat"), "the pane that was asked for opened");
-    assert!(harness.state().space.visible, "the canvas is still on the screen");
+    assert!(harness.state().realm.visible, "the canvas is still on the screen");
     assert!(!harness.state().editor_visible, "and the editing area did not come back with it");
     assert!(!harness.state().explorer_visible, "and neither did the explorer");
     assert_eq!(
@@ -1015,7 +1015,7 @@ fn a_pane_toggle_inside_a_maximise_opens_that_pane_and_nothing_else() {
     harness.get_by_label("Agent-Chat pane").click();
     steady(&mut harness);
     assert!(!showing(&harness, "agent-chat/chat"));
-    assert!(harness.state().space.visible);
+    assert!(harness.state().realm.visible);
     assert!(!harness.state().editor_visible);
 }
 
@@ -1098,7 +1098,7 @@ fn hiding_the_last_tile_with_the_editing_area_away_brings_the_editing_area_back(
 // ------------------------------------------------------- every arrangement, dragged in both directions
 
 // `task-2004`: *"I also have problems resizing the terminal pane to be taller. it shrinks just fine,
-// but with Base of Infinite Space pane above it, i can't resize it. We need extensive tests that ensure
+// but with Realm pane above it, i can't resize it. We need extensive tests that ensure
 // resizability of our panes in different configurations."*
 //
 // What every test below asserts is **the rectangle the frame really gave the panel**, not the number
@@ -1158,13 +1158,13 @@ fn drag_a_divider(
 /// `terminal show` is still what shows the tile, so the tile arrives by the same path it did before.
 fn arranged(side: &str, editor: bool) -> Harness<'static, UnluminousApp> {
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     steady(&mut harness);
     harness.state_mut().new_detached_terminal_tab(8, 60);
     feed(&mut harness, b"$ ");
     did(&mut harness, "terminal show");
     steady(&mut harness);
-    did(&mut harness, &format!("panel dock space {side}"));
+    did(&mut harness, &format!("panel dock realm {side}"));
     steady(&mut harness);
     if !editor {
         did(&mut harness, "action run toggle-editor");
@@ -1223,7 +1223,7 @@ fn every_arrangement_of_the_canvas_and_the_terminal_resizes_in_both_directions()
             // the pair, named after whichever panel is first in it.
             let divider = match harness.query_by_label("Resize terminal").is_some() {
                 true => "Resize terminal",
-                false => "Resize space",
+                false => "Resize realm",
             };
             let (before, after) =
                 drag_a_divider(&mut harness, divider, Panel::Terminal, true, -150.0);
@@ -1269,7 +1269,7 @@ fn every_arrangement_of_the_canvas_and_the_terminal_resizes_in_both_directions()
 #[test]
 fn a_column_is_dragged_wider_and_narrower_with_the_canvas_showing() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     steady(&mut harness);
     let (before, after) =
         drag_a_divider(&mut harness, "Resize explorer", Panel::Explorer, false, 150.0);
@@ -1289,27 +1289,27 @@ fn a_column_is_dragged_wider_and_narrower_with_the_canvas_showing() {
 #[test]
 fn a_drag_that_moves_nothing_leaves_the_stored_sizes_alone() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     steady(&mut harness);
     // Squeeze the editing area to its floor first, so there is genuinely nothing left to take.
     for _ in 0..4 {
-        let handle = harness.get_by_label("Resize space").rect();
+        let handle = harness.get_by_label("Resize realm").rect();
         let from = handle.center();
         drag(&mut harness, from, egui::pos2(from.x, from.y - 400.0));
     }
-    let stored = harness.state().panes.space_height;
-    let drawn = harness.state().panel_area(Panel::Space).height();
-    let handle = harness.get_by_label("Resize space").rect();
+    let stored = harness.state().panes.realm_height;
+    let drawn = harness.state().panel_area(Panel::Realm).height();
+    let handle = harness.get_by_label("Resize realm").rect();
     let from = handle.center();
     drag(&mut harness, from, egui::pos2(from.x, from.y - 200.0));
     assert!(
-        (harness.state().panel_area(Panel::Space).height() - drawn).abs() < 1.0,
+        (harness.state().panel_area(Panel::Realm).height() - drawn).abs() < 1.0,
         "it was already as deep as it can be"
     );
     assert!(
-        (harness.state().panes.space_height - stored).abs() < 1.0,
+        (harness.state().panes.realm_height - stored).abs() < 1.0,
         "so the number nobody is looking at did not move either: {stored} then {}",
-        harness.state().panes.space_height
+        harness.state().panes.realm_height
     );
 }
 
@@ -1321,11 +1321,11 @@ fn a_drag_that_moves_nothing_leaves_the_stored_sizes_alone() {
 #[test]
 fn a_panel_in_a_strip_keeps_its_own_height_when_the_strip_is_dragged() {
     let mut harness = harness("");
-    did(&mut harness, "space show");
+    did(&mut harness, "realm show");
     steady(&mut harness);
     did(&mut harness, "terminal show");
     steady(&mut harness);
-    let canvas = harness.state().panes.space_height;
+    let canvas = harness.state().panes.realm_height;
     let terminal = harness.state().panes.terminal_height;
     assert!(canvas > terminal + 100.0, "the canvas is much the deeper of the two");
 
@@ -1351,7 +1351,7 @@ fn every_divider_that_is_drawn_moves_something() {
         // The dividers this arrangement really draws, by the names `show_the_panel_dividers` gives
         // them — asked of the window rather than written out, so an arrangement that draws a divider
         // nobody thought of is covered the day it does.
-        let names: Vec<String> = ["terminal", "space", "explorer", "run", "debug"]
+        let names: Vec<String> = ["terminal", "realm", "explorer", "run", "debug"]
             .into_iter()
             .flat_map(|panel| [format!("Resize {panel}"), format!("Resize {panel} width")])
             .filter(|name| harness.query_by_label(name).is_some())
@@ -1362,7 +1362,7 @@ fn every_divider_that_is_drawn_moves_something() {
             let flat = !name.contains("width")
                 && matches!(
                     name.as_str(),
-                    "Resize terminal" | "Resize space" | "Resize run" | "Resize debug"
+                    "Resize terminal" | "Resize realm" | "Resize run" | "Resize debug"
                 );
             let before = harness.state().panes_area();
             let handle = harness.get_by_label(&name).rect();

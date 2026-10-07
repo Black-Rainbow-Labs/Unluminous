@@ -149,7 +149,7 @@ why a screenshot taken straight after a command shows what the command did. Twen
 answered later than the frame they arrived on — each one waits for something that is not the window's
 to decide, so the answer belongs to whichever frame it arrives on. They are: `status`, `window
 screenshot`, `input move`, `input click`, `input drag`, `input key`, `input text`, `input wheel`,
-`space browser`, `editor references`, `editor rename`, `update check`, `terminal read`, `run output`,
+`realm browser`, `editor references`, `editor rename`, `update check`, `terminal read`, `run output`,
 `debug start`, `debug continue`, `debug step-over`, `debug step-into`, `debug step-out`, `debug
 run-to`, `debug hover`, `debug evaluate`, `debug status`, `modal results`, `git status`, `git action`
 and `git switch`. Each has a timeout, so nothing waits for ever.

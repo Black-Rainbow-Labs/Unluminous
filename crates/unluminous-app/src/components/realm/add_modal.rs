@@ -11,7 +11,7 @@
 use egui::{Align2, FontId, Pos2, Rect, Sense, Vec2};
 
 use crate::components::{controls, modal};
-use crate::services::space::Kind;
+use crate::services::realm::Kind;
 use crate::theme::{color, size};
 
 /// The size it opens at. Narrow, because the list is names rather than sentences.
@@ -30,7 +30,7 @@ const AFTER_THE_FIELD: f32 = 10.0;
 ///
 /// `task-1905`: at 360 the body ran from y=60 to y=300, the field left the list starting at y=98, and
 /// the fourth row of 60 ended at y=334 — so [`show_the_rows`] broke out of its loop and `Kind::Editor`
-/// was never drawn at all. The modal read as a list of three kinds with a large empty space under it,
+/// was never drawn at all. The modal read as a list of three kinds with a large empty realm under it,
 /// and the report it produced guessed the kind was missing from the modal rather than off the bottom of
 /// it. A number typed here is a number the next kind added would break again, so this is the arithmetic
 /// `modal::body` and `show_the_rows` really do.

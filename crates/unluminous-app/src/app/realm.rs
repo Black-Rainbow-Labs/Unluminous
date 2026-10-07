@@ -1,6 +1,6 @@
-//! The window's side of the Base of Infinite Space — `task-1904`.
+//! The window's side of the Realm — `task-1904`.
 //!
-//! `services::space` is the model and `components::space` is the drawing. This is the third piece:
+//! `services::realm` is the model and `components::realm` is the drawing. This is the third piece:
 //! the pane, the gestures, the four node bodies, and the one place a canvas command turns into a
 //! change.
 //!
@@ -20,13 +20,13 @@
 
 use egui::{Pos2, Rect, Vec2};
 
-use crate::app::actions::SpaceAction;
+use crate::app::actions::RealmAction;
 use crate::app::dock;
 use crate::app::files::{Home, OpenFile};
 use crate::app::{Drag, Focus, UnluminousApp, ZoomClaim};
 
-use crate::components::space::{self as space_view, add_modal};
-use crate::services::space::{live::Live, store, Kind, Node, NodeId, Pipe, Space, State};
+use crate::components::realm::{self as realm_view, add_modal};
+use crate::services::realm::{live::Live, store, Kind, Node, NodeId, Pipe, Realm, State};
 
 /// How long to wait before writing `space.conf` again after a write failed, in seconds.
 const RETRY_A_FAILED_WRITE: f64 = 2.0;
@@ -63,7 +63,7 @@ pub(crate) enum Reading {
     /// The ordinary pass, once a frame, while the window is still drawing.
     ///
     /// Everything a node holds is read here, and a terminal is asked what it is running on a clock rather
-    /// than on every frame — see [`SpaceState::asked_what_is_running`].
+    /// than on every frame — see [`RealmState::asked_what_is_running`].
     EveryFrame,
     /// The last reading there will be, from `on_exit`, before anything is killed.
     ///
@@ -92,23 +92,24 @@ pub(crate) enum Reading {
 /// `actions::tab_menu`'s rule: a right click **shows** what it was over before the menu is drawn, so
 /// every entry is about the thing in hand and the `View` menu, the keyboard and `unluminous-cli action
 /// run` can all ask for the same action.
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct InHand {
     pub wire: Option<u64>,
-    pub view: Option<u64>,
+    /// The realm a right click on the realm bar was over, named by its path in the project.
+    pub view: Option<std::path::PathBuf>,
 }
 
 /// Everything the window holds for the canvas.
 #[derive(Debug)]
-pub struct SpaceState {
-    pub space: Space,
+pub struct RealmState {
+    pub realm: Realm,
     pub live: Live,
     pub visible: bool,
     pub gesture: Gesture,
     /// The add modal, while it is open.
     pub adding: Option<add_modal::State>,
-    /// The space manager, while it is open — `task-1906`.
-    pub managing: Option<crate::components::space::manager::State>,
+    /// The realm manager, while it is open — `task-1906`.
+    pub managing: Option<crate::components::realm::manager::State>,
     /// Where a right click menu is open, and which menu it is.
     pub menu: Option<(Pos2, Menu)>,
     pub in_hand: InHand,
@@ -119,7 +120,23 @@ pub struct SpaceState {
     /// view's terminals is a list whose next entry is the one that forgets. The `task-1904` review
     /// found exactly that — the strip of views changed the model and nothing else, so a view chosen
     /// from it had no sessions, no pages and no files behind its nodes.
-    pub brought_to_life: Option<crate::services::space::ViewId>,
+    pub brought_to_life: Option<std::path::PathBuf>,
+    /// The project's realm files, relative to it, as last listed. See `app::realm_files`.
+    pub files: Vec<std::path::PathBuf>,
+    /// How many nodes and connections each listed realm holds, read when the list was walked, for the
+    /// realm manager's rows.
+    pub counts: std::collections::HashMap<std::path::PathBuf, (usize, usize)>,
+    /// When [`Self::files`] was last walked.
+    pub listed_at: Option<std::time::Instant>,
+    /// Why the realm the panel is on could not be read, when it could not. Shown on the panel's banner, and
+    /// the realm is read only so nothing is written over the file.
+    pub problem: Option<String>,
+    /// Whether `.unluminous/space.conf` has been turned into realm files. Written to `workspace.conf` as
+    /// `realm.imported`, so the import runs once a project.
+    pub imported: bool,
+    /// Realms made or changed in a window that was given no project to write them in, which is a test's
+    /// window. Kept here so switching between them loses nothing. See `app::realm_files`.
+    pub unsaved: std::collections::HashMap<std::path::PathBuf, Realm>,
     /// When a write of `space.conf` last failed, so a broken disk is not written to sixty times a
     /// second while the canvas stays marked as needing writing.
     pub write_failed_at: Option<f64>,
@@ -134,7 +151,7 @@ pub struct SpaceState {
     pub asked_what_is_running: Option<std::time::Instant>,
     /// The rectangle the canvas body had last frame.
     ///
-    /// What a command with no place of its own puts a node at — `space add` with no `--x` — and what
+    /// What a command with no place of its own puts a node at — `realm add` with no `--x` — and what
     /// the keyboard's zoom is centred on. Read back from the drawing rather than worked out twice.
     pub body: Rect,
     /// A zoom that is still moving: where it is going, and the screen point it is about.
@@ -144,12 +161,12 @@ pub struct SpaceState {
     pub glide: Option<(f32, Pos2)>,
 }
 
-impl Default for SpaceState {
+impl Default for RealmState {
     /// Written by hand because `egui::Rect` has none: a rectangle nothing has been drawn into yet is
     /// `Rect::ZERO`, which every reader of one in this file already treats as "not there".
     fn default() -> Self {
         Self {
-            space: Space::new(),
+            realm: Realm::default(),
             live: Live::default(),
             visible: false,
             gesture: Gesture::None,
@@ -158,6 +175,12 @@ impl Default for SpaceState {
             menu: None,
             in_hand: InHand::default(),
             brought_to_life: None,
+            files: Vec::new(),
+            counts: std::collections::HashMap::new(),
+            listed_at: None,
+            problem: None,
+            imported: false,
+            unsaved: std::collections::HashMap::new(),
             write_failed_at: None,
             asked_what_is_running: None,
             body: Rect::ZERO,
@@ -174,50 +197,52 @@ pub enum Menu {
     View,
 }
 
-impl SpaceState {
+impl RealmState {
     /// The node the commands and the keyboard are about.
     pub fn chosen(&self) -> Option<NodeId> {
-        self.space.chosen()
+        self.realm.chosen()
     }
 }
 
 impl UnluminousApp {
     // ------------------------------------------------------------------------------- drawing
 
-    /// Draw the whole canvas: its header, its strip of views, its ground, its wires and its nodes.
-    pub(crate) fn show_the_space(&mut self, ui: &mut egui::Ui) {
-        let rect = self.panel_rects.of(dock::Panel::Space);
+    /// Draw the whole canvas: its header, its realm bar, its ground, its wires and its nodes.
+    pub(crate) fn show_the_realm(&mut self, ui: &mut egui::Ui) {
+        let rect = self.panel_rects.of(dock::Panel::Realm);
         if rect.width() < 2.0 || rect.height() < 2.0 {
             return;
         }
+        self.make_sure_the_open_realm_is_on_disk();
+        self.keep_the_realm_list_current();
         let header = Rect::from_min_size(
             rect.min,
             Vec2::new(rect.width(), crate::components::agent_tasks::PANE_HEADER),
         );
         let outcome = {
             let mut header_ui = ui.new_child(egui::UiBuilder::new().max_rect(header));
-            let count = self.space.space.current().nodes.len();
+            let count = self.realm.realm.nodes.len();
             crate::components::agent_tasks::pane_header(
                 &mut header_ui,
                 header,
-                "Base of Infinite Space",
+                "Realm",
                 Some(&count.to_string()),
-                dock::Panel::Space,
+                dock::Panel::Realm,
                 self.settings.opacity,
             )
         };
-        self.note_a_panel_grab(dock::Panel::Space, outcome.grab);
+        self.note_a_panel_grab(dock::Panel::Realm, outcome.grab);
         if outcome.closed {
-            self.show_a_panel(dock::Panel::Space, false);
+            self.show_a_panel(dock::Panel::Realm, false);
             return;
         }
 
         let bar = Rect::from_min_size(
             Pos2::new(rect.left(), header.bottom()),
-            Vec2::new(rect.width(), space_view::VIEW_BAR),
+            Vec2::new(rect.width(), realm_view::VIEW_BAR),
         );
         let body = Rect::from_min_max(Pos2::new(rect.left(), bar.bottom()), rect.max);
-        self.space.body = body;
+        self.realm.body = body;
 
         // **The same switch a plugin's decoration has.** `plugins.chrome` is what somebody turns off
         // when the rasteriser costs more than the depth is worth, and a canvas that ignored it would
@@ -227,7 +252,7 @@ impl UnluminousApp {
             true => crate::services::vello_canvas::Chrome::recording(),
             false => crate::services::vello_canvas::Chrome::off(),
         };
-        let look = space_view::Look {
+        let look = realm_view::Look {
             opacity: self.settings.opacity,
             page: crate::theme::color::editor(),
             card: crate::theme::color::code_panel(),
@@ -237,7 +262,7 @@ impl UnluminousApp {
         self.settle_the_zoom(ui, body);
         let mut body_ui = ui.new_child(egui::UiBuilder::new().max_rect(body));
         body_ui.set_clip_rect(body);
-        space_view::ground(&body_ui, body, &self.space.space.current().camera, look);
+        realm_view::ground(&body_ui, body, &self.realm.realm.camera, look);
         // The slot the decoration is rasterised into, reserved after the ground and before anything
         // else — the rule `show_the_plugin_panes` records: a ground painted after it covers the very
         // thing it is for.
@@ -245,37 +270,35 @@ impl UnluminousApp {
 
         let bar_outcome = {
             let mut bar_ui = ui.new_child(egui::UiBuilder::new().max_rect(bar));
-            // **A name and an id a canvas, rather than every canvas the project has** (`task-1984`
-            // A8). `views().to_vec()` deep copied every node on every canvas, with every string in
-            // it, on every frame, to draw a row of chips.
-            let views: Vec<(crate::services::space::ViewId, String)> =
-                self.space.space.views().iter().map(|view| (view.id, view.name.clone())).collect();
-            let current = self.space.space.current_id();
-            let zoom = self.space.space.current().camera.zoom;
-            space_view::view_bar(&mut bar_ui, bar, &views, current, zoom, look)
+            // **A path and a name a realm**, which is all the bar draws (`task-1984` A8).
+            let views = self.realms_for_the_bar();
+            let current = self.realm.realm.path.clone();
+            let zoom = self.realm.realm.camera.zoom;
+            realm_view::view_bar(&mut bar_ui, bar, &views, &current, zoom, look)
         };
         self.act_on_the_view_bar(bar_outcome);
+        self.show_the_realm_banner(&body_ui, body);
 
         self.take_the_canvas_input(&mut body_ui, body);
         // **Borrowed rather than cloned** (`task-1984` A8): the canvas that is showing, with every
-        // node on it, was deep copied on every frame to escape a borrow. `space` is one field of
+        // node on it, was deep copied on every frame to escape a borrow. `realm` is one field of
         // `self` and `body_ui` is a local, so there is no borrow to escape.
         let wire_outcome = {
-            let view = self.space.space.current();
+            let view = &self.realm.realm;
             let camera = view.camera;
-            space_view::wires(&mut body_ui, body, view, &camera, look)
+            realm_view::wires(&mut body_ui, body, view, &camera, look)
         };
         if let Some((at, edge)) = wire_outcome.menu {
-            self.space.in_hand.wire = Some(edge);
-            self.space.menu = Some((at, Menu::Wire));
+            self.realm.in_hand.wire = Some(edge);
+            self.realm.menu = Some((at, Menu::Wire));
         }
-        self.show_the_space_nodes(ui, &mut body_ui, body, look);
+        self.show_the_realm_nodes(ui, &mut body_ui, body, look);
         self.settle_the_wire_in_the_air(&body_ui, body);
-        if self.space.space.current().nodes.is_empty() {
-            space_view::nothing_here_yet(&body_ui, body);
+        if self.realm.realm.nodes.is_empty() {
+            realm_view::nothing_here_yet(&body_ui, body);
         }
-        self.paint_the_chrome(ui, slot, egui::Id::new("space-canvas"), body, &chrome);
-        self.zoom_over_a_panel(ui, dock::Panel::Space, body);
+        self.paint_the_chrome(ui, slot, egui::Id::new("realm-canvas"), body, &chrome);
+        self.zoom_over_a_panel(ui, dock::Panel::Realm, body);
     }
 
     /// Pan, zoom and the right click that opens the add modal.
@@ -284,22 +307,22 @@ impl UnluminousApp {
     /// points it covers and only the empty canvas is left to this.
     fn take_the_canvas_input(&mut self, ui: &mut egui::Ui, body: Rect) {
         let response =
-            ui.interact(body, ui.id().with("space-canvas"), egui::Sense::click_and_drag());
+            ui.interact(body, ui.id().with("realm-canvas"), egui::Sense::click_and_drag());
         if response.dragged() {
             let by = response.drag_delta();
-            self.space.space.pan_by(by);
-            self.space.gesture = Gesture::Panning;
-        } else if self.space.gesture == Gesture::Panning {
-            self.space.gesture = Gesture::None;
+            self.realm.realm.pan_by(by);
+            self.realm.gesture = Gesture::Panning;
+        } else if self.realm.gesture == Gesture::Panning {
+            self.realm.gesture = Gesture::None;
         }
         if response.clicked() {
-            self.space.space.choose(None);
-            self.take_the_keyboard_for_the_space();
+            self.realm.realm.choose(None);
+            self.take_the_keyboard_for_the_realm();
         }
         if response.secondary_clicked() {
             if let Some(at) = response.interact_pointer_pos() {
-                let world = self.space.space.current().camera.to_world(body.min, at);
-                self.space.adding = Some(add_modal::State { at: world, ..Default::default() });
+                let world = self.realm.realm.camera.to_world(body.min, at);
+                self.realm.adding = Some(add_modal::State { at: world, ..Default::default() });
             }
         }
         // The wheel over the **empty** canvas zooms, which is what Chordical does and what a canvas
@@ -316,8 +339,8 @@ impl UnluminousApp {
             let over_a_node = ui
                 .ctx()
                 .pointer_latest_pos()
-                .map(|at| self.space.space.current().camera.to_world(body.min, at))
-                .and_then(|world| self.space.space.current().node_at(world))
+                .map(|at| self.realm.realm.camera.to_world(body.min, at))
+                .and_then(|world| self.realm.realm.node_at(world))
                 .is_some();
             if steps.abs() > 0.5 && !over_a_node {
                 if let Some(at) = ui.ctx().pointer_latest_pos() {
@@ -335,9 +358,9 @@ impl UnluminousApp {
 
     /// Where the camera's zoom is going: the glide's destination, or the zoom itself when it is still.
     pub(crate) fn aimed_zoom(&self) -> f32 {
-        match self.space.glide {
+        match self.realm.glide {
             Some((wanted, _)) => wanted,
-            None => self.space.space.current().camera.zoom,
+            None => self.realm.realm.camera.zoom,
         }
     }
 
@@ -348,66 +371,65 @@ impl UnluminousApp {
     /// point the gesture started on rather than against wherever the pointer has got to since.
     pub(crate) fn aim_the_zoom_at(&mut self, wanted: f32, about: Pos2) {
         let wanted = wanted
-            .clamp(crate::services::space::node::MIN_ZOOM, crate::services::space::node::MAX_ZOOM);
-        if (wanted - self.space.space.current().camera.zoom).abs() < 0.0005 {
-            self.space.glide = None;
+            .clamp(crate::services::realm::node::MIN_ZOOM, crate::services::realm::node::MAX_ZOOM);
+        if (wanted - self.realm.realm.camera.zoom).abs() < 0.0005 {
+            self.realm.glide = None;
             return;
         }
-        self.space.glide = Some((wanted, about));
+        self.realm.glide = Some((wanted, about));
     }
 
     /// Put the zoom where it is by now, and ask for another frame while it is still moving.
     ///
     /// **The camera is written down on the way**, because a window closed mid-glide should come back where
-    /// it looked rather than where it was going; `Space::touch` is what marks the canvas as needing writing
+    /// it looked rather than where it was going; `Realm::touch` is what marks the canvas as needing writing
     /// and it is asked for once at the end rather than on every frame of the glide.
     fn settle_the_zoom(&mut self, ui: &egui::Ui, body: Rect) {
-        let Some((wanted, about)) = self.space.glide else {
+        let Some((wanted, about)) = self.realm.glide else {
             return;
         };
         let seconds = ui.input(|input| input.stable_dt).clamp(0.0, 0.1);
-        let now = self.space.space.current().camera.zoom;
-        let next = crate::services::space::Camera::glide(now, wanted, seconds);
-        self.space.space.current_mut().camera.zoom_to(next, body.min, about);
+        let now = self.realm.realm.camera.zoom;
+        let next = crate::services::realm::Camera::glide(now, wanted, seconds);
+        self.realm.realm.camera.zoom_to(next, body.min, about);
         match next == wanted {
             true => {
-                self.space.glide = None;
-                self.space.space.touch();
+                self.realm.glide = None;
+                self.realm.realm.touch();
             }
             false => ui.ctx().request_repaint(),
         }
     }
 
     /// Draw every node that can be seen, each into a layer of its own carrying the camera.
-    fn show_the_space_nodes(
+    fn show_the_realm_nodes(
         &mut self,
         ui: &mut egui::Ui,
         body_ui: &mut egui::Ui,
         body: Rect,
-        look: space_view::Look<'_>,
+        look: realm_view::Look<'_>,
     ) {
-        let camera = self.space.space.current().camera;
-        let clip = space_view::clip_for_nodes(body, ui.ctx().content_rect(), &camera);
+        let camera = self.realm.realm.camera;
+        let clip = realm_view::clip_for_nodes(body, ui.ctx().content_rect(), &camera);
         let to_global = egui::emath::TSTransform::new(
             body.min.to_vec2() - camera.at.to_vec2() * camera.zoom,
             camera.zoom,
         );
         let nodes: Vec<Node> = self
-            .space
-            .space
-            .current()
+            .realm
+            .realm
             .nodes
             .iter()
-            .filter(|node| space_view::is_showing(node, body, &camera))
+            .filter(|node| realm_view::is_showing(node, body, &camera))
             .cloned()
             .collect();
-        let chosen = self.space.chosen();
-        let wiring = matches!(self.space.gesture, Gesture::Wiring { .. });
+        let chosen = self.realm.chosen();
+        let wiring = matches!(self.realm.gesture, Gesture::Wiring { .. });
         // Which node the wire in the air would land on, worked out once from the model rather than
-        // asked of each port - see the note in `components::space::show_the_ports`.
-        let landing = match self.space.gesture {
+        // asked of each port - see the note in `components::realm::show_the_ports`.
+        let landing = match self.realm.gesture {
             Gesture::Wiring { from, at } => {
-                self.space.space.current().node_at(at).filter(|over| *over != from)
+                self.realm.realm.node_at(at).filter(|over| *over != from)
             }
             _ => None,
         };
@@ -420,7 +442,7 @@ impl UnluminousApp {
         // whichever node it names.
         //
         // It is the **chosen** node first when the pointer is inside it, because a node that has been clicked
-        // is moved to the top egui layer by `move_to_top` whether or not `Space::raise` moved it in the
+        // is moved to the top egui layer by `move_to_top` whether or not `Realm::raise` moved it in the
         // model — so the model's own order is not the whole truth about what is on top.
         let pointer = body_ui
             .input(|input| input.pointer.hover_pos().or_else(|| input.pointer.latest_pos()))
@@ -434,7 +456,7 @@ impl UnluminousApp {
                 .map(|node| node.id)
         });
         // **The modifier wheel goes to that node**, before `zoom_over_a_panel` at the end of
-        // `show_the_space` can give it to the camera. `task-1905`.
+        // `show_the_realm` can give it to the camera. `task-1905`.
         self.zoom_over_a_node(body_ui, under_the_pointer);
         // **And a press anywhere inside a node chooses it**, whichever widget inside the node takes the
         // click. `task-1945`: *"if I click a terminal node, etc, the node should be given focus."*
@@ -454,21 +476,21 @@ impl UnluminousApp {
             .input(|input| input.pointer.button_pressed(egui::PointerButton::Primary))
             && pointer.is_some();
         if let (true, Some(node)) = (pressed, under_the_pointer) {
-            if self.space.chosen() != Some(node) || !matches!(self.focus, Focus::Space) {
-                self.space.space.choose(Some(node));
-                self.space.space.raise(node);
-                self.take_the_keyboard_for_the_space();
+            if self.realm.chosen() != Some(node) || !matches!(self.focus, Focus::Realm) {
+                self.realm.realm.choose(Some(node));
+                self.realm.realm.raise(node);
+                self.take_the_keyboard_for_the_realm();
             }
         }
         // Read again, because the press above may have changed it and the loop below decides which layer
         // is moved to the top and which node draws its ring from this answer.
-        let chosen = self.space.chosen();
+        let chosen = self.realm.chosen();
         let parent = body_ui.layer_id();
         let mut menu: Option<(Pos2, NodeId)> = None;
         for node in nodes {
             let layer = egui::LayerId::new(
                 egui::Order::Background,
-                egui::Id::new(("space-node-layer", node.id)),
+                egui::Id::new(("realm-node-layer", node.id)),
             );
             ui.ctx().set_sublayer(parent, layer);
             ui.ctx().set_transform_layer(layer, to_global);
@@ -477,15 +499,15 @@ impl UnluminousApp {
                 // raising a node in the model is not enough on its own — this is what actually moves it.
                 ui.ctx().move_to_top(layer);
             }
-            let parts = space_view::parts_of(&node);
+            let parts = realm_view::parts_of(&node);
             let mut node_ui = ui.new_child(
                 egui::UiBuilder::new()
                     .layer_id(layer)
                     .max_rect(node.rect())
-                    .id_salt(("space-node", node.id)),
+                    .id_salt(("realm-node", node.id)),
             );
             node_ui.set_clip_rect(clip);
-            let focused = Some(node.id) == chosen && matches!(self.focus, Focus::Space);
+            let focused = Some(node.id) == chosen && matches!(self.focus, Focus::Realm);
             let has_the_pointer = under_the_pointer == Some(node.id);
             // **Both text engines are told what this node is composited at, around the whole of it.**
             // `services::text_renderer` draws the editor's and the terminal's glyphs and `theme::crisp`
@@ -500,7 +522,7 @@ impl UnluminousApp {
             let was_own = self.renderer.crispness();
             self.renderer.composite_at(camera.zoom);
             self.show_a_node_body(&mut node_ui, &node, parts.body, focused, has_the_pointer);
-            let framing = space_view::Framing {
+            let framing = realm_view::Framing {
                 chosen: Some(node.id) == chosen,
                 keyboard: focused,
                 on_screen: camera.rect_to_screen(body.min, node.rect()),
@@ -509,7 +531,7 @@ impl UnluminousApp {
                 landing,
                 fallback_title: &self.name_of_a_node(&node),
             };
-            let outcome = space_view::frame(&mut node_ui, &node, framing, look);
+            let outcome = realm_view::frame(&mut node_ui, &node, framing, look);
             self.renderer.restore_compositing(was_own);
             crate::theme::crisp::restore(was_egui);
             if let Some(at) = outcome.menu {
@@ -518,9 +540,9 @@ impl UnluminousApp {
             self.act_on_a_node(&node, outcome);
         }
         if let Some((at, node)) = menu {
-            self.space.space.choose(Some(node));
-            self.space.space.raise(node);
-            self.space.menu = Some((at, Menu::Node));
+            self.realm.realm.choose(Some(node));
+            self.realm.realm.raise(node);
+            self.realm.menu = Some((at, Menu::Node));
         }
     }
 
@@ -531,8 +553,8 @@ impl UnluminousApp {
     /// `take_the_canvas_input` and the modifier one through `zoom_over_a_panel` — and nothing reached a
     /// node.
     ///
-    /// **Claimed here, before `zoom_over_a_panel(Panel::Space)` is reached**, which is the last line of
-    /// `show_the_space`: the zoom claim is the lock, one level further in than `task-1771` put it. And
+    /// **Claimed here, before `zoom_over_a_panel(Panel::Realm)` is reached**, which is the last line of
+    /// `show_the_realm`: the zoom claim is the lock, one level further in than `task-1771` put it. And
     /// `zoom_steps` is called **at most once a frame**, because calling it twice spends the same notch
     /// twice — so which node the pointer is in is decided first and it is called once for that node.
     fn zoom_over_a_node(&mut self, ui: &egui::Ui, under_the_pointer: Option<NodeId>) {
@@ -557,12 +579,32 @@ impl UnluminousApp {
     /// point size; a folder has none of its own, so its is a multiplier; a page's size is the page's own
     /// business and `wry` has `WebView::zoom` for it.
     pub(crate) fn zoom_a_node(&mut self, node: NodeId, steps: i32) {
-        let Some(found) = self.space.space.current().node(node).cloned() else { return };
+        let Some(found) = self.realm.realm.node(node).cloned() else { return };
         let up = steps > 0;
         match found.kind() {
             Kind::Terminal => self.step_a_node_font(node, steps),
-            Kind::Editor => {
-                let was = space_view::editor_font_size_of(&found, self.settings.font_size);
+            // Nothing in a sound, a video or a node this build does not know has a size to change.
+            Kind::Audio | Kind::Video | Kind::Unknown => {}
+            Kind::Image => {
+                let was = match &found.state {
+                    State::Image(image) => image.zoom,
+                    _ => 1.0,
+                };
+                let mut zoom = was;
+                for _ in 0..steps.abs() {
+                    zoom = crate::settings::step_zoom(zoom, up);
+                }
+                if (zoom - was).abs() > 0.001 {
+                    self.realm.realm.change(node, |state| {
+                        if let State::Image(image) = state {
+                            image.zoom = zoom;
+                            image.fit = crate::services::realm::Fit::Actual;
+                        }
+                    });
+                }
+            }
+            Kind::Editor | Kind::Note => {
+                let was = realm_view::editor_font_size_of(&found, self.settings.font_size);
                 let mut size = was;
                 for _ in 0..steps.abs() {
                     size = crate::settings::step_font_size(size, up);
@@ -570,10 +612,10 @@ impl UnluminousApp {
                 if (size - was).abs() < 0.01 {
                     return;
                 }
-                self.space.space.change(node, |state| {
-                    if let State::Editor(editor) = state {
-                        editor.font_size = size;
-                    }
+                self.realm.realm.change(node, |state| match state {
+                    State::Editor(editor) => editor.font_size = size,
+                    State::Note(note) => note.font_size = size,
+                    _ => {}
                 });
                 // The tab in this node is laid out again at the new size, which is what makes it show.
                 if let Some(index) = self.files.tab_in_node(node) {
@@ -592,12 +634,12 @@ impl UnluminousApp {
                 if (zoom - was).abs() < 0.001 {
                     return;
                 }
-                self.space.space.change(node, |state| set_node_zoom(state, zoom));
+                self.realm.realm.change(node, |state| set_node_zoom(state, zoom));
             }
             // **A page's own zoom, because a page is not Unluminous's drawing at all.** How big it is
             // drawn is the engine's, and `wry::WebView::zoom` is what changes it.
             Kind::Browser => {
-                let was = self.space.live.page_zoom_of(node);
+                let was = self.realm.live.page_zoom_of(node);
                 let mut zoom = was;
                 for _ in 0..steps.abs() {
                     zoom = crate::settings::step_zoom(zoom, up);
@@ -605,8 +647,8 @@ impl UnluminousApp {
                 if (zoom - was).abs() < 0.001 {
                     return;
                 }
-                self.space.live.set_page_zoom(node, zoom);
-                if let Some(tab) = self.space.live.browser(node).map(|tab| tab.id) {
+                self.realm.live.set_page_zoom(node, zoom);
+                if let Some(tab) = self.realm.live.browser(node).map(|tab| tab.id) {
                     if let Err(problem) = self.browser.zoom(tab, f64::from(zoom)) {
                         self.message = Some(problem);
                     }
@@ -616,51 +658,57 @@ impl UnluminousApp {
     }
 
     /// Act on what one node's frame reported.
-    fn act_on_a_node(&mut self, node: &Node, outcome: space_view::NodeOutcome) {
+    fn act_on_a_node(&mut self, node: &Node, outcome: realm_view::NodeOutcome) {
         if outcome.chose {
-            self.space.space.choose(Some(node.id));
-            self.space.space.raise(node.id);
-            self.take_the_keyboard_for_the_space();
+            self.realm.realm.choose(Some(node.id));
+            self.realm.realm.raise(node.id);
+            self.take_the_keyboard_for_the_realm();
         }
         if let Some(by) = outcome.moved {
-            self.space.space.move_node(node.id, node.at + by);
+            self.realm.realm.move_node(node.id, node.at + by);
         }
         if let Some((grip, by)) = outcome.resized {
-            let rect = crate::services::space::geometry::resized(
+            let rect = crate::services::realm::geometry::resized(
                 node.rect(),
                 grip,
                 by,
                 node.kind().smallest(),
             );
-            self.space.space.place_node(node.id, rect);
+            self.realm.realm.place_node(node.id, rect);
         }
         if let Some(at) = outcome.wiring {
-            self.space.gesture = Gesture::Wiring { from: node.id, at };
+            self.realm.gesture = Gesture::Wiring { from: node.id, at };
         }
         if outcome.font_step != 0 {
             self.step_a_node_font(node.id, outcome.font_step);
         }
+        if let Some(view) = outcome.view {
+            if let Err(problem) = self.set_a_notes_view(node.id, view) {
+                self.message = Some(problem);
+            }
+            self.realm.realm.choose(Some(node.id));
+        }
         if outcome.closed {
-            self.close_a_space_node(node.id);
+            self.close_a_realm_node(node.id);
         }
     }
 
     /// Draw the wire that is being pulled out of a port, and let it go when the button comes up.
     fn settle_the_wire_in_the_air(&mut self, ui: &egui::Ui, body: Rect) {
-        let Gesture::Wiring { from, at } = self.space.gesture else { return };
-        let camera = self.space.space.current().camera;
-        let Some(node) = self.space.space.current().node(from) else {
-            self.space.gesture = Gesture::None;
+        let Gesture::Wiring { from, at } = self.realm.gesture else { return };
+        let camera = self.realm.realm.camera;
+        let Some(node) = self.realm.realm.node(from) else {
+            self.realm.gesture = Gesture::None;
             return;
         };
         let start = camera.to_screen(body.min, node.output_port());
         let end = camera.to_screen(body.min, at);
-        let over = self.space.space.current().node_at(at).filter(|over| *over != from);
-        space_view::wire_in_the_air(ui, body, start, end, over.is_some());
+        let over = self.realm.realm.node_at(at).filter(|over| *over != from);
+        realm_view::wire_in_the_air(ui, body, start, end, over.is_some());
         // A drag that ended over nothing is a drag that was thought better of, which is the promise
         // the explorer's row drag and the tab drag already make.
         if ui.input(|input| input.pointer.any_released()) {
-            self.space.gesture = Gesture::None;
+            self.realm.gesture = Gesture::None;
             if let Some(over) = over {
                 self.land_the_wire(from, over);
             }
@@ -669,7 +717,7 @@ impl UnluminousApp {
 
     /// A wire was let go over another node.
     fn land_the_wire(&mut self, from: NodeId, to: NodeId) {
-        match self.space.space.connect(from, to, Pipe::Off) {
+        match self.realm.realm.connect(from, to, Pipe::Off) {
             Ok(_) => self.message = Some("Connected.".to_owned()),
             Err(problem) => self.message = Some(problem),
         }
@@ -690,7 +738,7 @@ impl UnluminousApp {
             return;
         }
         // **A node's glyphs are rasterised at the size they are composited at**, which the caller has
-        // already said — see the note in `show_the_space_nodes`, which sets both text engines around the
+        // already said — see the note in `show_the_realm_nodes`, which sets both text engines around the
         // body *and* the frame. It used to be set here, around the body alone, so a node's own header was
         // still a magnified bitmap. `task-1907`, and `task-1945` for the half it left out.
         match node.kind() {
@@ -705,17 +753,22 @@ impl UnluminousApp {
             Kind::Editor => self.show_an_editor_node(ui, node, body, focused),
             Kind::Chat => self.show_a_chat_node(ui, node, body, focused, has_the_pointer),
             Kind::Tasks => self.show_a_tasks_node(ui, node, body, focused),
+            Kind::Image => self.show_an_image_node(ui, node, body, focused),
+            Kind::Audio => self.show_an_audio_node(ui, node, body, focused),
+            Kind::Video => self.show_a_video_node(ui, node, body, focused),
+            Kind::Note => self.show_a_note_node(ui, node, body, focused),
+            Kind::Unknown => self.show_an_unknown_node(ui, node, body),
         }
     }
 
     /// A terminal node: `components::terminal_panel::grid`, which is what the terminal tile and the
     /// run tile already share.
     fn show_a_terminal_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
-        let font = space_view::font_size_of(node, self.settings.terminal_font_size);
+        let font = realm_view::font_size_of(node, self.settings.terminal_font_size);
         let opacity = self.settings.opacity;
-        let id = format!("space-terminal-{}", node.id);
+        let id = format!("realm-terminal-{}", node.id);
         let outcome = {
-            let (session, selecting) = self.space.live.terminal_and_selection(node.id);
+            let (session, selecting) = self.realm.live.terminal_and_selection(node.id);
             crate::components::terminal_panel::grid(
                 ui,
                 body,
@@ -730,8 +783,8 @@ impl UnluminousApp {
             )
         };
         if outcome.take_focus {
-            self.space.space.choose(Some(node.id));
-            self.take_the_keyboard_for_the_space();
+            self.realm.realm.choose(Some(node.id));
+            self.take_the_keyboard_for_the_realm();
         }
         if let Some(text) = outcome.copy {
             ui.ctx().copy_text(text);
@@ -742,11 +795,11 @@ impl UnluminousApp {
     ///
     /// **The toolbar is drawn whether or not the node has a page**, which is the whole of `task-1905`'s
     /// first report. This used to return before reaching the component whenever there was no tab yet, so
-    /// the node had no address bar — and the only ways to give it an address were `space browser go` and
-    /// `space add --url`. An address bar on a browser node is not a control that can never apply; it is
+    /// the node had no address bar — and the only ways to give it an address were `realm browser go` and
+    /// `realm add --url`. An address bar on a browser node is not a control that can never apply; it is
     /// the control that makes the node usable.
     fn show_a_browser_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
-        let tab = self.space.live.browser(node.id).cloned();
+        let tab = self.realm.live.browser(node.id).cloned();
         // **One native view a window**, so only the tab it is pointed at renders. The others say so,
         // which is the sentence `browser_view::show` already says for a second rendered tab in
         // another pane.
@@ -766,7 +819,7 @@ impl UnluminousApp {
                 tab: tab.as_ref(),
                 typed: &mut typed,
                 editing: &mut editing,
-                id: egui::Id::new(("space-browser-address", node.id)),
+                id: egui::Id::new(("realm-browser-address", node.id)),
             },
             focused,
             showing,
@@ -781,8 +834,8 @@ impl UnluminousApp {
             // The whole rectangle is converted rather than only its corner, so the page is also the size it
             // is on the screen: a canvas at 0.5 draws a node half as wide, and a page that kept its world
             // size would hang out of it. That is what "resize/zoom/etc" asks for, and it costs one call.
-            let camera = self.space.space.current().camera;
-            let whole = camera.rect_to_screen(self.space.body.min, placement.area);
+            let camera = self.realm.realm.camera;
+            let whole = camera.rect_to_screen(self.realm.body.min, placement.area);
             // **The page keeps its whole width and the crop is a separate answer.**
             //
             // `set_bounds` is the page's *viewport* as well as its position, so cutting it to the pane makes
@@ -801,7 +854,7 @@ impl UnluminousApp {
             // `services::browser`'s `clip_to_the_visible_part` is where a platform crops to it, and it says
             // what each one can do.
             placement.area = whole;
-            placement.visible = whole.intersect(self.space.body);
+            placement.visible = whole.intersect(self.realm.body);
             // **The camera's zoom is spent on the page's own zoom, because a native child cannot be
             // transformed.** Everything else in a node is drawn into a layer carrying the camera, so it is
             // genuinely scaled; a `WebView` has no such transform, and `set_bounds` alone would make a
@@ -815,7 +868,7 @@ impl UnluminousApp {
             // rectangle it was drawn into on every frame of a zoom. A page's layout viewport is the one
             // divided by the other, so it was wrong by one step for the whole glide, which is the
             // reported jitter. See `services::browser::BrowserPlacement::zoom`.
-            let wanted = self.space.live.page_zoom_of(node.id) * camera.zoom;
+            let wanted = self.realm.live.page_zoom_of(node.id) * camera.zoom;
             placement.zoom = Some(f64::from(wanted));
             // A node scrolled off the canvas has nothing on the screen to place, and a rectangle with no room
             // in it would ask the view to be a pixel wide somewhere on the pane's edge. Asked of the
@@ -829,7 +882,7 @@ impl UnluminousApp {
             _ => false,
         };
         if changed {
-            self.space.space.change(node.id, |state| {
+            self.realm.realm.change(node.id, |state| {
                 if let State::Browser(browser) = state {
                     browser.typed = typed;
                     browser.editing = editing;
@@ -839,9 +892,9 @@ impl UnluminousApp {
         if let Some(command) = outcome.command {
             match (&tab, command) {
                 // **An address typed at a node that has no page yet.** There is no tab to send a command
-                // to, so the node is pointed at it directly — the same function `space browser go` calls.
+                // to, so the node is pointed at it directly — the same function `realm browser go` calls.
                 (None, crate::services::browser::BrowserCommand::Go(address)) => {
-                    if let Err(problem) = self.send_a_space_browser_to(node.id, address.trim()) {
+                    if let Err(problem) = self.send_a_realm_browser_to(node.id, address.trim()) {
                         self.message = Some(problem);
                     }
                 }
@@ -850,8 +903,8 @@ impl UnluminousApp {
             }
         }
         if outcome.took_focus {
-            self.space.space.choose(Some(node.id));
-            self.take_the_keyboard_for_the_space();
+            self.realm.realm.choose(Some(node.id));
+            self.take_the_keyboard_for_the_realm();
         }
     }
 
@@ -871,11 +924,11 @@ impl UnluminousApp {
         has_the_pointer: bool,
     ) {
         self.make_sure_a_node_has_a_tree(node);
-        let selected = self.space.live.tree_selection(node.id).map(std::path::Path::to_path_buf);
+        let selected = self.realm.live.tree_selection(node.id).map(std::path::Path::to_path_buf);
         let showing = self.files.active().path().map(std::path::Path::to_path_buf);
         let opacity = self.settings.opacity;
         let scroll = self.wheel_over_a_folder_node(ui, node, has_the_pointer);
-        let node_zoom = space_view::folder_zoom_of(node);
+        let node_zoom = realm_view::folder_zoom_of(node);
         // **The icons and the git colours, before the borrow.** `task-1904` asked for a node to have the
         // same style and functionality as the panel, and this was the one place it did not: the closure was
         // a placeholder answering `default()`, so a `.rs` file had no Rust icon and a modified file no
@@ -886,7 +939,7 @@ impl UnluminousApp {
             let decorate = |path: &std::path::Path| -> crate::components::explorer::Decoration {
                 decorations.get(path).cloned().unwrap_or_default()
             };
-            let Some(tree) = self.space.live.tree_mut(node.id) else { return };
+            let Some(tree) = self.realm.live.tree_mut(node.id) else { return };
             let mut filter = match &node.state {
                 State::Folder(folder) => folder.filter.clone(),
                 _ => String::new(),
@@ -912,7 +965,7 @@ impl UnluminousApp {
         let (outcome, filter) = outcome;
         // Read back where the list really ended up, which is what the next wheel is measured from — the
         // same round trip `keep_the_place_through_a_panels_zoom` makes for the panel.
-        self.space.live.scroll_to(node.id, outcome.scroll);
+        self.realm.live.scroll_to(node.id, outcome.scroll);
         self.act_on_a_folder_node(node, outcome, filter);
     }
 
@@ -927,7 +980,7 @@ impl UnluminousApp {
     /// frame**, which is what `egui::ScrollArea` itself does when it takes one: without it the canvas
     /// would pan or zoom at the same time as the node scrolled, which is one gesture doing two things.
     /// `has_the_pointer` is whether this is the node the pointer is over, worked out **once** before any
-    /// node was drawn — see `show_the_space_nodes`. Each node asking for itself gave the wheel to the
+    /// node was drawn — see `show_the_realm_nodes`. Each node asking for itself gave the wheel to the
     /// backmost of a stack, and cleared the delta so the one on top got nothing.
     fn wheel_over_a_folder_node(
         &mut self,
@@ -936,7 +989,7 @@ impl UnluminousApp {
         has_the_pointer: bool,
     ) -> Option<f32> {
         let delta = self.wheel_over_a_node(ui, has_the_pointer)?;
-        let was = self.space.live.scroll_of(node.id);
+        let was = self.realm.live.scroll_of(node.id);
         ui.ctx().input_mut(|input| input.smooth_scroll_delta.y = 0.0);
         Some((was - delta).max(0.0))
     }
@@ -952,7 +1005,7 @@ impl UnluminousApp {
     /// by the camera's zoom — a canvas at 0.5 would otherwise scroll twice as far as the pointer moved.
     ///
     /// `has_the_pointer` is whether this is the node the pointer is over, worked out **once** before any
-    /// node was drawn — see [`Self::show_the_space_nodes`]. Each node asking for itself gave the wheel to
+    /// node was drawn — see [`Self::show_the_realm_nodes`]. Each node asking for itself gave the wheel to
     /// the backmost of a stack, and cleared the delta so the one on top got nothing.
     fn wheel_over_a_node(&self, ui: &egui::Ui, has_the_pointer: bool) -> Option<f32> {
         if !has_the_pointer {
@@ -962,7 +1015,7 @@ impl UnluminousApp {
         if delta.abs() < 0.5 {
             return None;
         }
-        Some(delta / self.space.space.current().camera.zoom.max(0.01))
+        Some(delta / self.realm.realm.camera.zoom.max(0.01))
     }
 
     /// What a folder node's rows asked for.
@@ -977,24 +1030,24 @@ impl UnluminousApp {
             _ => false,
         };
         if changed {
-            self.space.space.change(node.id, |state| {
+            self.realm.realm.change(node.id, |state| {
                 if let State::Folder(folder) = state {
                     folder.filter = filter;
                 }
             });
         }
         if let Some(path) = outcome.toggle {
-            if let Some(tree) = self.space.live.tree_mut(node.id) {
+            if let Some(tree) = self.realm.live.tree_mut(node.id) {
                 tree.toggle(&path);
             }
             self.remember_a_folder_nodes_open_folders(node.id);
         }
         if let Some(path) = outcome.select.clone() {
-            self.space.live.select_in_tree(node.id, Some(path));
+            self.realm.live.select_in_tree(node.id, Some(path));
         }
         if outcome.focus {
-            self.space.space.choose(Some(node.id));
-            self.take_the_keyboard_for_the_space();
+            self.realm.realm.choose(Some(node.id));
+            self.take_the_keyboard_for_the_realm();
         }
         // **A double click opens a wired File Editor node; a single click opens into the editing area.**
         // `task-1905`: *"If I double click a file, it should open a file view node and connect it, if one
@@ -1018,8 +1071,8 @@ impl UnluminousApp {
         // conversion `show_an_editor_nodes_tabs` makes for a tab picked up on a node.
         if outcome.moved.is_none() {
             if let Some((path, at, dropped)) = outcome.carrying {
-                let camera = self.space.space.current().camera;
-                let at = camera.to_screen(self.space.body.min, at);
+                let camera = self.realm.realm.camera;
+                let at = camera.to_screen(self.realm.body.min, at);
                 self.file_drag = Drag::carrying(path, at, dropped);
             }
         }
@@ -1031,22 +1084,22 @@ impl UnluminousApp {
     /// Made *beside* means to the right of the folder node with a gap, so the wire is visible rather than
     /// crossing the node that drew it. `task-1905`.
     fn open_from_a_folder_node(&mut self, from: NodeId, path: &std::path::Path) {
-        let wired = self.space.space.current().reaches(from).into_iter().find(|other| {
-            self.space.space.current().node(*other).is_some_and(|node| node.kind() == Kind::Editor)
+        let wired = self.realm.realm.reaches(from).into_iter().find(|other| {
+            self.realm.realm.node(*other).is_some_and(|node| node.kind() == Kind::Editor)
         });
         let editor = match wired {
             Some(editor) => editor,
             None => {
-                let Some(found) = self.space.space.current().node(from).cloned() else { return };
+                let Some(found) = self.realm.realm.node(from).cloned() else { return };
                 let at = Pos2::new(found.rect().right() + 60.0, found.at.y);
-                let made = self.add_a_space_node(Kind::Editor, at);
-                if let Err(problem) = self.space.space.connect(from, made, Pipe::Off) {
+                let made = self.add_a_realm_node(Kind::Editor, at);
+                if let Err(problem) = self.realm.realm.connect(from, made, Pipe::Off) {
                     self.message = Some(problem);
                 }
                 made
             }
         };
-        if let Err(problem) = self.open_in_a_space_node(editor, path) {
+        if let Err(problem) = self.open_in_a_realm_node(editor, path) {
             self.message = Some(problem);
         }
     }
@@ -1069,7 +1122,7 @@ impl UnluminousApp {
     /// **The exact same** is meant literally: `components::agent_chat::pane` is what the panel draws, and
     /// it is what is called here, so the composer, the picture button, the drop, the paste, the history,
     /// the provider list, the streaming and the tool blocks all arrive with no code of their own. What is
-    /// different is which `AgentChat` it is handed — this node's, from `space::live::Live` — and that is
+    /// different is which `AgentChat` it is handed — this node's, from `realm::live::Live` — and that is
     /// the whole of what makes two chats on one canvas two agents.
     fn show_a_chat_node(
         &mut self,
@@ -1088,8 +1141,8 @@ impl UnluminousApp {
             let at = ui
                 .ctx()
                 .pointer_latest_pos()
-                .map(|at| self.space.space.current().camera.to_world(self.space.body.min, at));
-            let took = match (at, self.space.live.chat_mut(node.id)) {
+                .map(|at| self.realm.realm.camera.to_world(self.realm.body.min, at));
+            let took = match (at, self.realm.live.chat_mut(node.id)) {
                 (Some(at), Some(chat)) => chat.scroll_at(at, wheel),
                 _ => false,
             };
@@ -1119,14 +1172,14 @@ impl UnluminousApp {
                 .colouring_with(&highlighter)
                 .drawing_into(&chrome);
             let mut chat_ui = ui
-                .new_child(egui::UiBuilder::new().max_rect(body).id_salt(("space-chat", node.id)));
+                .new_child(egui::UiBuilder::new().max_rect(body).id_salt(("realm-chat", node.id)));
             chat_ui.set_clip_rect(ui.clip_rect().intersect(body));
-            match self.space.live.chat_mut(node.id) {
+            match self.realm.live.chat_mut(node.id) {
                 Some(chat) => crate::components::agent_chat::pane(chat, &mut chat_ui, &look),
                 None => Vec::new(),
             }
         };
-        self.paint_the_chrome(ui, slot, egui::Id::new(("space-chat", node.id)), body, &chrome);
+        self.paint_the_chrome(ui, slot, egui::Id::new(("realm-chat", node.id)), body, &chrome);
         for request in asked {
             self.act_on_a_node_chats_request(node.id, request, ui.ctx());
         }
@@ -1182,14 +1235,14 @@ impl UnluminousApp {
                 .colouring_with(&highlighter)
                 .drawing_into(&chrome);
             let mut board_ui = ui
-                .new_child(egui::UiBuilder::new().max_rect(body).id_salt(("space-tasks", node.id)));
+                .new_child(egui::UiBuilder::new().max_rect(body).id_salt(("realm-tasks", node.id)));
             board_ui.set_clip_rect(ui.clip_rect().intersect(body));
             match self.plugin_ui.provider(AGENT_TASKS) {
                 Some(provider) => provider.tab(&mut board_ui, &look),
                 None => Vec::new(),
             }
         };
-        self.paint_the_chrome(ui, slot, egui::Id::new(("space-tasks", node.id)), body, &chrome);
+        self.paint_the_chrome(ui, slot, egui::Id::new(("realm-tasks", node.id)), body, &chrome);
         for request in asked {
             self.act_on_a_node_plugins_request(node.id, AGENT_TASKS, request, ui.ctx());
         }
@@ -1215,7 +1268,7 @@ impl UnluminousApp {
     /// a canvas with four chat nodes on it that nobody has scrolled to costs four rows in `space.conf` and
     /// nothing else until each is looked at.
     fn make_sure_a_node_has_a_chat(&mut self, node: &Node) {
-        if self.space.live.chat(node.id).is_some() {
+        if self.realm.live.chat(node.id).is_some() {
             return;
         }
         let State::Chat(state) = &node.state else { return };
@@ -1246,9 +1299,9 @@ impl UnluminousApp {
         // its own the moment it opened would otherwise be a node with nothing recorded until something else
         // happened to it.
         let started = chat.conversation_id().to_owned();
-        self.space.live.put_a_chat(node.id, chat);
+        self.realm.live.put_a_chat(node.id, chat);
         if started != wanted {
-            self.space.space.change(node.id, |state| {
+            self.realm.realm.change(node.id, |state| {
                 if let State::Chat(chat) = state {
                     chat.conversation = started;
                 }
@@ -1272,7 +1325,7 @@ impl UnluminousApp {
         match request {
             Request::ClipboardPicture { id } => {
                 let answer = crate::services::picture::from_the_clipboard();
-                if let Some(chat) = self.space.live.chat_mut(node) {
+                if let Some(chat) = self.realm.live.chat_mut(node) {
                     UiProvider::answered(chat, &id, answer);
                 }
             }
@@ -1285,12 +1338,12 @@ impl UnluminousApp {
             Request::TakeTheKeyboard(taking) => {
                 match taking {
                     true => {
-                        self.space.space.choose(Some(node));
-                        self.take_the_keyboard_for_the_space();
+                        self.realm.realm.choose(Some(node));
+                        self.take_the_keyboard_for_the_realm();
                     }
                     false => self.focus = Focus::Editor,
                 }
-                if let Some(chat) = self.space.live.chat_mut(node) {
+                if let Some(chat) = self.realm.live.chat_mut(node) {
                     UiProvider::keyboard(chat, taking);
                 }
             }
@@ -1317,8 +1370,8 @@ impl UnluminousApp {
             Request::TakeTheKeyboard(taking) => {
                 match taking {
                     true => {
-                        self.space.space.choose(Some(node));
-                        self.take_the_keyboard_for_the_space();
+                        self.realm.realm.choose(Some(node));
+                        self.take_the_keyboard_for_the_realm();
                     }
                     false => self.focus = Focus::Editor,
                 }
@@ -1333,14 +1386,14 @@ impl UnluminousApp {
     /// What a chat node's tool call is allowed to be about, filled in before it is run.
     ///
     /// **This is what makes a chat node an agent *in* a node rather than an agent beside one.** A terminal
-    /// node carries `UNLUMINOUS_SPACE_NODE` in its environment and the client sends it, so `space here`
-    /// answers about that node and every `space` command it sends carries `--from`. A chat node has no
-    /// client and no environment, so the window fills the same two in: `space here` is asked as this node,
-    /// and every other `space` command that names a `from` is asked from this node.
+    /// node carries `UNLUMINOUS_REALM_NODE` in its environment and the client sends it, so `realm here`
+    /// answers about that node and every `realm` command it sends carries `--from`. A chat node has no
+    /// client and no environment, so the window fills the same two in: `realm here` is asked as this node,
+    /// and every other `realm` command that names a `from` is asked from this node.
     ///
     /// **Only where the command really names the key**, read from the catalogue rather than from a list
     /// here — `task-1804`'s rule is that a key a command does not name is a usage refusal, so filling one
-    /// in blindly would turn `space list` into an error. And only when the model did not say: an agent
+    /// in blindly would turn `realm list` into an error. And only when the model did not say: an agent
     /// that names a `from` of its own is answered about the node it named, and refused if it may not
     /// reach it, exactly as one typing at a terminal is.
     pub fn what_a_chat_node_is_asking_about(
@@ -1352,10 +1405,10 @@ impl UnluminousApp {
         let Some(found) = unluminous_cli::catalogue::find(command) else {
             return arguments;
         };
-        // `space here` is the one command that asks *which node is calling*; every other one asks what the
+        // `realm here` is the one command that asks *which node is calling*; every other one asks what the
         // caller may reach. Two keys, one meaning, and the catalogue says which of them this command has.
         let key = match found.wire().as_str() {
-            "space.here" => "node",
+            "realm.here" => "node",
             _ => "from",
         };
         if !unluminous_cli::catalogue::value_names(found).contains(&key) {
@@ -1425,7 +1478,7 @@ impl UnluminousApp {
         // every other tab. What it walks instead is `Editor::font_size`, applied to this tab's document
         // for the frame it is drawn in and put back by the layout being marked stale when it changes.
         // `task-1905`.
-        let wanted = space_view::editor_font_size_of(node, self.settings.font_size);
+        let wanted = realm_view::editor_font_size_of(node, self.settings.font_size);
         // **Applied once per change rather than every frame**, because `set_base_style` walks every byte of
         // the document and bumps its text revision — which would re-colour and re-lay out the file sixty
         // times a second.
@@ -1453,8 +1506,8 @@ impl UnluminousApp {
         }
         let took = self.show_editor(ui, body, focused);
         if took {
-            self.space.space.choose(Some(node.id));
-            self.take_the_keyboard_for_the_space();
+            self.realm.realm.choose(Some(node.id));
+            self.take_the_keyboard_for_the_realm();
         }
         if !focused {
             self.files.restore_focus(was);
@@ -1471,9 +1524,9 @@ impl UnluminousApp {
         node: &Node,
         strip: crate::components::file_tabs::Strip,
     ) {
-        let camera = self.space.space.current().camera;
-        let on_screen = camera.rect_to_screen(self.space.body.min, node.rect());
-        self.node_tab_strips.push((node.id, on_screen.intersect(self.space.body), strip));
+        let camera = self.realm.realm.camera;
+        let on_screen = camera.rect_to_screen(self.realm.body.min, node.rect());
+        self.node_tab_strips.push((node.id, on_screen.intersect(self.realm.body), strip));
     }
 
     /// The strip of tabs across the top of a File Editor node.
@@ -1536,22 +1589,22 @@ impl UnluminousApp {
         // everything has been drawn — which is `settle_the_tab_drag`'s own reason and is what lets a tab be
         // dragged out of a node into a pane, or the other way. `task-1905`.
         self.note_where_an_editor_node_is(node, outcome.strip.clone());
-        let camera = self.space.space.current().camera;
+        let camera = self.realm.realm.camera;
         let at = |within: usize| indices.get(within).copied();
         if let Some((within, pointer)) = outcome.dragging {
             if let Some(file) = at(within) {
                 // The pointer comes back in the node's own world points, and the drag is settled in screen
                 // points against every strip in the window — so it is converted here, where the camera is
                 // to hand.
-                let at = camera.to_screen(self.space.body.min, pointer);
+                let at = camera.to_screen(self.realm.body.min, pointer);
                 self.tab_drag = Drag::carrying(file, at, outcome.dropped);
             }
         }
         if let Some(index) = outcome.show.and_then(at).or_else(|| outcome.keep.and_then(at)) {
             self.files.show(index);
             self.files.focus_node(node.id);
-            self.space.space.choose(Some(node.id));
-            self.take_the_keyboard_for_the_space();
+            self.realm.realm.choose(Some(node.id));
+            self.take_the_keyboard_for_the_realm();
         }
         if let Some(index) = outcome.keep.and_then(at) {
             self.files.make_permanent(index);
@@ -1566,8 +1619,8 @@ impl UnluminousApp {
             if let Some(index) = at(within) {
                 self.files.show(index);
                 self.files.focus_node(node.id);
-                self.space.space.choose(Some(node.id));
-                self.take_the_keyboard_for_the_space();
+                self.realm.realm.choose(Some(node.id));
+                self.take_the_keyboard_for_the_realm();
             }
             self.tab_menu = Some((where_, node.id as usize));
         }
@@ -1584,11 +1637,11 @@ impl UnluminousApp {
             // also what a person typed, and it does not change under them while the program sets and
             // resets a title of its own, which `claude` does on every prompt.
             State::Terminal(terminal) => match terminal.command.trim() {
-                "" => match self.space.live.terminal(node.id) {
+                "" => match self.realm.live.terminal(node.id) {
                     Some(session) => session.name().to_owned(),
                     None => "Terminal".to_owned(),
                 },
-                command => crate::services::space::launch::words(command)
+                command => crate::services::realm::launch::words(command)
                     .first()
                     .map(|program| {
                         std::path::Path::new(program)
@@ -1616,22 +1669,31 @@ impl UnluminousApp {
             // **The conversation's own name**, which is what the chat pane's header says: an agent on a
             // canvas is told apart from the one beside it by what it is talking about, not by its kind.
             State::Chat(_) => self
-                .space
+                .realm
                 .live
                 .chat(node.id)
                 .map(|chat| chat.display_name())
                 .filter(|name| !name.trim().is_empty())
                 .unwrap_or_else(|| "Agent Chat".to_owned()),
             State::Tasks(_) => "Agent Tasks".to_owned(),
+            // **A picture, a sound, a video and a note are called after their file**, which is what a header
+            // shows for a file and what `task-2202` asks of a note: *"the file name in the header"*.
+            State::Image(_) | State::Audio(_) | State::Video(_) | State::Note(_) => node
+                .state
+                .file()
+                .and_then(|file| file.file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| node.kind().label().to_owned()),
+            State::Unknown(unknown) => unknown.kind.clone(),
         }
     }
 
     /// The keyboard goes to the canvas, and leaves wherever it was.
-    pub(crate) fn take_the_keyboard_for_the_space(&mut self) {
-        self.focus = Focus::Space;
+    pub(crate) fn take_the_keyboard_for_the_realm(&mut self) {
+        self.focus = Focus::Realm;
         // An editor node's tab is the one `active()` answers with while the canvas has the keys, so
         // the focus follows the chosen node here rather than at each of the places that choose one.
-        if let Some(node) = self.space.chosen() {
+        if let Some(node) = self.realm.chosen() {
             if let Some(index) = self.files.tab_in_node(node) {
                 self.files.show(index);
                 self.files.focus_node(node);
@@ -1663,7 +1725,7 @@ impl UnluminousApp {
         node: NodeId,
     ) -> std::collections::HashMap<std::path::PathBuf, crate::components::explorer::Decoration>
     {
-        let Some(tree) = self.space.live.tree(node) else {
+        let Some(tree) = self.realm.live.tree(node) else {
             return std::collections::HashMap::new();
         };
         let rows: Vec<std::path::PathBuf> =
@@ -1696,7 +1758,7 @@ impl UnluminousApp {
 
     /// Give a folder node a tree of its own, the first time it is drawn.
     pub(crate) fn make_sure_a_node_has_a_tree(&mut self, node: &Node) {
-        if self.space.live.has_a_tree(node.id) {
+        if self.realm.live.has_a_tree(node.id) {
             return;
         }
         let State::Folder(folder) = &node.state else { return };
@@ -1706,7 +1768,7 @@ impl UnluminousApp {
         for open in &folder.expanded {
             tree.expand(open);
         }
-        self.space.live.put_a_tree(node.id, tree);
+        self.realm.live.put_a_tree(node.id, tree);
     }
 
     /// Write down which files a File Editor node holds and which was showing, so they come back.
@@ -1725,7 +1787,7 @@ impl UnluminousApp {
         // open once — `OpenFiles::open`'s rule — so two nodes naming the same path cannot both hold it, and
         // whichever view is showing gets it. Forgetting it on the node that lost it would mean coming back to
         // a node with fewer tabs than it was left with, every time a view was switched. `task-1906`.
-        let was = match self.space.space.current().node(node).map(|found| &found.state) {
+        let was = match self.realm.realm.node(node).map(|found| &found.state) {
             Some(State::Editor(editor)) => editor.paths.clone(),
             _ => Vec::new(),
         };
@@ -1752,14 +1814,14 @@ impl UnluminousApp {
             .unwrap_or(0);
         // Compared before `change`, for the reason `note_where_the_nodes_are_reading` records: `change`
         // marks the canvas dirty whatever the closure did.
-        let changed = match self.space.space.current().node(node).map(|node| &node.state) {
+        let changed = match self.realm.realm.node(node).map(|node| &node.state) {
             Some(State::Editor(editor)) => editor.paths != paths || editor.showing != showing,
             _ => false,
         };
         if !changed {
             return;
         }
-        self.space.space.change(node, |state| {
+        self.realm.realm.change(node, |state| {
             if let State::Editor(editor) = state {
                 editor.paths = paths;
                 editor.showing = showing;
@@ -1769,10 +1831,10 @@ impl UnluminousApp {
 
     /// Write down which folders a folder node has open, so they come back.
     pub(crate) fn remember_a_folder_nodes_open_folders(&mut self, node: NodeId) {
-        let Some(open) = self.space.live.tree(node).map(|tree| tree.expanded_folders()) else {
+        let Some(open) = self.realm.live.tree(node).map(|tree| tree.expanded_folders()) else {
             return;
         };
-        self.space.space.change(node, |state| {
+        self.realm.realm.change(node, |state| {
             if let State::Folder(folder) = state {
                 folder.expanded = open;
             }
@@ -1781,7 +1843,7 @@ impl UnluminousApp {
 
     /// Start everything behind the view that is showing that is not running.
     ///
-    /// One call rather than three at each of the places a view changes. `catch_the_space_up` asks it
+    /// One call rather than three at each of the places a view changes. `catch_the_realm_up` asks it
     /// whenever the current view is not the one it last brought to life, so a view chosen from the
     /// strip, from the command line, by duplicating one or by deleting the one that was showing all
     /// arrive here without any of them having to remember.
@@ -1789,14 +1851,14 @@ impl UnluminousApp {
         // **What the canvas said before it was brought to life**, so restoring it can be told from changing
         // it. Bringing a view to life opens each of a node's tabs in turn, and every one of those calls
         // `remember_a_nodes_tabs`, which compares the tabs open *so far* against the whole saved list: the
-        // first path makes that comparison say the list changed, `Space::change` marks the canvas dirty
+        // first path makes that comparison say the list changed, `Realm::change` marks the canvas dirty
         // whatever the closure did, and the later calls put the list back without clearing the mark. So a
         // window that opened a project and touched nothing rewrote `space.conf` with byte-identical content,
-        // which is the rule `Space::is_dirty` exists to keep. A comparison here is the cheapest place to
+        // which is the rule `Realm::is_dirty` exists to keep. A comparison here is the cheapest place to
         // answer it, because it is the one place that knows the whole of the restore is over.
-        let before = match self.space.space.is_dirty() {
+        let before = match self.realm.realm.is_dirty() {
             true => None,
-            false => Some(self.space.space.clone()),
+            false => Some(self.realm.realm.clone()),
         };
         // **The saved choice wins over whichever node the restore happened to touch last.** Opening a
         // File Editor node's tabs chooses that node, because opening a file into a node is using it —
@@ -1806,22 +1868,22 @@ impl UnluminousApp {
         //
         // A canvas that had **no** choice written down keeps what the restore chose, which is what
         // gives a file written by a version before `View::chosen` somewhere for the first key to go.
-        let chosen = self.space.space.chosen();
+        let chosen = self.realm.realm.chosen();
         self.start_the_canvass_terminals();
         self.open_the_canvass_browsers();
         self.open_the_canvass_editors();
         self.scroll_the_canvass_folders();
         if chosen.is_some() {
-            self.space.space.choose(chosen);
+            self.realm.realm.choose(chosen);
         }
         // A restore that really changed the canvas — a node whose file has gone, a terminal given a fresh
         // conversation id — is still dirty and is still written, which is what those cases need.
         if let Some(before) = before {
-            if before.holds_the_same_as(&self.space.space) {
-                self.space.space.written();
+            if before.holds_the_same_as(&self.realm.realm) {
+                self.realm.realm.written();
             }
         }
-        self.space.brought_to_life = Some(self.space.space.current_id());
+        self.realm.brought_to_life = Some(self.realm.realm.path.clone());
     }
 
     /// Put every folder node's saved scroll back where it was.
@@ -1839,9 +1901,8 @@ impl UnluminousApp {
     /// wrote the zero over the file. So one restart lost the number and every later one had nothing to lose.
     pub(crate) fn scroll_the_canvass_folders(&mut self) {
         let scrolls: Vec<(NodeId, f32)> = self
-            .space
-            .space
-            .current()
+            .realm
+            .realm
             .nodes
             .iter()
             .filter_map(|node| match &node.state {
@@ -1850,7 +1911,7 @@ impl UnluminousApp {
             })
             .collect();
         for (node, scroll) in scrolls {
-            self.space.live.scroll_to(node, scroll);
+            self.realm.live.scroll_to(node, scroll);
         }
     }
 
@@ -1866,14 +1927,13 @@ impl UnluminousApp {
     /// "start another shell", and `Restart` on the node's own menu is what asks for that.
     pub(crate) fn start_the_canvass_terminals(&mut self) {
         let waiting: Vec<NodeId> = self
-            .space
-            .space
-            .current()
+            .realm
+            .realm
             .nodes
             .iter()
             .filter(|node| node.kind() == Kind::Terminal)
             .map(|node| node.id)
-            .filter(|node| !self.space.live.has_a_terminal(*node))
+            .filter(|node| !self.realm.live.has_a_terminal(*node))
             .collect();
         for node in waiting {
             // **A node that already has a conversation is resumed onto it.** `task-1906`: *"terminal session
@@ -1882,16 +1942,15 @@ impl UnluminousApp {
             // exactly the case it was written for. A node with no session recorded starts fresh, which is
             // every shell and every agent that cannot take an id.
             let resume = self
-                .space
-                .space
-                .current()
+                .realm
+                .realm
                 .node(node)
                 .and_then(|found| match &found.state {
                     State::Terminal(terminal) => Some(!terminal.session.trim().is_empty()),
                     _ => None,
                 })
                 .unwrap_or(false);
-            if let Err(problem) = self.start_a_space_terminal(node, resume) {
+            if let Err(problem) = self.start_a_realm_terminal(node, resume) {
                 self.message = Some(problem);
             }
         }
@@ -1904,14 +1963,14 @@ impl UnluminousApp {
     /// since been deleted is left empty rather than refusing, which is the rule the whole of
     /// `project_state` keeps.
     pub(crate) fn open_the_canvass_editors(&mut self) {
+        self.open_the_canvass_notes();
         // **Every tab, and then the one that was showing.** `task-1906`: a node holds a strip of tabs since
         // `task-1905`, and opening one path brought one of them back. The caret and the scroll follow the file
         // that was showing, which is the one thing a node deliberately keeps less of than a pane — see §7 of
         // the design.
         let waiting: Vec<(NodeId, Vec<std::path::PathBuf>, usize, usize, f32)> = self
-            .space
-            .space
-            .current()
+            .realm
+            .realm
             .nodes
             .iter()
             .filter_map(|node| match &node.state {
@@ -1930,7 +1989,7 @@ impl UnluminousApp {
             for path in &paths {
                 // **A file already living on another node is left where it is.** `OpenFiles::open`'s rule is
                 // that a file already open is *shown* rather than opened twice — two `Document`s over one path
-                // would be two windows on one file — so `open_in_a_space_node` **moves** the tab. Bringing a
+                // would be two windows on one file — so `open_in_a_realm_node` **moves** the tab. Bringing a
                 // view to life therefore stole a file from a node on the view being left, and the tab
                 // vanished from the canvas somebody came back to. Measured on the installed build: three
                 // paths on one node became two after switching views and back. `task-1906`.
@@ -1943,7 +2002,7 @@ impl UnluminousApp {
                         continue;
                     }
                 }
-                let _ = self.open_in_a_space_node(node, path);
+                let _ = self.open_in_a_realm_node(node, path);
             }
             // The one that was showing, and where in it the reader was.
             let wanted = paths.get(showing.min(paths.len().saturating_sub(1))).cloned();
@@ -1959,12 +2018,12 @@ impl UnluminousApp {
                 }
             }
             // **Written down again once the right tab is showing.** Opening the tabs one at a time shows each
-            // as it arrives, and every `open_in_a_space_node` calls `remember_a_nodes_tabs` — so by the end of
+            // as it arrives, and every `open_in_a_realm_node` calls `remember_a_nodes_tabs` — so by the end of
             // the loop above the node has recorded the **last** path as the one showing rather than the one it
             // was left on. The line above then shows the right one, and nothing told the record. It corrected
             // itself on the next idle frame, so the tab a person saw was right; what was wrong was that a
             // window which opened a project and touched nothing had a canvas needing to be written, which is
-            // the rule `Space::is_dirty` exists to keep.
+            // the rule `Realm::is_dirty` exists to keep.
             self.remember_a_nodes_tabs(node);
         }
     }
@@ -1976,9 +2035,8 @@ impl UnluminousApp {
     /// given it one.
     pub(crate) fn open_the_canvass_browsers(&mut self) {
         let waiting: Vec<(NodeId, String)> = self
-            .space
-            .space
-            .current()
+            .realm
+            .realm
             .nodes
             .iter()
             .filter_map(|node| match &node.state {
@@ -1987,10 +2045,10 @@ impl UnluminousApp {
                 }
                 _ => None,
             })
-            .filter(|(node, _)| self.space.live.browser(*node).is_none())
+            .filter(|(node, _)| self.realm.live.browser(*node).is_none())
             .collect();
         for (node, url) in waiting {
-            let _ = self.open_a_space_browser(node, &url);
+            let _ = self.open_a_realm_browser(node, &url);
         }
     }
 
@@ -2015,14 +2073,14 @@ impl UnluminousApp {
     /// whole of `project_state` keeps.
     pub(crate) fn print_a_remembered_screen_first(
         &self,
-        screen: crate::services::space::store::Screen,
+        screen: crate::services::realm::store::Screen,
         settings: &mut unluminous_terminal::session::SessionSettings,
     ) {
         if !self.remembers_this_project() {
             return;
         }
         let root = self.tree.root();
-        let Some(file) = crate::services::space::store::a_screen_to_print(root, screen) else {
+        let Some(file) = crate::services::realm::store::a_screen_to_print(root, screen) else {
             return;
         };
         // **`unluminous-cli`, which is installed beside this program and is a console program.** Both halves
@@ -2035,7 +2093,7 @@ impl UnluminousApp {
         ));
         let restore = unluminous_cli::restore::Restore { file, shim };
         if !unluminous_cli::restore::is_worth_trying(&restore) {
-            crate::services::space::store::forget_a_screen(root, screen);
+            crate::services::realm::store::forget_a_screen(root, screen);
             return;
         }
         // The shell the node would have started, kept as the tab's name: what is spawned is the program that
@@ -2050,12 +2108,12 @@ impl UnluminousApp {
     }
 
     /// Make a terminal node's session, or start it again.
-    pub(crate) fn start_a_space_terminal(
+    pub(crate) fn start_a_realm_terminal(
         &mut self,
         node: NodeId,
         resume: bool,
     ) -> Result<(), String> {
-        let Some(found) = self.space.space.current().node(node).cloned() else {
+        let Some(found) = self.realm.realm.node(node).cloned() else {
             return Err(format!("There is no node {node}."));
         };
         // The id this run will use, chosen before the command line is built and written down after it
@@ -2063,7 +2121,7 @@ impl UnluminousApp {
         let session_wanted = crate::services::agent_tasks::new_session_id();
         // What the command line will really say about the conversation, asked once and both used and written
         // down from the one answer.
-        let decided = crate::services::space::launch::session_for(
+        let decided = crate::services::realm::launch::session_for(
             &match &found.state {
                 State::Terminal(terminal) => terminal.command.clone(),
                 _ => String::new(),
@@ -2076,24 +2134,24 @@ impl UnluminousApp {
             &session_wanted,
         )
         .1;
-        let mut settings = self.space_terminal_settings_for(&found, resume, &session_wanted)?;
+        let mut settings = self.realm_terminal_settings_for(&found, resume, &session_wanted)?;
         // A node with no command of its own is a shell, and a shell is asked to report where it is for the
         // reason a tab is — and in the same order, before the screen is put in front of it. A node running
         // `claude` has arguments and is left exactly as it was. `task-1950`.
         self.ask_the_shell_to_report_its_folder(&mut settings);
         self.print_a_remembered_screen_first(
-            crate::services::space::store::Screen::Node(node),
+            crate::services::realm::store::Screen::Node(node),
             &mut settings,
         );
-        let parts = space_view::parts_of(&found);
-        let font = space_view::font_size_of(&found, self.settings.terminal_font_size);
+        let parts = realm_view::parts_of(&found);
+        let font = realm_view::font_size_of(&found, self.settings.terminal_font_size);
         let cell = self.renderer.cell_metrics(font);
         let size = crate::components::terminal_panel::grid_size(parts.body.size(), cell);
         let waker = self.waker();
         match unluminous_terminal::Session::spawn(&settings, size, waker) {
             Ok(session) => {
-                self.space.live.start_terminal(node, session);
-                self.space.live.follow_from_here(node);
+                self.realm.live.start_terminal(node, session);
+                self.realm.live.follow_from_here(node);
                 // **Written down once it really started**, so a node whose program would not start is not
                 // left claiming a conversation nothing is on.
                 //
@@ -2106,14 +2164,14 @@ impl UnluminousApp {
                 // with it.
                 if let Some(id) = decided {
                     if Some(&id)
-                        != self.space.space.current().node(node).and_then(|node| {
+                        != self.realm.realm.node(node).and_then(|node| {
                             match &node.state {
                                 State::Terminal(terminal) => Some(&terminal.session),
                                 _ => None,
                             }
                         })
                     {
-                        self.space.space.change(node, |state| {
+                        self.realm.realm.change(node, |state| {
                             if let State::Terminal(terminal) = state {
                                 terminal.session = id;
                             }
@@ -2130,8 +2188,8 @@ impl UnluminousApp {
     /// environment.
     ///
     /// Split out from starting it so a test can read it with no process behind it — the same bargain
-    /// `new_detached_space_node` makes about a session, applied to the arguments it would have been given.
-    fn space_terminal_settings_for(
+    /// `new_detached_realm_node` makes about a session, applied to the arguments it would have been given.
+    fn realm_terminal_settings_for(
         &self,
         found: &Node,
         resume: bool,
@@ -2143,7 +2201,7 @@ impl UnluminousApp {
         let node = found.id;
         let folder = terminal.folder.clone().unwrap_or_else(|| self.tree.root().to_path_buf());
         // **Resolved before it is spawned**, which is what makes `codex` work at all on Windows — see
-        // `services::space::launch` for the three files npm installs and which of them can be started.
+        // `services::realm::launch` for the three files npm installs and which of them can be started.
         // **An agent that takes a conversation id is given one, and gets the same one back.** `task-1906`:
         // *"terminal session should still have claude-code open with same session."* A node with a session id
         // already recorded is resumed onto it; one without is *given* a fresh one, which goes on the command
@@ -2153,14 +2211,14 @@ impl UnluminousApp {
         // The id is chosen here and written down by the caller, because this function builds a command line
         // and does not change the canvas — `run_cli`'s own split.
         let mut command = terminal.command.clone();
-        let (words, _) = crate::services::space::launch::session_for(
+        let (words, _) = crate::services::realm::launch::session_for(
             &command,
             &terminal.session,
             resume,
             session_wanted,
         );
         command.push_str(&words);
-        let launch = crate::services::space::launch::resolve(&command, self.settings.shell())?;
+        let launch = crate::services::realm::launch::resolve(&command, self.settings.shell())?;
         Ok(unluminous_terminal::session::SessionSettings {
             shell: launch.program,
             args: launch.args,
@@ -2173,11 +2231,11 @@ impl UnluminousApp {
             // read a number, and learn nothing it could act on — it then spent nine tool calls and two
             // shell commands establishing what one call answers. It is the cheapest possible place to put
             // a pointer, it costs the child nothing, and any agent reads it whatever its own tooling.
-            // `UNLUMINOUS_SPACE_NODE` is untouched, because a program that wants the id wants the id.
+            // `UNLUMINOUS_REALM_NODE` is untouched, because a program that wants the id wants the id.
             //
             // **And where `unluminous-cli` is, and which window it drives.** `unluminous-cli` is on
             // nobody's `PATH` — on macOS it is inside the application bundle beside `unluminous` and on
-            // Windows in the installation folder — so an agent told to run `unluminous-cli space here`
+            // Windows in the installation folder — so an agent told to run `unluminous-cli realm here`
             // answers `command not found`, which is what driving the real window found. The Agent-Tasks
             // board already solved this: `agent::ENV_CLI` and `ENV_INSTANCE`, filled in by
             // `agent_tasks::beside_this_program`. The hint uses those variables rather than a bare name,
@@ -2190,11 +2248,13 @@ impl UnluminousApp {
                 // name that works. `agent_tasks::how_to_reach_this_window` is the whole of it and the
                 // chat pane uses the same one.
                 let hint = format!(
-                    "This terminal is node {node} on an Unluminous canvas. Run `unluminous-cli space here` to see which nodes it is wired to and how to drive them. `unluminous-cli` is on your PATH here and already knows which window to drive.",
+                    "This terminal is node {node} on an Unluminous canvas. Run `unluminous-cli realm here` to see which nodes it is wired to and how to drive them. `unluminous-cli` is on your PATH here and already knows which window to drive.",
                 );
                 let mut carried = vec![
+                    ("UNLUMINOUS_REALM_NODE".to_owned(), node.to_string()),
+                    // The name before `task-2202`, for a script somebody wrote against it.
                     ("UNLUMINOUS_SPACE_NODE".to_owned(), node.to_string()),
-                    ("UNLUMINOUS_SPACE_HINT".to_owned(), hint),
+                    ("UNLUMINOUS_REALM_HINT".to_owned(), hint),
                 ];
                 // A node's shell is the person's own, so its `PATH` is the one this process has and
                 // `how_to_reach_this_window` falls back to it: there is nothing in `carried` to read one
@@ -2217,25 +2277,25 @@ impl UnluminousApp {
     /// helper that promised "the command line the node would really build" described one no run produces. The
     /// Codex Sol review found it, and the fix is to make the caller say which run it is asking about, because
     /// that is the thing the two differ on.
-    pub fn space_terminal_settings(
+    pub fn realm_terminal_settings(
         &self,
         node: NodeId,
         fresh: &str,
     ) -> Option<unluminous_terminal::session::SessionSettings> {
-        let found = self.space.space.current().node(node)?.clone();
-        self.space_terminal_settings_for(&found, false, fresh).ok()
+        let found = self.realm.realm.node(node)?.clone();
+        self.realm_terminal_settings_for(&found, false, fresh).ok()
     }
 
     /// The same, as a **restored** node builds it: resuming the conversation it was left on.
     ///
     /// What `start_the_canvass_terminals` asks for on a node that has a session recorded, which is the half
     /// `task-1906` adds and the half a test cannot reach by starting a process.
-    pub fn space_terminal_settings_resuming(
+    pub fn realm_terminal_settings_resuming(
         &self,
         node: NodeId,
     ) -> Option<unluminous_terminal::session::SessionSettings> {
-        let found = self.space.space.current().node(node)?.clone();
-        self.space_terminal_settings_for(&found, true, "a-session-for-a-test").ok()
+        let found = self.realm.realm.node(node)?.clone();
+        self.realm_terminal_settings_for(&found, true, "a-session-for-a-test").ok()
     }
 
     /// Send a browser node to an address.
@@ -2248,14 +2308,14 @@ impl UnluminousApp {
     /// A **remote** address on a tab that already exists is a navigation, so the node's history is
     /// kept. Anything else opens a tab, because a local page's root is registered when its tab is
     /// opened and cannot be changed underneath one.
-    pub(crate) fn send_a_space_browser_to(
+    pub(crate) fn send_a_realm_browser_to(
         &mut self,
         node: NodeId,
         address: &str,
     ) -> Result<(), String> {
         let location = crate::services::browser::BrowserLocation::parse(address, self.tree.root())?;
         let remote = location.source_path().is_none();
-        if let (true, Some(tab)) = (remote, self.space.live.browser(node).map(|tab| tab.id)) {
+        if let (true, Some(tab)) = (remote, self.realm.live.browser(node).map(|tab| tab.id)) {
             // **The parsed address, not the typed one.** `implied_address` is the one place a bare host is
             // given a scheme, and wry hands an unknown scheme to `Navigate`, which refuses it **in silence** —
             // so the pane went on showing the old page while the reply said the node had gone. Measured on the
@@ -2265,25 +2325,25 @@ impl UnluminousApp {
             // **The tab is told where it is going even when the view cannot be driven there yet.** A window
             // has one native view, so `BrowserHost::navigate` refuses a tab that is not the one showing — and
             // before this the address was thrown away while the node's own record was changed anyway, so a
-            // canvas with two browser nodes ended up permanently disagreeing with itself. Measured: `space
-            // list` said `https://example.org/` while `space browser url` said `https://google.com/`.
+            // canvas with two browser nodes ended up permanently disagreeing with itself. Measured: `realm
+            // list` said `https://example.org/` while `realm browser url` said `https://google.com/`.
             self.change_browser_tab(tab, |tab| tab.heading_for_a_new_page(&url));
             // A refusal here is a view that could not be driven now, which the reconciliation in
             // `raw_input_hook` answers when this node next becomes the one rendering — so it is not an error
             // the caller has to see, and the address is already recorded above.
             let _ = self.browser.navigate(tab, &url);
-            self.space.space.change(node, |state| {
+            self.realm.realm.change(node, |state| {
                 if let State::Browser(browser) = state {
                     browser.url = url.clone();
                 }
             });
             return Ok(());
         }
-        self.open_a_space_browser(node, address)
+        self.open_a_realm_browser(node, address)
     }
 
     /// Point a browser node at an address, in a tab of its own.
-    pub(crate) fn open_a_space_browser(
+    pub(crate) fn open_a_realm_browser(
         &mut self,
         node: NodeId,
         address: &str,
@@ -2294,12 +2354,12 @@ impl UnluminousApp {
         let location = crate::services::browser::BrowserLocation::parse(address, self.tree.root())?;
         // The tab this node had, closed before the new one is made: a node shows one page, and a tab
         // nothing points at is a tab the one native view can still be asked to show.
-        if let Some(was) = self.space.live.browser(node).map(|tab| tab.id) {
+        if let Some(was) = self.realm.live.browser(node).map(|tab| tab.id) {
             self.browser.close_tab(was);
         }
         let tab = self.browser.open_tab(location);
-        self.space.live.put_a_browser(node, tab);
-        self.space.space.change(node, |state| {
+        self.realm.live.put_a_browser(node, tab);
+        self.realm.realm.change(node, |state| {
             if let State::Browser(browser) = state {
                 browser.url = address.to_owned();
             }
@@ -2308,16 +2368,16 @@ impl UnluminousApp {
     }
 
     /// Put a file in an editor node, moving the tab if it is already open somewhere else.
-    pub fn open_in_a_space_node(
+    pub fn open_in_a_realm_node(
         &mut self,
         node: NodeId,
         path: &std::path::Path,
     ) -> Result<(), String> {
-        let Some(found) = self.space.space.current().node(node).cloned() else {
+        let Some(found) = self.realm.realm.node(node).cloned() else {
             return Err(format!("There is no node {node}."));
         };
-        if found.kind() != Kind::Editor {
-            return Err("That node is not a file editor.".to_owned());
+        if !matches!(found.kind(), Kind::Editor | Kind::Note) {
+            return Err("That node is not a file editor or a note.".to_owned());
         }
         // **A file already in this node is shown rather than opened twice**, and one that is not joins the
         // tabs already there. `task-1905` asks for the node to hold several — *"just like our editing
@@ -2331,8 +2391,8 @@ impl UnluminousApp {
         {
             self.files.show(already);
             self.files.focus_node(node);
-            self.focus = Focus::Space;
-            self.space.space.choose(Some(node));
+            self.focus = Focus::Realm;
+            self.realm.realm.choose(Some(node));
             return Ok(());
         }
         // **The one place a file is opened**, so a node's editor and the editing area's read a file
@@ -2342,14 +2402,20 @@ impl UnluminousApp {
             return Err(format!("{} did not open.", path.display()));
         };
         self.files.move_to_node(index, node);
-        self.remember_a_nodes_tabs(node);
-        self.focus = Focus::Space;
-        self.space.space.choose(Some(node));
+        match &found.state {
+            // A note holds one file, named by the note itself, and shows it the way the note says.
+            State::Note(note) => {
+                self.files.at_mut(index).view_mode = realm_view::view_mode_of(note.view);
+            }
+            _ => self.remember_a_nodes_tabs(node),
+        }
+        self.focus = Focus::Realm;
+        self.realm.realm.choose(Some(node));
         Ok(())
     }
 
     /// Take a node off the canvas, stopping whatever was behind it.
-    pub(crate) fn close_a_space_node(&mut self, node: NodeId) {
+    pub(crate) fn close_a_realm_node(&mut self, node: NodeId) {
         // **Every tab on it, not only the one showing.** A node holds several since `task-1905`, and closing
         // one tab left the rest with a `Home::Node` naming a node that had gone — reachable from nothing,
         // drawn by nothing, and still holding whatever was typed into them. The Codex Sol review found it.
@@ -2361,17 +2427,17 @@ impl UnluminousApp {
             // Closing a tab writes it if it was edited, which is `close_tab`'s own promise.
             self.close_tab(index);
         }
-        if let Some(tab) = self.space.live.browser(node).map(|tab| tab.id) {
+        if let Some(tab) = self.realm.live.browser(node).map(|tab| tab.id) {
             self.browser.close_tab(tab);
         }
-        self.space.live.forget(node);
-        self.space.space.remove_node(node);
+        self.realm.live.forget(node);
+        self.realm.realm.remove_node(node);
     }
 
     /// Walk a terminal node's font size along the list the Settings window offers.
     pub(crate) fn step_a_node_font(&mut self, node: NodeId, steps: i32) {
-        let Some(found) = self.space.space.current().node(node).cloned() else { return };
-        let was = space_view::font_size_of(&found, self.settings.terminal_font_size);
+        let Some(found) = self.realm.realm.node(node).cloned() else { return };
+        let was = realm_view::font_size_of(&found, self.settings.terminal_font_size);
         let mut size = was;
         for _ in 0..steps.abs() {
             size = crate::settings::step_terminal_font_size(size, steps > 0);
@@ -2379,7 +2445,7 @@ impl UnluminousApp {
         if (size - was).abs() < 0.01 {
             return;
         }
-        self.space.space.change(node, |state| {
+        self.realm.realm.change(node, |state| {
             if let State::Terminal(terminal) = state {
                 terminal.font_size = size;
             }
@@ -2391,23 +2457,23 @@ impl UnluminousApp {
     /// What the screenshot tests use, exactly as [`UnluminousApp::new_detached_terminal_tab`] is what
     /// the terminal tile's use and for the same reason: when a real program answers is not something
     /// a test can know, so a picture of a node is taken of an emulator that was handed fixed bytes.
-    pub fn new_detached_space_node(&mut self, kind: Kind, at: Pos2) -> NodeId {
+    pub fn new_detached_realm_node(&mut self, kind: Kind, at: Pos2) -> NodeId {
         let project = self.tree.root().to_path_buf();
-        let node = self.space.space.add_node(kind, at, Some(&project));
+        let node = self.realm.realm.add_node(kind, at, Some(&project));
         if kind == Kind::Terminal {
-            let found = self.space.space.current().node(node).cloned().expect("it was just made");
-            let parts = space_view::parts_of(&found);
-            let font = space_view::font_size_of(&found, self.settings.terminal_font_size);
+            let found = self.realm.realm.node(node).cloned().expect("it was just made");
+            let parts = realm_view::parts_of(&found);
+            let font = realm_view::font_size_of(&found, self.settings.terminal_font_size);
             let cell = self.renderer.cell_metrics(font);
             let size = crate::components::terminal_panel::grid_size(parts.body.size(), cell);
-            self.space.live.start_terminal(node, unluminous_terminal::Session::detached(size));
+            self.realm.live.start_terminal(node, unluminous_terminal::Session::detached(size));
         }
         node
     }
 
     /// Feed a detached terminal node the bytes a program would have written.
-    pub fn feed_a_space_terminal(&mut self, node: NodeId, bytes: &[u8]) {
-        if let Some(session) = self.space.live.terminal_mut(node) {
+    pub fn feed_a_realm_terminal(&mut self, node: NodeId, bytes: &[u8]) {
+        if let Some(session) = self.realm.live.terminal_mut(node) {
             session.feed(bytes);
         }
     }
@@ -2416,7 +2482,7 @@ impl UnluminousApp {
     ///
     /// `BrowserHost::open_tab` allocates an id and registers a local root and does not create a view —
     /// the view is made in `reconcile`, before the egui pass. So a tab on its own is a value, and this is
-    /// `new_detached_space_node`'s bargain applied to a page: a picture of a node, and a state a test can
+    /// `new_detached_realm_node`'s bargain applied to a page: a picture of a node, and a state a test can
     /// read, without waiting on WebView2 or WKWebView to answer.
     /// Tell a node's tab that a page arrived, which is what a click inside one looks like from here.
     ///
@@ -2426,13 +2492,13 @@ impl UnluminousApp {
         self.change_browser_tab(tab, |tab| tab.arrived_at(url));
     }
 
-    pub fn new_detached_space_page(&mut self, node: NodeId, url: &str) -> Option<u64> {
+    pub fn new_detached_realm_page(&mut self, node: NodeId, url: &str) -> Option<u64> {
         let location =
             crate::services::browser::BrowserLocation::parse(url, self.tree.root()).ok()?;
         let tab = self.browser.open_tab(location);
         let id = tab.id;
-        self.space.live.put_a_browser(node, tab);
-        self.space.space.change(node, |state| {
+        self.realm.live.put_a_browser(node, tab);
+        self.realm.realm.change(node, |state| {
             if let State::Browser(browser) = state {
                 browser.url = url.to_owned();
                 browser.typed = url.to_owned();
@@ -2454,48 +2520,24 @@ impl UnluminousApp {
     /// keep an idle window drawing for as long as a shell sat at its prompt. What genuinely needs one
     /// is a **pipe**, because reading one is a poll on a clock and nothing else will wake the window
     /// to do it.
-    pub(crate) fn catch_the_space_up(&mut self, now: f64, ctx: &egui::Context) -> bool {
+    pub(crate) fn catch_the_realm_up(&mut self, now: f64, ctx: &egui::Context) -> bool {
         // The view that is showing has everything behind it running, whichever way it came to be
         // showing. Asked rather than told - see `bring_the_current_view_to_life`. Not on the first
         // frame, because starting a pseudoconsole before the window is shown is a fifth of the time
         // before anything appears, which is `start_the_restored_terminals`' own measurement.
         if self.frames > 0
             && self.remembers_this_project()
-            && self.space.brought_to_life != Some(self.space.space.current_id())
+            && self.realm.brought_to_life.as_deref() != Some(self.realm.realm.path.as_path())
         {
-            // **The view being left is written down before the new one is brought to life.** What
-            // `note_where_the_nodes_are_reading` records is derived from the live state and it only ever walks
-            // the view that is *showing*, so a frame that both moved something and switched view — a wheel and
-            // a chip in one input frame, or a drag that ended on `Duplicate View` — left the last movement
-            // unrecorded: by the next frame the old view was no longer the one being walked. There is nowhere
-            // else to ask it. `show_view` is in `services`, which cannot reach the live state, and there are
-            // seven callers of it — which is `follow_the_open_file`'s rule about a list whose next entry is the
-            // one that forgets. This is the one place that knows the view has changed, so it is the one place
-            // that asks. The Codex Sol review found it.
-            //
-            // It is the *old* view that is walked, because `brought_to_life` still names it: the guard above
-            // is what says a switch has happened and nothing has moved yet.
-            if let Some(leaving) = self.space.brought_to_life {
-                if self.space.space.view(leaving).is_some() {
-                    let showing = self.space.space.current_id();
-                    // Showing a view marks the canvas dirty, and going back to the one that is really showing
-                    // is not a change to write — so whether it needed writing is put back as it was found,
-                    // leaving only whatever the recording itself had to say.
-                    let was_dirty = self.space.space.is_dirty();
-                    self.space.space.show_view(leaving);
-                    self.space.space.written();
-                    self.note_where_the_nodes_are_reading();
-                    let recorded = self.space.space.is_dirty();
-                    self.space.space.show_view(showing);
-                    match was_dirty || recorded {
-                        true => self.space.space.touch(),
-                        false => self.space.space.written(),
-                    }
-                }
-            }
+            // The realm being left was written down by `open_a_realm` before this one replaced it, which is
+            // the one place that knows a switch is happening; this only has the new one to start.
             self.bring_the_current_view_to_life();
         }
-        self.space.live.catch_up();
+        self.realm.live.catch_up();
+        // A sound that is playing moves its time and its seek bar, so the window draws while one plays.
+        if self.realm.live.any_playing() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+        }
         // **Only once the view that is showing has been brought to life.** What this writes down is derived
         // from the live state, and before the nodes have been started that state is *empty* — so on the frames
         // between a project opening and its canvas coming alive it wrote an empty tab list over the saved one
@@ -2504,19 +2546,18 @@ impl UnluminousApp {
         //
         // The same guard the line above uses, which is the honest one: `brought_to_life` is the view whose
         // nodes really are running, and reading a node's state before that is reading nothing.
-        if self.space.brought_to_life == Some(self.space.space.current_id()) {
+        if self.realm.brought_to_life.as_deref() == Some(self.realm.realm.path.as_path()) {
             self.note_where_the_nodes_are_reading();
         }
         let carrying: Vec<(NodeId, NodeId)> = self
-            .space
-            .space
-            .current()
+            .realm
+            .realm
             .edges
             .iter()
             .filter(|edge| edge.pipe == Pipe::Lines)
             .map(|edge| (edge.from, edge.to))
             .collect();
-        self.space.live.carry_the_pipes(now, &carrying);
+        self.realm.live.carry_the_pipes(now, &carrying);
         let a_chat_is_working = self.let_the_chat_nodes_catch_up(ctx);
         !carrying.is_empty() || a_chat_is_working
     }
@@ -2531,8 +2572,8 @@ impl UnluminousApp {
         use crate::services::plugin_ui::UiProvider;
         let mut working = false;
         let mut asked: Vec<(NodeId, crate::services::plugin_ui::Request)> = Vec::new();
-        for node in self.space.live.chat_nodes() {
-            let Some(chat) = self.space.live.chat_mut(node) else { continue };
+        for node in self.realm.live.chat_nodes() {
+            let Some(chat) = self.realm.live.chat_mut(node) else { continue };
             working |= UiProvider::catch_up(chat);
             asked.extend(UiProvider::asking(chat).into_iter().map(|request| (node, request)));
         }
@@ -2565,13 +2606,13 @@ impl UnluminousApp {
     /// is the report — the three fields it fills in were written to `space.conf` and read back from it since
     /// `task-1904`, and nothing ever put a value in one.
     ///
-    /// **Only when the value changed**, because `Space::change` marks the canvas dirty and a canvas that
+    /// **Only when the value changed**, because `Realm::change` marks the canvas dirty and a canvas that
     /// wrote `space.conf` on every frame of a scroll would write a file sixty times a second — which is
-    /// `Space::is_dirty`'s whole reason for existing. Each arm compares before it calls `change`, and the
+    /// `Realm::is_dirty`'s whole reason for existing. Each arm compares before it calls `change`, and the
     /// three that are a node each of their own do the comparing in their own function.
     pub(crate) fn note_the_live_state_into_the_nodes(&mut self, reading: Reading) {
         // **A terminal is asked what it is running on a clock, not on every frame.** See
-        // `SpaceState::asked_what_is_running`: it is a syscall where everything else here is a field. On the
+        // `RealmState::asked_what_is_running`: it is a syscall where everything else here is a field. On the
         // way out there is no next tick to wait for, so it is asked whatever the clock says — and the clock
         // is left alone, because nothing is going to read it again.
         let ask_what_is_running = match reading {
@@ -2579,17 +2620,17 @@ impl UnluminousApp {
             Reading::EveryFrame => {
                 let now = std::time::Instant::now();
                 let due = self
-                    .space
+                    .realm
                     .asked_what_is_running
                     .is_none_or(|last| now.duration_since(last) >= crate::app::WATCH_INTERVAL);
                 if due {
-                    self.space.asked_what_is_running = Some(now);
+                    self.realm.asked_what_is_running = Some(now);
                 }
                 due
             }
         };
         let nodes: Vec<(NodeId, Kind)> =
-            self.space.space.current().nodes.iter().map(|node| (node.id, node.kind())).collect();
+            self.realm.realm.nodes.iter().map(|node| (node.id, node.kind())).collect();
         for (node, kind) in nodes {
             match kind {
                 // The two that are read out of the window rather than out of something running, and are
@@ -2599,10 +2640,10 @@ impl UnluminousApp {
                     let Some(index) = self.files.tab_in_node(node) else { continue };
                     let caret = self.files.at(index).document.selection().head;
                     let scroll = self.files.at(index).scroll;
-                    // **Compared before `change` is called, not inside it.** `Space::change` marks the canvas
+                    // **Compared before `change` is called, not inside it.** `Realm::change` marks the canvas
                     // dirty whatever the closure did, so asking inside would write `space.conf` on every
                     // frame — which is the one thing `is_dirty` exists to prevent.
-                    let moved = match &self.space.space.current().node(node).map(|node| &node.state)
+                    let moved = match &self.realm.realm.node(node).map(|node| &node.state)
                     {
                         Some(State::Editor(editor)) => {
                             editor.caret != caret || (editor.scroll - scroll).abs() > 0.5
@@ -2610,7 +2651,7 @@ impl UnluminousApp {
                         _ => false,
                     };
                     if moved {
-                        self.space.space.change(node, |state| {
+                        self.realm.realm.change(node, |state| {
                             if let State::Editor(editor) = state {
                                 editor.caret = caret;
                                 editor.scroll = scroll;
@@ -2618,15 +2659,34 @@ impl UnluminousApp {
                         });
                     }
                 }
+                // A note's tab is an editor tab, and where somebody was in it goes to the sidecar the same way.
+                Kind::Note if reading == Reading::EveryFrame => {
+                    let Some(index) = self.files.tab_in_node(node) else { continue };
+                    let caret = self.files.at(index).document.selection().head;
+                    let scroll = self.files.at(index).scroll;
+                    let moved = match &self.realm.realm.node(node).map(|node| &node.state) {
+                        Some(State::Note(note)) => note.caret != caret || (note.scroll - scroll).abs() > 0.5,
+                        _ => false,
+                    };
+                    if moved {
+                        self.realm.realm.change(node, |state| {
+                            if let State::Note(note) = state {
+                                note.caret = caret;
+                                note.scroll = scroll;
+                            }
+                        });
+                    }
+                }
+                Kind::Audio | Kind::Video => self.note_where_a_player_is(node),
                 Kind::Folder if reading == Reading::EveryFrame => {
-                    let scroll = self.space.live.scroll_of(node);
-                    let moved = match &self.space.space.current().node(node).map(|node| &node.state)
+                    let scroll = self.realm.live.scroll_of(node);
+                    let moved = match &self.realm.realm.node(node).map(|node| &node.state)
                     {
                         Some(State::Folder(folder)) => (folder.scroll - scroll).abs() > 0.5,
                         _ => false,
                     };
                     if moved {
-                        self.space.space.change(node, |state| {
+                        self.realm.realm.change(node, |state| {
                             if let State::Folder(folder) = state {
                                 folder.scroll = scroll;
                             }
@@ -2641,7 +2701,8 @@ impl UnluminousApp {
                 }
                 Kind::Browser => self.note_where_a_node_is_browsing(node),
                 Kind::Chat => self.note_which_conversation_a_node_is_on(node),
-                Kind::Editor | Kind::Folder | Kind::Terminal | Kind::Tasks => {}
+                Kind::Editor | Kind::Folder | Kind::Terminal | Kind::Tasks | Kind::Note => {}
+                Kind::Image | Kind::Unknown => {}
             }
         }
     }
@@ -2651,20 +2712,20 @@ impl UnluminousApp {
     /// **Read back rather than set when it is opened**, which is `note_what_a_node_is_running`'s own rule:
     /// the chat starts a conversation of its own the first time it opens with nothing to reopen, and a
     /// `New` pressed in the node changes it again. Compared before `change` is called, because
-    /// `Space::change` marks the canvas dirty whatever the closure did.
+    /// `Realm::change` marks the canvas dirty whatever the closure did.
     pub(crate) fn note_which_conversation_a_node_is_on(&mut self, node: NodeId) {
-        let Some(now) = self.space.live.chat(node).map(|chat| chat.conversation_id().to_owned())
+        let Some(now) = self.realm.live.chat(node).map(|chat| chat.conversation_id().to_owned())
         else {
             return;
         };
-        let was = match self.space.space.current().node(node).map(|found| &found.state) {
+        let was = match self.realm.realm.node(node).map(|found| &found.state) {
             Some(State::Chat(chat)) => chat.conversation.clone(),
             _ => return,
         };
         if was == now {
             return;
         }
-        self.space.space.change(node, |state| {
+        self.realm.realm.change(node, |state| {
             if let State::Chat(chat) = state {
                 chat.conversation = now;
             }
@@ -2686,7 +2747,7 @@ impl UnluminousApp {
         // on `Forward`, and a list of the places that have to remember to write it down is a list
         // whose next entry is the one that forgets.
         let showing = self
-            .space
+            .realm
             .live
             .browser(node)
             .map(|tab| tab.current_url().to_owned())
@@ -2696,12 +2757,12 @@ impl UnluminousApp {
         if showing.is_empty() {
             return;
         }
-        let held = match &self.space.space.current().node(node).map(|node| &node.state) {
+        let held = match &self.realm.realm.node(node).map(|node| &node.state) {
             Some(State::Browser(browser)) => browser.url.clone(),
             _ => String::new(),
         };
         if held != showing {
-            self.space.space.change(node, |state| {
+            self.realm.realm.change(node, |state| {
                 if let State::Browser(browser) = state {
                     browser.url = showing;
                 }
@@ -2720,7 +2781,7 @@ impl UnluminousApp {
         // should come back at a prompt rather than offering to start something it is no longer
         // running.
         let running = self
-            .space
+            .realm
             .live
             .terminal(node)
             .and_then(unluminous_terminal::Session::foreground)
@@ -2729,11 +2790,11 @@ impl UnluminousApp {
         // somebody ran" rather than "whatever the foreground group is called". A node at a prompt
         // has nothing to offer, and recording `zsh` there would put a row on the node offering to
         // start the shell it is already sitting in. `is_a_shell` is the one place that is decided.
-        let running = match crate::services::space::launch::is_a_shell(&running) {
+        let running = match crate::services::realm::launch::is_a_shell(&running) {
             true => String::new(),
             false => running,
         };
-        let held = match &self.space.space.current().node(node).map(|node| &node.state) {
+        let held = match &self.realm.realm.node(node).map(|node| &node.state) {
             Some(State::Terminal(terminal)) => terminal.running.clone(),
             _ => String::new(),
         };
@@ -2749,11 +2810,11 @@ impl UnluminousApp {
         // program somebody deliberately quit was offered on every restart from then on. Once
         // anything has been typed into the node — including the offer being taken, which types the
         // program — a prompt is a prompt somebody really is at, and it clears.
-        if running.is_empty() && !held.is_empty() && !self.space.live.has_been_used(node) {
+        if running.is_empty() && !held.is_empty() && !self.realm.live.has_been_used(node) {
             return;
         }
         if held != running {
-            self.space.space.change(node, |state| {
+            self.realm.realm.change(node, |state| {
                 if let State::Terminal(terminal) = state {
                     terminal.running = running;
                 }
@@ -2764,7 +2825,7 @@ impl UnluminousApp {
     /// Write down what every terminal node's screen is showing, so it can come back showing it.
     ///
     /// **Called when the window closes and at no other time.** A screen changes on every keystroke and the
-    /// canvas is deliberately not written that often — `Space::is_dirty` exists for exactly that — and what
+    /// canvas is deliberately not written that often — `Realm::is_dirty` exists for exactly that — and what
     /// somebody wants back is the last state rather than every state. `task-1908`.
     ///
     /// A node whose program is drawing its own full screen writes **nothing**, which removes whatever was there:
@@ -2775,9 +2836,8 @@ impl UnluminousApp {
             return;
         }
         let nodes: Vec<NodeId> = self
-            .space
-            .space
-            .current()
+            .realm
+            .realm
             .nodes
             .iter()
             .filter(|node| node.kind() == Kind::Terminal)
@@ -2786,13 +2846,13 @@ impl UnluminousApp {
         let root = self.tree.root().to_path_buf();
         for node in nodes {
             let bytes = self
-                .space
+                .realm
                 .live
                 .terminal(node)
                 .and_then(unluminous_terminal::Session::screen_to_replay);
-            if let Err(problem) = crate::services::space::store::save_a_screen(
+            if let Err(problem) = crate::services::realm::store::save_a_screen(
                 &root,
-                crate::services::space::store::Screen::Node(node),
+                crate::services::realm::store::Screen::Node(node),
                 bytes.as_deref(),
             ) {
                 // The window is closing, so there is nowhere to report this that anybody would read. What is
@@ -2807,114 +2867,118 @@ impl UnluminousApp {
     /// The ticket asks for views "saved on edit". Written at the end of a frame on which something
     /// changed rather than on every frame, because a canvas being dragged would otherwise write a file
     /// sixty times a second.
-    pub(crate) fn write_the_space_if_it_changed(&mut self, now: f64) {
-        if !self.space.space.is_dirty() || !self.remembers_this_project() {
+    pub(crate) fn write_the_realm_if_it_changed(&mut self, now: f64) {
+        if !self.realm.realm.is_dirty() || !self.remembers_this_project() {
             return;
         }
         // A write that failed leaves the canvas marked as needing writing, so the next change tries
         // again — but not on every frame, because a disk that is full or read only would then be
         // written to sixty times a second and the status bar would say so as often.
-        if let Some(at) = self.space.write_failed_at {
+        if let Some(at) = self.realm.write_failed_at {
             if now - at < RETRY_A_FAILED_WRITE {
                 return;
             }
         }
-        match store::save(self.tree.root(), &self.space.space) {
+        let root = self.tree.root().to_path_buf();
+        match store::save(&root, &mut self.realm.realm) {
             Ok(()) => {
-                self.space.space.written();
-                self.space.write_failed_at = None;
+                self.realm.realm.written();
+                self.realm.write_failed_at = None;
             }
             Err(problem) => {
                 // The first failure is said once. After that the canvas is still dirty and will be
                 // tried again, quietly, rather than filling the status bar with the same sentence.
-                if self.space.write_failed_at.is_none() {
+                if self.realm.write_failed_at.is_none() {
                     self.message = Some(problem);
                 }
-                self.space.write_failed_at = Some(now);
+                self.realm.write_failed_at = Some(now);
             }
         }
-    }
-
-    /// Read a project's canvases when a window opens on it.
-    ///
-    /// The model only. What is behind the nodes is started on the second frame, by
-    /// [`Self::bring_the_current_view_to_life`], for the reason `start_the_restored_terminals`
-    /// records: a pseudoconsole opened before the window is shown is a fifth of the time before
-    /// anything appears.
-    pub(crate) fn restore_the_space(&mut self) {
-        self.space.space = store::load(self.tree.root());
-        self.space.brought_to_life = None;
     }
 
     // ------------------------------------------------------------------------------- commands
 
     /// The one place a canvas action turns into a change.
-    pub(crate) fn run_a_space_action(&mut self, action: SpaceAction) {
+    pub(crate) fn run_a_realm_action(&mut self, action: RealmAction) {
         match action {
             // **What is on the screen, not what a maximise is remembering.** This used to ask
             // `was_showing`, which answers with the arrangement `Maximise::Filling` is holding — right
             // while `leave_the_maximised_pane` put that arrangement back first, and wrong since
             // `task-2003` made it only end the maximise. With another pane filling the window the canvas
             // is not showing, so the button means show it.
-            SpaceAction::Toggle => {
-                self.show_a_panel(dock::Panel::Space, !self.space.visible);
+            RealmAction::Toggle => {
+                self.show_a_panel(dock::Panel::Realm, !self.realm.visible);
             }
-            SpaceAction::OpenAddModal => {
+            RealmAction::OpenAddModal => {
                 let at = self.middle_of_the_canvas();
-                self.space.adding = Some(add_modal::State { at, ..Default::default() });
-                self.show_a_panel(dock::Panel::Space, true);
+                self.realm.adding = Some(add_modal::State { at, ..Default::default() });
+                self.show_a_panel(dock::Panel::Realm, true);
             }
-            SpaceAction::Add(kind) => {
+            RealmAction::Add(kind) => {
                 let at = self.middle_of_the_canvas();
-                self.show_a_panel(dock::Panel::Space, true);
-                self.add_a_space_node(kind, at);
+                self.show_a_panel(dock::Panel::Realm, true);
+                self.add_a_node_asking_what_it_holds(kind, at);
             }
-            SpaceAction::Fit => {
-                let bounds = self.space.space.current().bounds();
-                let size = self.space.body.size();
-                self.space.space.current_mut().camera.fit(bounds, size, 32.0);
-                self.space.space.touch();
+            RealmAction::Fit => {
+                let bounds = self.realm.realm.bounds();
+                let size = self.realm.body.size();
+                self.realm.realm.camera.fit(bounds, size, 32.0);
+                self.realm.realm.touch();
             }
-            SpaceAction::Manage => {
-                self.show_a_panel(dock::Panel::Space, true);
-                self.space.managing = Some(crate::components::space::manager::State::default());
+            RealmAction::Manage => {
+                self.show_a_panel(dock::Panel::Realm, true);
+                self.realm.managing = Some(crate::components::realm::manager::State::default());
             }
-            SpaceAction::NewView => {
-                let id = self.space.space.add_view("View");
-                self.space.space.show_view(id);
-            }
-            SpaceAction::RenameView => {
-                let id = self.space.in_hand.view.unwrap_or_else(|| self.space.space.current_id());
-                let Some(view) = self.space.space.view(id) else { return };
+            RealmAction::NewRealm => {
+                self.show_a_panel(dock::Panel::Realm, true);
                 self.prompt = Some(crate::components::prompt_dialog::Prompt::new(
-                    "Rename View",
-                    "What this canvas is called in the strip along the top.",
-                    &view.name,
-                    "Rename",
-                    crate::components::prompt_dialog::Purpose::RenameSpaceView(id),
+                    "New Realm",
+                    "What to call it. It is written to .realm-files in this project.",
+                    "",
+                    "Create",
+                    crate::components::prompt_dialog::Purpose::NewRealm,
                 ));
             }
-            SpaceAction::DuplicateView => {
-                let id = self.space.in_hand.view.unwrap_or_else(|| self.space.space.current_id());
-                match self.space.space.duplicate_view(id) {
-                    Some(copy) => {
-                        self.space.space.show_view(copy);
-                        self.bring_the_current_view_to_life();
-                        self.message = Some("The view was duplicated.".to_owned());
+            RealmAction::RenameRealm => {
+                let path = self.realm.in_hand.view.take().unwrap_or_else(|| self.realm.realm.path.clone());
+                self.prompt = Some(crate::components::prompt_dialog::Prompt::new(
+                    "Rename Realm",
+                    "What this realm's file is called. Its file moves, and so does what this machine remembers about it.",
+                    &crate::services::realm::title_of(&path),
+                    "Rename",
+                    crate::components::prompt_dialog::Purpose::RenameRealmView(path),
+                ));
+            }
+            RealmAction::DuplicateRealm => {
+                let path = self.realm.in_hand.view.take().unwrap_or_else(|| self.realm.realm.path.clone());
+                match self.duplicate_a_realm(&path) {
+                    Ok(copy) => {
+                        self.message = Some(format!("Copied to {}.", crate::services::realm::slashed(&copy)))
                     }
-                    None => self.message = Some("There is no such view.".to_owned()),
+                    Err(problem) => self.message = Some(problem),
                 }
             }
-            SpaceAction::DeleteView => {
-                let id = self.space.in_hand.view.unwrap_or_else(|| self.space.space.current_id());
-                self.delete_a_space_view(id);
+            RealmAction::DeleteRealm => {
+                let path = self.realm.in_hand.view.take().unwrap_or_else(|| self.realm.realm.path.clone());
+                self.ask_before_deleting_a_realm(&path);
             }
-            SpaceAction::RenameNode => {
-                let Some(node) = self.space.chosen() else {
+            RealmAction::RenameNode => {
+                let Some(node) = self.realm.chosen() else {
                     self.message = Some("No node is chosen.".to_owned());
                     return;
                 };
-                let Some(found) = self.space.space.current().node(node).cloned() else { return };
+                let Some(found) = self.realm.realm.node(node).cloned() else { return };
+                // A note is called after its file, so renaming one renames the file. §5.5.
+                if found.kind() == Kind::Note {
+                    self.prompt = Some(crate::components::prompt_dialog::Prompt::new(
+                        "Rename Note",
+                        "What this note's file is called. Links to it elsewhere in the project follow it.",
+                        &self.name_of_a_node(&found),
+                        "Rename",
+                        crate::components::prompt_dialog::Purpose::RenameNote(node),
+                    ));
+                    return;
+                }
                 let name = match found.title.trim().is_empty() {
                     true => self.name_of_a_node(&found),
                     false => found.title.clone(),
@@ -2924,39 +2988,38 @@ impl UnluminousApp {
                     "What this node is called on its header. An empty name puts it back to being called after what it holds.",
                     &name,
                     "Rename",
-                    crate::components::prompt_dialog::Purpose::RenameSpaceNode(node),
+                    crate::components::prompt_dialog::Purpose::RenameRealmNode(node),
                 ));
             }
-            SpaceAction::CloseNode => match self.space.chosen() {
-                Some(node) => self.close_a_space_node(node),
+            RealmAction::CloseNode => match self.realm.chosen() {
+                Some(node) => self.close_a_realm_node(node),
                 None => self.message = Some("No node is chosen.".to_owned()),
             },
-            SpaceAction::ChooseFolder => self.choose_a_folder_for_a_node(),
-            SpaceAction::RestartNode => self.restart_a_space_node(false),
-            SpaceAction::ResumeSession => self.restart_a_space_node(true),
-            SpaceAction::StartWhatWasRunning => self.start_what_a_node_was_running(),
-            SpaceAction::Disconnect => {
-                let Some(edge) = self.space.in_hand.wire else { return };
-                self.space.space.disconnect(edge);
-                self.space.in_hand.wire = None;
+            RealmAction::ChooseFolder => self.choose_a_folder_for_a_node(),
+            RealmAction::RestartNode => self.restart_a_realm_node(false),
+            RealmAction::ResumeSession => self.restart_a_realm_node(true),
+            RealmAction::StartWhatWasRunning => self.start_what_a_node_was_running(),
+            RealmAction::Disconnect => {
+                let Some(edge) = self.realm.in_hand.wire else { return };
+                self.realm.realm.disconnect(edge);
+                self.realm.in_hand.wire = None;
             }
-            SpaceAction::CarryLines(on) => {
-                let Some(edge) = self.space.in_hand.wire else { return };
+            RealmAction::CarryLines(on) => {
+                let Some(edge) = self.realm.in_hand.wire else { return };
                 let carrying = if on { Pipe::Lines } else { Pipe::Off };
                 let ends = self
-                    .space
-                    .space
-                    .current()
+                    .realm
+                    .realm
                     .edges
                     .iter()
                     .find(|other| other.id == edge)
                     .map(|other| other.from);
-                match self.space.space.set_pipe(edge, carrying) {
+                match self.realm.realm.set_pipe(edge, carrying) {
                     Ok(()) => {
                         if let (Pipe::Lines, Some(from)) = (carrying, ends) {
                             // From here rather than from the beginning of the program's output, or
                             // turning a pipe on would empty one terminal's history into the other.
-                            self.space.live.follow_from_here(from);
+                            self.realm.live.follow_from_here(from);
                         }
                     }
                     Err(problem) => self.message = Some(problem),
@@ -2966,15 +3029,31 @@ impl UnluminousApp {
     }
 
     /// Put a node on the canvas and start whatever is behind it.
-    pub(crate) fn add_a_space_node(&mut self, kind: Kind, at: Pos2) -> NodeId {
+    /// Put a node of `kind` on the realm, asking first for what it holds when it holds a file: a name for a
+    /// note, and the file itself for a picture, a sound or a video. `task-2202`.
+    pub(crate) fn add_a_node_asking_what_it_holds(&mut self, kind: Kind, at: Pos2) {
+        if let Some(why) = self.realm.realm.read_only_because() {
+            self.message = Some(why.to_owned());
+            return;
+        }
+        match kind {
+            Kind::Note => self.ask_for_a_note(at),
+            Kind::Image | Kind::Audio | Kind::Video => self.ask_for_a_file_node(kind, at),
+            _ => {
+                self.add_a_realm_node(kind, at);
+            }
+        }
+    }
+
+    pub(crate) fn add_a_realm_node(&mut self, kind: Kind, at: Pos2) -> NodeId {
         let project = self.tree.root().to_path_buf();
-        let id = self.space.space.add_node(kind, at, Some(&project));
+        let id = self.realm.realm.add_node(kind, at, Some(&project));
         if kind == Kind::Terminal {
-            if let Err(problem) = self.start_a_space_terminal(id, false) {
+            if let Err(problem) = self.start_a_realm_terminal(id, false) {
                 self.message = Some(problem);
             }
         }
-        self.take_the_keyboard_for_the_space();
+        self.take_the_keyboard_for_the_realm();
         id
     }
 
@@ -2984,16 +3063,16 @@ impl UnluminousApp {
     /// inside a frame, which is what a native file dialog is on every platform and what the window already
     /// does for `Open File`.
     ///
-    /// What it then does is `space folder <node> root`, which already exists and already does the right
+    /// What it then does is `realm folder <node> root`, which already exists and already does the right
     /// thing: it writes the root, clears `expanded`, and **forgets** the live tree so it is built again
     /// from the node's own state on the next frame. So the pointer and the command line reach one
     /// function, which is `run_cli`'s rule, and no new state is invented. `task-1905`.
     fn choose_a_folder_for_a_node(&mut self) {
-        let Some(node) = self.space.chosen() else {
+        let Some(node) = self.realm.chosen() else {
             self.message = Some("No node is chosen.".to_owned());
             return;
         };
-        let Some(found) = self.space.space.current().node(node).cloned() else { return };
+        let Some(found) = self.realm.realm.node(node).cloned() else { return };
         let State::Folder(folder) = &found.state else {
             self.message = Some("That node is not a folder view.".to_owned());
             return;
@@ -3021,10 +3100,10 @@ impl UnluminousApp {
         self.point_a_folder_node_at(node, &chosen);
     }
 
-    /// Point a folder node at a folder. The one place that happens, so the dialog and `space folder root`
+    /// Point a folder node at a folder. The one place that happens, so the dialog and `realm folder root`
     /// cannot come apart.
     pub(crate) fn point_a_folder_node_at(&mut self, node: NodeId, root: &std::path::Path) {
-        self.space.space.change(node, |state| {
+        self.realm.realm.change(node, |state| {
             if let State::Folder(folder) = state {
                 folder.root = Some(root.to_path_buf());
                 folder.expanded.clear();
@@ -3032,35 +3111,7 @@ impl UnluminousApp {
         });
         // Forgotten rather than re-rooted, so the tree is built again from the node's own state on the
         // next frame — one place a node's tree comes from.
-        self.space.live.forget(node);
-    }
-
-    /// Throw a view away, stopping everything that was on it.
-    pub(crate) fn delete_a_space_view(&mut self, id: u64) {
-        if self.space.space.views().len() < 2 {
-            self.message = Some("A canvas always has one view.".to_owned());
-            return;
-        }
-        let Some(view) = self.space.space.view(id) else { return };
-        let nodes: Vec<NodeId> = view.nodes.iter().map(|node| node.id).collect();
-        // Every tab on every node, highest index first — see `close_a_space_node` for why all of them and
-        // why in that order.
-        let mut on_them: Vec<usize> =
-            nodes.iter().flat_map(|node| self.files.tabs_in_node(*node)).collect();
-        on_them.sort_unstable_by(|left, right| right.cmp(left));
-        for index in on_them {
-            self.close_tab(index);
-        }
-        for node in &nodes {
-            if let Some(tab) = self.space.live.browser(*node).map(|tab| tab.id) {
-                self.browser.close_tab(tab);
-            }
-        }
-        self.space.live.forget_all(&nodes);
-        self.space.space.delete_view(id);
-        // Deleting the view that was showing moves to another one, which has to be brought to life
-        // like any other view somebody chose.
-        self.bring_the_current_view_to_life();
+        self.realm.live.forget(node);
     }
 
     /// Start the chosen terminal node's program again.
@@ -3074,15 +3125,15 @@ impl UnluminousApp {
     ///
     /// **And an agent gets `--continue`.** The conversation cannot be *resumed* by id, because the id has to be
     /// given to Claude when it starts and by the time somebody typed `claude` it was already running without
-    /// one — see `services::space::launch::continues_a_conversation`. `--continue` is Claude's own answer to
+    /// one — see `services::realm::launch::continues_a_conversation`. `--continue` is Claude's own answer to
     /// *"the most recent conversation in this directory"*, which is a question it answers from its own records
     /// rather than one Unluminous answers from a file it wrote. `task-1907`.
     pub(crate) fn start_what_a_node_was_running(&mut self) {
-        let Some(node) = self.space.chosen() else {
+        let Some(node) = self.realm.chosen() else {
             self.message = Some("No node is chosen.".to_owned());
             return;
         };
-        let running = match self.space.space.current().node(node).map(|found| &found.state) {
+        let running = match self.realm.realm.node(node).map(|found| &found.state) {
             Some(State::Terminal(terminal)) => terminal.running.trim().to_owned(),
             _ => String::new(),
         };
@@ -3096,27 +3147,27 @@ impl UnluminousApp {
         // program that is not reading standard input leaves the line queued for whenever the shell comes back.
         // The offer is for a node that came back as a shell, so it is refused for one that did not.
         let at_a_prompt = self
-            .space
+            .realm
             .live
             .terminal(node)
             .and_then(unluminous_terminal::Session::foreground)
-            .is_none_or(|program| crate::services::space::launch::is_a_shell(&program));
+            .is_none_or(|program| crate::services::realm::launch::is_a_shell(&program));
         if !at_a_prompt {
             self.message = Some(format!("{running} is already running in this node."));
             return;
         }
         // A node whose terminal has gone is started first, so the program has a shell to be typed into.
-        if !self.space.live.has_a_terminal(node) {
-            if let Err(problem) = self.start_a_space_terminal(node, false) {
+        if !self.realm.live.has_a_terminal(node) {
+            if let Err(problem) = self.start_a_realm_terminal(node, false) {
                 self.message = Some(problem);
                 return;
             }
         }
-        let line = crate::services::space::launch::continues_a_conversation(&running);
+        let line = crate::services::realm::launch::continues_a_conversation(&running);
         // Remembered as something typed in, so its echo is not piped back out — the rule in
-        // `services::space::pipe`, which this needs exactly as much as `space send` does.
-        self.space.live.typed_into(node, &line);
-        if let Some(session) = self.space.live.terminal(node) {
+        // `services::realm::pipe`, which this needs exactly as much as `realm send` does.
+        self.realm.live.typed_into(node, &line);
+        if let Some(session) = self.realm.live.terminal(node) {
             session.send(format!("{line}\r").into_bytes());
         }
         // **The node goes on holding the program it has just been told to start.** Typing marks the node as
@@ -3128,7 +3179,7 @@ impl UnluminousApp {
         // Written here rather than waited for, because what is true is that this node was told to run this
         // program. The ordinary reading takes over from the next tick, and if the program failed to start the
         // tick after that clears it — which is the honest sequence rather than a sleep in a frame.
-        self.space.space.change(node, |state| {
+        self.realm.realm.change(node, |state| {
             if let State::Terminal(terminal) = state {
                 terminal.running = running.clone();
             }
@@ -3136,12 +3187,12 @@ impl UnluminousApp {
         self.message = Some(format!("Started {running} again."));
     }
 
-    fn restart_a_space_node(&mut self, resume: bool) {
-        let Some(node) = self.space.chosen() else {
+    fn restart_a_realm_node(&mut self, resume: bool) {
+        let Some(node) = self.realm.chosen() else {
             self.message = Some("No node is chosen.".to_owned());
             return;
         };
-        match self.start_a_space_terminal(node, resume) {
+        match self.start_a_realm_terminal(node, resume) {
             Ok(()) => self.message = Some("Started again.".to_owned()),
             Err(problem) => self.message = Some(problem),
         }
@@ -3150,41 +3201,40 @@ impl UnluminousApp {
     /// The world point in the middle of what is showing, which is where a node with no place of its
     /// own goes.
     pub(crate) fn middle_of_the_canvas(&self) -> Pos2 {
-        let body = self.space.body;
+        let body = self.realm.body;
         if body.width() < 2.0 {
             return Pos2::ZERO;
         }
-        let camera = self.space.space.current().camera;
+        let camera = self.realm.realm.camera;
         let middle = camera.to_world(body.min, body.center());
         // The top left corner rather than the middle, because that is what a node's place is.
         middle - Vec2::new(160.0, 120.0)
     }
 
-    /// What the strip of views asked for.
-    fn act_on_the_view_bar(&mut self, outcome: crate::components::space::BarOutcome) {
-        if let Some(id) = outcome.show {
-            self.space.space.show_view(id);
-            self.bring_the_current_view_to_life();
+    /// What the realm bar asked for.
+    fn act_on_the_view_bar(&mut self, outcome: crate::components::realm::BarOutcome) {
+        if let Some(path) = outcome.show {
+            let _ = self.open_a_realm(&path);
         }
         if outcome.add {
-            self.run_a_space_action(SpaceAction::NewView);
+            self.run_a_realm_action(RealmAction::NewRealm);
         }
         if let Some((at, id)) = outcome.menu {
-            self.space.in_hand.view = Some(id);
-            self.space.menu = Some((at, Menu::View));
+            self.realm.in_hand.view = Some(id);
+            self.realm.menu = Some((at, Menu::View));
         }
         // **About the middle of the pane**, because a button has no pointer — which is the same choice
         // `step_the_zoom_of` already makes for the keys. `task-1905`.
         if outcome.zoom != 0 {
-            let body = self.space.body;
+            let body = self.realm.body;
             let wanted = self.aimed_zoom() * 1.1_f32.powi(outcome.zoom);
             self.aim_the_zoom_at(wanted, body.center());
         }
         if outcome.manage {
-            self.run_a_space_action(SpaceAction::Manage);
+            self.run_a_realm_action(RealmAction::Manage);
         }
         if outcome.reset_zoom {
-            let body = self.space.body;
+            let body = self.realm.body;
             self.aim_the_zoom_at(1.0, body.center());
         }
     }
@@ -3198,11 +3248,11 @@ impl UnluminousApp {
     /// its own keys before anything else reads the frame. A terminal node reads none of them - its
     /// grid takes every key it is given, which is what a terminal is - so this is about a **folder**
     /// node's own cursor, and about `Escape`.
-    pub(crate) fn route_the_space_keys(
+    pub(crate) fn route_the_realm_keys(
         &mut self,
         ui: &egui::Ui,
     ) -> Option<crate::app::actions::Action> {
-        if !matches!(self.focus, Focus::Space) || !self.space.visible {
+        if !matches!(self.focus, Focus::Realm) || !self.realm.visible {
             return None;
         }
         if crate::app::a_modal_has_the_keyboard(ui.ctx())
@@ -3214,8 +3264,8 @@ impl UnluminousApp {
             self.focus = Focus::Editor;
             return None;
         }
-        let node = self.space.chosen()?;
-        let found = self.space.space.current().node(node)?.clone();
+        let node = self.realm.chosen()?;
+        let found = self.realm.realm.node(node)?.clone();
         if found.kind() != Kind::Folder {
             return None;
         }
@@ -3237,10 +3287,10 @@ impl UnluminousApp {
             egui::Key::ArrowRight => self.open_a_folder_nodes_row(node, true),
             egui::Key::ArrowLeft => self.open_a_folder_nodes_row(node, false),
             egui::Key::Enter => {
-                let path = self.space.live.tree_selection(node)?.to_path_buf();
+                let path = self.realm.live.tree_selection(node)?.to_path_buf();
                 match path.is_dir() {
                     true => {
-                        if let Some(tree) = self.space.live.tree_mut(node) {
+                        if let Some(tree) = self.realm.live.tree_mut(node) {
                             tree.toggle(&path);
                         }
                         self.remember_a_folder_nodes_open_folders(node);
@@ -3252,7 +3302,7 @@ impl UnluminousApp {
             }
             egui::Key::Delete => {
                 return self
-                    .space
+                    .realm
                     .live
                     .tree_selection(node)
                     .map(|path| crate::app::actions::Action::DeletePath(path.to_path_buf()));
@@ -3264,34 +3314,34 @@ impl UnluminousApp {
 
     /// Move a folder node's own cursor down or up its rows.
     fn step_a_folder_nodes_cursor(&mut self, node: NodeId, step: isize) {
-        let Some(tree) = self.space.live.tree(node) else { return };
+        let Some(tree) = self.realm.live.tree(node) else { return };
         let rows: Vec<std::path::PathBuf> =
             tree.rows().iter().map(|row| row.entry.path.clone()).collect();
         if rows.is_empty() {
             return;
         }
         let at = self
-            .space
+            .realm
             .live
             .tree_selection(node)
             .and_then(|path| rows.iter().position(|row| row == path))
             .map(|at| (at as isize + step).clamp(0, rows.len() as isize - 1) as usize)
             .unwrap_or(if step > 0 { 0 } else { rows.len() - 1 });
         let chosen = rows[at].clone();
-        self.space.live.select_in_tree(node, Some(chosen));
+        self.realm.live.select_in_tree(node, Some(chosen));
     }
 
     /// `Right` opens the folder the cursor is on; `Left` shuts it, or steps to the folder above.
     fn open_a_folder_nodes_row(&mut self, node: NodeId, open: bool) {
-        let Some(path) = self.space.live.tree_selection(node).map(std::path::Path::to_path_buf)
+        let Some(path) = self.realm.live.tree_selection(node).map(std::path::Path::to_path_buf)
         else {
             return;
         };
-        let Some(tree) = self.space.live.tree(node) else { return };
+        let Some(tree) = self.realm.live.tree(node) else { return };
         let root = tree.root().to_path_buf();
         let showing = tree.find(&path).map(|entry| entry.expanded).unwrap_or(false);
         if path.is_dir() && showing != open {
-            if let Some(tree) = self.space.live.tree_mut(node) {
+            if let Some(tree) = self.realm.live.tree_mut(node) {
                 tree.toggle(&path);
             }
             self.remember_a_folder_nodes_open_folders(node);
@@ -3300,43 +3350,48 @@ impl UnluminousApp {
         if !open {
             if let Some(folder) = path.parent() {
                 if folder.starts_with(&root) && folder != root {
-                    self.space.live.select_in_tree(node, Some(folder.to_path_buf()));
+                    self.realm.live.select_in_tree(node, Some(folder.to_path_buf()));
                 }
             }
         }
     }
 
-    /// The rows the space manager draws: every view of this project's canvas.
+    /// The rows the realm manager draws: every realm file in this project.
     ///
     /// Built here rather than in the component, because a component draws and does not reach into the
-    /// window's state — the rule `explorer::Decoration` states and `manager::Row` follows.
-    fn rows_for_the_space_manager(&self) -> Vec<crate::components::space::manager::Row> {
-        let current = self.space.space.current_id();
-        self.space
-            .space
-            .views()
+    /// window's state — the rule `explorer::Decoration` states and `manager::Row` follows. The open realm is
+    /// counted from memory and every other one from the counts taken when the list was walked.
+    fn rows_for_the_realm_manager(&self) -> Vec<crate::components::realm::manager::Row> {
+        self.realm
+            .files
             .iter()
-            .map(|view| crate::components::space::manager::Row {
-                id: view.id,
-                name: view.name.clone(),
-                nodes: view.nodes.len(),
-                connections: view.edges.len(),
-                showing: view.id == current,
+            .map(|path| {
+                let showing = *path == self.realm.realm.path;
+                let (nodes, connections) = match showing {
+                    true => (self.realm.realm.nodes.len(), self.realm.realm.edges.len()),
+                    false => self.realm.counts.get(path).copied().unwrap_or((0, 0)),
+                };
+                crate::components::realm::manager::Row {
+                    id: path.clone(),
+                    name: crate::services::realm::title_of(path),
+                    nodes,
+                    connections,
+                    showing,
+                }
             })
             .collect()
     }
 
-    /// Draw the space manager, when it is open.
-    pub(crate) fn show_the_space_manager(&mut self, ui: &mut egui::Ui) {
-        let Some(mut state) = self.space.managing.take() else { return };
-        let rows = self.rows_for_the_space_manager();
-        let outcome = crate::components::space::manager::show(ui.ctx(), &mut state, &rows);
-        if let Some(view) = outcome.show {
-            self.space.space.show_view(view);
-            self.bring_the_current_view_to_life();
+    /// Draw the realm manager, when it is open.
+    pub(crate) fn show_the_realm_manager(&mut self, ui: &mut egui::Ui) {
+        let Some(mut state) = self.realm.managing.take() else { return };
+        let rows = self.rows_for_the_realm_manager();
+        let outcome = crate::components::realm::manager::show(ui.ctx(), &mut state, &rows);
+        if let Some(path) = outcome.show {
+            let _ = self.open_a_realm(&path);
         }
         if outcome.add {
-            self.run_a_space_action(SpaceAction::NewView);
+            self.run_a_realm_action(RealmAction::NewRealm);
         }
         // **Another project is another window**, which is §3.2's answer: a canvas names its own project's
         // files, so opening one here would be a canvas of nodes pointing somewhere else. `Action::OpenFolder`
@@ -3346,46 +3401,46 @@ impl UnluminousApp {
             self.run_action(crate::app::actions::Action::OpenFolder, &ctx);
         }
         if let Some((at, view)) = outcome.menu {
-            self.space.in_hand.view = Some(view);
-            self.space.menu = Some((at, Menu::View));
+            self.realm.in_hand.view = Some(view);
+            self.realm.menu = Some((at, Menu::View));
         }
         if !outcome.closed {
-            self.space.managing = Some(state);
+            self.realm.managing = Some(state);
         }
     }
 
     /// Draw the add modal, when it is open.
-    pub(crate) fn show_the_space_modal(&mut self, ui: &mut egui::Ui) {
-        let Some(mut state) = self.space.adding.take() else { return };
+    pub(crate) fn show_the_realm_modal(&mut self, ui: &mut egui::Ui) {
+        let Some(mut state) = self.realm.adding.take() else { return };
         let outcome = add_modal::show(ui.ctx(), &mut state);
         if let Some(kind) = outcome.chose {
-            self.add_a_space_node(kind, state.at);
+            self.add_a_node_asking_what_it_holds(kind, state.at);
         }
         if !outcome.closed {
-            self.space.adding = Some(state);
+            self.realm.adding = Some(state);
         }
     }
 
     /// Draw whichever of the canvas's three right click menus is open, and answer what was chosen.
-    pub(crate) fn show_the_space_menu(
+    pub(crate) fn show_the_realm_menu(
         &mut self,
         ui: &mut egui::Ui,
     ) -> Option<crate::app::actions::Action> {
-        let (at, which) = self.space.menu?;
+        let (at, which) = self.realm.menu?;
         let state = self.menu_state();
         let entries = match which {
-            Menu::Node => crate::app::actions::space_node_menu(&state),
-            Menu::Wire => crate::app::actions::space_wire_menu(&state),
-            Menu::View => crate::app::actions::space_view_menu(&state),
+            Menu::Node => crate::app::actions::realm_node_menu(&state),
+            Menu::Wire => crate::app::actions::realm_wire_menu(&state),
+            Menu::View => crate::app::actions::realm_view_menu(&state),
         };
         let name = match which {
-            Menu::Node => "space-node",
-            Menu::Wire => "space-wire",
-            Menu::View => "space-view",
+            Menu::Node => "realm-node",
+            Menu::Wire => "realm-wire",
+            Menu::View => "realm-view",
         };
         let outcome = crate::components::context_menu::show(ui, name, at, &entries);
         if outcome.close {
-            self.space.menu = None;
+            self.realm.menu = None;
         }
         outcome.chosen
     }
@@ -3393,21 +3448,25 @@ impl UnluminousApp {
 
 /// The command that drives a node of `kind`, written out with the ids filled in.
 ///
-/// **Naming the command is the point of `space here`.** `task-1695` measured a model handed a node id and
-/// left to work out which of twenty-three `space` verbs applies to a browser: it reached for `bash`. One
+/// **Naming the command is the point of `realm here`.** `task-1695` measured a model handed a node id and
+/// left to work out which of twenty-three `realm` verbs applies to a browser: it reached for `bash`. One
 /// handed the command line writes the command line. So this is a worked example rather than a verb name,
 /// and `--from` is in it, because a command from a node that leaves it out is a command that reaches
 /// everything and teaches the wrong habit.
 pub(crate) fn drives(kind: Kind, node: NodeId, from: NodeId) -> String {
     match kind {
-        Kind::Terminal => format!("space send {node} <text> --from {from}"),
-        Kind::Browser => format!("space browser {node} go --url <address> --from {from}"),
-        Kind::Folder => format!("space folder {node} rows --from {from}"),
-        Kind::Editor => format!("space editor {node} <path> --from {from}"),
+        Kind::Terminal => format!("realm send {node} <text> --from {from}"),
+        Kind::Browser => format!("realm browser {node} go --url <address> --from {from}"),
+        Kind::Folder => format!("realm folder {node} rows --from {from}"),
+        Kind::Editor => format!("realm editor {node} <path> --from {from}"),
         // Neither takes a command of its own: what an agent does with a chat node beside it is read it,
         // and the board answers to `plugins run agent-tasks`, which is not about the canvas at all.
-        Kind::Chat => format!("space list --view current  # node {node} is an agent, from {from}"),
+        Kind::Chat => format!("realm view --json  # node {node} is an agent, from {from}"),
         Kind::Tasks => format!("plugins run agent-tasks board  # node {node}, from {from}"),
+        Kind::Image => format!("realm view --json  # node {node} shows a picture, from {from}"),
+        Kind::Audio | Kind::Video => format!("realm play {node} --from {from}"),
+        Kind::Note => format!("realm note view {node} preview --from {from}"),
+        Kind::Unknown => format!("realm info  # node {node} is a kind this Unluminous does not know"),
     }
 }
 
@@ -3437,7 +3496,7 @@ pub(crate) fn set_node_zoom(state: &mut State, zoom: f32) {
 
 /// Where a tab that lives on a node is put when its node has gone.
 ///
-/// Nothing calls this today: [`UnluminousApp::close_a_space_node`] closes the tab, which writes it
+/// Nothing calls this today: [`UnluminousApp::close_a_realm_node`] closes the tab, which writes it
 /// first. It is here as the answer a later change would otherwise have to invent — a tab left with a
 /// `Home::Node` naming a node that is not there.
 pub fn rehome(file: &mut OpenFile) {
@@ -3453,31 +3512,25 @@ mod tests {
     /// A project of its own for each test, so `UnluminousApp::new` has somewhere real to root a
     /// canvas in — no window, no graphics device, just the state a frame would otherwise hold.
     fn a_window(name: &str) -> UnluminousApp {
-        let folder = std::env::temp_dir().join(format!("unluminous-space-test-{name}"));
+        let folder = std::env::temp_dir().join(format!("unluminous-realm-test-{name}"));
         let _ = std::fs::create_dir_all(&folder);
         UnluminousApp::new(&folder)
     }
 
     #[test]
     fn what_an_agent_is_told_to_run_a_command_with_names_the_kind_and_both_nodes() {
-        assert_eq!(drives(Kind::Terminal, 2, 1), "space send 2 <text> --from 1");
-        assert_eq!(drives(Kind::Browser, 2, 1), "space browser 2 go --url <address> --from 1");
-        assert_eq!(drives(Kind::Folder, 2, 1), "space folder 2 rows --from 1");
-        assert_eq!(drives(Kind::Editor, 2, 1), "space editor 2 <path> --from 1");
+        assert_eq!(drives(Kind::Terminal, 2, 1), "realm send 2 <text> --from 1");
+        assert_eq!(drives(Kind::Browser, 2, 1), "realm browser 2 go --url <address> --from 1");
+        assert_eq!(drives(Kind::Folder, 2, 1), "realm folder 2 rows --from 1");
+        assert_eq!(drives(Kind::Editor, 2, 1), "realm editor 2 <path> --from 1");
         // Neither a chat node nor a tasks node takes a command of its own — reading the first and
         // asking the board for the second are the whole of it.
-        assert!(drives(Kind::Chat, 2, 1).contains("space list"));
+        assert!(drives(Kind::Chat, 2, 1).contains("realm view"));
         assert!(drives(Kind::Tasks, 2, 1).contains("plugins run agent-tasks"));
     }
 
     fn a_node(kind: Kind) -> Node {
-        Node {
-            id: 1,
-            at: Pos2::ZERO,
-            size: kind.opens_at(),
-            title: String::new(),
-            state: State::new(kind, None),
-        }
+        Node::new(1, kind, Pos2::ZERO, None)
     }
 
     #[test]
@@ -3519,7 +3572,7 @@ mod tests {
     #[test]
     fn a_wire_refuses_to_connect_a_node_to_itself() {
         let mut app = a_window("self-wire");
-        let node = app.new_detached_space_node(Kind::Terminal, Pos2::ZERO);
+        let node = app.new_detached_realm_node(Kind::Terminal, Pos2::ZERO);
         app.land_the_wire(node, node);
         assert_eq!(app.message.as_deref(), Some("A node cannot be wired to itself."));
     }
@@ -3527,8 +3580,8 @@ mod tests {
     #[test]
     fn a_wire_between_two_real_nodes_connects_them_once() {
         let mut app = a_window("wire-once");
-        let terminal = app.new_detached_space_node(Kind::Terminal, Pos2::new(0.0, 0.0));
-        let editor = app.new_detached_space_node(Kind::Editor, Pos2::new(400.0, 0.0));
+        let terminal = app.new_detached_realm_node(Kind::Terminal, Pos2::new(0.0, 0.0));
+        let editor = app.new_detached_realm_node(Kind::Editor, Pos2::new(400.0, 0.0));
 
         app.land_the_wire(editor, terminal);
         assert_eq!(app.message.as_deref(), Some("Connected."));
@@ -3541,13 +3594,13 @@ mod tests {
     #[test]
     fn a_wire_to_a_node_that_is_not_there_says_so() {
         let mut app = a_window("wire-nowhere");
-        let terminal = app.new_detached_space_node(Kind::Terminal, Pos2::ZERO);
+        let terminal = app.new_detached_realm_node(Kind::Terminal, Pos2::ZERO);
         app.land_the_wire(terminal, 999_999);
         assert_eq!(app.message.as_deref(), Some("There is no node 999999."));
     }
 
     fn terminal_running(app: &UnluminousApp, node: NodeId) -> String {
-        match app.space.space.current().node(node).map(|node| &node.state) {
+        match app.realm.realm.node(node).map(|node| &node.state) {
             Some(State::Terminal(terminal)) => terminal.running.clone(),
             _ => String::new(),
         }
@@ -3560,9 +3613,9 @@ mod tests {
     #[test]
     fn a_restored_programs_name_survives_until_the_node_is_used_and_then_clears() {
         let mut app = a_window("terminal-restore-protection");
-        let node = app.new_detached_space_node(Kind::Terminal, Pos2::ZERO);
+        let node = app.new_detached_realm_node(Kind::Terminal, Pos2::ZERO);
         // What the canvas file said was running before the node had been read even once.
-        app.space.space.change(node, |state| {
+        app.realm.realm.change(node, |state| {
             if let State::Terminal(terminal) = state {
                 terminal.running = "sleep".to_owned();
             }
@@ -3575,7 +3628,7 @@ mod tests {
             "an untouched node keeps what the file said, even though this session reports nothing"
         );
 
-        app.space.live.typed_into(node, "anything");
+        app.realm.live.typed_into(node, "anything");
         app.note_what_a_node_is_running(node);
         assert_eq!(
             terminal_running(&app, node),
@@ -3589,15 +3642,15 @@ mod tests {
     #[test]
     fn a_browser_nodes_written_down_address_follows_where_the_page_really_is() {
         let mut app = a_window("browser-follows-the-page");
-        let node = app.new_detached_space_node(Kind::Browser, Pos2::ZERO);
+        let node = app.new_detached_realm_node(Kind::Browser, Pos2::ZERO);
         let tab = app
-            .new_detached_space_page(node, "https://example.com/")
+            .new_detached_realm_page(node, "https://example.com/")
             .expect("a detached tab needs no native view");
         app.arrived_at_for_tests(tab, "https://example.com/moved".to_owned());
 
         app.note_where_a_node_is_browsing(node);
 
-        let held = match app.space.space.current().node(node).map(|node| &node.state) {
+        let held = match app.realm.realm.node(node).map(|node| &node.state) {
             Some(State::Browser(browser)) => browser.url.clone(),
             _ => String::new(),
         };

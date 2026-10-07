@@ -95,6 +95,9 @@ pub struct FileTree {
     exclude: String,
     /// The last error from reading a directory, so the window can say why a folder looks empty.
     pub last_error: Option<String>,
+    /// Folders whose names start with a dot that are listed anyway, because a switched on plugin's
+    /// `explorer.shows` named them. `task-2202`: `.realm-files`. Every other dot entry stays hidden.
+    shows: Vec<String>,
     /// When each folder the search walk went into was last written to, as the disk said at the moment
     /// it was read.
     ///
@@ -117,7 +120,7 @@ pub struct FileTree {
     /// decoration for every visible row before it draws -- a plugin's icon and git's colour -- and
     /// built the whole map every frame, on a project where nothing had changed since the last one.
     /// A counter is the cheapest honest answer to "are these the same rows", and it is the shape
-    /// `Document::revision` and `Space::is_dirty` already use.
+    /// `Document::revision` and `Realm::is_dirty` already use.
     revision: u64,
 }
 
@@ -134,6 +137,7 @@ impl FileTree {
             ignores: Ignores::default(),
             exclude: String::new(),
             last_error: None,
+            shows: Vec::new(),
             folder_times: Vec::new(),
             searched_folders: Vec::new(),
             revision: 0,
@@ -158,6 +162,16 @@ impl FileTree {
         self.reload();
     }
 
+    /// The dot folders listed anyway, from the switched on plugins' `explorer.shows`. Reloads at once when
+    /// the list changed, which is what switching the Realm plugin on or off does.
+    pub fn set_shows(&mut self, shows: Vec<String>) {
+        if self.shows == shows {
+            return;
+        }
+        self.shows = shows;
+        self.reload();
+    }
+
     /// What this project leaves out of the searchable list.
     pub fn ignores(&self) -> &Ignores {
         &self.ignores
@@ -172,7 +186,7 @@ impl FileTree {
     pub fn reload(&mut self) {
         self.revision += 1;
         let expanded = self.expanded_paths();
-        match read_directory(&self.root) {
+        match read_directory(&self.root, &self.shows) {
             Ok(entries) => {
                 self.entries = entries;
                 self.last_error = None;
@@ -191,7 +205,7 @@ impl FileTree {
         // when a subfolder of it is the root.
         let repository = crate::services::ignore::repository_root(&self.root);
         self.ignores = Ignores::read(&repository, &self.exclude);
-        let walked = walk_files(&self.root, SEARCH_DEPTH, &self.ignores);
+        let walked = walk_files(&self.root, SEARCH_DEPTH, &self.ignores, &self.shows);
         self.all_files = walked.files;
         self.openable_files = walked.openable;
         self.searched_folders = walked.folders;
@@ -321,13 +335,14 @@ impl FileTree {
     /// Open or close a directory. Opening one reads its children if they have not been read yet.
     pub fn toggle(&mut self, path: &Path) {
         let mut error = None;
+        let shows = self.shows.clone();
         Self::visit(&mut self.entries, path, &mut |entry| {
             if !entry.is_directory {
                 return;
             }
             entry.expanded = !entry.expanded;
             if entry.expanded && entry.children.is_none() {
-                match read_directory(&entry.path) {
+                match read_directory(&entry.path, &shows) {
                     Ok(children) => entry.children = Some(children),
                     Err(problem) => {
                         entry.children = Some(Vec::new());
@@ -458,13 +473,20 @@ struct Walked {
 ///
 /// This is a separate walk from the tree itself because the tree only reads a folder when it is opened,
 /// and the filter and the file count have to know about files the user has not gone looking for yet.
-fn walk_files(root: &Path, depth: usize, ignores: &Ignores) -> Walked {
+fn walk_files(root: &Path, depth: usize, ignores: &Ignores, shows: &[String]) -> Walked {
     let mut out = Walked::default();
-    fn walk(root: &Path, directory: &Path, remaining: usize, ignores: &Ignores, out: &mut Walked) {
+    fn walk(
+        root: &Path,
+        directory: &Path,
+        remaining: usize,
+        ignores: &Ignores,
+        shows: &[String],
+        out: &mut Walked,
+    ) {
         if remaining == 0 || out.files.len() >= SEARCH_LIMIT * 4 {
             return;
         }
-        let Ok(entries) = read_directory(directory) else {
+        let Ok(entries) = read_directory(directory, shows) else {
             return;
         };
         // Recorded after the read succeeded, so a folder that cannot be read is not one the watch will
@@ -483,7 +505,7 @@ fn walk_files(root: &Path, depth: usize, ignores: &Ignores) -> Walked {
                 if !relative.is_empty() && ignores.skips_folder(&relative, &entry.name) {
                     continue;
                 }
-                walk(root, &entry.path, remaining - 1, ignores, out);
+                walk(root, &entry.path, remaining - 1, ignores, shows, out);
             } else if entry.refusal != Some(Refusal::NotAFile) {
                 // Regular files only. A device, a pipe or a socket is drawn in the explorer because the
                 // panel is a picture of the folder, and it is not a file anybody searches for by name.
@@ -497,7 +519,7 @@ fn walk_files(root: &Path, depth: usize, ignores: &Ignores) -> Walked {
             }
         }
     }
-    walk(root, root, depth, ignores, &mut out);
+    walk(root, root, depth, ignores, shows, &mut out);
     out
 }
 
@@ -522,14 +544,16 @@ fn walk_files(root: &Path, depth: usize, ignores: &Ignores) -> Walked {
 ///
 /// `DirEntry::metadata` does not follow symlinks, which is exactly what `DirEntry::file_type` did not do
 /// either, so a link to a folder is drawn as an entry rather than opened out, as it always was.
-fn read_directory(path: &Path) -> std::io::Result<Vec<Entry>> {
+fn read_directory(path: &Path, shows: &[String]) -> std::io::Result<Vec<Entry>> {
     let mut directories = Vec::new();
     let mut files = Vec::new();
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') {
+        // Every dot entry is hidden, `.git` and `.unluminous` among them, apart from a folder a switched on
+        // plugin's `explorer.shows` names.
+        if name.starts_with('.') && !shows.iter().any(|shown| *shown == name) {
             continue;
         }
         // A child whose metadata cannot be read at all is listed as something that is not a file, which is

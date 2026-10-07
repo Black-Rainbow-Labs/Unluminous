@@ -1,6 +1,6 @@
 //! What program is running in a terminal right now, as opposed to what it was started with.
 //!
-//! **The question exists because those are different things.** A terminal node on the Base of Infinite Space
+//! **The question exists because those are different things.** A terminal node on the Realm
 //! records the command it was *given*, and what a person does is add a plain terminal node and then type
 //! `claude` into the shell — so a canvas that knew only the command came back as a shell whatever had been
 //! running in it. `task-1907` reports that as *"if i just have a view with a terminal with claude-code open,
@@ -432,7 +432,7 @@ fn argv_zero(pid: i32) -> Option<String> {
 ///   and a walk that did not know it would report every restored node as running `unluminous-cli`.
 ///
 /// A walk that finds only shells answers with the last of them, which is a node sitting at a prompt.
-/// `services::space::launch::is_a_shell` is what turns that into nothing on the other side, so the two
+/// `services::realm::launch::is_a_shell` is what turns that into nothing on the other side, so the two
 /// platforms are filtered by one rule rather than two.
 ///
 /// One snapshot of the process table serves the whole walk, which matters because this is asked of every
@@ -478,7 +478,7 @@ fn is_the_shim(named: &str) -> bool {
 
 /// Whether a program name is a shell, which is a reason to keep walking rather than an answer.
 ///
-/// **The same list `services::space::launch::is_a_shell` holds, for a different question.** That one decides
+/// **The same list `services::realm::launch::is_a_shell` holds, for a different question.** That one decides
 /// whether what a node is running is worth writing down; this one decides where to stop walking. It is a few
 /// words rather than a dependency, because this crate is below the one that owns the other, and a name missing
 /// from here costs a walk that stops one level early rather than a wrong answer.
@@ -678,7 +678,7 @@ mod tests {
 
     /// A process with nothing under it answers with nothing, which is what a shell at a prompt is.
     ///
-    /// `services::space::launch::is_a_shell` is what turns a shell's own name into nothing on the other side
+    /// `services::realm::launch::is_a_shell` is what turns a shell's own name into nothing on the other side
     /// of this; what matters here is that a leaf is a leaf rather than an error.
     #[cfg(windows)]
     #[test]

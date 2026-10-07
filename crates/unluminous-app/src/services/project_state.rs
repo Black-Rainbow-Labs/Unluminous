@@ -71,7 +71,7 @@ const OPEN_LIMIT: usize = 60;
 /// The same four things a canvas terminal node has recorded since `task-1912`, said about a tab: where the
 /// shell was, what was running in it, which conversation an agent was on, and the name a person gave it.
 /// The screen is not here — it is kilobytes of escape sequences and lives in a file of its own, beside the
-/// nodes' own, which is `services::space::store::save_a_screen`'s rule about the same bytes.
+/// nodes' own, which is `services::realm::store::save_a_screen`'s rule about the same bytes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RememberedTerminal {
     /// The name a person typed, empty for a tab that was never renamed.
@@ -132,12 +132,17 @@ pub struct ProjectState {
     pub editor_visible: bool,
     /// True when the terminal tile was showing.
     pub terminal_visible: bool,
-    /// True when the Base of Infinite Space was showing - `task-1904`.
+    /// True when the Realm was showing - `task-1904`.
     ///
     /// False for a file that does not mention it, which is every file written before this: a canvas
     /// nobody has opened is one nobody asked for, and opening a project into one would be the window
     /// deciding something it was never told.
-    pub space_visible: bool,
+    pub realm_visible: bool,
+    /// Which realm the panel was on, relative to the project with `/` - `task-2202`. `None` before
+    /// any was opened, and then the first realm file in the project is shown.
+    pub realm_current: Option<PathBuf>,
+    /// Whether `space.conf` has been turned into realm files, so the import happens once a project.
+    pub realm_imported: bool,
     /// How many terminal tabs there were. The shells themselves cannot be brought back — what a
     /// program was doing when the window closed is gone — so what is restored is the same number of
     /// fresh shells in the project's own folder, which is what a person means by "my terminals were
@@ -252,9 +257,14 @@ pub fn load(root: &Path) -> ProjectState {
     if let Some(on) = values.flag("terminal.visible") {
         state.terminal_visible = on;
     }
-    if let Some(on) = values.flag("space.visible") {
-        state.space_visible = on;
+    // `space.visible` is the name a project written before `task-2202` gave it.
+    if let Some(on) = values.flag("realm.visible").or_else(|| values.flag("space.visible")) {
+        state.realm_visible = on;
     }
+    if let Some(current) = values.text("realm.current").filter(|current| !current.trim().is_empty()) {
+        state.realm_current = Some(PathBuf::from(current.trim()));
+    }
+    state.realm_imported = values.flag("realm.imported").unwrap_or(false);
     if let Some(on) = values.flag("run.visible") {
         state.run_visible = on;
     }
@@ -330,7 +340,13 @@ pub fn save(root: &Path, state: &ProjectState) {
     values.set("explorer.visible", flag(state.explorer_visible));
     values.set("editor.visible", flag(state.editor_visible));
     values.set("terminal.visible", flag(state.terminal_visible));
-    values.set("space.visible", flag(state.space_visible));
+    values.set("realm.visible", flag(state.realm_visible));
+    if let Some(current) = &state.realm_current {
+        values.set("realm.current", current.display().to_string().replace('\\', "/"));
+    }
+    if state.realm_imported {
+        values.set("realm.imported", "true");
+    }
     values.set("terminal.tabs", state.terminal_tabs.to_string());
 
     if let Some(place) = state.window.filter(WindowPlace::is_sensible) {
@@ -472,7 +488,7 @@ fn read_terminals(root: &Path, text: &str) -> Vec<RememberedTerminal> {
         let folder = at("folder");
         let empty = name.is_empty() && folder.is_empty();
         // A missing block ends the list rather than leaving a hole in it, which is the rule
-        // `space::store` keeps about a numbered list: the numbers are written by this file and are
+        // `realm::store` keeps about a numbered list: the numbers are written by this file and are
         // contiguous, so the first gap is the end.
         if empty && values.text(&format!("terminal.{index}.name")).is_none() {
             break;
@@ -707,7 +723,9 @@ mod tests {
             expanded_folders: vec![root.join("chapters")],
             explorer_visible: false,
             editor_visible: true,
-            space_visible: true,
+            realm_visible: true,
+            realm_current: Some(PathBuf::from(".realm-files/plan.realm")),
+            realm_imported: true,
             terminal_visible: true,
             terminal_tabs: 2,
             terminal_tab_names: vec!["build".to_owned(), String::new()],

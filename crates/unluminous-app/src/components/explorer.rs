@@ -184,7 +184,7 @@ pub struct ExplorerOutcome {
     /// A row is in the air: what it is, where the pointer is, and whether this is the frame it landed on.
     ///
     /// **Reported as well as settled here, because a row can be dropped somewhere this component has never
-    /// heard of.** `task-1914` asks that a file dragged out of the explorer onto the Base of Infinite Space
+    /// heard of.** `task-1914` asks that a file dragged out of the explorer onto the Realm
     /// open there — on an existing File Editor node as a new tab, or on the empty canvas as a node of its
     /// own — and neither is a folder this list could name. So the same split `task-1673` gave the tab drag:
     /// the list says what is being carried and where the pointer is, and `UnluminousApp::settle_the_file_drag`
@@ -458,7 +458,7 @@ pub fn show(
     let mut list = ui.new_child(egui::UiBuilder::new().max_rect(list_rect));
     // **Intersected, never replaced.** `Ui::set_clip_rect` is an assignment, so writing `list_rect`
     // threw away whatever clip this component was given — and in a folder node on the canvas that clip
-    // is the one `components::space::clip_for_nodes` worked out to keep a node's contents off the
+    // is the one `components::realm::clip_for_nodes` worked out to keep a node's contents off the
     // window's own rail and resize grips. The rows were the only part of the explorer that escaped,
     // because everything else here paints through `ui.painter_at`, which intersects. `task-1905`; it is
     // the form `components::terminal_panel::grid` already writes, which is why a terminal node never
@@ -1127,7 +1127,7 @@ mod tests {
     /// `task-1905` is the report — *"folder view node is going over the top of the left bar with icons,
     /// but terminal node isn't"* — and the cause was one call: `Ui::set_clip_rect` **replaces**, so
     /// writing the list's own rectangle threw away the clip a folder node had been given, which is the
-    /// one `components::space::clip_for_nodes` worked out to keep a node's contents off the window's own
+    /// one `components::realm::clip_for_nodes` worked out to keep a node's contents off the window's own
     /// rail and resize grips. Everything else in this file paints through `ui.painter_at`, which
     /// intersects, so the rows were the only part that escaped.
     ///

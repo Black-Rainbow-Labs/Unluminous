@@ -17,6 +17,8 @@ impl UnluminousApp {
     /// The released binary calls this and the tests do not, so a test neither reads nor writes the settings
     /// of the person running it.
     pub fn load_settings(&mut self) {
+        // The released binary is the one window whose sound nodes make sound. `task-2202`.
+        self.realm.live.real_players = true;
         self.use_store(Store::open());
     }
 

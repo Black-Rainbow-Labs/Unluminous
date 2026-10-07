@@ -1685,40 +1685,118 @@ pub fn table(painter: &egui::Painter, centre: Pos2, color: Color32) {
     );
 }
 
-/// Two nodes with a wire between them, which is what the Base of Infinite Space is - `task-1904`.
+/// A ring with a hub and four nodes on spokes, which is the Realm's mark - `task-2202`.
 ///
-/// Drawn rather than lettered, as every mark in Unluminous is. Two rounded rectangles at opposite
-/// corners and a curve between them, which is the picture the ticket's own capture is of: what a
-/// person recognises about a node graph is the wire, not the boxes.
-pub fn space(painter: &egui::Painter, centre: Pos2, color: Color32) {
-    let stroke = Stroke::new(1.2, color);
-    let left =
-        Rect::from_min_size(Pos2::new(centre.x - 7.0, centre.y - 6.0), egui::Vec2::new(6.0, 5.0));
-    let right =
-        Rect::from_min_size(Pos2::new(centre.x + 1.0, centre.y + 1.0), egui::Vec2::new(6.0, 5.0));
-    painter.rect_stroke(left, CornerRadius::same(1), stroke, egui::StrokeKind::Inside);
-    painter.rect_stroke(right, CornerRadius::same(1), stroke, egui::StrokeKind::Inside);
-    // The wire: out of the right hand edge of one and into the left hand edge of the other, with the
-    // horizontal handles every wire on the canvas is drawn with.
-    let from = Pos2::new(left.right(), left.center().y);
-    let to = Pos2::new(right.left(), right.center().y);
-    let steps = 10;
-    let mut last = from;
-    for step in 1..=steps {
-        let t = step as f32 / steps as f32;
-        let u = 1.0 - t;
-        let x = u * u * u * from.x
-            + 3.0 * u * u * t * (from.x + 4.0)
-            + 3.0 * u * t * t * (to.x - 4.0)
-            + t * t * t * to.x;
-        let y = u * u * u * from.y
-            + 3.0 * u * u * t * from.y
-            + 3.0 * u * t * t * to.y
-            + t * t * t * to.y;
-        let at = Pos2::new(x, y);
-        painter.line_segment([last, at], stroke);
-        last = at;
+/// Drawn from `realm-icon.svg`, the shape the plugin's own picture was made from (`plugins/realm/icon.md`),
+/// in one colour so it follows the window's colours the way every other mark on the rail does. The
+/// numbers are that drawing's, which is 128 units across, scaled to fourteen points.
+pub fn realm(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let unit = 14.0 / 128.0;
+    painter.circle_stroke(centre, 56.0 * unit, Stroke::new(1.15, color));
+    let spoke = Stroke::new(1.0, color);
+    for (dx, dy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+        let end = Pos2::new(centre.x + dx * 26.0 * unit, centre.y + dy * 26.0 * unit);
+        painter.line_segment([centre, end], spoke);
+        painter.circle_filled(end, 11.0 * unit + 0.1, color);
     }
+    painter.circle_filled(centre, 15.0 * unit + 0.1, color);
+}
+
+/// A sound: a speaker with two waves in front of it, for an audio node - `task-2202`.
+pub fn audio(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.2, color);
+    let left = centre.x - 6.0;
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(left, centre.y - 2.0),
+            Pos2::new(left + 2.6, centre.y - 2.0),
+            Pos2::new(left + 5.6, centre.y - 5.0),
+            Pos2::new(left + 5.6, centre.y + 5.0),
+            Pos2::new(left + 2.6, centre.y + 2.0),
+            Pos2::new(left, centre.y + 2.0),
+        ],
+        color,
+        Stroke::NONE,
+    ));
+    for radius in [3.2_f32, 6.0] {
+        let steps = 8;
+        let mut last = None;
+        for step in 0..=steps {
+            let angle = -0.9 + 1.8 * step as f32 / steps as f32;
+            let at = Pos2::new(left + 5.0 + radius * angle.cos(), centre.y + radius * angle.sin());
+            if let Some(from) = last {
+                painter.line_segment([from, at], stroke);
+            }
+            last = Some(at);
+        }
+    }
+}
+
+/// A photograph: a frame with two peaks and a sun, for a picture node - `task-2202`.
+///
+/// Not [`image`], which is what a browser node already wears, so a picture and a web page on one canvas
+/// can be told apart by their marks.
+pub fn photo(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let frame = Rect::from_center_size(centre, egui::Vec2::new(13.0, 11.0));
+    painter.rect_stroke(frame, CornerRadius::same(1), Stroke::new(1.2, color), egui::StrokeKind::Inside);
+    painter.circle_filled(Pos2::new(frame.right() - 3.4, frame.top() + 3.2), 1.2, color);
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(frame.left() + 1.5, frame.bottom() - 1.5),
+            Pos2::new(frame.left() + 4.5, frame.bottom() - 6.0),
+            Pos2::new(frame.left() + 7.5, frame.bottom() - 1.5),
+        ],
+        color,
+        Stroke::NONE,
+    ));
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(frame.left() + 5.5, frame.bottom() - 1.5),
+            Pos2::new(frame.left() + 8.5, frame.bottom() - 4.5),
+            Pos2::new(frame.right() - 1.5, frame.bottom() - 1.5),
+        ],
+        color,
+        Stroke::NONE,
+    ));
+}
+
+/// A film: a frame with a play triangle in it, for a video node - `task-2202`.
+pub fn video(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let frame = Rect::from_center_size(centre, egui::Vec2::new(13.0, 10.0));
+    painter.rect_stroke(frame, CornerRadius::same(2), Stroke::new(1.2, color), egui::StrokeKind::Inside);
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(centre.x - 1.8, centre.y - 2.8),
+            Pos2::new(centre.x + 2.8, centre.y),
+            Pos2::new(centre.x - 1.8, centre.y + 2.8),
+        ],
+        color,
+        Stroke::NONE,
+    ));
+}
+
+/// A question mark, for a node of a kind this Unluminous does not know - `task-2202`.
+///
+/// Drawn as a hook and a dot rather than lettered, for the reason every mark here is drawn: a glyph
+/// from the interface's font would change with the font.
+pub fn unknown(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.4, color);
+    let top = Pos2::new(centre.x, centre.y - 2.4);
+    let steps = 10;
+    let mut last = None;
+    for step in 0..=steps {
+        // From the left of the hook, over the top, and round to the right and down.
+        let angle = std::f32::consts::PI * (1.0 + 1.25 * step as f32 / steps as f32);
+        let at = Pos2::new(top.x + 3.2 * angle.cos(), top.y + 3.2 * angle.sin());
+        if let Some(from) = last {
+            painter.line_segment([from, at], stroke);
+        }
+        last = Some(at);
+    }
+    if let Some(end) = last {
+        painter.line_segment([end, Pos2::new(centre.x, centre.y + 2.6)], stroke);
+    }
+    painter.circle_filled(Pos2::new(centre.x, centre.y + 5.2), 0.9, color);
 }
 
 /// An undo arrow, in the shape every icon button takes.

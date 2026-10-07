@@ -150,7 +150,7 @@ pub struct PluginTab {
 ///
 /// The editing area is a row of panes and a tab is in one of them, which is what `task-1664` settled
 /// and what [`OpenFiles`] is arranged around. `task-1904` adds a second kind of place: a **File Editor
-/// node** on the Base of Infinite Space is a tab too, with its own document, its own gutter, its own
+/// node** on the Realm is a tab too, with its own document, its own gutter, its own
 /// folds and breakpoints and its own place in the undo history.
 ///
 /// It is one value with two cases rather than a pane number and an optional node id, because a tab is
@@ -195,7 +195,7 @@ pub struct OpenFile {
     pub browser: Option<crate::services::browser::BrowserTab>,
     /// What is in the browser toolbar's address field, for a tab that holds a page.
     ///
-    /// On the tab rather than in `egui`'s memory, which is the same reason `space::node::Browser` keeps
+    /// On the tab rather than in `egui`'s memory, which is the same reason `realm::node::Browser` keeps
     /// its own: a tab that is not showing is not drawn, and a half-typed address must not go with it.
     /// Never written to `open-files.txt` — what a project comes back with is the page, not what somebody
     /// was part way through typing. `task-1905`.

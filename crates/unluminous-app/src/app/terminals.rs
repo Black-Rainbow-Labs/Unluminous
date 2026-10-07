@@ -135,7 +135,7 @@ impl UnluminousApp {
         self.ask_the_shell_to_report_its_folder(&mut settings);
         if let Some(index) = restoring {
             self.print_a_remembered_screen_first(
-                crate::services::space::store::Screen::Tab(index),
+                crate::services::realm::store::Screen::Tab(index),
                 &mut settings,
             );
         }
@@ -169,18 +169,18 @@ impl UnluminousApp {
         for (index, bytes) in screens.iter().enumerate() {
             // The window is closing, so there is nowhere to report a failure that anybody would read. What
             // is lost is a screen coming back, which is not worth failing an exit over.
-            let _ = crate::services::space::store::save_a_screen(
+            let _ = crate::services::realm::store::save_a_screen(
                 &root,
-                crate::services::space::store::Screen::Tab(index),
+                crate::services::realm::store::Screen::Tab(index),
                 bytes.as_deref(),
             );
         }
         // A strip that is shorter than it was leaves the screens of the tabs that have gone behind it, and
         // a tab opened into that slot tomorrow would replay a conversation that was never its own.
         for index in screens.len()..screens.len() + 16 {
-            crate::services::space::store::forget_a_screen(
+            crate::services::realm::store::forget_a_screen(
                 &root,
-                crate::services::space::store::Screen::Tab(index),
+                crate::services::realm::store::Screen::Tab(index),
             );
         }
     }
