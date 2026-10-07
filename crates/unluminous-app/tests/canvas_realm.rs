@@ -3575,8 +3575,7 @@ fn a_realm_project(
     name: &str,
     files: &[(&str, &[u8])],
 ) -> (std::path::PathBuf, Harness<'static, UnluminousApp>) {
-    let folder =
-        std::env::temp_dir().join(format!("unluminous-realm-{name}-{}", std::process::id()));
+    let folder = std::env::temp_dir().join(format!("unluminous-realm-{name}"));
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the project");
     std::fs::write(folder.join("readme.md"), "# A project\n").expect("write the readme");
