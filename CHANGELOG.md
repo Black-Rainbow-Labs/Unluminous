@@ -6,9 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.64.2 — 2026-10-07
 
 - A realm tab that is showing is the canvas, so asking for the canvas does not open the panel beside it (`task-2202`)
+- The changelog written out from the history (`task-2202`)
+- The note test checks the note without a picture, which differed with frame timing under load (`task-2202`)
 
 ## 0.64.1 — 2026-10-07
 
