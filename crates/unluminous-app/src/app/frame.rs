@@ -890,7 +890,7 @@ impl UnluminousApp {
         // A File Editor node on a realm drawn in a tab borrows the keyboard from inside the pane loop, so
         // the line above has just taken it back. While the realm holds the keyboard the chosen node keeps it,
         // which is what `take_the_keyboard_for_the_realm` gave it. `task-2202`.
-        if matches!(self.focus, Focus::Realm) {
+        if matches!(self.focus, Focus::Realm) && self.a_realm_tab_is_showing() {
             if let Some(node) = self.realm.chosen() {
                 if self.files.tab_in_node(node).is_some() {
                     self.files.focus_node(node);

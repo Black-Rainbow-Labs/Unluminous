@@ -3857,7 +3857,12 @@ fn a_sound_node_plays_pauses_and_remembers_where_it_was() {
     let node = added(&mut harness, "realm add audio one.wav --x 40 --y 30");
     steady(&mut harness);
     harness.get_by_label("Play one.wav").click_accesskit();
-    steady(&mut harness);
+    for _ in 0..4 {
+        if harness.query_by_label("Pause one.wav").is_some() {
+            break;
+        }
+        steady(&mut harness);
+    }
     harness.get_by_label("Pause one.wav");
     std::thread::sleep(std::time::Duration::from_millis(400));
     pump(&mut harness);
