@@ -134,7 +134,9 @@ impl Kind {
             Kind::Audio => "A sound from this project, with play, pause, a seek bar and a volume.",
             Kind::Video => "A video from this project, with play, pause, a seek bar and a volume.",
             Kind::Note => "A Markdown note, written in the editor and read as a preview.",
-            Kind::Unknown => "A node a newer Unluminous made. It is kept exactly as it was written.",
+            Kind::Unknown => {
+                "A node a newer Unluminous made. It is kept exactly as it was written."
+            }
         }
     }
 

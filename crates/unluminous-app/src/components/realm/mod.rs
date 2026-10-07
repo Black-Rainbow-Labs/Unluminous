@@ -627,8 +627,10 @@ fn show_the_header(
     // title bar's own three carry the bare names and two controls must not share one.
     if let crate::services::realm::State::Note(note) = &node.state {
         for view in crate::services::realm::NoteView::ALL.into_iter().rev() {
-            let button =
-                Rect::from_center_size(Pos2::new(right - 10.0, header.center().y), Vec2::splat(20.0));
+            let button = Rect::from_center_size(
+                Pos2::new(right - 10.0, header.center().y),
+                Vec2::splat(20.0),
+            );
             if note_view_button(ui, button, view, note.view == view, &name) {
                 outcome.view = Some(view);
             }
@@ -711,7 +713,8 @@ fn note_view_button(
     }
     let tint = if active { color::text_strong() } else { color::text_control() };
     icon::view_mode(painter, area.shrink(5.0), mode, tint);
-    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, active, &name));
+    response
+        .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, active, &name));
     response.clicked()
 }
 

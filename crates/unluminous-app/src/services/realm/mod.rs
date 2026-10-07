@@ -91,12 +91,8 @@ impl Format {
                 self.writer
             ));
         }
-        let missing: Vec<&str> = self
-            .needs
-            .iter()
-            .map(String::as_str)
-            .filter(|need| !FEATURES.contains(need))
-            .collect();
+        let missing: Vec<&str> =
+            self.needs.iter().map(String::as_str).filter(|need| !FEATURES.contains(need)).collect();
         if !missing.is_empty() {
             return Access::ReadOnly(format!(
                 "Written by a newer Unluminous that uses {}. Open for reading only.",
@@ -236,7 +232,8 @@ impl Realm {
     /// A new id no node and no edge on this realm uses.
     pub fn fresh_id(&self) -> u64 {
         fresh_id(|id| {
-            self.nodes.iter().any(|node| node.id == id) || self.edges.iter().any(|edge| edge.id == id)
+            self.nodes.iter().any(|node| node.id == id)
+                || self.edges.iter().any(|edge| edge.id == id)
         })
     }
 

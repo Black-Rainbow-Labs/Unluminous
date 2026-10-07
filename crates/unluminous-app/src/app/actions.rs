@@ -2113,18 +2113,11 @@ fn view_menu(state: &MenuState) -> Menu {
             // submenu rather than eight more rows for `task-1686`'s reason: a submenu here is drawn
             // inline, and this menu is already long enough to scroll in a small window.
             Entry::item(
-                if state.realm_visible {
-                    "Hide Realm"
-                } else {
-                    "Realm"
-                },
+                if state.realm_visible { "Hide Realm" } else { "Realm" },
                 Action::Realm(RealmAction::Toggle),
             )
             .checked(state.realm_visible),
-            Entry::Submenu {
-                name: "Realm".to_owned(),
-                entries: realm_menu(state),
-            },
+            Entry::Submenu { name: "Realm".to_owned(), entries: realm_menu(state) },
             // The one row of `task-1697` that is worth a place in the bar. Moving a panel is a drag,
             // or its own right click menu, or `unluminous-cli panel dock`; putting them all back is the
             // thing somebody looks for in a menu, because by then they have lost one.

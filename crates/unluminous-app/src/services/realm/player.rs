@@ -55,7 +55,8 @@ impl SilentPlayer {
 
 impl Player for SilentPlayer {
     fn load(&mut self, path: &Path) -> Result<Duration, String> {
-        let bytes = std::fs::read(path).map_err(|problem| format!("{} could not be read: {problem}", path.display()))?;
+        let bytes = std::fs::read(path)
+            .map_err(|problem| format!("{} could not be read: {problem}", path.display()))?;
         // A WAV file says how long it is in its header, which is what a test writes; anything else is taken to
         // be a minute long, which is long enough to drag a seek bar along.
         self.duration = wav_duration(&bytes).unwrap_or(Duration::from_secs(60));
@@ -93,7 +94,9 @@ impl Player for SilentPlayer {
         let moved = self.since.map(|since| since.elapsed()).unwrap_or_default();
         let at = self.at + moved;
         match (self.looping, self.duration.is_zero()) {
-            (true, false) => Duration::from_secs_f64(at.as_secs_f64() % self.duration.as_secs_f64()),
+            (true, false) => {
+                Duration::from_secs_f64(at.as_secs_f64() % self.duration.as_secs_f64())
+            }
             _ => at.min(self.duration),
         }
     }
@@ -310,7 +313,8 @@ mod tests {
 
     #[test]
     fn a_silent_player_moves_with_the_clock_and_stops_where_it_was_paused() {
-        let folder = std::env::temp_dir().join(format!("unluminous-silent-player-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-silent-player-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("make the folder");
         let file = folder.join("one-second.wav");
         std::fs::write(&file, a_silent_wav(1.0)).expect("write the file");

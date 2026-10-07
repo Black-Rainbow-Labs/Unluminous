@@ -1243,10 +1243,14 @@ impl Panes {
             panes.debug_width = width.clamp(DEBUG_WIDTH_MIN, PANEL_MAX_WIDTH);
         }
         // `panes.space.*` is what a settings file written before `task-2202` calls the Realm's size.
-        if let Some(height) = values.number("panes.realm.height").or_else(|| values.number("panes.space.height")) {
+        if let Some(height) =
+            values.number("panes.realm.height").or_else(|| values.number("panes.space.height"))
+        {
             panes.realm_height = height.max(REALM_MIN);
         }
-        if let Some(width) = values.number("panes.realm.width").or_else(|| values.number("panes.space.width")) {
+        if let Some(width) =
+            values.number("panes.realm.width").or_else(|| values.number("panes.space.width"))
+        {
             panes.realm_width = width.clamp(REALM_WIDTH_MIN, PANEL_MAX_WIDTH);
         }
         panes.dock = crate::app::dock::Layout::read_from(values);

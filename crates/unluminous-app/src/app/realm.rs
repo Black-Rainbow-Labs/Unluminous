@@ -2164,11 +2164,9 @@ impl UnluminousApp {
                 // with it.
                 if let Some(id) = decided {
                     if Some(&id)
-                        != self.realm.realm.node(node).and_then(|node| {
-                            match &node.state {
-                                State::Terminal(terminal) => Some(&terminal.session),
-                                _ => None,
-                            }
+                        != self.realm.realm.node(node).and_then(|node| match &node.state {
+                            State::Terminal(terminal) => Some(&terminal.session),
+                            _ => None,
                         })
                     {
                         self.realm.realm.change(node, |state| {
@@ -2643,8 +2641,7 @@ impl UnluminousApp {
                     // **Compared before `change` is called, not inside it.** `Realm::change` marks the canvas
                     // dirty whatever the closure did, so asking inside would write `space.conf` on every
                     // frame — which is the one thing `is_dirty` exists to prevent.
-                    let moved = match &self.realm.realm.node(node).map(|node| &node.state)
-                    {
+                    let moved = match &self.realm.realm.node(node).map(|node| &node.state) {
                         Some(State::Editor(editor)) => {
                             editor.caret != caret || (editor.scroll - scroll).abs() > 0.5
                         }
@@ -2665,7 +2662,9 @@ impl UnluminousApp {
                     let caret = self.files.at(index).document.selection().head;
                     let scroll = self.files.at(index).scroll;
                     let moved = match &self.realm.realm.node(node).map(|node| &node.state) {
-                        Some(State::Note(note)) => note.caret != caret || (note.scroll - scroll).abs() > 0.5,
+                        Some(State::Note(note)) => {
+                            note.caret != caret || (note.scroll - scroll).abs() > 0.5
+                        }
                         _ => false,
                     };
                     if moved {
@@ -2680,8 +2679,7 @@ impl UnluminousApp {
                 Kind::Audio | Kind::Video => self.note_where_a_player_is(node),
                 Kind::Folder if reading == Reading::EveryFrame => {
                     let scroll = self.realm.live.scroll_of(node);
-                    let moved = match &self.realm.realm.node(node).map(|node| &node.state)
-                    {
+                    let moved = match &self.realm.realm.node(node).map(|node| &node.state) {
                         Some(State::Folder(folder)) => (folder.scroll - scroll).abs() > 0.5,
                         _ => false,
                     };
@@ -2940,7 +2938,8 @@ impl UnluminousApp {
                 ));
             }
             RealmAction::RenameRealm => {
-                let path = self.realm.in_hand.view.take().unwrap_or_else(|| self.realm.realm.path.clone());
+                let path =
+                    self.realm.in_hand.view.take().unwrap_or_else(|| self.realm.realm.path.clone());
                 self.prompt = Some(crate::components::prompt_dialog::Prompt::new(
                     "Rename Realm",
                     "What this realm's file is called. Its file moves, and so does what this machine remembers about it.",
@@ -2950,16 +2949,19 @@ impl UnluminousApp {
                 ));
             }
             RealmAction::DuplicateRealm => {
-                let path = self.realm.in_hand.view.take().unwrap_or_else(|| self.realm.realm.path.clone());
+                let path =
+                    self.realm.in_hand.view.take().unwrap_or_else(|| self.realm.realm.path.clone());
                 match self.duplicate_a_realm(&path) {
                     Ok(copy) => {
-                        self.message = Some(format!("Copied to {}.", crate::services::realm::slashed(&copy)))
+                        self.message =
+                            Some(format!("Copied to {}.", crate::services::realm::slashed(&copy)))
                     }
                     Err(problem) => self.message = Some(problem),
                 }
             }
             RealmAction::DeleteRealm => {
-                let path = self.realm.in_hand.view.take().unwrap_or_else(|| self.realm.realm.path.clone());
+                let path =
+                    self.realm.in_hand.view.take().unwrap_or_else(|| self.realm.realm.path.clone());
                 self.ask_before_deleting_a_realm(&path);
             }
             RealmAction::RenameNode => {
@@ -3466,7 +3468,9 @@ pub(crate) fn drives(kind: Kind, node: NodeId, from: NodeId) -> String {
         Kind::Image => format!("realm view --json  # node {node} shows a picture, from {from}"),
         Kind::Audio | Kind::Video => format!("realm play {node} --from {from}"),
         Kind::Note => format!("realm note view {node} preview --from {from}"),
-        Kind::Unknown => format!("realm info  # node {node} is a kind this Unluminous does not know"),
+        Kind::Unknown => {
+            format!("realm info  # node {node} is a kind this Unluminous does not know")
+        }
     }
 }
 

@@ -3905,7 +3905,7 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use unluminous_app::app::actions::{
-    DebugAction, FoldAction, GitAction, HighlightColor, RunAction, RealmAction,
+    DebugAction, FoldAction, GitAction, HighlightColor, RealmAction, RunAction,
 };
 use unluminous_app::app::dock::{Panel, Side};
 use unluminous_app::services::realm::Kind;
@@ -4290,9 +4290,18 @@ const CANNOT_BE_DRIVEN: &[(&str, &str)] = &[
         "realm-choose-folder",
         "it opens the platform's own folder chooser and waits for somebody to click in it",
     ),
-    ("realm-add-image", "it opens the platform's own file chooser and waits for somebody to click in it"),
-    ("realm-add-audio", "it opens the platform's own file chooser and waits for somebody to click in it"),
-    ("realm-add-video", "it opens the platform's own file chooser and waits for somebody to click in it"),
+    (
+        "realm-add-image",
+        "it opens the platform's own file chooser and waits for somebody to click in it",
+    ),
+    (
+        "realm-add-audio",
+        "it opens the platform's own file chooser and waits for somebody to click in it",
+    ),
+    (
+        "realm-add-video",
+        "it opens the platform's own file chooser and waits for somebody to click in it",
+    ),
     ("quit", "it closes the window, and the walk has the rest of the actions still to run"),
     ("close-window", "the same: it closes the window"),
     (
@@ -4868,7 +4877,10 @@ fn every_step() -> Vec<Step> {
     steps.push(Step::new(Action::Realm(RealmAction::Toggle)).after(&["realm show"]));
     // A picture, a sound and a video open the platform's file chooser, so they are on
     // `CANNOT_BE_DRIVEN` and `realm add <kind> <file>` covers them in `command_line.rs`.
-    for kind in Kind::ALL.into_iter().filter(|kind| !matches!(kind, Kind::Image | Kind::Audio | Kind::Video)) {
+    for kind in Kind::ALL
+        .into_iter()
+        .filter(|kind| !matches!(kind, Kind::Image | Kind::Audio | Kind::Video))
+    {
         steps.push(Step::new(Action::Realm(RealmAction::Add(kind))).after(&["realm show"]));
     }
     for action in [

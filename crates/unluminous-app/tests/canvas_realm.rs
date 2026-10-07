@@ -927,10 +927,7 @@ fn a_chat_node_holds_its_own_conversation_and_comes_back_on_it() {
     let two = did(&mut harness, "realm add chat --x 520 --y 20")["node"].as_u64().expect("id");
     steady(&mut harness);
 
-    assert_eq!(
-        harness.state().realm.realm.node(one).expect("it is there").kind(),
-        Kind::Chat
-    );
+    assert_eq!(harness.state().realm.realm.node(one).expect("it is there").kind(), Kind::Chat);
     let first = harness.state().realm.live.chat(one).map(|chat| chat.conversation_id().to_owned());
     let second = harness.state().realm.live.chat(two).map(|chat| chat.conversation_id().to_owned());
     let first = first.expect("the node opened a chat of its own the first time it was drawn");
@@ -939,11 +936,10 @@ fn a_chat_node_holds_its_own_conversation_and_comes_back_on_it() {
 
     // **Written down**, so a canvas comes back with each agent where it was left rather than every one of
     // them on the newest conversation, which is what the pane does because there is one of it.
-    let recorded =
-        match &harness.state().realm.realm.node(one).expect("it is there").state {
-            State::Chat(chat) => chat.conversation.clone(),
-            other => panic!("a chat node holds a chat state, not {other:?}"),
-        };
+    let recorded = match &harness.state().realm.realm.node(one).expect("it is there").state {
+        State::Chat(chat) => chat.conversation.clone(),
+        other => panic!("a chat node holds a chat state, not {other:?}"),
+    };
     assert_eq!(recorded, first, "the node records which conversation it is on");
 
     // And `realm list` reads it back, which is the half of Unluminous's rule that says an agent reaches
@@ -1033,11 +1029,10 @@ fn a_chat_node_answers_the_command_line_about_its_own_conversation() {
         harness.state().realm.live.chat(node).expect("still there").conversation_id().to_owned();
     assert_ne!(now, was, "`new` moved it to another conversation");
     assert_eq!(made["id"], serde_json::json!(now), "and the reply named the one it moved to");
-    let recorded =
-        match &harness.state().realm.realm.node(node).expect("it is there").state {
-            unluminous_app::services::realm::State::Chat(chat) => chat.conversation.clone(),
-            other => panic!("a chat node holds a chat state, not {other:?}"),
-        };
+    let recorded = match &harness.state().realm.realm.node(node).expect("it is there").state {
+        unluminous_app::services::realm::State::Chat(chat) => chat.conversation.clone(),
+        other => panic!("a chat node holds a chat state, not {other:?}"),
+    };
     assert_eq!(recorded, now, "the canvas wrote down where the node ended up");
 
     // A node that is not a chat is refused by kind, which is `a_reachable_node`'s own answer.
@@ -1062,10 +1057,7 @@ fn a_tasks_node_draws_the_windows_own_board() {
     did(&mut harness, "realm show");
     let node = did(&mut harness, "realm add tasks --x 20 --y 20")["node"].as_u64().expect("id");
     steady(&mut harness);
-    assert_eq!(
-        harness.state().realm.realm.node(node).expect("it is there").kind(),
-        Kind::Tasks
-    );
+    assert_eq!(harness.state().realm.realm.node(node).expect("it is there").kind(), Kind::Tasks);
     // The node is what opened the provider: nothing has pressed the rail button and no pane is showing.
     assert!(
         harness.state().plugin_ui.view_of("agent-tasks").is_some(),
@@ -1153,12 +1145,7 @@ fn a_double_click_in_a_folder_node_opens_a_wired_editor_node() {
         .reaches(tree)
         .into_iter()
         .find(|node| {
-            harness
-                .state()
-                .realm
-                .realm
-                .node(*node)
-                .is_some_and(|n| n.kind() == Kind::Editor)
+            harness.state().realm.realm.node(*node).is_some_and(|n| n.kind() == Kind::Editor)
         })
         .expect("an editor node was made and wired");
     let showing = harness.state().files.tab_in_node(made).expect("with the file in it");
@@ -1168,14 +1155,8 @@ fn a_double_click_in_a_folder_node_opens_a_wired_editor_node() {
     harness.state_mut().open_from_a_folder_node_for_a_test(tree, &folder.join("notes.txt"));
     steady(&mut harness);
     assert_eq!(harness.state().files.tabs_in_node(made).len(), 2);
-    let editors = harness
-        .state()
-        .realm
-        .realm
-        .nodes
-        .iter()
-        .filter(|node| node.kind() == Kind::Editor)
-        .count();
+    let editors =
+        harness.state().realm.realm.nodes.iter().filter(|node| node.kind() == Kind::Editor).count();
     assert_eq!(editors, 1, "one editor node, with two tabs in it");
 }
 
@@ -1861,7 +1842,11 @@ fn everything_a_node_was_left_holding_comes_back() {
     unluminous_app::services::realm::store::save(&folder, &mut realm.clone()).expect("written");
 
     // And read back, which is what opening it again does.
-    let back = unluminous_app::services::realm::store::load(&folder, std::path::Path::new(".realm-files/main.realm")).expect("the realm reads");
+    let back = unluminous_app::services::realm::store::load(
+        &folder,
+        std::path::Path::new(".realm-files/main.realm"),
+    )
+    .expect("the realm reads");
     let node = back.node(editor).expect("the editor node came back");
     match &node.state {
         State::Editor(state) => {
@@ -1930,7 +1915,11 @@ fn everything_a_node_was_left_holding_comes_back() {
     // window came up, wrote an empty tab list over the saved one on its first frames, and only *then* opened
     // the tabs — so reading the canvas in memory looked right while the file on disk had been emptied. A
     // third window would then have opened nothing at all.
-    let after = unluminous_app::services::realm::store::load(&folder, std::path::Path::new(".realm-files/main.realm")).expect("the realm reads");
+    let after = unluminous_app::services::realm::store::load(
+        &folder,
+        std::path::Path::new(".realm-files/main.realm"),
+    )
+    .expect("the realm reads");
     match &after.node(editor).expect("the node is in the file").state {
         State::Editor(state) => {
             assert_eq!(
@@ -2004,7 +1993,8 @@ fn what_was_done_on_a_realm_is_kept_when_the_same_frame_switches_away() {
     assert_eq!(harness.state().realm.realm.path, second);
 
     // And the caret it was left at is what the realm it was left on records, on disk.
-    let kept = unluminous_app::services::realm::store::load(&folder, &first).expect("the first realm reads");
+    let kept = unluminous_app::services::realm::store::load(&folder, &first)
+        .expect("the first realm reads");
     match &kept.node(editor).expect("the node is still on it").state {
         State::Editor(held) => {
             assert_eq!(
@@ -2192,8 +2182,7 @@ fn an_address_typed_into_a_browser_node_is_opened() {
             if unluminous_app::services::browser::SUPPORTED {
                 panic!("a supported platform made no tab");
             }
-            let state =
-                harness.state().realm.realm.node(node).cloned().expect("the node");
+            let state = harness.state().realm.realm.node(node).cloned().expect("the node");
             match &state.state {
                 unluminous_app::services::realm::State::Browser(browser) => {
                     assert!(browser.typed.contains("example.com/typed"), "the address was kept");
@@ -2291,10 +2280,8 @@ fn a_browser_nodes_page_is_placed_inside_the_node() {
     assert!(body.contains_rect(page), "the page is at {page:?} and the canvas is {body:?}");
     // And inside the node itself, under its own toolbar.
     let camera = harness.state().realm.realm.camera;
-    let on_screen = camera.rect_to_screen(
-        body.min,
-        harness.state().realm.realm.node(node).expect("the node").rect(),
-    );
+    let on_screen = camera
+        .rect_to_screen(body.min, harness.state().realm.realm.node(node).expect("the node").rect());
     assert!(
         on_screen.contains_rect(page),
         "the page is at {page:?} and the node is at {on_screen:?}"
@@ -2490,7 +2477,11 @@ fn a_canvas_comes_back_when_the_project_is_opened_again() {
     realm.connect(node, second, unluminous_app::services::realm::Pipe::Off).expect("wired");
     unluminous_app::services::realm::store::save(&folder, &mut realm.clone()).expect("saved");
 
-    let back = unluminous_app::services::realm::store::load(&folder, std::path::Path::new(".realm-files/main.realm")).expect("the realm reads");
+    let back = unluminous_app::services::realm::store::load(
+        &folder,
+        std::path::Path::new(".realm-files/main.realm"),
+    )
+    .expect("the realm reads");
     assert_eq!(back.nodes.len(), 2);
     assert_eq!(back.nodes[0].title, "the agent");
     assert_eq!(back.edges.len(), 1);
@@ -3653,7 +3644,10 @@ fn the_realm_is_called_the_realm_on_the_menu_the_rail_and_the_docking_menu() {
     steady(&mut harness);
     assert!(harness.state().realm.visible, "the menu entry shows the panel");
     harness.get_by_label("Realm");
-    let docking = names_in(&unluminous_app::app::actions::panel_menu(&harness.state().menu_state(), unluminous_app::app::dock::Panel::Realm));
+    let docking = names_in(&unluminous_app::app::actions::panel_menu(
+        &harness.state().menu_state(),
+        unluminous_app::app::dock::Panel::Realm,
+    ));
     assert!(!docking.iter().any(|name| name.contains("Space")), "{docking:?}");
 }
 
@@ -3772,10 +3766,7 @@ fn a_note_is_a_markdown_file_with_its_three_views_in_its_header() {
         steady(&mut harness);
     }
     let index = harness.state().files.tab_in_node(node).expect("the note has its tab");
-    assert_eq!(
-        harness.state().files.at(index).view_mode,
-        unluminous_app::app::ViewMode::Preview
-    );
+    assert_eq!(harness.state().files.at(index).view_mode, unluminous_app::app::ViewMode::Preview);
     let written =
         std::fs::read_to_string(folder.join(".realm-files/main.realm")).expect("the realm");
     assert!(written.contains(".view = preview"), "{written}");
@@ -3910,8 +3901,7 @@ fn opening_a_project_with_a_space_conf_imports_it_and_shows_the_view_that_was_cu
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/realm/space.conf"),
     )
     .expect("the fixture");
-    let (folder, mut harness) =
-        a_realm_project("import", &[(".unluminous/space.conf", &legacy)]);
+    let (folder, mut harness) = a_realm_project("import", &[(".unluminous/space.conf", &legacy)]);
     for name in ["main", "rendering", "main 2"] {
         assert!(folder.join(format!(".realm-files/{name}.realm")).is_file(), "{name} was made");
     }
@@ -3925,8 +3915,8 @@ fn opening_a_project_with_a_space_conf_imports_it_and_shows_the_view_that_was_cu
     for _ in 0..2 {
         steady(&mut harness);
     }
-    let workspace = std::fs::read_to_string(folder.join(".unluminous/workspace.conf"))
-        .expect("the workspace");
+    let workspace =
+        std::fs::read_to_string(folder.join(".unluminous/workspace.conf")).expect("the workspace");
     assert!(workspace.contains("realm.imported = true"), "{workspace}");
     assert!(workspace.contains("realm.current = .realm-files/rendering.realm"), "{workspace}");
     std::fs::remove_dir_all(&folder).ok();

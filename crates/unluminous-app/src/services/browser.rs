@@ -1060,7 +1060,12 @@ impl ResourceReply {
     /// A response with no body, used for misses and refused methods.
     #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     fn empty(status: u16) -> Self {
-        Self { status, mime: "text/plain; charset=utf-8".to_owned(), bytes: Vec::new(), headers: Vec::new() }
+        Self {
+            status,
+            mime: "text/plain; charset=utf-8".to_owned(),
+            bytes: Vec::new(),
+            headers: Vec::new(),
+        }
     }
 }
 

@@ -399,10 +399,15 @@ impl Live {
 
     /// The picture an image node shows, decoded the first time it is asked for and again when the node is
     /// pointed at a different file.
-    pub fn picture(&mut self, node: NodeId, file: &std::path::Path) -> &mut crate::services::picture::Picture {
+    pub fn picture(
+        &mut self,
+        node: NodeId,
+        file: &std::path::Path,
+    ) -> &mut crate::services::picture::Picture {
         let stale = self.pictures.get(&node).is_none_or(|(held, _)| held != file);
         if stale {
-            self.pictures.insert(node, (file.to_path_buf(), crate::services::picture::Picture::open(file)));
+            self.pictures
+                .insert(node, (file.to_path_buf(), crate::services::picture::Picture::open(file)));
         }
         &mut self.pictures.get_mut(&node).expect("it was just put there").1
     }

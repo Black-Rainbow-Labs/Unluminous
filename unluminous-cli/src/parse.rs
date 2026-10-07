@@ -351,7 +351,9 @@ pub fn the_window_that_started_this_process() -> Option<String> {
 /// A value that is not a number is ignored rather than refused: it is not something a caller typed, so a
 /// refusal would be about a variable somebody's shell happens to hold.
 fn the_node_this_process_is_in() -> Option<String> {
-    let said = std::env::var("UNLUMINOUS_REALM_NODE").or_else(|_| std::env::var("UNLUMINOUS_SPACE_NODE")).ok()?;
+    let said = std::env::var("UNLUMINOUS_REALM_NODE")
+        .or_else(|_| std::env::var("UNLUMINOUS_SPACE_NODE"))
+        .ok()?;
     let said = said.trim();
     said.parse::<u64>().ok().map(|node| node.to_string())
 }

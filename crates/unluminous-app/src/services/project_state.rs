@@ -261,7 +261,8 @@ pub fn load(root: &Path) -> ProjectState {
     if let Some(on) = values.flag("realm.visible").or_else(|| values.flag("space.visible")) {
         state.realm_visible = on;
     }
-    if let Some(current) = values.text("realm.current").filter(|current| !current.trim().is_empty()) {
+    if let Some(current) = values.text("realm.current").filter(|current| !current.trim().is_empty())
+    {
         state.realm_current = Some(PathBuf::from(current.trim()));
     }
     state.realm_imported = values.flag("realm.imported").unwrap_or(false);

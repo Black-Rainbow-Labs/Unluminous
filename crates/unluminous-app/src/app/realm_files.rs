@@ -43,7 +43,8 @@ impl UnluminousApp {
     pub(crate) fn list_the_realms(&mut self) {
         let root = self.tree.root().to_path_buf();
         let mut files = store::list(&root);
-        let more = std::iter::once(self.realm.realm.path.clone()).chain(self.realm.unsaved.keys().cloned());
+        let more = std::iter::once(self.realm.realm.path.clone())
+            .chain(self.realm.unsaved.keys().cloned());
         for path in more.collect::<Vec<_>>() {
             if !files.contains(&path) {
                 files.push(path);
@@ -174,8 +175,9 @@ impl UnluminousApp {
 
     /// A name no listed realm has: `stem`, or `stem 2`, `stem 3` and so on.
     fn an_unused_realm_name(&self, stem: &str) -> String {
-        let taken =
-            |name: &str| self.realm.files.iter().any(|path| title_of(path).eq_ignore_ascii_case(name));
+        let taken = |name: &str| {
+            self.realm.files.iter().any(|path| title_of(path).eq_ignore_ascii_case(name))
+        };
         (1..)
             .map(|number| match number {
                 1 => stem.to_owned(),
@@ -242,7 +244,10 @@ impl UnluminousApp {
             self.write_the_open_realm()?;
         }
         if !self.move_path(&root.join(path), &root.join(&to), false) {
-            return Err(self.message.clone().unwrap_or_else(|| "The realm could not be renamed.".to_owned()));
+            return Err(self
+                .message
+                .clone()
+                .unwrap_or_else(|| "The realm could not be renamed.".to_owned()));
         }
         // `realm.name` follows the file, so a realm read on its own still says what it is.
         if self.realm.realm.path == to {
@@ -280,7 +285,9 @@ impl UnluminousApp {
                     1 => format!("{} copy", source.title()),
                     more => format!("{} copy {more}", source.title()),
                 })
-                .find(|name| !self.realm.files.contains(&folder.join(format!("{name}.{}", store::EXTENSION))))
+                .find(|name| {
+                    !self.realm.files.contains(&folder.join(format!("{name}.{}", store::EXTENSION)))
+                })
                 .expect("one of the names is free");
             let to = folder.join(format!("{name}.{}", store::EXTENSION));
             let copy = source.duplicated(&to, &name);
@@ -334,7 +341,8 @@ impl UnluminousApp {
     ///
     /// Highest tab index first, because closing a tab moves every later one down — see `close_a_realm_node`.
     pub(crate) fn forget_these_nodes(&mut self, nodes: &[u64]) {
-        let mut on_them: Vec<usize> = nodes.iter().flat_map(|node| self.files.tabs_in_node(*node)).collect();
+        let mut on_them: Vec<usize> =
+            nodes.iter().flat_map(|node| self.files.tabs_in_node(*node)).collect();
         on_them.sort_unstable_by(|left, right| right.cmp(left));
         for index in on_them {
             self.close_tab(index);
@@ -459,7 +467,8 @@ impl UnluminousApp {
                     // The realm keeps its path so the bar names it, and it is read only so nothing is written
                     // over the file that could not be read.
                     self.realm.realm = Realm::new(&path, &title_of(&path));
-                    self.realm.realm.access = crate::services::realm::Access::ReadOnly(problem.clone());
+                    self.realm.realm.access =
+                        crate::services::realm::Access::ReadOnly(problem.clone());
                     self.realm.problem = Some(problem);
                 }
             },
@@ -472,7 +481,10 @@ impl UnluminousApp {
     /// no space.conf and no realm files gets .realm-files/main.realm created the first time the panel shows,
     /// so there is always a current realm."*
     pub(crate) fn make_sure_the_open_realm_is_on_disk(&mut self) {
-        if !self.remembers_this_project() || self.realm.problem.is_some() || !self.realm.realm.editable() {
+        if !self.remembers_this_project()
+            || self.realm.problem.is_some()
+            || !self.realm.realm.editable()
+        {
             return;
         }
         if self.tree.root().join(&self.realm.realm.path).exists() {
@@ -494,7 +506,8 @@ impl UnluminousApp {
     /// that will not move has to be told why. A realm whose file could not be read says that instead.
     pub(crate) fn show_the_realm_banner(&self, ui: &egui::Ui, body: egui::Rect) {
         use crate::theme::crisp::CrispPainter;
-        let Some(why) = self.realm.problem.as_deref().or(self.realm.realm.read_only_because()) else {
+        let Some(why) = self.realm.problem.as_deref().or(self.realm.realm.read_only_because())
+        else {
             return;
         };
         let strip = egui::Rect::from_min_size(body.min, egui::Vec2::new(body.width(), 24.0));

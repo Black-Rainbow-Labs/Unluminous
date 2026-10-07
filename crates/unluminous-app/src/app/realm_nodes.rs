@@ -24,7 +24,8 @@ pub(crate) fn say_in_a_node(ui: &egui::Ui, body: Rect, id: u64, said: &str) {
         color::text_dim(),
         (body.width() - 24.0).max(40.0),
     );
-    let at = Pos2::new(body.center().x - galley.size().x / 2.0, body.center().y - galley.size().y / 2.0);
+    let at =
+        Pos2::new(body.center().x - galley.size().x / 2.0, body.center().y - galley.size().y / 2.0);
     painter.galley(at, galley, color::text_dim());
     let response = ui.interact(body, egui::Id::new(("realm-said", id)), Sense::hover());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, said));
@@ -39,7 +40,8 @@ pub(crate) fn why_there_is_nothing(node: &Node) -> Option<String> {
         return Some(format!("This {} node names no file.", node.kind().label().to_lowercase()));
     };
     if !file.is_file() {
-        let name = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+        let name =
+            file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
         return Some(format!("{name} is missing."));
     }
     None
@@ -50,7 +52,13 @@ pub(crate) fn why_there_is_nothing(node: &Node) -> Option<String> {
 /// **Contain** is the whole picture as large as fits, centred; **cover** fills the body and lets the rest go
 /// past its edges, where the clip cuts it off; **actual** is one pixel a point times the node's own zoom, from
 /// the top left corner moved by its scroll.
-pub(crate) fn where_a_picture_goes(body: Rect, size: Vec2, fit: Fit, zoom: f32, scroll: Vec2) -> Rect {
+pub(crate) fn where_a_picture_goes(
+    body: Rect,
+    size: Vec2,
+    fit: Fit,
+    zoom: f32,
+    scroll: Vec2,
+) -> Rect {
     if size.x <= 0.0 || size.y <= 0.0 {
         return body;
     }
@@ -72,7 +80,13 @@ impl UnluminousApp {
     ///
     /// A double click flips between the realm's own fit and one pixel a point, which is what a picture
     /// viewer's double click does; the wheel with the command key zooms it, through `zoom_a_node`.
-    pub(crate) fn show_an_image_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
+    pub(crate) fn show_an_image_node(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        body: Rect,
+        focused: bool,
+    ) {
         let _ = focused;
         let State::Image(image) = &node.state else { return };
         if let Some(why) = why_there_is_nothing(node) {
@@ -87,7 +101,8 @@ impl UnluminousApp {
             say_in_a_node(ui, body, node.id, "This picture is larger than Unluminous opens.");
             return;
         }
-        let name = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+        let name =
+            file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
         let picture = self.realm.live.picture(node.id, &file);
         if let Some(problem) = &picture.problem {
             say_in_a_node(ui, body, node.id, &format!("{name} could not be read: {problem}"));
@@ -105,7 +120,8 @@ impl UnluminousApp {
             Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
             Color32::WHITE,
         );
-        let response = ui.interact(body, egui::Id::new(("realm-image", node.id)), Sense::click_and_drag());
+        let response =
+            ui.interact(body, egui::Id::new(("realm-image", node.id)), Sense::click_and_drag());
         response.widget_info(|| {
             egui::WidgetInfo::labeled(egui::WidgetType::Image, true, format!("Picture: {name}"))
         });
@@ -138,9 +154,24 @@ impl UnluminousApp {
         let State::Unknown(unknown) = &node.state else { return };
         let painter = ui.painter_at(body);
         let frame = body.shrink(6.0);
-        let corners = [frame.left_top(), frame.right_top(), frame.right_bottom(), frame.left_bottom(), frame.left_top()];
-        painter.extend(egui::Shape::dashed_line(&corners, egui::Stroke::new(1.2, color::text_faint()), 6.0, 4.0));
-        crate::theme::icon::unknown(&painter, Pos2::new(body.center().x, body.center().y - 22.0), color::text_dim());
+        let corners = [
+            frame.left_top(),
+            frame.right_top(),
+            frame.right_bottom(),
+            frame.left_bottom(),
+            frame.left_top(),
+        ];
+        painter.extend(egui::Shape::dashed_line(
+            &corners,
+            egui::Stroke::new(1.2, color::text_faint()),
+            6.0,
+            4.0,
+        ));
+        crate::theme::icon::unknown(
+            &painter,
+            Pos2::new(body.center().x, body.center().y - 22.0),
+            color::text_dim(),
+        );
         painter.crisp_text(
             Pos2::new(body.center().x, body.center().y + 2.0),
             Align2::CENTER_CENTER,
@@ -158,7 +189,11 @@ impl UnluminousApp {
         let response = ui.interact(body, egui::Id::new(("realm-unknown", node.id)), Sense::hover());
         let kind = unknown.kind.clone();
         response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Unknown node: {kind}"))
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Other,
+                true,
+                format!("Unknown node: {kind}"),
+            )
         });
     }
 
@@ -217,7 +252,9 @@ impl UnluminousApp {
                 true => player.pause(),
                 false => player.play(),
             },
-            Transport::Seek(seconds) => player.seek(std::time::Duration::from_secs_f32(seconds.max(0.0))),
+            Transport::Seek(seconds) => {
+                player.seek(std::time::Duration::from_secs_f32(seconds.max(0.0)))
+            }
             Transport::Volume(level) => {
                 let level = level.clamp(0.0, 1.0);
                 player.set_volume(level);
@@ -252,7 +289,13 @@ impl UnluminousApp {
 
     /// A sound node: a transport bar drawn in `egui`, so every sound node on a realm is live at once and every
     /// control on it has a name. §5.3.
-    pub(crate) fn show_an_audio_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
+    pub(crate) fn show_an_audio_node(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        body: Rect,
+        focused: bool,
+    ) {
         let _ = focused;
         if let Some(why) = why_there_is_nothing(node) {
             say_in_a_node(ui, body, node.id, &why);
@@ -279,16 +322,22 @@ impl UnluminousApp {
             color::text_dim(),
         );
         // The play button and the time on one line, the volume at its right hand end.
-        let line = Rect::from_min_size(Pos2::new(inner.left(), inner.bottom() - 26.0), Vec2::new(inner.width(), 26.0));
+        let line = Rect::from_min_size(
+            Pos2::new(inner.left(), inner.bottom() - 26.0),
+            Vec2::new(inner.width(), 26.0),
+        );
         let button = Rect::from_min_size(line.min, Vec2::splat(26.0));
         let verb = if state.playing { "Pause" } else { "Play" };
-        let pressed = ui.interact(button, egui::Id::new(("realm-audio-play", node.id)), Sense::click());
+        let pressed =
+            ui.interact(button, egui::Id::new(("realm-audio-play", node.id)), Sense::click());
         painter.circle_filled(button.center(), 13.0, color::control());
         match state.playing {
             true => pause_mark(&painter, button.center(), color::text_strong()),
             false => crate::theme::icon::run(&painter, button.center(), color::text_strong()),
         }
-        pressed.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("{verb} {name}")));
+        pressed.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("{verb} {name}"))
+        });
         let time = format!("{} / {}", clock(state.position), clock(state.duration));
         painter.crisp_text(
             Pos2::new(button.right() + 10.0, line.center().y),
@@ -298,14 +347,31 @@ impl UnluminousApp {
             color::text(),
         );
         let said = ui.interact(
-            Rect::from_min_size(Pos2::new(button.right() + 6.0, line.top()), Vec2::new(90.0, line.height())),
+            Rect::from_min_size(
+                Pos2::new(button.right() + 6.0, line.top()),
+                Vec2::new(90.0, line.height()),
+            ),
             egui::Id::new(("realm-audio-time", node.id)),
             Sense::hover(),
         );
-        said.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Time of {name}: {time}")));
-        let volume_bar =
-            Rect::from_min_max(Pos2::new(line.right() - 80.0, line.top() + 6.0), Pos2::new(line.right(), line.bottom() - 6.0));
-        let volume = slider(ui, volume_bar, state.volume, &format!("Volume of {name}"), ("realm-audio-volume", node.id));
+        said.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Other,
+                true,
+                format!("Time of {name}: {time}"),
+            )
+        });
+        let volume_bar = Rect::from_min_max(
+            Pos2::new(line.right() - 80.0, line.top() + 6.0),
+            Pos2::new(line.right(), line.bottom() - 6.0),
+        );
+        let volume = slider(
+            ui,
+            volume_bar,
+            state.volume,
+            &format!("Volume of {name}"),
+            ("realm-audio-volume", node.id),
+        );
         // The seek bar across the whole node, between the name and the controls.
         let seek_bar = Rect::from_min_max(
             Pos2::new(inner.left(), line.top() - 18.0),
@@ -315,7 +381,8 @@ impl UnluminousApp {
             true => state.position / state.duration,
             false => 0.0,
         };
-        let seek = slider(ui, seek_bar, fraction, &format!("Seek {name}"), ("realm-audio-seek", node.id));
+        let seek =
+            slider(ui, seek_bar, fraction, &format!("Seek {name}"), ("realm-audio-seek", node.id));
         let asked = match (pressed.clicked(), seek, volume) {
             (true, _, _) => Some(Transport::Toggle),
             (_, Some(to), _) => Some(Transport::Seek(to * state.duration)),
@@ -342,16 +409,21 @@ impl UnluminousApp {
     /// again; the tab is kept.
     fn a_video_tab(&mut self, node: u64, autoplay: bool) -> Result<u64, String> {
         if !crate::services::browser::SUPPORTED {
-            return Err("Videos play in the window's web view, which is on Windows and macOS.".to_owned());
+            return Err(
+                "Videos play in the window's web view, which is on Windows and macOS.".to_owned()
+            );
         }
         let Some(found) = self.realm.realm.node(node).cloned() else {
             return Err(format!("There is no node {node}."));
         };
-        let State::Video(video) = &found.state else { return Err(format!("Node {node} is not a video.")) };
+        let State::Video(video) = &found.state else {
+            return Err(format!("Node {node} is not a video."));
+        };
         if let Some(why) = why_there_is_nothing(&found) {
             return Err(why);
         }
-        let position = self.realm.live.video_report(node).map(|(at, ..)| at).unwrap_or(video.position);
+        let position =
+            self.realm.live.video_report(node).map(|(at, ..)| at).unwrap_or(video.position);
         self.browser.media().register(
             node,
             crate::services::browser::MediaPage {
@@ -381,7 +453,9 @@ impl UnluminousApp {
     /// loads, and a play makes it the chosen node so it does show: the window has one native web view, and
     /// the chosen video or browser node is the one that has it.
     pub(crate) fn drive_a_video(&mut self, node: u64, asked: Transport) -> Result<Playing, String> {
-        let Some(State::Video(video)) = self.realm.realm.node(node).map(|found| found.state.clone()) else {
+        let Some(State::Video(video)) =
+            self.realm.realm.node(node).map(|found| found.state.clone())
+        else {
             return Err(format!("Node {node} is not a video."));
         };
         let reported = self.realm.live.video_report(node);
@@ -392,7 +466,8 @@ impl UnluminousApp {
             Transport::Play => Some("document.getElementById('v').play();".to_owned()),
             Transport::Pause => Some("document.getElementById('v').pause();".to_owned()),
             Transport::Toggle => Some(
-                "const v=document.getElementById('v');if(v.paused){v.play();}else{v.pause();}".to_owned(),
+                "const v=document.getElementById('v');if(v.paused){v.play();}else{v.pause();}"
+                    .to_owned(),
             ),
             Transport::Seek(seconds) => {
                 position = seconds.max(0.0);
@@ -415,8 +490,8 @@ impl UnluminousApp {
         let Some(script) = script else {
             return Ok(Playing { playing, position, duration, volume });
         };
-        let starts = matches!(asked, Transport::Play)
-            || (matches!(asked, Transport::Toggle) && !playing);
+        let starts =
+            matches!(asked, Transport::Play) || (matches!(asked, Transport::Toggle) && !playing);
         let tab = self.a_video_tab(node, starts)?;
         if self.browser.evaluate(tab, &script).is_err() {
             // Not showing, so it is told what to do when it loads, and a play is what shows it.
@@ -434,7 +509,13 @@ impl UnluminousApp {
     /// A video node: the window's native web view on its page while it is the chosen node, and a
     /// placeholder drawn in `egui` otherwise. §5.4: one native view a window, so only one video or page
     /// plays at a time, and the placeholders are what a screenshot test can see.
-    pub(crate) fn show_a_video_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
+    pub(crate) fn show_a_video_node(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        body: Rect,
+        focused: bool,
+    ) {
         if let Some(why) = why_there_is_nothing(node) {
             say_in_a_node(ui, body, node.id, &why);
             return;
@@ -445,7 +526,8 @@ impl UnluminousApp {
             match self.a_video_tab(node.id, false) {
                 Ok(tab) => {
                     let camera = self.realm.realm.camera;
-                    let mut placement = crate::services::browser::BrowserPlacement::whole(tab, body, focused);
+                    let mut placement =
+                        crate::services::browser::BrowserPlacement::whole(tab, body, focused);
                     let whole = camera.rect_to_screen(self.realm.body.min, body);
                     placement.area = whole;
                     placement.visible = whole.intersect(self.realm.body);
@@ -467,7 +549,11 @@ impl UnluminousApp {
         let painter = ui.painter_at(body);
         painter.rect_filled(body, 0.0, Color32::from_black_alpha(140));
         let middle = body.center();
-        crate::theme::icon::video(&painter, Pos2::new(middle.x, middle.y - 20.0), color::text_dim());
+        crate::theme::icon::video(
+            &painter,
+            Pos2::new(middle.x, middle.y - 20.0),
+            color::text_dim(),
+        );
         painter.crisp_text(
             Pos2::new(middle.x, middle.y + 4.0),
             Align2::CENTER_CENTER,
@@ -483,7 +569,9 @@ impl UnluminousApp {
             color::text_dim(),
         );
         let response = ui.interact(body, egui::Id::new(("realm-video", node.id)), Sense::click());
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Show video {name}")));
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Show video {name}"))
+        });
         if response.clicked() {
             self.realm.realm.choose(Some(node.id));
             self.take_the_keyboard_for_the_realm();
@@ -496,7 +584,13 @@ impl UnluminousApp {
     /// **The focus is borrowed** exactly as a File Editor node borrows it, so `files.active()` is the note's
     /// tab while it is drawn, and then [`UnluminousApp::show_a_document_in`] draws it the way a tab in a pane
     /// is drawn. The raw source, the side by side view and the preview are all the editing area's own.
-    pub(crate) fn show_a_note_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
+    pub(crate) fn show_a_note_node(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        body: Rect,
+        focused: bool,
+    ) {
         let State::Note(note) = &node.state else { return };
         if let Some(why) = why_there_is_nothing(node) {
             say_in_a_node(ui, body, node.id, &why);
@@ -562,8 +656,10 @@ impl UnluminousApp {
             false => None,
         };
         if self.files.at(index).sized_at != asked {
-            let change =
-                unluminous_core::StyleChange { size: Some(wanted), ..self.settings.as_style_change() };
+            let change = unluminous_core::StyleChange {
+                size: Some(wanted),
+                ..self.settings.as_style_change()
+            };
             self.files.at_mut(index).document.set_base_style(change);
             self.files.at_mut(index).cached.stale = true;
             self.files.at_mut(index).sized_at = asked;
@@ -633,7 +729,12 @@ impl UnluminousApp {
     /// **Refused when the file is not inside the project**, which is the rule a realm file keeps when it is
     /// read (§5.1): a realm is shared with the project, and a node that names a file elsewhere is a node
     /// whose realm would show something different on every machine.
-    pub(crate) fn add_a_file_node(&mut self, kind: Kind, file: &Path, at: Pos2) -> Result<u64, String> {
+    pub(crate) fn add_a_file_node(
+        &mut self,
+        kind: Kind,
+        file: &Path,
+        at: Pos2,
+    ) -> Result<u64, String> {
         if let Some(why) = self.realm.realm.read_only_because() {
             return Err(why.to_owned());
         }
@@ -643,8 +744,11 @@ impl UnluminousApp {
             false => root.join(file),
         };
         let relative = crate::services::project_state::relative(&root, &absolute);
-        let checked = crate::services::realm::store::inside(&root, &crate::services::realm::slashed(&relative))
-            .map_err(|why| format!("{} cannot be put on a realm: {why}.", file.display()))?;
+        let checked = crate::services::realm::store::inside(
+            &root,
+            &crate::services::realm::slashed(&relative),
+        )
+        .map_err(|why| format!("{} cannot be put on a realm: {why}.", file.display()))?;
         if !checked.is_file() {
             return Err(format!("{} is not a file in this project.", file.display()));
         }
@@ -687,8 +791,13 @@ impl UnluminousApp {
     /// Rename the file a note node shows, through `move_path` so a link to it elsewhere in the project follows,
     /// and the node with it. §5.5: the node's header shows the file's name, so renaming the node is renaming
     /// the file.
-    pub(crate) fn rename_a_note(&mut self, node: u64, name: &str) -> Result<std::path::PathBuf, String> {
-        let Some(State::Note(note)) = self.realm.realm.node(node).map(|found| found.state.clone()) else {
+    pub(crate) fn rename_a_note(
+        &mut self,
+        node: u64,
+        name: &str,
+    ) -> Result<std::path::PathBuf, String> {
+        let Some(State::Note(note)) = self.realm.realm.node(node).map(|found| found.state.clone())
+        else {
             return Err(format!("Node {node} is not a note."));
         };
         let Some(from) = note.file else { return Err("This note names no file.".to_owned()) };
@@ -700,12 +809,16 @@ impl UnluminousApp {
             true => name.to_owned(),
             false => format!("{name}.md"),
         };
-        let to = from.parent().map(|folder| folder.join(&file_name)).unwrap_or_else(|| file_name.into());
+        let to =
+            from.parent().map(|folder| folder.join(&file_name)).unwrap_or_else(|| file_name.into());
         if to == from {
             return Ok(to);
         }
         if !self.move_path(&from, &to, true) {
-            return Err(self.message.clone().unwrap_or_else(|| "The note could not be renamed.".to_owned()));
+            return Err(self
+                .message
+                .clone()
+                .unwrap_or_else(|| "The note could not be renamed.".to_owned()));
         }
         Ok(to)
     }
@@ -855,13 +968,20 @@ fn pause_mark(painter: &egui::Painter, centre: Pos2, colour: Color32) {
 ///
 /// Drawn rather than `egui::Slider`, whose label is drawn beside it and whose look is egui's own rather than
 /// the window's.
-fn slider(ui: &mut egui::Ui, bar: Rect, value: f32, name: &str, salt: impl std::hash::Hash + std::fmt::Debug) -> Option<f32> {
+fn slider(
+    ui: &mut egui::Ui,
+    bar: Rect,
+    value: f32,
+    name: &str,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+) -> Option<f32> {
     let response = ui.interact(bar.expand(4.0), egui::Id::new(salt), Sense::click_and_drag());
     let painter = ui.painter_at(bar.expand(6.0));
     let track = Rect::from_center_size(bar.center(), Vec2::new(bar.width(), 4.0));
     painter.rect_filled(track, 2.0, color::control());
     let value = value.clamp(0.0, 1.0);
-    let filled = Rect::from_min_max(track.min, Pos2::new(track.left() + track.width() * value, track.max.y));
+    let filled =
+        Rect::from_min_max(track.min, Pos2::new(track.left() + track.width() * value, track.max.y));
     painter.rect_filled(filled, 2.0, color::accent());
     painter.circle_filled(Pos2::new(filled.right(), track.center().y), 5.0, color::text_strong());
     response.widget_info(|| egui::WidgetInfo::slider(true, f64::from(value), name));

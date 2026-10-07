@@ -442,17 +442,11 @@ mod tests {
         let mut output = context.run_ui(egui::RawInput::default(), |ui| {
             let painter = ui.painter().clone();
             let font = FontId::proportional(12.0);
-            let plain = layout_no_wrap(
-                &painter,
-                "Realm".to_owned(),
-                font.clone(),
-                Color32::WHITE,
-            );
+            let plain = layout_no_wrap(&painter, "Realm".to_owned(), font.clone(), Color32::WHITE);
             let at_one = plain.size();
 
             let was = composite_at(2.0);
-            let zoomed =
-                layout_no_wrap(&painter, "Realm".to_owned(), font, Color32::WHITE);
+            let zoomed = layout_no_wrap(&painter, "Realm".to_owned(), font, Color32::WHITE);
             let at_two = zoomed.size();
             restore(was);
 

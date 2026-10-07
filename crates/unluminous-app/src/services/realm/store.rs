@@ -165,7 +165,10 @@ pub fn read(text: &str, root: &Path, path: &Path) -> Result<Realm, String> {
     let mut ids_taken: BTreeSet<u64> = BTreeSet::new();
     for (spelling, keys) in nodes {
         if realm.nodes.len() >= NODE_LIMIT {
-            eprintln!("{} holds more than {NODE_LIMIT} nodes; the rest are not read", path.display());
+            eprintln!(
+                "{} holds more than {NODE_LIMIT} nodes; the rest are not read",
+                path.display()
+            );
             break;
         }
         let Some(mut id) = parse_id(&spelling) else {
@@ -196,7 +199,10 @@ pub fn read(text: &str, root: &Path, path: &Path) -> Result<Realm, String> {
     };
     for (spelling, mut keys) in edges {
         if realm.edges.len() >= EDGE_LIMIT {
-            eprintln!("{} holds more than {EDGE_LIMIT} edges; the rest are not read", path.display());
+            eprintln!(
+                "{} holds more than {EDGE_LIMIT} edges; the rest are not read",
+                path.display()
+            );
             break;
         }
         let (Some(from), Some(to)) = (
@@ -205,7 +211,8 @@ pub fn read(text: &str, root: &Path, path: &Path) -> Result<Realm, String> {
         ) else {
             continue;
         };
-        let pipe = keys.remove("pipe").and_then(|pipe| Pipe::from_name(pipe.trim())).unwrap_or_default();
+        let pipe =
+            keys.remove("pipe").and_then(|pipe| Pipe::from_name(pipe.trim())).unwrap_or_default();
         let id = match parse_id(&spelling) {
             Some(id) if !ids_taken.contains(&id) => id,
             _ => super::fresh_id(|taken| ids_taken.contains(&taken)),
@@ -354,7 +361,8 @@ fn read_a_node(id: NodeId, mut keys: BTreeMap<String, String>, root: &Path, path
     let kind_name = take(&mut keys, "kind").unwrap_or_default().trim().to_owned();
     let kind = Kind::from_name(&kind_name);
     let shape = kind.unwrap_or(Kind::Unknown);
-    let at = Pos2::new(number(&mut keys, "x").unwrap_or(0.0), number(&mut keys, "y").unwrap_or(0.0));
+    let at =
+        Pos2::new(number(&mut keys, "x").unwrap_or(0.0), number(&mut keys, "y").unwrap_or(0.0));
     let smallest = shape.smallest();
     let size = Vec2::new(
         number(&mut keys, "width").unwrap_or(shape.opens_at().x).max(smallest.x),
@@ -366,16 +374,23 @@ fn read_a_node(id: NodeId, mut keys: BTreeMap<String, String>, root: &Path, path
     let mut refused = None;
     let state = match kind {
         None => {
-            eprintln!("{}: node {} is a {kind_name}, which this Unluminous does not know", path.display(), hex(id));
+            eprintln!(
+                "{}: node {} is a {kind_name}, which this Unluminous does not know",
+                path.display(),
+                hex(id)
+            );
             // Every key that is left is the kind's own, and all of them go back out unchanged.
             State::Unknown(Unknown { kind: kind_name, keys: std::mem::take(&mut keys) })
         }
-        Some(Kind::Unknown) => State::Unknown(Unknown { kind: kind_name, keys: std::mem::take(&mut keys) }),
+        Some(Kind::Unknown) => {
+            State::Unknown(Unknown { kind: kind_name, keys: std::mem::take(&mut keys) })
+        }
         Some(Kind::Terminal) => State::Terminal(Terminal {
             command: take(&mut keys, "command").unwrap_or_default(),
             // A terminal's folder is not refused: starting a shell somewhere reads nothing, and a node
             // pointed at a sibling checkout is an ordinary thing to have.
-            folder: take(&mut keys, "folder").map(|folder| project_state::absolute(root, Path::new(folder.trim()))),
+            folder: take(&mut keys, "folder")
+                .map(|folder| project_state::absolute(root, Path::new(folder.trim()))),
             font_size: number(&mut keys, "font").unwrap_or(0.0).max(0.0),
             session: String::new(),
             running: String::new(),
@@ -432,7 +447,9 @@ fn read_a_node(id: NodeId, mut keys: BTreeMap<String, String>, root: &Path, path
         }),
         Some(Kind::Note) => State::Note(Note {
             file: a_path(&mut keys, "file", root, &mut extra, &mut refused),
-            view: take(&mut keys, "view").and_then(|view| NoteView::from_name(&view)).unwrap_or_default(),
+            view: take(&mut keys, "view")
+                .and_then(|view| NoteView::from_name(&view))
+                .unwrap_or_default(),
             font_size: number(&mut keys, "font").unwrap_or(0.0).max(0.0),
             caret: 0,
             scroll: 0.0,
@@ -498,7 +515,9 @@ fn a_multiple(values: &mut Values, key: &str, multiple: f32) {
 /// One node's lines in the realm file.
 fn write_a_node(node: &Node, root: &Path, values: &mut Values) {
     let key = format!("node.{}", hex(node.id));
-    let set = |values: &mut Values, name: &str, value: String| values.set(&format!("{key}.{name}"), value);
+    let set = |values: &mut Values, name: &str, value: String| {
+        values.set(&format!("{key}.{name}"), value)
+    };
     set(values, "kind", node.state.kind_name().to_owned());
     set(values, "x", format!("{:.1}", node.at.x));
     set(values, "y", format!("{:.1}", node.at.y));
@@ -673,7 +692,8 @@ pub fn read_the_sidecar(realm: &mut Realm, text: &str, root: &Path) {
         .filter(|id| realm.nodes.iter().any(|node| node.id == *id));
     for node in &mut realm.nodes {
         let key = format!("node.{}", hex(node.id));
-        let text = |name: &str| values.text(&format!("{key}.{name}")).unwrap_or_default().to_owned();
+        let text =
+            |name: &str| values.text(&format!("{key}.{name}")).unwrap_or_default().to_owned();
         let number = |name: &str| values.number(&format!("{key}.{name}"));
         match &mut node.state {
             State::Terminal(terminal) => {
@@ -682,12 +702,11 @@ pub fn read_the_sidecar(realm: &mut Realm, text: &str, root: &Path) {
                 terminal.running = text("running");
             }
             State::Folder(folder) => {
-                let mut keys: BTreeMap<String, String> = values
-                    .starting_with(&format!("{key}."))
-                    .into_iter()
-                    .collect();
+                let mut keys: BTreeMap<String, String> =
+                    values.starting_with(&format!("{key}.")).into_iter().collect();
                 let (mut ignored, mut none) = (BTreeMap::new(), None);
-                folder.expanded = a_list(&mut keys, "expanded", root, false, &mut ignored, &mut none);
+                folder.expanded =
+                    a_list(&mut keys, "expanded", root, false, &mut ignored, &mut none);
                 folder.scroll = number("scroll").unwrap_or(0.0).max(0.0);
             }
             State::Editor(editor) => {
@@ -704,7 +723,8 @@ pub fn read_the_sidecar(realm: &mut Realm, text: &str, root: &Path) {
                     asked if asked > 0.0 => asked,
                     _ => 1.0,
                 };
-                image.scroll = Vec2::new(number("scroll.x").unwrap_or(0.0), number("scroll.y").unwrap_or(0.0));
+                image.scroll =
+                    Vec2::new(number("scroll.x").unwrap_or(0.0), number("scroll.y").unwrap_or(0.0));
             }
             State::Audio(audio) => audio.position = number("position").unwrap_or(0.0).max(0.0),
             State::Video(video) => video.position = number("position").unwrap_or(0.0).max(0.0),
@@ -842,7 +862,9 @@ pub fn counts(root: &Path, path: &Path) -> Option<(usize, usize)> {
     for (name, _) in values.starting_with("") {
         if let Some((id, _)) = name.strip_prefix("node.").and_then(|rest| rest.split_once('.')) {
             nodes.insert(id.to_owned());
-        } else if let Some((id, _)) = name.strip_prefix("edge.").and_then(|rest| rest.split_once('.')) {
+        } else if let Some((id, _)) =
+            name.strip_prefix("edge.").and_then(|rest| rest.split_once('.'))
+        {
             edges.insert(id.to_owned());
         }
     }
@@ -946,7 +968,9 @@ pub mod legacy {
         let mut views = Vec::new();
         for at in 0..VIEW_LIMIT {
             let key = format!("space.view.{at}");
-            let Some(id) = values.number(&format!("{key}.id")).map(|id| id as u64) else { continue };
+            let Some(id) = values.number(&format!("{key}.id")).map(|id| id as u64) else {
+                continue;
+            };
             if id == 0 {
                 continue;
             }
@@ -1044,7 +1068,8 @@ pub mod legacy {
             values.number(&format!("{key}.height")).unwrap_or(kind.opens_at().y).max(smallest.y),
         );
         node.title = values.text(&format!("{key}.title")).unwrap_or_default().to_owned();
-        let text = |name: &str| values.text(&format!("{key}.{name}")).unwrap_or_default().to_owned();
+        let text =
+            |name: &str| values.text(&format!("{key}.{name}")).unwrap_or_default().to_owned();
         node.state = match kind {
             Kind::Terminal => State::Terminal(Terminal {
                 command: text("command"),
@@ -1055,7 +1080,9 @@ pub mod legacy {
                 session: text("session"),
                 running: text("running"),
             }),
-            Kind::Browser => State::Browser(Browser { url: text("url"), typed: text("url"), editing: false }),
+            Kind::Browser => {
+                State::Browser(Browser { url: text("url"), typed: text("url"), editing: false })
+            }
             Kind::Folder => State::Folder(Folder {
                 root: values
                     .text(&format!("{key}.root"))
@@ -1078,7 +1105,9 @@ pub mod legacy {
                 scroll: values.number(&format!("{key}.scroll")).unwrap_or(0.0),
                 font_size: values.number(&format!("{key}.font")).unwrap_or(0.0).max(0.0),
             }),
-            Kind::Chat => State::Chat(Chat { conversation: text("conversation"), zoom: a_zoom(values, key) }),
+            Kind::Chat => {
+                State::Chat(Chat { conversation: text("conversation"), zoom: a_zoom(values, key) })
+            }
             Kind::Tasks => State::Tasks(Tasks { zoom: a_zoom(values, key) }),
             _ => return None,
         };
@@ -1190,8 +1219,10 @@ mod tests {
         for (at, kind) in Kind::ALL.into_iter().enumerate() {
             ids.push(realm.add_node(kind, Pos2::new(at as f32 * 700.0, 40.0), Some(project)));
         }
-        let [terminal, browser, folder, editor, chat, tasks, image, audio, video, note] =
-            ids[..] else { panic!("ten kinds") };
+        let [terminal, browser, folder, editor, chat, tasks, image, audio, video, note] = ids[..]
+        else {
+            panic!("ten kinds")
+        };
         realm.change(terminal, |state| {
             if let State::Terminal(terminal) = state {
                 terminal.command = "claude".to_owned();
@@ -1296,7 +1327,11 @@ mod tests {
         assert_eq!(sorted(&back.edges), sorted(&realm.edges));
         assert_eq!(back.camera, realm.camera);
         assert_eq!(back.chosen, realm.chosen);
-        assert_eq!(write(&back, project), write(&realm, project), "the second write is byte identical");
+        assert_eq!(
+            write(&back, project),
+            write(&realm, project),
+            "the second write is byte identical"
+        );
         assert_eq!(write_the_sidecar(&back, project), write_the_sidecar(&realm, project));
     }
 
@@ -1306,9 +1341,14 @@ mod tests {
         let project = Path::new("/projects/thing");
         let realm = every_kind(project);
         let file = write(&realm, project);
-        for kept_out in ["camera", "chosen", "session", "caret", "running", "position", "expanded", "showing"] {
-            assert!(!file.contains(&format!(".{kept_out} =")) && !file.contains(&format!("{kept_out}.")),
-                "{kept_out} is in the realm file:\n{file}");
+        for kept_out in
+            ["camera", "chosen", "session", "caret", "running", "position", "expanded", "showing"]
+        {
+            assert!(
+                !file.contains(&format!(".{kept_out} ="))
+                    && !file.contains(&format!("{kept_out}.")),
+                "{kept_out} is in the realm file:\n{file}"
+            );
         }
         let sidecar = write_the_sidecar(&realm, project);
         assert!(sidecar.contains("camera.zoom = 0.750"), "{sidecar}");
@@ -1365,7 +1405,9 @@ edge.00000003.label = feeds
         let realm = read(text, project, Path::new("a.realm")).expect("it reads");
         assert_eq!(realm.extra.get("realm.colour").map(String::as_str), Some("teal"));
         let out = write(&realm, project);
-        for kept in ["realm.colour = teal", "node.00000001.glow = soft", "edge.00000003.label = feeds"] {
+        for kept in
+            ["realm.colour = teal", "node.00000001.glow = soft", "edge.00000003.label = feeds"]
+        {
             assert!(out.contains(kept), "{kept} was lost:\n{out}");
         }
     }
@@ -1381,7 +1423,10 @@ edge.00000003.label = feeds
 
         for (name, text) in [
             ("writer.realm", "realm.format = 1\nrealm.writer = 2\nnode.00000001.kind = browser\n"),
-            ("needs.realm", "realm.format = 1\nrealm.needs = groups\nnode.00000001.kind = browser\n"),
+            (
+                "needs.realm",
+                "realm.format = 1\nrealm.needs = groups\nnode.00000001.kind = browser\n",
+            ),
         ] {
             std::fs::write(project.join(name), text).expect("write the file");
             let mut realm = load(&project, Path::new(name)).expect("it opens");
@@ -1390,8 +1435,15 @@ edge.00000003.label = feeds
             assert!(!realm.is_dirty());
             realm.pan_by(Vec2::new(5.0, 5.0));
             save(&project, &mut realm).expect("the sidecar is written");
-            assert_eq!(std::fs::read_to_string(project.join(name)).expect("read"), text, "{name} untouched");
-            assert!(sidecar_path(&project, Path::new(name)).exists(), "the camera still goes somewhere");
+            assert_eq!(
+                std::fs::read_to_string(project.join(name)).expect("read"),
+                text,
+                "{name} untouched"
+            );
+            assert!(
+                sidecar_path(&project, Path::new(name)).exists(),
+                "the camera still goes somewhere"
+            );
         }
         let _ = std::fs::remove_dir_all(&project);
     }
@@ -1404,8 +1456,9 @@ edge.00000003.label = feeds
         let refused = read("node.00000001.kind = audio\n", project, Path::new("x.realm"))
             .expect_err("no realm.format");
         assert!(refused.contains("not a realm file"), "{refused}");
-        let realm = read("realm.format = 1\nnode.00000001.kind = audio\n", project, Path::new("x.realm"))
-            .expect("it reads");
+        let realm =
+            read("realm.format = 1\nnode.00000001.kind = audio\n", project, Path::new("x.realm"))
+                .expect("it reads");
         let node = realm.node(1).expect("there");
         assert_eq!(node.z, 0);
         assert_eq!(node.size, Kind::Audio.opens_at());
@@ -1432,7 +1485,14 @@ edge.00000003.to = 0000000a
         let ids: BTreeSet<NodeId> = realm.nodes.iter().map(|node| node.id).collect();
         assert_eq!(ids.len(), 3, "and no two share an id");
         let first = realm.node(10).expect("the first keeps its id");
-        assert_eq!(first.state, State::Browser(Browser { url: "https://first/".into(), typed: "https://first/".into(), editing: false }));
+        assert_eq!(
+            first.state,
+            State::Browser(Browser {
+                url: "https://first/".into(),
+                typed: "https://first/".into(),
+                editing: false
+            })
+        );
         assert_eq!(realm.edges[0].to, 10, "the edge points at the first");
         assert!(!realm.is_dirty(), "and nothing is rewritten until something changes");
     }
@@ -1442,17 +1502,29 @@ edge.00000003.to = 0000000a
     fn a_path_outside_the_project_is_refused_and_kept() {
         let project = Path::new("/projects/thing");
         for written in ["../x.png", "C:/x.png", "/x.png", "a/../b.png", "\\\\share\\x.png"] {
-            let text = format!("realm.format = 1\nnode.00000001.kind = image\nnode.00000001.file = {written}\n");
+            let text = format!(
+                "realm.format = 1\nnode.00000001.kind = image\nnode.00000001.file = {written}\n"
+            );
             let realm = read(&text, project, Path::new("a.realm")).expect("it reads");
             let node = realm.node(1).expect("the node is kept");
             assert_eq!(node.state.file(), None, "{written} was believed");
             assert!(node.refused.is_some(), "{written} was refused without saying so");
             let out = write(&realm, project);
-            assert!(out.contains(&format!("node.00000001.file = {}", written.trim())), "{written} was not kept:\n{out}");
+            assert!(
+                out.contains(&format!("node.00000001.file = {}", written.trim())),
+                "{written} was not kept:\n{out}"
+            );
         }
-        let inside_it = read("realm.format = 1\nnode.00000001.kind = image\nnode.00000001.file = design/a.png\n", project, Path::new("a.realm"))
-            .expect("it reads");
-        assert_eq!(inside_it.node(1).expect("there").state.file(), Some(project.join("design").join("a.png")).as_deref());
+        let inside_it = read(
+            "realm.format = 1\nnode.00000001.kind = image\nnode.00000001.file = design/a.png\n",
+            project,
+            Path::new("a.realm"),
+        )
+        .expect("it reads");
+        assert_eq!(
+            inside_it.node(1).expect("there").state.file(),
+            Some(project.join("design").join("a.png")).as_deref()
+        );
     }
 
     /// Item 8: `space.conf` with three views becomes three realm files with their cameras in their
@@ -1466,34 +1538,61 @@ edge.00000003.to = 0000000a
         std::fs::write(&legacy, &original).expect("write space.conf");
 
         let imported = import(&project).expect("it imports");
-        let names: Vec<String> = imported.written.iter().map(|path| super::super::slashed(path)).collect();
-        assert_eq!(names, vec![".realm-files/main.realm", ".realm-files/rendering.realm", ".realm-files/main 2.realm"]);
+        let names: Vec<String> =
+            imported.written.iter().map(|path| super::super::slashed(path)).collect();
+        assert_eq!(
+            names,
+            vec![
+                ".realm-files/main.realm",
+                ".realm-files/rendering.realm",
+                ".realm-files/main 2.realm"
+            ]
+        );
         assert_eq!(imported.current.as_deref(), Some(Path::new(".realm-files/rendering.realm")));
-        assert_eq!(std::fs::read_to_string(&legacy).expect("still there"), original, "space.conf is untouched");
+        assert_eq!(
+            std::fs::read_to_string(&legacy).expect("still there"),
+            original,
+            "space.conf is untouched"
+        );
 
         let main = load(&project, Path::new(".realm-files/main.realm")).expect("main opens");
         assert_eq!(main.camera, Camera { at: Pos2::new(-750.0, -741.2), zoom: 0.777 });
         assert_eq!(main.nodes.len(), 3);
         assert_eq!(main.edges.len(), 1);
         assert_eq!(main.node(3).expect("ids are kept").kind(), Kind::Tasks);
-        let rendering = load(&project, Path::new(".realm-files/rendering.realm")).expect("it opens");
+        let rendering =
+            load(&project, Path::new(".realm-files/rendering.realm")).expect("it opens");
         match &rendering.node(10).expect("the terminal").state {
-            State::Terminal(terminal) => assert_eq!(terminal.session, "abc-123", "its conversation came too"),
+            State::Terminal(terminal) => {
+                assert_eq!(terminal.session, "abc-123", "its conversation came too")
+            }
             other => panic!("{other:?}"),
         }
         assert_eq!(rendering.chosen, Some(10));
 
-        let before: Vec<String> = imported.written.iter().map(|path| std::fs::read_to_string(project.join(path)).expect("read")).collect();
+        let before: Vec<String> = imported
+            .written
+            .iter()
+            .map(|path| std::fs::read_to_string(project.join(path)).expect("read"))
+            .collect();
         let again = import(&project).expect("it runs again");
         assert!(again.written.is_empty(), "nothing is written over: {:?}", again.written);
         assert_eq!(again.skipped.len(), 3);
-        let after: Vec<String> = imported.written.iter().map(|path| std::fs::read_to_string(project.join(path)).expect("read")).collect();
+        let after: Vec<String> = imported
+            .written
+            .iter()
+            .map(|path| std::fs::read_to_string(project.join(path)).expect("read"))
+            .collect();
         assert_eq!(before, after);
         let _ = std::fs::remove_dir_all(&project);
     }
 
     fn fixture(name: &str) -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("realm").join(name)
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("realm")
+            .join(name)
     }
 
     /// Item 9: every format fixture reads and, written back by this build, is the expected file. There is
@@ -1502,8 +1601,10 @@ edge.00000003.to = 0000000a
     fn every_format_fixture_reads_and_writes_back_as_expected() {
         let project = Path::new("/projects/thing");
         for format in 1..=super::super::FORMAT {
-            let text = std::fs::read_to_string(fixture(&format!("format-{format}.realm"))).expect("the fixture");
-            let realm = read(&text, project, Path::new(".realm-files/architecture.realm")).expect("it reads");
+            let text = std::fs::read_to_string(fixture(&format!("format-{format}.realm")))
+                .expect("the fixture");
+            let realm = read(&text, project, Path::new(".realm-files/architecture.realm"))
+                .expect("it reads");
             let written = write(&realm, project);
             let expected_file = fixture(&format!("format-{format}.expected.realm"));
             // `UPDATE_SNAPSHOTS=1` accepts what this build writes, which is the switch the pictures use. Read
@@ -1512,7 +1613,11 @@ edge.00000003.to = 0000000a
                 std::fs::write(&expected_file, &written).expect("write the expected file");
             }
             let expected = std::fs::read_to_string(&expected_file).expect("the expected file");
-            assert_eq!(written.replace("\r\n", "\n"), expected.replace("\r\n", "\n"), "format {format}");
+            assert_eq!(
+                written.replace("\r\n", "\n"),
+                expected.replace("\r\n", "\n"),
+                "format {format}"
+            );
         }
     }
 
@@ -1529,7 +1634,10 @@ edge.00000003.to = 0000000a
         let stamp = std::fs::metadata(&file).and_then(|about| about.modified()).expect("stamp");
         std::thread::sleep(std::time::Duration::from_millis(20));
         save(&project, &mut realm).expect("saved again");
-        assert_eq!(std::fs::metadata(&file).and_then(|about| about.modified()).expect("stamp"), stamp);
+        assert_eq!(
+            std::fs::metadata(&file).and_then(|about| about.modified()).expect("stamp"),
+            stamp
+        );
         assert_eq!(list(&project), vec![path.clone()]);
         let copy = duplicate(&project, &realm).expect("copied");
         assert_eq!(copy, Path::new(".realm-files/plan copy.realm"));
@@ -1543,13 +1651,16 @@ edge.00000003.to = 0000000a
         assert_eq!(slug_of("Main"), "main");
         assert_eq!(slug_of("Two Words!"), "two-words");
         assert_eq!(slug_of("  "), "realm");
-        assert_eq!(sidecar_path(Path::new("/p"), Path::new(".realm-files/a.realm")),
-            Path::new("/p").join(".unluminous").join("realms").join(".realm-files__a.realm.conf"));
+        assert_eq!(
+            sidecar_path(Path::new("/p"), Path::new(".realm-files/a.realm")),
+            Path::new("/p").join(".unluminous").join("realms").join(".realm-files__a.realm.conf")
+        );
     }
 
     #[test]
     fn a_file_that_cannot_be_read_says_so_rather_than_opening_empty() {
-        let refusal = load(Path::new("/nothing/like/this"), Path::new("a.realm")).expect_err("not there");
+        let refusal =
+            load(Path::new("/nothing/like/this"), Path::new("a.realm")).expect_err("not there");
         assert!(refusal.contains("could not be read"), "{refusal}");
     }
 }

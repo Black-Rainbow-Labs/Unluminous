@@ -508,7 +508,9 @@ impl Layout {
             let read = |measure: &str| {
                 let key = format!("panes.{}.{measure}", panel.name());
                 values.text(&key).or_else(|| {
-                    (panel == Panel::Realm).then(|| values.text(&format!("panes.space.{measure}"))).flatten()
+                    (panel == Panel::Realm)
+                        .then(|| values.text(&format!("panes.space.{measure}")))
+                        .flatten()
                 })
             };
             if let Some(name) = read("side") {

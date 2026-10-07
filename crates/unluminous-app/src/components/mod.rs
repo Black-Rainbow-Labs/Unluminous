@@ -52,6 +52,8 @@ pub mod new_project_dialog;
 pub mod picture_view;
 pub mod plugins_page;
 pub mod prompt_dialog;
+/// The Realm — `task-1904`.
+pub mod realm;
 pub mod references;
 pub mod resize_edges;
 pub mod run_dialog;
@@ -59,8 +61,6 @@ pub mod run_panel;
 pub mod run_widget;
 pub mod scrollbar;
 pub mod settings_dialog;
-/// The Realm — `task-1904`.
-pub mod realm;
 pub mod splitter;
 pub mod status_bar;
 pub mod terminal_panel;

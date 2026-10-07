@@ -1738,7 +1738,12 @@ pub fn audio(painter: &egui::Painter, centre: Pos2, color: Color32) {
 /// can be told apart by their marks.
 pub fn photo(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let frame = Rect::from_center_size(centre, egui::Vec2::new(13.0, 11.0));
-    painter.rect_stroke(frame, CornerRadius::same(1), Stroke::new(1.2, color), egui::StrokeKind::Inside);
+    painter.rect_stroke(
+        frame,
+        CornerRadius::same(1),
+        Stroke::new(1.2, color),
+        egui::StrokeKind::Inside,
+    );
     painter.circle_filled(Pos2::new(frame.right() - 3.4, frame.top() + 3.2), 1.2, color);
     painter.add(egui::Shape::convex_polygon(
         vec![
@@ -1763,7 +1768,12 @@ pub fn photo(painter: &egui::Painter, centre: Pos2, color: Color32) {
 /// A film: a frame with a play triangle in it, for a video node - `task-2202`.
 pub fn video(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let frame = Rect::from_center_size(centre, egui::Vec2::new(13.0, 10.0));
-    painter.rect_stroke(frame, CornerRadius::same(2), Stroke::new(1.2, color), egui::StrokeKind::Inside);
+    painter.rect_stroke(
+        frame,
+        CornerRadius::same(2),
+        Stroke::new(1.2, color),
+        egui::StrokeKind::Inside,
+    );
     painter.add(egui::Shape::convex_polygon(
         vec![
             Pos2::new(centre.x - 1.8, centre.y - 2.8),

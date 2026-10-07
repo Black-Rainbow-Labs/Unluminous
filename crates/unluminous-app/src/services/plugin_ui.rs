@@ -845,7 +845,10 @@ mod tests {
         // The registry is a list of names and this is the code behind them. A name with no code would
         // load a manifest whose pane is permanently empty, which is the exact outcome checking the
         // name against a registry exists to prevent.
-        for name in UI_PROVIDERS.iter().filter(|name| !crate::services::plugins::CORE_PROVIDERS.contains(name)) {
+        for name in UI_PROVIDERS
+            .iter()
+            .filter(|name| !crate::services::plugins::CORE_PROVIDERS.contains(name))
+        {
             let built =
                 provider(name).unwrap_or_else(|| panic!("{name} is registered with no code"));
             assert_eq!(built.id(), *name, "a provider should know its own name");

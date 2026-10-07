@@ -309,9 +309,27 @@ mod tests {
 
     fn rows() -> Vec<Row> {
         vec![
-            Row { id: PathBuf::from("Main.realm"), name: "Main".to_owned(), nodes: 4, connections: 2, showing: true },
-            Row { id: PathBuf::from("Rendering.realm"), name: "Rendering".to_owned(), nodes: 7, connections: 5, showing: false },
-            Row { id: PathBuf::from("Notes.realm"), name: "Notes".to_owned(), nodes: 1, connections: 0, showing: false },
+            Row {
+                id: PathBuf::from("Main.realm"),
+                name: "Main".to_owned(),
+                nodes: 4,
+                connections: 2,
+                showing: true,
+            },
+            Row {
+                id: PathBuf::from("Rendering.realm"),
+                name: "Rendering".to_owned(),
+                nodes: 7,
+                connections: 5,
+                showing: false,
+            },
+            Row {
+                id: PathBuf::from("Notes.realm"),
+                name: "Notes".to_owned(),
+                nodes: 1,
+                connections: 0,
+                showing: false,
+            },
         ]
     }
 

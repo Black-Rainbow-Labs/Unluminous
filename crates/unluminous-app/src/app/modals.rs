@@ -377,21 +377,24 @@ impl UnluminousApp {
                 Err(problem) => self.message = Some(problem),
             },
             Purpose::RenameRealmView(path) => match self.rename_a_realm(&path, &name) {
-                Ok(to) => self.message = Some(format!("The realm is {}", crate::services::realm::slashed(&to))),
+                Ok(to) => {
+                    self.message =
+                        Some(format!("The realm is {}", crate::services::realm::slashed(&to)))
+                }
                 Err(problem) => self.message = Some(problem),
             },
-            Purpose::NewNote(x, y) => {
-                match self.new_note(&name, egui::pos2(x as f32, y as f32)) {
-                    Ok(_) => self.message = Some(format!("Made the note {}", name.trim())),
-                    Err(problem) => self.message = Some(problem),
-                }
-            }
+            Purpose::NewNote(x, y) => match self.new_note(&name, egui::pos2(x as f32, y as f32)) {
+                Ok(_) => self.message = Some(format!("Made the note {}", name.trim())),
+                Err(problem) => self.message = Some(problem),
+            },
             Purpose::RenameNote(node) => match self.rename_a_note(node, &name) {
                 Ok(to) => self.message = Some(format!("The note is {}", to.display())),
                 Err(problem) => self.message = Some(problem),
             },
             Purpose::NewRealm => match self.new_realm(&name) {
-                Ok(path) => self.message = Some(format!("Made {}", crate::services::realm::slashed(&path))),
+                Ok(path) => {
+                    self.message = Some(format!("Made {}", crate::services::realm::slashed(&path)))
+                }
                 Err(problem) => self.message = Some(problem),
             },
         }

@@ -56,11 +56,11 @@ mod panels;
 // The window's side of the UI plugins: which providers are open, and which of their panes are showing.
 pub mod plugin_panes;
 mod preview;
-mod running;
-mod settings_changes;
 pub mod realm;
 pub mod realm_files;
 pub mod realm_nodes;
+mod running;
+mod settings_changes;
 pub mod symbols;
 mod terminals;
 mod updating;

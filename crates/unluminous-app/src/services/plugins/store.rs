@@ -110,7 +110,9 @@ impl Plugins {
         let mut by_extension: Vec<(String, Grammar)> = Vec::new();
         // A language's grammar only: a ui plugin claims a file type to open it somewhere else, and a grammar
         // of nothing would colour the file as plain words if it were ever opened as text.
-        for plugin in self.installed.iter().filter(|plugin| plugin.enabled && plugin.kind == Kind::Language) {
+        for plugin in
+            self.installed.iter().filter(|plugin| plugin.enabled && plugin.kind == Kind::Language)
+        {
             for extension in &plugin.extensions {
                 if by_extension.iter().any(|(known, _)| known == extension) {
                     continue; // the first plugin that claims an extension is the one `for_path` gives
@@ -253,11 +255,13 @@ impl Plugins {
         if wanted.is_empty() {
             return None;
         }
-        self.installed.iter().filter(|plugin| plugin.enabled && plugin.kind == Kind::Language).find(|plugin| {
-            plugin.id == wanted
-                || plugin.name.to_lowercase() == wanted
-                || plugin.extensions.contains(&wanted)
-        })
+        self.installed.iter().filter(|plugin| plugin.enabled && plugin.kind == Kind::Language).find(
+            |plugin| {
+                plugin.id == wanted
+                    || plugin.name.to_lowercase() == wanted
+                    || plugin.extensions.contains(&wanted)
+            },
+        )
     }
 
     pub fn renders(&self, name: &str) -> bool {

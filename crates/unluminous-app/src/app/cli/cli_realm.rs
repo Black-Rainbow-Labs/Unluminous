@@ -90,15 +90,17 @@ impl UnluminousApp {
             "play" => self.cli_realm_transport(request, crate::app::realm_nodes::Transport::Play),
             "pause" => self.cli_realm_transport(request, crate::app::realm_nodes::Transport::Pause),
             "seek" => match request.number("seconds") {
-                Some(seconds) => {
-                    self.cli_realm_transport(request, crate::app::realm_nodes::Transport::Seek(seconds as f32))
-                }
+                Some(seconds) => self.cli_realm_transport(
+                    request,
+                    crate::app::realm_nodes::Transport::Seek(seconds as f32),
+                ),
                 None => no(request, code::USAGE, "Say how many seconds in."),
             },
             "volume" => match request.number("level") {
-                Some(level) if (0.0..=1.0).contains(&level) => {
-                    self.cli_realm_transport(request, crate::app::realm_nodes::Transport::Volume(level as f32))
-                }
+                Some(level) if (0.0..=1.0).contains(&level) => self.cli_realm_transport(
+                    request,
+                    crate::app::realm_nodes::Transport::Volume(level as f32),
+                ),
                 _ => no(request, code::USAGE, "Say a volume from 0 to 1."),
             },
             _ => unknown(request),
@@ -324,7 +326,8 @@ impl UnluminousApp {
             Kind::Note => {
                 let given = given.unwrap_or_default();
                 let existing = self.tree.root().join(given.trim());
-                let made = match given.trim().to_lowercase().ends_with(".md") && existing.is_file() {
+                let made = match given.trim().to_lowercase().ends_with(".md") && existing.is_file()
+                {
                     true => self.add_a_file_node(kind, &existing, at),
                     false => {
                         let name = match given.trim() {
@@ -968,10 +971,7 @@ impl UnluminousApp {
                 // and into the editing area when there is not. One function, so the pointer and the agent
                 // cannot come to different answers. `task-1905`.
                 let wired = self.realm.realm.reaches(node).into_iter().find(|other| {
-                    self.realm
-                        .realm
-                        .node(*other)
-                        .is_some_and(|found| found.kind() == Kind::Editor)
+                    self.realm.realm.node(*other).is_some_and(|found| found.kind() == Kind::Editor)
                 });
                 match wired {
                     Some(editor) => match self.open_in_a_realm_node(editor, &path) {
@@ -1051,14 +1051,22 @@ impl UnluminousApp {
     ///
     /// The error is boxed because `Outcome` carries the whole of `Waiting`, which clippy flags as too
     /// large to return unboxed.
-    fn a_named_realm(&mut self, request: &Request, key: &str) -> Result<std::path::PathBuf, Box<Outcome>> {
+    fn a_named_realm(
+        &mut self,
+        request: &Request,
+        key: &str,
+    ) -> Result<std::path::PathBuf, Box<Outcome>> {
         let Some(name) = request.text(key) else {
             return Ok(self.realm.realm.path.clone());
         };
         self.list_the_realms();
         self.a_realm_called(&name).ok_or_else(|| {
-            let names: Vec<String> =
-                self.realm.files.iter().map(|path| crate::services::realm::title_of(path)).collect();
+            let names: Vec<String> = self
+                .realm
+                .files
+                .iter()
+                .map(|path| crate::services::realm::title_of(path))
+                .collect();
             Box::new(no(
                 request,
                 code::NOT_FOUND,
@@ -1164,14 +1172,22 @@ impl UnluminousApp {
     }
 
     /// `play`, `pause`, `seek` and `volume`: the same player the node's own controls drive. `task-2202`.
-    fn cli_realm_transport(&mut self, request: &Request, asked: crate::app::realm_nodes::Transport) -> Outcome {
+    fn cli_realm_transport(
+        &mut self,
+        request: &Request,
+        asked: crate::app::realm_nodes::Transport,
+    ) -> Outcome {
         let node = match self.a_named_node(request, "node") {
             Ok(node) => node,
             Err(outcome) => return *outcome,
         };
         if let Some(from) = request.number("from").map(|id| id as u64) {
             if !self.realm.realm.may_reach(from, node) {
-                return no(request, code::REFUSED, format!("Node {from} is not connected to node {node}."));
+                return no(
+                    request,
+                    code::REFUSED,
+                    format!("Node {from} is not connected to node {node}."),
+                );
             }
         }
         match self.drive_a_sound(node, asked) {
@@ -1201,18 +1217,23 @@ impl UnluminousApp {
             Ok(node) => node,
             Err(outcome) => return *outcome,
         };
-        let Some(view) = request.text("view").and_then(|view| crate::services::realm::NoteView::from_name(&view))
+        let Some(view) = request
+            .text("view")
+            .and_then(|view| crate::services::realm::NoteView::from_name(&view))
         else {
             return no(request, code::USAGE, "Say raw, side or preview.");
         };
         match self.set_a_notes_view(node, view) {
             Ok(()) => ok(
                 request,
-                format!("Node {node} shows its {}.", match view {
-                    crate::services::realm::NoteView::Raw => "source",
-                    crate::services::realm::NoteView::Side => "source beside its preview",
-                    crate::services::realm::NoteView::Preview => "preview",
-                }),
+                format!(
+                    "Node {node} shows its {}.",
+                    match view {
+                        crate::services::realm::NoteView::Raw => "source",
+                        crate::services::realm::NoteView::Side => "source beside its preview",
+                        crate::services::realm::NoteView::Preview => "preview",
+                    }
+                ),
                 json!({ "node": node, "view": view.name() }),
             ),
             Err(problem) => no(request, code::REFUSED, problem),
@@ -1319,10 +1340,16 @@ impl UnluminousApp {
                 self.realm.imported = true;
                 self.list_the_realms();
                 self.the_project_changed_on_disk();
-                let written: Vec<String> =
-                    imported.written.iter().map(|path| crate::services::realm::slashed(path)).collect();
-                let skipped: Vec<String> =
-                    imported.skipped.iter().map(|path| crate::services::realm::slashed(path)).collect();
+                let written: Vec<String> = imported
+                    .written
+                    .iter()
+                    .map(|path| crate::services::realm::slashed(path))
+                    .collect();
+                let skipped: Vec<String> = imported
+                    .skipped
+                    .iter()
+                    .map(|path| crate::services::realm::slashed(path))
+                    .collect();
                 let left_alone = match skipped.len() {
                     0 => String::new(),
                     many => format!(", and left {many} that were already there alone"),
