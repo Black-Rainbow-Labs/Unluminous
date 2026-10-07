@@ -156,7 +156,8 @@ that makes a new one. The `View` menu and the `Realms...` dialog have `New Realm
 Opening a `.realm` file from the explorer, from `Go to File` or with `tab open` shows it in a **realm
 tab**: a tab in the editing area with the realm bar and the canvas drawn in it, which comes back with the
 project. `realm open <name or path>` and the realm bar show it wherever the canvas is. There is one canvas,
-so while a realm tab is showing the panel says the realm is showing in a tab, and choosing another realm on
+so while a realm tab is showing, a panel that was already open says the realm is showing in a tab, and a
+command or a button that asks for the canvas leaves a closed panel closed. Choosing another realm on
 the bar inside a tab makes the tab that realm's. Switching realms writes the one that was open
 first, stops its sounds and closes its pages. Which realm was open is `realm.current` in
 `.unluminous/workspace.conf`, and that is the one a project opens on.

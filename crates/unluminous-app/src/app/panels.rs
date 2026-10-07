@@ -372,6 +372,12 @@ impl UnluminousApp {
                     self.message = Some(self.the_realm_is_off());
                     return;
                 }
+                // A realm tab that is showing already is the canvas, so asking for the canvas does not
+                // also open the panel beside it to say so: `realm add` with a realm open in a tab used
+                // to give half the window to the sentence "This realm is showing in a tab". `task-2202`.
+                if showing && !self.realm.visible && self.a_realm_tab_is_showing() {
+                    return;
+                }
                 self.realm.visible = showing;
                 if !showing {
                     // A gesture is a pointer half way through something, and the pointer is about to
