@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Realm pages respect the stacking order and stay in the canvas, a playing video keeps playing, Apple Lossless plays, and Atrius 0.1.2 (`task-2207`)
+- A sound file's decoder type has a name, so the signature fits the line rustfmt allows (`task-2207`)
+
 ## 0.64.3 — 2026-10-07
 
 - The chat prompt's text and caret stay inside its field (`task-2200`)

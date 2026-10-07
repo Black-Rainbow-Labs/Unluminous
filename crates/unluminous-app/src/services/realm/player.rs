@@ -315,7 +315,6 @@ mod tests {
     /// was turned on, because rodio's `mp4` feature brings the AAC decoder only.
     #[test]
     fn an_m4a_holding_aac_or_apple_lossless_can_be_decoded() {
-        use rodio::Source;
         let fixtures =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("sounds");
         for name in ["aac.m4a", "apple-lossless.m4a"] {
