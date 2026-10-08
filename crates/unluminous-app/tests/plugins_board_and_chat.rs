@@ -3448,14 +3448,17 @@ fn the_gallery(setup: &[&str]) -> Harness<'static, UnluminousApp> {
 ///
 /// The gallery is longer than any window, and a component nobody photographed is a component nobody
 /// has looked at; every one of these pictures was opened and looked at before it was accepted.
-fn down_the_conversation(harness: &mut Harness<'static, UnluminousApp>, name: &str, most: usize) {
+///
+/// **The pictures are named in full by the caller**, one a step, because
+/// `every_accepted_image_is_named_by_a_test` finds an accepted picture by its name in the test source.
+fn down_the_conversation(harness: &mut Harness<'static, UnluminousApp>, names: &[&str]) {
     // **A wheel rather than an offset.** The conversation sticks to its bottom, and an offset written
     // while it is there is overwritten before the frame ends; a wheel is what unsticks it. See
     // `PaneState::wheel`.
     with_the_chat(harness, |chat| chat.ui.wheel = Some(1.0e6));
     steady(harness);
-    for index in 0..most {
-        harness.snapshot(shot(&format!("{name}_{index}")).as_str());
+    for name in names {
+        harness.snapshot(shot(name).as_str());
         let mut place = (0.0_f32, 0.0_f32, 0.0_f32);
         with_the_chat(harness, |chat| {
             place = (
@@ -3484,39 +3487,39 @@ fn every_component_at_the_panes_own_width() {
         components.iter().all(|one| one["read"] == true),
         "every gallery block reads: {components:#?}"
     );
-    down_the_conversation(&mut harness, "agent_chat_gallery", 16);
+    down_the_conversation(&mut harness, &["agent_chat_gallery_0", "agent_chat_gallery_1", "agent_chat_gallery_2", "agent_chat_gallery_3", "agent_chat_gallery_4", "agent_chat_gallery_5", "agent_chat_gallery_6", "agent_chat_gallery_7", "agent_chat_gallery_8", "agent_chat_gallery_9", "agent_chat_gallery_10", "agent_chat_gallery_11", "agent_chat_gallery_12", "agent_chat_gallery_13"]);
 }
 
 /// The same, with the pane wide enough for columns to stand side by side.
 #[test]
 fn every_component_in_a_wide_pane() {
     let mut harness = the_gallery(&["panel size agent-chat/chat --width 760"]);
-    down_the_conversation(&mut harness, "agent_chat_gallery_wide", 12);
+    down_the_conversation(&mut harness, &["agent_chat_gallery_wide_0", "agent_chat_gallery_wide_1", "agent_chat_gallery_wide_2", "agent_chat_gallery_wide_3", "agent_chat_gallery_wide_4", "agent_chat_gallery_wide_5", "agent_chat_gallery_wide_6", "agent_chat_gallery_wide_7", "agent_chat_gallery_wide_8", "agent_chat_gallery_wide_9", "agent_chat_gallery_wide_10", "agent_chat_gallery_wide_11"]);
 }
 
 /// Zoomed in, which is where a component that forgot the zoom shows itself.
 #[test]
 fn every_component_zoomed_in() {
     let mut harness = the_gallery(&["panel zoom agent-chat/chat 1.5"]);
-    down_the_conversation(&mut harness, "agent_chat_gallery_zoomed", 4);
+    down_the_conversation(&mut harness, &["agent_chat_gallery_zoomed_0", "agent_chat_gallery_zoomed_1", "agent_chat_gallery_zoomed_2", "agent_chat_gallery_zoomed_3"]);
 }
 
 /// Zoomed out.
 #[test]
 fn every_component_zoomed_out() {
     let mut harness = the_gallery(&["panel zoom agent-chat/chat 0.8"]);
-    down_the_conversation(&mut harness, "agent_chat_gallery_small", 3);
+    down_the_conversation(&mut harness, &["agent_chat_gallery_small_0", "agent_chat_gallery_small_1", "agent_chat_gallery_small_2"]);
 }
 
 /// Docked as a strip along the bottom: wide and short.
 #[test]
 fn every_component_in_a_bottom_strip() {
     let mut harness = the_gallery(&["plugins pane agent-chat/chat --side bottom"]);
-    down_the_conversation(&mut harness, "agent_chat_gallery_strip", 3);
+    down_the_conversation(&mut harness, &["agent_chat_gallery_strip_0", "agent_chat_gallery_strip_1", "agent_chat_gallery_strip_2"]);
 }
 
 /// A chart arriving, cut short at `cut` of its text: drawn from what has come so far.
-fn a_chart_cut_at(index: usize, cut: f32) {
+fn a_chart_cut_at(name: &str, cut: f32) {
     let example = unluminous_chat::rich::catalogue::entry("chart").expect("a chart").example;
     let mut harness = harness("");
     did(&mut harness, "plugins pane agent-chat/chat --show");
@@ -3543,25 +3546,25 @@ fn a_chart_cut_at(index: usize, cut: f32) {
     for _ in 0..6 {
         harness.step();
     }
-    harness.snapshot(shot(&format!("agent_chat_streaming_chart_{index}")).as_str());
+    harness.snapshot(shot(name).as_str());
 }
 
 /// A chart whose fence has only just opened.
 #[test]
 fn a_chart_draws_while_its_first_fields_arrive() {
-    a_chart_cut_at(0, 0.2);
+    a_chart_cut_at("agent_chat_streaming_chart_0", 0.2);
 }
 
 /// A chart with its labels and part of its first series.
 #[test]
 fn a_chart_draws_while_its_series_arrive() {
-    a_chart_cut_at(1, 0.55);
+    a_chart_cut_at("agent_chat_streaming_chart_1", 0.55);
 }
 
 /// A chart nearly finished.
 #[test]
 fn a_chart_draws_when_it_is_nearly_finished() {
-    a_chart_cut_at(2, 0.85);
+    a_chart_cut_at("agent_chat_streaming_chart_2", 0.85);
 }
 
 /// A block that does not read says so, and the rest of the answer is still there.
@@ -3669,5 +3672,5 @@ fn a_real_answer_from_claude_code_draws_its_table_with_every_column_readable() {
         .map(|one| one["type"].as_str().unwrap_or("unread"))
         .collect();
     assert_eq!(kinds, vec!["chart", "table", "files", "actions"]);
-    down_the_conversation(&mut harness, "agent_chat_real_answer", 6);
+    down_the_conversation(&mut harness, &["agent_chat_real_answer_0", "agent_chat_real_answer_1", "agent_chat_real_answer_2", "agent_chat_real_answer_3", "agent_chat_real_answer_4", "agent_chat_real_answer_5"]);
 }

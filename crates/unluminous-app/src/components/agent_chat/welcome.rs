@@ -96,7 +96,14 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
     let showing = parts.showing.map(|path| path.to_path_buf());
     let permission = parts.configuration.permission;
     let tools = parts.configuration.tools;
-    let id = egui::Id::new("agent-chat-welcome");
+    // **Under the pane's own id**, which is how the bubbles are named too: a canvas can hold several
+    // chat nodes, each showing a welcome, and two widgets with one id are one widget to egui.
+    let id = ui.id().with("agent-chat-welcome");
+    // **The page takes a press over the whole of itself**, before anything on it is added, so a row
+    // added later still wins the point it is drawn on. On a canvas, a press nothing in a node takes
+    // falls through to the canvas, which then chooses no node at all: the starter chips this page
+    // replaced happened to sit where people click, and its status screen does not.
+    let _ = ui.interact(area, id.with("ground"), egui::Sense::click());
     rux::layer(ui, kept, id, area, |rux| {
         let theme = rux.theme();
         let colours = Instrument::of(theme);

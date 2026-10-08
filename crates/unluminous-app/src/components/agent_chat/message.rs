@@ -1390,6 +1390,7 @@ fn measure_block(
     rux_state.set_zoom(look.scale());
     rux_state.set_still(*still);
     let chrome = rux::Chrome::recording();
+    let scope = ui.id();
     let mut rux = rux::Rux { ui, state: rux_state, chrome: &chrome };
     let mut kit = super::blocks::Kit {
         rux: &mut rux,
@@ -1399,6 +1400,7 @@ fn measure_block(
         states: blocks,
         scenes,
         acts: Vec::new(),
+        scope,
     };
     super::blocks::block(&mut kit, read, source, key, Pos2::ZERO, width)
 }
@@ -1423,7 +1425,12 @@ fn block_show(
     rux_state.set_still(*still);
     // Room round the plate for its shadow, which the layer's canvas would otherwise cut off.
     let reach = 14.0 * look.scale();
-    let id = egui::Id::new(("agent-chat-block-layer", &key));
+    let scope = ui.id();
+    let id = scope.with(("agent-chat-block-layer", &key));
+    // A component takes a press over its own rectangle, for the reason `welcome::show` gives: on a
+    // canvas a press nothing in a node takes falls through and chooses no node. Added before the
+    // component's own controls, so they win the points they are drawn on.
+    let _ = ui.interact(rect, id.with("ground"), egui::Sense::click());
     rux::layer(ui, rux_state, id, rect.expand(reach), |rux| {
         let mut kit = super::blocks::Kit {
             rux,
@@ -1433,6 +1440,7 @@ fn block_show(
             states: blocks,
             scenes,
             acts: Vec::new(),
+            scope,
         };
         super::blocks::block(&mut kit, &read, source, &key, rect.min, rect.width());
         kit.acts

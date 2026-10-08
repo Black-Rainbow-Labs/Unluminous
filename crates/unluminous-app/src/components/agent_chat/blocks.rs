@@ -92,6 +92,9 @@ pub struct Kit<'a, 'r> {
     pub states: &'a mut HashMap<String, BlockState>,
     pub scenes: &'a mut crate::services::mermaid_scene::MermaidScenes,
     pub acts: Acts,
+    /// The id every control in the component is named under: the conversation's own, so two chats on
+    /// one canvas, each with a message 2, do not name their controls the same.
+    pub scope: Id,
 }
 
 impl Kit<'_, '_> {
@@ -104,7 +107,7 @@ impl Kit<'_, '_> {
     }
 
     fn id(&self, key: &str, part: impl std::hash::Hash + std::fmt::Debug) -> Id {
-        Id::new(("agent-chat-ui", key)).with(part)
+        self.scope.with(("agent-chat-ui", key)).with(part)
     }
 
     fn state(&mut self, key: &str) -> &mut BlockState {
