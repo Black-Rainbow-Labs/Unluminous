@@ -277,6 +277,19 @@ impl<'a> Look<'a> {
         from_the_font.max(1.0) * self.zoom
     }
 
+    /// A type size `points` smaller than the body text is at the default size, kept in proportion as the
+    /// text is zoomed.
+    ///
+    /// `task-2214`: *"text looks pixelated at different zoom levels."* The Agent Tasks board set its small text
+    /// as the body size less a fixed number of points, which is right at the default size and wrong at every
+    /// other: zoomed to 0.7 the body is 11.2 points, and three points less is 8.2, which is not seven tenths of
+    /// 13 but nearly two thirds of it. The labels, the counts and the keys came out a few pixels tall and read
+    /// as a smudge of pixels. Proportional, a label three points under the body at the default size is three
+    /// sixteenths under it at every size.
+    pub fn less(&self, points: f32) -> f32 {
+        self.font_size * (1.0 - points / crate::settings::DEFAULT_FONT_SIZE)
+    }
+
     /// A colour with the window's opacity applied, which is what a provider paints a ground with.
     ///
     /// One function rather than each provider multiplying an alpha, because the arithmetic is the
@@ -1072,6 +1085,20 @@ mod scale_tests {
                 "at {size} point a card is {card} points and needs at least {needed}"
             );
         }
+    }
+
+    #[test]
+    fn a_smaller_size_stays_in_proportion_as_the_pane_zooms() {
+        // `task-2214`: three points under the body at the default size is three sixteenths under it at any zoom,
+        // rather than three points under a body that has shrunk.
+        let renderer = crate::services::text_renderer::TextRenderer::new();
+        let settings = Settings::default();
+        let look = Look::of(&settings, &renderer).following_the_editor_font(false);
+        assert_eq!(look.less(3.0), crate::settings::DEFAULT_FONT_SIZE - 3.0);
+        let zoomed = Look::of(&settings, &renderer).following_the_editor_font(false).zoomed_by(0.5);
+        assert!(
+            (zoomed.less(3.0) - (crate::settings::DEFAULT_FONT_SIZE - 3.0) * 0.5).abs() < 0.001
+        );
     }
 
     #[test]

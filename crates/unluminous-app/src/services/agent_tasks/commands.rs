@@ -78,6 +78,7 @@ pub const LIST: &[(&str, &str)] = &[
     ("new-epic", "Create an epic. Names itself when no name is given, which is what the menu entry does."),
     ("new-sprint", "Create a sprint and make it the active one. Names itself when no name is given."),
     ("fold", "Open or shut a ticket's todos or its terminal: `fold terminal shut`. Says both when asked with nothing."),
+    ("description-height", "How tall the ticket modal's description is: `description-height 120`, or `auto` for the modal's own choice. Says which when asked with nothing."),
     ("sprint-assign", "Put a ticket in a sprint, or in the backlog: `sprint-assign task-1 backlog`."),
     ("sprint-activate", "Make one sprint the active one, which is the sprint the board shows."),
     ("sprint-complete", "Close a sprint. Anything in it that is not in Agent Done goes to the backlog."),
@@ -346,6 +347,30 @@ fn ticket_display(
                 }
             ))
             .with(json!({"todos": !tasks.todos_shut, "terminal": !tasks.terminal_shut})))
+        })(),
+        // How tall the ticket modal's description is, which a person sets by dragging the bottom edge of the
+        // description. `task-2214`. A number of points, or `auto` for the height the modal chooses itself, and
+        // with no argument it says which.
+        "description-height" => (|| {
+            match argument(0) {
+                "" => {}
+                "auto" | "reset" => tasks.description_height = None,
+                points => {
+                    let points: f32 = points.parse().map_err(|_| {
+                        format!("`{points}` is not a height: give a number of points, or `auto`")
+                    })?;
+                    if !points.is_finite() || points <= 0.0 {
+                        return Err(format!("`{points}` is not a height a description can have"));
+                    }
+                    tasks.description_height = Some(points);
+                }
+            }
+            Ok(match tasks.description_height {
+                Some(points) => Answer::said(format!("the description is {points} points tall"))
+                    .with(json!({"height": points})),
+                None => Answer::said("the description is the height the modal chooses".to_owned())
+                    .with(json!({"height": null})),
+            })
         })(),
         _ => return None,
     })

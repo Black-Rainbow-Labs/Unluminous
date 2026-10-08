@@ -6,7 +6,7 @@
 
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
-use super::{darken, lighten, text};
+use super::{darken, lighten};
 use crate::services::agent_tasks::board;
 use crate::services::agent_tasks::model::{Board, Priority, Task};
 use crate::services::plugin_ui::Look;
@@ -37,6 +37,11 @@ const RING_WIDTH: f32 = 2.0;
 /// How tall a card is in this window.
 pub fn height(look: &Look<'_>) -> f32 {
     HEIGHT_AT_DEFAULT * look.scale()
+}
+
+/// The gap between two cards in this window, which grows and shrinks with the cards. `task-2214`.
+pub fn gap(look: &Look<'_>) -> f32 {
+    GAP * look.scale()
 }
 /// How wide the coloured edge that names the epic is.
 const EDGE: f32 = 3.0;
@@ -142,25 +147,52 @@ pub fn show(
         &painter,
         Pos2::new(left, area.min.y + 12.0 * scale),
         task.display_title(),
-        egui::FontId::new(
-            look.font_size - 1.0,
-            egui::FontFamily::Name(crate::theme::BOLD_FAMILY.into()),
-        ),
+        egui::FontId::new(look.less(1.0), egui::FontFamily::Name(crate::theme::BOLD_FAMILY.into())),
         look.palette.text_strong,
         right - left,
         // Two lines, which is what a card 100 points tall has room for above its own footer.
         2,
     );
+    // **Where the round buttons go is settled before anything under the title is drawn**, because the rows
+    // under the title have to stop short of them.
+    //
+    // `task-2214`: *"The assigned to icon escapes out of the card."* The badge was placed from the footer's
+    // top and two points from the card's bottom edge, and the ring that says an agent is attached is drawn
+    // outside the badge, so the ring ran three points past the bottom of the card and was cut by the lane, or
+    // drawn over the card below. The badge is now placed from the ring's outside edge, which is kept a margin
+    // inside the card at every size, and the footer's words are centred on the badge rather than the badge
+    // being hung off the words.
+    //
+    // The round buttons stop growing before everything else does: at three times the default font a 90
+    // point play button would be most of the card, and a target is big enough once it is big enough.
+    let buttons = scale.min(1.6);
+    let badge = Vec2::splat(BADGE * buttons);
+    let play = Vec2::splat(PLAY * buttons);
+    let ring_reach = badge.x * (RING + RING_WIDTH / 2.0) / BADGE;
+    let margin = 4.0 * scale;
+    let footer_middle = (area.max.y - 22.0 * scale).min(area.max.y - ring_reach - margin);
+    let badge_at = Rect::from_center_size(
+        Pos2::new((right - badge.x / 2.0).min(area.max.x - ring_reach - margin), footer_middle),
+        badge,
+    );
+    let start_at = Rect::from_min_size(
+        Pos2::new(badge_at.min.x - play.x - 8.0 * scale, footer_middle - play.y / 2.0),
+        play,
+    );
+    // How far right the row under the title may run: short of the play button when there is one and short of
+    // the badge's ring when there is not, since both reach up into that row.
+    let meta_stop = match live.can_start {
+        true => start_at.min.x,
+        false => badge_at.center().x - ring_reach,
+    } - 6.0 * scale;
+    let meta_middle = area.max.y - 47.0 * scale;
     // The priority mark on a line of its own under the title, which is where the design puts it, rather
     // than beside the title where a title that wrapped to two lines would run into it.
-    priority(
-        &painter,
-        Pos2::new(left + 5.0 * scale, area.max.y - 34.0 * scale),
-        task.priority,
-        look,
-    );
+    priority(&painter, Pos2::new(left + 5.0 * scale, meta_middle), task.priority, look);
     // The epic's name on the epic's colour, and the JIRA key beside it, which is what the reference capture puts
     // under the title. The coloured left edge alone said an epic existed without saying which.
+    let meta_font = egui::FontId::proportional(look.less(3.0));
+    let meta_top = crate::theme::crisp::top_centring_capitals(&painter, &meta_font, meta_middle);
     let mut chip = left + 16.0 * scale;
     if let Some(epic) = task.epic_id.and_then(|id| board.epic(id)) {
         let colour = crate::services::plugins::colour(&epic.color)
@@ -168,25 +200,27 @@ pub fn show(
             .unwrap_or(look.palette.control_border);
         let galley = painter.crisp_layout_no_wrap(
             epic.name.clone(),
-            egui::FontId::proportional(look.font_size - 3.0),
+            meta_font.clone(),
             look.palette.text_strong,
         );
-        let at = Rect::from_min_size(
-            Pos2::new(chip, area.max.y - 40.0),
-            Vec2::new(galley.size().x + 10.0, 14.0),
+        let at = Rect::from_center_size(
+            Pos2::new(chip + (galley.size().x + 10.0 * scale) / 2.0, meta_middle),
+            Vec2::new(galley.size().x + 10.0 * scale, 15.0 * scale),
         );
-        if at.max.x < right {
-            painter.rect_filled(at, CornerRadius::same(3), colour);
+        if at.max.x < meta_stop {
+            painter.rect_filled(at, CornerRadius::same((3.0 * scale) as u8), colour);
             painter.crisp_galley(
-                Pos2::new(at.min.x + 5.0, at.center().y - galley.size().y / 2.0),
+                Pos2::new(at.min.x + 5.0 * scale, meta_top),
                 galley,
                 look.palette.text_strong,
             );
-            chip = at.max.x + 6.0;
+            chip = at.max.x + 6.0 * scale;
         }
     }
     if let Some(key) = &task.jira_key {
-        if chip + 60.0 < right {
+        let galley =
+            painter.crisp_layout_no_wrap(key.clone(), meta_font.clone(), look.palette.text_dim);
+        if chip + galley.size().x < meta_stop {
             // **In the dim text colour, not the accent one.** It was drawn in `palette.modified`, which is the
             // colour Unluminous uses for something you can act on, so it read as a link — and clicking it opened the
             // ticket modal, because the card's own click target covers the whole card and there is nothing here
@@ -194,13 +228,7 @@ pub fn show(
             // the file manager and a new Unluminous window, and that is all. The link lives on `Copy issue link` in the
             // ticket's JIRA panel, which hands the address to the clipboard. So this is a label saying which
             // issue the ticket is about, and it now looks like one.
-            text(
-                &painter,
-                Pos2::new(chip, area.max.y - 40.0),
-                key,
-                look.font_size - 3.0,
-                look.palette.text_dim,
-            );
+            painter.crisp_galley(Pos2::new(chip, meta_top), galley, look.palette.text_dim);
         }
     }
     // The footer: the key, the counts, and the controls on the right.
@@ -209,23 +237,14 @@ pub fn show(
     // leaves a card about 200 points wide, and the counts used to march right from the key without knowing the
     // badge was there, so the comment count and the agent badge were drawn on top of each other — two sets of
     // glyphs in one place, which is what the tab screenshot recorded in the Agent Done lane.
-    let footer = area.max.y - 26.0 * scale;
-    // The round buttons stop growing before everything else does: at three times the default font a 90
-    // point play button would be most of the card, and a target is big enough once it is big enough.
-    let buttons = scale.min(1.6);
-    let badge = Vec2::splat(BADGE * buttons);
-    let play = Vec2::splat(PLAY * buttons);
-    let badge_at = Rect::from_min_size(Pos2::new(right - badge.x, footer - 4.0 * scale), badge);
+    let footer_font = egui::FontId::proportional(look.less(2.0));
+    let footer = crate::theme::crisp::top_centring_capitals(&painter, &footer_font, footer_middle);
     agent_badge(&painter, badge_at, task, look, live);
     // The start button only when starting would do something. **Absent rather than dimmed**, which is the rule
     // the `F` button and the three code navigation entries already follow: a card whose agent is already running
     // has nothing for Start to do, and drawing it would be drawing a control that reports a refusal.
     let mut controls = badge_at.min.x;
     if live.can_start {
-        let start_at = Rect::from_min_size(
-            Pos2::new(badge_at.min.x - play.x - 8.0 * scale, badge_at.center().y - play.y / 2.0),
-            play,
-        );
         if super::round_button(ui, look, start_at, &format!("Start {}", task.key), icon::run) {
             pressed.start = true;
         }
@@ -241,11 +260,7 @@ pub fn show(
     // Each piece is drawn only if the whole of it fits before the controls. The key first, because a card that
     // can show only one thing should show which ticket it is.
     let room_for = |painter: &egui::Painter, pen: &mut f32, said: &str, tint: Color32| {
-        let galley = painter.crisp_layout_no_wrap(
-            said.to_owned(),
-            egui::FontId::proportional(look.font_size - 2.0),
-            tint,
-        );
+        let galley = painter.crisp_layout_no_wrap(said.to_owned(), footer_font.clone(), tint);
         if *pen + galley.size().x > stop {
             return false;
         }
@@ -267,15 +282,23 @@ pub fn show(
                    gap: f32,
                    said: &str,
                    tint: Color32| {
-        let galley = painter.crisp_layout_no_wrap(
-            said.to_owned(),
-            egui::FontId::proportional(look.font_size - 2.0),
-            tint,
-        );
+        let galley = painter.crisp_layout_no_wrap(said.to_owned(), footer_font.clone(), tint);
+        // **Once one count does not fit, none after it is drawn**, by pushing the pen past the stop. A card
+        // zoomed in drew `5` comments with no todo count before it, because the shorter number fitted where the
+        // longer one had not, and a count on its own in the wrong place reads as the other count.
         if *pen + gap + galley.size().x > stop {
+            *pen = f32::INFINITY;
             return;
         }
-        mark(painter, Pos2::new(*pen + gap * 0.4, footer + 6.0 * scale), tint);
+        // Scaled with the card, about the middle of the footer, so a zoomed pane does not draw twelve point
+        // marks beside words twice their size.
+        crate::theme::icon::scaled(
+            painter,
+            Pos2::new(*pen + gap * 0.4, footer_middle),
+            tint,
+            scale,
+            mark,
+        );
         painter.crisp_galley(Pos2::new(*pen + gap, footer), galley.clone(), tint);
         *pen += gap + galley.size().x + 12.0 * scale;
     };
@@ -397,12 +420,17 @@ fn agent_badge(painter: &egui::Painter, area: Rect, task: &Task, look: &Look<'_>
         crate::services::agent_tasks::model::Assignee::Codex => "X",
         crate::services::agent_tasks::model::Assignee::Human => "JM",
     };
-    let galley = painter.crisp_layout_no_wrap(
-        initials.to_owned(),
-        egui::FontId::proportional(look.font_size - 3.0),
+    // Sized with the badge rather than with the editor's font, so the letters stay inside the disc at every
+    // zoom, and placed by their capitals, which is what the letters are.
+    let font = egui::FontId::proportional((area.width() * 0.4).max(4.0));
+    let galley =
+        painter.crisp_layout_no_wrap(initials.to_owned(), font.clone(), look.palette.text_strong);
+    let top = crate::theme::crisp::top_centring_capitals(painter, &font, area.center().y);
+    painter.crisp_galley(
+        Pos2::new(area.center().x - galley.size().x / 2.0, top),
+        galley,
         look.palette.text_strong,
     );
-    painter.crisp_galley(area.center() - galley.size() / 2.0, galley, look.palette.text_strong);
 }
 
 /// `1 comment`, `2 comments`. One function, because three places on the board count things and a board

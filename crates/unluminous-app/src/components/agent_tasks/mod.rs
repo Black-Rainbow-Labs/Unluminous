@@ -351,7 +351,8 @@ fn rail(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) 
             true => look.palette.text_strong,
             false => look.palette.text_dim,
         };
-        view_icon(view)(ui.painter(), at.center(), tint);
+        // At the rail's own scale, so a zoomed board does not draw twelve point marks in buttons twice the size.
+        crate::theme::icon::scaled(ui.painter(), at.center(), tint, scale, view_icon(view));
         response.widget_info(|| {
             egui::WidgetInfo::selected(
                 egui::WidgetType::Button,
@@ -457,7 +458,7 @@ fn view_switch(
             true => String::new(),
             false => format!("\u{b7} {}", card::plural(board.board().total() as i64, "task")),
         },
-        egui::FontId::proportional(look.font_size - 1.0),
+        egui::FontId::proportional(look.less(1.0)),
         look.palette.text_dim,
     );
     if pen + count.size().x < add.min.x - 12.0 {
@@ -523,7 +524,7 @@ fn view_switch(
     if !board.message().is_empty() {
         let said = painter.crisp_layout_no_wrap(
             board.message().to_owned(),
-            egui::FontId::proportional(look.font_size - 1.5),
+            egui::FontId::proportional(look.less(1.5)),
             look.palette.text_dim,
         );
         let at = Pos2::new(area.min.x, area.max.y - said.size().y);
@@ -625,7 +626,7 @@ pub(crate) fn primary_button(
         label.to_owned(),
         egui::TextFormat {
             font_id: egui::FontId::new(
-                look.font_size - 3.0,
+                look.less(3.0),
                 egui::FontFamily::Name(crate::theme::BOLD_FAMILY.into()),
             ),
             color: look.palette.text_strong,
@@ -686,7 +687,7 @@ pub(crate) fn chooser_button(
     }
     let galley = ui.painter().crisp_layout_no_wrap(
         label.to_owned(),
-        egui::FontId::proportional(look.font_size - 2.0),
+        egui::FontId::proportional(look.less(2.0)),
         look.palette.text_control,
     );
     ui.painter().crisp_galley(
@@ -749,7 +750,15 @@ pub(crate) fn round_button(
         };
         ui.painter().circle_filled(area.center(), radius, flat);
     }
-    draw(ui.painter(), area.center(), look.palette.text_strong);
+    // The mark grows with the button, which is thirty points across at the default size, so a zoomed pane
+    // does not draw a twelve point triangle in a fifty point disc.
+    crate::theme::icon::scaled(
+        ui.painter(),
+        area.center(),
+        look.palette.text_strong,
+        (area.width() / 30.0).max(0.5),
+        draw,
+    );
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
     response.clicked()

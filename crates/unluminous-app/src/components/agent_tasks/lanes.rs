@@ -68,6 +68,17 @@ fn foot(status: Status, look: &Look<'_>) -> f32 {
     }
 }
 const PAD: f32 = 8.0;
+
+/// How far a lane's cards and heading are inset from its edges in this window.
+///
+/// `task-2214`: *"many visual issues, especially when zooming in/out."* The lanes kept their width, their gaps and
+/// their insets while everything in them was zoomed, so a board zoomed out was four wide lanes of tiny cards
+/// with most of each lane empty, and a board zoomed in squeezed cards twice the size into lanes of the same
+/// width until a lane's name ran into its count. Every measurement of a lane is now read through the board's
+/// scale, the way a card's height already was.
+fn inset(look: &Look<'_>) -> f32 {
+    LANE_INSET * look.scale()
+}
 /// How tall the well an empty lane draws is, which is also how much of an empty lane a card can be dropped on.
 const EMPTY_WELL: f32 = 84.0;
 
@@ -79,7 +90,7 @@ const EMPTY_WELL: f32 = 84.0;
 fn cards_tall(held: usize, look: &Look<'_>) -> f32 {
     match held {
         0 => 0.0,
-        held => held as f32 * (card::height(look) + card::GAP) - card::GAP,
+        held => held as f32 * (card::height(look) + card::gap(look)) - card::gap(look),
     }
 }
 
@@ -132,8 +143,10 @@ pub fn show(
     // width need 1236 points; anything narrower squeezes them to `LANE_MIN` and then scrolls.
     let room = area.width() - PAD * 2.0;
     let lanes = Status::ALL.len() as f32;
-    let lane_width = ((room - GAP * (lanes - 1.0)) / lanes).clamp(LANE_MIN, LANE);
-    let content = lane_width * lanes + GAP * (lanes - 1.0);
+    let scale = look.scale();
+    let gap = GAP * scale;
+    let lane_width = ((room - gap * (lanes - 1.0)) / lanes).clamp(LANE_MIN * scale, LANE * scale);
+    let content = lane_width * lanes + gap * (lanes - 1.0);
     let scroll = board.scroll_the_lanes(ui, area, content - room);
     let mut to_open = None;
     let mut to_start = None;
@@ -161,7 +174,7 @@ pub fn show(
     };
     let mut geometry: Vec<(Status, Rect, usize)> = Vec::new();
     for (index, status) in Status::ALL.into_iter().enumerate() {
-        let left = area.min.x + PAD + index as f32 * (lane_width + GAP) - scroll;
+        let left = area.min.x + PAD + index as f32 * (lane_width + gap) - scroll;
         if left > area.max.x || left + lane_width < area.min.x {
             continue;
         }
@@ -184,7 +197,7 @@ pub fn show(
         // Never shorter than its heading plus one card's worth of well, because that empty space is what a
         // card is dropped onto: a lane that shrank to its heading would be a lane nothing could be moved to.
         let cards_tall = match held {
-            0 => EMPTY_WELL,
+            0 => EMPTY_WELL * scale,
             held => cards_tall(held, look),
         };
         let wanted = under_the_heading(status, look) + cards_tall + foot(status, look);
@@ -236,7 +249,7 @@ pub fn show(
         if across != 0 || down != 0 {
             board.move_the_choice(&counts, across, down);
             if let Some((lane, _)) = board.chosen {
-                board.show_the_lane(lane, lane_width, GAP, room, content - room);
+                board.show_the_lane(lane, lane_width, gap, room, content - room);
             }
         }
         if enter {
@@ -293,15 +306,25 @@ pub fn show(
         // threw the pane's edge away: `task-1914`'s sweep found a card of a node scrolled off the left of
         // the canvas drawn over the editing area beside it. It is `components::explorer`'s own rule.
         lane_ui.set_clip_rect(cards_area.intersect(area).intersect(ui.clip_rect()));
+        // **The decoration is cut to the same rectangle as the drawing**, while the lane has more cards than room.
+        // `task-2214`: *"Cards go above the header when I scroll."* The clip above cuts what `egui` draws, and a
+        // card's surface, its shadows, its badge and its play button are recorded into the lane's canvas, which
+        // was cut only to the whole lane. So a card scrolled up under the heading lost its words at the right
+        // place and kept its body, which was drawn over the lane's name and count. A lane that is not scrolled
+        // has nothing under its heading, and is left uncut so the top card keeps the halo above it.
+        let cut = content > room && look.chrome.is_recording();
+        if cut {
+            look.chrome.clip(cards_area.intersect(area), 0.0);
+        }
         for (row, task) in cards.iter().enumerate() {
-            let top = cards_area.min.y + row as f32 * (card::height(look) + card::GAP) - down;
+            let top = cards_area.min.y + row as f32 * (card::height(look) + card::gap(look)) - down;
             tops.push(top);
             if top + card::height(look) < cards_area.min.y || top > cards_area.max.y {
                 continue;
             }
             let at = Rect::from_min_size(
-                Pos2::new(lane_area.min.x + LANE_INSET, top),
-                Vec2::new(lane_area.width() - LANE_INSET * 2.0, card::height(look)),
+                Pos2::new(lane_area.min.x + inset(look), top),
+                Vec2::new(lane_area.width() - inset(look) * 2.0, card::height(look)),
             );
             let pressed = card::show(
                 &mut lane_ui,
@@ -331,6 +354,9 @@ pub fn show(
             if pressed.drag {
                 dragged = Some(task.id);
             }
+        }
+        if cut {
+            look.chrome.unclip();
         }
         // How much of the lane is out of sight.
         //
@@ -386,13 +412,14 @@ pub fn show(
                 // line was drawn a card's height away from the pointer for every row scrolled past, and in a
                 // filtered lane it was drawn against a row nobody could see. Releasing still moved the card to
                 // the right place; the line was simply pointing somewhere else.
-                let y = cards_area.min.y + among_visible as f32 * (card::height(look) + card::GAP)
+                let y = cards_area.min.y
+                    + among_visible as f32 * (card::height(look) + card::gap(look))
                     - down
-                    - card::GAP / 2.0;
+                    - card::gap(look) / 2.0;
                 ui.painter().rect_filled(
                     Rect::from_min_size(
-                        Pos2::new(lane_area.min.x + LANE_INSET, y),
-                        Vec2::new(lane_area.width() - LANE_INSET * 2.0, 2.0),
+                        Pos2::new(lane_area.min.x + inset(look), y),
+                        Vec2::new(lane_area.width() - inset(look) * 2.0, 2.0),
                     ),
                     0,
                     look.palette.accent,
@@ -408,8 +435,8 @@ pub fn show(
         if status == Status::New {
             let tall = 34.0 * look.scale();
             let strip = Rect::from_min_size(
-                Pos2::new(lane_area.min.x + LANE_INSET, lane_area.min.y + lane_header(look) + 4.0),
-                Vec2::new(lane_area.width() - LANE_INSET * 2.0, tall),
+                Pos2::new(lane_area.min.x + inset(look), lane_area.min.y + lane_header(look) + 4.0),
+                Vec2::new(lane_area.width() - inset(look) * 2.0, tall),
             );
             let play =
                 Rect::from_min_size(Pos2::new(strip.max.x - tall, strip.min.y), Vec2::splat(tall));
@@ -453,8 +480,8 @@ pub fn show(
         // `+ Add task` at the foot of the New lane, which is where the design image puts it.
         if status == Status::New {
             let at = Rect::from_min_size(
-                Pos2::new(lane_area.min.x + LANE_INSET, lane_area.max.y - 42.0 * look.scale()),
-                Vec2::new(lane_area.width() - LANE_INSET * 2.0, 42.0 * look.scale()),
+                Pos2::new(lane_area.min.x + inset(look), lane_area.max.y - 42.0 * look.scale()),
+                Vec2::new(lane_area.width() - inset(look) * 2.0, 42.0 * look.scale()),
             );
             // A well rather than a button, which is what the picture shows: the row where a card would go if
             // there were one, pressed into the lane.
@@ -470,16 +497,32 @@ pub fn show(
             // below — so there is nothing to add here.
             // Acted on after the loop, because the board is being read while it is drawn and creating a
             // ticket changes it. That is the rule every component here follows: report, then act.
+            // The word is drawn here rather than by the button, at the board's own size: the button sets its word
+            // at the interface's 12.5 points whatever the pane is zoomed to, so on a zoomed board it was the one
+            // piece of text that did not change size.
             if crate::components::controls::choice_button_over(
                 ui,
                 at,
-                "+ Add task",
+                "",
                 "+ Add task",
                 false,
                 !look.chrome.is_recording(),
             ) {
                 add_a_task = true;
             }
+            let font = egui::FontId::proportional(look.less(2.5));
+            let said = ui.painter().crisp_layout_no_wrap(
+                "+ Add task".to_owned(),
+                font.clone(),
+                look.palette.text_control,
+            );
+            let top =
+                crate::theme::crisp::top_centring_capitals(ui.painter(), &font, at.center().y);
+            ui.painter().crisp_galley(
+                Pos2::new(at.center().x - said.size().x / 2.0, top),
+                said,
+                look.palette.text_control,
+            );
         }
         // A lane with nothing in it says so, in a well the size of the space a card would take — which is
         // what the picture shows and is better than an empty box, because an empty box reads as a board that
@@ -490,10 +533,10 @@ pub fn show(
         // than leaving it to be guessed at.
         if cards.is_empty() {
             let empty = Rect::from_min_max(
-                Pos2::new(cards_area.min.x + LANE_INSET, cards_area.min.y),
+                Pos2::new(cards_area.min.x + inset(look), cards_area.min.y),
                 Pos2::new(
-                    cards_area.max.x - LANE_INSET,
-                    (cards_area.min.y + EMPTY_WELL).min(cards_area.max.y),
+                    cards_area.max.x - inset(look),
+                    (cards_area.min.y + EMPTY_WELL * scale).min(cards_area.max.y),
                 ),
             );
             if empty.height() > 24.0 {
@@ -518,7 +561,7 @@ pub fn show(
                 }
                 let said = ui.painter().crisp_layout_no_wrap(
                     "Nothing here".to_owned(),
-                    egui::FontId::proportional(look.font_size - 1.0),
+                    egui::FontId::proportional(look.less(1.0)),
                     look.palette.text_faint,
                 );
                 ui.painter().crisp_galley(
@@ -633,64 +676,91 @@ fn header(ui: &mut egui::Ui, look: &Look<'_>, lane: Rect, status: Status, count:
         Status::AgentDone => look.palette.agent,
     };
     let middle = lane.min.y + lane_header(look) / 2.0;
-    let centre = Pos2::new(lane.min.x + LANE_INSET + 5.0, middle);
+    // **Everything on the heading is measured from the lane's own scale**, so a pane zoomed in or out keeps the
+    // dot, the name and the count in proportion with each other. They were fixed sizes beside a name that grew.
+    let scale = look.scale();
+    let radius = 4.5 * scale;
+    let centre = Pos2::new(lane.min.x + inset(look) + 5.0 * scale, middle);
     // The halo round the dot, which is the whole of what makes it read as lit rather than printed. `epaint`
     // has no blur that is not a rectangle, so with the decoration off it is simply the dot.
     if look.chrome.is_recording() {
         // Five points of halo, which is what the reference measures, and at nearly the dot's own strength:
         // at 3.5 and 75% it read as a speck rather than as something lit.
         look.chrome.glow(
-            Rect::from_center_size(centre, Vec2::splat(9.0)),
-            4.5,
+            Rect::from_center_size(centre, Vec2::splat(radius * 2.0)),
+            radius,
             dot.gamma_multiply(0.9),
-            5.0,
+            5.0 * scale,
         );
-        look.chrome.disc(centre, 4.5, crate::services::vello_canvas::Fill::Solid(dot));
+        look.chrome.disc(centre, radius, crate::services::vello_canvas::Fill::Solid(dot));
     } else {
-        painter.circle_filled(centre, 4.5, dot);
+        painter.circle_filled(centre, radius, dot);
     }
     // The lane's name is set with the tracking the stylesheet gives its caption class, `0.14em`, because at
     // this size a run of capitals set solid reads as one word. Spaced with a thin space by hand, since
     // `egui` has no letter spacing of its own.
+    //
+    // **Placed by its capitals, on the dot's own middle.** `task-2214`: *"the dots next to the column labels
+    // aren't vertically centered."* The name was put at the middle less half of the editor's font size while
+    // being set three points smaller, and the letters of a galley do not sit in the middle of its line anyway,
+    // so the capitals were below the dot. A lane's name is all capitals, so centring the capital band on the
+    // dot is exact. `crisp::top_centring_capitals` is what the explorer's rows use for a name beside an icon.
     let spaced: String = status.label().chars().flat_map(|letter| [letter, '\u{2009}']).collect();
-    text(
-        &painter,
-        Pos2::new(centre.x + 12.0, middle - look.font_size / 2.0),
-        spaced.trim_end(),
-        look.font_size - 3.0,
-        look.palette.text_dim,
-    );
-    let said = painter.crisp_layout_no_wrap(
-        count.to_string(),
-        egui::FontId::proportional(look.font_size - 2.5),
-        look.palette.text_dim,
-    );
+    let spaced = spaced.trim_end().to_owned();
+    let count_font = egui::FontId::proportional(look.less(2.5));
+    let said =
+        painter.crisp_layout_no_wrap(count.to_string(), count_font.clone(), look.palette.text_dim);
     // The count sits in a pill pressed into the lane, which is `--e-pressed-sm` and is the one part of the
     // picture that was measured pixel by pixel: six points of dark ramp inside its top left edge and six of
     // pale inside its bottom right.
+    let chip_size = Vec2::new((40.0 * scale).max(said.size().x + 16.0 * scale), 22.0 * scale);
     let chip = Rect::from_min_size(
-        Pos2::new(lane.max.x - LANE_INSET - 40.0, middle - 11.0),
-        Vec2::new(40.0, 22.0),
+        Pos2::new(lane.max.x - inset(look) - chip_size.x, middle - chip_size.y / 2.0),
+        chip_size,
     );
+    // **The name is never drawn under the count.** A lane squeezed to its narrowest at a large zoom had less
+    // room than `IN PROGRESS` set in tracked capitals, and the name ran into the pill. Where it does not fit it
+    // is set smaller, by as much as it is too wide, rather than cut short, because a lane whose name ends in an
+    // ellipsis has lost the one word that says which lane it is.
+    let name_left = centre.x + radius + 7.5 * scale;
+    let room = (chip.min.x - 8.0 * scale - name_left).max(1.0);
+    let mut name_size = look.less(3.0);
+    let wide = painter
+        .crisp_layout_no_wrap(
+            spaced.clone(),
+            egui::FontId::proportional(name_size),
+            look.palette.text_dim,
+        )
+        .size()
+        .x;
+    if wide > room {
+        name_size *= room / wide;
+    }
+    let name_font = egui::FontId::proportional(name_size);
+    let name_top = crate::theme::crisp::top_centring_capitals(&painter, &name_font, middle);
+    text(&painter, Pos2::new(name_left, name_top), &spaced, name_size, look.palette.text_dim);
+    let chip_radius = chip.height() / 2.0 - 1.0;
     match look.chrome.is_recording() {
         true => look.chrome.sunken(
             chip,
-            10.0,
+            chip_radius,
             look.ground(look.palette.board_well),
             crate::services::vello_canvas::Lift::Small,
         ),
         false => {
             painter.rect(
                 chip,
-                CornerRadius::same(10),
+                CornerRadius::same(chip_radius as u8),
                 look.ground(look.palette.board_well),
                 egui::Stroke::new(1.0, look.palette.divider),
                 egui::StrokeKind::Inside,
             );
         }
     }
+    // Digits are as tall as capitals, so the count is placed the way the name is and the two sit on one line.
+    let count_top = crate::theme::crisp::top_centring_capitals(&painter, &count_font, middle);
     painter.crisp_galley(
-        Pos2::new(chip.center().x - said.size().x / 2.0, middle - said.size().y / 2.0),
+        Pos2::new(chip.center().x - said.size().x / 2.0, count_top),
         said,
         look.palette.text_dim,
     );

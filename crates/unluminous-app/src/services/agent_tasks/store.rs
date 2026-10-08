@@ -140,6 +140,7 @@ impl Store {
         store.create()?;
         store.check_version()?;
         migrate(&store.connection)?;
+        store.put_the_newest_finished_work_first()?;
         // **After the migration, not before it.** The version says which columns the file has, so it can only be
         // written once they are there. Writing it in `check_version` meant a file made at version 1 stayed at
         // version 1 however many columns were added to it afterwards, which made the number say nothing.
@@ -208,6 +209,58 @@ impl Store {
             )
             .map_err(|problem| format!("the board's version could not be written: {problem}"))?;
         Ok(())
+    }
+
+    /// Order every Agent Done lane newest first, once.
+    ///
+    /// `task-2214` made a ticket arriving in Agent Done go to the top of it, and a board in use already has a
+    /// lane in the old order, with the newest finished work at the bottom. Nothing records when a ticket was
+    /// finished, so the lane is sorted by when each ticket last changed, which for a finished ticket is nearly
+    /// always the moment it was handed back. It runs once per board, recorded by the `agent_done_newest_first`
+    /// row in `meta`, because after that the order is a person's: a card they dragged within the lane must stay
+    /// where they put it.
+    fn put_the_newest_finished_work_first(&self) -> Result<(), String> {
+        let done: Option<i64> = self
+            .connection
+            .query_row("SELECT value FROM meta WHERE name = 'agent_done_newest_first'", [], |row| {
+                row.get(0)
+            })
+            .optional()
+            .map_err(|problem| format!("the board's settings could not be read: {problem}"))?;
+        if done.is_some() {
+            return Ok(());
+        }
+        self.in_transaction(|| {
+            let sprints: Vec<Option<i64>> = self
+                .connection
+                .query_map(
+                    "SELECT DISTINCT sprint_id FROM task WHERE status = 'agent_done'",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|problem| format!("the finished tickets could not be read: {problem}"))?;
+            for sprint in sprints {
+                let order: Vec<i64> = self
+                    .connection
+                    .query_map(
+                        "SELECT id FROM task WHERE status = 'agent_done' \
+                         AND ((?1 IS NULL AND sprint_id IS NULL) OR sprint_id = ?1) \
+                         ORDER BY updated_at DESC, id DESC",
+                        params![sprint],
+                        |row| row.get(0),
+                    )
+                    .map_err(|problem| {
+                        format!("the finished tickets could not be read: {problem}")
+                    })?;
+                self.write_positions(&order)?;
+            }
+            self.connection
+                .execute("INSERT INTO meta (name, value) VALUES ('agent_done_newest_first', 1)", [])
+                .map_err(|problem| {
+                    format!("the board's settings could not be written: {problem}")
+                })?;
+            Ok(())
+        })
     }
 
     // ------------------------------------------------------------------ reading the board
@@ -494,6 +547,15 @@ impl Store {
         // is a card that lands one place from where the pointer let go.
         let mut order = self.lane_order(status, task.sprint_id)?;
         order.retain(|known| *known != id);
+        // **A ticket arriving in Agent Done goes to the top of it**, wherever it was asked to go. `task-2214`:
+        // *"change the order of Agent Done so that the most recently completed is at the top."* An agent hands a
+        // ticket back with `status` and the modal's Status list asks for the end of the lane, so the newest
+        // finished work was always at the bottom of the lane, under everything already reviewed. A card dragged
+        // within Agent Done still lands where it is dropped.
+        let position = match status == Status::AgentDone && task.status != Status::AgentDone {
+            true => 0,
+            false => position,
+        };
         let at = (position.max(0) as usize).min(order.len());
         order.insert(at, id);
         self.write_positions(&order)?;
@@ -2195,6 +2257,33 @@ mod tests {
             .map(|task| task.key.clone())
             .collect();
         assert_eq!(keys, ["task-3", "task-1", "task-2"]);
+    }
+
+    /// `task-2214`: the most recently finished ticket is at the top of Agent Done, whatever position the move
+    /// asked for, and a card dragged within the lane still lands where it was dropped.
+    #[test]
+    fn a_ticket_finished_last_is_at_the_top_of_agent_done() {
+        let (store, _) = filled();
+        let keys_in_done = || -> Vec<String> {
+            store
+                .board()
+                .expect("the board")
+                .lane(Status::AgentDone)
+                .map(|lane| lane.tasks.iter().map(|task| task.key.clone()).collect())
+                .unwrap_or_default()
+        };
+        for key in ["task-1", "task-2", "task-3"] {
+            let task = store.task_by_key(key).expect("a read").expect(key);
+            store.move_task(task.id, Status::AgentDone, i64::MAX, LATER).expect("a move");
+        }
+        assert_eq!(keys_in_done(), ["task-3", "task-2", "task-1"], "newest finished first");
+        let oldest = store.task_by_key("task-1").expect("a read").expect("task-1");
+        store.move_task(oldest.id, Status::AgentDone, 0, LATER).expect("a drag within the lane");
+        assert_eq!(
+            keys_in_done(),
+            ["task-1", "task-3", "task-2"],
+            "a drag within the lane is kept"
+        );
     }
 
     #[test]

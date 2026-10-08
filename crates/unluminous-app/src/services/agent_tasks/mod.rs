@@ -384,6 +384,12 @@ pub struct TicketKit {
     pub rux: rux::RuxState,
     /// Each dropdown's state, by the name of the field it sets.
     pub selects: std::collections::HashMap<&'static str, rux::components::SelectState>,
+    /// The text boxes the modal drew this frame, in the order `Tab` walks them. `task-2214`: *"Tab press should
+    /// navigate fields/inputs."* Written while the modal is drawn and read once it has been, so a box that is not
+    /// drawn, such as the description while it is read rendered, is not in the walk.
+    pub tab_order: Vec<egui::Id>,
+    /// The frame the last `Tab` was acted on in, so a frame egui draws twice moves the keyboard once.
+    pub tab_frame: Option<u64>,
 }
 
 impl TicketKit {
@@ -391,7 +397,12 @@ impl TicketKit {
     /// screenshot of the modal must be the same picture on every machine.
     pub fn new() -> Self {
         let theme = rux::Theme::named("dark-neumorphic").unwrap_or_else(rux::theme::dark);
-        Self { rux: rux::RuxState::deterministic(theme), selects: Default::default() }
+        Self {
+            rux: rux::RuxState::deterministic(theme),
+            selects: Default::default(),
+            tab_order: Vec::new(),
+            tab_frame: None,
+        }
     }
 }
 
@@ -516,6 +527,13 @@ pub struct AgentTasks {
     /// `#[derive(Default)]` gives every field on this provider — is both of them open.
     pub todos_shut: bool,
     pub terminal_shut: bool,
+    /// How tall the ticket's description well is, once somebody has dragged its bottom edge.
+    ///
+    /// `task-2214`: *"The description in the modal needs to be resizable so it can take less height."* `None` is
+    /// the height the modal gives it on its own, and a double click on the edge puts it back there. Held on the
+    /// provider for the reason the two folds are: the drag and `plugins run agent-tasks description-height` are
+    /// two ways of setting one number.
+    pub description_height: Option<f32>,
     /// True while the ticket modal is open.
     ///
     /// Separate from whether a ticket is open in the detail, because the pane shows a ticket in place and the

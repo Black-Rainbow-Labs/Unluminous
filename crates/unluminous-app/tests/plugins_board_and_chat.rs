@@ -3732,3 +3732,111 @@ fn a_real_answer_from_claude_code_draws_its_table_with_every_column_readable() {
         ],
     );
 }
+
+// -------------------------------------------------------------------------------------- task-2214
+
+/// `task-2214`: *"Tab press should navigate fields/inputs."* With nothing focused `Tab` goes to the first text
+/// box, the description, and each press after that goes to the next box: the todo box, then the comment box,
+/// then the JIRA key. What is typed after each press lands in that box, which is what makes the walk real rather
+/// than a focus that moves somewhere nobody can see.
+#[test]
+fn tab_walks_the_ticket_modals_text_boxes_in_order() {
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    a_ticket_open(&mut harness);
+    let type_after_a_tab = |harness: &mut Harness<'static, UnluminousApp>, text: &str| {
+        harness.key_press(egui::Key::Tab);
+        steady(harness);
+        harness.input_mut().events.push(egui::Event::Text(text.to_owned()));
+        steady(harness);
+    };
+    type_after_a_tab(&mut harness, "Written after one Tab");
+    let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
+    assert_eq!(ticket["description"], "Written after one Tab", "the first Tab is the description");
+
+    type_after_a_tab(&mut harness, "A second todo");
+    harness.key_press(egui::Key::Enter);
+    steady(&mut harness);
+    let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
+    let todos: Vec<String> = ticket["todos"]
+        .as_array()
+        .expect("todos")
+        .iter()
+        .map(|todo| todo["text"].as_str().unwrap_or_default().to_owned())
+        .collect();
+    assert!(
+        todos.contains(&"A second todo".to_owned()),
+        "the second Tab is the todo box: {todos:?}"
+    );
+
+    // Enter in the todo box keeps the keyboard there, so the next Tab is the comment box.
+    type_after_a_tab(&mut harness, "Said after a Tab");
+    harness.key_press(egui::Key::Enter);
+    steady(&mut harness);
+    let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
+    let said = ticket["comments"].to_string();
+    assert!(said.contains("Said after a Tab"), "the third Tab is the comment box: {said}");
+
+    // Enter in the comment box posts and lets go of the keyboard, so nothing in the modal has it, and Shift+Tab
+    // from there goes the other way round to the last box, the JIRA key.
+    harness.key_press_modifiers(Modifiers::SHIFT, egui::Key::Tab);
+    steady(&mut harness);
+    harness.input_mut().events.push(egui::Event::Text("PROJ-7".to_owned()));
+    steady(&mut harness);
+    let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
+    assert_eq!(ticket["task"]["jira"], "PROJ-7", "Shift+Tab with nothing focused is the last box");
+}
+
+/// `task-2214`: *"The description in the modal needs to be resizable so it can take less height."* The strip
+/// under the description takes a drag, the height is kept, and `description-height` reads and sets the same
+/// number. A double click puts it back to the height the modal chooses.
+#[test]
+fn the_description_is_resized_by_dragging_its_bottom_edge() {
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    a_ticket_open(&mut harness);
+    let asked = did(&mut harness, "plugins run agent-tasks description-height");
+    assert!(asked["height"].is_null(), "nobody has dragged it yet: {asked}");
+    // Smaller, which is what the ticket asked for, and the comments under it move up into the room.
+    let grip = harness.get_by_label("Resize description").rect();
+    let comments = harness.get_by_label("Comments \u{b7} 1").rect();
+    drag(&mut harness, grip.center(), grip.center() - vec2(0.0, 60.0));
+    let after = did(&mut harness, "plugins run agent-tasks description-height");
+    let height = after["height"].as_f64().expect("a height once it was dragged");
+    assert!((80.0..=120.0).contains(&height), "dragged sixty points up from 160: {height}");
+    let moved = harness.get_by_label("Resize description").rect();
+    assert!(moved.center().y < grip.center().y - 40.0, "the edge moved up: {grip:?} to {moved:?}");
+    let raised = harness.get_by_label("Comments \u{b7} 1").rect();
+    assert!(raised.top() < comments.top() - 40.0, "the comments moved up into the room");
+
+    // The agent's half sets the same number, and `auto` gives it back to the modal.
+    did(&mut harness, "plugins run agent-tasks description-height 200");
+    steady(&mut harness);
+    assert_eq!(did(&mut harness, "plugins run agent-tasks description-height")["height"], 200.0);
+    did(&mut harness, "plugins run agent-tasks description-height auto");
+    assert!(did(&mut harness, "plugins run agent-tasks description-height")["height"].is_null());
+    assert_eq!(refused(&mut harness, "plugins run agent-tasks description-height tall"), "failed");
+}
+
+/// `task-2214`: *"change the order of Agent Done so that the most recently completed is at the top."*
+#[test]
+fn the_ticket_finished_last_is_at_the_top_of_agent_done() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
+    for title in ["First", "Second", "Third"] {
+        did(&mut harness, &format!("plugins run agent-tasks new-task {title}"));
+    }
+    did(&mut harness, "plugins run agent-tasks close");
+    for key in ["task-1", "task-2", "task-3"] {
+        did(&mut harness, &format!("plugins run agent-tasks move-task {key} agent_done"));
+    }
+    let board = did(&mut harness, "plugins run agent-tasks board");
+    let said = board.to_string();
+    let at =
+        |key: &str| said.find(&format!("\"{key}\"")).unwrap_or_else(|| panic!("{key} in {said}"));
+    assert!(
+        at("task-3") < at("task-2") && at("task-2") < at("task-1"),
+        "newest finished first: {said}"
+    );
+}

@@ -291,17 +291,100 @@ const HEAD: f32 = 22.0;
 /// How much of that row's right hand end the two view buttons take, with the gap before what is left of them.
 const VIEW_BUTTONS: f32 = 18.0 * 2.0 + 4.0 + 6.0;
 
+/// How tall the box a comment is written in is, and the two buttons beside or under it.
+const COMPOSER: f32 = 36.0;
+/// How wide the comment box has to be before the two buttons go beside it rather than under it.
+const COMPOSER_ON_ONE_ROW: f32 = 300.0;
+
+/// How tall the box that writes a comment and its two buttons are together, in a section `width` wide.
+fn composer_height(width: f32, buttons: f32) -> f32 {
+    match width - buttons >= COMPOSER_ON_ONE_ROW {
+        true => COMPOSER,
+        false => COMPOSER * 2.0 + 8.0,
+    }
+}
+
+/// How wide a comment's small button is for `label`: its word and a little room either side.
+fn comment_button_width(ui: &egui::Ui, look: &Look<'_>, label: &str) -> f32 {
+    let font = egui::FontId::proportional(look.less(3.0));
+    ui.painter().crisp_layout_no_wrap(label.to_owned(), font, look.palette.accent).size().x + 16.0
+}
+
+/// One of the small buttons on a comment's own header row: `Edit`, `Send to terminal`, `Save` and `Cancel`.
+///
+/// `task-2214`: *"Post comment & send to terminal buttons need better styling."* These were the window's choice
+/// buttons, a grey outline round grey words, four of them on every comment a person wrote, which made a list of
+/// comments a list of boxes. They are now words in the accent colour with no frame until the pointer is on one,
+/// when a pill comes up behind them, which is how a quiet action beside text reads everywhere else. `strong` is
+/// the one that commits, `Save`, which is filled.
+fn comment_button(
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    area: Rect,
+    label: &str,
+    announced: &str,
+    strong: bool,
+    comment: i64,
+) -> bool {
+    // The comment's id is in the widget's id, because two comments by one author in the same minute announce
+    // the same words.
+    let id = ui.id().with(("agent-tasks-comment-button", comment, label));
+    let response = ui.interact(area, id, Sense::click());
+    let hovered = response.hovered();
+    if hovered {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let painter = ui.painter();
+    let round = CornerRadius::same((area.height() / 2.0) as u8);
+    match (strong, hovered) {
+        (true, _) => {
+            painter.rect_filled(area, round, look.palette.board_accent);
+        }
+        (false, true) => {
+            painter.rect_filled(area, round, look.palette.control);
+        }
+        (false, false) => {}
+    }
+    let tint = match (strong, hovered) {
+        (true, _) | (_, true) => look.palette.text_strong,
+        _ => look.palette.accent,
+    };
+    let font = egui::FontId::proportional(look.less(3.0));
+    let said = painter.crisp_layout_no_wrap(label.to_owned(), font.clone(), tint);
+    let top = crate::theme::crisp::top_centring_capitals(painter, &font, area.center().y);
+    painter.crisp_galley(Pos2::new(area.center().x - said.size().x / 2.0, top), said, tint);
+    let named = announced.to_owned();
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), named.clone())
+    });
+    response.clicked()
+}
+
 /// The comments and the box that posts one, for the modal.
+///
+/// `order` is the modal's `Tab` walk, and the comment box adds itself to it.
 pub(crate) fn comment_section(
     board: &mut AgentTasks,
-    ui: &mut egui::Ui,
+    rux: &mut rux::Rux<'_>,
+    order: &mut Vec<egui::Id>,
     area: Rect,
     look: &Look<'_>,
 ) -> Vec<Request> {
+    use rux::components::{Button, ButtonSize, TextInput};
     let mut requests = Vec::new();
-    let painter = ui.painter().clone();
+    // The two buttons are measured first, because whether they fit beside the box decides how tall the box and
+    // the buttons are together, and that decides how much of the section the comments get.
+    let post =
+        Button::new("Post comment").primary().icon(rux::icon::Icon::Chat).size(ButtonSize::Small);
+    let send = Button::new("Send to terminal")
+        .trailing(rux::icon::Icon::ArrowRight)
+        .size(ButtonSize::Small);
+    let post_width = post.measure(rux).x;
+    let send_width = send.measure(rux).x;
+    let buttons = post_width + send_width + 8.0 * 3.0;
+    let box_height = composer_height(area.width(), buttons);
+    let ui = &mut *rux.ui;
     let comments = board.detail().comments.clone();
-    let box_height = look.row_height + 30.0;
     // **No count line.** The heading above this section carries it — `COMMENTS \u{b7} 3` — and a section that
     // said how many comments it held immediately under a heading that said the same thing was one fact drawn
     // twice, in a column where every point of height is being argued over. `task-1771`.
@@ -490,89 +573,62 @@ pub(crate) fn comment_section(
                 // said is a record, and the store refuses to change one whatever is pressed.
                 if mine {
                     let row = pen - HEAD + (HEAD - 18.0) / 2.0;
-                    // Left of the two view buttons, which take the row's right hand forty points.
-                    let right = area.max.x - VIEW_BUTTONS;
+                    // Left of the two view buttons, which take the row's right hand forty points. Laid out from the
+                    // right, each as wide as its word.
+                    let mut right = area.max.x - VIEW_BUTTONS;
+                    let mut place = |label: &str| {
+                        let width = comment_button_width(ui, look, label);
+                        let at = Rect::from_min_size(
+                            Pos2::new(right - width, row),
+                            Vec2::new(width, 18.0),
+                        );
+                        right = at.min.x - 4.0;
+                        at
+                    };
+                    let when = clock::relative(&comment.created_at, &now);
+                    let author = comment.author.name();
                     match being_edited {
                         // `Save` and `Cancel` in place of the two, because while a comment is being edited those are the
                         // only two things to do with it.
                         true => {
-                            let save_at = Rect::from_min_size(
-                                Pos2::new(right - 106.0, row),
-                                Vec2::new(50.0, 18.0),
-                            );
-                            let cancel_at = Rect::from_min_size(
-                                Pos2::new(right - 52.0, row),
-                                Vec2::new(52.0, 18.0),
-                            );
-                            if ui
-                                .push_id(("agent-tasks-comment-save", comment.id), |ui| {
-                                    crate::components::controls::choice_button(
-                                        ui, save_at, "Save", true,
-                                    )
-                                })
-                                .inner
-                            {
+                            let cancel_at = place("Cancel");
+                            let save_at = place("Save");
+                            if comment_button(ui, look, save_at, "Save", "Save", true, comment.id) {
                                 save = true;
                             }
-                            if ui
-                                .push_id(("agent-tasks-comment-cancel", comment.id), |ui| {
-                                    crate::components::controls::choice_button(
-                                        ui, cancel_at, "Cancel", false,
-                                    )
-                                })
-                                .inner
-                            {
+                            if comment_button(
+                                ui, look, cancel_at, "Cancel", "Cancel", false, comment.id,
+                            ) {
                                 cancel = true;
                             }
                         }
                         false => {
-                            let edit_at = Rect::from_min_size(
-                                Pos2::new(right - 144.0, row),
-                                Vec2::new(40.0, 18.0),
-                            );
-                            let send_at = Rect::from_min_size(
-                                Pos2::new(right - 100.0, row),
-                                Vec2::new(100.0, 18.0),
-                            );
-                            if ui
-                                .push_id(("agent-tasks-comment-edit", comment.id), |ui| {
-                                    crate::components::controls::choice_button_named(
-                                        ui,
-                                        edit_at,
-                                        "Edit",
-                                        // Which comment, because a ticket has several and every one of these said
-                                        // only `Edit`: a screen reader met four controls with one name between them.
-                                        // The author and when it was written, which is what the heading above the comment
-                                        // says and what tells two comments by the same author apart. `push_id` makes the
-                                        // internal id unique and does nothing for the name a screen reader reads.
-                                        &format!(
-                                            "Edit the comment by {} {}",
-                                            comment.author.name(),
-                                            clock::relative(&comment.created_at, &now)
-                                        ),
-                                        false,
-                                    )
-                                })
-                                .inner
-                            {
+                            let send_at = place("Send to terminal");
+                            let edit_at = place("Edit");
+                            // Named for which comment, because a ticket has several and every one of these said only
+                            // `Edit`: a screen reader met four controls with one name between them. The author and
+                            // when it was written is what the heading above the comment says and what tells two
+                            // comments by the same author apart.
+                            if comment_button(
+                                ui,
+                                look,
+                                edit_at,
+                                "Edit",
+                                &format!("Edit the comment by {author} {when}"),
+                                false,
+                                comment.id,
+                            ) {
                                 edit = Some(comment.id);
                             }
-                            if ui
-                                .push_id(("agent-tasks-resend", comment.id), |ui| {
-                                    crate::components::controls::choice_button_named(
-                                        ui,
-                                        send_at,
-                                        "Send to terminal",
-                                        &format!(
-                                            "Send the comment by {} {} to the terminal",
-                                            comment.author.name(),
-                                            clock::relative(&comment.created_at, &now)
-                                        ),
-                                        false,
-                                    )
-                                })
-                                .inner
-                            {
+                            if comment_button(
+                                ui,
+                                look,
+                                send_at,
+                                "Send to terminal",
+                                &format!("Send the comment by {author} {when} to the terminal"),
+                                false,
+                                comment.id,
+                            ) {
                                 resend = Some(comment.body.clone());
                             }
                         }
@@ -623,48 +679,58 @@ pub(crate) fn comment_section(
             Err(problem) => requests.push(Request::Message(problem)),
         }
     }
-    let at = Rect::from_min_size(
+    // **The box and its two buttons are `rux` controls**, the same field the JIRA key is typed into and the
+    // same buttons as the rest of the dialog. `task-2214`: *"Post comment & send to terminal buttons need better
+    // styling."* They were two flat egui buttons twenty two points tall in a dialog whose every other control is
+    // `rux`, so they read as something left over from an older dialog. `Post comment` is the primary action of the
+    // section and is drawn as one; `Send to terminal` is the second choice and is drawn as an ordinary button.
+    // Both are dimmed while the box is empty, because neither can do anything with no words.
+    let one_row = box_height <= COMPOSER;
+    let field_at = Rect::from_min_size(
         Pos2::new(area.min.x, box_top),
-        Vec2::new(area.width(), look.row_height),
+        Vec2::new(
+            match one_row {
+                true => area.width() - buttons + 8.0,
+                false => area.width(),
+            },
+            COMPOSER,
+        ),
     );
-    painter.rect(
-        at,
-        CornerRadius::same(look.corner_radius as u8),
-        look.palette.field,
-        egui::Stroke::new(1.0, look.palette.control_border),
-        egui::StrokeKind::Inside,
+    let buttons_top = match one_row {
+        true => box_top,
+        false => box_top + COMPOSER + 8.0,
+    };
+    let send_at = Rect::from_min_size(
+        Pos2::new(area.max.x - send_width, buttons_top),
+        Vec2::new(send_width, COMPOSER),
+    );
+    let post_at = Rect::from_min_size(
+        Pos2::new(send_at.min.x - 8.0 - post_width, buttons_top),
+        Vec2::new(post_width, COMPOSER),
     );
     let mut draft = board.detail().draft.clone();
-    let draft_id = ui.id().with("agent-tasks-comment-draft");
-    let response = ui.put(
-        crate::components::controls::field_takes_the_whole_rectangle_at(
-            ui,
-            at,
-            8.0,
-            draft_id,
-            "Draft field",
-            &egui::FontId::proportional(look.font_size - 0.5),
-        ),
-        egui::TextEdit::singleline(&mut draft)
-            .id(draft_id)
-            .frame(egui::Frame::NONE)
-            .hint_text(crate::components::controls::placeholder(
-                "Add a comment",
-                &egui::FontId::proportional(look.font_size - 0.5),
-                look.palette.text_faint,
-            ))
-            .font(egui::FontId::proportional(look.font_size - 0.5))
-            .text_color(look.palette.text),
-    );
-    if response.changed() {
-        board.detail_mut().draft = draft;
+    let typed = TextInput::new(&mut draft)
+        .hint("Add a comment")
+        .style(rux::text::Style::CONTROL)
+        .pad(rux::layout::Pad::axes(8.0, 12.0))
+        .label("Comment")
+        .id_salt("agent-tasks-comment-draft")
+        .show(rux, field_at);
+    let draft_id = rux.ui.id().with(("rux-text-input", egui::Id::new("agent-tasks-comment-draft")));
+    order.push(draft_id);
+    if typed.changed {
+        board.detail_mut().draft = draft.clone();
     }
-    let buttons_y = at.max.y + 4.0;
-    let post = Rect::from_min_size(Pos2::new(at.min.x, buttons_y), Vec2::new(90.0, 22.0));
-    let send = Rect::from_min_size(Pos2::new(at.min.x + 96.0, buttons_y), Vec2::new(120.0, 22.0));
-    let posting = crate::components::controls::choice_button(ui, post, "Post comment", false)
-        || super::enter_was_used_and_pressed(ui, &response);
-    let sending = crate::components::controls::choice_button(ui, send, "Send to terminal", false);
+    // Enter posts, and is taken out of the frame so nothing drawn after the box takes it as its own.
+    let entered = typed.submitted;
+    if entered {
+        rux.ui.ctx().input_mut(|input| {
+            input.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
+        });
+    }
+    let written = !draft.trim().is_empty();
+    let posting = post.enabled(written).show(rux, post_at).clicked() || (entered && written);
+    let sending = send.enabled(written).show(rux, send_at).clicked();
     if posting || sending {
         match board.post_the_comment(sending) {
             Ok(said) if !said.is_empty() => requests.push(Request::Message(said)),

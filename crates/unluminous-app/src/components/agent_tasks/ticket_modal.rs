@@ -92,13 +92,27 @@ const HEADING: f32 = 22.0;
 /// How much of the room left under the description the agent's terminal takes, and its two bounds.
 const TERMINAL_SHARE: f32 = 0.34;
 const TERMINAL_SMALLEST: f32 = 150.0;
-const TERMINAL_LEAST: f32 = 90.0;
+const TERMINAL_LEAST: f32 = 64.0;
 const TERMINAL_LARGEST: f32 = 520.0;
 /// What the comments want, and the least they can be given.
-const COMMENTS: f32 = 190.0;
-const COMMENTS_LEAST: f32 = 100.0;
-/// The least the description can be given.
-const DESCRIPTION_LEAST: f32 = 140.0;
+///
+/// `task-2214`: *"The comment section isn't tall enough."* It wanted 190 points and could be cut to 100, and the
+/// box and the buttons under the list take 50 of those, so on an ordinary window a ticket showed one comment at a
+/// time. It wants 300 now, and whatever room is left over once every section has what it wants goes to the
+/// comments rather than to the description. It can still be cut to 140 in a small window, because below that the
+/// description, which is the last to give way, would be cut to nothing.
+const COMMENTS: f32 = 300.0;
+const COMMENTS_LEAST: f32 = 140.0;
+/// How tall the description is when nobody has dragged its edge, and the least it can be made.
+///
+/// `task-2214`: *"The description in the modal needs to be resizable so it can take less height."* The
+/// description took everything the other sections did not, which on a ticket with a long conversation was most of
+/// the dialog. Now it asks for [`DESCRIPTION`] and the edge under it can be dragged anywhere down to
+/// [`DESCRIPTION_LEAST`], which is three lines, and the comments take what it gives up.
+const DESCRIPTION: f32 = 160.0;
+const DESCRIPTION_LEAST: f32 = 64.0;
+/// How tall the strip under the description that resizes it is. It sits in the gap above the next section.
+const DESCRIPTION_GRIP: f32 = 8.0;
 /// What one section after the description takes before its body: eight points, `SubGroup`'s hairline and the
 /// fourteen points under it, its twenty point heading, and eight more.
 const SECTION: f32 = 8.0 + 14.0 + 20.0 + 8.0;
@@ -134,15 +148,76 @@ pub fn show(board: &mut AgentTasks, ctx: &egui::Context, look: &Look<'_>) -> Out
     // is told what the modal is zoomed to, the way a canvas node tells it. `task-2198`.
     let was = look.renderer.crispness();
     look.renderer.composite_at(modal::zoom_of(ctx, egui::Id::new(MODAL_ID)));
+    // **`Tab` walks the text boxes, and nothing else.** `task-2214`: *"Tab press should navigate fields/inputs."*
+    // egui's own walk visits every widget that can take the keyboard in the order it was added, and in this modal
+    // that is mostly invisible ones: the ground a field claims presses with, the close cross, each dropdown and
+    // each button, none of which draws anything to say it has the keyboard. So a press of `Tab` seemed to do
+    // nothing, and a second one did nothing either. egui's walk is cancelled here, before any widget in the
+    // modal has been drawn, and the box to move to is chosen once the modal has been drawn and every box in it
+    // has said where it is.
+    let tab = ctx.input(|input| {
+        let pressed = input.key_pressed(egui::Key::Tab)
+            && !input.modifiers.command
+            && !input.modifiers.alt
+            && !input.modifiers.ctrl;
+        pressed.then_some(input.modifiers.shift)
+    });
+    if tab.is_some() {
+        ctx.memory_mut(|memory| memory.move_focus(egui::FocusDirection::None));
+    }
+    kit.tab_order.clear();
     let (inner, should_close) = modal::show(ctx, MODAL_ID, width, height, |ui, area| {
         contents(board, &mut kit, ui, area, &look, &task, new)
     });
+    // **Once a frame, however many passes it takes.** egui draws a frame a second time when a layout changes
+    // under it, and hands the second pass the same input, so one press of `Tab` moved the keyboard two boxes.
+    let frame = ctx.cumulative_frame_nr();
+    let tab = tab.filter(|_| kit.tab_frame != Some(frame));
+    if tab.is_some() {
+        kit.tab_frame = Some(frame);
+    }
+    if let Some(backwards) = tab {
+        let focused = ctx.memory(|memory| memory.focused());
+        if let Some(next) = the_next_box(&kit.tab_order, focused, backwards) {
+            ctx.memory_mut(|memory| memory.request_focus(next));
+        }
+    }
     look.renderer.restore_compositing(was);
     kit.rux.end_frame();
     board.ticket_kit = Some(kit);
     outcome.requests = inner.requests;
     outcome.closed = inner.closed || should_close;
     outcome
+}
+
+/// Which text box `Tab` moves the keyboard to, given the boxes in the order they were drawn.
+///
+/// The one after the box that has the keyboard, or the one before it when `Shift` is held, going round at
+/// either end. With the keyboard anywhere else in the modal, `Tab` goes to the first box and `Shift+Tab` to the
+/// last, which is what a browser does when nothing in a form has been focused yet.
+pub fn the_next_box(
+    order: &[egui::Id],
+    focused: Option<egui::Id>,
+    backwards: bool,
+) -> Option<egui::Id> {
+    if order.is_empty() {
+        return None;
+    }
+    let last = order.len() - 1;
+    let at = focused.and_then(|id| order.iter().position(|known| *known == id));
+    let next = match (at, backwards) {
+        (None, false) => 0,
+        (None, true) => last,
+        (Some(at), false) => match at == last {
+            true => 0,
+            false => at + 1,
+        },
+        (Some(at), true) => match at {
+            0 => last,
+            at => at - 1,
+        },
+    };
+    order.get(next).copied()
 }
 
 fn contents(
@@ -170,6 +245,7 @@ fn contents(
     let main_id = ui.id().with("agent-tasks-ticket-rux");
     let state = &kit.rux;
     let selects = &mut kit.selects;
+    let order = &mut kit.tab_order;
     let (requests, closed) = rux::layer(ui, state, main_id, area, |rux| {
         let mut requests = Vec::new();
         if body.width() >= TWO_COLUMNS {
@@ -183,8 +259,8 @@ fn contents(
                 1.0,
                 rux.theme().surface.sunken,
             );
-            requests.extend(main_column(board, rux, main, look, task, new));
-            requests.extend(fields(board, rux, selects, aside, look, task, new));
+            requests.extend(main_column(board, rux, order, main, look, task, new));
+            requests.extend(fields(board, rux, selects, order, aside, look, task, new));
         } else {
             // One column: the fields first and never more than half the height, scrolled inside it, then the
             // rest — which is what the browser board's own narrow layout does.
@@ -193,10 +269,14 @@ fn contents(
                 Pos2::new(body.max.x, body.min.y + (body.height() * 0.45).min(330.0)),
             );
             let rest = Rect::from_min_max(Pos2::new(body.min.x, fields_at.max.y + GAP), body.max);
-            requests.extend(fields(board, rux, selects, fields_at, look, task, new));
+            // The main column first in the walk, because a person tabs from the title and the description
+            // into the fields after them, whichever way the dialog is laid out.
+            let mut column = Vec::new();
+            requests.extend(fields(board, rux, selects, order, fields_at, look, task, new));
             if rest.height() > 120.0 {
-                requests.extend(main_column(board, rux, rest, look, task, new));
+                requests.extend(main_column(board, rux, &mut column, rest, look, task, new));
             }
+            order.splice(0..0, column);
         }
         let (closed, more) = footer_row(board, rux, footer, new);
         requests.extend(more);
@@ -291,6 +371,7 @@ fn footer_row(
 fn main_column(
     board: &mut AgentTasks,
     rux: &mut rux::Rux<'_>,
+    order: &mut Vec<egui::Id>,
     area: Rect,
     look: &Look<'_>,
     task: &Task,
@@ -311,6 +392,7 @@ fn main_column(
             .label("Ticket title")
             .id_salt("agent-tasks-ticket-title")
             .show(rux, at);
+        order.push(text_input_id(rux, "agent-tasks-ticket-title"));
         if typed.changed {
             board.detail_mut().title_draft = title;
             if let Err(problem) = board.save_the_title() {
@@ -331,7 +413,9 @@ fn main_column(
         (true, _) | (_, false) => (0.0, 0.0),
         _ => {
             let rows = board.detail().todos.len() as f32;
-            let well = 12.0;
+            // The well's padding, and two points more so a row that fits exactly is not lost to rounding: with
+            // exactly the padding, three todos were given room for three and drew two.
+            let well = 14.0;
             (((rows + 1.0) * row + well).min(6.0 * row + well), (rows.min(2.0) + 1.0) * row + well)
         }
     };
@@ -348,24 +432,26 @@ fn main_column(
         true => HEADING + 8.0,
         false => HEADING + 8.0 + SECTION * 3.0,
     };
-    let description_want = (room - headings - todo_want - terminal_want - comment_want).max(0.0);
-    let mut short = (headings
-        + description_want.max(DESCRIPTION_LEAST)
-        + todo_want
-        + terminal_want
-        + comment_want
-        - room)
-        .max(0.0);
+    // A new ticket has nothing under its description, so the description has the room. A ticket that exists asks
+    // for the height somebody dragged it to, or for [`DESCRIPTION`].
+    let description_want = match new {
+        true => (room - headings).max(DESCRIPTION_LEAST),
+        false => board.description_height.unwrap_or(DESCRIPTION).max(DESCRIPTION_LEAST),
+    };
+    let wanted = headings + description_want + todo_want + terminal_want + comment_want;
+    let mut short = (wanted - room).max(0.0);
+    let spare = (room - wanted).max(0.0);
     let give = |want: f32, least: f32, short: &mut f32| -> f32 {
         let spare = (want - least).max(0.0).min(*short);
         *short -= spare;
         want - spare
     };
+    // The terminal gives way first, then the comments down to their least, then the todos, and the description
+    // last, so dragging the description smaller is what gives the comments more.
     let terminal_height = give(terminal_want, terminal_least, &mut short);
-    let comment_height = give(comment_want, comment_least, &mut short);
+    let comment_height = give(comment_want, comment_least, &mut short) + spare;
     let todo_height = give(todo_want, todo_least, &mut short);
-    let description_height =
-        give(description_want.max(DESCRIPTION_LEAST), DESCRIPTION_LEAST, &mut short);
+    let description_height = give(description_want, DESCRIPTION_LEAST, &mut short);
     // **Whatever is still short comes off the description**, the one section that scrolls, so a modal dragged
     // down to its smallest still adds up rather than running off the bottom.
     let description_height = (description_height - short).max(0.0);
@@ -388,6 +474,9 @@ fn main_column(
         Vec2::new(area.width(), description_height),
     );
     if well.height() > 24.0 {
+        if !board.detail().description_rendered {
+            order.push(rux.ui.id().with("agent-tasks-description"));
+        }
         let inside = Well::new().pad(Pad::axes(12.0, 14.0)).show(rux, well);
         requests.extend(super::description::in_a_well(
             board,
@@ -401,6 +490,9 @@ fn main_column(
     pen = well.max.y;
     if new {
         return requests;
+    }
+    if let Some(height) = description_grip(rux, well, area.max.y - well.min.y) {
+        board.description_height = height;
     }
 
     // ------------------------------------------------------------------ the todos
@@ -418,6 +510,7 @@ fn main_column(
         let at = Rect::from_min_size(body, Vec2::new(area.width(), todo_height));
         let inside = Well::new().shallow().pad(Pad::axes(6.0, 12.0)).show(rux, at);
         requests.extend(super::detail::todo_rows(board, rux.ui, inside, look));
+        order.push(rux.ui.id().with("agent-tasks-todo-draft"));
         pen = at.max.y;
     }
 
@@ -471,7 +564,7 @@ fn main_column(
         Pos2::new(area.max.x, (pen + comment_height).min(area.max.y)),
     );
     if comments_at.height() > 20.0 {
-        requests.extend(super::detail::comment_section(board, rux.ui, comments_at, look));
+        requests.extend(super::detail::comment_section(board, rux, order, comments_at, look));
     }
     requests
 }
@@ -496,6 +589,67 @@ fn folding_section(
     );
     *pen += SECTION;
     (shown.toggled, Pos2::new(area.min.x, *pen))
+}
+
+/// The strip under the description that resizes it, answering the height to keep when it was dragged.
+///
+/// `task-2214`. A short pill in the middle of the gap under the well says the edge can be moved, brighter while
+/// the pointer is on it, and the whole width of the gap takes the drag. A double click answers `Some(None)`, which
+/// puts the description back to the height the modal chooses. `most` is the furthest the well may reach.
+fn description_grip(rux: &mut rux::Rux<'_>, well: Rect, most: f32) -> Option<Option<f32>> {
+    let strip = Rect::from_min_size(
+        Pos2::new(well.min.x, well.max.y),
+        Vec2::new(well.width(), DESCRIPTION_GRIP),
+    );
+    let response = rux.ui.interact(
+        strip,
+        rux.ui.id().with("agent-tasks-description-grip"),
+        egui::Sense::click_and_drag(),
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Resize description")
+    });
+    let active = response.hovered() || response.dragged();
+    if active {
+        rux.ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+    }
+    let theme = rux.theme();
+    let tint = match active {
+        true => theme.accent.blue,
+        false => theme.ink.i400,
+    };
+    let pill = Rect::from_center_size(strip.center(), Vec2::new(36.0, 3.0));
+    rux.ui.painter().rect_filled(pill, egui::CornerRadius::same(2), tint.gamma_multiply(0.8));
+    if response.double_clicked() {
+        return Some(None);
+    }
+    // **Measured from where the press began**, against the height the well had then. egui reports a drag only
+    // once the pointer has moved past its threshold, and the movement that crossed it is not in the first frame's
+    // `drag_delta`, so adding up deltas lost the first few points of every drag and a quick drag lost nearly all
+    // of it.
+    let started = rux.ui.id().with("agent-tasks-description-grip-start");
+    if response.drag_started() {
+        rux.ui.ctx().data_mut(|data| data.insert_temp(started, well.height()));
+    }
+    if response.dragged() {
+        let from = rux.ui.ctx().data(|data| data.get_temp::<f32>(started)).unwrap_or(well.height());
+        let travelled = rux.ui.ctx().input(|input| {
+            match (input.pointer.press_origin(), input.pointer.interact_pos()) {
+                (Some(origin), Some(now)) => now.y - origin.y,
+                _ => 0.0,
+            }
+        });
+        let height = (from + travelled).clamp(DESCRIPTION_LEAST, most.max(DESCRIPTION_LEAST));
+        if (height - well.height()).abs() > 0.1 {
+            return Some(Some(height));
+        }
+    }
+    None
+}
+
+/// The id `rux` gives a one line field it was handed `salt` for, so the modal can name it in its `Tab` walk.
+fn text_input_id(rux: &rux::Rux<'_>, salt: &str) -> egui::Id {
+    rux.ui.id().with(("rux-text-input", egui::Id::new(salt)))
 }
 
 /// A section's heading that does not fold: its mark in the section's accent, and its name in capitals.
@@ -534,10 +688,12 @@ fn heading_row(rux: &mut rux::Rux<'_>, at: Pos2, name: &str, icon: Icon, accent:
 /// **It scrolls, because it cannot be made to fit** in a dialog dragged towards its smallest — every one of
 /// these is a thing a ticket needs before an agent can be started. The column is drawn into a `rux` layer of its
 /// own inside the scrolling area, because the decoration has to move with what it decorates.
+#[allow(clippy::too_many_arguments)]
 fn fields(
     board: &mut AgentTasks,
     rux: &mut rux::Rux<'_>,
     selects: &mut std::collections::HashMap<&'static str, rux::components::SelectState>,
+    order: &mut Vec<egui::Id>,
     area: Rect,
     look: &Look<'_>,
     task: &Task,
@@ -569,7 +725,8 @@ fn fields(
                 egui::Id::new("agent-tasks-ticket-fields-rux"),
                 content.expand(24.0),
                 |rux| {
-                    let (asked, used) = field_column(board, rux, selects, content, look, task, new);
+                    let (asked, used) =
+                        field_column(board, rux, selects, order, content, look, task, new);
                     requests = asked;
                     used
                 },
@@ -587,11 +744,12 @@ fn fields(
 }
 
 /// The fields themselves, answering where the last of them ended.
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 fn field_column(
     board: &mut AgentTasks,
     rux: &mut rux::Rux<'_>,
     selects: &mut std::collections::HashMap<&'static str, rux::components::SelectState>,
+    order: &mut Vec<egui::Id>,
     area: Rect,
     _look: &Look<'_>,
     task: &Task,
@@ -797,6 +955,7 @@ fn field_column(
         .label("JIRA")
         .id_salt("agent-tasks-ticket-jira")
         .show(rux, at);
+    order.push(text_input_id(rux, "agent-tasks-ticket-jira"));
     if typed.changed {
         requests.extend(write(board, task, Field::JiraKey(key.clone())));
     }
@@ -948,6 +1107,21 @@ mod tests {
         let (width, height) = size(&context, &look);
         assert!(width <= 500.0, "{width} should not exceed the window's own width");
         assert!(height <= 400.0, "{height} should not exceed the window's own height");
+    }
+
+    /// `task-2214`: `Tab` goes to the next box and round the end, `Shift+Tab` the other way, and with no box
+    /// focused they go to the first and the last.
+    #[test]
+    fn tab_goes_to_the_next_box_and_round_the_end() {
+        let [a, b, c] = ["a", "b", "c"].map(egui::Id::new);
+        let order = [a, b, c];
+        assert_eq!(the_next_box(&order, None, false), Some(a));
+        assert_eq!(the_next_box(&order, None, true), Some(c));
+        assert_eq!(the_next_box(&order, Some(a), false), Some(b));
+        assert_eq!(the_next_box(&order, Some(c), false), Some(a), "round the end");
+        assert_eq!(the_next_box(&order, Some(a), true), Some(c), "round the start");
+        assert_eq!(the_next_box(&order, Some(egui::Id::new("button")), false), Some(a));
+        assert_eq!(the_next_box(&[], Some(a), false), None, "a modal with no boxes moves nothing");
     }
 
     /// `task-2193`: the labels followed the editor's font and the fields did not. The dialog's look is set at

@@ -452,7 +452,7 @@ fn one_group(
             ui.painter(),
             Pos2::new(head.min.x + 4.0 * scale, pen + (row_height(look) - look.font_size) / 2.0),
             group_empty_message(group.sprint.is_some()),
-            look.font_size - 1.0,
+            look.less(1.0),
             look.palette.text_faint,
         );
         return;
@@ -563,7 +563,7 @@ fn group_heading(
         &painter,
         Pos2::new(pen, middle - look.font_size * 0.6),
         &super::card::plural(group.tasks.len() as i64, "task"),
-        look.font_size - 1.0,
+        look.less(1.0),
         look.palette.text_dim,
     );
     let _ = pen;
@@ -642,7 +642,7 @@ fn badge(painter: &egui::Painter, look: &Look<'_>, at: Pos2, sprint: &Sprint) ->
         at,
         true,
         said,
-        look.font_size - 3.0,
+        look.less(3.0),
         tint,
         controls::ChipFill::Outline(Stroke::new(1.0, tint.gamma_multiply(0.55))),
         Vec2::new(16.0, 6.0),
@@ -686,7 +686,7 @@ fn quiet_button_named(
     };
     let galley = ui.painter().crisp_layout_no_wrap(
         label.to_owned(),
-        egui::FontId::proportional(look.font_size - 2.0),
+        egui::FontId::proportional(look.less(2.0)),
         tint,
     );
     let area = Rect::from_min_size(
@@ -768,7 +768,7 @@ fn row(
     // The key, in the code face, which is what makes a column of them line up.
     let key = painter.crisp_layout_no_wrap(
         task.key.clone(),
-        egui::FontId::monospace(look.font_size - 2.0),
+        egui::FontId::monospace(look.less(2.0)),
         look.palette.text_dim,
     );
     painter.crisp_galley(
@@ -839,7 +839,7 @@ fn lane_chip(painter: &egui::Painter, look: &Look<'_>, at: Pos2, status: Status)
     };
     let galley = painter.crisp_layout_no_wrap(
         status.label().to_owned(),
-        egui::FontId::proportional(look.font_size - 3.0),
+        egui::FontId::proportional(look.less(3.0)),
         tint,
     );
     painter.crisp_galley(
@@ -867,7 +867,7 @@ fn epic_chip(
         at,
         false,
         name,
-        look.font_size - 3.0,
+        look.less(3.0),
         tint,
         controls::ChipFill::Tint(tint.gamma_multiply(0.16)),
         Vec2::new(14.0, 6.0),
@@ -885,7 +885,7 @@ fn avatar(painter: &egui::Painter, look: &Look<'_>, at: Pos2, task: &Task) -> f3
     let letter = task.assignee.name().chars().next().unwrap_or('?').to_uppercase().to_string();
     let galley = painter.crisp_layout_no_wrap(
         letter,
-        egui::FontId::proportional(look.font_size - 4.0),
+        egui::FontId::proportional(look.less(4.0)),
         look.palette.text_strong,
     );
     painter.crisp_galley(
@@ -927,7 +927,7 @@ fn carried_name(ui: &egui::Ui, look: &Look<'_>, area: Rect, name: &str, at: Pos2
     };
     let galley = painter.crisp_layout_no_wrap(
         name.to_owned(),
-        egui::FontId::monospace(look.font_size - 2.0),
+        egui::FontId::monospace(look.less(2.0)),
         tint,
     );
     let box_rect =
@@ -1025,7 +1025,7 @@ fn plain_field(
         14.0,
         field_id,
         "Field field",
-        &egui::FontId::proportional(look.font_size - 1.0),
+        &egui::FontId::proportional(look.less(1.0)),
     );
     let response = ui
         .push_id(name, |ui| {
@@ -1036,10 +1036,10 @@ fn plain_field(
                     .frame(egui::Frame::NONE)
                     .hint_text(crate::components::controls::placeholder(
                         hint,
-                        &egui::FontId::proportional(look.font_size - 1.0),
+                        &egui::FontId::proportional(look.less(1.0)),
                         look.palette.text_faint,
                     ))
-                    .font(egui::FontId::proportional(look.font_size - 1.0))
+                    .font(egui::FontId::proportional(look.less(1.0)))
                     .text_color(look.palette.text),
             )
         })
@@ -1289,7 +1289,7 @@ fn epic_card(ui: &mut egui::Ui, look: &Look<'_>, card: EpicCard<'_>, pressed: &m
     }
     let count_said = painter.crisp_layout_no_wrap(
         count.to_string(),
-        egui::FontId::monospace(look.font_size - 1.0),
+        egui::FontId::monospace(look.less(1.0)),
         look.palette.text_dim,
     );
     painter.crisp_galley(
@@ -1346,7 +1346,7 @@ fn epic_card(ui: &mut egui::Ui, look: &Look<'_>, card: EpicCard<'_>, pressed: &m
         .painter()
         .layout_no_wrap(
             label.to_owned(),
-            egui::FontId::proportional(look.font_size - 2.0),
+            egui::FontId::proportional(look.less(2.0)),
             look.palette.text_control,
         )
         .size()
@@ -1376,7 +1376,7 @@ fn epic_card(ui: &mut egui::Ui, look: &Look<'_>, card: EpicCard<'_>, pressed: &m
             .painter()
             .layout_no_wrap(
                 "Delete?".to_owned(),
-                egui::FontId::proportional(look.font_size - 2.0),
+                egui::FontId::proportional(look.less(2.0)),
                 look.palette.text_control,
             )
             .size()
