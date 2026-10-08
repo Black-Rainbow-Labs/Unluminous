@@ -472,7 +472,10 @@ fn theme_list_and_show_answer_in_a_payload_proportionate_to_the_question() {
     let themes = listed["themes"].as_array().expect("a list of themes");
     assert_eq!(themes.len(), 7, "Unluminous's own two and the bundle's five");
     assert_eq!(themes[0]["key"], "unluminous/dark");
-    assert_eq!(themes[1]["key"], "unluminous/light", "the light one second, with no plugin behind it");
+    assert_eq!(
+        themes[1]["key"], "unluminous/light",
+        "the light one second, with no plugin behind it"
+    );
     assert_eq!(themes[1]["active"], false);
     assert_eq!(themes[0]["active"], true);
     assert!(themes[0]["colours"]["accent"].is_string(), "six colours a theme is recognised by");

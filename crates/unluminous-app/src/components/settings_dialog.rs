@@ -1526,11 +1526,7 @@ pub(crate) fn wide_button(ui: &mut egui::Ui, area: Rect, name: &str) -> bool {
         Stroke::new(1.0, color::control_border()),
         egui::StrokeKind::Inside,
     );
-    let galley = painter.layout_no_wrap(
-        name.to_owned(),
-        egui::FontId::proportional(12.5),
-        ink,
-    );
+    let galley = painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), ink);
     painter.galley(area.center() - galley.size() / 2.0, galley, ink);
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));

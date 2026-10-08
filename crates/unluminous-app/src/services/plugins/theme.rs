@@ -248,7 +248,11 @@ mod tests {
         let plugin = parse(&Values::parse(manifest), false).expect("a light theme parses");
         let paper = &plugin.themes[0];
         assert!(!paper.dark);
-        assert_eq!(paper.palette.accent, egui::Color32::from_rgb(0xC2, 0x18, 0x5B), "the one it named");
+        assert_eq!(
+            paper.palette.accent,
+            egui::Color32::from_rgb(0xC2, 0x18, 0x5B),
+            "the one it named"
+        );
         assert_eq!(
             paper.palette.editor,
             crate::theme::Palette::UNLUMINOUS_LIGHT.editor,
@@ -273,7 +277,6 @@ mod tests {
         let problem = refused(&format!("{base}theme.one.ui.editor_background = #FF0000\n"));
         assert!(problem.contains("editor_background"), "{problem}");
         assert!(problem.contains("explorer_footer"), "and it lists what Unluminous has: {problem}");
-
 
         let problem = refused(&format!("{base}theme.one.icons = atom\n"));
         assert!(problem.contains("material, classic"), "{problem}");

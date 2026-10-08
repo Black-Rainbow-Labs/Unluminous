@@ -44,7 +44,7 @@
 
 use std::path::Path;
 
-use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 use unluminous_core::{Align, Color, Command, Document, StyleChange};
 
 use crate::components::controls;

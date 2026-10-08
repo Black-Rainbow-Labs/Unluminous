@@ -321,11 +321,7 @@ fn chooser(ui: &mut egui::Ui, area: Rect, name: &str, chosen: bool) -> bool {
         Stroke::new(1.0, color::control_border()),
         egui::StrokeKind::Inside,
     );
-    let galley = painter.layout_no_wrap(
-        name.to_owned(),
-        egui::FontId::proportional(12.0),
-        ink,
-    );
+    let galley = painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.0), ink);
     painter.galley(area.center() - galley.size() / 2.0, galley, ink);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), chosen, name)

@@ -442,7 +442,9 @@ pub mod derived {
     pub fn board_surfaces() -> [Color32; 4] {
         match super::is_dark() {
             true => [color::editor(), color::explorer(), color::code_panel(), color::field()],
-            false => [color::explorer(), color::explorer_footer(), color::control(), color::code_chip()],
+            false => {
+                [color::explorer(), color::explorer_footer(), color::control(), color::code_chip()]
+            }
         }
     }
 
@@ -1135,7 +1137,11 @@ mod tests {
         activate(Theme::unluminous_dark());
         assert!(is_dark());
         assert_eq!(rux_theme().name, "dark-neumorphic");
-        assert_eq!(color::control_hover(), color::control().gamma_multiply(1.25), "as it always was");
+        assert_eq!(
+            color::control_hover(),
+            color::control().gamma_multiply(1.25),
+            "as it always was"
+        );
         assert_eq!(color::scrim(), Color32::from_black_alpha(120), "as the style guide says");
         assert_eq!(
             color::board_surfaces(),
@@ -1165,7 +1171,11 @@ mod tests {
     fn the_ordinary_ink_follows_the_ground_and_a_chosen_colour_does_not() {
         use unluminous_core::Color;
         activate(Theme::unluminous_dark());
-        assert_eq!(ink(Color::WHITE), Color32::from_rgb(0xF2, 0xF2, 0xF2), "white, as it always was");
+        assert_eq!(
+            ink(Color::WHITE),
+            Color32::from_rgb(0xF2, 0xF2, 0xF2),
+            "white, as it always was"
+        );
         activate(Theme::unluminous_light());
         assert_eq!(ink(Color::WHITE), color::text(), "the light theme's own ink");
         assert_eq!(ink(Color::RED), Color32::from_rgb(Color::RED.r, Color::RED.g, Color::RED.b));
@@ -1367,7 +1377,12 @@ mod closed_palette {
                     for call in ["from_rgb", "Color::rgb"] {
                         if let Some(at) = trimmed.find(call) {
                             if writes_a_literal(&trimmed[at..]) {
-                                offenders.push(format!("{folder}/{}:{}: {}", path, number + 1, trimmed));
+                                offenders.push(format!(
+                                    "{folder}/{}:{}: {}",
+                                    path,
+                                    number + 1,
+                                    trimmed
+                                ));
                             }
                         }
                     }
@@ -1393,21 +1408,33 @@ mod closed_palette {
     /// `control_hover` — which a light theme can answer differently.
     ///
     /// A line may still name one when the colour really is the same on any ground, and it says so with
-    /// `// any ground:` and the reason: the tint an image is drawn with, which leaves it as it is, or a
+    /// `// any ground:` and the reason, on the line or the line above it: the tint an image is drawn with, which leaves it as it is, or a
     /// plate over a photograph. Test code at the bottom of a file is not drawing anything.
     #[test]
     fn no_component_paints_a_white_or_black_of_its_own() {
         let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/components");
-        let forbidden =
-            ["Color32::WHITE", "Color32::BLACK", "from_white_alpha(", "from_black_alpha(", "from_gray("];
+        let forbidden = [
+            "Color32::WHITE",
+            "Color32::BLACK",
+            "from_white_alpha(",
+            "from_black_alpha(",
+            "from_gray(",
+        ];
         let mut offenders: Vec<String> = Vec::new();
         for (path, text) in every_source(&folder) {
-            for (number, line) in text.lines().enumerate() {
+            let lines: Vec<&str> = text.lines().collect();
+            for (number, line) in lines.iter().enumerate() {
                 if line.trim_start().starts_with("#[cfg(test)]") {
                     break;
                 }
                 let trimmed = line.trim_start();
-                if trimmed.starts_with("//") || line.contains("// any ground:") {
+                // The marker on the line itself, or on a comment line directly above it, which is
+                // where rustfmt puts a comment that will not fit beside the code.
+                let above = number.checked_sub(1).map(|at| lines[at].trim_start()).unwrap_or("");
+                if trimmed.starts_with("//")
+                    || line.contains("// any ground:")
+                    || above.starts_with("// any ground:")
+                {
                     continue;
                 }
                 if forbidden.iter().any(|name| line.contains(name)) {

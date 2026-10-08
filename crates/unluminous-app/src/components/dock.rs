@@ -179,8 +179,7 @@ fn landing_plate(painter: &egui::Painter, landing: Rect, carrying: Panel, fillin
         true => format!("{}, whole side", carrying.label()),
         false => carrying.label().to_owned(),
     };
-    let label =
-        painter.layout_no_wrap(name, egui::FontId::proportional(12.5), color::on_accent());
+    let label = painter.layout_no_wrap(name, egui::FontId::proportional(12.5), color::on_accent());
     let size = label.size();
     if size.x + 20.0 < landing.width() && size.y + 12.0 < landing.height() {
         let plate = Rect::from_center_size(landing.center(), size + Vec2::new(20.0, 12.0));
