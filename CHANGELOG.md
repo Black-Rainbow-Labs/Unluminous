@@ -6,10 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.65.1 — 2026-10-08
 
 - Agent Tasks holds together when zoomed, and the ticket modal is easier to work in (`task-2214`)
 - The ticket modal's sections share its height by what they hold (`task-2214`)
+- The changelog lists the Agent Tasks changes as unreleased (`task-2214`)
 
 ## 0.65.0 — 2026-10-07
 
