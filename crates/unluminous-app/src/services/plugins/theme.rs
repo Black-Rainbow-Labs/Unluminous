@@ -72,17 +72,13 @@ fn one_theme(values: &Values, plugin: &str, id: &str) -> Result<crate::theme::Th
             format!("theme.{id}.name is missing, so it would have nothing to be called in the list")
         })?
         .to_owned();
-    // Dark unless it says otherwise, and light is refused with the reason rather than half-supported. The
-    // window is drawn on a transparent ground, the depth recipe in `vello_canvas` lifts a surface and
-    // darkens it with black, and every accepted screenshot is judged against a dark ground — so a light
-    // theme is not a palette swap and shipping one nobody had looked at every screen in would be worse
-    // than saying so. This is `plugin.kind`'s own move: name the seam and leave it closed.
+    // Dark unless it says otherwise. A light theme was refused until `task-2215`, because the depth recipe
+    // in `vello_canvas` only knew how to lift a surface off a dark ground and nobody had looked at every
+    // screen on a light one. Both are answered now, and a light theme inherits from Unluminous Light
+    // rather than from Unluminous Dark, so naming three colours gives a light window with three colours
+    // changed rather than a dark window with a light flag on it.
     let dark = values.flag(&format!("theme.{id}.dark")).unwrap_or(true);
-    if !dark {
-        return Err(format!(
-            "theme.{id}.dark is false, and this version of Unluminous draws dark themes only"
-        ));
-    }
+    let parent = crate::theme::Theme::parent(dark);
     let icons = match at("icons").filter(|named| !named.is_empty()) {
         Some(named) => {
             // `IconSet::parse` is the actual membership test — it reads a name case-insensitively,
@@ -101,9 +97,9 @@ fn one_theme(values: &Values, plugin: &str, id: &str) -> Result<crate::theme::Th
         None => crate::theme::IconSet::default(),
     };
 
-    // A role that is not named keeps Unluminous Dark's, which is the reference editor's `parentTheme` in one line and is
+    // A role that is not named keeps the built-in theme's of the same darkness, which is the reference editor's `parentTheme` in one line and is
     // what keeps a manifest to the thirty colours that matter rather than all forty.
-    let mut palette = crate::theme::Palette::UNLUMINOUS_DARK;
+    let mut palette = parent.palette;
     for (role, value) in values.starting_with(&format!("theme.{id}.ui.")) {
         let Some(read) = colour(&value) else {
             return Err(format!(
@@ -144,7 +140,10 @@ fn one_theme(values: &Values, plugin: &str, id: &str) -> Result<crate::theme::Th
         }
     }
     let syntax = match (named.is_empty(), missing.is_empty()) {
-        (true, _) => None,
+        // Naming none keeps each language plugin's own scheme on a dark theme, which is what every theme
+        // before `task-2215` did. On a light one it keeps Unluminous Light's, because every language
+        // plugin's own scheme was written for a dark ground.
+        (true, _) => parent.syntax.clone(),
         (false, true) => Some(SyntaxTheme::of(name.clone(), named)),
         (false, false) => {
             return Err(format!(
@@ -241,6 +240,27 @@ mod tests {
         );
     }
 
+    /// `task-2215`. A light theme loads, and what it does not name comes from Unluminous Light rather than
+    /// from Unluminous Dark, its code colours included.
+    #[test]
+    fn a_light_theme_inherits_from_unluminous_light() {
+        let manifest = "plugin.id = t\nplugin.kind = theme\nthemes = paper\ntheme.paper.name = Paper\ntheme.paper.dark = false\ntheme.paper.ui.accent = #C2185B\n";
+        let plugin = parse(&Values::parse(manifest), false).expect("a light theme parses");
+        let paper = &plugin.themes[0];
+        assert!(!paper.dark);
+        assert_eq!(paper.palette.accent, egui::Color32::from_rgb(0xC2, 0x18, 0x5B), "the one it named");
+        assert_eq!(
+            paper.palette.editor,
+            crate::theme::Palette::UNLUMINOUS_LIGHT.editor,
+            "and the light ground under it, not the dark one"
+        );
+        assert_eq!(
+            paper.syntax,
+            crate::theme::Theme::unluminous_light().syntax,
+            "and code coloured for a light ground, since every language plugin's own scheme is for a dark one"
+        );
+    }
+
     /// Every refusal names what was asked for and what this version has, which is the rule
     /// `plugin.kind`, `language.renders`, `ui.provider` and `ui.chrome` all keep.
     #[test]
@@ -254,8 +274,6 @@ mod tests {
         assert!(problem.contains("editor_background"), "{problem}");
         assert!(problem.contains("explorer_footer"), "and it lists what Unluminous has: {problem}");
 
-        let problem = refused(&format!("{base}theme.one.dark = false\n"));
-        assert!(problem.contains("dark themes only"), "{problem}");
 
         let problem = refused(&format!("{base}theme.one.icons = atom\n"));
         assert!(problem.contains("material, classic"), "{problem}");

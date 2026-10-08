@@ -126,7 +126,7 @@ fn fill_target(painter: &egui::Painter, zone: &Zone, aimed: bool) {
         return;
     }
     let (fill, ink) = match aimed {
-        true => (color::accent(), color::text_strong()),
+        true => (color::accent(), color::on_accent()),
         false => (fade(LANDING_FILL), color::text_strong()),
     };
     painter.rect_filled(pill, CornerRadius::same(6), fill);
@@ -180,12 +180,12 @@ fn landing_plate(painter: &egui::Painter, landing: Rect, carrying: Panel, fillin
         false => carrying.label().to_owned(),
     };
     let label =
-        painter.layout_no_wrap(name, egui::FontId::proportional(12.5), color::text_strong());
+        painter.layout_no_wrap(name, egui::FontId::proportional(12.5), color::on_accent());
     let size = label.size();
     if size.x + 20.0 < landing.width() && size.y + 12.0 < landing.height() {
         let plate = Rect::from_center_size(landing.center(), size + Vec2::new(20.0, 12.0));
         painter.rect_filled(plate, CornerRadius::same(4), color::accent());
-        painter.galley(plate.center() - size / 2.0, label, color::text_strong());
+        painter.galley(plate.center() - size / 2.0, label, color::on_accent());
     }
 }
 

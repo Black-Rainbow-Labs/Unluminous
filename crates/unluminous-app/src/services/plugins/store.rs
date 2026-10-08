@@ -171,7 +171,8 @@ impl Plugins {
         self.installed.iter().filter(|plugin| plugin.kind == Kind::Ui).collect()
     }
 
-    /// Every theme that can be chosen: Unluminous's own, then each theme plugin that is switched on.
+    /// Every theme that can be chosen: Unluminous's own two, dark then light, then each theme plugin that is
+    /// switched on.
     ///
     /// Worked out from the manifests each time rather than remembered, which is what `surfaces` does and
     /// for the same reason: switching a theme plugin off has to withdraw its themes in the same frame it
@@ -179,7 +180,7 @@ impl Plugins {
     /// `UnluminousApp::apply_the_theme` falls back to `unluminous/dark` when the active one is no longer in this
     /// list, so a plugin switched off can never leave the window in a palette nothing can name.
     pub fn themes(&self) -> Vec<crate::theme::Theme> {
-        let mut found = vec![crate::theme::Theme::unluminous_dark()];
+        let mut found = crate::theme::Theme::built_in().to_vec();
         for plugin in self.installed.iter().filter(|plugin| plugin.enabled) {
             found.extend(plugin.themes.iter().cloned());
         }
@@ -636,10 +637,10 @@ mod tests {
     fn switching_a_theme_plugin_off_withdraws_its_themes() {
         let (mut plugins, _) = Plugins::load(None);
         assert!(plugins.theme("Monokai Pro").is_some(), "it is there to begin with");
-        assert_eq!(plugins.themes().len(), 6, "Unluminous's own, then the bundle's five");
+        assert_eq!(plugins.themes().len(), 7, "Unluminous's own two, then the bundle's five");
         plugins.set_enabled(None, "themes-bundle-1", false);
         assert!(plugins.theme("Monokai Pro").is_none(), "and gone when the plugin is off");
-        assert_eq!(plugins.themes().len(), 1, "leaving only Unluminous's own");
+        assert_eq!(plugins.themes().len(), 2, "leaving only Unluminous's own two");
     }
 
     /// A theme is found by its key or by the name that is on the screen, which is `split_off_a_name`'s
@@ -659,6 +660,11 @@ mod tests {
         assert_eq!(
             plugins.theme("unluminous/dark").map(|theme| theme.name),
             Some("Unluminous Dark".to_owned())
+        );
+        assert_eq!(
+            plugins.theme("unluminous light").map(|theme| theme.key),
+            Some(crate::theme::LIGHT_KEY.to_owned()),
+            "and the light one is there beside it, with no plugin switched on to provide it"
         );
         assert!(plugins.theme("solarized").is_none());
     }

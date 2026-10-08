@@ -214,7 +214,7 @@ pub fn show(
             ui.interact(hit, ui.id().with(("window-button", label)), Sense::CLICK).with_hint(label);
         painter.circle_filled(centre, 6.5, if lit { fill } else { color::icon() });
         if response.hovered() {
-            painter.circle_stroke(centre, 6.5, Stroke::new(1.0, Color32::from_black_alpha(90)));
+            painter.circle_stroke(centre, 6.5, Stroke::new(1.0, Color32::from_black_alpha(90))); // any ground: a ring on the red, amber and green buttons
         }
         // The accessible name is the plain word, so a test can ask for the Close button by name.
         response.widget_info(|| {

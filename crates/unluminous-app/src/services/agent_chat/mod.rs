@@ -569,7 +569,7 @@ impl ModelSelect {
     /// be the same picture on every machine. The trigger is a few hundred points of decoration, so the
     /// slower level costs nothing anybody can measure.
     pub fn new() -> Self {
-        let theme = rux::Theme::named("dark-neumorphic").unwrap_or_else(rux::theme::dark);
+        let theme = crate::theme::rux_theme();
         Self { rux: rux::RuxState::deterministic(theme), menu: Default::default() }
     }
 }

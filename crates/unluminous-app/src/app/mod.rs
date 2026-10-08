@@ -1624,7 +1624,8 @@ impl UnluminousApp {
         // starts from Unluminous's own rather than from whatever the last window on this thread was painted
         // in. In the released binary this is a window's first frame and there is nothing to reset;
         // `use_store` reads the settings and applies the chosen theme a moment later.
-        theme::activate(theme::Theme::unluminous_dark());
+        theme::activate(theme::when_nothing_is_chosen());
+        crate::services::terminal_colours::follow_the_theme();
         theme::apply(ctx);
         self.themed = true;
         // What the plugins contribute, read from their manifests. Here rather than only in

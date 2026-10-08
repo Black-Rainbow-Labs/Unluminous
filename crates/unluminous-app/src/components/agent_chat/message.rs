@@ -682,7 +682,7 @@ fn picture(
         texture.id(),
         drawn,
         Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-        Color32::WHITE,
+        Color32::WHITE, // any ground: an image's tint, which leaves it as it is
     );
 }
 
@@ -1327,7 +1327,7 @@ fn read_cached(
 /// Deterministic for the reason `ModelSelect::new` gives: a screenshot of the pane must be the same
 /// picture on every machine.
 fn blocks_rux() -> rux::RuxState {
-    let theme = rux::Theme::named("dark-neumorphic").unwrap_or_else(rux::theme::dark);
+    let theme = crate::theme::rux_theme();
     rux::RuxState::deterministic(theme)
 }
 
@@ -1389,6 +1389,7 @@ fn measure_block(
     let rux_state = kept.get_or_insert_with(blocks_rux);
     rux_state.set_zoom(look.scale());
     rux_state.set_still(*still);
+    crate::theme::in_step(rux_state);
     let chrome = rux::Chrome::recording();
     let scope = ui.id();
     let mut rux = rux::Rux { ui, state: rux_state, chrome: &chrome };
@@ -1423,6 +1424,7 @@ fn block_show(
     let rux_state = kept.get_or_insert_with(blocks_rux);
     rux_state.set_zoom(look.scale());
     rux_state.set_still(*still);
+    crate::theme::in_step(rux_state);
     // Room round the plate for its shadow, which the layer's canvas would otherwise cut off.
     let reach = 14.0 * look.scale();
     let scope = ui.id();

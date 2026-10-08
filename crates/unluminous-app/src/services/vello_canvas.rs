@@ -455,14 +455,14 @@ impl Chrome {
             rect: rect.translate(Vec2::splat(offset)),
             radius,
             blur,
-            colour: Color32::from_black_alpha(lift.shadow_alpha()),
+            colour: shade(lift.shadow_alpha()),
             inset: false,
         });
         self.push(Decor::Shadow {
             rect: rect.translate(Vec2::splat(-offset)),
             radius,
             blur,
-            colour: lifted(fill.representative(), 0.10).gamma_multiply(0.22),
+            colour: highlight(fill.representative(), 0.10, 0.22),
             inset: false,
         });
         self.push(Decor::Unclip);
@@ -488,14 +488,14 @@ impl Chrome {
             rect: rect.translate(Vec2::splat(offset)),
             radius,
             blur,
-            colour: Color32::from_black_alpha(depth.shadow_alpha()),
+            colour: shade(depth.shadow_alpha()),
             inset: true,
         });
         self.push(Decor::Shadow {
             rect: rect.translate(Vec2::splat(-offset)),
             radius,
             blur,
-            colour: lifted(fill, 0.16).gamma_multiply(0.30),
+            colour: highlight(fill, 0.16, 0.30),
             inset: true,
         });
         self.push(Decor::Unclip);
@@ -535,6 +535,29 @@ impl Chrome {
 
     pub fn unclip(&self) {
         self.push(Decor::Unclip);
+    }
+}
+
+/// The dark half of an elevation: black at `alpha` on a dark ground, which is what the board is measured
+/// against, and a cool grey at a little over half of it on a light one.
+///
+/// `task-2215`. Black on a light surface reads as dirt rather than as depth, and at the dark theme's
+/// strength it was a smudge round every card. Light neumorphism shadows with the surface's own hue taken
+/// darker, which is what `rux`'s light theme does with `#B8BFCC`; this is that grey, a step deeper so a
+/// Gaussian of it is still visible at its edge.
+fn shade(alpha: u8) -> Color32 {
+    match crate::theme::is_dark() {
+        true => Color32::from_black_alpha(alpha),
+        false => Color32::from_rgba_unmultiplied(0x5E, 0x6A, 0x80, (f32::from(alpha) * 0.55) as u8),
+    }
+}
+
+/// The pale half of an elevation: the surface lifted by `amount` and faded to `strength` on a dark ground,
+/// and white on a light one, where the light falls on the top left edge as it does in `rux`'s light theme.
+fn highlight(surface: Color32, amount: f32, strength: f32) -> Color32 {
+    match crate::theme::is_dark() {
+        true => lifted(surface, amount).gamma_multiply(strength),
+        false => Color32::from_white_alpha(210),
     }
 }
 

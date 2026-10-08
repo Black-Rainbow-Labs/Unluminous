@@ -832,7 +832,7 @@ pub fn flyout<T>(
     } else if response.hovered() {
         painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::control());
     }
-    let tint = if open { color::text_strong() } else { color::text_control() };
+    let tint = if open { color::on_accent() } else { color::text_control() };
     draw(painter, area.center(), tint);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), open, name)
@@ -985,7 +985,7 @@ pub fn choice_button_over(
             painter.rect_filled(
                 area,
                 CornerRadius::same(size::CONTROL_CORNER),
-                Color32::from_white_alpha(14),
+                color::hover_wash().gamma_multiply(14.0 / 255.0),
             );
         }
     } else if active {
@@ -1001,7 +1001,7 @@ pub fn choice_button_over(
             egui::StrokeKind::Inside,
         );
     }
-    let tint = if active { color::text_strong() } else { color::text_control() };
+    let tint = if active { color::on_accent() } else { color::text_control() };
     let galley =
         painter.crisp_layout_no_wrap(label.to_owned(), egui::FontId::proportional(12.5), tint);
     painter.crisp_galley(area.center() - galley.size() / 2.0, galley, tint);

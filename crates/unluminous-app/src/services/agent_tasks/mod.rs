@@ -396,7 +396,7 @@ impl TicketKit {
     /// Drawn in `rux`'s dark theme, deterministically, for the reason `ModelSelect::new` gives: a
     /// screenshot of the modal must be the same picture on every machine.
     pub fn new() -> Self {
-        let theme = rux::Theme::named("dark-neumorphic").unwrap_or_else(rux::theme::dark);
+        let theme = crate::theme::rux_theme();
         Self {
             rux: rux::RuxState::deterministic(theme),
             selects: Default::default(),

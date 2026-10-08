@@ -8,6 +8,9 @@ reference/
 **/tests/snapshots/**/*.new.png
 **/tests/snapshots/**/*.diff.png
 **/tests/snapshots/**/*.old.png
+# A survey run, which photographs the whole suite in another theme to be looked at rather than accepted.
+# See `shot` in `crates/unluminous-app/tests/common/mod.rs`.
+**/tests/snapshots/survey-*/
 
 # IntelliJ workspace state, which is per machine rather than part of the project.
 .idea/

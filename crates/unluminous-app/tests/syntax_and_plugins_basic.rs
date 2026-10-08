@@ -306,6 +306,52 @@ fn a_theme_repaints_the_window_and_recolours_the_code() {
     harness.snapshot(shot("themed_window"));
 }
 
+/// `task-2215`. Unluminous Light is chosen by name with no plugin behind it, paints the window light,
+/// colours code in its own scheme rather than the Rust plugin's Dracula, and moves egui onto its light
+/// style, so the menus and the text boxes egui draws itself are light as well.
+#[test]
+fn the_light_theme_repaints_the_window_and_colours_code_for_a_light_ground() {
+    let mut harness = harness_in(&sample_folder());
+    let opened = run(&mut harness, "tab open program.rs");
+    assert!(opened.ok, "{}", opened.message);
+    steady(&mut harness);
+
+    let reply = run(&mut harness, "theme set \"Unluminous Light\"");
+    assert!(reply.ok, "{}", reply.message);
+    steady(&mut harness);
+    steady(&mut harness);
+    assert_eq!(harness.state().settings.theme, "unluminous/light");
+    assert!(!unluminous_app::theme::is_dark());
+    assert_eq!(
+        unluminous_app::theme::color::editor(),
+        egui::Color32::from_rgb(0xFB, 0xFC, 0xFD),
+        "the light ground"
+    );
+    assert_eq!(harness.ctx.theme(), egui::Theme::Light, "egui's own widgets are drawn light too");
+    assert!(!harness.ctx.style_of(egui::Theme::Light).visuals.dark_mode);
+
+    let keyword_at = harness
+        .state()
+        .document()
+        .text()
+        .to_string()
+        .find("fn ")
+        .expect("the sample program starts with a function");
+    assert_eq!(
+        harness.state().document().chars().style_at(keyword_at).color,
+        unluminous_core::Color::rgb(0xA6, 0x26, 0xA4),
+        "the light theme's keyword colour, not Dracula's pink"
+    );
+    harness.snapshot(shot("light_window"));
+
+    // And back, which is the same command the other way.
+    let reply = run(&mut harness, "theme set unluminous/dark");
+    assert!(reply.ok, "{}", reply.message);
+    steady(&mut harness);
+    assert!(unluminous_app::theme::is_dark());
+    assert_eq!(harness.ctx.theme(), egui::Theme::Dark);
+}
+
 /// A theme is named on the command line by what is on the screen, and a name nothing answers to says
 /// what there is rather than only that this was not one of them.
 #[test]
@@ -424,8 +470,10 @@ fn theme_list_and_show_answer_in_a_payload_proportionate_to_the_question() {
     let mut harness = harness("");
     let listed = did(&mut harness, "theme list");
     let themes = listed["themes"].as_array().expect("a list of themes");
-    assert_eq!(themes.len(), 6, "Unluminous's own and the bundle's five");
+    assert_eq!(themes.len(), 7, "Unluminous's own two and the bundle's five");
     assert_eq!(themes[0]["key"], "unluminous/dark");
+    assert_eq!(themes[1]["key"], "unluminous/light", "the light one second, with no plugin behind it");
+    assert_eq!(themes[1]["active"], false);
     assert_eq!(themes[0]["active"], true);
     assert!(themes[0]["colours"]["accent"].is_string(), "six colours a theme is recognised by");
     assert!(

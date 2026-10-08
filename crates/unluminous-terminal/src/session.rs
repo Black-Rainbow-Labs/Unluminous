@@ -275,7 +275,9 @@ pub struct Session {
     /// has the reader thread's parser instead.
     parser: Option<Processor>,
     size: Size,
-    palette: Palette,
+    /// The palette this session's emulator was last given. A `Cell`, because drawing is `&self` and is
+    /// where a theme change is noticed: see [`Session::follow_the_palette`].
+    palette: std::cell::Cell<Palette>,
     /// The title the program set, which is what the tab is named after.
     title: String,
     /// What the program asked to be put on the clipboard, for the window to hand over.
@@ -374,7 +376,7 @@ impl Session {
         };
         let (sender, events) = std::sync::mpsc::channel();
         let proxy = Proxy { events: sender, waker };
-        let palette = Palette::new();
+        let palette = Palette::current();
         let mut term = Term::new(config(), &size, proxy.clone());
         term.colors_mut(&palette);
         let term = Arc::new(FairMutex::new(term));
@@ -431,7 +433,7 @@ impl Session {
             master,
             parser: None,
             size,
-            palette,
+            palette: std::cell::Cell::new(palette),
             title: String::new(),
             clipboard: None,
             running: true,
@@ -454,7 +456,7 @@ impl Session {
         let (sender, events) = std::sync::mpsc::channel();
         let waker: Waker = Arc::new(|| {});
         let proxy = Proxy { events: sender, waker };
-        let palette = Palette::new();
+        let palette = Palette::current();
         let mut term = Term::new(config(), &size, proxy);
         term.colors_mut(&palette);
         Self {
@@ -466,7 +468,7 @@ impl Session {
             master: crate::foreground::Master::detached(),
             parser: Some(Processor::new()),
             size,
-            palette,
+            palette: std::cell::Cell::new(palette),
             title: String::new(),
             clipboard: None,
             running: true,
@@ -693,7 +695,7 @@ impl Session {
                 Event::ResetTitle => self.title.clear(),
                 Event::PtyWrite(text) => self.send(text.into_bytes()),
                 Event::ColorRequest(index, formatter) => {
-                    let colour = self.palette.indexed(index.min(255) as u8);
+                    let colour = self.palette.get().indexed(index.min(255) as u8);
                     self.send(formatter(colour.into()).into_bytes());
                 }
                 Event::TextAreaSizeRequest(formatter) => {
@@ -976,14 +978,14 @@ impl Session {
     /// Trailing blank rows are left in: [`crate::replay::bytes_of`] drops them, and doing it twice in two
     /// places is two rules about the same thing.
     pub fn screen_and_history(&self, rows: usize) -> Screen {
-        let term = self.term.lock();
+        let mut term = self.term.lock();
+        let palette = self.follow_the_palette(&mut term);
         let columns = term.columns();
         let screen_lines = term.screen_lines() as i32;
         let history = term.history_size() as i32;
         let first = (screen_lines - rows as i32).max(-history);
         let taken = (screen_lines - first).max(0) as usize;
-        let mut screen =
-            Screen::empty(taken, columns, self.palette.foreground, self.palette.background);
+        let mut screen = Screen::empty(taken, columns, palette.foreground, palette.background);
         // The colours a program may have redefined, which `renderable_content` is the only way to reach. The
         // grid is read directly afterwards, because `display_iter` walks the *visible* rows and the point of
         // this is the rows behind them.
@@ -1000,6 +1002,24 @@ impl Session {
         screen
     }
 
+    /// Move this session onto the thread's palette if the window's theme has changed since it was last
+    /// drawn, and answer with the palette it is on.
+    ///
+    /// The emulator holds every colour as one a program could have set, which is how `resolve` and a
+    /// program asking for the background colour both get Unluminous's answer, so a theme change has to give
+    /// the emulator the whole table again. It is done here, under the lock the drawing already takes,
+    /// rather than by the window walking every terminal it knows about: the tile, the run tile, a canvas
+    /// node and a ticket's terminal each hold sessions, and a list of the places that have to be told
+    /// is a list whose next entry is the one that forgets. `task-2215`.
+    fn follow_the_palette<T: EventListener>(&self, term: &mut Term<T>) -> Palette {
+        let wanted = Palette::current();
+        if self.palette.get() != wanted {
+            term.colors_mut(&wanted);
+            self.palette.set(wanted);
+        }
+        wanted
+    }
+
     /// One cell of the grid, with its colours resolved against the palette and whatever the program changed.
     ///
     /// Shared by [`Self::snapshot`] and [`Self::screen_and_history`], because a cell that came out looking one
@@ -1013,11 +1033,12 @@ impl Session {
         let flags = cell.flags;
         let bold = flags.contains(Flags::BOLD) || flags.contains(Flags::DIM_BOLD);
         let dim = flags.contains(Flags::DIM);
-        let mut foreground = self.palette.resolve(cell.fg, bold && !dim, colours);
+        let palette = self.palette.get();
+        let mut foreground = palette.resolve(cell.fg, bold && !dim, colours);
         if dim {
-            foreground = foreground.dimmed();
+            foreground = palette.dimmed(foreground);
         }
-        let mut background = self.palette.resolve(cell.bg, false, colours);
+        let mut background = palette.resolve(cell.bg, false, colours);
         if flags.contains(Flags::INVERSE) {
             std::mem::swap(&mut foreground, &mut background);
         }
@@ -1050,11 +1071,11 @@ impl Session {
     ///
     /// The lock is held for this copy and not for the drawing. See the file's own documentation for why.
     pub fn snapshot(&self) -> Screen {
-        let term = self.term.lock();
+        let mut term = self.term.lock();
+        let palette = self.follow_the_palette(&mut term);
         let rows = term.screen_lines();
         let columns = term.columns();
-        let mut screen =
-            Screen::empty(rows, columns, self.palette.foreground, self.palette.background);
+        let mut screen = Screen::empty(rows, columns, palette.foreground, palette.background);
         screen.history = term.history_size();
 
         let content = term.renderable_content();

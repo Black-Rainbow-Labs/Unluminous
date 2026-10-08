@@ -228,8 +228,6 @@ them.
   name; `design/accessibility.md` is what is still missing and the plain answer.
 - **A screenshot Unluminous takes never contains a rendered web page**, because a page is a native
   child window the operating system composites on top of the surface a screenshot captures.
-- **No light theme**, and it is refused rather than half-supported: the window is drawn on a
-  transparent ground and its depth is a surface lifted and a shadow of black.
 - **No continuous integration**, by choice. The release scripts run the suite before they will tag
   anything, so a release cannot be made from a checkout whose tests do not pass.
 

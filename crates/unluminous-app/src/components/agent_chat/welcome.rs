@@ -72,7 +72,7 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
     let mut acts = Vec::new();
     let still = parts.state.still;
     let kept = parts.state.blocks_rux.get_or_insert_with(|| {
-        let theme = rux::Theme::named("dark-neumorphic").unwrap_or_else(rux::theme::dark);
+        let theme = crate::theme::rux_theme();
         rux::RuxState::deterministic(theme)
     });
     kept.set_zoom(look.scale());
@@ -104,6 +104,7 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
     // falls through to the canvas, which then chooses no node at all: the starter chips this page
     // replaced happened to sit where people click, and its status screen does not.
     let _ = ui.interact(area, id.with("ground"), egui::Sense::click());
+    crate::theme::in_step(kept);
     rux::layer(ui, kept, id, area, |rux| {
         let theme = rux.theme();
         let colours = Instrument::of(theme);

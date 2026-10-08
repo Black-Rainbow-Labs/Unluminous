@@ -246,6 +246,7 @@ fn contents(
 
     let main_id = ui.id().with("agent-tasks-ticket-rux");
     let state = &kit.rux;
+    crate::theme::in_step(state);
     let selects = &mut kit.selects;
     let order = &mut kit.tab_order;
     let (requests, closed) = rux::layer(ui, state, main_id, area, |rux| {

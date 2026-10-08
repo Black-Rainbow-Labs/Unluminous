@@ -466,7 +466,7 @@ fn tick(painter: &egui::Painter, centre: Pos2, on: bool) {
         egui::StrokeKind::Inside,
     );
     if on {
-        icon::tick(painter, centre, color::text_strong());
+        icon::tick(painter, centre, color::on_accent());
     }
 }
 

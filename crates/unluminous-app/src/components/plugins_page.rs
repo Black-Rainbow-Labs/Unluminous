@@ -240,7 +240,7 @@ fn list_of_plugins(
                         Vec2::splat(15.0),
                     );
                     painter.rect_filled(box_rect, CornerRadius::same(3), color::accent());
-                    icon::tick(painter, box_rect.center(), color::text_strong());
+                    icon::tick(painter, box_rect.center(), color::on_accent());
                 }
             });
             if response.clicked() {

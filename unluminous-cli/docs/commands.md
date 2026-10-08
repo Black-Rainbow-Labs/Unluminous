@@ -3520,7 +3520,7 @@ unluminous-cli settings fonts --json
 
 ## theme — the colours the whole window is painted in
 
-A theme says what every name in Unluminous's own palette means, which drawn icon set the rail and the explorer use, and — when it names all nine token colours — how code is coloured in every language at once. Unluminous's own theme names none of the nine, so each language plugin's scheme is what colours its files until a theme is chosen. `settings set appearance.theme` reaches the same code; these exist because a setting cannot say what themes there are.
+A theme says what every name in Unluminous's own palette means, which drawn icon set the rail and the explorer use, and — when it names all nine token colours — how code is coloured in every language at once. Unluminous Dark names none of the nine, so each language plugin's scheme colours its files; Unluminous Light names all nine. `settings set appearance.theme` reaches the same code; these exist because a setting cannot say what themes there are.
 
 ### theme list
 
@@ -3563,6 +3563,7 @@ Paint the window in a theme. It takes effect at once, in every tab and every pan
 - `--icons <set>` — Which drawn icon set to use: material, classic, or `follow` for whichever the theme names.
 
 ```sh
+unluminous-cli theme set "Unluminous Light"
 unluminous-cli theme set themes-bundle-1/dracula
 unluminous-cli theme set "Monokai Pro" --icons material
 unluminous-cli theme set unluminous/dark --accent none

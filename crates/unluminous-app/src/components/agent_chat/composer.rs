@@ -310,7 +310,7 @@ fn thumbnails(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: R
                     texture.id(),
                     at.shrink(2.0),
                     Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                    Color32::WHITE,
+                    Color32::WHITE, // any ground: an image's tint, which leaves it as it is
                 );
             }
             // A picture that will not decode still says it is attached, because it will still be

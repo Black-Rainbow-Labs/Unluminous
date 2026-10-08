@@ -393,6 +393,7 @@ fn header(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
         let select = parts.state.model_select.get_or_insert_with(ModelSelect::new);
         let id = ui.id().with("agent-chat-model-select");
         // The layer is the trigger and room round it for its shadow. The menu opens a layer of its own.
+        crate::theme::in_step(&select.rux);
         let outcome = rux::layer(ui, &select.rux, id, chip.expand(24.0 * scale), |rux| {
             let quiet = rux.theme().elevation.raised_sm;
             rux::components::Select::new(&names, chosen)

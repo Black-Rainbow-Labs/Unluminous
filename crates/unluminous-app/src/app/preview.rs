@@ -132,7 +132,11 @@ impl UnluminousApp {
                 color::text_strong().g(),
                 color::text_strong().b(),
             ),
-            code: unluminous_core::Color::rgb(0x7E, 0xD3, 0x9B),
+            code: unluminous_core::Color::rgb(
+                color::inline_code().r(),
+                color::inline_code().g(),
+                color::inline_code().b(),
+            ),
             link: unluminous_core::Color::rgb(
                 color::accent().r(),
                 color::accent().g(),

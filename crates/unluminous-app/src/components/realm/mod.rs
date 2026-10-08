@@ -726,7 +726,7 @@ fn note_view_button(
     } else if response.hovered() {
         painter.rect_filled(area, egui::CornerRadius::same(4), color::control());
     }
-    let tint = if active { color::text_strong() } else { color::text_control() };
+    let tint = if active { color::on_accent() } else { color::text_control() };
     icon::view_mode(painter, area.shrink(5.0), mode, tint);
     response
         .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, active, &name));

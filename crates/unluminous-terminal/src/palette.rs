@@ -70,8 +70,33 @@ const NAMED: [Rgb; 16] = [
 /// The six values each of red, green and blue takes in the colour cube, which every terminal uses.
 const CUBE: [u8; 6] = [0, 95, 135, 175, 215, 255];
 
+/// The sixteen named colours of the light palette: GitHub's light terminal colours, which are dark enough
+/// to read on a white page, with yellow taken down to an ochre because the amber above is not.
+///
+/// `task-2215`. In a light terminal "black" is the colour ordinary dark text is, and "white" is a light
+/// grey that a program uses for something quiet, which is the opposite of what the names say and what
+/// every light terminal does.
+const NAMED_LIGHT: [Rgb; 16] = [
+    Rgb::new(0x24, 0x29, 0x2F), // black
+    Rgb::new(0xCF, 0x22, 0x2E), // red
+    Rgb::new(0x11, 0x63, 0x29), // green
+    Rgb::new(0x8A, 0x61, 0x00), // yellow
+    Rgb::new(0x09, 0x69, 0xDA), // blue
+    Rgb::new(0x82, 0x50, 0xDF), // magenta
+    Rgb::new(0x1B, 0x7C, 0x83), // cyan
+    Rgb::new(0x6E, 0x77, 0x81), // white
+    Rgb::new(0x57, 0x60, 0x6A), // bright black
+    Rgb::new(0xA4, 0x0E, 0x26), // bright red
+    Rgb::new(0x1A, 0x7F, 0x37), // bright green
+    Rgb::new(0x63, 0x3C, 0x01), // bright yellow
+    Rgb::new(0x21, 0x8B, 0xFF), // bright blue
+    Rgb::new(0xA4, 0x75, 0xF9), // bright magenta
+    Rgb::new(0x31, 0x92, 0xAA), // bright cyan
+    Rgb::new(0x8C, 0x95, 0x9F), // bright white
+];
+
 /// The colours a terminal starts with, and the ones a program has changed.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Palette {
     /// Ordinary text.
     pub foreground: Rgb,
@@ -79,7 +104,21 @@ pub struct Palette {
     pub background: Rgb,
     /// The block the cursor is drawn as.
     pub cursor: Rgb,
+    /// What bold text in the default colour is drawn in: white on a dark ground, the darkest ink on a
+    /// light one.
+    pub bright_foreground: Rgb,
+    /// Whether the ground is light, which decides which way dim text moves: towards black on a dark
+    /// ground, towards the ground on a light one, where towards black would make it *stronger*.
+    pub light: bool,
     named: [Rgb; 16],
+}
+
+thread_local! {
+    /// The palette a terminal created or drawn on this thread uses.
+    ///
+    /// Per thread for the reason the window's own theme is (`unluminous-app`'s `theme` module): a window
+    /// is one thread, and the screenshot tests run many windows in one process at once.
+    static CURRENT: std::cell::Cell<Palette> = const { std::cell::Cell::new(Palette::new()) };
 }
 
 impl Palette {
@@ -88,8 +127,50 @@ impl Palette {
             foreground: Rgb::new(0xE8, 0xEB, 0xF1),
             background: Rgb::new(0x1A, 0x1F, 0x26),
             cursor: Rgb::new(0x48, 0x9F, 0xF8),
+            bright_foreground: Rgb::new(0xFF, 0xFF, 0xFF),
+            light: false,
             named: NAMED,
         }
+    }
+
+    /// The palette a terminal is drawn in under a light theme. `task-2215`.
+    ///
+    /// The ground and the cursor are the light theme's editor and accent, for the reason the dark one's
+    /// are the dark theme's: the terminal belongs to the window.
+    pub const fn light() -> Self {
+        Self {
+            foreground: Rgb::new(0x1E, 0x25, 0x30),
+            background: Rgb::new(0xFB, 0xFC, 0xFD),
+            cursor: Rgb::new(0x2A, 0x63, 0xF0),
+            bright_foreground: Rgb::new(0x10, 0x15, 0x1C),
+            light: true,
+            named: NAMED_LIGHT,
+        }
+    }
+
+    /// The palette terminals on this thread use from now on. The window calls this when its theme
+    /// changes, and every session reads it the next time it is drawn.
+    pub fn set_current(palette: Palette) {
+        CURRENT.with(|current| current.set(palette));
+    }
+
+    /// The palette terminals on this thread use.
+    pub fn current() -> Palette {
+        CURRENT.with(std::cell::Cell::get)
+    }
+
+    /// A colour drawn dim: mixed towards black on a dark ground, which is what this always did, and
+    /// towards the ground on a light one.
+    pub fn dimmed(&self, colour: Rgb) -> Rgb {
+        if !self.light {
+            return colour.dimmed();
+        }
+        let mix = |from: u8, to: u8| (from as f32 + (to as f32 - from as f32) * 0.45).round() as u8;
+        Rgb::new(
+            mix(colour.r, self.background.r),
+            mix(colour.g, self.background.g),
+            mix(colour.b, self.background.b),
+        )
     }
 
     /// The colour at an index from 0 to 255: the sixteen named colours, then the colour cube, then the
@@ -142,8 +223,8 @@ impl Palette {
                 }
                 match named {
                     NamedColor::Foreground => self.foreground,
-                    NamedColor::BrightForeground => Rgb::new(0xFF, 0xFF, 0xFF),
-                    NamedColor::DimForeground => self.foreground.dimmed(),
+                    NamedColor::BrightForeground => self.bright_foreground,
+                    NamedColor::DimForeground => self.dimmed(self.foreground),
                     NamedColor::Background => self.background,
                     NamedColor::Cursor => self.cursor,
                     // The dim colours are the named ones mixed towards black, which is what a terminal
@@ -157,7 +238,7 @@ impl Palette {
                     | NamedColor::DimCyan
                     | NamedColor::DimWhite => {
                         let ordinary = named as usize - NamedColor::DimBlack as usize;
-                        self.named[ordinary].dimmed()
+                        self.dimmed(self.named[ordinary])
                     }
                     other => self.named[(other as usize).min(15)],
                 }

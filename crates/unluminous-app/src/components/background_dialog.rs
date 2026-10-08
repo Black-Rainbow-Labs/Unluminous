@@ -207,7 +207,7 @@ fn a_picture(
                 egui::epaint::RectShape::filled(
                     at,
                     CornerRadius::same(size::CONTROL_CORNER),
-                    Color32::WHITE,
+                    Color32::WHITE, // any ground: an image's tint, which leaves it as it is
                 )
                 .with_texture(texture.id(), taken),
             ));
@@ -226,7 +226,7 @@ fn a_picture(
     let bin = Rect::from_min_size(Pos2::new(at.right() - 26.0, at.top() + 4.0), Vec2::splat(22.0));
     let over = ui.interact(bin, ui.id().with(("background-remove", name)), Sense::click());
     if over.hovered() || response.hovered() {
-        painter.rect_filled(bin, CornerRadius::same(4), Color32::from_black_alpha(140));
+        painter.rect_filled(bin, CornerRadius::same(4), Color32::from_black_alpha(140)); // any ground: a plate over a photograph
         icon::bin(
             &painter,
             bin.center(),

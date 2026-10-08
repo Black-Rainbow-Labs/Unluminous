@@ -90,7 +90,7 @@ pub fn show(ui: &mut egui::Ui, area: Rect, picture: &mut Picture, name: &str) ->
         texture.id(),
         at,
         Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)),
-        egui::Color32::WHITE,
+        egui::Color32::WHITE, // any ground: an image's tint, which leaves it as it is
     );
 
     outcome

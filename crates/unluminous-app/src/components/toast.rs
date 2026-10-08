@@ -395,7 +395,7 @@ fn offer_buttons(
     for (position, (label, act)) in notice.actions.iter().enumerate().rev() {
         let primary = position == last;
         let ink = match primary {
-            true => color::text_strong(),
+            true => color::on_accent(),
             false => color::text(),
         };
         let words = ui.painter().layout_no_wrap(label.clone(), font.clone(), ink);

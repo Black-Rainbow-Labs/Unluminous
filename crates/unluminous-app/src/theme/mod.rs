@@ -231,6 +231,84 @@ palette! {
     /// becoming a second role: the seven washes are not all the same strength, and folding the
     /// strength into the palette as well as the colour would change what each one draws.
     hover_wash = Color32::WHITE;
+
+    /// Words and marks drawn **on** a fill of the accent: the label on a primary button, the tick in a
+    /// chosen box, the glyph on the accent disc.
+    ///
+    /// `task-2215` added it with the light theme. Those places drew in `text_strong`, which is white in a
+    /// dark theme and is exactly right there, and is nearly black in a light one, where it put dark words
+    /// on a blue button. White in both of Unluminous's own themes; a theme whose accent is pale can name a
+    /// dark one.
+    on_accent = Color32::WHITE;
+}
+
+impl Palette {
+    /// The palette of [`Theme::unluminous_light`], written out in full so that a role added to the list
+    /// above is a compile error here until somebody says what it means on a light ground.
+    ///
+    /// `task-2215`. The surfaces are a ladder of cool greys taken from the same place `rux`'s light theme
+    /// takes its own (`reference/neumorphic-tokens.css`), so a `rux` control drawn in the window sits on a
+    /// ground it was designed for: the editor is the lightest, the panels a step down, the status bar the
+    /// darkest. The accent is `rux`'s light blue a shade deeper, `#2A63F0`, because Unluminous's own azure is 2.9 to 1
+    /// against white and the caret, a chosen tab and a link all have to be read on white. Every text colour
+    /// meets WCAG 2.2's 4.5 to 1 against the surface it is drawn on except `text_faint`, which is the
+    /// words in an empty field and is held to the 3 to 1 the dark theme's own faint text meets.
+    /// `light_text_is_readable_on_the_surfaces_it_is_drawn_on` measures every pair.
+    pub const UNLUMINOUS_LIGHT: Palette = Palette {
+        editor: Color32::from_rgb(0xFB, 0xFC, 0xFD),
+        title_bar: Color32::from_rgb(0xE6, 0xEA, 0xF0),
+        toolbar: Color32::from_rgb(0xF1, 0xF3, 0xF6),
+        explorer: Color32::from_rgb(0xF1, 0xF3, 0xF7),
+        explorer_footer: Color32::from_rgb(0xE9, 0xEC, 0xF1),
+        status_bar: Color32::from_rgb(0xE1, 0xE5, 0xEB),
+        control: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+        field: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+        control_border: Color32::from_rgb(0xC3, 0xCA, 0xD5),
+        divider: Color32::from_rgb(0xD5, 0xDA, 0xE2),
+        menu: Color32::from_rgb(0xF8, 0xF9, 0xFB),
+
+        accent: Color32::from_rgb(0x2A, 0x63, 0xF0),
+        selected_row: Color32::from_rgb(0xD6, 0xE3, 0xFF),
+        unsaved: Color32::from_rgb(0xD9, 0x92, 0x00),
+        text_selection: Color32::from_rgb(0xC6, 0xD8, 0xFF),
+        find_match: Color32::from_rgb(0xF8, 0xE3, 0x9C),
+        code_panel: Color32::from_rgb(0xF0, 0xF2, 0xF6),
+        code_chip: Color32::from_rgb(0xE8, 0xEB, 0xF0),
+
+        text_strong: Color32::from_rgb(0x10, 0x15, 0x1C),
+        text: Color32::from_rgb(0x1E, 0x25, 0x30),
+        text_control: Color32::from_rgb(0x34, 0x3D, 0x4B),
+        text_dim: Color32::from_rgb(0x5A, 0x65, 0x75),
+        text_faint: Color32::from_rgb(0x74, 0x7E, 0x8D),
+
+        file_markdown: Color32::from_rgb(0x2B, 0x78, 0xD6),
+        file_text: Color32::from_rgb(0x8A, 0x94, 0xA3),
+
+        blame_old: Color32::from_rgb(0x3C, 0x8C, 0x6C),
+        blame_new: Color32::from_rgb(0xB4, 0x4E, 0x8A),
+
+        git_added: Color32::from_rgb(0x1C, 0x84, 0x48),
+        git_modified: Color32::from_rgb(0x1F, 0x6C, 0xB5),
+        git_untracked: Color32::from_rgb(0x8A, 0x6A, 0x1C),
+
+        board_accent: Color32::from_rgb(0x4C, 0x6E, 0xF5),
+        agent: Color32::from_rgb(0x7C, 0x5C, 0xE6),
+
+        close: Color32::from_rgb(0xFF, 0x5F, 0x57),
+        minimise: Color32::from_rgb(0xFE, 0xBC, 0x2E),
+        maximise: Color32::from_rgb(0x28, 0xC8, 0x40),
+
+        icon: Color32::from_rgb(0x5A, 0x65, 0x75),
+        icon_active: Color32::from_rgb(0x10, 0x15, 0x1C),
+        icon_disabled: Color32::from_rgb(0xA3, 0xAB, 0xB7),
+        folder: Color32::from_rgb(0x6B, 0x76, 0x86),
+        folder_open: Color32::from_rgb(0x2A, 0x63, 0xF0),
+
+        // Black rather than white: a hover on a light surface darkens it, which is the same wash at the
+        // same strengths read the other way up.
+        hover_wash: Color32::BLACK,
+        on_accent: Color32::WHITE,
+    };
 }
 
 /// Colours that are another colour, and the marks a person makes on their own text.
@@ -290,6 +368,17 @@ pub mod derived {
     /// Following the accent is also what a person means by choosing a pink theme.
     pub fn execution_point() -> Color32 {
         let accent = color::accent();
+        // On a light ground a band dimmed towards black is a dark blue bar with dark words on it, so a
+        // light theme takes the accent itself, faint, which is the same "the program is here" read the
+        // other way up. `task-2215`.
+        if !super::is_dark() {
+            return Color32::from_rgba_unmultiplied(
+                accent.r(),
+                accent.g(),
+                accent.b(),
+                LIGHT_EXECUTION_ALPHA,
+            );
+        }
         let dim = |channel: u8| (channel as f32 * EXECUTION_BRIGHTNESS).round() as u8;
         Color32::from_rgba_unmultiplied(
             dim(accent.r()),
@@ -297,6 +386,64 @@ pub mod derived {
             dim(accent.b()),
             EXECUTION_ALPHA,
         )
+    }
+
+    /// How opaque the accent is behind the stopped line in a light theme. Still not
+    /// [`HIGHLIGHT_ALPHA`], so it cannot be mistaken for a passage somebody marked.
+    const LIGHT_EXECUTION_ALPHA: u8 = 0x3A;
+
+    /// A control's ground while the pointer is over it.
+    ///
+    /// The control lifted towards white in a dark theme, which is what egui's hovered style and the
+    /// modal buttons always did, and pressed towards black in a light one, where a control is already
+    /// white and lifting it does nothing. One function, so the three places that draw a hover agree.
+    pub fn control_hover() -> Color32 {
+        let control = color::control();
+        match super::is_dark() {
+            true => control.gamma_multiply(1.25),
+            false => {
+                let down = |channel: u8| (f32::from(channel) * 0.93).round() as u8;
+                Color32::from_rgb(down(control.r()), down(control.g()), down(control.b()))
+            }
+        }
+    }
+
+    /// The words of a piece of code in the Markdown preview, inline or in a block nothing colours.
+    ///
+    /// The mint the preview has always set code in on a dark ground, which was a literal in
+    /// `app/preview.rs` until `task-2215` found it as a pale green on a pale chip in the light theme. On a
+    /// light ground it is git's added green, which is the same green taken dark enough to read.
+    pub fn inline_code() -> Color32 {
+        match super::is_dark() {
+            true => Color32::from_rgb(0x7E, 0xD3, 0x9B),
+            false => color::git_added(),
+        }
+    }
+
+    /// What a modal dims the window behind it with.
+    ///
+    /// Black at 120 on a dark ground, which is what `design/style-guide.md` has always said. On a light
+    /// ground the same black turns the window a muddy grey, so a light theme dims with `rux`'s light scrim,
+    /// a deep navy at a third. `task-2215`.
+    pub fn scrim() -> Color32 {
+        match super::is_dark() {
+            true => Color32::from_black_alpha(120),
+            false => Color32::from_rgba_unmultiplied(0x14, 0x19, 0x24, 0x58),
+        }
+    }
+
+    /// The four surfaces a plugin's board is built from: the page behind it, a lane, a card and a well.
+    ///
+    /// In a dark theme they are the editor, the explorer, the code panel and the field, which is what
+    /// `plugin_ui::Palette` has always named, because a step *up* in brightness is a step towards the
+    /// viewer there. In a light theme the step towards the viewer is towards white, and the code panel is
+    /// a step *down* from the page, so a card painted in it sank into its lane. A light theme therefore
+    /// lifts the card to the control's white and sinks the well to the code chip. `task-2215`.
+    pub fn board_surfaces() -> [Color32; 4] {
+        match super::is_dark() {
+            true => [color::editor(), color::explorer(), color::code_panel(), color::field()],
+            false => [color::explorer(), color::explorer_footer(), color::control(), color::code_chip()],
+        }
     }
 
     /// The breakpoint dot in the gutter.
@@ -429,6 +576,54 @@ impl Theme {
         }
     }
 
+    /// Unluminous's light theme. `task-2215`.
+    ///
+    /// The other theme built in, beside [`Theme::unluminous_dark`], and **unlike it, it names the nine token
+    /// colours**: every language plugin carries a scheme written for a dark ground, and a keyword in
+    /// Dracula's pink on white is barely there. So the light theme colours code itself, in One Light's
+    /// scheme — the light half of the One family Unluminous already ships the dark half of in the themes
+    /// bundle — which is what a theme naming the nine is for.
+    pub fn unluminous_light() -> Theme {
+        use unluminous_core::syntax::Token;
+        use unluminous_core::Color;
+        let scheme = vec![
+            (Token::Keyword, Color::rgb(0xA6, 0x26, 0xA4)),
+            (Token::Builtin, Color::rgb(0x01, 0x74, 0xA8)),
+            (Token::Function, Color::rgb(0x3A, 0x6C, 0xE0)),
+            (Token::Type, Color::rgb(0x98, 0x64, 0x00)),
+            (Token::String, Color::rgb(0x2F, 0x7A, 0x2E)),
+            (Token::Number, Color::rgb(0x98, 0x68, 0x01)),
+            (Token::Comment, Color::rgb(0x84, 0x89, 0x93)),
+            (Token::Operator, Color::rgb(0x0E, 0x7C, 0x86)),
+            (Token::Text, Color::rgb(0x2C, 0x31, 0x3A)),
+        ];
+        Theme {
+            key: LIGHT_KEY.to_owned(),
+            name: "Unluminous Light".to_owned(),
+            plugin: "unluminous".to_owned(),
+            dark: false,
+            palette: Palette::UNLUMINOUS_LIGHT,
+            syntax: Some(crate::services::plugins::SyntaxTheme::of("Unluminous Light", scheme)),
+            icons: IconSet::default(),
+        }
+    }
+
+    /// Both themes Unluminous carries, dark first, which is the order the Settings list shows them in.
+    pub fn built_in() -> [Theme; 2] {
+        [Theme::unluminous_dark(), Theme::unluminous_light()]
+    }
+
+    /// The built-in theme a theme plugin's manifest inherits the colours it does not name from.
+    ///
+    /// A light theme that named only its accent would otherwise come out as a dark window with a light
+    /// flag on it, which is the trap the flag exists to close.
+    pub fn parent(dark: bool) -> Theme {
+        match dark {
+            true => Theme::unluminous_dark(),
+            false => Theme::unluminous_light(),
+        }
+    }
+
     /// The same theme with one colour used for everything the accent means.
     ///
     /// Material Theme UI's best known setting, and the one thing on its configuration page somebody
@@ -468,6 +663,53 @@ pub fn activate(theme: Theme) {
 /// The theme this thread is painting in.
 pub fn active() -> Theme {
     ACTIVE.with_borrow(Theme::clone)
+}
+
+/// The theme a window is painted in while its settings name none.
+///
+/// Unluminous Dark, except while `UNLUMINOUS_SURVEY_THEME=light` is set, which is how the whole screenshot
+/// suite is run in the light theme to look at every surface at once (`task-2215`; the Tests section of
+/// `CLAUDE.md` says how). Nothing else sets it, so in the window a settings file that says nothing is
+/// Unluminous Dark, as it always was.
+pub fn when_nothing_is_chosen() -> Theme {
+    match std::env::var("UNLUMINOUS_SURVEY_THEME").as_deref() {
+        Ok("light") => Theme::unluminous_light(),
+        _ => Theme::unluminous_dark(),
+    }
+}
+
+/// The key `appearance.theme` holds for [`Theme::unluminous_light`].
+pub const LIGHT_KEY: &str = "unluminous/light";
+
+/// Whether the active theme is a dark one.
+///
+/// Asked by the few things whose *recipe* differs between a dark ground and a light one rather than only
+/// their colours: the depth `vello_canvas` draws, the hover on a control, the band behind the stopped
+/// line, and which of `rux`'s two themes a control is drawn in. Everything else reads a colour and needs
+/// to know nothing.
+pub fn is_dark() -> bool {
+    ACTIVE.with_borrow(|theme| theme.dark)
+}
+
+/// The `rux` theme that matches the active one, so a `rux` control sits on a ground it was designed for.
+pub fn rux_theme() -> &'static rux::Theme {
+    match is_dark() {
+        true => rux::Theme::named("dark-neumorphic").unwrap_or_else(rux::theme::dark),
+        false => rux::Theme::named("light-neumorphic").unwrap_or_else(rux::theme::light),
+    }
+}
+
+/// Put a `rux` state on the theme that matches the active one, before it is drawn with.
+///
+/// A `RuxState` is made once and kept, so the theme it was made in would otherwise outlive a change of
+/// Unluminous's theme. Every place that opens a `rux` layer or builds a `Rux` calls this first, and
+/// `every_rux_drawing_follows_the_theme` refuses a file that draws with `rux` and does not. It costs one
+/// `Cell` write, and `rux` rasterises again only when a colour really moved.
+pub fn in_step(state: &rux::RuxState) {
+    let wanted = rux_theme();
+    if !std::ptr::eq(state.theme(), wanted) {
+        state.set_theme(wanted);
+    }
 }
 
 /// The active theme's palette, which is what a plugin's provider is handed.
@@ -558,17 +800,47 @@ pub fn apply_scaled(ctx: &egui::Context, interface_scale: f32) {
     // egui's own left on, one press would do both.
     ctx.options_mut(|options| options.zoom_with_keyboard = false);
     let scale = interface_scale.clamp(0.6, 2.0);
+    let dark = is_dark();
+    // egui keeps a dark style and a light style and picks one by `Context::theme`, which follows the
+    // operating system unless it is told. Both are written below, and the window says which to use, so a
+    // light theme is light on a machine set to dark mode and the other way round. `task-2215`.
+    ctx.set_theme(match dark {
+        true => egui::Theme::Dark,
+        false => egui::Theme::Light,
+    });
     ctx.all_styles_mut(|style| {
+        // Start from egui's own visuals for this kind of ground, so the handful of colours set nowhere
+        // below — the shadow under a popup, the warning and error text, a hyperlink — are the ones egui
+        // chose for a light or a dark window rather than whatever the other style had.
+        // The text cursor is kept: it is not a colour, and a test harness turns its blinking off
+        // through the style so that a picture is the same on every run.
+        let cursor = style.visuals.text_cursor.clone();
+        style.visuals = match dark {
+            true => egui::Visuals::dark(),
+            false => egui::Visuals::light(),
+        };
+        style.visuals.text_cursor = cursor;
         let visuals = &mut style.visuals;
-        visuals.dark_mode = true;
+        visuals.dark_mode = dark;
         visuals.panel_fill = color::toolbar();
         visuals.window_fill = color::menu();
         visuals.extreme_bg_color = color::field();
         visuals.faint_bg_color = color::explorer_footer();
         visuals.window_corner_radius = CornerRadius::same(size::CONTROL_CORNER);
         visuals.window_stroke = Stroke::new(1.0, color::control_border());
-        visuals.selection.bg_fill = color::accent();
-        visuals.selection.stroke = Stroke::new(1.0, color::text_strong());
+        // A selection in a text box is painted under the words, which keep their own colour. On a dark
+        // ground the accent is dark enough for light words to be read on it; on a light ground it is not,
+        // so a light theme selects in the same pale blue the editor selects in.
+        match dark {
+            true => {
+                visuals.selection.bg_fill = color::accent();
+                visuals.selection.stroke = Stroke::new(1.0, color::on_accent());
+            }
+            false => {
+                visuals.selection.bg_fill = color::text_selection();
+                visuals.selection.stroke = Stroke::new(1.0, color::text_strong());
+            }
+        }
 
         let corner = CornerRadius::same(size::CONTROL_CORNER);
         // Not interactive: labels and separators.
@@ -584,8 +856,8 @@ pub fn apply_scaled(ctx: &egui::Context, interface_scale: f32) {
         visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, color::text_control());
         visuals.widgets.inactive.corner_radius = corner;
         // Being pointed at.
-        visuals.widgets.hovered.bg_fill = color::control().gamma_multiply(1.25);
-        visuals.widgets.hovered.weak_bg_fill = color::control().gamma_multiply(1.25);
+        visuals.widgets.hovered.bg_fill = color::control_hover();
+        visuals.widgets.hovered.weak_bg_fill = color::control_hover();
         visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, color::accent().gamma_multiply(0.6));
         visuals.widgets.hovered.fg_stroke = Stroke::new(1.0, color::text_strong());
         visuals.widgets.hovered.corner_radius = corner;
@@ -593,7 +865,7 @@ pub fn apply_scaled(ctx: &egui::Context, interface_scale: f32) {
         visuals.widgets.active.bg_fill = color::accent();
         visuals.widgets.active.weak_bg_fill = color::accent();
         visuals.widgets.active.bg_stroke = Stroke::new(1.0, color::accent());
-        visuals.widgets.active.fg_stroke = Stroke::new(1.0, color::text_strong());
+        visuals.widgets.active.fg_stroke = Stroke::new(1.0, color::on_accent());
         visuals.widgets.active.corner_radius = corner;
         // A dropdown that is open.
         visuals.widgets.open.bg_fill = color::control();
@@ -620,6 +892,22 @@ pub fn apply_scaled(ctx: &egui::Context, interface_scale: f32) {
             }
         }
     });
+}
+
+/// Put egui back on the style that matches the active theme, if something has moved it.
+///
+/// `apply_scaled` writes both of egui's styles and tells it which to use, but the choice can be moved
+/// afterwards by whoever owns the context: the test harness sets one when it builds a window, and egui
+/// follows the operating system when it is left to. Asked at the top of every frame, which costs one
+/// comparison, so a light theme can never be drawn with egui's dark menus. `task-2215`.
+pub fn keep_egui_on_the_theme(ctx: &egui::Context) {
+    let wanted = match is_dark() {
+        true => egui::Theme::Dark,
+        false => egui::Theme::Light,
+    };
+    if ctx.theme() != wanted {
+        ctx.set_theme(wanted);
+    }
 }
 
 /// The family name egui uses for the interface's bold text.
@@ -700,6 +988,21 @@ fn name_the_rux_families(fonts: &mut egui::FontDefinitions, bold_stack: &[String
     }
 }
 
+/// The colour a document's text is painted in, from the colour its formatting holds.
+///
+/// A document that nobody has coloured holds `Color::WHITE`, which is what `CharStyle` starts with and
+/// what the `F` panel's first swatch puts back. It means "the ordinary ink", and on a dark ground that is
+/// the white it says. On a light ground white words are invisible, so a light theme paints that one value
+/// in its own `text` colour and every other colour as it is. It is a reading at paint time, not a change
+/// to the document, so nothing is written to the file or put on the undo history, and switching back to a
+/// dark theme shows the white that was there all along. `task-2215`.
+pub fn ink(colour: unluminous_core::Color) -> Color32 {
+    if colour == unluminous_core::Color::WHITE && !is_dark() {
+        return color::text();
+    }
+    Color32::from_rgb(colour.r, colour.g, colour.b)
+}
+
 /// Apply the opacity setting to a background colour.
 ///
 /// Only backgrounds go through this. Text, icons and the caret are always drawn at full alpha, which is
@@ -747,6 +1050,140 @@ mod tests {
         assert_eq!(color::icon_active(), color::text_strong());
         assert_eq!(color::icon_disabled(), color::text_faint());
         assert_eq!(color::folder(), color::text_dim(), "the explorer's arrow was TEXT_DIM");
+    }
+
+    /// WCAG 2.2's relative luminance of one colour.
+    fn luminance(colour: Color32) -> f32 {
+        let linear = |channel: u8| {
+            let c = f32::from(channel) / 255.0;
+            match c <= 0.04045 {
+                true => c / 12.92,
+                false => ((c + 0.055) / 1.055).powf(2.4),
+            }
+        };
+        0.2126 * linear(colour.r()) + 0.7152 * linear(colour.g()) + 0.0722 * linear(colour.b())
+    }
+
+    /// WCAG 2.2's contrast ratio between two colours.
+    fn contrast(one: Color32, two: Color32) -> f32 {
+        let (a, b) = (luminance(one), luminance(two));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    /// `task-2215`. Every word in the light theme can be read on the surfaces it is drawn on: 4.5 to 1
+    /// for text, which is WCAG 2.2's AA for ordinary text, and 3 to 1 for the faint words in an empty
+    /// field and for the accent as a mark, which is its figure for a control's state.
+    #[test]
+    fn light_text_is_readable_on_the_surfaces_it_is_drawn_on() {
+        let light = Palette::UNLUMINOUS_LIGHT;
+        let surfaces = [
+            ("editor", light.editor),
+            ("explorer", light.explorer),
+            ("toolbar", light.toolbar),
+            ("title_bar", light.title_bar),
+            ("status_bar", light.status_bar),
+            ("menu", light.menu),
+            ("control", light.control),
+            ("selected_row", light.selected_row),
+            ("code_panel", light.code_panel),
+        ];
+        let mut failures = Vec::new();
+        for (surface, ground) in surfaces {
+            for (word, ink, floor) in [
+                ("text_strong", light.text_strong, 4.5),
+                ("text", light.text, 4.5),
+                ("text_control", light.text_control, 4.5),
+                ("text_dim", light.text_dim, 4.5),
+                ("icon", light.icon, 4.5),
+                ("text_faint", light.text_faint, 3.0),
+                ("accent", light.accent, 3.0),
+            ] {
+                let ratio = contrast(ink, ground);
+                if ratio < floor {
+                    failures.push(format!("{word} on {surface}: {ratio:.2} to 1, under {floor}"));
+                }
+            }
+        }
+        let on_accent = contrast(light.on_accent, light.accent);
+        if on_accent < 4.5 {
+            failures.push(format!("on_accent on accent: {on_accent:.2} to 1"));
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    /// The light theme's code colours can be read on its editor, at the same 4.5 to 1.
+    #[test]
+    fn light_code_is_readable_on_the_light_editor() {
+        let light = Theme::unluminous_light();
+        let scheme = light.syntax.expect("the light theme colours code itself");
+        for token in unluminous_core::syntax::Token::ALL {
+            let colour = scheme.colour(token).expect("all nine are named");
+            let ink = Color32::from_rgb(colour.r, colour.g, colour.b);
+            let ratio = contrast(ink, light.palette.editor);
+            let floor = match token {
+                // A comment is the one token every editor deliberately sets quieter than the code.
+                unluminous_core::syntax::Token::Comment => 3.0,
+                _ => 4.5,
+            };
+            assert!(ratio >= floor, "{} is {ratio:.2} to 1 on the light editor", token.name());
+        }
+    }
+
+    /// `task-2215`. What follows the darkness of the theme rather than a colour in it.
+    #[test]
+    fn the_light_theme_changes_the_recipes_that_depend_on_the_ground() {
+        activate(Theme::unluminous_dark());
+        assert!(is_dark());
+        assert_eq!(rux_theme().name, "dark-neumorphic");
+        assert_eq!(color::control_hover(), color::control().gamma_multiply(1.25), "as it always was");
+        assert_eq!(color::scrim(), Color32::from_black_alpha(120), "as the style guide says");
+        assert_eq!(
+            color::board_surfaces(),
+            [color::editor(), color::explorer(), color::code_panel(), color::field()],
+            "the board's ladder is the one it always had"
+        );
+
+        activate(Theme::unluminous_light());
+        assert!(!is_dark());
+        assert_eq!(rux_theme().name, "light-neumorphic");
+        assert!(
+            luminance(color::control_hover()) < luminance(color::control()),
+            "a hover on a light control darkens it"
+        );
+        let [page, lane, card, _] = color::board_surfaces();
+        assert!(luminance(card) > luminance(lane), "a card stands up off its lane, towards white");
+        assert!(luminance(page) > luminance(lane));
+        assert_eq!(color::hover_wash(), Color32::BLACK, "a hover darkens a light surface");
+        let band = color::execution_point();
+        assert!(band.a() < 0x60, "the stopped line is a faint wash on a light ground, not a bar");
+        activate(Theme::unluminous_dark());
+    }
+
+    /// A document nobody coloured holds white, and a light theme paints that white as its own ink while
+    /// leaving every colour somebody chose alone.
+    #[test]
+    fn the_ordinary_ink_follows_the_ground_and_a_chosen_colour_does_not() {
+        use unluminous_core::Color;
+        activate(Theme::unluminous_dark());
+        assert_eq!(ink(Color::WHITE), Color32::from_rgb(0xF2, 0xF2, 0xF2), "white, as it always was");
+        activate(Theme::unluminous_light());
+        assert_eq!(ink(Color::WHITE), color::text(), "the light theme's own ink");
+        assert_eq!(ink(Color::RED), Color32::from_rgb(Color::RED.r, Color::RED.g, Color::RED.b));
+        activate(Theme::unluminous_dark());
+    }
+
+    /// Both built-in themes, dark first, and when nothing is chosen the window is the dark one.
+    #[test]
+    fn unluminous_carries_a_dark_theme_and_a_light_one() {
+        let [dark, light] = Theme::built_in();
+        assert_eq!(dark.key, "unluminous/dark");
+        assert!(dark.dark);
+        assert_eq!(light.key, LIGHT_KEY);
+        assert!(!light.dark);
+        assert_eq!(light.name, "Unluminous Light");
+        if std::env::var("UNLUMINOUS_SURVEY_THEME").is_err() {
+            assert_eq!(when_nothing_is_chosen(), dark, "a settings file that says nothing is dark");
+        }
     }
 
     #[test]
@@ -909,20 +1346,30 @@ mod closed_palette {
     /// triple" means and is what makes it a rule a reader can check by eye.
     #[test]
     fn no_component_writes_a_colour_of_its_own() {
-        let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/components");
+        // `app/` as well as `components/` since `task-2215`: the Markdown preview's code colour was a
+        // literal `Color::rgb` in `app/preview.rs`, outside the one folder this read, and it was the one
+        // colour in the window that did not follow the light theme.
+        let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut offenders: Vec<String> = Vec::new();
-        for (path, text) in every_source(&folder) {
-            for (number, line) in text.lines().enumerate() {
-                let trimmed = line.trim_start();
-                // A comment may name a colour -- several explain why one was chosen -- and a comment
-                // is not code. `epaint`'s own named constants are not literals either.
-                if trimmed.starts_with("//") {
-                    continue;
-                }
-                if let Some(at) = trimmed.find("from_rgb") {
-                    let after = &trimmed[at..];
-                    if writes_a_literal(after) {
-                        offenders.push(format!("{}:{}: {}", path, number + 1, trimmed));
+        for folder in ["components", "app"] {
+            for (path, text) in every_source(&source.join(folder)) {
+                for (number, line) in text.lines().enumerate() {
+                    let trimmed = line.trim_start();
+                    // Test code at the bottom of a file asserts on numbers, which is what it is for.
+                    if trimmed.starts_with("#[cfg(test)]") {
+                        break;
+                    }
+                    // A comment may name a colour -- several explain why one was chosen -- and a
+                    // comment is not code. `epaint`'s own named constants are not literals either.
+                    if trimmed.starts_with("//") {
+                        continue;
+                    }
+                    for call in ["from_rgb", "Color::rgb"] {
+                        if let Some(at) = trimmed.find(call) {
+                            if writes_a_literal(&trimmed[at..]) {
+                                offenders.push(format!("{folder}/{}:{}: {}", path, number + 1, trimmed));
+                            }
+                        }
                     }
                 }
             }
@@ -933,6 +1380,75 @@ mod closed_palette {
              closed -- a colour that is not in it goes in `theme/mod.rs`'s `palette!` list with a \
              note saying what it means, so a theme can say what it means too:\n  {}",
             offenders.join("\n  ")
+        );
+    }
+
+    /// **No component paints in a white or a black of its own**, which is the other half of the rule
+    /// above and the half `task-2215` needed.
+    ///
+    /// `Color32::WHITE` and `from_black_alpha(n)` are not hex triples, so the test above let them
+    /// through, and they are exactly the colours that assume a dark ground: a white wash for a hover, a
+    /// black shadow, white words on a control. On a light theme each one is either invisible or wrong.
+    /// The answer is a role or a derived colour in this file — `hover_wash`, `on_accent`, `scrim`,
+    /// `control_hover` — which a light theme can answer differently.
+    ///
+    /// A line may still name one when the colour really is the same on any ground, and it says so with
+    /// `// any ground:` and the reason: the tint an image is drawn with, which leaves it as it is, or a
+    /// plate over a photograph. Test code at the bottom of a file is not drawing anything.
+    #[test]
+    fn no_component_paints_a_white_or_black_of_its_own() {
+        let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/components");
+        let forbidden =
+            ["Color32::WHITE", "Color32::BLACK", "from_white_alpha(", "from_black_alpha(", "from_gray("];
+        let mut offenders: Vec<String> = Vec::new();
+        for (path, text) in every_source(&folder) {
+            for (number, line) in text.lines().enumerate() {
+                if line.trim_start().starts_with("#[cfg(test)]") {
+                    break;
+                }
+                let trimmed = line.trim_start();
+                if trimmed.starts_with("//") || line.contains("// any ground:") {
+                    continue;
+                }
+                if forbidden.iter().any(|name| line.contains(name)) {
+                    offenders.push(format!("{}:{}: {}", path, number + 1, trimmed));
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "a component painted a white or a black that only reads on one kind of ground. Use a role \
+             in `theme::color` (`hover_wash`, `on_accent`, `scrim`, `control_hover`), or, if the colour \
+             really is the same on any ground, end the line with `// any ground:` and the reason:\n  {}",
+            offenders.join("\n  ")
+        );
+    }
+
+    /// **Every `rux` drawing is put on the active theme first.** A `RuxState` is made once and kept,
+    /// so a file that opens a `rux` layer without `theme::in_step` draws its controls in whichever
+    /// theme was active when the state was made — dark controls in a light window. `task-2215`.
+    #[test]
+    fn every_rux_drawing_follows_the_theme() {
+        let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut offenders: Vec<String> = Vec::new();
+        for (path, text) in every_source(&source) {
+            if path.starts_with("theme/") {
+                continue;
+            }
+            let draws = text.lines().any(|line| {
+                let line = line.trim_start();
+                !line.starts_with("//")
+                    && (line.contains("rux::layer(")
+                        || (line.contains("Rux {") && !line.contains("state: rux.state")))
+            });
+            if draws && !text.contains("theme::in_step(") {
+                offenders.push(path);
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "these files draw with `rux` and never call `crate::theme::in_step` on the state first, so \
+             their controls keep the theme they were made in: {offenders:?}"
         );
     }
 

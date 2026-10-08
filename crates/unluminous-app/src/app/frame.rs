@@ -59,6 +59,7 @@ impl UnluminousApp {
     /// change. The comments that say why one phase is after another are here; the ones that explain
     /// what a phase does went with it.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
+        crate::theme::keep_egui_on_the_theme(ui.ctx());
         self.begin_the_frame(ui);
         self.take_what_the_threads_answered(ui);
         // Before any button is drawn, so that on the very first frame the focus is here and not on the

@@ -311,6 +311,8 @@ fn configuration_section(
 fn chooser(ui: &mut egui::Ui, area: Rect, name: &str, chosen: bool) -> bool {
     let response = ui.interact(area, ui.id().with(("mcp-chooser", name)), Sense::click());
     let fill = if chosen || response.hovered() { color::accent() } else { color::control() };
+    // The words sit on the accent while it is lit, so they are drawn in the colour meant for it.
+    let ink = if chosen || response.hovered() { color::on_accent() } else { color::text_strong() };
     let painter = ui.painter();
     painter.rect(
         area,
@@ -322,9 +324,9 @@ fn chooser(ui: &mut egui::Ui, area: Rect, name: &str, chosen: bool) -> bool {
     let galley = painter.layout_no_wrap(
         name.to_owned(),
         egui::FontId::proportional(12.0),
-        color::text_strong(),
+        ink,
     );
-    painter.galley(area.center() - galley.size() / 2.0, galley, color::text_strong());
+    painter.galley(area.center() - galley.size() / 2.0, galley, ink);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), chosen, name)
     });

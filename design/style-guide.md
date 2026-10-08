@@ -98,6 +98,40 @@ Unluminous. A syntax theme colours the tokens and nothing else — never the edi
 because the window letting the desktop show through is what Unluminous is, and an opaque scheme takes it
 away.
 
+## Every surface is drawn for a light ground and a dark one
+
+`task-2215` added **Unluminous Light** beside Unluminous Dark, and a control is not finished until it reads
+in both. Most of that is free: a control that reads a role from `theme::color` is drawn in the light
+theme's answer with no change. What is not free is a colour that only reads on one kind of ground, and
+there are five of them to know.
+
+- **White or black written at the point of use.** `Color32::WHITE`, `from_white_alpha(n)` and
+  `from_black_alpha(n)` are the colours of a dark ground. A white wash on hover is invisible on white,
+  and white words on a control are white on white. Use the role: `hover_wash()` is white in a dark theme
+  and black in a light one, `scrim()` is what a modal dims the window with, `control_hover()` is a
+  control under the pointer. `no_component_paints_a_white_or_black_of_its_own` refuses a literal in
+  `components/`, and a line that really is the same on any ground (an image's tint, a plate over a
+  photograph) ends with `// any ground:` and the reason.
+- **Words on the accent.** A primary button, a tick in a box, a lit segment. These are `on_accent()`,
+  never `text_strong()`, which is white in a dark theme and nearly black in a light one.
+- **Brightening to mean "more".** `gamma_multiply(1.25)` lifts a dark control and does nothing to a
+  white one. A hover darkens on a light ground; `control_hover()` knows which.
+- **Depth.** `services::vello_canvas` draws a shadow of black and a highlight of the surface lifted on a
+  dark ground, and a cool grey shadow under a white edge on a light one. A surface goes through `Chrome`
+  so it gets the right one; nothing draws its own shadow.
+- **`rux`.** A `RuxState` is made once and kept, so it keeps the theme it was made in. Call
+  `theme::in_step(state)` before drawing with it; `every_rux_drawing_follows_the_theme` refuses a file
+  that does not.
+
+`theme::is_dark()` is there for the rare recipe that differs, and is read in `theme` and
+`vello_canvas` and nowhere a component can reach for it instead of a role. The light palette's text
+pairs are measured against WCAG 2.2 by `light_text_is_readable_on_the_surfaces_it_is_drawn_on`, which
+is 4.5 to 1 for words and 3 to 1 for the faint words in an empty field.
+
+**Look at it in both.** `UNLUMINOUS_SURVEY_THEME=light UPDATE_SNAPSHOTS=1 cargo test -p unluminous-app
+--test '*' --no-fail-fast` photographs every surface the suite reaches in the light theme, into
+`tests/snapshots/survey-light/`, which git ignores. Open the pictures for whatever was changed.
+
 ## The measurements are closed too
 
 `theme::size` holds them, and everything is painted at an absolute position rather than through
@@ -470,6 +504,7 @@ means one thing.
 ## Before it is called finished
 
 - It uses only `theme::color` and `theme::size`.
+- It reads on a light ground as well as a dark one, and somebody has looked at it in Unluminous Light.
 - Its rows are 28 points, or its menu rows are 24.
 - Its selection is the pill.
 - Every control in it has a name, and no two names collide.

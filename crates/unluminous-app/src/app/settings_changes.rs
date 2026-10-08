@@ -88,11 +88,11 @@ impl UnluminousApp {
     /// contributed in the same frame.
     pub(crate) fn apply_the_theme(&mut self) {
         let wanted = match self.settings.theme.trim().is_empty() {
-            true => theme::Theme::unluminous_dark(),
+            true => theme::when_nothing_is_chosen(),
             false => self
                 .plugins
                 .theme(&self.settings.theme)
-                .unwrap_or_else(theme::Theme::unluminous_dark),
+                .unwrap_or_else(theme::when_nothing_is_chosen),
         };
         let wanted = match self.settings.accent_colour() {
             Some(accent) => wanted.with_accent(accent),
@@ -134,6 +134,10 @@ impl UnluminousApp {
             file.cached.stale = true;
         }
         self.mermaid_scenes.forget();
+        // Every terminal reads its colours from the thread's palette the next time it is drawn, so this
+        // is what moves a running shell onto a light ground, and what a program that asks the terminal
+        // for its background colour is told from now on.
+        crate::services::terminal_colours::follow_the_theme();
         if let Some(context) = &self.context {
             theme::apply_scaled(context, self.interface_scale);
             context.request_repaint();

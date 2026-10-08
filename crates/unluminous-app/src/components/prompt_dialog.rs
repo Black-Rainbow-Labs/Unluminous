@@ -255,7 +255,7 @@ fn button(ui: &mut egui::Ui, area: Rect, name: &str, enabled: bool, primary: boo
     let fill = match (enabled, primary, response.hovered()) {
         (false, _, _) => color::control().gamma_multiply(0.6),
         (true, true, _) => color::accent(),
-        (true, false, true) => color::control().gamma_multiply(1.25),
+        (true, false, true) => color::control_hover(),
         (true, false, false) => color::control(),
     };
     let painter = ui.painter();
@@ -266,7 +266,11 @@ fn button(ui: &mut egui::Ui, area: Rect, name: &str, enabled: bool, primary: boo
         Stroke::new(1.0, if primary { color::accent() } else { color::control_border() }),
         egui::StrokeKind::Inside,
     );
-    let tint = if enabled { color::text_strong() } else { color::text_faint() };
+    let tint = match (enabled, primary) {
+        (false, _) => color::text_faint(),
+        (true, true) => color::on_accent(),
+        (true, false) => color::text_strong(),
+    };
     let galley = painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), tint);
     painter.galley(area.center() - galley.size() / 2.0, galley, tint);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name));

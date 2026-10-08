@@ -733,8 +733,7 @@ pub fn paint_text(
             for run in &line.runs {
                 // Text is always painted fully opaque. The transparency slider fades the background
                 // behind it and must never make the writing hard to read.
-                let color =
-                    Color32::from_rgb(run.style.color.r, run.style.color.g, run.style.color.b);
+                let color = crate::theme::ink(run.style.color);
                 for cluster in line.run_clusters(run) {
                     text_view.for_each_character(cluster, |character| {
                         // A rule is drawn rather than lettered, which is what
@@ -796,7 +795,7 @@ pub fn paint_text(
         painter.rect_filled(
             Rect::from_min_size(to_screen(rect.x, rect.y), Vec2::new(rect.width, rect.height)),
             0.0,
-            Color32::from_rgb(color.r, color.g, color.b),
+            crate::theme::ink(color),
         );
     }
     count

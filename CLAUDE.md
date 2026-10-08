@@ -1605,10 +1605,8 @@ test.
 **`plugin.kind = theme` is the third value, widened in the open with a check** — one plugin carries
 several themes, a role it does not name inherits Unluminous Dark's (IntelliJ's `parentTheme` in one line),
 a role Unluminous has not got is refused with the list, and eight of the nine token colours is refused
-because that would leave one line of code drawn in two schemes at once. Light is refused too, with the
-reason written down rather than implied: the window is drawn on a transparent ground, the depth recipe
-in `vello_canvas` lifts a surface and shadows it with black, and 448 accepted pictures are judged
-against a dark ground.
+because that would leave one line of code drawn in two schemes at once. Light was refused too, until
+`task-2215` built Unluminous Light; the section on the light theme below is what changed.
 
 **The colour scheme moved off the language plugins.** Rust, JavaScript, TypeScript, CSS and HTML each
 carried their own copy of Dracula — five copies, and a sixth language would have arrived with a sixth.
@@ -1627,6 +1625,47 @@ nothing having moved. On top of that `theme::IconSet` has two members: `classic`
 default, because the ticket asked for the defaults to be *improved* rather than merely to become
 choosable. `design/icons.md` records how the material set was designed against two Krea 2 sheets, and
 which mark on them was rejected.
+
+### Unluminous Light, and what keeps every surface readable on both grounds (`task-2215`)
+
+Unluminous carries two themes of its own now, `unluminous/dark` and `unluminous/light`, and
+`Settings -> Theme`, `theme set "Unluminous Light"` and `settings set appearance.theme unluminous/light`
+all choose the light one. An empty `appearance.theme` is still Unluminous Dark. `Palette::UNLUMINOUS_LIGHT`
+is written out in full, so a role added to the `palette!` list is a compile error until somebody says
+what it means on a light ground.
+
+**The light theme names the nine token colours**, in a One Light scheme, because every language plugin
+carries a scheme chosen for a dark ground. A theme plugin may say `dark = false` now, and it inherits from
+Unluminous Light, code colours included, rather than from Unluminous Dark.
+
+**What follows the darkness of the theme rather than a colour in it** is a short list, and each item
+reads `theme::is_dark()`: egui's own visuals and `Context::set_theme`, so egui does not follow the
+operating system's preference instead; `vello_canvas`'s depth, which is black and a lifted surface on a
+dark ground and a cool grey under a white edge on a light one; `derived::control_hover`, `scrim`,
+`execution_point` and `board_surfaces`; which of `rux`'s two themes a control is drawn in
+(`theme::rux_theme`); and the terminal's sixteen colours. The terminal's ground, text and cursor are the
+theme's own editor, text and accent, which for Unluminous Dark are exactly the numbers the terminal always
+had.
+
+**A terminal moves onto a new palette the next time it is drawn.** `unluminous-terminal` keeps the
+palette per thread (`Palette::set_current`), `services::terminal_colours::follow_the_theme` sets it from
+`prepare` and `apply_the_theme`, and `Session::follow_the_palette` gives the emulator the new table under
+the lock the drawing already takes. That is also what a program asking the terminal for its background
+colour is told. Nothing walks the sessions, because the tile, the run tile, a canvas node and a ticket's
+terminal each hold some.
+
+**Three tests keep it from coming apart.** `no_component_paints_a_white_or_black_of_its_own` refuses a
+literal white or black in `components/` (`// any ground:` and a reason lets a line that really is the
+same on any ground through), `every_rux_drawing_follows_the_theme` refuses a file that draws with `rux`
+without `theme::in_step`, and `light_text_is_readable_on_the_surfaces_it_is_drawn_on` measures every
+light text pair against WCAG 2.2. `on_accent` is the role for words on an accent fill, which used to be
+`text_strong` and was white only by coincidence.
+
+**The light survey.** `UNLUMINOUS_SURVEY_THEME=light` makes `theme::when_nothing_is_chosen` answer
+Unluminous Light, and `shot()` sends each picture to `tests/snapshots/survey-light/`, which git ignores.
+With `UPDATE_SNAPSHOTS=1` and `--no-fail-fast` it photographs every surface the whole suite reaches in the
+light theme. Some tests fail in that run because they assert a dark colour; the pictures are the point.
+`design/style-guide.md` has the rules a new control keeps.
 
 ### `task-1949` redrew ten marks, and the reason none of them could be checked before is a rule now
 

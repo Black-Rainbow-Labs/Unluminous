@@ -136,9 +136,9 @@ One plugin carries several.
 |---|---|
 | `themes` | the ids it carries, in the order Settings lists them. A group nothing lists is refused, and so is an empty line. |
 | `theme.<id>.name` | what a person reads in the list. Required. |
-| `theme.<id>.dark` | true unless it says otherwise. **False is refused**: this version draws dark themes only. |
+| `theme.<id>.dark` | true unless it says otherwise. False makes a light theme, which inherits every colour it does not name from Unluminous Light, its code colours included, rather than from Unluminous Dark. |
 | `theme.<id>.icons` | which drawn icon set the rail and the explorer use — `material` or `classic` |
-| `theme.<id>.ui.<role>` | one colour a role, by the names in the palette. A role that is not named keeps Unluminous Dark's, and a role Unluminous has not got is refused with the list. |
+| `theme.<id>.ui.<role>` | one colour a role, by the names in the palette. A role that is not named keeps the built-in theme's of the same darkness, and a role Unluminous has not got is refused with the list. |
 | `theme.<id>.syntax.<token>` | the nine token colours, which then colour every language at once. **All nine or none**: eight would leave one line of code drawn in two schemes. |
 
 ## Four keys name something built into the binary

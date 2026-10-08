@@ -244,7 +244,7 @@ pub fn show<R>(
         .backdrop_color(Color32::TRANSPARENT)
         .frame(egui::Frame::NONE.inner_margin(1))
         .show(ctx, |ui| {
-            ui.painter().rect_filled(window, CornerRadius::ZERO, Color32::from_black_alpha(120));
+            ui.painter().rect_filled(window, CornerRadius::ZERO, color::scrim());
             let frame_at = ui.painter().add(egui::Shape::Noop);
             let (area, _) = ui.allocate_exact_size(laid_out, Sense::hover());
             ui.painter().set(
@@ -641,7 +641,7 @@ pub fn button(ui: &mut egui::Ui, area: Rect, name: &str, enabled: bool, primary:
     let fill = match (enabled, primary, response.hovered()) {
         (false, _, _) => color::control().gamma_multiply(0.6),
         (true, true, _) => color::accent(),
-        (true, false, true) => color::control().gamma_multiply(1.25),
+        (true, false, true) => color::control_hover(),
         (true, false, false) => color::control(),
     };
     let painter = ui.painter();
@@ -655,7 +655,11 @@ pub fn button(ui: &mut egui::Ui, area: Rect, name: &str, enabled: bool, primary:
         ),
         egui::StrokeKind::Inside,
     );
-    let tint = if enabled { color::text_strong() } else { color::text_faint() };
+    let tint = match (enabled, primary) {
+        (false, _) => color::text_faint(),
+        (true, true) => color::on_accent(),
+        (true, false) => color::text_strong(),
+    };
     let galley = painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), tint);
     painter.galley(area.center() - galley.size() / 2.0, galley, tint);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name));
@@ -743,7 +747,7 @@ pub fn check_named(
         egui::StrokeKind::Inside,
     );
     if *value {
-        icon::tick(painter, box_rect.center(), color::text_strong());
+        icon::tick(painter, box_rect.center(), color::on_accent());
     }
     let galley = painter.layout_no_wrap(
         drawn.to_owned(),

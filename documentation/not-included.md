@@ -140,10 +140,6 @@ picture named in a Markdown file with a scheme in front of it, not telemetry, an
 A package manager somebody pressed a button for is not the editor reaching out, and neither is an
 agent they pressed send on.
 
-**A light theme.** Refused with the reason written down rather than implied: the window is drawn on a
-transparent ground, the depth recipe lifts a surface and shadows it with black, and 483 accepted
-pictures are judged against a dark ground. A light theme is not a palette swap.
-
 **Screen reader support in 1.0.** The accessibility tree is on and every control has a plain name, so
 the platform gets something; `design/accessibility.md` is what is still missing, what the contrast
 really measures — 23 of 28 pairs meet WCAG 2.2 and the word on the primary button is 2.77:1 — and the

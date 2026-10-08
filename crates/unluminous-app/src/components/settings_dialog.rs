@@ -1298,7 +1298,7 @@ pub(crate) fn checkbox(ui: &mut egui::Ui, row: Rect, name: &str, value: &mut boo
         egui::StrokeKind::Inside,
     );
     if *value {
-        icon::tick(painter, box_rect.center(), color::text_strong());
+        icon::tick(painter, box_rect.center(), color::on_accent());
     }
     let galley = painter.layout_no_wrap(
         name.to_owned(),
@@ -1516,6 +1516,8 @@ pub(crate) fn note(ui: &mut egui::Ui, area: Rect, top: f32, text: &str) -> f32 {
 pub(crate) fn wide_button(ui: &mut egui::Ui, area: Rect, name: &str) -> bool {
     let response = ui.interact(area, ui.id().with(("settings-button", name)), Sense::click());
     let fill = if response.hovered() { color::accent() } else { color::control() };
+    // The words sit on the accent while it is lit, so they are drawn in the colour meant for it.
+    let ink = if response.hovered() { color::on_accent() } else { color::text_strong() };
     let painter = ui.painter();
     painter.rect(
         area,
@@ -1527,9 +1529,9 @@ pub(crate) fn wide_button(ui: &mut egui::Ui, area: Rect, name: &str) -> bool {
     let galley = painter.layout_no_wrap(
         name.to_owned(),
         egui::FontId::proportional(12.5),
-        color::text_strong(),
+        ink,
     );
-    painter.galley(area.center() - galley.size() / 2.0, galley, color::text_strong());
+    painter.galley(area.center() - galley.size() / 2.0, galley, ink);
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
     response.clicked()

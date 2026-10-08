@@ -219,7 +219,9 @@ fn text_options(
             .with_hint(format!("Colour: {name}"));
         let chosen = style.color == *swatch;
         let painter = ui.painter();
-        let fill = Color32::from_rgb(swatch.r, swatch.g, swatch.b);
+        // Through `theme::ink`, so the first swatch shows the ink it really puts on the page: white on a
+        // dark theme and the theme's text colour on a light one.
+        let fill = crate::theme::ink(*swatch);
         painter.circle_filled(centre, if chosen { 7.5 } else { 8.0 }, fill);
         if chosen {
             painter.circle_stroke(centre, 10.0, Stroke::new(1.6, color::text_strong()));
@@ -298,7 +300,7 @@ fn format_button(
     } else if response.hovered() {
         ui.painter().rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::control());
     }
-    let tint = if active { color::text_strong() } else { color::text_control() };
+    let tint = if active { color::on_accent() } else { color::text_control() };
     // The letter is drawn with the formatting it applies, so the button looks like what it does. Bold uses
     // the real bold face installed in `theme::install_fonts`, because egui's built in font has none.
     let font_id = if name == "Bold" {
@@ -350,7 +352,7 @@ fn view_mode_button(
     } else if response.hovered() {
         painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::control());
     }
-    let tint = if active { color::text_strong() } else { color::text_control() };
+    let tint = if active { color::on_accent() } else { color::text_control() };
     icon::view_mode(painter, area.shrink(6.0), mode, tint);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), active, name)
@@ -370,7 +372,7 @@ fn alignment_button(ui: &mut egui::Ui, area: Rect, align: Align, active: bool) -
     } else if response.hovered() {
         painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::control());
     }
-    let tint = if active { color::text_strong() } else { color::text_control() };
+    let tint = if active { color::on_accent() } else { color::text_control() };
     icon::alignment(painter, area.shrink2(Vec2::new(7.0, 9.0)), align, tint);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), active, name)

@@ -1004,7 +1004,7 @@ fn readouts(kit: &mut Kit<'_, '_>, key: &str, cells: &[Cell], at: Pos2, width: f
                         if cell.good.is_some() { 1.0 } else { 0.0 },
                     );
                     let tint = match cell.good {
-                        Some(_) => lighten(colour),
+                        Some(_) => tinted_words(theme, colour),
                         None => theme.ink.i500,
                     };
                     let galley = rux::text::elided(
@@ -1041,10 +1041,15 @@ pub fn plain(text: &str) -> String {
     text.replace("**", "").replace("__", "").replace('`', "")
 }
 
-/// A colour a third of the way to white, for words in a coloured light's tint.
-fn lighten(colour: Color32) -> Color32 {
-    let up = |c: u8| (c as f32 + (255.0 - c as f32) * 0.35) as u8;
-    Color32::from_rgb(up(colour.r()), up(colour.g()), up(colour.b()))
+/// Words in a coloured light's tint: the colour a third of the way to white on a dark screen, and a
+/// third of the way to black on a light one, so the words stand off the ground in either. On a light
+/// screen the lighter tint was a pale green on a pale green wash and could hardly be read (`task-2215`).
+fn tinted_words(theme: &rux::Theme, colour: Color32) -> Color32 {
+    let towards = |c: u8| match theme.dark {
+        true => (c as f32 + (255.0 - c as f32) * 0.35) as u8,
+        false => (c as f32 * 0.62) as u8,
+    };
+    Color32::from_rgb(towards(colour.r()), towards(colour.g()), towards(colour.b()))
 }
 
 /// `value` with its first number replaced by `fraction` of itself, written the same way.
@@ -1457,14 +1462,14 @@ fn diff(
             (format!("+{added}"), theme.accent.mint),
             (format!("\u{2212}{removed}"), theme.accent.coral),
         ] {
-            let galley = rux::text::layout(&painter, mono, &words, lighten(colour));
+            let galley = rux::text::layout(&painter, mono, &words, tinted_words(theme, colour));
             let wide = galley.size().x;
             rux::text::draw_left_capitals(
                 &painter,
                 Pos2::new(x, head.center().y),
                 galley,
                 mono,
-                lighten(colour),
+                tinted_words(theme, colour),
             );
             x += wide + kit.z(8.0);
         }
@@ -1485,10 +1490,10 @@ fn diff(
             );
             let (ink, wash) = match line.chars().next() {
                 Some('+') if !line.starts_with("+++") => {
-                    (lighten(theme.accent.mint), Some(theme.accent.mint))
+                    (tinted_words(theme, theme.accent.mint), Some(theme.accent.mint))
                 }
                 Some('-') if !line.starts_with("---") => {
-                    (lighten(theme.accent.coral), Some(theme.accent.coral))
+                    (tinted_words(theme, theme.accent.coral), Some(theme.accent.coral))
                 }
                 Some('@') => (theme.ink.i300, None),
                 _ => (theme.ink.i500, None),

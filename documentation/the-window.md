@@ -156,9 +156,10 @@ a name means; it cannot add a name**, and a role Unluminous has not got is refus
 
 `Themes Bundle 1` ships five, every number in them read out of the plugin jars of the reference editor they come
 from: Islands Dracula Colorful, Material Palenight, Material Deep Ocean, Monokai Pro and One Dark.
-Light is refused, with the reason written down rather than implied: the window is drawn on a
-transparent ground, the depth recipe lifts a surface and shadows it with black, and 483 accepted
-pictures are judged against a dark ground.
+Unluminous carries two of its own, **Unluminous Dark** and **Unluminous Light**. The light one colours
+code itself, in a One Light scheme, because every language plugin's own colours were chosen for a dark
+ground; its terminal is light too, and the shadows the board and the chat are drawn with are a cool grey
+under a white edge rather than black. A theme plugin can be light as well, with `dark = false`.
 
 The **accent** is one colour over whatever the theme chose. The **icon set** is which drawn marks the
 rail and the explorer's folder arrow use — `material` by default, or `classic` for the ones Unluminous

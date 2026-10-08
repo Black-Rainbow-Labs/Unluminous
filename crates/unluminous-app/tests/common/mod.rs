@@ -288,13 +288,25 @@ pub fn collapse(harness: &mut Harness<'static, UnluminousApp>) {
 /// Each platform therefore has its own accepted set, and a difference in one really is a change to what
 /// Unluminous draws there. macOS keeps the folder it already had, because those images were looked at and
 /// accepted by a person and moving them would have said they were new.
+///
+/// **And a survey run has a folder of its own.** `UNLUMINOUS_SURVEY_THEME=light` paints every window a
+/// test builds in Unluminous Light (`theme::when_nothing_is_chosen`), and the pictures go under
+/// `survey-light/` beside the accepted ones rather than over them. Run with `UPDATE_SNAPSHOTS=1` and
+/// `--no-fail-fast`, it photographs every surface the suite reaches in the light theme in one go, which is
+/// how `task-2215` looked at all of them. The folder is ignored by git: it is something to look at, and the
+/// light theme's accepted pictures are the handful of ordinary tests in `window_and_chrome.rs` that choose
+/// it themselves.
 pub fn shot(name: &str) -> String {
-    if cfg!(target_os = "macos") {
+    let platform = if cfg!(target_os = "macos") {
         name.to_owned()
     } else if cfg!(target_os = "windows") {
         format!("windows/{name}")
     } else {
         format!("linux/{name}")
+    };
+    match std::env::var("UNLUMINOUS_SURVEY_THEME") {
+        Ok(theme) if !theme.is_empty() => format!("survey-{theme}/{platform}"),
+        _ => platform,
     }
 }
 
