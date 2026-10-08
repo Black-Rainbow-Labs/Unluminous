@@ -1711,28 +1711,25 @@ fn form(
             .get(key)
             .and_then(|state| state.values.get(&field.name).cloned())
             .unwrap_or_else(|| field.value.clone());
-        match field.kind {
-            FieldKind::Toggle => {
-                let on = matches!(current.as_str(), "true" | "yes" | "on" | "1");
-                let check = Checkbox::new(on, &field.label)
-                    .colour(theme.accent.blue)
-                    .settles(false)
-                    .id(kit.id(key, ("toggle", &field.name)));
-                let height = check.height_at(kit.rux, width);
-                if kit.draw
-                    && check
-                        .show(
-                            kit.rux,
-                            Rect::from_min_size(Pos2::new(at.x, pen), Vec2::new(width, height)),
-                        )
-                        .clicked()
-                {
-                    kit.state(key).values.insert(field.name.clone(), (!on).to_string());
-                }
-                pen += height + kit.z(GAP);
-                continue;
+        if matches!(field.kind, FieldKind::Toggle) {
+            let on = matches!(current.as_str(), "true" | "yes" | "on" | "1");
+            let check = Checkbox::new(on, &field.label)
+                .colour(theme.accent.blue)
+                .settles(false)
+                .id(kit.id(key, ("toggle", &field.name)));
+            let height = check.height_at(kit.rux, width);
+            if kit.draw
+                && check
+                    .show(
+                        kit.rux,
+                        Rect::from_min_size(Pos2::new(at.x, pen), Vec2::new(width, height)),
+                    )
+                    .clicked()
+            {
+                kit.state(key).values.insert(field.name.clone(), (!on).to_string());
             }
-            _ => {}
+            pen += height + kit.z(GAP);
+            continue;
         }
         if kit.draw {
             let galley = rux::text::layout(kit.rux.painter(), silk, &field.label, theme.ink.i400);

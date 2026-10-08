@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn a_number_is_written_the_way_its_format_says() {
-        assert_eq!(number(3600.000_000_000_5, "number", ""), "3,600");
+        assert_eq!(number(3_600.000_000_000_5, "number", ""), "3,600");
         assert_eq!(number(1234567.891, "money", "$"), "$1,234,567.89");
         assert_eq!(number(-12.5, "money", "$"), "-$12.50");
         assert_eq!(number(5.0, "percent", ""), "5%");

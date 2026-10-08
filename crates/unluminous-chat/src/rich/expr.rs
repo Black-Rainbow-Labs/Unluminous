@@ -169,8 +169,7 @@ impl Parser {
             return Err(format!("nested more than {DEEPEST} deep"));
         }
         let mut left = self.prefix()?;
-        loop {
-            let Some(Token::Op(op)) = self.peek().cloned() else { break };
+        while let Some(Token::Op(op)) = self.peek().cloned() {
             if op == "?" {
                 if floor > 1 {
                     break;

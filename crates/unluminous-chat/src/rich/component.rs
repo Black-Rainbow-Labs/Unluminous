@@ -304,7 +304,11 @@ pub struct CalcChart {
 }
 
 /// What a component is.
+///
+/// The calculator is far larger than the other kinds. It is left inline rather than boxed: a reply holds
+/// a handful of components, each read once per change to its text, so the size costs nothing measurable.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum Kind {
     /// A block whose `type` has not arrived yet.
     Pending,
@@ -661,7 +665,7 @@ impl Reader {
         if text.is_empty() {
             return None;
         }
-        if !names.contains(&text.as_str()) && !(key == "tone" && text == "error") {
+        if !(names.contains(&text.as_str()) || key == "tone" && text == "error") {
             self.error(&join(path, key), format!("expected one of {}", names.join(", ")));
             return None;
         }
