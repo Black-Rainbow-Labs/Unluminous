@@ -146,10 +146,6 @@ pub fn show(board: &mut AgentTasks, ctx: &egui::Context, look: &Look<'_>) -> Out
     let look = look.clone().at_a_fixed_size(BODY).flat();
     // Taken out of the board for the length of the drawing, because the drawing needs the board too.
     let mut kit = board.ticket_kit.take().unwrap_or_default();
-    // **The agent's terminal is drawn by Unluminous's own glyph engine**, which `crisp` does not reach, so it
-    // is told what the modal is zoomed to, the way a canvas node tells it. `task-2198`.
-    let was = look.renderer.crispness();
-    look.renderer.composite_at(modal::zoom_of(ctx, egui::Id::new(MODAL_ID)));
     // **`Tab` walks the text boxes, and nothing else.** `task-2214`: *"Tab press should navigate fields/inputs."*
     // egui's own walk visits every widget that can take the keyboard in the order it was added, and in this modal
     // that is mostly invisible ones: the ground a field claims presses with, the close cross, each dropdown and
@@ -169,7 +165,15 @@ pub fn show(board: &mut AgentTasks, ctx: &egui::Context, look: &Look<'_>) -> Out
     }
     kit.tab_order.clear();
     let (inner, should_close) = modal::show(ctx, MODAL_ID, width, height, |ui, area| {
-        contents(board, &mut kit, ui, area, &look, &task, new)
+        // **The agent's terminal is drawn by Unluminous's own glyph engine**, which `crisp` does not reach, so
+        // it is told the transform the modal is drawn through, the way a canvas node tells it. Asked here,
+        // inside the modal, because that is where the transform for this frame has been set. A modal's zoom
+        // moves in steps rather than gliding, so it is always settled. `task-2198`, `task-2216`.
+        let transform = ui.ctx().layer_transform_to_global(ui.layer_id()).unwrap_or_default();
+        let was = look.renderer.composite_through(transform, true);
+        let drawn = contents(board, &mut kit, ui, area, &look, &task, new);
+        look.renderer.restore_compositing(was);
+        drawn
     });
     // **Once a frame, however many passes it takes.** egui draws a frame a second time when a layout changes
     // under it, and hands the second pass the same input, so one press of `Tab` moved the keyboard two boxes.
@@ -184,7 +188,6 @@ pub fn show(board: &mut AgentTasks, ctx: &egui::Context, look: &Look<'_>) -> Out
             ctx.memory_mut(|memory| memory.request_focus(next));
         }
     }
-    look.renderer.restore_compositing(was);
     kit.rux.end_frame();
     board.ticket_kit = Some(kit);
     outcome.requests = inner.requests;

@@ -505,6 +505,11 @@ impl UnluminousApp {
         let chosen = self.realm.chosen();
         let parent = body_ui.layer_id();
         let mut menu: Option<(Pos2, NodeId)> = None;
+        // **Exactly the camera's zoom once it has stopped, and a quarter step above it while it glides.** A
+        // glide that rasterised at every zoom it passed through would put a new size of every glyph on the
+        // screen into both atlases on every frame. See `Crispness`. `task-2216`.
+        let settled = self.realm.glide.is_none();
+        let mut node_layers: Vec<egui::LayerId> = Vec::new();
         for (rank, node) in nodes.into_iter().enumerate() {
             // **A layer is named by its place in the drawing order, not by the node in it** (`task-2200`).
             // egui keeps a layer where it was first seen, and the sublayers of one parent keep their
@@ -530,18 +535,16 @@ impl UnluminousApp {
             realm_view::cover(&node_ui, &node, look);
             let focused = Some(node.id) == chosen && matches!(self.focus, Focus::Realm);
             let has_the_pointer = under_the_pointer == Some(node.id);
-            // **Both text engines are told what this node is composited at, around the whole of it.**
-            // `services::text_renderer` draws the editor's and the terminal's glyphs and `theme::crisp`
-            // covers the words `egui` lays out — the node's own title, a folder node's rows, a browser
-            // node's toolbar, a chat and the board. Until `task-1945` only the first was set, and only
-            // around the body, so the node's header was a magnified bitmap even on an editor node.
+            // **Unluminous's own glyph engine is told the transform this node is composited through**, around
+            // the whole of it: the editor's and the terminal's glyphs are rasterised at the size they are seen
+            // at and put on whole pixels of the window. The words `egui` lays out are sharpened once every node
+            // has been drawn, below. Until `task-1945` only the body was covered, so a node's header was a
+            // magnified bitmap even on an editor node.
             //
             // **Set and put back rather than held by a guard**, because the calls between them take
             // `&mut self`. Putting it back is the part that matters: left on, the canvas's zoom would
             // rasterise the glyphs of whatever is drawn after this node.
-            let was_egui = crate::theme::crisp::composite_at(camera.zoom);
-            let was_own = self.renderer.crispness();
-            self.renderer.composite_at(camera.zoom);
+            let was_own = self.renderer.composite_through(to_global, settled);
             self.show_a_node_body(&mut node_ui, &node, parts.body, focused, has_the_pointer);
             let framing = realm_view::Framing {
                 chosen: Some(node.id) == chosen,
@@ -554,12 +557,21 @@ impl UnluminousApp {
             };
             let outcome = realm_view::frame(&mut node_ui, &node, framing, look);
             self.renderer.restore_compositing(was_own);
-            crate::theme::crisp::restore(was_egui);
+            node_layers.push(layer);
             if let Some(at) = outcome.menu {
                 menu = Some((at, node.id));
             }
             self.act_on_a_node(&node, outcome);
         }
+        // **Every word `egui` laid out in a node is laid out again at the size it is seen at**, once all of
+        // them have been drawn: a node's title, a folder node's rows, the board, a chat, a browser node's
+        // address bar, every `TextEdit` and every `rux` label. Once, after the loop, because every node's layer
+        // carries the same camera and the pass finds the layers that share it. `task-2216`.
+        crate::theme::crisp::sharpen_the_text_in(
+            ui.ctx(),
+            &node_layers,
+            crate::services::text_renderer::Crispness::ladder(camera.zoom, settled),
+        );
         if let Some((at, node)) = menu {
             self.realm.realm.choose(Some(node));
             self.realm.menu = Some((at, Menu::Node));

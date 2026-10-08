@@ -268,7 +268,12 @@ pub fn show<R>(
             let resized = grips(ui, area, id, &mut placement, zoom);
             (inner, moved || resized)
         });
-    crate::theme::crisp::sharpen_the_text_in(ctx, layer, zoom);
+    // A modal's zoom moves in steps rather than gliding, so its words are laid out at exactly the zoom.
+    crate::theme::crisp::sharpen_the_text_in(
+        ctx,
+        &[layer],
+        crate::services::text_renderer::Crispness::ladder(zoom, true),
+    );
 
     let should_close = response.should_close();
     let (inner, changed) = response.inner;

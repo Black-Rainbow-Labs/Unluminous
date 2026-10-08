@@ -4059,22 +4059,33 @@ atlas: lay the words out at `size × scale`, then scale the finished shape by `1
 asked to be drawn. `epaint`'s `TextShape::transform` multiplies the glyph quads and leaves the texture
 coordinates alone, which is what makes both halves of that true.
 
-**Nothing it does ever moves anything.** A caller measures with `crisp::Text::size`, which divides back, and
-draws with `crisp::galley`, which divides back — so the only thing a scale other than one changes is which
-entry of the atlas the glyphs come from. At a scale of one it is the identity, which is why the change could
-be made at a hundred call sites at once and 478 of the 483 accepted pictures did not move. The five that did
-are all canvases at a zoom.
+### Exactly the zoom once the camera stops, one pass over every node, and on whole pixels (`task-2216`)
 
-**The scale is ambient, the way the theme is**, and set once around a node in `show_the_space_nodes` — around
-the frame as well as the body, which is what the `task-1907` version got wrong: it was set inside
-`show_a_node_body`, so a node's own header was a magnified bitmap even on an editor node. Both engines are
-set and put back together there, so they cannot disagree.
+*"Our panels like agent tasks, agent chat, realm, etc show pixelated font at certain zoom levels."* Measured
+off screenshots of the real window, three faults, and each is a rule now:
 
-**Where it stops.** Text inside an `egui::TextEdit` — a folder node's filter box, a browser node's address
-bar, the board's search box — is still composited rather than rasterised at the zoom. A `TextEdit`'s galley
-is what positions its caret and settles its selection, so it cannot be laid out at a size other than the one
-the box is drawn at without breaking the one thing about a node that has been reported broken more than
-anything else, which is typing into it.
+- **The quarter step is for a glide, not for a camera that has stopped.** Rounding up to a quarter put a camera
+  at 1.1 at a raster of 1.25, so every glyph was drawn at 0.88 of its bitmap: soft through `egui`'s linear
+  filter and pixelated through this renderer's nearest one. `Crispness::ladder(zoom, settled)` is the one
+  answer for both engines: the zoom itself once `RealmState::glide` is `None`, the quarter step above while it
+  moves. A modal's zoom moves in steps, so it is always settled.
+- **`egui`'s text is sharpened by one pass over the finished layers**, `crisp::sharpen_the_text_in`, which
+  `task-2198` wrote for zoomed modals. The ambient scale `task-1945` set around each node reached only the
+  hundred and sixty call sites that drew through `crisp`'s helpers, so a `TextEdit`, a `rux` label and anything
+  drawn with `Painter::galley` stayed a magnified bitmap. The pass runs once after every node is drawn and does
+  each layer once, because every node's layer carries the same camera and the pass finds layers through it.
+  Nothing moves: the caret and the selection were measured from the original galleys before it runs. The
+  `crisp` helpers are now plain layout, kept for the shape of their call sites.
+- **Unluminous's own glyphs land on whole pixels of the window**, not of the layer: the layer is moved by the
+  camera's position, which is any fraction of a pixel. `Crispness::snap` rounds in the window's pixels. The
+  renderer also reads the display's density through `TextRenderer::follow_the_display` once a frame, which it
+  never did, and its atlas is filtered linearly so a glide is soft rather than pixelated.
+
+The glyph atlas is keyed in sixty-fourths of a pixel, so two exact sizes close together do not share an entry.
+`crisp::tests::a_layer_at_any_zoom_is_drawn_one_texel_to_one_pixel` checks that a glyph covers exactly as many
+pixels as it has texels at zooms the quarter steps miss, and `crispness_tests` checks the snapping, the ladder
+and the display density. `_agent_output/task-2216-crisp-text/` has the screenshots: text in a node at 1.1, 1.33
+and 0.61 measured 31% to 43% sharper by neighbouring pixel difference, and unchanged at 1.0.
 
 ## A zoom glides, and a command sets it outright
 

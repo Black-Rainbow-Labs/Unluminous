@@ -122,31 +122,78 @@ pub struct AtlasGlyph {
     pub offset: egui::Vec2,
 }
 
-/// How many pixels one point is worth where the text being drawn will be composited.
+/// How many pixels one point is worth where the text being drawn will be composited, and where those
+/// pixels are.
 ///
-/// **1.0 everywhere but on the Realm.** A node there is drawn into an `egui` layer carrying
-/// the camera as a `TSTransform`, and `epaint` applies that transform to the **finished shape**:
-/// `epaint::shapes::text_shape::transform` scales the vertices of an already-rasterised mesh and leaves
-/// `pixels_per_point` alone, so a glyph rasterised at 12 points and composited at 200% is a bitmap magnified
-/// two-to-one. The atlas is uploaded with a nearest filter, which is why that reads as blocky rather than
-/// merely soft. `task-1907` reports it as *"the text in the nodes looks pixelated when I zoom in"*.
+/// **A node on the Realm and a zoomed modal are drawn through a layer transform.** `epaint` applies that
+/// transform to the **finished shape**: `epaint::shapes::text_shape::transform` scales the vertices of an
+/// already-rasterised mesh and leaves `pixels_per_point` alone, so a glyph rasterised at 12 points and
+/// composited at 200% is a bitmap magnified two-to-one. `task-1907` reports it as *"the text in the nodes
+/// looks pixelated when I zoom in"*.
 ///
 /// The atlas has no such limit — it is keyed on the size it was asked for — so what it is asked for is the
 /// size the glyph is **seen** at, and the quad the glyph is drawn into is divided by the same number. The
 /// layout is untouched, which is what keeps `task-1904`'s promise that a zoom costs a matrix and not a
 /// relayout.
+///
+/// ## Exactly the size it is seen at, once the camera is still (`task-2216`)
+///
+/// *"Our panels like agent tasks, agent chat, realm, etc show pixelated font at certain zoom levels."* Until
+/// `task-2216` the raster size was always rounded **up** to a quarter step, so a camera at 1.1 rasterised at
+/// 1.25 and drew every glyph at 0.88 of its bitmap. A glyph resampled by 0.88 is not a glyph drawn one
+/// texel to one pixel, and through this atlas's nearest filter the dropped columns made the letters uneven;
+/// through `egui`'s linear one they were soft. The quarter steps were there to keep a pinch from putting a
+/// new size into the atlas on every frame, which is right **while the camera moves** and wrong once it has
+/// stopped. So there are two answers now, and [`Crispness::through`] picks between them:
+///
+/// - **settled**: the raster size is the zoom itself, so a glyph is drawn exactly as large as it was
+///   rasterised. One new set of sizes per place the camera comes to rest.
+/// - **moving**: the quarter step above the zoom, as before, so a glide asks the atlas for a handful of sizes.
+///
+/// ## And on a whole pixel of the window, not of the layer
+///
+/// A glyph drawn one texel to one pixel is only sharp when its corner lands on a pixel boundary. Rounding
+/// in the layer's own points is not that: the layer is translated by the camera's position, which is any
+/// number at all, so [`Crispness::snap`] rounds in the window's own pixels and maps the answer back.
+///
+/// ## And the display's own pixels
+///
+/// The scale includes `pixels_per_point`, which this renderer never asked for before `task-2216`: on a
+/// display at 2.0 a 16 point glyph was rasterised with 16 pixels and drawn into 32. `TextRenderer` is told
+/// the display's density once a frame by [`TextRenderer::follow_the_display`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Crispness {
+    /// How many pixels one layout point is rasterised with.
     scale: f32,
+    /// How many window points one layout point becomes, which is the layer transform's scaling.
+    zoom: f32,
+    /// Where the layer's origin is in the window, which is the layer transform's translation.
+    origin: egui::Vec2,
+    /// How many pixels one window point is.
+    pixels_per_point: f32,
 }
 
-/// The steps the scale is snapped to.
+/// Where a renderer's drawing is going: the layer transform, and whether that transform is still moving.
+///
+/// What [`TextRenderer::composite_through`] answers with and [`TextRenderer::restore_compositing`] takes
+/// back, so a node cannot leave the canvas's transform on for the pane drawn after it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Compositing {
+    transform: egui::emath::TSTransform,
+    settled: bool,
+}
+
+impl Compositing {
+    /// Drawing that is not going through any transform, which is everything outside a node and a modal.
+    pub const DIRECT: Self = Self { transform: egui::emath::TSTransform::IDENTITY, settled: true };
+}
+
+/// The steps the scale is snapped to while the camera moves.
 ///
 /// **The atlas is one texture that is cleared and started again when it fills**, so a distinct raster size on
 /// every frame of a pinch would clear it repeatedly and cost far more than the blur it was fixing. Quarter
-/// steps are the granularity the glyph key already has — see `GlyphKey::quarter_points` — so the whole camera
-/// range from 0.25 to 2.5 asks for **ten** sizes rather than an unbounded number, and a pinch settles onto
-/// one of them.
+/// steps keep the whole camera range from 0.25 to 2.5 to **ten** sizes rather than an unbounded number, and a
+/// glide settles onto one of them until it stops.
 const RASTER_STEPS: f32 = 4.0;
 
 /// The smallest scale a glyph is rasterised at, which is the camera's own smallest zoom.
@@ -156,53 +203,64 @@ const RASTER_STEPS: f32 = 4.0;
 /// pixels, and the two would have to be changed together anyway.
 const SMALLEST_RASTER: f32 = 0.25;
 
-/// The largest, which is the camera's own largest zoom rounded up to a quarter step.
+/// The largest, which is the camera's own largest zoom.
 ///
 /// Here for the same reason as [`SMALLEST_RASTER`]: it is what bounds the ladder, and a caller that
 /// asked for a bigger scale than the camera can reach would otherwise put an unbounded number of sizes
-/// into the atlas.
-const MAX_RASTER: f32 = 2.5;
+/// into the atlas. A modal zooms to 3, so it reaches past this and is drawn magnified above 2.5.
+const MAX_RASTER: f32 = 3.0;
 
 impl Crispness {
-    /// Text composited at the size it is laid out at, which is everything outside the canvas.
-    pub const EXACT: Self = Self { scale: 1.0 };
+    /// Text composited at the size it is laid out at, on a display of one pixel a point.
+    pub const EXACT: Self =
+        Self { scale: 1.0, zoom: 1.0, origin: egui::Vec2::ZERO, pixels_per_point: 1.0 };
 
-    /// Text composited through a layer transform of `scale`.
+    /// Text composited through a layer transform of `scale` **while it is moving**: the quarter step above.
     pub fn at(scale: f32) -> Self {
-        // **Rounded up, never down**, and that is the difference between this working and this being a
-        // quantisation that does nothing. The canvas zooms in steps of 1.1, so the very first step a person
-        // takes is 1.1 — which rounding to the nearest quarter sends back to 1.0, leaving the glyphs rasterised
-        // at their layout size and magnified exactly as before. The Codex Sol review of `task-1907` found that.
-        //
-        // Rounding up means a glyph is rasterised at **at least** the size it is composited at, so the
-        // transform only ever scales it *down*, which resamples and is what every renderer does. Rounding down
-        // magnifies, which is the fault this type exists to fix.
-        //
-        // **And it goes below 1.0, which `task-1907` stopped it doing.** That version ended in `max(1.0)`, so a
-        // canvas zoomed *out* rasterised its glyphs at their layout size and let the transform shrink them —
-        // a 12.5 point glyph rasterised at 12.5 and composited at 0.61 is a bitmap resampled down through a
-        // nearest filter, which is what made the cards on an Agent Tasks node unreadable at the zoom
-        // `task-1945` was reported from. Rounding up still holds below one: 0.61 asks for 0.75, which is
-        // still *more* pixels than the glyph is composited into, so the transform is still only ever
-        // shrinking. The floor is the camera's own smallest zoom, so the ladder is ten sizes rather than
-        // seven and still bounded.
-        let snapped = (scale * RASTER_STEPS).ceil() / RASTER_STEPS;
-        Self { scale: snapped.clamp(SMALLEST_RASTER, MAX_RASTER) }
+        Self { scale: Self::ladder(scale, false), zoom: scale, ..Self::EXACT }
     }
 
-    /// Whether this is the ordinary case, where nothing has to be divided back.
+    /// Text composited through a layer transform of `scale` that has stopped: exactly that size.
+    pub fn exactly(scale: f32) -> Self {
+        Self { scale: Self::ladder(scale, true), zoom: scale, ..Self::EXACT }
+    }
+
+    /// Text composited the way `compositing` says, on a display of `pixels_per_point`.
+    ///
+    /// Exactly the zoom when the transform has settled and the quarter step above it while it moves. See
+    /// the type's comment for why the two answers differ.
+    pub fn through(compositing: Compositing, pixels_per_point: f32) -> Self {
+        let zoom = compositing.transform.scaling;
+        Self {
+            scale: Self::ladder(zoom, compositing.settled) * pixels_per_point,
+            zoom,
+            origin: compositing.transform.translation,
+            pixels_per_point,
+        }
+    }
+
+    /// How many times larger to lay text out than its own size, for text composited at `zoom`.
+    ///
+    /// The one place the ladder is decided, so `theme::crisp`, which does the same job for the text `egui`
+    /// lays out, asks the atlas for the same sizes this renderer does. It leaves out `pixels_per_point`,
+    /// because `egui` multiplies by that itself.
+    pub fn ladder(zoom: f32, settled: bool) -> f32 {
+        // **Rounded up, never down, while moving.** The canvas zooms in steps of 1.1, so the very first step
+        // a person takes is 1.1 — which rounding to the nearest quarter sends back to 1.0, magnifying the
+        // glyphs exactly as before `task-1907`. Rounding up means a glyph is rasterised at **at least** the size
+        // it is composited at, so the transform only ever scales it down. The Codex Sol review of `task-1907`
+        // found that. And it goes below 1.0, which `task-1907` did not: a canvas zoomed out to 0.61 asks for
+        // 0.75, still more pixels than the glyph is composited into. `task-1945`.
+        let wanted = match settled {
+            true => zoom,
+            false => (zoom * RASTER_STEPS).ceil() / RASTER_STEPS,
+        };
+        wanted.clamp(SMALLEST_RASTER, MAX_RASTER)
+    }
+
+    /// Whether this is the ordinary case, where a glyph is rasterised at its own size in pixels.
     pub fn is_exact(self) -> bool {
         self.scale == 1.0
-    }
-
-    /// The quantised scale itself, for the other text engine.
-    ///
-    /// `theme::crisp` does the same thing for the text `egui` lays out — a node's title, a folder node's
-    /// rows, a chat and the whole Agent Tasks board all go through `egui`'s own atlas rather than this
-    /// one — and it asks this type for the number so the two ladders cannot disagree about which sizes
-    /// a pinch puts into an atlas. `task-1945`.
-    pub fn scale(self) -> f32 {
-        self.scale
     }
 
     /// The size to rasterise a glyph at, for text laid out at `points`.
@@ -225,25 +283,29 @@ impl Crispness {
         }
     }
 
-    /// Snap a position to a whole **pixel** rather than to a whole point.
+    /// Snap a position to a whole pixel **of the window**.
     ///
     /// Both painters round a glyph's position, because *"a glyph is drawn at exactly the size it was
-    /// rasterised at, so landing it on a fraction of a pixel would resample it and soften every letter"*. At a
-    /// zoom a whole point is not a whole pixel, so rounding to points fights the scaling and the letters come
-    /// out unevenly spaced — which is worse than the blur the rounding was written to prevent.
+    /// rasterised at, so landing it on a fraction of a pixel would resample it and soften every letter"*. A
+    /// layer's point is not a window's pixel: the layer is scaled by the zoom and moved by the camera's
+    /// position, and both are any number at all. So `at` is carried into the window's pixels, rounded there,
+    /// and carried back.
     pub fn snap(self, at: egui::Pos2) -> egui::Pos2 {
-        if self.is_exact() {
-            return egui::Pos2::new(at.x.round(), at.y.round());
-        }
-        egui::Pos2::new(
-            (at.x * self.scale).round() / self.scale,
-            (at.y * self.scale).round() / self.scale,
-        )
+        let into_pixels = |value: f32, origin: f32| {
+            let pixel = ((origin + value * self.zoom) * self.pixels_per_point).round();
+            (pixel / self.pixels_per_point - origin) / self.zoom
+        };
+        egui::Pos2::new(into_pixels(at.x, self.origin.x), into_pixels(at.y, self.origin.y))
     }
 }
 
-/// A glyph at one size, which is what the atlas is keyed by. The size is held in quarter points so that
-/// the key can be hashed and so that nearly equal sizes share an entry.
+/// A glyph at one size, which is what the atlas is keyed by. The size is held in sixty-fourths of a pixel so
+/// that the key can be hashed.
+///
+/// **Sixty-fourths rather than the quarters it was before `task-2216`**, because a canvas that has stopped
+/// moving rasterises at exactly its zoom, and two sizes a quarter apart sharing one entry would hand one of
+/// them a glyph a few percent the wrong size, which is a glyph that is resampled rather than drawn one texel
+/// to one pixel.
 ///
 /// The face is a small number rather than a family name and two flags, because this key is built and
 /// hashed once for every character on the screen every frame, and hashing a `String` there meant
@@ -252,7 +314,7 @@ impl Crispness {
 struct GlyphKey {
     face: FaceId,
     character: char,
-    quarter_points: u32,
+    sixty_fourths: u32,
 }
 
 /// Which face, as a number. Handed out in the order the faces are first asked for.
@@ -354,10 +416,14 @@ pub struct TextRenderer {
     /// *where the drawing is going* rather than of what is being drawn, which is what makes a node's contents
     /// different from the same file drawn in a pane.
     ///
-    /// Set with [`TextRenderer::composite_at`] and put back with [`TextRenderer::restore_compositing`] — so a
+    /// Set with [`TextRenderer::composite_through`] and put back with [`TextRenderer::restore_compositing`] — so a
     /// node cannot leave the canvas's zoom on for the pane drawn after it, which would be the one way this
     /// could go silently wrong. See [`Crispness`].
-    crispness: RefCell<Crispness>,
+    compositing: RefCell<Compositing>,
+    /// How many pixels one window point is on the display this window is on, from
+    /// [`TextRenderer::follow_the_display`]. One until the window says otherwise, which is what every test
+    /// draws at.
+    pixels_per_point: std::cell::Cell<f32>,
 }
 
 impl TextRenderer {
@@ -384,7 +450,8 @@ impl TextRenderer {
             ids: RefCell::new(HashMap::new()),
             memo: RefCell::new(None),
             atlas: RefCell::new(Atlas::new()),
-            crispness: RefCell::new(Crispness::EXACT),
+            compositing: RefCell::new(Compositing::DIRECT),
+            pixels_per_point: std::cell::Cell::new(1.0),
         }
     }
 
@@ -520,23 +587,36 @@ impl TextRenderer {
         Some(answer.map(|(_, face)| face).unwrap_or(chosen))
     }
 
-    /// Rasterise at `scale` pixels a point from here on.
+    /// Rasterise for drawing that goes through `transform` from here on, and answer what it was before.
     ///
-    /// What a node on the Realm sets around its contents, with the camera's zoom. Everything
-    /// else leaves the renderer at [`Crispness::EXACT`] and is unchanged. **Always paired with
-    /// [`Self::restore_compositing`]**, which is what stops a node's zoom reaching the pane drawn after it.
-    pub fn composite_at(&self, scale: f32) {
-        *self.crispness.borrow_mut() = Crispness::at(scale);
+    /// What a node on the Realm sets around its contents with the camera, and the ticket modal with its own
+    /// zoom. `settled` is whether the transform has stopped moving: see [`Crispness`] for why a glide is
+    /// rasterised on a ladder and a still camera exactly. Everything else draws at [`Compositing::DIRECT`].
+    /// **Always paired with [`Self::restore_compositing`]**, which is what stops a node's zoom reaching the
+    /// pane drawn after it.
+    pub fn composite_through(
+        &self,
+        transform: egui::emath::TSTransform,
+        settled: bool,
+    ) -> Compositing {
+        self.compositing.replace(Compositing { transform, settled })
     }
 
-    /// Put the crispness back to what it was before [`Self::composite_at`].
-    pub fn restore_compositing(&self, was: Crispness) {
-        *self.crispness.borrow_mut() = was;
+    /// Put the compositing back to what [`Self::composite_through`] answered with.
+    pub fn restore_compositing(&self, was: Compositing) {
+        *self.compositing.borrow_mut() = was;
     }
 
-    /// How many pixels a point is worth for whatever is being drawn now.
+    /// Rasterise for a display of `pixels_per_point` from here on. Called once a frame by the window.
+    pub fn follow_the_display(&self, pixels_per_point: f32) {
+        if pixels_per_point.is_finite() && pixels_per_point > 0.0 {
+            self.pixels_per_point.set(pixels_per_point);
+        }
+    }
+
+    /// How many pixels a point is worth for whatever is being drawn now, and where those pixels are.
     pub fn crispness(&self) -> Crispness {
-        *self.crispness.borrow()
+        Crispness::through(*self.compositing.borrow(), self.pixels_per_point.get())
     }
 
     /// Find or rasterise one glyph, at the size it will be **seen** at rather than laid out at.
@@ -560,7 +640,7 @@ impl TextRenderer {
         let key = GlyphKey {
             face: self.resolve(style).0,
             character,
-            quarter_points: (style.size * 4.0).round() as u32,
+            sixty_fourths: (style.size * 64.0).round() as u32,
         };
         if let Some(found) = self.atlas.borrow().entries.get(&key) {
             return *found;
@@ -689,16 +769,22 @@ impl TextRenderer {
     /// Every glyph the caller intends to draw must be asked for through [`Self::glyph`] before this is
     /// called. Uploading first and rasterising afterwards would draw this frame from a texture that
     /// does not yet hold the new glyphs, and the letters would be missing.
+    ///
+    /// **Linear, which it was not before `task-2216`.** A glyph drawn one texel to one pixel on a whole pixel
+    /// samples exactly the texel it names with either filter, so at rest the two are the same picture. The
+    /// difference is every case that is not at rest — a glide, which rasterises a quarter step larger than it
+    /// draws — and there a nearest filter drops whole columns of a letter and keeps others, which is what
+    /// made the letters look pixelated rather than merely soft.
     pub fn texture(&self, ctx: &egui::Context) -> egui::TextureId {
         let mut atlas = self.atlas.borrow_mut();
         if atlas.texture.is_none() {
             let image = atlas.image.clone();
             atlas.texture =
-                Some(ctx.load_texture("unluminous-glyphs", image, TextureOptions::NEAREST));
+                Some(ctx.load_texture("unluminous-glyphs", image, TextureOptions::LINEAR));
             atlas.changed = false;
         } else if atlas.changed {
             let image = atlas.image.clone();
-            atlas.texture.as_mut().expect("just checked").set(image, TextureOptions::NEAREST);
+            atlas.texture.as_mut().expect("just checked").set(image, TextureOptions::LINEAR);
             atlas.changed = false;
         }
         atlas.texture.as_ref().expect("set above").id()
@@ -1115,5 +1201,68 @@ mod crispness_tests {
         assert_eq!(doubled.snap(egui::pos2(10.4, 20.6)), egui::pos2(10.5, 20.5));
         // And a position already on a pixel boundary does not move.
         assert_eq!(doubled.snap(egui::pos2(10.5, 20.0)), egui::pos2(10.5, 20.0));
+    }
+
+    /// A camera that has stopped rasterises at exactly its zoom, so a glyph is drawn one texel to one pixel.
+    ///
+    /// `task-2216`: at 1.1 the quarter step above was 1.25, and every glyph on a still canvas was drawn at
+    /// 0.88 of its bitmap. A glide keeps the quarter steps, which is what keeps the atlas from filling.
+    #[test]
+    fn a_settled_camera_rasterises_at_exactly_its_zoom() {
+        for zoom in [0.61_f32, 0.9, 1.1, 1.21, 1.331, 1.77, 2.3] {
+            let still = Compositing {
+                transform: egui::emath::TSTransform::new(egui::vec2(3.3, 4.4), zoom),
+                settled: true,
+            };
+            let crispness = Crispness::through(still, 1.0);
+            assert!(
+                (crispness.raster_size(16.0) - 16.0 * zoom).abs() < 0.001,
+                "a still camera at {zoom} rasterised at {}",
+                crispness.raster_size(16.0) / 16.0
+            );
+            let gliding = Compositing { settled: false, ..still };
+            assert_eq!(
+                Crispness::through(gliding, 1.0).raster_size(16.0),
+                Crispness::at(zoom).raster_size(16.0),
+                "and a gliding one keeps the ladder"
+            );
+        }
+    }
+
+    /// A glyph is snapped to a whole pixel of the **window**, which a layer moved by a fraction of a pixel
+    /// is not the same as.
+    ///
+    /// The canvas's camera is at any position at all, so its layer's origin is any fraction of a pixel, and a
+    /// glyph rounded in the layer's own points lands that fraction off a pixel boundary in the window.
+    #[test]
+    fn a_glyph_lands_on_a_whole_pixel_of_the_window() {
+        let transform = egui::emath::TSTransform::new(egui::vec2(13.37, 7.21), 1.1);
+        let crispness = Crispness::through(Compositing { transform, settled: true }, 1.0);
+        for at in [egui::pos2(10.4, 20.6), egui::pos2(0.0, 0.0), egui::pos2(123.456, 78.9)] {
+            let on_screen = transform * crispness.snap(at);
+            assert!(
+                (on_screen.x - on_screen.x.round()).abs() < 0.001
+                    && (on_screen.y - on_screen.y.round()).abs() < 0.001,
+                "{at:?} landed at {on_screen:?}"
+            );
+            assert!((on_screen - transform * at).length() <= 0.71, "and it moved less than a pixel");
+        }
+    }
+
+    /// A display of two pixels a point rasterises two pixels a point, and snaps to its own pixels.
+    ///
+    /// Before `task-2216` this renderer never asked the display, so a 16 point glyph on a Retina screen was
+    /// rasterised with 16 pixels and drawn into 32.
+    #[test]
+    fn a_dense_display_is_rasterised_at_its_own_density() {
+        let retina = Crispness::through(Compositing::DIRECT, 2.0);
+        assert_eq!(retina.raster_size(16.0), 32.0);
+        assert!(!retina.is_exact());
+        assert_eq!(retina.snap(egui::pos2(10.3, 20.8)), egui::pos2(10.5, 21.0), "half points");
+        let renderer = TextRenderer::new();
+        renderer.follow_the_display(2.0);
+        assert_eq!(renderer.crispness(), retina);
+        renderer.follow_the_display(1.0);
+        assert!(renderer.crispness().is_exact(), "and back on an ordinary display");
     }
 }

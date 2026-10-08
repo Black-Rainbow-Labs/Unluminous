@@ -60,6 +60,9 @@ impl UnluminousApp {
     /// what a phase does went with it.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         crate::theme::keep_egui_on_the_theme(ui.ctx());
+        // Unluminous's own glyphs are rasterised for the display the window is on, which moves when the window
+        // is dragged to a screen of another density. `task-2216`.
+        self.renderer.follow_the_display(ui.ctx().pixels_per_point());
         self.begin_the_frame(ui);
         self.take_what_the_threads_answered(ui);
         // Before any button is drawn, so that on the very first frame the focus is here and not on the
