@@ -3797,17 +3797,17 @@ fn the_description_is_resized_by_dragging_its_bottom_edge() {
     a_ticket_open(&mut harness);
     let asked = did(&mut harness, "plugins run agent-tasks description-height");
     assert!(asked["height"].is_null(), "nobody has dragged it yet: {asked}");
-    // Smaller, which is what the ticket asked for, and the comments under it move up into the room.
+    // Smaller, which is what the ticket asked for, and the sections under it move up into the room.
     let grip = harness.get_by_label("Resize description").rect();
-    let comments = harness.get_by_label("Comments \u{b7} 1").rect();
+    let below = harness.get_by_label_contains("Todos").rect();
     drag(&mut harness, grip.center(), grip.center() - vec2(0.0, 60.0));
     let after = did(&mut harness, "plugins run agent-tasks description-height");
     let height = after["height"].as_f64().expect("a height once it was dragged");
     assert!((80.0..=120.0).contains(&height), "dragged sixty points up from 160: {height}");
     let moved = harness.get_by_label("Resize description").rect();
     assert!(moved.center().y < grip.center().y - 40.0, "the edge moved up: {grip:?} to {moved:?}");
-    let raised = harness.get_by_label("Comments \u{b7} 1").rect();
-    assert!(raised.top() < comments.top() - 40.0, "the comments moved up into the room");
+    let raised = harness.get_by_label_contains("Todos").rect();
+    assert!(raised.top() < below.top() - 40.0, "the todos moved up into the room");
 
     // The agent's half sets the same number, and `auto` gives it back to the modal.
     did(&mut harness, "plugins run agent-tasks description-height 200");

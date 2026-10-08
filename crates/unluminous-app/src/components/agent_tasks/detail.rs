@@ -360,6 +360,25 @@ fn comment_button(
     response.clicked()
 }
 
+/// The two buttons beside the comment box.
+fn composer_buttons() -> (rux::components::Button<'static>, rux::components::Button<'static>) {
+    use rux::components::{Button, ButtonSize};
+    (
+        Button::new("Post comment").primary().icon(rux::icon::Icon::Chat).size(ButtonSize::Small),
+        Button::new("Send to terminal")
+            .trailing(rux::icon::Icon::ArrowRight)
+            .size(ButtonSize::Small),
+    )
+}
+
+/// How much of a comment section `width` wide the box that writes a comment and its buttons take, with the gap
+/// above them. The modal's budget reads this, so it plans for the box wrapping onto two rows the same way the
+/// section draws it.
+pub(crate) fn composer_room(rux: &rux::Rux<'_>, width: f32) -> f32 {
+    let (post, send) = composer_buttons();
+    composer_height(width, post.measure(rux).x + send.measure(rux).x + 8.0 * 3.0) + 6.0
+}
+
 /// The comments and the box that posts one, for the modal.
 ///
 /// `order` is the modal's `Tab` walk, and the comment box adds itself to it.
@@ -370,15 +389,11 @@ pub(crate) fn comment_section(
     area: Rect,
     look: &Look<'_>,
 ) -> Vec<Request> {
-    use rux::components::{Button, ButtonSize, TextInput};
+    use rux::components::TextInput;
     let mut requests = Vec::new();
     // The two buttons are measured first, because whether they fit beside the box decides how tall the box and
     // the buttons are together, and that decides how much of the section the comments get.
-    let post =
-        Button::new("Post comment").primary().icon(rux::icon::Icon::Chat).size(ButtonSize::Small);
-    let send = Button::new("Send to terminal")
-        .trailing(rux::icon::Icon::ArrowRight)
-        .size(ButtonSize::Small);
+    let (post, send) = composer_buttons();
     let post_width = post.measure(rux).x;
     let send_width = send.measure(rux).x;
     let buttons = post_width + send_width + 8.0 * 3.0;
@@ -408,6 +423,9 @@ pub(crate) fn comment_section(
     let list =
         Rect::from_min_max(Pos2::new(area.min.x, pen), Pos2::new(area.max.x, room_for_comments));
     let mut inside = ui.new_child(egui::UiBuilder::new().max_rect(list));
+    // Cut to the list's own rectangle, so a section squeezed below the height of one comment never draws that
+    // comment over the box under it.
+    inside.set_clip_rect(list.intersect(ui.clip_rect()));
     let output = egui::ScrollArea::vertical()
         .id_salt("agent-tasks-comments")
         .max_height(list.height().max(0.0))

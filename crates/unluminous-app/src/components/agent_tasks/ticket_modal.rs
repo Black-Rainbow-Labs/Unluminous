@@ -103,6 +103,8 @@ const TERMINAL_LARGEST: f32 = 520.0;
 /// description, which is the last to give way, would be cut to nothing.
 const COMMENTS: f32 = 300.0;
 const COMMENTS_LEAST: f32 = 140.0;
+/// How tall one comment roughly is, its header and two lines.
+const COMMENT_ROUGHLY: f32 = 56.0;
 /// How tall the description is when nobody has dragged its edge, and the least it can be made.
 ///
 /// `task-2214`: *"The description in the modal needs to be resizable so it can take less height."* The
@@ -416,16 +418,25 @@ fn main_column(
             // The well's padding, and two points more so a row that fits exactly is not lost to rounding: with
             // exactly the padding, three todos were given room for three and drew two.
             let well = 14.0;
-            (((rows + 1.0) * row + well).min(6.0 * row + well), (rows.min(2.0) + 1.0) * row + well)
+            (((rows + 1.0) * row + well).min(6.0 * row + well), (rows.min(4.0) + 1.0) * row + well)
         }
     };
     let (terminal_want, terminal_least) = match (new, terminal_open) {
         (true, _) | (_, false) => (0.0, 0.0),
         _ => ((room * TERMINAL_SHARE).clamp(TERMINAL_SMALLEST, TERMINAL_LARGEST), TERMINAL_LEAST),
     };
+    // **No more than the comments there are can use.** A ticket with one short comment asked for the same 300
+    // points as one with forty, and in a small window that kept 140 points of empty room under one comment while
+    // the description was cut to three lines and a todo was out of sight. A comment is about two lines and its
+    // header, so the want is that much a comment and the box under them, and the list scrolls if a comment is
+    // longer than that.
+    let composer_room = super::detail::composer_room(rux, area.width());
     let (comment_want, comment_least) = match new {
         true => (0.0, 0.0),
-        false => (COMMENTS, COMMENTS_LEAST),
+        false => {
+            let used = board.detail().comments.len() as f32 * COMMENT_ROUGHLY + composer_room;
+            (COMMENTS.min(used), COMMENTS_LEAST.min(used))
+        }
     };
     // The headings and the gaps round them, which are room nothing else can have.
     let headings = match new {
@@ -452,6 +463,15 @@ fn main_column(
     let comment_height = give(comment_want, comment_least, &mut short) + spare;
     let todo_height = give(todo_want, todo_least, &mut short);
     let description_height = give(description_want, DESCRIPTION_LEAST, &mut short);
+    // **When every section is at its least and the dialog is still short, the others go below theirs before the
+    // description does.** A small window, or a modal zoomed in, used to take the whole of what was left off the
+    // description, which was drawn as a heading with nothing under it, while the terminal kept its 80 points of
+    // `No terminal for this ticket`. The terminal can go to nothing, since it folds and scrolls; the comments keep
+    // the box that writes one; the todos keep the box that adds one.
+    let terminal_height = give(terminal_height, 0.0, &mut short);
+    let comment_height =
+        give(comment_height, (composer_room + COMMENT_ROUGHLY).min(comment_height), &mut short);
+    let todo_height = give(todo_height, (look.row_height + 14.0).min(todo_height), &mut short);
     // **Whatever is still short comes off the description**, the one section that scrolls, so a modal dragged
     // down to its smallest still adds up rather than running off the bottom.
     let description_height = (description_height - short).max(0.0);
@@ -530,7 +550,7 @@ fn main_column(
     if toggled {
         board.terminal_shut = terminal_open;
     }
-    if terminal_open && terminal_height > 0.0 {
+    if terminal_open && terminal_height > 24.0 {
         let at = Rect::from_min_size(body, Vec2::new(area.width(), terminal_height));
         let inside = Well::new().pad(Pad::all(6.0)).show(rux, at);
         if inside.height() > 20.0 {
