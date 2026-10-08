@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- The light theme's comments are a step darker, so they read over a picture (`task-2215`)
+
 ## 0.66.0 — 2026-10-08
 
 - Unluminous Light, and every surface follows a light or a dark theme (`task-2215`)
