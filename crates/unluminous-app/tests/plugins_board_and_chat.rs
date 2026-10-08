@@ -3487,35 +3487,83 @@ fn every_component_at_the_panes_own_width() {
         components.iter().all(|one| one["read"] == true),
         "every gallery block reads: {components:#?}"
     );
-    down_the_conversation(&mut harness, &["agent_chat_gallery_0", "agent_chat_gallery_1", "agent_chat_gallery_2", "agent_chat_gallery_3", "agent_chat_gallery_4", "agent_chat_gallery_5", "agent_chat_gallery_6", "agent_chat_gallery_7", "agent_chat_gallery_8", "agent_chat_gallery_9", "agent_chat_gallery_10", "agent_chat_gallery_11", "agent_chat_gallery_12", "agent_chat_gallery_13"]);
+    down_the_conversation(
+        &mut harness,
+        &[
+            "agent_chat_gallery_0",
+            "agent_chat_gallery_1",
+            "agent_chat_gallery_2",
+            "agent_chat_gallery_3",
+            "agent_chat_gallery_4",
+            "agent_chat_gallery_5",
+            "agent_chat_gallery_6",
+            "agent_chat_gallery_7",
+            "agent_chat_gallery_8",
+            "agent_chat_gallery_9",
+            "agent_chat_gallery_10",
+            "agent_chat_gallery_11",
+            "agent_chat_gallery_12",
+            "agent_chat_gallery_13",
+        ],
+    );
 }
 
 /// The same, with the pane wide enough for columns to stand side by side.
 #[test]
 fn every_component_in_a_wide_pane() {
     let mut harness = the_gallery(&["panel size agent-chat/chat --width 760"]);
-    down_the_conversation(&mut harness, &["agent_chat_gallery_wide_0", "agent_chat_gallery_wide_1", "agent_chat_gallery_wide_2", "agent_chat_gallery_wide_3", "agent_chat_gallery_wide_4", "agent_chat_gallery_wide_5", "agent_chat_gallery_wide_6", "agent_chat_gallery_wide_7", "agent_chat_gallery_wide_8", "agent_chat_gallery_wide_9", "agent_chat_gallery_wide_10", "agent_chat_gallery_wide_11"]);
+    down_the_conversation(
+        &mut harness,
+        &[
+            "agent_chat_gallery_wide_0",
+            "agent_chat_gallery_wide_1",
+            "agent_chat_gallery_wide_2",
+            "agent_chat_gallery_wide_3",
+            "agent_chat_gallery_wide_4",
+            "agent_chat_gallery_wide_5",
+            "agent_chat_gallery_wide_6",
+            "agent_chat_gallery_wide_7",
+            "agent_chat_gallery_wide_8",
+            "agent_chat_gallery_wide_9",
+            "agent_chat_gallery_wide_10",
+            "agent_chat_gallery_wide_11",
+        ],
+    );
 }
 
 /// Zoomed in, which is where a component that forgot the zoom shows itself.
 #[test]
 fn every_component_zoomed_in() {
     let mut harness = the_gallery(&["panel zoom agent-chat/chat 1.5"]);
-    down_the_conversation(&mut harness, &["agent_chat_gallery_zoomed_0", "agent_chat_gallery_zoomed_1", "agent_chat_gallery_zoomed_2", "agent_chat_gallery_zoomed_3"]);
+    down_the_conversation(
+        &mut harness,
+        &[
+            "agent_chat_gallery_zoomed_0",
+            "agent_chat_gallery_zoomed_1",
+            "agent_chat_gallery_zoomed_2",
+            "agent_chat_gallery_zoomed_3",
+        ],
+    );
 }
 
 /// Zoomed out.
 #[test]
 fn every_component_zoomed_out() {
     let mut harness = the_gallery(&["panel zoom agent-chat/chat 0.8"]);
-    down_the_conversation(&mut harness, &["agent_chat_gallery_small_0", "agent_chat_gallery_small_1", "agent_chat_gallery_small_2"]);
+    down_the_conversation(
+        &mut harness,
+        &["agent_chat_gallery_small_0", "agent_chat_gallery_small_1", "agent_chat_gallery_small_2"],
+    );
 }
 
 /// Docked as a strip along the bottom: wide and short.
 #[test]
 fn every_component_in_a_bottom_strip() {
     let mut harness = the_gallery(&["plugins pane agent-chat/chat --side bottom"]);
-    down_the_conversation(&mut harness, &["agent_chat_gallery_strip_0", "agent_chat_gallery_strip_1", "agent_chat_gallery_strip_2"]);
+    down_the_conversation(
+        &mut harness,
+        &["agent_chat_gallery_strip_0", "agent_chat_gallery_strip_1", "agent_chat_gallery_strip_2"],
+    );
 }
 
 /// A chart arriving, cut short at `cut` of its text: drawn from what has come so far.
@@ -3672,5 +3720,15 @@ fn a_real_answer_from_claude_code_draws_its_table_with_every_column_readable() {
         .map(|one| one["type"].as_str().unwrap_or("unread"))
         .collect();
     assert_eq!(kinds, vec!["chart", "table", "files", "actions"]);
-    down_the_conversation(&mut harness, &["agent_chat_real_answer_0", "agent_chat_real_answer_1", "agent_chat_real_answer_2", "agent_chat_real_answer_3", "agent_chat_real_answer_4", "agent_chat_real_answer_5"]);
+    down_the_conversation(
+        &mut harness,
+        &[
+            "agent_chat_real_answer_0",
+            "agent_chat_real_answer_1",
+            "agent_chat_real_answer_2",
+            "agent_chat_real_answer_3",
+            "agent_chat_real_answer_4",
+            "agent_chat_real_answer_5",
+        ],
+    );
 }
