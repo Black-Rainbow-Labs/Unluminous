@@ -6,7 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.65.0 — 2026-10-08
+## Unreleased
+
+- Agent Tasks holds together when zoomed, and the ticket modal is easier to work in (`task-2214`)
+- The ticket modal's sections share its height by what they hold (`task-2214`)
+
+## 0.65.0 — 2026-10-07
 
 - Agent chat answers can hold components, drawn as instruments (`task-2211`)
 - A press on the welcome or a component chooses its chat node, and their ids are the conversation's (`task-2211`)
