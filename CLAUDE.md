@@ -543,6 +543,35 @@ runs inside a frame and a command that blocked would stop the window drawing for
 model's answer, which is the sentence `unluminous_git::Worker` exists for; `state` says when it has
 finished, which is the shape `run start` and `run output` already have.
 
+### An answer can hold components, drawn as instruments (`task-2211`)
+
+`tasks/task-2211-agent-chat-intelligent-ui-prd.md` and `-tdd.md` are the design, after OpenAI's
+"Intelligent UI". An agent writes a component as a fenced block whose language is `ui`, holding one JSON
+object with a `type`: `card`, `columns`, `tabs`, `stack`, `callout`, `steps`, `timeline`, `keyvalue`,
+`badges`, `diagram`, `stats`, `progress`, `chart`, `table`, `files`, `diff`, `actions`, `choices`,
+`checklist`, `form` and `calculator`. Five rules to keep:
+
+- **`unluminous_chat::rich` reads, `rux` draws the controls, `components/agent_chat/blocks.rs` composes.**
+  The catalogue in `rich::catalogue` is the one list: the guide put in front of a conversation, the
+  `components` reference, the `validate` checks and the gallery are all made from it, and every example in
+  it is a test.
+- **A block is drawn while it arrives.** `rich::repair` closes JSON that was cut off, and
+  `a_component_only_grows_as_its_text_arrives` checks every example at every byte.
+- **A component can send a message, fill the composer, open a project file or copy text, and nothing
+  else.** It cannot run a command, change a file or fetch anything, and `open_a_file` refuses a path
+  outside the project.
+- **The look is the instrument language** (TDD §5.0): plates with a lit top edge, recessed screens, key
+  caps that sink, LEDs, faders, segmented meters. Colour is light, never a filled control or a stripe.
+  Jason rejected coloured side bars and generic blue buttons and checkboxes in the first baseline.
+- **One function measures and draws a component.** `blocks::Kit::draw` is false for the measuring pass, so
+  a row cannot be measured as one thing and drawn as another. What a component remembers is
+  `PaneState::blocks`, keyed by `message::block_key` and the path inside the block, which
+  `services::agent_chat::components::walk` follows for the command line verbs.
+
+`plugins run agent-chat motion off` holds every light, bar and number still, which the screenshot tests
+use. The four starter chips are gone: `components/agent_chat/welcome.rs` shows which agent is answering,
+a status screen of what it can see, and the last three conversations.
+
 ### A settings page that scrolls must not clip to the rectangle it measures from (`task-2003`)
 
 *"the settings configurations look like crap"*, with a screenshot of the Agent-Chat page whose

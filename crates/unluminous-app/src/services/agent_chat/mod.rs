@@ -21,6 +21,7 @@
 //! the plugin loader all keep, and the reason it is worth stating is that this is the first thing in
 //! Unluminous with a socket in it.
 
+pub mod components;
 pub mod store;
 pub mod tools;
 
@@ -63,6 +64,9 @@ pub const DEFAULT_HISTORY: usize = 20;
 /// A name rather than a number, so it cannot be mistaken for one of the tool positions
 /// `ask_for_the_tools` sends — those parse as a `usize` and this does not.
 pub const CLIPBOARD: &str = "clipboard";
+
+/// What the id of a command a component asked for starts with, so its answer is not taken for a tool's.
+pub const OPENING: &str = "open-file:";
 
 /// How long an endpoint's readiness is believed for.
 ///
@@ -524,6 +528,28 @@ pub struct PaneState {
     pub copy_shown: Option<(u64, f64)>,
     /// The right click menu over a message, while it is open.
     pub menu: Option<MessageMenu>,
+    /// What each component an answer holds remembers: a tab chosen, a table's order, a checklist's
+    /// ticks, a form's values, a calculator's inputs. Keyed by `message::block_key` and the path to the
+    /// component inside the block. `task-2211`.
+    pub blocks:
+        std::collections::HashMap<String, crate::components::agent_chat::blocks::BlockState>,
+    /// What each block read as, and a hash of the text it was read from, so a finished conversation
+    /// is read once rather than on every frame.
+    pub parsed: std::collections::HashMap<
+        String,
+        (u64, Result<unluminous_chat::rich::Component, Vec<unluminous_chat::rich::Problem>>),
+    >,
+    /// How tall each block measured, against a hash of everything its height depends on.
+    pub heights: std::collections::HashMap<String, (u64, f32)>,
+    /// The `rux` state the components are drawn with: their canvases, their marks, their zoom.
+    pub blocks_rux: Option<rux::RuxState>,
+    /// Mermaid diagrams a component holds, laid out once.
+    pub scenes: crate::services::mermaid_scene::MermaidScenes,
+    /// Give the composer the keyboard on the next frame, which is what a component's `fill` asks for.
+    pub focus_the_prompt: bool,
+    /// Whether the components hold still rather than move: for a person who asked for less motion, and
+    /// for a test that photographs a frame. `plugins run agent-chat motion off`.
+    pub still: bool,
 }
 
 /// The model selector: `rux`'s `Select` and what it keeps between frames.
@@ -559,13 +585,15 @@ impl Default for ModelSelect {
 pub struct Selected {
     /// The message it is in, which is what keys the rendered markdown it is measured against.
     pub message: u64,
+    /// Which run of the message's words, when components divide them. Zero for a plain answer.
+    pub segment: usize,
     pub range: unluminous_core::Selection,
 }
 
 impl Selected {
-    /// The key the rendered markdown for this message is cached under.
+    /// The key the rendered markdown for this run of words is cached under.
     pub fn key(&self) -> String {
-        format!("message-{}", self.message)
+        crate::components::agent_chat::message::words_key(self.message, self.segment)
     }
 }
 
@@ -600,6 +628,10 @@ pub struct Parts<'a> {
     /// only way the component can know: since `task-1905` the answer depends on the shell profile, which
     /// is `unluminous-app`'s to read and not a component's.
     pub readiness: &'a [Option<String>],
+    /// The project the window has open, which the welcome names. `task-2211`.
+    pub project: Option<&'a Path>,
+    /// The file showing in the window, which the welcome names.
+    pub showing: Option<&'a Path>,
 }
 
 impl PaneState {
@@ -617,6 +649,9 @@ impl PaneState {
         self.opened_tools.clear();
         self.opened_thinking.clear();
         self.rendered.forget();
+        self.blocks.clear();
+        self.parsed.clear();
+        self.heights.clear();
     }
 }
 
@@ -747,6 +782,8 @@ impl AgentChat {
             history: &self.history,
             problem: self.problem.as_deref(),
             readiness: &self.readiness,
+            project: self.project.as_deref(),
+            showing: self.showing.as_deref(),
         }
     }
 
@@ -1094,8 +1131,58 @@ impl AgentChat {
         let Some(length) = self.ui.rendered.length(&key) else {
             return;
         };
-        self.ui.selection =
-            Some(Selected { message: id, range: unluminous_core::Selection::new(0, length) });
+        self.ui.selection = Some(Selected {
+            message: id,
+            segment: 0,
+            range: unluminous_core::Selection::new(0, length),
+        });
+    }
+
+    /// Send `words` as the person's next message, leaving whatever they were typing where it was.
+    ///
+    /// What a component's button and a submitted form do (`task-2211`). It is `send` with the draft and
+    /// the attachments set aside for the length of the call, so it is checked, queued and refused
+    /// exactly as typing and pressing send would be.
+    pub fn send_words(&mut self, words: &str) -> Result<u64, String> {
+        let draft = std::mem::replace(&mut self.draft, words.to_owned());
+        let attachments = std::mem::take(&mut self.attachments);
+        let sent = self.send();
+        // `send` took the words, or refused them; either way what the person had typed goes back.
+        self.draft = draft;
+        self.attachments = attachments;
+        sent
+    }
+
+    /// The requests that open a project file at a line, which is what a component's file row asks for.
+    ///
+    /// **A path inside the project only.** A component is an agent's writing, and the one thing it may
+    /// not do is reach outside the folder the person opened: an absolute path and a `..` are refused.
+    pub fn open_a_file(&self, path: &str, line: Option<u32>) -> Result<Vec<Request>, String> {
+        let relative = Path::new(path.trim());
+        let escapes = relative.is_absolute()
+            || relative.has_root()
+            || relative.components().any(|part| matches!(part, std::path::Component::ParentDir));
+        if path.trim().is_empty() || escapes {
+            return Err(format!("{path} is not a file inside the project, so it was not opened."));
+        }
+        let mut open = serde_json::Map::new();
+        open.insert("path".to_owned(), serde_json::Value::String(path.trim().to_owned()));
+        open.insert("permanent".to_owned(), serde_json::Value::Bool(true));
+        let mut asked = vec![Request::RunCommand {
+            id: format!("{OPENING}{path}"),
+            command: "tab.open".to_owned(),
+            arguments: open,
+        }];
+        if let Some(line) = line {
+            let mut caret = serde_json::Map::new();
+            caret.insert("line".to_owned(), serde_json::Value::from(line));
+            asked.push(Request::RunCommand {
+                id: format!("{OPENING}{path}:{line}"),
+                command: "editor.caret".to_owned(),
+                arguments: caret,
+            });
+        }
+        Ok(asked)
     }
 
     /// Start the turn for the question at the head of the queue.
@@ -1241,7 +1328,9 @@ impl AgentChat {
         if !self.configuration.system.trim().is_empty() {
             lines.push(self.configuration.system.trim().to_owned());
         }
-        lines.join(" ")
+        // The component library, which is the one thing about this pane an agent cannot know from its
+        // own instructions. Once, in front of the first question, like the rest of this.
+        format!("{}\n\n{}", lines.join(" "), unluminous_chat::rich::catalogue::guide())
     }
 
     /// What Unluminous tells the model about where it is.
@@ -1266,6 +1355,7 @@ impl AgentChat {
                     .to_owned(),
             );
         }
+        lines.push(unluminous_chat::rich::catalogue::guide());
         if !self.configuration.system.trim().is_empty() {
             lines.push(self.configuration.system.trim().to_owned());
         }
@@ -1555,6 +1645,8 @@ impl AgentChat {
             // a header and which reads as `Agent-Chat 0` on an empty pane.
             "messages": self.session.chat.messages.len(),
             "conversation": self.session.chat.to_json(),
+            // Every component the answers hold, what it is and what it shows now. `task-2211`.
+            "components": self.components_value(),
         })
     }
 }
@@ -1721,6 +1813,10 @@ impl UiProvider for AgentChat {
     }
 
     fn command(&mut self, command: &str, arguments: &[String]) -> Result<Answer, String> {
+        // The components an answer holds have verbs of their own. See `components`.
+        if let Some(answer) = self.component_command(command, arguments) {
+            return answer;
+        }
         let rest = plugin_ui::rest(arguments, 0);
         match command {
             // The window's own name for "put this pane on the screen", which `run_plugin_command`
@@ -1877,6 +1973,19 @@ impl UiProvider for AgentChat {
                 .with(serde_json::json!({ "tools": self.configuration.tools })))
             }
             "view" => Ok(Answer::said("the pane").with(self.view_value())),
+            "motion" => {
+                match rest.trim() {
+                    "on" => self.ui.still = false,
+                    "off" => self.ui.still = true,
+                    "" => self.ui.still = !self.ui.still,
+                    other => return Err(format!("motion takes `on` or `off`, not `{other}`.")),
+                }
+                Ok(Answer::said(match self.ui.still {
+                    true => "the components hold still",
+                    false => "the components move",
+                })
+                .with(serde_json::json!({ "motion": !self.ui.still })))
+            }
             other => Err(self.refuse(other)),
         }
     }
@@ -1909,7 +2018,33 @@ impl UiProvider for AgentChat {
                 "tools",
                 "`on` or `off`: whether Unluminous's own commands are offered to the model.",
             ),
-            ("view", "Everything the pane is showing, as data."),
+            ("view", "Everything the pane is showing, as data, including each component an answer holds and what it shows now."),
+            (
+                "components",
+                "The components an answer can hold, with their fields and an example each. With a name, just that one.",
+            ),
+            (
+                "validate",
+                "Check one component's JSON before answering with it: valid, or every problem with its path.",
+            ),
+            ("gallery", "Open a conversation that shows every component."),
+            (
+                "motion",
+                "`on` or `off`: whether the components animate. Off holds every light, bar and number where it ends.",
+            ),
+            (
+                "press",
+                "Press a component's button, choice or submit: `press <message id or last> <label>`.",
+            ),
+            (
+                "tick",
+                "Toggle a checklist item: `tick <message id or last> <item words or number>`.",
+            ),
+            (
+                "set",
+                "Set a calculator input or a form field: `set <message id or last> <name> <value>`.",
+            ),
+            ("tab", "Choose a tab: `tab <message id or last> <label or number>`."),
         ]
     }
 
@@ -1926,6 +2061,13 @@ impl UiProvider for AgentChat {
     }
 
     fn answered(&mut self, id: &str, answer: Result<serde_json::Value, String>) {
+        // A file a component opened. A failure is the window's to report; nothing waits on it here.
+        if id.starts_with(OPENING) {
+            if let Err(problem) = answer {
+                self.problem = Some(problem);
+            }
+            return;
+        }
         self.tool_answered(id, answer);
     }
 

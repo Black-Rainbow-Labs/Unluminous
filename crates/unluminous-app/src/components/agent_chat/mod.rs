@@ -20,9 +20,11 @@
 //! out, which is the fault `task-1765` records for the board. So the only surface painted here is the
 //! panel itself, through `Chrome::raised`.
 
+pub mod blocks;
 pub mod composer;
 pub mod message;
 pub mod settings_page;
+pub mod welcome;
 
 use egui::{CornerRadius, Pos2, Rect, Stroke, Vec2};
 
@@ -84,9 +86,6 @@ pub enum Act {
     Dropped(std::path::PathBuf),
     /// Ctrl/Cmd+V in the composer: ask the window for whatever picture is on the clipboard.
     Paste,
-    /// A starter chip: it fills the prompt rather than sending it, which is what the page this is
-    /// modelled on does.
-    Starter(&'static str),
     Detach(u64),
     Copy(String),
     ShowHistory(bool),
@@ -98,6 +97,12 @@ pub enum Act {
     ToggleThinking(u64),
     /// Select the whole of one message's words, which is what the menu's `Select All` means.
     SelectAll(u64),
+    /// A component's button asked for these words to be sent as the person's next message.
+    SendWords(String),
+    /// A component's button asked for these words to be put in the composer.
+    Fill(String),
+    /// A component asked for a project file to be opened, at a line when it named one.
+    OpenFile(String, Option<u32>),
 }
 
 /// Draw the pane, and act on what was pressed.
@@ -459,7 +464,7 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     if session.chat.messages.is_empty() && parts.queued.is_empty() {
         parts.state.scrolled = 0.0;
         parts.state.scrollable = 0.0;
-        return empty(ui, look, area);
+        return welcome::show(parts, ui, look, area);
     }
     let mut acts = Vec::new();
     let mut body = ui.new_child(egui::UiBuilder::new().max_rect(area));
@@ -531,7 +536,8 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
                     // Worked out once and handed to the drawing, because the height has to be known
                     // before the rectangle can be allocated and running it twice built the message's
                     // text twice. See `message::Shape`.
-                    let shape = message::shape(one, parts.state, look, width, waiting, false);
+                    let shape =
+                        message::shape(one, parts.state, look, width, waiting, false, Some(ui));
                     if shape.height <= 0.0 {
                         continue;
                     }
@@ -556,6 +562,11 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
             ui.add_space(GAP * look.scale());
         }
     });
+    // The canvases of components that were not drawn this frame are given back. Once a frame, after
+    // every row has had its turn, which is what `rux::RuxState::end_frame` asks for.
+    if let Some(kept) = &parts.state.blocks_rux {
+        kept.end_frame();
+    }
     // Where the conversation was left, so a zoom can put it back where it was. See `PaneState::scrolled`.
     parts.state.scrolled = scrolled.state.offset.y;
     // And how far it could be scrolled, so `plugins view agent-chat` can answer whether it is at the
@@ -613,93 +624,6 @@ fn rows_of<'a>(
     flush(&mut run, &mut rows);
     rows
 }
-
-/// What the pane says when nothing has been said in it.
-///
-/// `ChatPage.module.css`'s `.chatEmpty`, with the four starter prompts made about what Unluminous is: a
-/// chip fills the prompt rather than sending it, which is what the page it comes from does.
-fn empty(ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
-    let scale = look.scale();
-    let painter = ui.painter_at(area);
-    let mut pen = area.top() + (area.height() * 0.16).min(60.0);
-    let badge = Rect::from_center_size(
-        Pos2::new(area.center().x, pen + 28.0 * scale),
-        Vec2::splat(56.0 * scale),
-    );
-    if look.chrome.is_recording() {
-        look.chrome.sunken(badge, 16.0 * scale, look.palette.board_card, Lift::Small);
-    } else {
-        painter.rect_filled(
-            badge,
-            CornerRadius::same((16.0 * scale) as u8),
-            look.palette.board_card,
-        );
-    }
-    icon::scaled(&painter, badge.center(), look.palette.board_accent, scale, icon::chat);
-    pen = badge.bottom() + 14.0 * scale;
-    controls::centred_line(
-        &painter,
-        area,
-        pen,
-        "How can I help?",
-        look.font_size * 1.2,
-        look.palette.text_strong,
-    );
-    pen += look.font_size * 1.7;
-    controls::centred_line(
-        &painter,
-        area,
-        pen,
-        "Ask anything about what is open.",
-        look.font_size * 0.82,
-        look.palette.text_dim,
-    );
-    pen += look.font_size * 1.9;
-
-    let mut acts = Vec::new();
-    let width = (area.width() - 12.0 * scale).min(300.0 * scale);
-    for prompt in STARTERS {
-        let chip = Rect::from_min_size(
-            Pos2::new(area.center().x - width / 2.0, pen),
-            Vec2::new(width, 26.0 * scale),
-        );
-        if chip.bottom() > area.bottom() {
-            break;
-        }
-        let response =
-            ui.interact(chip, ui.id().with(("agent-chat-starter", prompt)), egui::Sense::click());
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, prompt.to_owned())
-        });
-        let ground = match response.hovered() {
-            true => look.palette.selected_row,
-            false => look.palette.board_card,
-        };
-        if look.chrome.is_recording() {
-            look.chrome.raised(chip, 13.0 * scale, Fill::Solid(ground), Lift::Small);
-        } else {
-            painter.rect_filled(chip, CornerRadius::same((13.0 * scale) as u8), ground);
-        }
-        controls::centred_line(
-            &painter,
-            chip,
-            chip.center().y - look.font_size * 0.45,
-            prompt,
-            look.font_size * 0.85,
-            look.palette.text_control,
-        );
-        if response.clicked() {
-            acts.push(Act::Starter(prompt));
-        }
-        pen += 32.0 * scale;
-    }
-    acts
-}
-
-/// The four chips on an empty pane. What a person asks an editor, rather than what they ask a
-/// general chat: `ChatPage.tsx` has its own four and these are the same idea about this program.
-pub const STARTERS: [&str; 4] =
-    ["Explain this file", "Find the bug", "Write a test", "Summarise the diff"];
 
 /// The conversations kept, drawn over the conversation area.
 fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
@@ -827,7 +751,6 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
                 chat.new_conversation();
                 chat.ui.history_open = false;
             }
-            Act::Starter(prompt) => chat.draft = prompt.to_owned(),
             Act::Dropped(path) => {
                 // Same reason as `Act::Send`: a picture that could not be attached is a thing somebody
                 // just did, and they are watching the pane rather than the status bar.
@@ -889,6 +812,27 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
                 }
             }
             Act::SelectAll(id) => chat.select_the_whole_message(id),
+            Act::SendWords(words) => {
+                // Through the same path as typing and pressing send, so it queues behind an answer
+                // that is still arriving and refuses with a notice when nothing can answer it.
+                if let Err(problem) = chat.send_words(&words) {
+                    requests.push(Request::Notice {
+                        text: problem,
+                        kind: crate::components::toast::Kind::Problem,
+                    });
+                }
+            }
+            Act::Fill(words) => {
+                chat.draft = words;
+                chat.ui.focus_the_prompt = true;
+            }
+            Act::OpenFile(path, line) => match chat.open_a_file(&path, line) {
+                Ok(asked) => requests.extend(asked),
+                Err(problem) => requests.push(Request::Notice {
+                    text: problem,
+                    kind: crate::components::toast::Kind::Problem,
+                }),
+            },
             Act::ToggleThinking(id) => {
                 match chat.ui.opened_thinking.iter().position(|one| *one == id) {
                     Some(at) => {
@@ -1067,16 +1011,5 @@ mod tests {
         // Windows carries a file through OLE and sends no cursor movement, so the last position `egui`
         // holds can be from before the drag began. Refusing there threw the picture away silently.
         assert!(belongs_here(None, area), "nowhere in particular");
-    }
-
-    #[test]
-    fn the_starter_chips_are_about_what_unluminous_is() {
-        // Four, which is what the page this is modelled on has, and each is a thing somebody asks an
-        // editor rather than a thing somebody asks a general chat.
-        assert_eq!(STARTERS.len(), 4);
-        for prompt in STARTERS {
-            assert!(!prompt.is_empty());
-            assert!(prompt.chars().count() < 30, "{prompt} is too long for a chip");
-        }
     }
 }

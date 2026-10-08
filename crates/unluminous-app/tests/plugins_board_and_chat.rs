@@ -3428,3 +3428,246 @@ fn the_editor_for_a_new_ticket_at_a_large_interface_size() {
     steady(&mut harness);
     harness.snapshot(shot("agent_tasks_editor_large_interface").as_str());
 }
+
+// ---- task-2211: answers that are interfaces ----------------------------------------------------------
+
+/// A chat pane showing the component gallery, held still so a picture is the same on every run.
+fn the_gallery(setup: &[&str]) -> Harness<'static, UnluminousApp> {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    did(&mut harness, "plugins run agent-chat motion off");
+    for line in setup {
+        did(&mut harness, line);
+    }
+    did(&mut harness, "plugins run agent-chat gallery");
+    steady(&mut harness);
+    harness
+}
+
+/// Photograph the conversation from the top down, most of a pane's height at a time, until the bottom.
+///
+/// The gallery is longer than any window, and a component nobody photographed is a component nobody
+/// has looked at; every one of these pictures was opened and looked at before it was accepted.
+fn down_the_conversation(harness: &mut Harness<'static, UnluminousApp>, name: &str, most: usize) {
+    // **A wheel rather than an offset.** The conversation sticks to its bottom, and an offset written
+    // while it is there is overwritten before the frame ends; a wheel is what unsticks it. See
+    // `PaneState::wheel`.
+    with_the_chat(harness, |chat| chat.ui.wheel = Some(1.0e6));
+    steady(harness);
+    for index in 0..most {
+        harness.snapshot(shot(&format!("{name}_{index}")).as_str());
+        let mut place = (0.0_f32, 0.0_f32, 0.0_f32);
+        with_the_chat(harness, |chat| {
+            place = (
+                chat.ui.scrolled,
+                chat.ui.scrollable,
+                chat.ui.list_rect.map_or(400.0, |rect| rect.height()),
+            );
+        });
+        let (scrolled, scrollable, height) = place;
+        if scrolled >= scrollable - 1.0 {
+            break;
+        }
+        with_the_chat(harness, move |chat| chat.ui.wheel = Some(-height * 0.85));
+        steady(harness);
+    }
+}
+
+/// `task-2211`: every component, at the width the chat pane opens at.
+#[test]
+fn every_component_at_the_panes_own_width() {
+    let mut harness = the_gallery(&[]);
+    let view = did(&mut harness, "plugins view agent-chat");
+    let components = view["components"].as_array().expect("the components");
+    assert!(components.len() >= 20, "{}", components.len());
+    assert!(
+        components.iter().all(|one| one["read"] == true),
+        "every gallery block reads: {components:#?}"
+    );
+    down_the_conversation(&mut harness, "agent_chat_gallery", 16);
+}
+
+/// The same, with the pane wide enough for columns to stand side by side.
+#[test]
+fn every_component_in_a_wide_pane() {
+    let mut harness = the_gallery(&["panel size agent-chat/chat --width 760"]);
+    down_the_conversation(&mut harness, "agent_chat_gallery_wide", 12);
+}
+
+/// Zoomed in, which is where a component that forgot the zoom shows itself.
+#[test]
+fn every_component_zoomed_in() {
+    let mut harness = the_gallery(&["panel zoom agent-chat/chat 1.5"]);
+    down_the_conversation(&mut harness, "agent_chat_gallery_zoomed", 4);
+}
+
+/// Zoomed out.
+#[test]
+fn every_component_zoomed_out() {
+    let mut harness = the_gallery(&["panel zoom agent-chat/chat 0.8"]);
+    down_the_conversation(&mut harness, "agent_chat_gallery_small", 3);
+}
+
+/// Docked as a strip along the bottom: wide and short.
+#[test]
+fn every_component_in_a_bottom_strip() {
+    let mut harness = the_gallery(&["plugins pane agent-chat/chat --side bottom"]);
+    down_the_conversation(&mut harness, "agent_chat_gallery_strip", 3);
+}
+
+/// A chart arriving, cut short at `cut` of its text: drawn from what has come so far.
+fn a_chart_cut_at(index: usize, cut: f32) {
+    let example = unluminous_chat::rich::catalogue::entry("chart").expect("a chart").example;
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    did(&mut harness, "plugins run agent-chat motion off");
+    steady(&mut harness);
+    let at = (example.len() as f32 * cut) as usize;
+    let partial = format!(
+        "The build got slower here:
+
+```ui
+{}",
+        &example[..at]
+    );
+    with_the_chat(&mut harness, move |chat| {
+        chat.session_mut().ask(unluminous_chat::Message::said(
+            0,
+            unluminous_chat::Role::User,
+            "Why did the build get slower?",
+        ));
+        chat.session_mut()
+            .reply(unluminous_chat::Reply::Started { model: "claude-opus-5".to_owned() });
+        chat.session_mut().reply(unluminous_chat::Reply::Text(partial));
+    });
+    for _ in 0..6 {
+        harness.step();
+    }
+    harness.snapshot(shot(&format!("agent_chat_streaming_chart_{index}")).as_str());
+}
+
+/// A chart whose fence has only just opened.
+#[test]
+fn a_chart_draws_while_its_first_fields_arrive() {
+    a_chart_cut_at(0, 0.2);
+}
+
+/// A chart with its labels and part of its first series.
+#[test]
+fn a_chart_draws_while_its_series_arrive() {
+    a_chart_cut_at(1, 0.55);
+}
+
+/// A chart nearly finished.
+#[test]
+fn a_chart_draws_when_it_is_nearly_finished() {
+    a_chart_cut_at(2, 0.85);
+}
+
+/// A block that does not read says so, and the rest of the answer is still there.
+#[test]
+fn a_component_that_does_not_read_is_a_notice_rather_than_a_hole() {
+    let mut harness = a_chat(&[
+        (unluminous_chat::Role::User, "Chart it."),
+        (
+            unluminous_chat::Role::Assistant,
+            "Here it is:\n\n```ui\n{\"type\": \"chart\", \"labels\": [\"a\"], \"series\": [{\"name\": \"x\", \"values\": [\"one\"]}]}\n```\n\nThe words after it are still drawn.",
+        ),
+    ]);
+    did(&mut harness, "plugins run agent-chat motion off");
+    steady(&mut harness);
+    let view = did(&mut harness, "plugins view agent-chat");
+    let blocks = view["components"].as_array().expect("the components");
+    assert_eq!(blocks[0]["read"], false);
+    assert!(blocks[0]["problems"][0].as_str().unwrap().contains("series[0].values[0]"));
+    assert!(harness.get_all_by_label("Show the source").count() > 0);
+    harness.snapshot(shot("agent_chat_component_problem").as_str());
+}
+
+/// Everything a person can do with a component, an agent can do through the command line, and the
+/// pane shows the result.
+#[test]
+fn a_calculator_a_checklist_and_tabs_are_driven_from_the_command_line() {
+    let mut harness = the_gallery(&[]);
+    // The calculator is the last answer.
+    let set = did(&mut harness, "plugins run agent-chat set last monthly 900");
+    assert_eq!(set["value"], 900.0);
+    let view = did(&mut harness, "plugins view agent-chat");
+    let calculator = view["components"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|one| one["type"] == "calculator")
+        .expect("the calculator")
+        .clone();
+    let outputs = &calculator["components"][0]["state"]["outputs"];
+    let paid_in = outputs[1]["value"].as_f64().unwrap();
+    assert_eq!(paid_in, 900.0 * 12.0 * 20.0, "the outputs are worked out from what was set");
+    let refused = run(&mut harness, "plugins run agent-chat set last nothing 1");
+    assert!(!refused.ok && refused.message.contains("monthly"), "{}", refused.message);
+    with_the_chat(&mut harness, |chat| chat.ui.jump_to_bottom = true);
+    steady(&mut harness);
+    harness.snapshot(shot("agent_chat_calculator_set").as_str());
+
+    // The checklist and the tabs are in earlier answers, named by their message id.
+    let messages = did(&mut harness, "plugins view agent-chat");
+    let find = |kind: &str| {
+        messages["components"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|one| one["type"] == kind)
+            .map(|one| one["message"].as_u64().unwrap())
+            .expect(kind)
+    };
+    let checklist = find("checklist");
+    let ticked = did(&mut harness, &format!("plugins run agent-chat tick {checklist} 2"));
+    assert_eq!(ticked["done"], true);
+    let tabs = find("tabs");
+    let chosen = did(&mut harness, &format!("plugins run agent-chat tab {tabs} macOS"));
+    assert_eq!(chosen["tab"], "macOS");
+    let valid = did(
+        &mut harness,
+        "plugins run agent-chat validate '{\"type\": \"callout\", \"text\": \"hi\"}'",
+    );
+    assert_eq!(valid["valid"], true);
+    let invalid = did(&mut harness, "plugins run agent-chat validate '{\"type\": \"map\"}'");
+    assert_eq!(invalid["valid"], false);
+    let reference = did(&mut harness, "plugins run agent-chat components calculator");
+    assert_eq!(reference["name"], "calculator");
+}
+
+/// The welcome in a narrow column.
+#[test]
+fn the_welcome_in_a_narrow_column() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    did(&mut harness, "plugins run agent-chat motion off");
+    did(&mut harness, "panel size agent-chat/chat --width 300");
+    steady(&mut harness);
+    harness.snapshot(shot("agent_chat_welcome_narrow").as_str());
+}
+
+/// An answer Claude Code really gave in the pane on 2026-10-08, given only the guide: a chart, a table
+/// with a long prose column, a list of files and next step keys. The table is what made the columns
+/// share their room by need rather than by proportion, so it is kept as it came.
+#[test]
+fn a_real_answer_from_claude_code_draws_its_table_with_every_column_readable() {
+    let answer = include_str!("fixtures/agent-chat-real-answer.md");
+    let mut harness = a_chat(&[
+        (unluminous_chat::Role::User, "Count the lines in each file of crates/unluminous-chat/src/rich and show me how the module breaks down, then suggest what I should review first."),
+        (unluminous_chat::Role::Assistant, answer),
+    ]);
+    did(&mut harness, "plugins run agent-chat motion off");
+    did(&mut harness, "panel size agent-chat/chat --width 520");
+    steady(&mut harness);
+    let view = did(&mut harness, "plugins view agent-chat");
+    let kinds: Vec<&str> = view["components"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|one| one["type"].as_str().unwrap_or("unread"))
+        .collect();
+    assert_eq!(kinds, vec!["chart", "table", "files", "actions"]);
+    down_the_conversation(&mut harness, "agent_chat_real_answer", 6);
+}

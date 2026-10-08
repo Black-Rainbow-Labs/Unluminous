@@ -45,6 +45,7 @@ pub mod client;
 pub mod environment;
 pub mod model;
 pub mod provider;
+pub mod rich;
 pub mod session;
 pub mod sse;
 pub mod wire;

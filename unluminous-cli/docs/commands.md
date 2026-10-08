@@ -1982,7 +1982,7 @@ unluminous-cli realm read 7 --tail 40
 unluminous-cli realm chat <node> <new|send|stop|state|messages|last|attach|providers|use|history|open|remove|tools|view> [words] [--from <node>]
 ```
 
-Drive an Agent Chat node's own conversation: `new`, `send`, `stop`, `state`, `messages`, `last`, `attach`, `providers`, `use`, `history`, `open`, `remove`, `tools` and `view`, which are the same verbs `plugins run agent-chat` has and reach the same code. The difference is whose conversation: each chat node holds one of its own, where `plugins run agent-chat` drives the pane's. Like the pane's, `send` does not wait - `state` says when the answer has arrived.
+Drive an Agent Chat node's own conversation: `new`, `send`, `stop`, `state`, `messages`, `last`, `attach`, `providers`, `use`, `history`, `open`, `remove`, `tools`, `view` and the component verbs, which are the same verbs `plugins run agent-chat` has and reach the same code. The difference is whose conversation: each chat node holds one of its own, where `plugins run agent-chat` drives the pane's. Like the pane's, `send` does not wait - `state` says when the answer has arrived.
 
 - `node` — The chat node's id, from `realm list`.
 - `verb` — What to do: new, send, stop, state, messages, last, attach, providers, use, history, open, remove, tools or view.

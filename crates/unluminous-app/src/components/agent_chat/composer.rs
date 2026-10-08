@@ -459,6 +459,11 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         // text is not a name: it is what the field says when it is empty.
         response
             .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Message"));
+        // A component's `fill` put words here for somebody to finish, so the caret goes where they are.
+        // On the frame after the press, which is the frame a text box can keep the focus it is given.
+        if std::mem::take(&mut parts.state.focus_the_prompt) {
+            response.request_focus();
+        }
         // Recorded so the paste knows whose key press it is reading — see `PaneState::prompt_focused`.
         parts.state.prompt_focused = response.has_focus();
         // **Enter sends and Shift+Enter is a new line**, which is what the page this copies does and

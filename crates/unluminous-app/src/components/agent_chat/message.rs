@@ -26,6 +26,7 @@
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use unluminous_chat::model::{Message, Part, Role, ToolCall};
+use unluminous_chat::rich::{self, Segment};
 
 use super::Act;
 use crate::services::agent_chat::PaneState;
@@ -70,9 +71,19 @@ enum Piece {
     Thinking {
         body: f32,
     },
-    /// The words, as markdown.
+    /// One run of the words, as markdown: which segment of the answer it is, and how wide its bubble is.
+    ///
+    /// An answer with no components is one run, segment zero, which is every answer written before
+    /// `task-2211`.
     Words {
         body: f32,
+        segment: usize,
+        bubble: f32,
+    },
+    /// A component the agent wrote, which is segment `segment` of the answer.
+    Block {
+        segment: usize,
+        height: f32,
     },
     /// A picture attached to the message, with the width its row is given.
     ///
@@ -99,7 +110,8 @@ impl Piece {
     fn height(self) -> f32 {
         match self {
             Self::Thinking { body } => THINKING_ROW + body,
-            Self::Words { body } => body + PAD_Y * 2.0,
+            Self::Words { body, .. } => body + PAD_Y * 2.0,
+            Self::Block { height, .. } => height,
             Self::Picture { height, .. } => height,
             Self::Tool { body, .. } => TOOL_ROW + body,
             Self::Failure { body } => body + PAD_Y * 2.0,
@@ -120,6 +132,7 @@ fn pieces(
     width: f32,
     queued: bool,
     with_tools: bool,
+    ui: Option<&mut egui::Ui>,
 ) -> (Vec<Piece>, f32, f32, String) {
     let scale = look.scale();
     let mine = message.role == Role::User;
@@ -147,7 +160,6 @@ fn pieces(
         false => measure(look, &text, most - PAD_X * 2.0 * scale) + (PAD_X * 2.0 + 8.0) * scale,
     };
     let bubble = natural.clamp(smallest.min(most), most).max(smallest.min(most));
-    let inside = (bubble - PAD_X * 2.0 * scale).max(24.0);
     // **A tool block, a failure and the thinking are as wide as the row allows, whatever the words
     // above them are.** They are reports rather than speech: sized to their own message, a tool called
     // from a two word answer came out two words wide, with its own caret clipped off the end of it.
@@ -171,8 +183,7 @@ fn pieces(
         out.push(Piece::Thinking { body });
     }
     if !text.is_empty() {
-        let body = rendered_height(state, look, &format!("message-{}", message.id), &text, inside);
-        out.push(Piece::Words { body });
+        out.extend(said(message, &text, state, look, width, most, smallest, ui));
     }
     for (index, part) in message.parts.iter().enumerate() {
         if let Part::Picture { bytes, .. } = part {
@@ -239,9 +250,10 @@ pub fn shape(
     width: f32,
     queued: bool,
     with_tools: bool,
+    ui: Option<&mut egui::Ui>,
 ) -> Shape {
     let scale = look.scale();
-    let (pieces, bubble, block, text) = pieces(message, state, look, width, queued, with_tools);
+    let (pieces, bubble, block, text) = pieces(message, state, look, width, queued, with_tools, ui);
     let height = pieces.iter().map(|piece| piece.height() * scale).sum::<f32>()
         + (pieces.len().saturating_sub(1) as f32) * 6.0 * scale;
     Shape { pieces, bubble, block, text, height }
@@ -260,15 +272,24 @@ pub fn show(
     let mut acts = Vec::new();
     let Shape { pieces, bubble: bubble_width, block: block_width, text: said, .. } = shape;
     let mine = message.role == Role::User;
+    let segments = segments_of(message, &said);
+    // Only the first bubble of an answer keeps its squared corner, which is what says who spoke.
+    let mut said_before = false;
     let mut pen = area.top();
     for piece in pieces {
         let height = piece.height() * scale;
         // A bubble is as wide as its words and sits on its own side; a report is as wide as the row
         // and always starts at the left.
-        let wide =
-            matches!(piece, Piece::Tool { .. } | Piece::Failure { .. } | Piece::Thinking { .. });
+        let wide = matches!(
+            piece,
+            Piece::Tool { .. }
+                | Piece::Failure { .. }
+                | Piece::Thinking { .. }
+                | Piece::Block { .. }
+        );
         let width = match piece {
             Piece::Picture { width, .. } => width,
+            Piece::Words { bubble, .. } => bubble,
             _ => match wide {
                 true => block_width,
                 false => bubble_width,
@@ -283,8 +304,9 @@ pub fn show(
             Piece::Thinking { body } => {
                 acts.extend(thinking(message, state, ui, look, rect, body > 0.0))
             }
-            Piece::Words { .. } => {
-                bubble(ui, look, rect, mine);
+            Piece::Words { segment, .. } => {
+                bubble(ui, look, rect, mine, !said_before);
+                said_before = true;
                 let inside = Rect::from_min_size(
                     rect.min + Vec2::new(PAD_X * scale, PAD_Y * scale),
                     Vec2::new(
@@ -292,7 +314,18 @@ pub fn show(
                         rect.height() - PAD_Y * 2.0 * scale,
                     ),
                 );
-                acts.extend(words(message, state, ui, look, rect, inside, &said, mine));
+                let words_of = match segments.get(segment) {
+                    Some(Segment::Markdown(words)) => words.as_str(),
+                    _ => said.as_str(),
+                };
+                acts.extend(words(message, state, ui, look, rect, inside, words_of, mine, segment));
+            }
+            Piece::Block { segment, .. } => {
+                if let Some(Segment::Block { source, finished }) = segments.get(segment) {
+                    acts.extend(block_show(
+                        message.id, segment, source, *finished, state, look, ui, rect,
+                    ));
+                }
             }
             Piece::Picture { index, .. } => picture(message, state, ui, look, rect, index),
             Piece::Tool { index, body } => {
@@ -333,21 +366,27 @@ fn words(
     inside: Rect,
     said: &str,
     mine: bool,
+    segment: usize,
 ) -> Vec<Act> {
     use crate::services::agent_chat::{MessageMenu, Selected};
 
     let scale = look.scale();
     let mut acts = Vec::new();
-    let key = format!("message-{}", message.id);
+    let key = words_key(message.id, segment);
     let code = code_colours(look);
     // **The words are selectable**, which is `task-2060`: a message is text to read, and reading
     // includes taking a copy of a part of it. `click_and_drag` rather than `hover` for the reason
     // the Markdown preview senses both - see `UnluminousApp::show_markdown_preview`.
-    let response =
-        ui.interact(rect, ui.id().with(("agent-chat-bubble", message.id)), Sense::click_and_drag());
+    let response = ui.interact(
+        rect,
+        ui.id().with(("agent-chat-bubble", message.id, segment)),
+        Sense::click_and_drag(),
+    );
     // Read out of the state before the rendered markdown is borrowed from it.
     let was = match state.selection {
-        Some(selected) if selected.message == message.id => Some(selected.range),
+        Some(selected) if selected.message == message.id && selected.segment == segment => {
+            Some(selected.range)
+        }
         _ => None,
     };
     let picked = {
@@ -391,7 +430,7 @@ fn words(
         picked
     };
     if let Some(selection) = picked {
-        state.selection = Some(Selected { message: message.id, range: selection });
+        state.selection = Some(Selected { message: message.id, segment, range: selection });
     }
     if response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
@@ -454,10 +493,13 @@ fn painter_in(ui: &egui::Ui, rect: Rect) -> egui::Painter {
 }
 
 /// The bubble itself: raised for the person, pressed for the model.
-fn bubble(ui: &mut egui::Ui, look: &Look<'_>, rect: Rect, mine: bool) {
+fn bubble(ui: &mut egui::Ui, look: &Look<'_>, rect: Rect, mine: bool, first: bool) {
     let scale = look.scale();
     let radius = RADIUS * scale;
-    let squared = (CORNER * scale) as u8;
+    let squared = match first {
+        true => (CORNER * scale) as u8,
+        false => radius as u8,
+    };
     // The corner nearest its own side is squared off, which is `.messageWrapper`'s
     // `border-top-left-radius: 6px` and its mirror for a message from the person.
     let corners = match mine {
@@ -1108,7 +1150,7 @@ fn failure(
 }
 
 /// The colours markdown is rendered in here.
-fn colours(look: &Look<'_>) -> crate::components::markdown_text::Colors {
+pub(super) fn colours(look: &Look<'_>) -> crate::components::markdown_text::Colors {
     crate::components::markdown_text::Colors {
         // Brighter than the dim body text the first version used: in the reference the depth does the
         // separating and the words are the bright thing on the surface.
@@ -1128,7 +1170,7 @@ fn colours(look: &Look<'_>) -> crate::components::markdown_text::Colors {
 ///
 /// Both are colours Unluminous already has. The panel is the well every field in the window is, and the
 /// chip is `CODE_CHIP`, which is what the Markdown preview already paints behind inline code.
-fn code_colours(look: &Look<'_>) -> crate::components::markdown_text::CodeColors {
+pub(super) fn code_colours(look: &Look<'_>) -> crate::components::markdown_text::CodeColors {
     crate::components::markdown_text::CodeColors {
         panel: look.palette.board_well,
         chip: crate::theme::color::code_chip(),
@@ -1188,6 +1230,215 @@ fn measure(look: &Look<'_>, text: &str, most: f32) -> f32 {
     (longest * look.font_size * 0.48).min(most)
 }
 
+/// The key one run of an answer's words is rendered and selected under.
+///
+/// Segment zero keeps the key every answer had before `task-2211`, so a conversation written then is
+/// read back and selected exactly as it was.
+pub fn words_key(message: u64, segment: usize) -> String {
+    match segment {
+        0 => format!("message-{message}"),
+        _ => format!("message-{message}-{segment}"),
+    }
+}
+
+/// The key a component an answer holds is read, remembered and drawn under.
+pub fn block_key(message: u64, segment: usize) -> String {
+    format!("block-{message}-{segment}")
+}
+
+/// An answer's words and components, in the order they were written.
+///
+/// Only an answer is read for components. A person's own question is shown as they wrote it, so a
+/// question that quotes a `ui` fence to ask about it is a question rather than a chart.
+pub fn segments_of(message: &Message, text: &str) -> Vec<Segment> {
+    match message.role != Role::User && rich::has_blocks(text) {
+        true => rich::segments(text),
+        false => vec![Segment::Markdown(text.to_owned())],
+    }
+}
+
+/// The words of an answer and the components in it, as pieces in the order they were written.
+#[allow(clippy::too_many_arguments)]
+fn said(
+    message: &Message,
+    text: &str,
+    state: &mut PaneState,
+    look: &Look<'_>,
+    width: f32,
+    most: f32,
+    smallest: f32,
+    mut ui: Option<&mut egui::Ui>,
+) -> Vec<Piece> {
+    let scale = look.scale();
+    let mut out = Vec::new();
+    for (segment, one) in segments_of(message, text).iter().enumerate() {
+        match one {
+            Segment::Markdown(words) => {
+                let natural =
+                    measure(look, words, most - PAD_X * 2.0 * scale) + (PAD_X * 2.0 + 8.0) * scale;
+                let bubble = natural.clamp(smallest.min(most), most).max(smallest.min(most));
+                let inside = (bubble - PAD_X * 2.0 * scale).max(24.0);
+                let body =
+                    rendered_height(state, look, &words_key(message.id, segment), words, inside);
+                out.push(Piece::Words { body, segment, bubble });
+            }
+            Segment::Block { source, finished } => {
+                // Measured with the real fonts when a `Ui` is at hand, which is every frame that draws.
+                // A test of the bubbles' arithmetic has none, and a component's height is not its question.
+                let height = match ui.as_deref_mut() {
+                    Some(ui) => {
+                        let wide = width * BLOCK_SHARE;
+                        block_height(message.id, segment, source, *finished, state, look, ui, wide)
+                            / scale
+                    }
+                    None => 120.0,
+                };
+                out.push(Piece::Block { segment, height });
+            }
+        }
+    }
+    out
+}
+
+/// What one block reads as, read again only when its text has changed.
+fn read_cached(
+    state: &mut PaneState,
+    key: &str,
+    source: &str,
+    finished: bool,
+) -> Result<rich::Component, Vec<rich::Problem>> {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    source.hash(&mut hasher);
+    finished.hash(&mut hasher);
+    let hash = hasher.finish();
+    if let Some((known, read)) = state.parsed.get(key) {
+        if *known == hash {
+            return read.clone();
+        }
+    }
+    let read = rich::read_block(source, finished);
+    state.parsed.insert(key.to_owned(), (hash, read.clone()));
+    read
+}
+
+/// The `rux` state the components are drawn with, made the first time one is.
+///
+/// Deterministic for the reason `ModelSelect::new` gives: a screenshot of the pane must be the same
+/// picture on every machine.
+fn blocks_rux() -> rux::RuxState {
+    let theme = rux::Theme::named("dark-neumorphic").unwrap_or_else(rux::theme::dark);
+    rux::RuxState::deterministic(theme)
+}
+
+/// How tall one component is at `width`, in the pixels it will be drawn at.
+#[allow(clippy::too_many_arguments)]
+fn block_height(
+    message: u64,
+    segment: usize,
+    source: &str,
+    finished: bool,
+    state: &mut PaneState,
+    look: &Look<'_>,
+    ui: &mut egui::Ui,
+    width: f32,
+) -> f32 {
+    let key = block_key(message, segment);
+    let read = read_cached(state, &key, source, finished);
+    // **Measured once for what it is now.** A finished conversation's heights do not change from frame
+    // to frame, and measuring lays out every word in every component, so the answer is kept against the
+    // text, the width, the zoom and what the component remembers, any of which moving measures again.
+    let signature = {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        source.hash(&mut hasher);
+        finished.hash(&mut hasher);
+        width.to_bits().hash(&mut hasher);
+        look.scale().to_bits().hash(&mut hasher);
+        let mut remembered: Vec<String> = state
+            .blocks
+            .iter()
+            .filter(|(at, _)| at.starts_with(&key))
+            .map(|(at, kept)| format!("{at}{kept:?}"))
+            .collect();
+        remembered.sort();
+        remembered.hash(&mut hasher);
+        hasher.finish()
+    };
+    if let Some((known, height)) = state.heights.get(&key) {
+        if *known == signature {
+            return *height;
+        }
+    }
+    let height = measure_block(&key, &read, source, state, look, ui, width);
+    state.heights.insert(key, (signature, height));
+    height
+}
+
+/// Lay one component out without drawing it, which is what its height is.
+fn measure_block(
+    key: &str,
+    read: &Result<rich::Component, Vec<rich::Problem>>,
+    source: &str,
+    state: &mut PaneState,
+    look: &Look<'_>,
+    ui: &mut egui::Ui,
+    width: f32,
+) -> f32 {
+    let PaneState { blocks_rux: kept, rendered, blocks, scenes, still, .. } = state;
+    let rux_state = kept.get_or_insert_with(blocks_rux);
+    rux_state.set_zoom(look.scale());
+    rux_state.set_still(*still);
+    let chrome = rux::Chrome::recording();
+    let mut rux = rux::Rux { ui, state: rux_state, chrome: &chrome };
+    let mut kit = super::blocks::Kit {
+        rux: &mut rux,
+        draw: false,
+        look,
+        rendered,
+        states: blocks,
+        scenes,
+        acts: Vec::new(),
+    };
+    super::blocks::block(&mut kit, read, source, key, Pos2::ZERO, width)
+}
+
+/// Draw one component into `rect`, in a `rux` layer of its own, and say what was pressed.
+#[allow(clippy::too_many_arguments)]
+fn block_show(
+    message: u64,
+    segment: usize,
+    source: &str,
+    finished: bool,
+    state: &mut PaneState,
+    look: &Look<'_>,
+    ui: &mut egui::Ui,
+    rect: Rect,
+) -> Vec<Act> {
+    let key = block_key(message, segment);
+    let read = read_cached(state, &key, source, finished);
+    let PaneState { blocks_rux: kept, rendered, blocks, scenes, still, .. } = state;
+    let rux_state = kept.get_or_insert_with(blocks_rux);
+    rux_state.set_zoom(look.scale());
+    rux_state.set_still(*still);
+    // Room round the plate for its shadow, which the layer's canvas would otherwise cut off.
+    let reach = 14.0 * look.scale();
+    let id = egui::Id::new(("agent-chat-block-layer", &key));
+    rux::layer(ui, rux_state, id, rect.expand(reach), |rux| {
+        let mut kit = super::blocks::Kit {
+            rux,
+            draw: true,
+            look,
+            rendered,
+            states: blocks,
+            scenes,
+            acts: Vec::new(),
+        };
+        super::blocks::block(&mut kit, &read, source, &key, rect.min, rect.width());
+        kit.acts
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1228,7 +1479,7 @@ mod tests {
             settings.font_size = font_size;
             let look = Look::of(&settings, &renderer);
             let mut state = PaneState::default();
-            let (_, bubble, _, _) = pieces(&answer, &mut state, &look, 900.0, false, true);
+            let (_, bubble, _, _) = pieces(&answer, &mut state, &look, 900.0, false, true, None);
 
             // What `show` will lay the words into, computed the way `show` computes it.
             let inside = bubble - PAD_X * 2.0 * look.scale();
@@ -1245,7 +1496,11 @@ mod tests {
         assert_eq!(Piece::Tool { index: 0, body: 0.0 }.height(), TOOL_ROW);
         assert_eq!(Piece::Tool { index: 0, body: 30.0 }.height(), TOOL_ROW + 30.0);
         assert_eq!(Piece::Thinking { body: 0.0 }.height(), THINKING_ROW);
-        assert_eq!(Piece::Words { body: 10.0 }.height(), 10.0 + PAD_Y * 2.0);
+        assert_eq!(
+            Piece::Words { body: 10.0, segment: 0, bubble: 100.0 }.height(),
+            10.0 + PAD_Y * 2.0
+        );
+        assert_eq!(Piece::Block { segment: 1, height: 42.0 }.height(), 42.0);
     }
 
     /// `task-2060`: a tool call's arguments are laid out and fenced as JSON so a plugin colours them.
@@ -1313,9 +1568,9 @@ mod tests {
         question.parts.push(Part::Text("Are you there?".to_string()));
 
         let mut state = PaneState::default();
-        let (plain, bubble, _, _) = pieces(&question, &mut state, &look, 400.0, false, true);
+        let (plain, bubble, _, _) = pieces(&question, &mut state, &look, 400.0, false, true, None);
         let (waiting, waiting_bubble, _, _) =
-            pieces(&question, &mut state, &look, 400.0, true, true);
+            pieces(&question, &mut state, &look, 400.0, true, true, None);
         assert_eq!(waiting.len(), plain.len() + 1);
         assert_eq!(waiting.last().copied(), Some(Piece::Queued));
         assert_eq!(bubble, waiting_bubble, "the bubble is the same bubble");
