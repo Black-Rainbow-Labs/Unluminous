@@ -595,7 +595,10 @@ impl Theme {
             (Token::Type, Color::rgb(0x98, 0x64, 0x00)),
             (Token::String, Color::rgb(0x2F, 0x7A, 0x2E)),
             (Token::Number, Color::rgb(0x98, 0x68, 0x01)),
-            (Token::Comment, Color::rgb(0x84, 0x89, 0x93)),
+            // Darker than One Light's own comment grey: the window lets the desktop or a picture show
+            // through, and on the installed window at 76% a comment in One Light's grey was the first
+            // thing to lose against a photograph.
+            (Token::Comment, Color::rgb(0x6E, 0x73, 0x7D)),
             (Token::Operator, Color::rgb(0x0E, 0x7C, 0x86)),
             (Token::Text, Color::rgb(0x2C, 0x31, 0x3A)),
         ];
