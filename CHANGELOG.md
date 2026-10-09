@@ -6,12 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.67.0 — 2026-10-09
 
 - Jupyter notebooks: cells, outputs, a kernel through Python, debugging a cell, and the notebook commands (`task-2220`)
 - Accept the menus with New Jupyter Notebook, and mark a picture's untinted white (`task-2220`)
 - The changelog lists notebooks as unreleased (`task-2220`)
 - A kernel that is alive and slow to start is waited for up to three minutes (`task-2220`)
+- The changelog lists the longer kernel start as unreleased (`task-2220`)
 
 ## 0.66.4 — 2026-10-08
 
