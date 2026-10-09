@@ -122,7 +122,7 @@ Each row is one IntelliJ behaviour from the research. The last column is the dec
 | Variables tool window: name, type, value, shape; refresh; sort | Yes, a side panel in the notebook tab, refreshed after each run. |
 | `?name` introspection | Yes. The kernel's answer shows as the cell's output, as in Jupyter. |
 | Completion from the kernel | Yes, Ctrl+Space in a code cell asks the kernel, beside the completion Unluminous already has. |
-| Structure view of headings and cells | Yes. `Navigate -> Notebook Outline` lists the headings and cells, and selecting one goes to it. |
+| Structure view of headings and cells | Yes. `Notebook -> Notebook Outline` opens the toolbar's outline of headings and cells, and selecting one goes to it. Unluminous has no Navigate menu, so the entry is in the Notebook menu. |
 | Jump to next and previous section (Ctrl+Alt+Down and Up) | Yes. |
 | Debug a cell | Yes, through ipykernel's own debugger and the debugger tile Unluminous already has: breakpoints in the cell's gutter, step, the variables tree. |
 | Inline values | Shown while debugging, as Unluminous already does for files. |

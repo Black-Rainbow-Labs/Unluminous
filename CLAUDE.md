@@ -5830,12 +5830,18 @@ the kernel, the output parsing and the exports.
 
 **The tab's document is the cells written as percent text.** Each cell is a marker line followed by
 its source: `# %% id=X` for code, `# %% [markdown] id=X` and `# %% [raw] id=X` for the others. Cells
-are joined by `\n` and the last one has no line break after it. So the caret, the selection, undo,
+are joined by `\n` and the last one has no line break after it. A marker is only the exact line Unluminous writes,
+with an id and nothing after it, so a line such as `# %% a comment` inside a cell stays in that
+cell; the looser `# %%` reading is only for importing a `.py` file. A source line that is exactly a
+marker gets a word joiner (U+2060) after its `#` in the document, which `text::cell_source` takes
+out again, so the round trip is exact. Use `cell_source`, never `source_of`, for anything that is
+run, saved or shown to an agent. So the caret, the selection, undo,
 find, multiple carets, completion, colouring and the gutter all work on a notebook without knowing
 it is one, because they work on a document. `unluminous_jupyter::text` converts between the two:
 `to_text` writes the document from a `Notebook`, `spans` finds the cells in the document, and
 `merge_owned` builds the `Notebook` back from the document, keeping each cell's outputs, metadata
-and execution count by its id. A notebook saved without changes comes back byte for byte,
+and execution count by its id. It also hands back the cells an edit took out, and a cell as it was
+before a change of kind, which the tab offers to the next merge so an undo brings outputs back. A notebook saved without changes comes back byte for byte,
 including Windows line breaks (`NotebookTab::line_ending`). The `.gitattributes` beside the
 fixtures keeps git from changing that.
 
@@ -5875,17 +5881,31 @@ that file, as the reference editor's `dumpCell` does, or debugpy cannot match th
 Breakpoints are sent for each cell's file with lines counted from the top of the cell. Every cell
 with a breakpoint is probed for its file name, not only the cell being debugged. The run waits for
 the breakpoint answers before it sends the cell (`DebugState::breakpoint_answers`), with a 3 second
-fallback. A stop in a cell's file is mapped back to the notebook's line.
+fallback. A stop in a cell's file is mapped back to the notebook's line. The
+session attached, so stopping it only disconnects (`terminateDebuggee` false on both presses) and
+the kernel keeps its variables. debugpy keeps listening on the same port, and `listen` cannot be
+called twice in one process, so the next Debug Cell attaches to that port again. Each step is
+taken as soon as none of our requests to the kernel is outstanding; the kernel does not have to be
+idle, because it queues requests itself.
+
+**Nothing waits on Python in a frame.** Dropping a `Kernel` hands its process to a thread that
+stops it, and `on_exit` waits for every such thread so no kernel outlives the window. The Python
+search and the kernelspec listing run on threads, and `notebook kernel pythons` and `kernels` are
+held answers.
 
 **The command line.** `notebook` is its own area in the catalogue: `status`, `cell`, `run`, `add`,
-`source`, `edit`, `select`, `kernel`, `variables`, `input`, `export`, `new` and `convert`. The MCP
+`source`, `edit`, `select`, `view`, `output`, `outline`, `kernel`, `variables`, `input`, `export`,
+`new` and `convert`. Everything a person can do with the pointer has one: `view` collapses cells,
+outputs and sections, `output` sorts a table, opens a traceback, scrolls an output and opens HTML
+in a browser tab, and `run --debug` debugs a cell. The MCP
 tools come from the catalogue, so there is nothing else to register. `notebook run --wait` answers
 when the cells finish, up to `NOTEBOOK_WAIT_MS`. `notebook status --json` reports the mode, the
 chosen cells, whether line numbers and the variables panel are showing, and each cell's state,
 outputs and folding.
 
 **Tests.** `crates/unluminous-jupyter/tests/kernel.rs` and `crates/unluminous-app/tests/notebooks.rs`
-start real kernels. They need a Python with `ipykernel` and `jupyter_client`. They use
+start real kernels. `UNLUMINOUS_REQUIRE_KERNEL=1` turns a test that would skip for want of a
+Python into a failure, and `tools/release.ps1` sets it for the workspace tests. They need a Python with `ipykernel` and `jupyter_client`. They use
 `UNLUMINOUS_TEST_PYTHON` when it is set, and otherwise the first such Python `find_pythons` finds.
 When there is none, each kernel test prints that it did nothing and passes. The pictures are
 `notebook_top`, `notebook_bottom` and `notebook_traceback`.
