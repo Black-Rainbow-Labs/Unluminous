@@ -182,6 +182,10 @@ pub enum Waiting {
     NotebookRun { path: Option<PathBuf>, cells: Vec<String>, until: Instant },
     /// `notebook variables` waiting for the kernel's answer.
     NotebookVariables { path: Option<PathBuf>, until: Instant },
+    /// `notebook kernel pythons` waiting for the search for Pythons, which is on a thread.
+    NotebookPythons { until: Instant },
+    /// `notebook kernel kernels` waiting for a Python to list its kernels, which is on a thread.
+    NotebookKernels { python: PathBuf, until: Instant },
 }
 
 /// Who asked for a tool call to be run, which is who its answer goes back to.
@@ -228,6 +232,8 @@ impl Waiting {
             | Waiting::UpdateCheck { until }
             | Waiting::NotebookRun { until, .. }
             | Waiting::NotebookVariables { until, .. }
+            | Waiting::NotebookPythons { until }
+            | Waiting::NotebookKernels { until, .. }
             | Waiting::DebugPause { until, .. }
             | Waiting::DebugEvaluate { until, .. }
             | Waiting::DebugHover { until, .. } => *until,
@@ -333,12 +339,22 @@ pub(crate) fn lines(
     lines: Vec<String>,
     extra: Value,
 ) -> Outcome {
+    Outcome::Reply(lines_reply(request, message, lines, extra))
+}
+
+/// [`lines`] as a [`Reply`], for a command whose answer was held and is ready now.
+pub(crate) fn lines_reply(
+    request: &Request,
+    message: impl Into<String>,
+    lines: Vec<String>,
+    extra: Value,
+) -> Reply {
     let mut result = match extra {
         Value::Object(map) => map,
         _ => Map::new(),
     };
     result.insert("lines".to_owned(), json!(lines));
-    ok(request, message, Value::Object(result))
+    Reply::done(&request.command, message, Value::Object(result))
 }
 
 impl UnluminousApp {
@@ -526,6 +542,11 @@ impl UnluminousApp {
                 let path = path.clone();
                 self.notebook_variables_answer(request, path.as_deref())
             }
+            Waiting::NotebookPythons { .. } => self.notebook_pythons_answer(request),
+            Waiting::NotebookKernels { python, .. } => {
+                let python = python.clone();
+                self.notebook_kernels_answer(request, &python)
+            }
             Waiting::UpdateCheck { .. } => {
                 let check = self.update.as_ref()?;
                 // `take_the_update_answer` is what reads the channel, once a frame, beside the git
@@ -681,6 +702,14 @@ impl UnluminousApp {
             Waiting::NotebookVariables { .. } => (
                 "notebook.variables",
                 "The kernel had not answered when the time ran out; it may be busy running a cell.".to_owned(),
+            ),
+            Waiting::NotebookPythons { .. } => (
+                "notebook.kernel",
+                "The search for Pythons was still running when the time ran out.".to_owned(),
+            ),
+            Waiting::NotebookKernels { .. } => (
+                "notebook.kernel",
+                "The Python had not listed its kernels when the time ran out.".to_owned(),
             ),
             Waiting::References { rename, .. } => (
                 if rename.is_some() { "editor.rename" } else { "editor.references" },

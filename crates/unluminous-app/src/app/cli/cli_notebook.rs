@@ -15,6 +15,9 @@ use super::*;
 use crate::app::notebook::{KernelSlot, Mode, Run};
 use crate::app::notebook_actions::NotebookAction;
 
+/// How long `notebook kernel pythons` and `notebook kernel kernels` wait for Python to answer.
+const PYTHONS_WAIT: std::time::Duration = std::time::Duration::from_secs(90);
+
 impl UnluminousApp {
     pub(crate) fn cli_notebook(&mut self, request: &Request, verb: &str) -> Outcome {
         match verb {
@@ -82,6 +85,12 @@ impl UnluminousApp {
         let mut cells = Vec::new();
         for (at, cell) in tab.model.cells.iter().enumerate() {
             let state = run_state(tab.runs.get(&cell.id), cell);
+            let finished = match tab.runs.get(&cell.id) {
+                Some(Run::Done { took, clock, .. }) => {
+                    Some((took.as_millis() as u64, clock.to_string()))
+                }
+                _ => None,
+            };
             let first =
                 cell.source.lines().next().unwrap_or("").chars().take(70).collect::<String>();
             let summary = output_summary(cell);
@@ -105,6 +114,8 @@ impl UnluminousApp {
                 "state": state,
                 "firstLine": first,
                 "outputs": summary,
+                "tookMs": finished.as_ref().map(|(took, _)| *took),
+                "finishedAt": finished.as_ref().map(|(_, clock)| clock.clone()),
                 "collapsed": tab.collapsed.contains(&cell.id),
                 "outputCollapsed": tab.outputs_collapsed.contains(&cell.id),
             }));
@@ -365,6 +376,7 @@ impl UnluminousApp {
             Err(problem) => return no(request, code::USAGE, problem),
         };
         let source = request.text("source").unwrap_or_default().replace("\\n", "\n");
+        let source = unluminous_jupyter::text::escape_source(&source).into_owned();
         let file = self.files.at_mut(index);
         let Some(tab) = file.notebook.as_deref_mut() else {
             return no(request, code::FAILED, "not a notebook");
@@ -538,10 +550,20 @@ impl UnluminousApp {
     }
 
     /// Every Python on this machine, and whether each has ipykernel. Looked for now if nobody has.
+    /// The Pythons on this machine. The search runs on a thread, so the answer waits for it.
     fn cli_notebook_pythons(&mut self, request: &Request) -> Outcome {
+        self.look_for_pythons();
+        match self.notebook_pythons_answer(request) {
+            Some(reply) => Outcome::Reply(reply),
+            None => Outcome::Hold(Waiting::NotebookPythons { until: Instant::now() + PYTHONS_WAIT }),
+        }
+    }
+
+    /// The answer to `notebook kernel pythons`, once the search has finished.
+    pub(crate) fn notebook_pythons_answer(&mut self, request: &Request) -> Option<Reply> {
+        self.look_for_pythons();
         if !matches!(self.pythons, crate::app::notebook_kernel::Pythons::Found(_)) {
-            let found = unluminous_jupyter::kernel::find_pythons(Some(self.tree.root()));
-            self.pythons = crate::app::notebook_kernel::Pythons::Found(found);
+            return None;
         }
         let found = self.pythons.found();
         let rows: Vec<String> = found
@@ -557,7 +579,7 @@ impl UnluminousApp {
             })
             .collect();
         let data: Vec<Value> = found.iter().map(|python| json!({ "path": python.path.to_string_lossy(), "version": python.version, "ipykernel": python.has_ipykernel, "foundBy": python.found_by })).collect();
-        lines(request, format!("{} Python(s)", found.len()), rows, json!({ "pythons": data }))
+        Some(lines_reply(request, format!("{} Python(s)", found.len()), rows, json!({ "pythons": data })))
     }
 
     /// The kernels a Python has.
@@ -572,23 +594,27 @@ impl UnluminousApp {
                 "Say which Python with --python, or run a cell first.",
             );
         };
-        match unluminous_jupyter::kernel::list_kernelspecs(&python) {
+        // Asked afresh, so a kernel installed since the last listing is in the answer.
+        self.kernelspecs.remove(&python);
+        self.ask_for_the_kernelspecs(&python);
+        Outcome::Hold(Waiting::NotebookKernels { python, until: Instant::now() + PYTHONS_WAIT })
+    }
+
+    /// The answer to `notebook kernel kernels`, once the Python has listed them.
+    pub(crate) fn notebook_kernels_answer(&mut self, request: &Request, python: &Path) -> Option<Reply> {
+        self.take_the_kernelspecs();
+        let listed = self.kernelspecs.get(python)?.as_ref()?;
+        Some(match listed {
             Ok(specs) => {
                 let rows: Vec<String> = specs
                     .iter()
                     .map(|spec| format!("{}  {} ({})", spec.name, spec.display_name, spec.language))
                     .collect();
                 let data: Vec<Value> = specs.iter().map(|spec| json!({ "name": spec.name, "displayName": spec.display_name, "language": spec.language })).collect();
-                self.kernelspecs.insert(python, Some(specs));
-                lines(
-                    request,
-                    format!("{} kernel(s)", rows.len()),
-                    rows,
-                    json!({ "kernels": data }),
-                )
+                lines_reply(request, format!("{} kernel(s)", rows.len()), rows, json!({ "kernels": data }))
             }
-            Err(problem) => no(request, code::FAILED, problem),
-        }
+            Err(problem) => Reply::failed(&request.command, code::FAILED, problem.clone()),
+        })
     }
 
     /// Choose the Python, the kernelspec, or both.
@@ -757,59 +783,60 @@ fn outputs_as_text(cell: &Cell, pictures: &Path, number: usize) -> (String, Vec<
     let mut text = Vec::new();
     let mut data = Vec::new();
     for (at, output) in cell.outputs.iter().enumerate() {
-        let (words, value) = match outputs::shown(output) {
-            Shown::Stream { stderr, text } => (
-                outputs::collapse_carriage_returns(&text),
-                json!({ "type": if stderr { "stderr" } else { "stdout" }, "text": text }),
-            ),
-            Shown::Error { ename, evalue, traceback } => {
-                let lines: Vec<String> = traceback
-                    .iter()
-                    .map(|line| line.iter().map(|span| span.text.as_str()).collect())
-                    .collect();
-                // IPython's traceback already ends with the error's own line; a kernel that sends
-                // none gets the line said once.
-                let words = match lines.is_empty() {
-                    true => format!("{ename}: {evalue}"),
-                    false => lines.join("\n"),
-                };
-                (
-                    words,
-                    json!({ "type": "error", "ename": ename, "evalue": evalue, "traceback": lines }),
-                )
-            }
-            Shown::Table(table) => {
-                let rows: Vec<String> =
-                    table.header.iter().chain(&table.rows).map(|row| row.join(" | ")).collect();
-                (
-                    rows.join("\n"),
-                    json!({ "type": "table", "header": table.header, "rows": table.rows }),
-                )
-            }
-            Shown::Png(bytes) | Shown::Jpeg(bytes) => {
-                let place = pictures.join(format!("notebook-cell-{number}-output-{}.png", at + 1));
-                match crate::services::store::write_atomically(&place, &bytes) {
-                    Ok(()) => (
-                        format!("[picture written to {}]", place.display()),
-                        json!({ "type": "picture", "path": place.to_string_lossy() }),
-                    ),
-                    Err(problem) => (
-                        format!("[a picture that could not be written: {problem}]"),
-                        json!({ "type": "picture" }),
-                    ),
-                }
-            }
-            Shown::Svg(svg) => {
-                ("[an SVG picture]".to_owned(), json!({ "type": "svg", "svg": svg }))
-            }
-            Shown::Html(words)
-            | Shown::Text(words)
-            | Shown::Markdown(words)
-            | Shown::Latex(words)
-            | Shown::Json(words) => (words.clone(), json!({ "type": "text", "text": words })),
-        };
+        let name = format!("notebook-cell-{number}-output-{}", at + 1);
+        let (words, value) = output_as_text(outputs::shown(output), pictures, &name);
         text.push(words.trim_end().to_owned());
         data.push(value);
     }
     (text.join("\n"), data)
+}
+
+/// One output as the words `notebook cell` prints and the data it answers with. A picture is written
+/// to `pictures` under `name`, with the extension its format has.
+fn output_as_text(shown: Shown, pictures: &Path, name: &str) -> (String, Value) {
+    match shown {
+        Shown::Stream { stderr, text } => (
+            outputs::collapse_carriage_returns(&text),
+            json!({ "type": if stderr { "stderr" } else { "stdout" }, "text": text }),
+        ),
+        Shown::Error { ename, evalue, traceback } => {
+            let lines: Vec<String> = traceback
+                .iter()
+                .map(|line| line.iter().map(|span| span.text.as_str()).collect())
+                .collect();
+            // IPython's traceback already ends with the error's own line; a kernel that sends
+            // none gets the line said once.
+            let words = match lines.is_empty() {
+                true => format!("{ename}: {evalue}"),
+                false => lines.join("\n"),
+            };
+            (words, json!({ "type": "error", "ename": ename, "evalue": evalue, "traceback": lines }))
+        }
+        Shown::Table(table) => {
+            let rows: Vec<String> =
+                table.header.iter().chain(&table.rows).map(|row| row.join(" | ")).collect();
+            (rows.join("\n"), json!({ "type": "table", "header": table.header, "rows": table.rows }))
+        }
+        Shown::Png(bytes) => picture_as_text(&pictures.join(format!("{name}.png")), &bytes),
+        Shown::Jpeg(bytes) => picture_as_text(&pictures.join(format!("{name}.jpg")), &bytes),
+        Shown::Svg(svg) => ("[an SVG picture]".to_owned(), json!({ "type": "svg", "svg": svg })),
+        Shown::Html(words)
+        | Shown::Text(words)
+        | Shown::Markdown(words)
+        | Shown::Latex(words)
+        | Shown::Json(words) => (words.clone(), json!({ "type": "text", "text": words })),
+    }
+}
+
+/// Write a picture output to `place`, and say where it went.
+fn picture_as_text(place: &Path, bytes: &[u8]) -> (String, Value) {
+    match crate::services::store::write_atomically(place, bytes) {
+        Ok(()) => (
+            format!("[picture written to {}]", place.display()),
+            json!({ "type": "picture", "path": place.to_string_lossy() }),
+        ),
+        Err(problem) => {
+            (format!("[a picture that could not be written: {problem}]"), json!({ "type": "picture" }))
+        }
+    }
 }

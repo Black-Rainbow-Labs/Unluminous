@@ -238,7 +238,7 @@ impl UnluminousApp {
         }
         let specs = python
             .as_ref()
-            .and_then(|path| self.kernelspecs.get(path).cloned().flatten())
+            .and_then(|path| self.kernelspecs.get(path).cloned().flatten().and_then(Result::ok))
             .unwrap_or_default();
         let choice = controls::dropdown(ui, area, &words, "Kernel", None, |ui| {
             kernel_rows(ui, &pythons, python.as_deref(), &specs)
@@ -269,7 +269,7 @@ impl UnluminousApp {
     }
 
     /// Ask, on a thread, which kernels the Python at `python` has, once.
-    fn ask_for_the_kernelspecs(&mut self, python: &Path) {
+    pub(crate) fn ask_for_the_kernelspecs(&mut self, python: &Path) {
         if self.kernelspecs.contains_key(python) {
             return;
         }
@@ -278,7 +278,7 @@ impl UnluminousApp {
         let (path, wake) = (python.to_path_buf(), self.thread_waker());
         let into = found.clone();
         std::thread::spawn(move || {
-            let specs = unluminous_jupyter::kernel::list_kernelspecs(&path).unwrap_or_default();
+            let specs = unluminous_jupyter::kernel::list_kernelspecs(&path);
             *into.lock().expect("not poisoned") = Some((path, specs));
             wake();
         });

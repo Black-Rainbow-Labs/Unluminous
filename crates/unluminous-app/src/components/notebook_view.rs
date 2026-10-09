@@ -617,7 +617,7 @@ pub fn status_words(run: Option<&Run>, count: Option<u64>) -> String {
     match run {
         Some(Run::Queued) => "Queued".to_owned(),
         Some(Run::Running { since }) => format!("[*] {}", duration(since.elapsed())),
-        Some(Run::Done { took, .. }) => format!("{count} {}", duration(*took)),
+        Some(Run::Done { took, clock, .. }) => format!("{count} {} at {clock}", duration(*took)),
         Some(Run::Skipped) => {
             "Not run, because a cell before it failed or the run was stopped".to_owned()
         }
@@ -807,8 +807,9 @@ mod tests {
             ok: true,
             took: std::time::Duration::from_millis(69),
             at: std::time::SystemTime::now(),
+            clock: crate::services::clock::TimeOfDay { hour: 14, minute: 3, second: 22 },
         };
-        assert_eq!(status_words(Some(&done), Some(3)), "[3] 69ms");
+        assert_eq!(status_words(Some(&done), Some(3)), "[3] 69ms at 14:03:22");
         assert_eq!(status_words(Some(&Run::Queued), None), "Queued");
         assert_eq!(status_words(None, Some(7)), "[7]");
         assert_eq!(status_words(None, None), "[ ]");

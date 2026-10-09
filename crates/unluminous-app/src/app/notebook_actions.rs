@@ -58,6 +58,12 @@ pub enum NotebookAction {
     ExtendBelow,
     SelectFirst,
     SelectLast,
+    /// In edit mode the cell's text, or everything when that is already selected. In command mode
+    /// every cell.
+    SelectCell,
+    /// The start and the end of the caret's cell, in edit mode.
+    CellStart,
+    CellEnd,
     RenderMarkdown,
     PreviousSection,
     NextSection,
@@ -113,6 +119,9 @@ pub const ALL: &[NotebookAction] = &[
     NotebookAction::ExtendBelow,
     NotebookAction::SelectFirst,
     NotebookAction::SelectLast,
+    NotebookAction::SelectCell,
+    NotebookAction::CellStart,
+    NotebookAction::CellEnd,
     NotebookAction::RenderMarkdown,
     NotebookAction::PreviousSection,
     NotebookAction::NextSection,
@@ -165,6 +174,9 @@ impl NotebookAction {
             NotebookAction::ExtendBelow => "extend-selection-below".into(),
             NotebookAction::SelectFirst => "select-first-cell".into(),
             NotebookAction::SelectLast => "select-last-cell".into(),
+            NotebookAction::SelectCell => "select-cell".into(),
+            NotebookAction::CellStart => "cell-start".into(),
+            NotebookAction::CellEnd => "cell-end".into(),
             NotebookAction::RenderMarkdown => "render-markdown".into(),
             NotebookAction::PreviousSection => "previous-section".into(),
             NotebookAction::NextSection => "next-section".into(),
@@ -175,6 +187,17 @@ impl NotebookAction {
     /// The action of this name.
     pub fn from_name(name: &str) -> Option<NotebookAction> {
         ALL.iter().copied().find(|action| action.name() == name)
+    }
+
+    /// What a person calls it: the action's name with its words spelled out, which is what an
+    /// answer to the command line says was done.
+    pub fn label(&self) -> String {
+        let name = self.name().replace('-', " ");
+        let mut letters = name.chars();
+        match letters.next() {
+            Some(first) => first.to_uppercase().chain(letters).collect(),
+            None => name,
+        }
     }
 }
 
@@ -334,6 +357,9 @@ impl UnluminousApp {
             | NotebookAction::SelectLast
             | NotebookAction::PreviousSection
             | NotebookAction::NextSection => self.move_the_choice(index, what),
+            NotebookAction::SelectCell | NotebookAction::CellStart | NotebookAction::CellEnd => {
+                self.move_within_the_cell(index, what)
+            }
             NotebookAction::ClearOutput
             | NotebookAction::ClearAllOutputs
             | NotebookAction::CollapseCell
@@ -412,7 +438,7 @@ impl UnluminousApp {
             NotebookAction::RestartRunAll => self.restart_the_kernel(index, true),
             _ => self.shut_down_the_kernel(index),
         }
-        Ok(format!("Kernel: {}", what.name()))
+        Ok(format!("{}.", what.label()))
     }
 
     /// Put the caret at the start of cell `cell`, in edit mode, or choose it in command mode.
@@ -510,13 +536,43 @@ impl UnluminousApp {
         if what == NotebookAction::ToggleVariables {
             self.ask_for_the_variables(index);
         }
-        Ok(what.name())
+        Ok(format!("{} on {}.", what.label(), cells_words(&chosen)))
+    }
+
+    /// Select the caret's cell's text, or move the caret to its start or end. In command mode,
+    /// Select Cell chooses every cell.
+    fn move_within_the_cell(&mut self, index: usize, what: NotebookAction) -> Result<String, String> {
+        let file = self.files.at_mut(index);
+        let Some(tab) = file.notebook.as_deref_mut() else { return Err(String::new()) };
+        if let (NotebookAction::SelectCell, Mode::Command { .. }) = (what, tab.mode) {
+            let last = tab.len().saturating_sub(1);
+            tab.mode = Mode::Command { anchor: 0, head: last };
+            return Ok(format!("Every cell is chosen, {} of them.", last + 1));
+        }
+        let selection = file.document.selection();
+        let Some(cell) = tab.cell_at_offset(selection.head) else {
+            return Err("The caret is not in a cell.".to_owned());
+        };
+        let body = tab.spans[cell].body_bytes.clone();
+        let whole_cell = selection.anchor.min(selection.head) == body.start
+            && selection.anchor.max(selection.head) == body.end;
+        let (anchor, head) = match what {
+            NotebookAction::CellStart => (body.start, body.start),
+            NotebookAction::CellEnd => (body.end, body.end),
+            _ if whole_cell => (0, file.document.text().len_bytes()),
+            _ => (body.start, body.end),
+        };
+        file.document.apply(Command::PlaceCaret { offset: anchor, extend: false });
+        file.document.apply(Command::PlaceCaret { offset: head, extend: true });
+        self.reveal_caret = true;
+        Ok(format!("{} in cell {}.", what.label(), cell + 1))
     }
 
     /// Every action that changes the text: adding, removing, moving, merging, splitting and converting
     /// cells, and the cell clipboard.
     fn edit_the_cells(&mut self, index: usize, what: NotebookAction) -> Result<String, String> {
         let chosen = self.chosen_cells(index);
+        let said = format!("{} on {}.", what.label(), cells_words(&chosen));
         if chosen.is_empty()
             && !matches!(
                 what,
@@ -560,7 +616,7 @@ impl UnluminousApp {
             NotebookAction::CommentCells => self.comment_cells(index, chosen),
             _ => {}
         }
-        Ok(what.name())
+        Ok(said)
     }
 
     /// Add an empty cell of `kind` before cell `at`, and put the caret in it.
@@ -746,6 +802,15 @@ impl UnluminousApp {
         file.document.apply(Command::ToggleLineComment { marker: "# ".to_owned() });
         let length = file.document.text().len_bytes();
         file.document.apply(Command::PlaceCaret { offset: caret.head.min(length), extend: false });
+    }
+}
+
+/// The cells a range covers, in words: `cell 3`, or `cells 3 to 5`.
+fn cells_words(cells: &std::ops::Range<usize>) -> String {
+    match cells.len() {
+        0 => "no cell".to_owned(),
+        1 => format!("cell {}", cells.start + 1),
+        _ => format!("cells {} to {}", cells.start + 1, cells.end),
     }
 }
 

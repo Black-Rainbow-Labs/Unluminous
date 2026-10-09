@@ -46,6 +46,7 @@ pub struct Python {
 
 /// A command for `program` that opens no console window on Windows.
 pub(super) fn command(program: &Path) -> Command {
+    #[cfg_attr(not(windows), allow(unused_mut))]
     let mut command = Command::new(program);
     #[cfg(target_os = "windows")]
     {

@@ -55,6 +55,8 @@ pub struct Heard {
     pub message: Option<String>,
     /// The kernel answered a completion, so the popup is worked out again.
     pub completions: bool,
+    /// A cell finished running, so a Variables panel that is showing asks for the variables again.
+    pub finished: bool,
 }
 
 impl UnluminousApp {
@@ -65,25 +67,7 @@ impl UnluminousApp {
         // click elsewhere cannot take the kernel away with it.
         self.files.make_permanent(index);
         let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() else { return };
-        for cell in cells {
-            let Some(found) = tab.model.cells.get(cell) else { continue };
-            let id = found.id.clone();
-            match found.kind {
-                CellKind::Code => {
-                    if !tab.queue.contains(&id)
-                        && tab.running.as_ref().is_none_or(|run| run.cell != id)
-                    {
-                        tab.queue.push_back(id.clone());
-                        tab.runs.insert(id, Run::Queued);
-                    }
-                }
-                CellKind::Markdown => {
-                    tab.editing.remove(&id);
-                    tab.bands_revision += 1;
-                }
-                CellKind::Raw => {}
-            }
-        }
+        queue_cells(tab, cells);
         if !tab.queue.is_empty() {
             self.start_a_kernel_if_needed(index);
         }
@@ -163,6 +147,17 @@ impl UnluminousApp {
         }
     }
 
+    /// Stop every notebook's kernel and wait until each one has gone, for a window that is closing.
+    /// A kernel dropped earlier, by a closed tab or a restart, is waited for too.
+    pub(crate) fn stop_every_kernel(&mut self) {
+        for index in 0..self.files.len() {
+            if let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() {
+                tab.kernel = KernelSlot::NotStarted;
+            }
+        }
+        kernel::wait_for_kernels_to_stop();
+    }
+
     /// Say that a notebook cannot run because there is no Python, and stop waiting for one.
     fn no_python_was_found(&mut self, index: usize) {
         if let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() {
@@ -232,6 +227,7 @@ impl UnluminousApp {
         let mut changed = false;
         let mut said = None;
         let mut completions = false;
+        let mut finished = false;
         let mut steps = Vec::new();
         for event in events {
             if let Some(step) = crate::app::notebook_debug::take_a_debug_event(tab, &event) {
@@ -240,6 +236,7 @@ impl UnluminousApp {
             let heard = take_event(tab, event);
             changed |= heard.changed;
             completions |= heard.completions;
+            finished |= heard.finished;
             said = heard.message.or(said);
         }
         if let Some(note) = notice_a_long_run(tab) {
@@ -248,23 +245,34 @@ impl UnluminousApp {
         if changed {
             file.document.note_a_change_outside_the_text();
         }
+        let name = file.path().and_then(Path::file_name).map(|name| name.to_string_lossy().into_owned());
         if let Some(message) = said {
-            self.message = Some(message);
+            // A notebook that is not showing names itself, or its kernel's news reads as being about
+            // the tab that is.
+            self.message = Some(match (index == self.files.active_index(), name) {
+                (false, Some(name)) => format!("{name}: {message}"),
+                _ => message,
+            });
         }
         if completions && index == self.files.active_index() {
             self.kernel_completions_arrived();
         }
+        let showing = self.files.at(index).notebook.as_deref().is_some_and(|tab| tab.variables_showing);
+        if finished && showing {
+            self.ask_for_the_variables(index);
+        }
         for step in steps {
             self.take_a_debug_step(index, step);
         }
-        // A cell waiting to be debugged while the kernel was still starting carries on once it is up.
+        // A cell waiting to be debugged carries on whenever the kernel has answered everything it
+        // was asked: once it has started, and once each step's answer is in.
         let waiting = self
             .files
             .at(index)
             .notebook
             .as_deref()
             .and_then(|tab| tab.debugging.as_ref())
-            .is_some_and(|debugging| debugging.waiting.is_some() && debugging.port == 0);
+            .is_some_and(|debugging| debugging.waiting.is_some());
         if waiting {
             self.carry_on_debugging(index);
         }
@@ -280,14 +288,18 @@ impl UnluminousApp {
             self.start_a_kernel_if_needed(index);
             return;
         }
-        let text = self.files.at(index).document.text().to_string();
-        let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() else { return };
-        if tab.running.is_some() || tab.queue.is_empty() || !kernel_is_free(tab) {
+        let ready = self.files.at(index).notebook.as_deref().is_some_and(|tab| {
+            tab.running.is_none() && !tab.queue.is_empty() && kernel_is_free(tab)
+        });
+        if !ready {
             return;
         }
+        // Copied only once there is a cell to send, since this is asked on every frame.
+        let text = self.files.at(index).document.text().to_string();
+        let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() else { return };
         let Some(id) = tab.queue.pop_front() else { return };
         let Some(cell) = tab.index_of(&id) else { return };
-        let source = text::source_of(&text, &tab.spans[cell]).to_owned();
+        let source = text::cell_source(&text, &tab.spans[cell]).into_owned();
         let Some(kernel) = tab.kernel() else { return };
         let request = kernel.execute(&source);
         begin_a_run(tab, &id, &request);
@@ -303,7 +315,8 @@ impl UnluminousApp {
     }
 
     /// Restart the kernel of the tab at `index`, forgetting every variable. With `run_all`, every
-    /// cell is queued to run again once it is back.
+    /// code cell is queued once the new kernel is ready. Queued now, the cells would be skipped by the
+    /// `Restarted` event that clears the old kernel's run.
     pub(crate) fn restart_the_kernel(&mut self, index: usize, run_all: bool) {
         let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() else { return };
         skip_what_is_queued(tab);
@@ -311,11 +324,12 @@ impl UnluminousApp {
         tab.waiting = None;
         tab.variables.clear();
         match tab.kernel() {
-            Some(kernel) => kernel.restart(),
+            Some(kernel) => {
+                kernel.restart();
+                tab.run_all_after_restart = run_all;
+            }
+            None if run_all => self.run_every_notebook_cell(index),
             None => self.start_a_kernel_if_needed(index),
-        }
-        if run_all {
-            self.run_every_notebook_cell(index);
         }
     }
 
@@ -367,9 +381,11 @@ fn waiting_request(tab: &NotebookTab, cell: &str) -> String {
 }
 
 /// True when the kernel has started and is not busy restarting or dead.
-fn kernel_is_free(tab: &mut NotebookTab) -> bool {
-    tab.kernel()
-        .is_some_and(|kernel| matches!(kernel.state(), KernelState::Idle | KernelState::Busy))
+fn kernel_is_free(tab: &NotebookTab) -> bool {
+    match &tab.kernel {
+        KernelSlot::Live(kernel) => matches!(kernel.state(), KernelState::Idle | KernelState::Busy),
+        _ => false,
+    }
 }
 
 /// The kernelspec a notebook's own metadata names, which is the kernel it was last run with.
@@ -420,7 +436,7 @@ pub fn take_event(tab: &mut NotebookTab, event: Event) -> Heard {
         Event::ExecuteInput { request, execution_count } => {
             let Some(id) = cell_for(tab, request.as_deref()) else { return Heard::default() };
             set_count(tab, &id, execution_count);
-            Heard { changed: true, message: None, completions: false }
+            Heard { changed: true, message: None, completions: false, finished: false }
         }
         Event::Stream { request, name, text } => add_stream(tab, request.as_deref(), &name, &text),
         Event::DisplayData { request, data, metadata, display_id } => {
@@ -479,24 +495,29 @@ fn take_a_lifecycle_event(tab: &mut NotebookTab, event: Event) -> Heard {
     match event {
         Event::Restarted { .. } => {
             stop_the_run(tab);
+            let run_all = std::mem::take(&mut tab.run_all_after_restart);
+            if run_all {
+                queue_cells(tab, 0..tab.len());
+            }
             Heard {
                 changed: false,
-                message: Some("The kernel restarted.".to_owned()),
+                message: Some(match run_all {
+                    true => "The kernel restarted. Running every cell.".to_owned(),
+                    false => "The kernel restarted.".to_owned(),
+                }),
                 completions: false,
+                finished: false,
             }
         }
         Event::Died { reason } => {
+            let changed = say_the_kernel_died_in_the_running_cell(tab, &reason);
             stop_the_run(tab);
-            Heard {
-                changed: false,
-                message: Some(format!("The kernel died: {reason}")),
-                completions: false,
-            }
+            Heard { changed, message: Some(format!("The kernel died: {reason}")), completions: false, finished: false }
         }
         Event::Failed { message, missing } => {
             stop_the_run(tab);
             tab.kernel = KernelSlot::Failed { reason: message.clone(), missing };
-            Heard { changed: false, message: Some(message), completions: false }
+            Heard { changed: false, message: Some(message), completions: false, finished: false }
         }
         Event::Stopped => {
             stop_the_run(tab);
@@ -504,6 +525,51 @@ fn take_a_lifecycle_event(tab: &mut NotebookTab, event: Event) -> Heard {
         }
         _ => Heard::default(),
     }
+}
+
+/// Queue the code cells in `cells` to run, skipping any already queued or running, and show the
+/// Markdown cells among them rendered.
+fn queue_cells(tab: &mut NotebookTab, cells: std::ops::Range<usize>) {
+    for cell in cells {
+        let Some(found) = tab.model.cells.get(cell) else { continue };
+        let id = found.id.clone();
+        match found.kind {
+            CellKind::Code => {
+                if !tab.queue.contains(&id) && tab.running.as_ref().is_none_or(|run| run.cell != id)
+                {
+                    tab.queue.push_back(id.clone());
+                    tab.runs.insert(id, Run::Queued);
+                }
+            }
+            CellKind::Markdown => {
+                tab.editing.remove(&id);
+                tab.bands_revision += 1;
+            }
+            CellKind::Raw => {}
+        }
+    }
+}
+
+/// Mark the cell that was running when the kernel died as failed, with an output saying so, which
+/// is what the reference editor shows. Answers whether there was such a cell.
+fn say_the_kernel_died_in_the_running_cell(tab: &mut NotebookTab, reason: &str) -> bool {
+    let Some(running) = tab.running.take() else { return false };
+    let took = match tab.runs.get(&running.cell) {
+        Some(Run::Running { since }) => since.elapsed(),
+        _ => std::time::Duration::ZERO,
+    };
+    tab.runs.insert(running.cell.clone(), Run::Done {
+            ok: false,
+            took,
+            at: SystemTime::now(),
+            clock: crate::services::clock::time_of_day(),
+        });
+    if let Some(cell) = tab.index_of(&running.cell).and_then(|at| tab.model.cells.get_mut(at)) {
+        let text = format!("The kernel died while this cell was running: {reason}\n");
+        cell.outputs.push(unluminous_jupyter::nbformat::Output::stream("stderr", &text));
+    }
+    tab.outputs_changed(&running.cell);
+    true
 }
 
 /// Whatever was running did not finish and whatever was queued will not run.
@@ -551,7 +617,7 @@ fn add_stream(tab: &mut NotebookTab, request: Option<&str>, name: &str, text: &s
         _ => cell.outputs.push(Output::stream(name, text)),
     }
     tab.outputs_changed(&id);
-    Heard { changed: true, message: None, completions: false }
+    Heard { changed: true, message: None, completions: false, finished: false }
 }
 
 /// Add one output to the cell a request belongs to.
@@ -566,7 +632,7 @@ fn add_output(tab: &mut NotebookTab, request: Option<&str>, output: Output) -> H
     };
     cell.outputs.push(output);
     tab.outputs_changed(&id);
-    Heard { changed: true, message: None, completions: false }
+    Heard { changed: true, message: None, completions: false, finished: false }
 }
 
 /// Replace every output shown under `display_id`, in whichever cell it is.
@@ -584,7 +650,7 @@ fn update_display(tab: &mut NotebookTab, display_id: &str, data: Value, metadata
     for id in touched {
         tab.outputs_changed(&id);
     }
-    Heard { changed, message: None, completions: false }
+    Heard { changed, message: None, completions: false, finished: false }
 }
 
 /// `clear_output`: now, or when the next output arrives.
@@ -598,7 +664,7 @@ fn clear_output(tab: &mut NotebookTab, request: Option<&str>, wait: bool) -> Hea
         cell.outputs.clear();
     }
     tab.outputs_changed(&id);
-    Heard { changed: true, message: None, completions: false }
+    Heard { changed: true, message: None, completions: false, finished: false }
 }
 
 /// The kernel has finished a cell: record how it went, and stop the run if it failed.
@@ -619,7 +685,12 @@ fn finish_a_run(
         _ => std::time::Duration::ZERO,
     };
     let ok = status == "ok";
-    tab.runs.insert(running.cell.clone(), Run::Done { ok, took, at: SystemTime::now() });
+    tab.runs.insert(running.cell.clone(), Run::Done {
+            ok,
+            took,
+            at: SystemTime::now(),
+            clock: crate::services::clock::time_of_day(),
+        });
     if count.is_some() {
         set_count(tab, &running.cell, count);
     }
@@ -628,7 +699,7 @@ fn finish_a_run(
         skip_what_is_queued(tab);
     }
     tab.outputs_changed(&running.cell);
-    Heard { changed: true, message: None, completions: false }
+    Heard { changed: true, message: None, completions: false, finished: true }
 }
 
 #[cfg(test)]
@@ -751,5 +822,35 @@ mod tests {
         assert!(tab.running.is_none());
         assert_eq!(tab.runs.get("a"), Some(&Run::Skipped));
         assert_eq!(tab.runs.get("b"), Some(&Run::Skipped));
+    }
+
+    #[test]
+    fn restart_and_run_all_queues_every_code_cell_once_the_new_kernel_is_up() {
+        let mut tab = running_tab();
+        tab.run_all_after_restart = true;
+        let heard =
+            take_event(&mut tab, Event::Restarted { info: serde_json::json!({}), pid: None });
+        let code: Vec<String> = tab
+            .model
+            .cells
+            .iter()
+            .filter(|cell| cell.kind == CellKind::Code)
+            .map(|cell| cell.id.clone())
+            .collect();
+        assert_eq!(tab.queue.iter().cloned().collect::<Vec<_>>(), code);
+        assert!(code.iter().all(|id| tab.runs.get(id) == Some(&Run::Queued)));
+        assert!(!tab.run_all_after_restart, "the flag is used once");
+        assert_eq!(heard.message.as_deref(), Some("The kernel restarted. Running every cell."));
+    }
+
+    #[test]
+    fn a_kernel_that_dies_mid_cell_fails_that_cell_and_says_why_in_its_output() {
+        let mut tab = running_tab();
+        take_event(&mut tab, Event::Died { reason: "the kernel process ended".into() });
+        assert!(matches!(tab.runs.get("a"), Some(Run::Done { ok: false, .. })));
+        assert_eq!(tab.runs.get("b"), Some(&Run::Skipped));
+        let outputs = &tab.model.cells[tab.index_of("a").unwrap()].outputs;
+        let said = outputs.last().unwrap().text().unwrap_or_default();
+        assert!(said.contains("The kernel died while this cell was running"), "{said}");
     }
 }

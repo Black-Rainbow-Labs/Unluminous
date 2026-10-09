@@ -41,8 +41,9 @@ pub enum Run {
     Queued,
     /// Sent to the kernel at `since`, and not finished.
     Running { since: Instant },
-    /// Finished: whether it raised, how long it took, and when it ended.
-    Done { ok: bool, took: Duration, at: SystemTime },
+    /// Finished: whether it raised, how long it took, and when it ended, also as the time of day on
+    /// this machine's clock, which is what the status line shows.
+    Done { ok: bool, took: Duration, at: SystemTime, clock: crate::services::clock::TimeOfDay },
     /// Not run, because a cell before it in the same run failed or the run was interrupted.
     Skipped,
 }
@@ -172,6 +173,8 @@ pub struct NotebookTab {
     /// The number the gutter draws beside each paragraph: counted within its cell, and none beside a
     /// marker or a rendered cell. Worked out with the layout.
     pub numbers: Vec<Option<usize>>,
+    /// Set by Restart and Run All: the cells are queued when the new kernel says it is ready.
+    pub run_all_after_restart: bool,
     /// The line breaks the file was written with, which it is written back with. Jupyter on Windows
     /// writes `\r\n`, and a notebook saved unchanged must come back byte for byte.
     pub line_ending: unluminous_core::LineEnding,
@@ -229,6 +232,7 @@ impl NotebookTab {
             asked: None,
             debugging: None,
             numbers: Vec::new(),
+            run_all_after_restart: false,
             line_ending: unluminous_core::LineEnding::Lf,
         };
         (tab, text)
@@ -354,7 +358,8 @@ pub fn span_end(span: &CellSpan) -> usize {
 
 /// The edit that puts a new cell of `kind` holding `source` before cell `at`, or after the last cell
 /// when `at` is the number of cells. Answers the edit and the offset the caret goes to, which is the
-/// end of the new cell's source, in the text after it.
+/// end of the new cell's source, in the text after it. `source` is the cell's own source, which is
+/// escaped on the way in as [`text::escape_source`] says.
 pub fn insert_cell(
     spans: &[CellSpan],
     text_len: usize,
@@ -364,6 +369,7 @@ pub fn insert_cell(
     source: &str,
 ) -> (Vec<(Range<usize>, String)>, usize) {
     let marker = text::marker(kind, id);
+    let source = text::escape_source(source);
     match spans.get(at) {
         // Before an existing cell: the marker, the new cell's source, and the line break the old
         // marker needs in front of it.
@@ -410,7 +416,7 @@ pub fn cell_text(text: &str, span: &CellSpan) -> String {
 pub fn with_fresh_ids(cells: &[(CellKind, String)]) -> String {
     cells
         .iter()
-        .map(|(kind, source)| format!("{}\n{}", text::marker(*kind, &nbformat::new_id()), source))
+        .map(|(kind, source)| text::cell_text(*kind, &nbformat::new_id(), source))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -421,7 +427,7 @@ pub fn cells_copied(
     spans: &[CellSpan],
     range: Range<usize>,
 ) -> Vec<(CellKind, String)> {
-    range.map(|cell| (spans[cell].kind, text::source_of(text, &spans[cell]).to_owned())).collect()
+    range.map(|cell| (spans[cell].kind, text::cell_source(text, &spans[cell]).into_owned())).collect()
 }
 
 /// The edit that turns cells `range` into one cell: the first cell's marker, then every source
@@ -455,7 +461,7 @@ pub fn change_kind(
             let span = &spans[cell];
             span.marker?;
             let (_, id) = text::read_marker(&text[span.marker_bytes.clone()])?;
-            Some((span.marker_bytes.clone(), text::marker(kind, &id?)))
+            Some((span.marker_bytes.clone(), text::marker(kind, &id)))
         })
         .collect()
 }

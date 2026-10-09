@@ -14,6 +14,8 @@ pub mod backgrounds;
 pub mod breakpoint_store;
 pub mod browser;
 pub mod browser_session;
+// The time of day on this machine's clock, for saying when a notebook cell finished.
+pub mod clock;
 // Borrowing the terminal's console so that `--version` and `--help` can be read, which on
 // Windows a program in the windows subsystem has to ask for. Nothing anywhere else.
 pub mod console;

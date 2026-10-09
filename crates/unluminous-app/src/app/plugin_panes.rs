@@ -30,6 +30,12 @@ use egui::Rect;
 use crate::app::{dock, files};
 use crate::app::{Focus, PluginHighlighter, UnluminousApp, PLUGIN_TICK};
 
+/// The notebook picture, made the way `icons/notebook/icon.md` says.
+const NOTEBOOK_ICON: &[u8] = include_bytes!("../../icons/notebook/icon.png");
+
+/// The id the notebook picture is decoded under, which no plugin can have because it has a space.
+const NOTEBOOK_ICON_ID: &str = "notebook icon";
+
 /// One provider, and whether it has been opened.
 struct Loaded {
     /// The `plugin.id` of the plugin whose manifest named it.
@@ -1102,7 +1108,8 @@ impl UnluminousApp {
         }
     }
 
-    /// The picture the plugin that claims `path` puts in front of it, decoded and ready to draw.
+    /// The picture the plugin that claims `path` puts in front of it, decoded and ready to draw. A
+    /// notebook gets the notebook picture, `icons/notebook/icon.png`.
     ///
     /// **The id is looked up before the bytes are reached for** (`task-1984` A5). `Icons::texture`
     /// answers from its own map on every call after the first, so the clone of the plugin's whole PNG
@@ -1114,6 +1121,10 @@ impl UnluminousApp {
         path: Option<&Path>,
     ) -> Option<egui::TextureHandle> {
         let path = path?;
+        // A notebook has a picture of its own, whichever plugin colours the code in its cells.
+        if crate::app::notebook_files::is_notebook(path) {
+            return self.icons.texture(ctx, NOTEBOOK_ICON_ID, NOTEBOOK_ICON);
+        }
         let id = self.plugins.for_path(path)?.id.clone();
         if let Some(already) = self.icons.known(&id) {
             return already;

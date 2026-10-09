@@ -169,7 +169,8 @@ pub enum Event {
 
 /// A running kernel and the bridge process that holds it.
 pub struct Kernel {
-    child: Child,
+    /// The bridge. Only `None` once [`Drop`] has handed it to the thread that stops it.
+    child: Option<Child>,
     stdin: Option<ChildStdin>,
     events: Receiver<Event>,
     stderr: Arc<Mutex<VecDeque<String>>>,
@@ -209,7 +210,7 @@ impl Kernel {
         spawn_event_reader(stdout, sender, wake);
         spawn_stderr_reader(stderr, tail.clone());
         let mut kernel = Kernel {
-            child,
+            child: Some(child),
             stdin: Some(stdin),
             events,
             stderr: tail,
@@ -340,7 +341,7 @@ impl Kernel {
 
     /// The operating system process id of the bridge.
     pub fn bridge_pid(&self) -> u32 {
-        self.child.id()
+        self.child.as_ref().map_or(0, Child::id)
     }
 
     /// Send a command that carries a request id, and return that id.
@@ -404,22 +405,50 @@ impl Kernel {
 }
 
 impl Drop for Kernel {
-    /// Ask the bridge to shut the kernel down, wait up to four seconds, then stop whatever is left.
+    /// Ask the bridge to shut the kernel down, and leave the waiting to a thread: up to four seconds
+    /// for the bridge to go, then the bridge and the kernel are stopped. Dropping a kernel happens on
+    /// the window's frame, which must not wait that long. [`wait_for_kernels_to_stop`] waits for
+    /// every such thread, for a program that is about to exit.
     fn drop(&mut self) {
         self.send(json!({"cmd": "shutdown"}));
         self.stdin = None;
-        let deadline = Instant::now() + SHUTDOWN_GRACE;
-        while Instant::now() < deadline {
-            if matches!(self.child.try_wait(), Ok(Some(_))) {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(25));
+        let Some(child) = self.child.take() else { return };
+        let kernel_pid = self.kernel_pid;
+        let stopping = std::thread::Builder::new()
+            .name("unluminous-jupyter-stop".to_owned())
+            .spawn(move || stop_the_bridge(child, kernel_pid));
+        if let Ok(stopping) = stopping {
+            STOPPING.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(stopping);
         }
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        if let Some(pid) = self.kernel_pid {
-            python::kill_process(pid);
+    }
+}
+
+/// The threads stopping kernels that were dropped, for [`wait_for_kernels_to_stop`].
+static STOPPING: Mutex<Vec<std::thread::JoinHandle<()>>> = Mutex::new(Vec::new());
+
+/// Wait up to four seconds for the bridge to end by itself, then stop it and the kernel.
+fn stop_the_bridge(mut child: Child, kernel_pid: Option<u32>) {
+    let deadline = Instant::now() + SHUTDOWN_GRACE;
+    while Instant::now() < deadline {
+        if matches!(child.try_wait(), Ok(Some(_))) {
+            return;
         }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+    if let Some(pid) = kernel_pid {
+        python::kill_process(pid);
+    }
+}
+
+/// Wait until every kernel dropped so far has stopped. A program that is exiting calls this so that
+/// no kernel outlives it.
+pub fn wait_for_kernels_to_stop() {
+    let stopping =
+        std::mem::take(&mut *STOPPING.lock().unwrap_or_else(|poisoned| poisoned.into_inner()));
+    for thread in stopping {
+        let _ = thread.join();
     }
 }
 

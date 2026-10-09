@@ -175,6 +175,8 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_DataExchange",
     "Win32_System_Memory",
     "Win32_System_Ole",
+    # `GetLocalTime`, the time of day a notebook cell finished at. See `services/clock.rs`.
+    "Win32_System_SystemInformation",
     # `CryptProtectData`, which encrypts the browser's session cookies for the current user the way
     # Chromium encrypts its own. See `services/browser_session.rs`.
     "Win32_Security_Cryptography",

@@ -595,6 +595,16 @@ fn read_press(
 ) -> Option<Press> {
     use NotebookAction as Do;
     let (ctrl, shift, alt) = (modifiers.command, modifiers.shift, modifiers.alt);
+    if ctrl && shift && !alt {
+        match key {
+            egui::Key::ArrowUp => return Some(Press::Both(Do::MoveUp)),
+            egui::Key::ArrowDown => return Some(Press::Both(Do::MoveDown)),
+            _ => {}
+        }
+    }
+    if key == egui::Key::A && ctrl && !shift && !alt {
+        return Some(Press::Both(Do::SelectCell));
+    }
     if key == egui::Key::Enter {
         return match (ctrl, shift, alt) {
             (true, false, false) => Some(Press::Both(Do::RunCell)),
@@ -612,9 +622,6 @@ fn read_press(
     match (ctrl, shift, alt) {
         (false, false, false) => Some(Press::Command(key)),
         (false, true, false) => Some(Press::CommandShift(key)),
-        (true, true, false) if matches!(key, egui::Key::ArrowUp | egui::Key::ArrowDown) => {
-            Some(Press::CommandShift(key))
-        }
         (false, false, true) if matches!(key, egui::Key::ArrowUp | egui::Key::ArrowDown) => {
             Some(Press::CommandShift(key))
         }
@@ -642,6 +649,8 @@ fn read_edit_press(
         (egui::Key::A, false, true, true) => Some(Press::Edit(Do::AddAbove(CellKind::Code))),
         (egui::Key::B, false, true, true) => Some(Press::Edit(Do::AddBelow(CellKind::Code))),
         (egui::Key::Minus, true, true, false) => Some(Press::Edit(Do::Split)),
+        (egui::Key::Home, true, false, false) => Some(Press::Edit(Do::CellStart)),
+        (egui::Key::End, true, false, false) => Some(Press::Edit(Do::CellEnd)),
         _ => None,
     }
 }
@@ -669,7 +678,7 @@ fn command_key(key: egui::Key) -> Option<NotebookAction> {
     })
 }
 
-/// A key with shift in command mode, and the two chords that move cells.
+/// A key with shift in command mode, or Alt and an arrow, which also extend the choice.
 fn command_shift_key(key: egui::Key) -> Option<NotebookAction> {
     use NotebookAction as Do;
     Some(match key {

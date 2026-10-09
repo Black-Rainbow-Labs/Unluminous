@@ -15,7 +15,13 @@
 //! The reference editor's "add a breakpoint if none are set".
 //!
 //! Three steps, each waiting on the kernel, so this is a small state machine on the tab
-//! ([`CellDebug`]) driven by [`UnluminousApp::hear_from_one_kernel`]'s events.
+//! ([`CellDebug`]) driven by [`UnluminousApp::hear_from_one_kernel`]'s events. Each step is taken as
+//! soon as none of the previous step's requests is outstanding. The kernel does not have to be idle,
+//! because it queues our requests behind whatever it is running.
+//!
+//! **Ending the session leaves the kernel running.** The session attached, so stopping it only
+//! disconnects. debugpy keeps listening on the same port, and `listen` cannot be called twice in one
+//! process, so the next Debug Cell attaches to that port again.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -34,8 +40,8 @@ pub struct CellDebug {
     pub port: u16,
     /// The request the listen was sent as, until the kernel answers it.
     pub listening: Option<String>,
-    /// True once a session has been opened on the port.
-    pub attached: bool,
+    /// True once the kernel has said debugpy is listening on `port`.
+    pub listens: bool,
     /// The file each cell runs under, by cell id, as the kernel last said.
     pub files: HashMap<String, PathBuf>,
     /// The questions asked about a cell's file name, by request.
@@ -47,11 +53,18 @@ pub struct CellDebug {
     pub run_when: Option<(String, u64, std::time::Instant)>,
 }
 
+impl CellDebug {
+    /// True while a request of ours to the kernel has not been answered.
+    fn is_waiting_on_the_kernel(&self) -> bool {
+        self.listening.is_some() || !self.asking.is_empty()
+    }
+}
+
 /// What a kernel event meant for debugging, acted on by the window once the tab is not borrowed.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DebugStep {
-    /// debugpy is listening on this port: open a session on it.
-    Attach(u16),
+    /// debugpy is listening: open a session on its port.
+    Listening,
     /// The kernel said which file this cell runs under.
     FileKnown(String),
     /// Something went wrong, in these words.
@@ -70,6 +83,9 @@ fn file_name_code(source: &str) -> String {
     format!("import ipykernel.compiler as _unluminous_compiler\nprint(_unluminous_compiler.get_file_name({literal}), end=\"\")\ndel _unluminous_compiler")
 }
 
+/// How long a cell about to be debugged waits for the debugger to answer its breakpoints.
+const BREAKPOINT_ANSWER_LIMIT: std::time::Duration = std::time::Duration::from_secs(15);
+
 /// A port on the loopback interface that nothing is using this instant.
 fn a_free_port() -> Option<u16> {
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).ok()?;
@@ -86,8 +102,8 @@ pub fn take_a_debug_event(tab: &mut NotebookTab, event: &Event) -> Option<DebugS
             debugging.listening = None;
             match status.as_str() {
                 "ok" => {
-                    debugging.attached = true;
-                    Some(DebugStep::Attach(debugging.port))
+                    debugging.listens = true;
+                    Some(DebugStep::Listening)
                 }
                 _ => Some(DebugStep::Failed("debugpy would not listen in the kernel. Is it installed? It comes with ipykernel.".to_owned())),
             }
@@ -136,75 +152,103 @@ impl UnluminousApp {
         Ok(format!("Debugging cell {}.", chosen.start + 1))
     }
 
-    /// Take the next step towards debugging the waiting cell, as far as the kernel allows now.
+    /// Take the next step towards debugging the waiting cell: start the kernel, have debugpy listen,
+    /// attach a session, then ask for the cells' file names. Does nothing while a request of ours is
+    /// still outstanding, so it is safe to call again whenever the kernel says anything.
     pub(crate) fn carry_on_debugging(&mut self, index: usize) {
-        let ready = self.files.at(index).notebook.as_deref().is_some_and(|tab| match &tab.kernel {
-            KernelSlot::Live(kernel) => matches!(kernel.state(), KernelState::Idle),
+        let started = self.files.at(index).notebook.as_deref().is_some_and(|tab| match &tab.kernel {
+            KernelSlot::Live(kernel) => matches!(kernel.state(), KernelState::Idle | KernelState::Busy),
             _ => false,
         });
-        if !ready {
+        if !started {
             self.start_a_kernel_if_needed(index);
             return;
         }
+        let attached = self.debug.as_ref().is_some_and(DebugState::is_alive);
+        let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() else { return };
+        let Some(debugging) = tab.debugging.as_ref() else { return };
+        if debugging.is_waiting_on_the_kernel() {
+            return;
+        }
+        let waiting = debugging.waiting.clone();
+        if waiting.as_deref().and_then(|cell| tab.index_of(cell)).is_none() {
+            // Nothing to debug, or the cell was deleted while the kernel was getting ready.
+            if let Some(debugging) = tab.debugging.as_mut() {
+                debugging.waiting = None;
+            }
+            return;
+        }
+        let Some(debugging) = tab.debugging.as_ref() else { return };
+        if !debugging.listens {
+            self.ask_debugpy_to_listen(index);
+            return;
+        }
+        if !attached {
+            let port = debugging.port;
+            if !self.attach_to_the_kernel(port) {
+                if let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() {
+                    tab.debugging = None;
+                }
+                return;
+            }
+        }
+        self.ask_for_the_cells_files(index);
+    }
+
+    /// Ask the kernel to start debugpy listening on a free port.
+    fn ask_debugpy_to_listen(&mut self, index: usize) {
+        let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() else { return };
+        let Some(port) = a_free_port() else {
+            tab.debugging = None;
+            self.message = Some("No free port could be found for the debugger.".to_owned());
+            return;
+        };
+        let listening = tab.kernel().map(|kernel| kernel.execute_silently(&listen_code(port)));
+        if let Some(debugging) = tab.debugging.as_mut() {
+            debugging.port = port;
+            debugging.listening = listening;
+        }
+    }
+
+    /// Ask the kernel which file each cell to be debugged runs under: the waiting cell, and every code
+    /// cell holding a breakpoint, so a function another cell defined stops where its breakpoint is
+    /// when the debugged cell calls it.
+    fn ask_for_the_cells_files(&mut self, index: usize) {
         let text = self.files.at(index).document.text().to_string();
         let marks: Vec<usize> =
             self.files.at(index).document.breakpoints().iter().map(|mark| mark.offset).collect();
         let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() else { return };
-        let Some(mut debugging) = tab.debugging.take() else { return };
-        if debugging.port == 0 {
-            match a_free_port() {
-                Some(port) => {
-                    debugging.port = port;
-                    debugging.listening =
-                        tab.kernel().map(|kernel| kernel.execute_silently(&listen_code(port)));
-                }
-                None => {
-                    self.message = Some("No free port could be found for the debugger.".to_owned())
-                }
-            }
-        } else if debugging.attached && debugging.asking.is_empty() {
-            // The waiting cell, and every code cell holding a breakpoint, so a function another cell
-            // defined stops where its breakpoint is when the debugged cell calls it.
-            let marked: Vec<usize> = (0..tab.len())
-                .filter(|cell| tab.spans[*cell].kind == CellKind::Code)
-                .filter(|cell| {
-                    let body = &tab.spans[*cell].body_bytes;
-                    Some(tab.model.cells[*cell].id.clone()) == debugging.waiting
-                        || marks.iter().any(|mark| *mark >= body.start && *mark <= body.end)
-                })
-                .collect();
-            let questions: Vec<(String, String)> = marked
-                .into_iter()
-                .map(|cell| {
-                    (
-                        tab.model.cells[cell].id.clone(),
-                        file_name_code(unluminous_jupyter::text::source_of(
-                            &text,
-                            &tab.spans[cell],
-                        )),
-                    )
-                })
-                .collect();
-            let tab = self.files.at_mut(index).notebook.as_deref_mut().expect("still a notebook");
-            for (id, question) in questions {
-                if let Some(request) = tab.kernel().map(|kernel| kernel.execute_quietly(&question))
-                {
-                    debugging.asking.insert(request, id);
-                }
-            }
-            tab.debugging = Some(debugging);
+        let Some(waiting) = tab.debugging.as_ref().and_then(|debugging| debugging.waiting.clone())
+        else {
             return;
+        };
+        let questions: Vec<(String, String)> = (0..tab.len())
+            .filter(|cell| tab.spans[*cell].kind == CellKind::Code)
+            .filter(|cell| {
+                let body = &tab.spans[*cell].body_bytes;
+                tab.model.cells[*cell].id == waiting
+                    || marks.iter().any(|mark| *mark >= body.start && *mark <= body.end)
+            })
+            .map(|cell| {
+                let source = unluminous_jupyter::text::cell_source(&text, &tab.spans[cell]);
+                (tab.model.cells[cell].id.clone(), file_name_code(&source))
+            })
+            .collect();
+        let asked: Vec<(String, String)> = questions
+            .into_iter()
+            .filter_map(|(id, question)| {
+                tab.kernel().map(|kernel| (kernel.execute_quietly(&question), id))
+            })
+            .collect();
+        if let Some(debugging) = tab.debugging.as_mut() {
+            debugging.asking.extend(asked);
         }
-        tab.debugging = Some(debugging);
     }
 
     /// Act on a step the kernel's events completed.
     pub(crate) fn take_a_debug_step(&mut self, index: usize, step: DebugStep) {
         match step {
-            DebugStep::Attach(port) => {
-                self.attach_to_the_kernel(port);
-                self.carry_on_debugging(index);
-            }
+            DebugStep::Listening => self.carry_on_debugging(index),
             DebugStep::FileKnown(cell) => {
                 self.write_a_cells_file(index, &cell);
                 let (all_known, waiting) = match self
@@ -231,7 +275,8 @@ impl UnluminousApp {
     }
 
     /// Open a debug session on debugpy listening in the kernel, with an `attach` rather than a launch.
-    fn attach_to_the_kernel(&mut self, port: u16) {
+    /// Answers whether the session opened.
+    fn attach_to_the_kernel(&mut self, port: u16) -> bool {
         let command = unluminous_dap::AdapterCommand {
             program: None,
             args: Vec::new(),
@@ -249,10 +294,12 @@ impl UnluminousApp {
             Ok(state) => {
                 self.debug = Some(state);
                 self.show_the_debug_tile(true);
+                true
             }
             Err(problem) => {
                 self.message =
-                    Some(format!("The debugger could not attach to the kernel: {problem}"))
+                    Some(format!("The debugger could not attach to the kernel: {problem}"));
+                false
             }
         }
     }
@@ -263,9 +310,11 @@ impl UnluminousApp {
         let before = self.debug.as_ref().map(DebugState::breakpoint_answers).unwrap_or(0);
         let files = self.send_a_notebooks_breakpoints(index, Some(cell)) as u64;
         // The cell waits for the answers: sent straight away, it could start before debugpy has
-        // bound them, and run through a breakpoint it was given. Three seconds is far past a local
-        // answer and short enough that a debugger that never answers does not hold the cell for ever.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        // bound them, and run through a breakpoint it was given. A session that has only just
+        // attached answers once its handshake is done, which took seconds on a busy machine, so
+        // the limit is long. It only exists so a debugger that never answers does not hold the cell
+        // for ever, and running at it says so.
+        let deadline = std::time::Instant::now() + BREAKPOINT_ANSWER_LIMIT;
         if let Some(debugging) =
             self.files.at_mut(index).notebook.as_deref_mut().and_then(|tab| tab.debugging.as_mut())
         {
@@ -289,7 +338,13 @@ impl UnluminousApp {
         debugging.run_when = None;
         let Some(at) = tab.index_of(&cell) else { return };
         self.run_notebook_cells(index, at..at + 1);
-        self.message = Some(format!("Debugging cell {}.", at + 1));
+        self.message = Some(match answers < wanted {
+            true => format!(
+                "Debugging cell {}. The debugger did not confirm its breakpoints, so it may run past them.",
+                at + 1
+            ),
+            false => format!("Debugging cell {}.", at + 1),
+        });
     }
 
     /// Write a cell's source to the file it runs under, which is Jupyter's own `dumpCell`: debugpy reads
@@ -303,11 +358,8 @@ impl UnluminousApp {
         if let Some(tab) = file.notebook.as_deref() {
             let path =
                 tab.debugging.as_ref().and_then(|debugging| debugging.files.get(cell)).cloned();
-            let source = unluminous_jupyter::text::source_of(
-                &file.document.text().to_string(),
-                &tab.spans[at],
-            )
-            .to_owned();
+            let text = file.document.text().to_string();
+            let source = unluminous_jupyter::text::cell_source(&text, &tab.spans[at]).into_owned();
             if let Some(path) = path {
                 if let Some(folder) = path.parent() {
                     let _ = std::fs::create_dir_all(folder);
@@ -426,6 +478,7 @@ mod tests {
         let (mut tab, _) = NotebookTab::new(unluminous_jupyter::nbformat::empty());
         tab.debugging =
             Some(CellDebug { port: 9, listening: Some("r1".into()), ..CellDebug::default() });
+        assert!(tab.debugging.as_ref().unwrap().is_waiting_on_the_kernel());
         let attach = take_a_debug_event(
             &mut tab,
             &Event::ExecuteReply {
@@ -434,7 +487,9 @@ mod tests {
                 execution_count: None,
             },
         );
-        assert_eq!(attach, Some(DebugStep::Attach(9)));
+        assert_eq!(attach, Some(DebugStep::Listening));
+        let debugging = tab.debugging.as_ref().unwrap();
+        assert!(debugging.listens && !debugging.is_waiting_on_the_kernel());
         tab.debugging.as_mut().unwrap().asking.insert("r2".into(), "cell".into());
         let known = take_a_debug_event(
             &mut tab,

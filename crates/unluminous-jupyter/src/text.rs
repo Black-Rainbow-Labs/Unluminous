@@ -12,24 +12,43 @@
 //! # %% [raw] id=0c3d99ab
 //! ```
 //!
-//! The parser also accepts `#%%` and `[code]`, and ignores anything else on the marker line so that a
-//! person can write `# %% Load the data`. Cells are separated by one newline, and no newline follows
-//! the last cell. A source that ends with a newline therefore shows as an empty line before the next
-//! marker, and the conversion back gives the same source.
+//! A marker is exactly one of those three lines with an id, and nothing else on the line. A line such
+//! as `# %% Load the data` inside a cell is the cell's own source, so a notebook written from a
+//! percent script keeps those lines where they are. [`read_percent_marker`] is the looser reading a
+//! `.py` file in the percent format needs.
+//!
+//! A source line that is exactly a marker would still end its cell. [`to_text`] writes such a line
+//! with a word joiner (U+2060) after its `#`, which draws as nothing, and [`cell_source`] takes it out
+//! again, so the source that goes back into the notebook is the source that came out. A line that
+//! already starts with `#` and a word joiner gets one more, so the escape can always be undone.
+//!
+//! Cells are separated by one newline, and no newline follows the last cell. A source that ends with
+//! a newline therefore shows as an empty line before the next marker, and the conversion back gives
+//! the same source.
 //!
 //! The editor normalises line endings to `\n` before this module sees the text.
 
 use crate::nbformat::{new_id, Cell, CellKind, Notebook};
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
+/// The word joiner [`to_text`] puts after the `#` of a source line that would otherwise be a marker.
+const ESCAPE: char = '\u{2060}';
+
+/// The start of a cell's marker line in the percent format: `# %%`, with the kind tag for a
+/// Markdown or raw cell. The notebook tab's marker adds the id, and a `.py` file uses it as it is.
+pub fn percent_head(kind: CellKind) -> &'static str {
+    match kind {
+        CellKind::Code => "# %%",
+        CellKind::Markdown => "# %% [markdown]",
+        CellKind::Raw => "# %% [raw]",
+    }
+}
+
 /// The marker line for a cell, without a line ending.
 pub fn marker(kind: CellKind, id: &str) -> String {
-    match kind {
-        CellKind::Code => format!("# %% id={id}"),
-        CellKind::Markdown => format!("# %% [markdown] id={id}"),
-        CellKind::Raw => format!("# %% [raw] id={id}"),
-    }
+    format!("{} id={id}", percent_head(kind))
 }
 
 /// What the parser finds on a marker line, with byte offsets inside the line so that a repair can
@@ -37,14 +56,22 @@ pub fn marker(kind: CellKind, id: &str) -> String {
 struct ParsedMarker {
     kind: CellKind,
     id: Option<String>,
-    /// The end of `# %%` and of the kind tag if there is one.
-    head_end: usize,
     /// Where the id value sits, when the line has one.
     id_range: Option<Range<usize>>,
 }
 
-/// Parses a marker line, or returns `None` when the line is not one.
+/// Parses a marker line, or returns `None` when the line is not one. Only the form [`marker`] writes
+/// counts: `# %%`, an optional `[markdown]` or `[raw]`, and an id, with nothing after the id.
 fn parse_marker(line: &str) -> Option<ParsedMarker> {
+    let parsed = parse_percent_marker(line)?;
+    let range = parsed.id_range.clone()?;
+    let canonical = line[..range.start - 3] == format!("{} ", percent_head(parsed.kind));
+    (canonical && range.end == line.len()).then_some(parsed)
+}
+
+/// Parses a `# %%` line the way a `.py` file in the percent format writes it: `#%%` or `# %%`, an
+/// optional `[markdown]`, `[raw]` or `[code]`, and anything at all after that.
+fn parse_percent_marker(line: &str) -> Option<ParsedMarker> {
     let prefix = if line.starts_with("# %%") {
         4
     } else if line.starts_with("#%%") {
@@ -54,7 +81,7 @@ fn parse_marker(line: &str) -> Option<ParsedMarker> {
     };
     let (kind, head_end) = read_kind_tag(line, prefix);
     let (id, id_range) = read_id(line, head_end);
-    Some(ParsedMarker { kind, id, head_end, id_range })
+    Some(ParsedMarker { kind, id, id_range })
 }
 
 /// Reads the optional `[markdown]`, `[raw]` or `[code]` tag that follows the marker prefix. It
@@ -93,20 +120,68 @@ pub fn is_marker(line: &str) -> bool {
     parse_marker(line).is_some()
 }
 
-/// The kind and the id (when it has one) written on a marker line, or `None` for any other line.
-pub fn read_marker(line: &str) -> Option<(CellKind, Option<String>)> {
-    parse_marker(line).map(|parsed| (parsed.kind, parsed.id))
+/// The kind and the id written on a marker line, or `None` for any other line.
+pub fn read_marker(line: &str) -> Option<(CellKind, String)> {
+    parse_marker(line).and_then(|parsed| Some((parsed.kind, parsed.id?)))
+}
+
+/// The kind a `# %%` line in a `.py` file starts, or `None` when the line does not start a cell.
+pub fn read_percent_marker(line: &str) -> Option<CellKind> {
+    parse_percent_marker(line).map(|parsed| parsed.kind)
 }
 
 /// The text of a whole notebook: for each cell its marker line and its source, with one newline
 /// between cells and none after the last.
 pub fn to_text(nb: &Notebook) -> String {
-    let parts: Vec<String> = nb
-        .cells
-        .iter()
-        .map(|cell| format!("{}\n{}", marker(cell.kind, &cell.id), cell.source))
-        .collect();
+    let parts: Vec<String> =
+        nb.cells.iter().map(|cell| cell_text(cell.kind, &cell.id, &cell.source)).collect();
     parts.join("\n")
+}
+
+/// One cell as the tab's text holds it: its marker line, a newline and its escaped source.
+pub fn cell_text(kind: CellKind, id: &str, source: &str) -> String {
+    format!("{}\n{}", marker(kind, id), escape_source(source))
+}
+
+/// Whether [`escape_source`] puts a word joiner into this line.
+fn needs_escape(line: &str) -> bool {
+    is_marker(line) || line.strip_prefix('#').is_some_and(|rest| rest.starts_with(ESCAPE))
+}
+
+/// A source as the tab's text holds it. A line that is a marker, or that already starts with `#`
+/// and a word joiner, gets a word joiner after its `#`. Nothing is copied when no line needs one.
+pub fn escape_source(source: &str) -> Cow<'_, str> {
+    if !source.split('\n').any(needs_escape) {
+        return Cow::Borrowed(source);
+    }
+    let lines: Vec<String> = source
+        .split('\n')
+        .map(|line| match needs_escape(line) {
+            true => format!("#{ESCAPE}{}", &line[1..]),
+            false => line.to_owned(),
+        })
+        .collect();
+    Cow::Owned(lines.join("\n"))
+}
+
+/// The rest of a line after `#` and a word joiner, or `None` when the line does not start that way.
+fn without_escape(line: &str) -> Option<&str> {
+    line.strip_prefix('#').and_then(|rest| rest.strip_prefix(ESCAPE))
+}
+
+/// Undoes [`escape_source`]: one word joiner comes out of each line that starts with `#` and one.
+pub fn unescape_source(text: &str) -> Cow<'_, str> {
+    if !text.split('\n').any(|line| without_escape(line).is_some()) {
+        return Cow::Borrowed(text);
+    }
+    let lines: Vec<String> = text
+        .split('\n')
+        .map(|line| match without_escape(line) {
+            Some(rest) => format!("#{rest}"),
+            None => line.to_owned(),
+        })
+        .collect();
+    Cow::Owned(lines.join("\n"))
 }
 
 /// Where one cell is in the text.
@@ -198,9 +273,15 @@ fn span_for(
     }
 }
 
-/// The source of a cell, as the text between its marker and the next.
+/// The text between a cell's marker and the next, as the tab holds it, escapes included.
 pub fn source_of<'a>(text: &'a str, span: &CellSpan) -> &'a str {
     &text[span.body_bytes.clone()]
+}
+
+/// A cell's source as the notebook holds it: [`source_of`] with the escapes taken out. This is what
+/// is run, saved and shown to an agent.
+pub fn cell_source<'a>(text: &'a str, span: &CellSpan) -> Cow<'a, str> {
+    unescape_source(source_of(text, span))
 }
 
 /// Builds the notebook the text now describes, using `previous` for everything the text does not hold.
@@ -220,10 +301,10 @@ pub fn merge(text: &str, previous: &Notebook) -> Notebook {
         let wanted = span.id.clone().filter(|id| !used.contains(id));
         let id = wanted.unwrap_or_else(|| fresh_id(&used));
         used.insert(id.clone());
-        let source = source_of(text, &span);
+        let source = cell_source(text, &span);
         cells.push(match known.get(id.as_str()) {
-            Some(old) => revise_cell(old, span.kind, source),
-            None => Cell::new(span.kind, &id, source),
+            Some(old) => revise_cell(old, span.kind, &source),
+            None => Cell::new(span.kind, &id, &source),
         });
     }
     let mut notebook = previous.clone();
@@ -238,43 +319,70 @@ pub fn merge(text: &str, previous: &Notebook) -> Notebook {
 /// and a notebook holding a few plots carries megabytes of base64 in its outputs — so a keystroke that
 /// copied all of it was a keystroke that cost what the pictures weigh. This moves each cell instead.
 /// The cells it answers are the ones an edit took out of the text, which the tab keeps so that an
-/// undo, or `Z` in command mode, brings a deleted cell back with its outputs. `task-2220`.
+/// undo, or `Z` in command mode, brings a deleted cell back with its outputs. A code cell whose kind
+/// changed is answered too, as it was before the change, so undoing the change brings its outputs
+/// back. `task-2220`.
+///
+/// `previous` may hold several cells with one id: the notebook's own cells come first, then the ones
+/// the tab kept. The text's cell takes the first of them whose kind it has, or else the first.
 pub fn merge_owned(text: &str, mut previous: Notebook) -> (Notebook, Vec<Cell>) {
-    let mut known: HashMap<String, Cell> = HashMap::new();
+    let mut known: HashMap<String, Vec<Cell>> = HashMap::new();
     for cell in std::mem::take(&mut previous.cells) {
-        // The first cell with an id wins, which is the rule `merge` keeps by reading backwards.
-        known.entry(cell.id.clone()).or_insert(cell);
+        known.entry(cell.id.clone()).or_default().push(cell);
     }
     let mut used: HashSet<String> = HashSet::new();
     let mut cells = Vec::new();
+    let mut set_aside = Vec::new();
     for span in spans(text) {
         let wanted = span.id.clone().filter(|id| !used.contains(id));
         let id = wanted.unwrap_or_else(|| fresh_id(&used));
         used.insert(id.clone());
-        let source = source_of(text, &span);
-        cells.push(match known.remove(id.as_str()) {
-            Some(old) => revise_owned(old, span.kind, source),
-            None => Cell::new(span.kind, &id, source),
+        let source = cell_source(text, &span);
+        let found = known.get_mut(id.as_str()).and_then(|same| take_the_best(same, span.kind));
+        cells.push(match found {
+            Some(old) => {
+                let (cell, before) = revise_owned(old, span.kind, &source);
+                set_aside.extend(before);
+                cell
+            }
+            None => Cell::new(span.kind, &id, &source),
         });
     }
     previous.cells = cells;
-    (previous, known.into_values().collect())
+    set_aside.extend(known.into_values().flatten());
+    (previous, set_aside)
 }
 
-/// [`revise_cell`] on a cell that is being moved rather than copied.
-fn revise_owned(mut cell: Cell, kind: CellKind, source: &str) -> Cell {
-    if cell.source != source {
-        cell.source = source.to_string();
+/// Take the first cell of `same` that is of `kind`, or the first cell when none is.
+fn take_the_best(same: &mut Vec<Cell>, kind: CellKind) -> Option<Cell> {
+    if same.is_empty() {
+        return None;
     }
+    let at = same.iter().position(|cell| cell.kind == kind).unwrap_or(0);
+    Some(same.remove(at))
+}
+
+/// [`revise_cell`] on a cell that is being moved rather than copied. Also answers a copy of the cell
+/// as it was when the change of kind drops outputs or an execution count, so they can be brought back.
+fn revise_owned(mut cell: Cell, kind: CellKind, source: &str) -> (Cell, Option<Cell>) {
+    let mut before = None;
     if kind != cell.kind {
         let was_code = cell.kind == CellKind::Code;
+        if (kind != CellKind::Code || !was_code)
+            && (!cell.outputs.is_empty() || cell.execution_count.is_some())
+        {
+            before = Some(cell.clone());
+        }
         cell.kind = kind;
         if kind != CellKind::Code || !was_code {
             cell.outputs.clear();
             cell.execution_count = None;
         }
     }
-    cell
+    if cell.source != source {
+        cell.source = source.to_string();
+    }
+    (cell, before)
 }
 
 /// A cell id that is not in the set. `new_id` is already unique within the process, so the loop only
@@ -305,41 +413,29 @@ fn revise_cell(old: &Cell, kind: CellKind, source: &str) -> Cell {
 /// The edits that make every marker a proper one: each as a byte range of the text and the text that
 /// replaces it, in order of position and not overlapping. They
 ///
-/// - give a marker with no id a fresh one, rewriting the `# %%` and kind tag in the canonical form
-///   and leaving the rest of the line;
-/// - give the second and later markers that repeat an id a fresh id;
+/// - give the second and later markers that repeat an id a fresh id, which is what pasting a copied
+///   cell back in needs;
 /// - put a code marker at the start when there is text before the first marker.
 ///
-/// A marker that has an id and is not a duplicate is left as the person wrote it. The editor applies
-/// the edits together, so a cell that an agent pastes or a bare `# %%` that a person types becomes a
-/// real cell. The result is empty when nothing needs repairing.
+/// The result is empty when nothing needs repairing.
 pub fn repairs(text: &str) -> Vec<(Range<usize>, String)> {
     let mut edits = Vec::new();
     let mut used: HashSet<String> = spans(text).iter().filter_map(|span| span.id.clone()).collect();
     let mut seen: HashSet<String> = HashSet::new();
     for span in spans(text) {
-        let Some(line_number) = span.marker else {
+        if span.marker.is_none() {
             edits.push((0..0, format!("{}\n", marker(CellKind::Code, &fresh_id(&used)))));
             continue;
-        };
-        let _ = line_number;
+        }
         let line_start = span.marker_bytes.start;
         let parsed = parse_marker(&text[span.marker_bytes.clone()])
             .expect("a span with a marker line has a marker");
-        match (&parsed.id, &parsed.id_range) {
-            (Some(id), Some(range)) if !seen.insert(id.clone()) => {
-                let id = fresh_id(&used);
-                used.insert(id.clone());
-                seen.insert(id.clone());
-                edits.push((line_start + range.start..line_start + range.end, id));
-            }
-            (Some(_), _) => {}
-            _ => {
-                let id = fresh_id(&used);
-                used.insert(id.clone());
-                seen.insert(id.clone());
-                edits.push((line_start..line_start + parsed.head_end, marker(parsed.kind, &id)));
-            }
+        let (Some(id), Some(range)) = (parsed.id, parsed.id_range) else { continue };
+        if !seen.insert(id) {
+            let fresh = fresh_id(&used);
+            used.insert(fresh.clone());
+            seen.insert(fresh.clone());
+            edits.push((line_start + range.start..line_start + range.end, fresh));
         }
     }
     edits
@@ -399,7 +495,7 @@ mod tests {
         assert_eq!(found.len(), notebook.cells.len(), "text was {text:?}");
         for (span, cell) in found.iter().zip(&notebook.cells) {
             assert_eq!(
-                (span.id.as_deref(), span.kind, source_of(&text, span)),
+                (span.id.as_deref(), span.kind, cell_source(&text, span).as_ref()),
                 (Some(cell.id.as_str()), cell.kind, cell.source.as_str())
             );
         }
@@ -413,22 +509,63 @@ mod tests {
     }
 
     #[test]
-    fn marker_lines_are_read_in_every_accepted_form() {
-        assert_eq!(read_marker("# %% id=ab"), Some((CellKind::Code, Some("ab".into()))));
-        assert_eq!(read_marker("#%% id=ab"), Some((CellKind::Code, Some("ab".into()))));
-        assert_eq!(
-            read_marker("# %% [markdown] id=ab"),
-            Some((CellKind::Markdown, Some("ab".into())))
-        );
-        assert_eq!(read_marker("# %% [raw]"), Some((CellKind::Raw, None)));
-        assert_eq!(read_marker("# %% [code] id=ab"), Some((CellKind::Code, Some("ab".into()))));
-        assert_eq!(read_marker("# %% Load the data"), Some((CellKind::Code, None)));
-        assert_eq!(read_marker("#%%"), Some((CellKind::Code, None)));
-        assert_eq!(read_marker("# % %"), None);
-        assert_eq!(read_marker(" # %%"), None);
-        assert!(is_marker("# %%") && !is_marker("x = 1"));
+    fn only_the_lines_marker_writes_are_markers() {
+        assert_eq!(read_marker("# %% id=ab"), Some((CellKind::Code, "ab".into())));
+        assert_eq!(read_marker("# %% [markdown] id=ab"), Some((CellKind::Markdown, "ab".into())));
+        assert_eq!(read_marker("# %% [raw] id=x_y-1"), Some((CellKind::Raw, "x_y-1".into())));
+        for line in [
+            "# %%",
+            "#%% id=ab",
+            "# %% [raw]",
+            "# %% [code] id=ab",
+            "# %% Load the data",
+            "# %% id=ab and more",
+            "# %%  id=ab",
+            "# %%[markdown] id=ab",
+            " # %% id=ab",
+            "x = 1",
+        ] {
+            assert_eq!(read_marker(line), None, "{line:?}");
+        }
         let too_long = format!("# %% id={}", "a".repeat(65));
-        assert_eq!(read_marker(&too_long), Some((CellKind::Code, None)));
+        assert_eq!(read_marker(&too_long), None);
+    }
+
+    #[test]
+    fn a_py_file_starts_a_cell_at_every_percent_line() {
+        assert_eq!(read_percent_marker("# %%"), Some(CellKind::Code));
+        assert_eq!(read_percent_marker("#%% Load the data"), Some(CellKind::Code));
+        assert_eq!(read_percent_marker("# %% [markdown]"), Some(CellKind::Markdown));
+        assert_eq!(read_percent_marker("# %% [code] id=ab"), Some(CellKind::Code));
+        assert_eq!(read_percent_marker("# % %"), None);
+        assert_eq!(read_percent_marker(" # %%"), None);
+    }
+
+    #[test]
+    fn a_percent_line_inside_a_cell_stays_in_that_cell() {
+        let notebook = notebook_of(&[
+            (CellKind::Code, "a", "a = 1\n# %% a comment\n#%%\nb = 2"),
+            (CellKind::Markdown, "b", "text"),
+        ]);
+        let text = to_text(&notebook);
+        assert_eq!(text, "# %% id=a\na = 1\n# %% a comment\n#%%\nb = 2\n# %% [markdown] id=b\ntext");
+        assert_eq!(spans(&text).len(), 2);
+        assert!(repairs(&text).is_empty());
+        assert_round_trip(&notebook);
+    }
+
+    #[test]
+    fn a_source_line_that_is_a_marker_is_escaped_and_comes_back_exactly() {
+        let source = "x = 1\n# %% id=zz\n#\u{2060} already\n# %% [raw] id=q";
+        let notebook = notebook_of(&[(CellKind::Code, "a", source), (CellKind::Code, "b", "y")]);
+        let text = to_text(&notebook);
+        let found = spans(&text);
+        assert_eq!(found.len(), 2, "text was {text:?}");
+        assert!(!text.contains("\n# %% id=zz"));
+        assert_eq!(cell_source(&text, &found[0]), source);
+        assert_eq!(merge(&text, &notebook).cells[0].source, source);
+        assert!(repairs(&text).is_empty());
+        assert_round_trip(&notebook);
     }
 
     #[test]
@@ -522,14 +659,6 @@ mod tests {
     }
 
     #[test]
-    fn a_hash_percent_marker_without_a_space_is_a_marker() {
-        let found = spans("#%% id=a\nx\n#%%[markdown] id=b\ny");
-        assert_eq!(found.len(), 2);
-        assert_eq!(found[1].kind, CellKind::Markdown);
-        assert_eq!(found[1].id.as_deref(), Some("b"));
-    }
-
-    #[test]
     fn duplicate_ids_give_the_second_cell_a_fresh_id_and_keep_the_first_cells_outputs() {
         let mut notebook = notebook_of(&[(CellKind::Code, "a", "1")]);
         notebook.cells[0].outputs.push(Output::stream("stdout", "out"));
@@ -550,11 +679,20 @@ mod tests {
     }
 
     #[test]
-    fn a_marker_with_no_id_gets_a_fresh_id_in_merge() {
-        let merged = merge("# %%\nx\n# %% [markdown]\ny", &crate::nbformat::empty());
-        assert_eq!(merged.cells.len(), 2);
-        assert_eq!(merged.cells[1].kind, CellKind::Markdown);
-        assert_ne!(merged.cells[0].id, merged.cells[1].id);
+    fn changing_a_cells_kind_and_back_brings_its_outputs_back() {
+        let mut notebook = notebook_of(&[(CellKind::Code, "a", "1")]);
+        notebook.cells[0].outputs.push(Output::stream("stdout", "out"));
+        notebook.cells[0].execution_count = Some(3);
+        let (markdown, kept) = merge_owned("# %% [markdown] id=a\n1", notebook);
+        assert!(markdown.cells[0].outputs.is_empty());
+        assert_eq!(kept.len(), 1, "the code cell as it was is kept");
+        let mut offered = markdown.clone();
+        offered.cells.extend(kept);
+        let (code, kept) = merge_owned("# %% id=a\n1", offered);
+        assert_eq!(code.cells[0].kind, CellKind::Code);
+        assert_eq!((code.cells[0].outputs.len(), code.cells[0].execution_count), (1, Some(3)));
+        assert_eq!(kept.len(), 1, "the Markdown cell is the one kept now");
+        assert_eq!(kept[0].kind, CellKind::Markdown);
     }
 
     #[test]
@@ -610,18 +748,6 @@ mod tests {
     }
 
     #[test]
-    fn repairs_give_a_bare_marker_an_id_and_keep_the_rest_of_the_line() {
-        let text = "# %% Load the data\nx\n#%% [markdown]\ny";
-        let repaired = apply(text, &repairs(text));
-        let found = spans(&repaired);
-        assert!(found.iter().all(|span| span.id.is_some()));
-        assert!(repaired.contains(" Load the data\nx\n"));
-        assert!(repaired.starts_with("# %% id="));
-        assert_eq!(found[1].kind, CellKind::Markdown);
-        assert!(repairs(&repaired).is_empty());
-    }
-
-    #[test]
     fn repairs_replace_the_second_of_a_duplicate_id() {
         let text = "# %% id=a\none\n# %% id=a\ntwo";
         let repaired = apply(text, &repairs(text));
@@ -674,6 +800,9 @@ mod tests {
             "#",
             "%",
             "print('a')\n",
+            "# %% id=ab",
+            "# %% a comment",
+            "#\u{2060}",
         ];
         (0..prng.next(6))
             .map(|_| pieces[prng.next(pieces.len())])

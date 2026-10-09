@@ -4,6 +4,7 @@
 # Commands arrive on standard input as JSON, one object per line. Events leave on standard
 # output as JSON, one object per line. Standard error is free text for diagnostics.
 # The editor embeds this file in its binary and runs it with the machine's own Python.
+import collections
 import sys, os
 
 # The notebook's folder is the working directory, and a file there called json.py or queue.py would
@@ -69,7 +70,8 @@ VARIABLES_EXPRESSION = "(lambda g: (exec(%r, g), g['f'](get_ipython().user_ns))[
 
 km = None
 kc = None
-pending = {}          # jupyter msg_id -> (our id, kind)
+pending = collections.OrderedDict()  # jupyter msg_id -> (our id, kind), oldest first
+PENDING_LIMIT = 2000  # requests remembered; a message about an older one has long since arrived
 pending_lock = threading.Lock()
 expected_end = False  # true while a restart or shutdown is requested, so the watchdog stays quiet
 stopping = threading.Event()
@@ -89,9 +91,23 @@ def kernel_pid():
 
 
 def remember(msg_id, request, kind):
-    """Record which of our requests a jupyter message id belongs to."""
+    """Record which of our requests a jupyter message id belongs to, forgetting the oldest beyond
+    PENDING_LIMIT so a long session does not keep every request it ever made."""
     with pending_lock:
         pending[msg_id] = (request, kind)
+        while len(pending) > PENDING_LIMIT:
+            pending.popitem(last=False)
+
+
+def send_shell(request, kind, msg_type, content):
+    """Build a shell request, record which of our requests it is, and only then send it. Sent first
+    and recorded after, a status or execute_input message about it could reach the reader thread
+    before it was known, and be reported as belonging to no request."""
+    msg = kc.session.msg(msg_type, content)
+    msg_id = msg["header"]["msg_id"]
+    remember(msg_id, request, kind)
+    kc.shell_channel.send(msg)
+    return msg_id
 
 
 def lookup(msg):
@@ -266,7 +282,7 @@ def restart(cmd):
     waiting_ready.set()
     deadline = time.time() + 60
     while waiting_ready.is_set() and time.time() < deadline:
-        remember(kc.kernel_info(), cmd.get("id"), "restart")
+        send_shell(cmd.get("id"), "restart", "kernel_info_request", {})
         for _ in range(20):
             if not waiting_ready.is_set():
                 break
@@ -310,13 +326,20 @@ def handle(cmd):
     elif kc is None:
         emit(event="error", request=rid, ename="NoKernel", evalue="the kernel has not started", traceback=[])
     elif name == "execute":
-        remember(kc.execute(cmd.get("code", ""), silent=bool(cmd.get("silent")), store_history=bool(cmd.get("store_history", True)), allow_stdin=bool(cmd.get("allow_stdin", True)), user_expressions=cmd.get("user_expressions") or None, stop_on_error=True), rid, "execute")
+        send_shell(rid, "execute", "execute_request", {
+            "code": cmd.get("code", ""),
+            "silent": bool(cmd.get("silent")),
+            "store_history": bool(cmd.get("store_history", True)),
+            "user_expressions": cmd.get("user_expressions") or {},
+            "allow_stdin": bool(cmd.get("allow_stdin", True)),
+            "stop_on_error": True,
+        })
     elif name == "complete":
-        remember(kc.complete(cmd.get("code", ""), cmd.get("cursor", 0)), rid, "complete")
+        send_shell(rid, "complete", "complete_request", {"code": cmd.get("code", ""), "cursor_pos": cmd.get("cursor", 0)})
     elif name == "inspect":
-        remember(kc.inspect(cmd.get("code", ""), cmd.get("cursor", 0), cmd.get("detail", 0)), rid, "inspect")
+        send_shell(rid, "inspect", "inspect_request", {"code": cmd.get("code", ""), "cursor_pos": cmd.get("cursor", 0), "detail_level": cmd.get("detail", 0)})
     elif name == "is_complete":
-        remember(kc.is_complete(cmd.get("code", "")), rid, "is_complete")
+        send_shell(rid, "is_complete", "is_complete_request", {"code": cmd.get("code", "")})
     elif name == "input_reply":
         kc.input(cmd.get("value", ""))
     elif name == "interrupt":
@@ -326,7 +349,14 @@ def handle(cmd):
     elif name == "shutdown":
         shutdown(cmd)
     elif name == "variables":
-        remember(kc.execute("", silent=True, store_history=False, allow_stdin=False, user_expressions={"vars": VARIABLES_EXPRESSION}), rid, "variables")
+        send_shell(rid, "variables", "execute_request", {
+            "code": "",
+            "silent": True,
+            "store_history": False,
+            "user_expressions": {"vars": VARIABLES_EXPRESSION},
+            "allow_stdin": False,
+            "stop_on_error": True,
+        })
 
 
 def main():

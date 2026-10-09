@@ -812,6 +812,9 @@ struct FramePlaces {
     editing_area: Rect,
 }
 
+/// The kernels a Python said it has, or why it could not say.
+pub(crate) type KernelSpecs = Result<Vec<unluminous_jupyter::kernel::KernelSpec>, String>;
+
 pub struct UnluminousApp {
     /// The files that are open, one to a tab, and which of them is showing.
     pub files: OpenFiles,
@@ -1334,11 +1337,10 @@ pub struct UnluminousApp {
     /// tab is no longer borrowed.
     pub(crate) notebook_input: Option<String>,
     /// The kernels each Python has, once asked, by the Python's path. `None` while being asked.
-    pub(crate) kernelspecs: HashMap<PathBuf, Option<Vec<unluminous_jupyter::kernel::KernelSpec>>>,
+    pub(crate) kernelspecs: HashMap<PathBuf, Option<KernelSpecs>>,
     /// The threads still asking a Python which kernels it has. See `app::notebook_chrome`.
     #[allow(clippy::type_complexity)]
-    pub(crate) kernelspec_answers:
-        Vec<Arc<std::sync::Mutex<Option<(PathBuf, Vec<unluminous_jupyter::kernel::KernelSpec>)>>>>,
+    pub(crate) kernelspec_answers: Vec<Arc<std::sync::Mutex<Option<(PathBuf, KernelSpecs)>>>>,
     /// Where a terminal tab's own menu is open, and which tab it was opened on. Held here for the
     /// same reason the other three are: a screenshot test cannot press the right mouse button.
     pub terminal_menu: Option<(Pos2, usize)>,
@@ -2188,9 +2190,19 @@ impl UnluminousApp {
         self.panel_rects.editor
     }
 
-    /// Where the caret is, as the status bar reports it.
+    /// Where the caret is, as the status bar reports it. In a notebook the line is counted within the
+    /// caret's cell, which is the number the gutter shows beside it.
     pub fn caret_position(&self) -> status_bar::Position {
-        status_bar::position_of(self.document().text(), self.document().selection().head)
+        let text = self.document().text();
+        let head = self.document().selection().head;
+        let mut position = status_bar::position_of(text, head);
+        if let Some(tab) = self.files.active().notebook.as_deref() {
+            let line = text.byte_to_line(head);
+            if let Some(cell) = unluminous_jupyter::text::cell_at(&tab.spans, line) {
+                position.line = line.saturating_sub(tab.spans[cell].body.start) + 1;
+            }
+        }
+        position
     }
 
     /// What the status bar says the open file was on disk: `CRLF`, or `CRLF · Latin-1`.
@@ -2511,6 +2523,8 @@ impl eframe::App for UnluminousApp {
         self.write_the_screens_down();
         self.write_the_tab_screens_down();
         self.run.kill_everything();
+        // Every notebook's kernel, waited for, because dropping one only starts stopping it.
+        self.stop_every_kernel();
         // Every program a node started, killed rather than dropped - `Live::forget`'s own note, and
         // `task-1769`'s 119 orphaned shells.
         self.realm.live.stop_everything();

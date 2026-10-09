@@ -578,13 +578,19 @@ impl Session {
     /// `terminate` first when the adapter offered it — the graceful request, which lets a program
     /// tidy up — and `disconnect` otherwise or on the second press. The hard kill of the adapter's
     /// own process is `Client`'s, after the grace, which is the run tile's exact arrangement.
+    ///
+    /// A session that attached to a program that was already running only lets go of it: both
+    /// presses send `disconnect` with `terminateDebuggee` false. A notebook's debug session attaches
+    /// to its kernel, and ending the session must leave the kernel and its variables alone.
     pub fn stop(&mut self, hard: bool) -> Outcome {
         if !self.state.is_alive() {
             return Outcome::default();
         }
-        let request = match self.capabilities.terminate_request && !hard {
-            true => Request::Terminate,
-            false => Request::Disconnect { terminate_debuggee: true },
+        let attached = self.launch.get("request").and_then(Value::as_str) == Some("attach");
+        let request = match (attached, self.capabilities.terminate_request && !hard) {
+            (true, _) => Request::Disconnect { terminate_debuggee: false },
+            (false, true) => Request::Terminate,
+            (false, false) => Request::Disconnect { terminate_debuggee: true },
         };
         self.ask(request, Awaiting::Ending)
     }
@@ -1453,6 +1459,24 @@ mod tests {
         let hard = session.stop(true);
         assert_eq!(commands(&hard), vec!["disconnect"]);
         assert_eq!(hard.frames[0]["arguments"]["terminateDebuggee"], true);
+    }
+
+    #[test]
+    fn an_attached_session_sends_attach_and_lets_the_program_go_when_stopped() {
+        let mut session = Session::new(json!({ "request": "attach", "connect": { "port": 5678 } }));
+        let opening = session.begin();
+        let initialize = seq_of(&opening, "initialize");
+        let configured = session.on_message(response(initialize, "initialize", full_capabilities()));
+        let mut sent = commands(&opening);
+        sent.extend(commands(&configured));
+        assert!(sent.iter().any(|name| name == "attach"), "sent {sent:?}");
+        assert!(!sent.iter().any(|name| name == "launch"), "sent {sent:?}");
+        session.on_message(Message::Initialized);
+        for hard in [false, true] {
+            let stopping = session.stop(hard);
+            assert_eq!(commands(&stopping), vec!["disconnect"], "hard is {hard}");
+            assert_eq!(stopping.frames[0]["arguments"]["terminateDebuggee"], false);
+        }
     }
 
     #[test]

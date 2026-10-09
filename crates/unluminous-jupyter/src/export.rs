@@ -13,7 +13,7 @@
 
 use crate::nbformat::{self, Cell, CellKind, Notebook, Output};
 use crate::outputs::{base64_encode, shown, Ansi, Shown, Span, Table};
-use crate::text::read_marker;
+use crate::text::{percent_head, read_percent_marker};
 use serde_json::Value;
 
 // ---------------------------------------------------------------------------------------------
@@ -27,6 +27,10 @@ use serde_json::Value;
 /// space). A raw cell is the same with `# %% [raw]`. One blank line separates the cells. Trailing
 /// newlines of a source are not written, because [`from_python`] trims them again. Outputs and cell
 /// ids are not written.
+///
+/// The percent format has no way to write a `# %%` line that does not start a cell, so a cell with
+/// such a line in its source comes back from [`from_python`] as two cells. The notebook itself keeps
+/// it, because the notebook tab only treats its own marker lines as cell boundaries.
 pub fn to_python(nb: &Notebook) -> String {
     nb.cells.iter().map(python_cell).collect::<Vec<String>>().join("\n")
 }
@@ -34,10 +38,10 @@ pub fn to_python(nb: &Notebook) -> String {
 /// One cell of the Python file: its marker line and its source, each ending in a newline.
 fn python_cell(cell: &Cell) -> String {
     let source = cell.source.trim_end_matches(['\n', '\r']);
-    let (marker, body) = match cell.kind {
-        CellKind::Code => ("# %%", source.to_string()),
-        CellKind::Markdown => ("# %% [markdown]", comment_lines(source)),
-        CellKind::Raw => ("# %% [raw]", comment_lines(source)),
+    let marker = percent_head(cell.kind);
+    let body = match cell.kind {
+        CellKind::Code => source.to_string(),
+        CellKind::Markdown | CellKind::Raw => comment_lines(source),
     };
     if body.is_empty() {
         format!("{marker}\n")
@@ -68,8 +72,8 @@ pub fn from_python(source: &str) -> Notebook {
     let mut lines: Vec<&str> = Vec::new();
     let mut seen_marker = false;
     for line in source.lines() {
-        match read_marker(line) {
-            Some((next_kind, _)) => {
+        match read_percent_marker(line) {
+            Some(next_kind) => {
                 finish_python_cell(&mut cells, kind, &lines, seen_marker);
                 (kind, lines, seen_marker) = (next_kind, Vec::new(), true);
             }
