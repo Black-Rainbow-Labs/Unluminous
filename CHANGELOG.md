@@ -12,6 +12,8 @@ bumps the release script makes are left out, because they are the boundaries rat
 - A Rust kernel is stopped with its whole process tree when the bridge shuts down (`task-2229`)
 - The changelog lists the Rust kernel shutdown fix as unreleased (`task-2229`)
 - Rustfmt export_icons_svg.rs from task-2230, which the release's format check refuses unformatted (`task-2229`)
+- The changelog lists the formatting commit as unreleased (`task-2229`)
+- Name the icon drawing type in export_icons_svg.rs, which clippy refused as too complex (`task-2229`)
 
 ## 0.69.0 — 2026-10-09
 
