@@ -6,7 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.66.4 — 2026-10-09
+## Unreleased
+
+- Jupyter notebooks: cells, outputs, a kernel through Python, debugging a cell, and the notebook commands (`task-2220`)
+- Accept the menus with New Jupyter Notebook, and mark a picture's untinted white (`task-2220`)
+
+## 0.66.4 — 2026-10-08
 
 - Stop writing to disk on every frame, keep tab layouts, and shrink the graphics device (`task-2218`)
 - Lay a line out with one copy, and hand layout a run's ASCII advances at once (`task-2218`)
