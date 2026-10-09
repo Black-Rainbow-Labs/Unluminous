@@ -1,0 +1,50 @@
+.rux-tile {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  font-family: var(--font-sans);
+}
+/* .ic-tile: a pressed well */
+.rux-tile--well { background: var(--surface-1); box-shadow: var(--e-pressed); }
+/* .scene__image: dark in both themes, because it stands in for a picture */
+.rux-tile--dropzone {
+  background: linear-gradient(160deg, var(--grad-image-well-from), var(--grad-image-well-to));
+  box-shadow: var(--e-image-well);
+  cursor: pointer;
+}
+.rux-tile--dropzone:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+.rux-tile__image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.rux-tile__content { position: absolute; inset: 12px; display: block; }
+
+/* .scene__image-empty: icon box, title, line. Ink is white at an alpha because the box is always dark. */
+.rux-tile__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.rux-tile__empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 4px;
+  border-radius: var(--r-md);
+  background: rgb(255 255 255 / 0.04);
+  border: 1.5px dashed rgb(255 255 255 / 0.15);
+  color: rgb(255 255 255 / 0.5);
+}
+.rux-tile__title { color: rgb(255 255 255 / 0.7); font-size: 14px; font-weight: 500; letter-spacing: -0.01em; }
+.rux-tile__sub { color: rgb(255 255 255 / 0.35); font-size: 12px; font-weight: 400; }

@@ -1,0 +1,27 @@
+.rux-text-area {
+  position: relative; display: flex; box-sizing: border-box; width: 100%; min-width: 260px; min-height: 280px;
+  padding: 14px 16px; border-radius: var(--r-md); background: var(--surface-1); box-shadow: var(--e-pressed);
+  cursor: text;
+}
+.rux-text-area--decorated { padding: 14px 40px 28px 14px; }
+.rux-text-area__field {
+  flex: 1; min-width: 0; padding: 0; border: none; outline: none; resize: none; background: transparent; cursor: text;
+  font: 400 13px / 1.6 var(--font-sans); color: var(--ink-900); caret-color: var(--accent-blue);
+}
+.rux-text-area__field::placeholder { color: var(--ink-400); opacity: 1; }
+.rux-text-area__field::selection { background: color-mix(in srgb, var(--accent-blue) 25%, transparent); color: var(--ink-900); }
+.rux-text-area__corner {
+  position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; padding: 0; border: none; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  background: var(--surface-1); box-shadow: var(--e-raised-sm); color: var(--ink-500);
+}
+.rux-text-area__corner:hover:not(:disabled) { color: var(--ink-900); }
+.rux-text-area__corner:active:not(:disabled) { box-shadow: var(--e-pressed-sm); transform: translateY(0.5px); }
+.rux-text-area__corner:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.rux-text-area__corner:disabled { cursor: default; }
+.rux-text-area__count {
+  position: absolute; right: 12px; bottom: 8px; pointer-events: none;
+  font: 400 10px / 1.4 var(--font-mono); color: var(--ink-400);
+}
+.rux-text-area.is-disabled { opacity: 0.4; cursor: default; }
+.rux-text-area.is-disabled .rux-text-area__field { cursor: default; }

@@ -1,0 +1,14 @@
+# Installed by npm install.
+/node_modules/
+# The local gallery, the previews that load their own stylesheets, and the publish plan.
+/rux/build/
+# Everything tools/build.mjs writes into the design system. README.md and the asset groups' README.md
+# files are written by hand and are kept.
+/rux/system/project/components/
+/rux/system/project/fonts/
+/rux/system/project/tokens.json
+/rux/system/project/design-system.json
+/rux/system/project/assets/**/*.svg
+/rux/src/icons.data.json
+/rux/src/ul-icons.data.json
+/unluminous/canvas/project/ds/

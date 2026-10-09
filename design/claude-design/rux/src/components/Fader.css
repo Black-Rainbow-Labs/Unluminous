@@ -1,0 +1,97 @@
+.rux-fader {
+  position: relative;
+  height: 30px;
+  min-width: 40px;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+
+/* The groove: 4px deep, from 2px outside the cap's centre at each end. */
+.rux-fader__groove {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 6px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--inst-screen);
+  box-shadow: var(--e-pressed-sm);
+}
+
+/* The run the value has travelled: a crisp 2px line with a glow one point wide either side. */
+.rux-fader__lit {
+  position: absolute;
+  left: 6px;
+  top: 7px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--rux-fader-colour);
+}
+.rux-fader__glow {
+  position: absolute;
+  left: 5px;
+  top: 6px;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--rux-fader-colour) 22%, transparent);
+}
+
+/* Eleven ticks, the ends and the middle taller, starting 3px below the cap. */
+.rux-fader__tick {
+  position: absolute;
+  top: 19px;
+  width: 1px;
+  height: 3px;
+  background: var(--ink-200);
+}
+.rux-fader__tick.is-tall {
+  height: 5px;
+  background: var(--ink-300);
+}
+
+/* The cap: 12 x 16, centred on the run's end, raised, with a hairline round it. */
+.rux-fader__cap {
+  --rux-lit-r: 4px;
+  position: absolute;
+  top: 0;
+  width: 12px;
+  height: 16px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  background: var(--inst-plate);
+  box-shadow: var(--e-raised-sm), inset 0 0 0 1px var(--ink-200);
+  cursor: grab;
+}
+.rux-fader:hover .rux-fader__cap,
+.rux-fader.is-dragging .rux-fader__cap {
+  background: var(--surface-3);
+}
+.rux-fader.is-dragging,
+.rux-fader.is-dragging .rux-fader__cap {
+  cursor: grabbing;
+}
+
+/* The engraved grip: two 1px lines, 3.5px in from each side. */
+.rux-fader__grip {
+  position: absolute;
+  left: 3.5px;
+  right: 3.5px;
+  height: 1px;
+  background: var(--ink-300);
+}
+.rux-fader__grip:nth-child(1) {
+  top: 6.25px;
+}
+.rux-fader__grip:nth-child(2) {
+  top: 8.75px;
+}
+.rux-fader.is-dragging .rux-fader__grip {
+  background: var(--rux-fader-colour);
+}
+
+.rux-fader:focus-visible .rux-fader__cap {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

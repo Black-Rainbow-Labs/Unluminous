@@ -1,0 +1,56 @@
+/* A button in Unluminous's own window: control fill, a one point control_border stroke, corner radius
+   CONTROL_CORNER (6), the label centred in text_strong at 12.5. */
+.ul-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  min-width: 72px;
+  padding: 0 14px;
+  border: 1px solid var(--ul-control-border);
+  border-radius: var(--ul-control-corner);
+  background: var(--ul-control);
+  color: var(--ul-text-strong);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ul-button:hover { background: color-mix(in srgb, var(--ul-control) 80%, var(--ul-hover-wash)); }
+.ul-button:disabled { color: var(--ul-text-faint); opacity: 0.6; cursor: default; }
+.ul-button:focus-visible { outline: 1px solid var(--ul-accent); outline-offset: 2px; }
+
+/* A modal's last button: the one that does the thing, filled in the accent, pressed by Enter. */
+.ul-button--primary {
+  background: var(--ul-accent);
+  border-color: var(--ul-accent);
+  color: var(--ul-on-accent);
+}
+.ul-button--primary:hover { background: color-mix(in srgb, var(--ul-accent) 88%, #ffffff); }
+
+/* controls::choice_button: an outline at rest, control while hovered, accent filled when on. */
+.ul-button--choice {
+  height: 24px;
+  min-width: 0;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--ul-text-control);
+}
+.ul-button--choice:hover { background: var(--ul-control); }
+.ul-button--choice.is-on {
+  background: var(--ul-accent);
+  border-color: var(--ul-accent);
+  color: var(--ul-on-accent);
+}
+
+/* The same drawing as a choice that is on, with no click: `In use`. */
+.ul-button--state {
+  height: 24px;
+  min-width: 0;
+  padding: 0 10px;
+  background: var(--ul-accent);
+  border-color: var(--ul-accent);
+  color: var(--ul-on-accent);
+  cursor: default;
+}

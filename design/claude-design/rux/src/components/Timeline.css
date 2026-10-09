@@ -1,0 +1,59 @@
+/* Three columns: the times (as wide as the widest, plus 12), the 26px rail, the words. Items 12px apart. */
+.rux-timeline {
+  display: grid;
+  grid-template-columns: auto 26px minmax(60px, 1fr);
+  row-gap: 12px;
+  align-items: stretch;
+}
+
+.rux-timeline__time {
+  align-self: start;
+  font: 400 10.5px/17.5px var(--font-mono);
+  color: var(--ink-400);
+  white-space: nowrap;
+}
+.rux-timeline__time.has-time {
+  padding-right: 12px;
+}
+
+/* The rail: a 3px groove joining each lamp to the next, centre to centre, with the lamp 8px in. */
+.rux-timeline__rail {
+  position: relative;
+}
+.rux-timeline__item:not(:last-child) .rux-timeline__rail::before {
+  content: '';
+  position: absolute;
+  left: 6.5px;
+  top: 8.75px;
+  width: 3px;
+  height: calc(100% + 12px);
+  border-radius: 1.5px;
+  background: var(--inst-screen);
+  box-shadow: var(--e-pressed-sm);
+}
+.rux-timeline .rux-timeline__lamp {
+  position: absolute;
+  left: 4px;
+  top: 4.75px;
+}
+/* A lamp still to come keeps a rim, so the rail reads as a row of lamps. */
+.rux-timeline__item.is-todo .rux-timeline__lamp {
+  outline: 1px solid var(--ink-200);
+}
+
+.rux-timeline__words {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.rux-timeline__title {
+  font: 500 12.5px/1.4 var(--font-sans);
+  color: var(--ink-900);
+}
+.rux-timeline__item.is-todo .rux-timeline__title {
+  color: var(--ink-500);
+}
+.rux-timeline__text {
+  font: 400 12px/1.45 var(--font-sans);
+  color: var(--ink-500);
+}

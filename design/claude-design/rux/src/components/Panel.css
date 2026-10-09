@@ -1,0 +1,7 @@
+.rux-panel {
+  box-sizing: border-box; padding: var(--panel-pad, 22px); border-radius: var(--panel-radius, var(--r-xl));
+  background: var(--panel-fill, var(--surface-1));
+}
+.rux-panel--raised { box-shadow: var(--e-raised); }
+.rux-panel--raised-small { box-shadow: var(--e-raised-sm); }
+.rux-panel--flat { box-shadow: none; }

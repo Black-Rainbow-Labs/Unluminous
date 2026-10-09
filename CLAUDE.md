@@ -5592,6 +5592,10 @@ trade that away to be a shade nearer a screenshot.
   and the Settings page — each a real capture, its state built through `unluminous-cli` against a small
   SQLite fixture made for the page.
 - `design/style-guide.md` — how a control in Unluminous is built, and what the baselines are.
+- `design/claude-design/README.md` — the web copy of `rux` and of the window that Claude Design works
+  from (`task-2230`): the Black Rainbow Labs Rux design system, the Unluminous design canvas, how both are
+  rebuilt and republished, and where each kind of change goes when it is carried back into Rust.
+  `cargo run -p unluminous-app --example export_icons_svg` writes every `theme::icon` mark as SVG for it.
 - `design/accessibility.md` — what the accessibility tree does and does not do, every contrast ratio
   measured against WCAG 2.2, the work that is left in the order it would have to be done, and the
   plain answer about 1.0.

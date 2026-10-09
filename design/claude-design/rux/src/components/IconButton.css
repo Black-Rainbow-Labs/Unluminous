@@ -1,0 +1,96 @@
+.rux-icon-button {
+  --d: 40px;
+  --k: 1;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--d);
+  height: var(--d);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface-1);
+  color: var(--ink-700);
+  box-shadow: var(--e-raised-sm);
+  cursor: pointer;
+  flex: none;
+}
+.rux-icon-button__mark { display: inline-flex; }
+.rux-icon-button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* diameters: .ic-chev 24, .ic-dice 28, .ic-modal__close 32, .toolbtn 40, .dock__btn 48; --k = d / 40 */
+.rux-icon-button--tiny { --d: 24px; --k: 0.6; }
+.rux-icon-button--sm   { --d: 28px; --k: 0.7; }
+.rux-icon-button--md   { --d: 32px; --k: 0.8; }
+.rux-icon-button--lg   { --d: 40px; --k: 1; }
+.rux-icon-button--xl   { --d: 48px; --k: 1.2; }
+
+.rux-icon-button:not(:disabled):hover { color: var(--accent-blue); }
+.rux-icon-button.has-tint:not(:disabled):hover { color: inherit; }
+.rux-icon-button--raised:not(:disabled):active { box-shadow: var(--e-pressed-sm); }
+.rux-icon-button:not(:disabled):active { transform: translateY(0.5px); }
+
+.rux-icon-button--sunken { color: var(--ink-400); box-shadow: var(--e-pressed-sm); }
+.rux-icon-button--sunken:not(:disabled):hover { color: var(--accent-blue); }
+
+/* .dock__btn--primary: coral gradient, Theme::glowing(danger.to at 0.30, 3) */
+.rux-icon-button--primary,
+.rux-icon-button--primary:not(:disabled):hover {
+  background: linear-gradient(160deg, var(--grad-danger-diagonal-from), var(--grad-danger-diagonal-to));
+  color: var(--on-accent);
+  box-shadow:
+    -3px -3px 6px var(--shadow-light),
+    3px 3px 9px color-mix(in srgb, var(--grad-danger-diagonal-to) 30%, transparent),
+    inset 1px 1px 1px rgb(255 255 255 / 0.25);
+}
+
+.rux-icon-button--ghost { background: transparent; box-shadow: none; color: var(--ink-700); }
+.rux-icon-button--ghost:not(:disabled):hover { color: var(--accent-blue); }
+.rux-icon-button--ghost:not(:disabled):hover::after { background: var(--hover); }
+.rux-icon-button--ghost:not(:disabled):active::after { background: var(--pressed); }
+.rux-icon-button--ghost:not(:disabled):active { box-shadow: none; }
+
+/* .toolbtn__dot: 8 across, 8px in from the corner, 6px halo, 2px ring of the page */
+.rux-icon-button__dot {
+  position: absolute;
+  top: calc(8px * var(--k) - 2px * var(--k));
+  right: calc(8px * var(--k) - 2px * var(--k));
+  box-sizing: content-box;
+  width: calc(8px * var(--k));
+  height: calc(8px * var(--k));
+  border-radius: 50%;
+  background: var(--rux-dot);
+  border: calc(2px * var(--k)) solid var(--surface-1);
+  box-shadow: 0 0 6px var(--rux-dot);
+}
+
+/* .dock__badge: min 18, mono 10 semibold, coral with a glow */
+.rux-icon-button__badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  box-sizing: border-box;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent-coral);
+  color: var(--on-accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--accent-coral) 40%, transparent);
+}
+
+.rux-icon-button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.rux-icon-button:disabled { opacity: 0.4; cursor: default; }

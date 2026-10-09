@@ -1,0 +1,134 @@
+/* components::explorer. 248 points wide by default (theme::size::EXPLORER), filled explorer. */
+.ul-explorer {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 248px;
+  min-height: 0;
+  background: var(--ul-explorer);
+  color: var(--ul-text-control);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  border-right: 1px solid var(--ul-divider);
+  /* The rows lift their contents over the pill with a z-index; this keeps that inside the explorer. */
+  isolation: isolate;
+}
+
+/* The heading: the project's name in spaced capitals at 10.5, 22 points down a 36 point band. */
+.ul-explorer__heading {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 7px 0 16px;
+}
+.ul-explorer__project {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ul-text-dim);
+}
+.ul-explorer__collapse {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ul-text-dim);
+  cursor: pointer;
+}
+.ul-explorer__collapse:hover { background: var(--ul-control); }
+
+.ul-explorer__filter { margin: 0 12px; }
+
+/* The tree: every row 28 points (theme::size::ROW), one level of nesting 18 (INDENT). */
+.ul-explorer__tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.ul-explorer__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding-left: calc(10px + var(--depth) * 18px);
+  padding-right: 12px;
+  gap: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+/* The pill: the row inset by 8 horizontally and 1 vertically, corner radius 5. */
+.ul-explorer__row::before {
+  content: '';
+  position: absolute;
+  inset: 1px 8px;
+  border-radius: 5px;
+  z-index: 0;
+}
+.ul-explorer__row:hover::before { background: var(--ul-control); }
+.ul-explorer__row.is-cursor::before { background: var(--ul-control); }
+.ul-explorer__row.is-chosen::before { background: var(--ul-selected-row); }
+.ul-explorer__row.has-keyboard::before { box-shadow: inset 0 0 0 1px var(--ul-accent); }
+.ul-explorer__row > * { position: relative; z-index: 1; }
+.ul-explorer__row.is-chosen .ul-explorer__name { color: var(--ul-text-strong); }
+.ul-explorer__row.is-faint .ul-explorer__name { color: var(--ul-text-faint); }
+.ul-explorer__row.is-git-added .ul-explorer__name { color: var(--ul-git-added); }
+.ul-explorer__row.is-git-modified .ul-explorer__name { color: var(--ul-git-modified); }
+.ul-explorer__row.is-git-untracked .ul-explorer__name { color: var(--ul-git-untracked); }
+
+.ul-explorer__disclosure,
+.ul-explorer__mark {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 20px;
+  color: var(--ul-folder);
+}
+.ul-explorer__mark .is-open { color: var(--ul-folder-open); }
+.ul-explorer__mark .is-prose { color: var(--ul-file-markdown); }
+.ul-explorer__mark { color: var(--ul-file-text); margin-right: 3px; }
+.ul-explorer__badge {
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 700;
+  color: #ffffff;
+}
+.ul-explorer__name { overflow: hidden; text-overflow: ellipsis; }
+.ul-explorer__unsaved {
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--ul-unsaved);
+}
+
+/* The strip counting the files: 28 points, explorer_footer, the counts at 10.5 in text_dim. */
+.ul-explorer__footer {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 16px;
+  background: var(--ul-explorer-footer);
+  border-top: 1px solid var(--ul-divider);
+  font-size: 10.5px;
+  color: var(--ul-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+}

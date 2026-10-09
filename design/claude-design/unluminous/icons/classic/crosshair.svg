@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+<!-- unluminous theme::icon, classic set: crosshair -->
+<circle cx="12.000" cy="12.000" r="4.200" fill="none" stroke="#1e2530" stroke-width="1.300"/>
+<line x1="12.000" y1="9.600" x2="12.000" y2="5.800" stroke="#1e2530" stroke-width="1.300" stroke-linecap="round"/>
+<line x1="12.000" y1="14.400" x2="12.000" y2="18.200" stroke="#1e2530" stroke-width="1.300" stroke-linecap="round"/>
+<line x1="9.600" y1="12.000" x2="5.800" y2="12.000" stroke="#1e2530" stroke-width="1.300" stroke-linecap="round"/>
+<line x1="14.400" y1="12.000" x2="18.200" y2="12.000" stroke="#1e2530" stroke-width="1.300" stroke-linecap="round"/>
+<circle cx="12.000" cy="12.000" r="1.100" fill="#1e2530" stroke="none" stroke-width="0.000"/>
+</svg>

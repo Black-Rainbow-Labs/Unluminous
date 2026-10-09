@@ -1,0 +1,5 @@
+.rux-menu-heading {
+  box-sizing: border-box; height: 28px; padding: 10px 14px 8px;
+  font: 400 9px / 10px var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink-400); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}

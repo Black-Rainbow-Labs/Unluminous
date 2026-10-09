@@ -1,0 +1,104 @@
+/* Instrument language tokens, worked out from the theme the way Instrument::of does.
+   Light values on bare :root (the first theme), dark values under the two dark themes. */
+:root {
+  --inst-screen: color-mix(in srgb, var(--shadow-dark) 75%, var(--surface-0));
+  --inst-dots: color-mix(in srgb, white 3.53%, transparent);
+  --inst-edge: color-mix(in srgb, white 7.06%, transparent);
+  --inst-plate: var(--surface-2);
+  --inst-led-off: color-mix(in srgb, var(--shadow-dark) 25%, var(--surface-3));
+  --inst-rule: color-mix(in srgb, white 5.49%, transparent);
+  --inst-rule-strong: color-mix(in srgb, white 10.98%, transparent);
+  --inst-quiet: color-mix(in srgb, var(--ink-200) 40%, var(--ink-300));
+  --inst-t-press: 0.09s;
+  --inst-t-light: 0.16s;
+}
+
+:root {
+  --inst-screen: var(--surface-sunken);
+  --inst-dots: color-mix(in srgb, black 5.49%, transparent);
+  --inst-edge: color-mix(in srgb, white 90.2%, transparent);
+  --inst-led-off: var(--ink-200);
+  --inst-rule: color-mix(in srgb, black 7.06%, transparent);
+  --inst-rule-strong: color-mix(in srgb, black 14.12%, transparent);
+}
+
+[data-theme='dark'],
+[data-theme='unluminous-dark'] {
+  --inst-screen: color-mix(in srgb, var(--shadow-dark) 75%, var(--surface-0));
+  --inst-dots: color-mix(in srgb, white 3.53%, transparent);
+  --inst-edge: color-mix(in srgb, white 7.06%, transparent);
+  --inst-plate: var(--surface-2);
+  --inst-led-off: color-mix(in srgb, var(--shadow-dark) 25%, var(--surface-3));
+  --inst-rule: color-mix(in srgb, white 5.49%, transparent);
+  --inst-rule-strong: color-mix(in srgb, white 10.98%, transparent);
+  --inst-quiet: color-mix(in srgb, var(--ink-200) 40%, var(--ink-300));
+  --inst-t-press: 0.09s;
+  --inst-t-light: 0.16s;
+}
+
+/* A lit edge along the top of a raised thing: brightest a third of the way along, gone before the corners. */
+.rux-lit-edge {
+  position: relative;
+}
+.rux-lit-edge::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: calc(var(--rux-lit-r, 9px) * 0.8);
+  right: calc(var(--rux-lit-r, 9px) * 0.8);
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--inst-edge) 35%, transparent 100%);
+  pointer-events: none;
+}
+
+.rux-plate {
+  background: var(--inst-plate);
+  box-shadow: var(--e-raised-sm);
+}
+
+.rux-screen {
+  position: relative;
+  background: var(--inst-screen);
+  box-shadow: var(--e-pressed-sm);
+}
+/* One dot every six points, inset by half the radius. */
+.rux-screen--graticule::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--rux-screen-r, 9px) * 0.5);
+  background: var(--inst-dots);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Crect width='1' height='1'/%3E%3C/svg%3E") 0 0 / 6px 6px repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Crect width='1' height='1'/%3E%3C/svg%3E") 0 0 / 6px 6px repeat;
+  pointer-events: none;
+}
+
+.rux-led {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  border-radius: 50%;
+  vertical-align: middle;
+  transition: background-color var(--inst-t-light) ease, box-shadow var(--inst-t-light) ease;
+}
+/* The glint on the glass, up and to the left. */
+.rux-led::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--rux-led-r) * 0.36);
+  top: calc(var(--rux-led-r) * 0.36);
+  width: calc(var(--rux-led-r) * 0.64);
+  height: calc(var(--rux-led-r) * 0.64);
+  border-radius: 50%;
+  background: var(--rux-led-glint);
+}
+
+.rux-silk {
+  font: 600 9.5px/1.4 var(--font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.rux-readout {
+  font: 500 21px/1.2 var(--font-mono);
+  letter-spacing: -0.02em;
+}

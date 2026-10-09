@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+<!-- unluminous theme::icon, classic set: realm -->
+<circle cx="12.000" cy="12.000" r="6.125" fill="none" stroke="#1e2530" stroke-width="1.150"/>
+<line x1="12.000" y1="12.000" x2="9.156" y2="9.156" stroke="#1e2530" stroke-width="1.000" stroke-linecap="round"/>
+<circle cx="9.156" cy="9.156" r="1.303" fill="#1e2530" stroke="none" stroke-width="0.000"/>
+<line x1="12.000" y1="12.000" x2="14.844" y2="9.156" stroke="#1e2530" stroke-width="1.000" stroke-linecap="round"/>
+<circle cx="14.844" cy="9.156" r="1.303" fill="#1e2530" stroke="none" stroke-width="0.000"/>
+<line x1="12.000" y1="12.000" x2="9.156" y2="14.844" stroke="#1e2530" stroke-width="1.000" stroke-linecap="round"/>
+<circle cx="9.156" cy="14.844" r="1.303" fill="#1e2530" stroke="none" stroke-width="0.000"/>
+<line x1="12.000" y1="12.000" x2="14.844" y2="14.844" stroke="#1e2530" stroke-width="1.000" stroke-linecap="round"/>
+<circle cx="14.844" cy="14.844" r="1.303" fill="#1e2530" stroke="none" stroke-width="0.000"/>
+<circle cx="12.000" cy="12.000" r="1.741" fill="#1e2530" stroke="none" stroke-width="0.000"/>
+</svg>

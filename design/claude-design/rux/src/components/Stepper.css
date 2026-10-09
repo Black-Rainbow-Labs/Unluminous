@@ -1,0 +1,54 @@
+/* .ic-count: width 66px, never shrinks, padding 4 4 4 10, gap 4 */
+.rux-stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  flex: none;
+  width: 66px;
+  min-height: 31px;
+  padding: 4px 4px 4px 10px;
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  box-shadow: var(--e-pressed-sm);
+}
+/* .num-input */
+.rux-stepper__value {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  color: var(--ink-900);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+/* .ic-count__steps: two 18 by 11 ticks, 1px apart */
+.rux-stepper__ticks {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: none;
+  width: 18px;
+}
+.rux-stepper__tick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 18px;
+  height: 11px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: var(--surface-1);
+  color: var(--ink-500);
+  box-shadow: var(--e-raised-sm);
+  cursor: pointer;
+}
+/* the up tick is the same chevron turned over */
+.rux-stepper__tick--up svg { transform: rotate(180deg); }
+.rux-stepper__tick:not(:disabled):hover { color: var(--accent-blue); }
+.rux-stepper__tick:not(:disabled):active { box-shadow: var(--e-pressed-sm); }
+.rux-stepper__tick:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.rux-stepper__tick:disabled { opacity: 0.4; cursor: default; }
+.rux-stepper.is-disabled .rux-stepper__value { opacity: 0.4; }

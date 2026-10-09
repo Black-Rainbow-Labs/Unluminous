@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>rux controls in the Unluminous themes</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1180px; height: 740px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: hidden; border-radius: 12px;">
+<sc-for list="{{themes}}" as="theme" hint-placeholder-count="2">
+<div data-theme="{{theme.id}}" style="box-sizing: border-box; padding: 26px 28px; display: flex; flex-direction: column; gap: 18px; background: var(--surface-1); color: var(--ink-900); font-family: var(--font-sans);">
+<div style="display: flex; align-items: baseline; justify-content: space-between;">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em;">{{theme.name}}</h2>
+<span style="font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.16em; color: var(--ink-500);">RUX RETONED</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+<x-import component-from-global-scope="Rux.Button" variant="primary" size="md" icon="play" label="Start Work"></x-import>
+<x-import component-from-global-scope="Rux.Button" icon="docs" label="Prompts"></x-import>
+<x-import component-from-global-scope="Rux.Button" variant="mint" icon="check" label="Save"></x-import>
+<x-import component-from-global-scope="Rux.Button" variant="danger" icon="trash" label="Delete"></x-import>
+<x-import component-from-global-scope="Rux.IconButton" icon="settings" label="Settings" size="md"></x-import>
+</div>
+<div style="display: flex; gap: 12px; align-items: center;">
+<div style="width: 180px; flex-shrink: 0;"><x-import component-from-global-scope="Rux.Select" label="Model" options="{{models}}" value="{{zero}}"></x-import></div>
+<div style="flex: 1; min-width: 0;"><x-import component-from-global-scope="Rux.TextInput" search="{{yes}}" hint="Search tasks" label="Search tasks"></x-import></div>
+</div>
+<div style="display: flex; gap: 16px; align-items: center;">
+<x-import component-from-global-scope="Rux.Segmented" items="{{modes}}" default-value="{{one}}"></x-import>
+<x-import component-from-global-scope="Rux.Switch" default-on="{{yes}}" label="Draw depth in plugin panes"></x-import>
+<x-import component-from-global-scope="Rux.Chip" label="4 fields randomized" variant="accent" dismissible="{{yes}}"></x-import>
+</div>
+<x-import component-from-global-scope="Rux.Plate">
+<div style="display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; gap: 8px;">
+<x-import component-from-global-scope="Rux.Key" label="core"></x-import>
+<x-import component-from-global-scope="Rux.Key" label="app" chosen="{{yes}}"></x-import>
+<x-import component-from-global-scope="Rux.Key" label="cli"></x-import>
+<x-import component-from-global-scope="Rux.Key" label="Watching" led="var(--accent-mint)"></x-import>
+</div>
+<div style="display: flex; gap: 18px; align-items: center;">
+<x-import component-from-global-scope="Rux.Checkbox" default-checked="{{yes}}" label="Weigh the four mechanisms"></x-import>
+<x-import component-from-global-scope="Rux.Checkbox" label="Write the manifest keys"></x-import>
+</div>
+<div style="display: flex; gap: 16px; align-items: center;">
+<div style="width: 220px;"><x-import component-from-global-scope="Rux.Fader" default-value="{{fader}}" label="Opacity"></x-import></div>
+<div style="width: 200px;"><x-import component-from-global-scope="Rux.Meter" fraction="{{meter}}" label="Context used"></x-import></div>
+</div>
+</div>
+</x-import>
+<x-import component-from-global-scope="Rux.Progress" fraction="{{progress}}" label="Release"></x-import>
+<x-import component-from-global-scope="Rux.Plate" radius="{{fourteen}}" padding="{{sixteen}}">
+<div style="font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.16em; color: var(--ink-500); margin-bottom: 12px;">RELEASE 0.68.2</div>
+<x-import component-from-global-scope="Rux.Timeline" items="{{release}}" animate="{{no}}"></x-import>
+</x-import>
+</div>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1180,"height":740}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      yes: true,
+      zero: 0,
+      one: 1,
+      fader: 0.86,
+      meter: 0.62,
+      progress: 0.4,
+      no: false,
+      fourteen: 14,
+      sixteen: 16,
+      release: [
+        { time: '14:02', title: 'Run the window suite', text: 'Fourteen binaries, --no-fail-fast', stage: 'done' },
+        { time: '14:19', title: 'Build the Windows installer', stage: 'done' },
+        { time: '14:31', title: 'Notarise Unluminous.app', text: 'Waiting on Apple', stage: 'active' },
+        { time: '14:40', title: 'Publish to GitHub and unluminous.com', stage: 'todo' }
+      ],
+      models: ['claude', 'codex', 'local qwen 27B'],
+      modes: [{ label: 'Raw' }, { label: 'Split' }, { label: 'Preview' }],
+      themes: [
+        { id: 'unluminous-dark', name: 'Unluminous Dark' },
+        { id: 'unluminous-light', name: 'Unluminous Light' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

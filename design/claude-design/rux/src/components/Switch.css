@@ -1,0 +1,31 @@
+.rux-switch {
+  position: relative;
+  display: inline-block;
+  box-sizing: border-box;
+  flex: none;
+  width: 44px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: var(--e-pressed-sm);
+  cursor: pointer;
+}
+.rux-switch.is-on {
+  background: linear-gradient(180deg, var(--grad-primary-from), var(--grad-primary-to));
+}
+/* knob radius = track radius - 3, inset 3px */
+.rux-switch__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, var(--grad-knob-from), var(--grad-knob-to));
+  box-shadow: var(--e-raised-sm);
+}
+.rux-switch.is-on .rux-switch__knob { left: auto; right: 3px; }
+.rux-switch:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.rux-switch:disabled { opacity: 0.4; cursor: default; }

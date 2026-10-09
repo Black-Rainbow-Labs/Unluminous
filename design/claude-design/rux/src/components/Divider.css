@@ -1,0 +1,4 @@
+.rux-divider { height: 1px; width: 100%; background: var(--divider-color, var(--hairline)); }
+.rux-divider--faded {
+  background: linear-gradient(90deg, transparent, var(--divider-color, var(--hairline)), transparent);
+}

@@ -1,0 +1,58 @@
+/* controls::menu_rows. A menu row is 24 points, the only row height besides the list's 28. */
+.ul-menu {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: var(--ul-menu);
+  border: 1px solid var(--ul-control-border);
+  border-radius: var(--ul-control-corner);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  color: var(--ul-text-control);
+}
+.ul-menu__row {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px 0 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ul-menu__row:hover,
+.ul-menu__row.is-chosen {
+  background: var(--ul-selected-row);
+  color: var(--ul-text-strong);
+}
+/* A row that cannot be used: text_faint at 60%, and no clicks. */
+.ul-menu__row:disabled {
+  color: color-mix(in srgb, var(--ul-text-faint) 60%, transparent);
+  background: transparent;
+  cursor: default;
+}
+.ul-menu__tick {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  color: var(--ul-text-strong);
+}
+.ul-menu__label { flex: 1; }
+.ul-menu__shortcut { font-size: 11.5px; color: var(--ul-text-faint); }
+.ul-menu__more { color: var(--ul-text-dim); }
+.ul-menu__separator {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--ul-divider);
+}
+/* A heading inside a menu, at 11. */
+.ul-menu__heading {
+  padding: 6px 8px 2px 18px;
+  font-size: 11px;
+  color: var(--ul-text-dim);
+}

@@ -1,0 +1,24 @@
+.rux-top-nav {
+  display: inline-flex; align-items: stretch; gap: 4px; box-sizing: border-box; padding: 6px;
+  background: var(--surface-1); border-radius: var(--r-pill); box-shadow: var(--e-raised);
+}
+.rux-top-nav__item {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box;
+  padding: 9px 14px; border: none; border-radius: var(--r-pill); background: transparent; cursor: pointer;
+  color: var(--ink-500); font: 500 12px / 1.4 var(--font-sans); letter-spacing: -0.005em; transition: color 0.2s;
+}
+.rux-top-nav__item:hover { color: var(--ink-900); }
+.rux-top-nav__item:active { transform: translateY(0.5px); }
+.rux-top-nav__item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.rux-top-nav__label { display: none; white-space: nowrap; }
+.rux-top-nav__item.is-active {
+  padding: 9px 18px; color: var(--on-accent);
+  background: linear-gradient(165deg, var(--grad-nav-active-from), var(--grad-nav-active-to));
+  box-shadow: var(--e-nav-active);
+}
+.rux-top-nav--full .rux-top-nav__item.is-active .rux-top-nav__label { display: inline; }
+
+/* Less room: the active item gives up its label first, then the side padding. */
+.rux-top-nav--icons .rux-top-nav__item.is-active { padding: 9px 14px; }
+.rux-top-nav--trimmed .rux-top-nav__item,
+.rux-top-nav--trimmed .rux-top-nav__item.is-active { padding: 9px 10px; }

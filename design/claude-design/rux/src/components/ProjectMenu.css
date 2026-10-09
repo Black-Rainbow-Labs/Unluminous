@@ -1,0 +1,41 @@
+.rux-project-menu { position: relative; display: inline-block; min-width: 240px; }
+.rux-project-menu__trigger {
+  display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; min-width: 240px;
+  padding: 8px 14px 8px 8px; border: none; border-radius: var(--r-lg); background: var(--surface-1);
+  box-shadow: var(--e-raised-sm); cursor: pointer; text-align: left; font-family: var(--font-sans);
+}
+.rux-project-menu__trigger:active { transform: translateY(0.5px); }
+.rux-project-menu.is-open .rux-project-menu__trigger { box-shadow: var(--e-pressed-sm); }
+.rux-project-menu__trigger:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.rux-project-menu__chip {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px;
+  border-radius: var(--r-md); color: var(--on-accent);
+  background: linear-gradient(160deg, var(--grad-primary-diagonal-from), var(--grad-primary-diagonal-to));
+  box-shadow: inset 1px 1px 2px rgb(255 255 255 / 0.2);
+}
+.rux-project-menu__body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+.rux-project-menu__kicker {
+  font: 400 9px / 1.4 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-400);
+}
+.rux-project-menu__name {
+  max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 600 13px / 1.4 var(--font-sans); letter-spacing: -0.01em; color: var(--ink-900);
+}
+.rux-project-menu__chev { flex: none; display: inline-flex; color: var(--ink-500); transition: transform 0.2s; }
+.rux-project-menu.is-open .rux-project-menu__chev { transform: rotate(180deg); }
+
+.rux-project-menu__menu {
+  position: absolute; left: 0; top: calc(100% + 10px); z-index: 20; box-sizing: border-box;
+  min-width: 280px; width: 100%; padding: 8px; background: var(--surface-1);
+  border-radius: var(--r-lg); box-shadow: var(--e-raised-lg);
+}
+.rux-project-menu__menu .rux-list-item { height: 36px; padding-top: 0; padding-bottom: 0; }
+.rux-project-menu__foot { margin-top: 4px; padding: 4px 0; border-top: 1px solid var(--hairline); }
+.rux-project-menu__new {
+  display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box; height: 36px;
+  padding: 0 14px; border: none; border-radius: var(--r-md); background: transparent; cursor: pointer;
+  font: 500 13px / 1.4 var(--font-sans); color: var(--accent-blue);
+}
+.rux-project-menu__new:hover { background: var(--hover); }
+.rux-project-menu__new:active { transform: translateY(0.5px); }
+.rux-project-menu__new:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

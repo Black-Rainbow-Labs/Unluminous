@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ticket modal</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div data-theme="unluminous-dark" style="position: relative; width: 1180px; height: 740px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; background: var(--ul-editor); color: var(--ul-text); font-family: var(--font-ui);">
+<x-import component-from-global-scope="Rux.UlTitleBar" project="unluminous" text-tools="{{no}}"></x-import>
+<div style="display: flex; flex: 1; min-height: 0;">
+<x-import component-from-global-scope="Rux.UlActivityBar" style="display: flex;"></x-import>
+<x-import component-from-global-scope="Rux.UlExplorer" project="unluminous" style="display: flex;"></x-import>
+<x-import component-from-global-scope="Rux.UlEditor" style="display: flex; flex: 1; min-height: 0;"></x-import>
+</div>
+<x-import component-from-global-scope="Rux.UlStatusBar" message="task-2230 is open"></x-import>
+<div style="position: absolute; inset: 0; z-index: 10; display: grid; place-items: center; background: var(--scrim);">
+<section role="dialog" aria-label="task-2230 Unluminous Design Updates Prep" style="width: 1060px; height: 660px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border-radius: 24px; background: var(--surface-1); box-shadow: var(--e-modal);">
+<header style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 16px 0 22px; border-bottom: 1px solid var(--hairline);">
+<span style="font-family: var(--font-mono); font-size: 12px; color: var(--ink-500);">task-2230</span>
+<span style="flex: 1; font-size: 14px; font-weight: 600; color: var(--ink-900);">Unluminous Design Updates Prep</span>
+<x-import component-from-global-scope="Rux.IconButton" icon="x" label="Close" variant="ghost" size="sm"></x-import>
+</header>
+<div style="flex: 1; min-height: 0; display: flex; gap: 22px; padding: 18px 22px;">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: center; gap: 8px;"><x-import component-from-global-scope="Rux.Icon" name="docs" size="{{thirteen}}" style="color: var(--accent-blue);"></x-import><span style="font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.16em; color: var(--ink-700);">DESCRIPTION</span></div>
+<x-import component-from-global-scope="Rux.Well" pad="{{fourteen}}"><p style="margin: 0; font-size: 13px; line-height: 1.6; color: var(--ink-900);">We want to work through some design changes for Unluminous: icons, shadowing, components, modals. Design on the web first in Claude Design, then implement the result in Rust.</p></x-import>
+<div style="display: flex; align-items: center; gap: 8px;"><x-import component-from-global-scope="Rux.Icon" name="check" size="{{thirteen}}" style="color: var(--accent-mint);"></x-import><span style="font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.16em; color: var(--ink-700);">TODOS · 6/7</span></div>
+<x-import component-from-global-scope="Rux.Well" pad="{{ten}}">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<x-import component-from-global-scope="Rux.Checkbox" default-checked="{{yes}}" label="Export the window marks as SVG"></x-import>
+<x-import component-from-global-scope="Rux.Checkbox" default-checked="{{yes}}" label="Port rux to React and CSS"></x-import>
+<x-import component-from-global-scope="Rux.Checkbox" label="Carry the redesign back to Rust"></x-import>
+<x-import component-from-global-scope="Rux.TextInput" hint="Add a todo" label="Add a todo"></x-import>
+</div>
+</x-import>
+<div style="display: flex; align-items: center; gap: 8px;"><x-import component-from-global-scope="Rux.Icon" name="spark" size="{{thirteen}}" style="color: var(--ink-500);"></x-import><span style="font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.16em; color: var(--ink-700);">AGENT TERMINAL</span></div>
+<x-import component-from-global-scope="Rux.Well" pad="{{fourteen}}"><span style="font-size: 12px; color: var(--ink-500);">No terminal for this ticket. Press Start Work to launch its agent, or Resume session to hand its conversation back.</span></x-import>
+<div style="display: flex; align-items: center; gap: 8px;"><x-import component-from-global-scope="Rux.Icon" name="chat" size="{{thirteen}}" style="color: var(--accent-violet);"></x-import><span style="font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.16em; color: var(--ink-700);">COMMENTS · 1</span></div>
+<div style="font-size: 12px; color: var(--ink-500);">claude · just now</div>
+<div style="font-size: 13px; color: var(--ink-900);">The design system and the canvas are ready to iterate on.</div>
+<div style="display: flex; align-items: center; gap: 10px;">
+<div style="flex: 1; min-width: 0;"><x-import component-from-global-scope="Rux.TextInput" hint="Add a comment" label="Add a comment"></x-import></div>
+<x-import component-from-global-scope="Rux.Button" variant="primary" icon="chat" label="Post comment"></x-import>
+<x-import component-from-global-scope="Rux.Button" trailing="arrowRight" label="Send to terminal"></x-import>
+</div>
+</div>
+<aside style="width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px;">
+<x-import component-from-global-scope="Rux.Button" variant="primary" size="lg" icon="play" label="Start Work" stretch="{{yes}}"></x-import>
+<sc-for list="{{fields}}" as="field" hint-placeholder-count="6">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<span style="font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.14em; color: var(--ink-500);">{{field.label}}</span>
+<x-import component-from-global-scope="Rux.Select" label="{{field.label}}" options="{{field.options}}" value="{{zero}}"></x-import>
+</div>
+</sc-for>
+<span style="flex: 1;"></span>
+<div style="display: flex; justify-content: flex-end;"><x-import component-from-global-scope="Rux.Button" size="md" label="Close"></x-import></div>
+</aside>
+</div>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1180,"height":740}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      no: false,
+      yes: true,
+      zero: 0,
+      ten: 10,
+      thirteen: 13,
+      fourteen: 14,
+      fields: [
+        { label: 'STATUS', options: ['IN PROGRESS', 'NEW', 'QA FAILED', 'AGENT DONE'] },
+        { label: 'ASSIGNEE', options: ['claude', 'codex', 'local_ai', 'jason'] },
+        { label: 'MODEL', options: ['claude-opus-5-5[1m]', 'claude-sonnet-5-5'] },
+        { label: 'PROJECT', options: ['unluminous', 'black-rainbow-labs-rux'] },
+        { label: 'PRIORITY', options: ['medium', 'high', 'low'] },
+        { label: 'EPIC', options: ['general', 'No epic'] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

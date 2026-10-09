@@ -1,0 +1,29 @@
+/* .ic-dice: 28px, pressed and faint when off, violet gradient with a glow when on */
+.rux-dice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface-1);
+  color: var(--ink-400);
+  box-shadow: var(--e-pressed-sm);
+  cursor: pointer;
+}
+.rux-dice:not(:disabled):not(.is-on):hover { color: var(--accent-violet); }
+.rux-dice:not(:disabled):active { transform: translateY(0.5px); }
+.rux-dice.is-on {
+  background: linear-gradient(160deg, var(--grad-violet-from), var(--grad-violet-to));
+  color: var(--on-accent);
+  box-shadow:
+    -2px -2px 4px var(--shadow-light),
+    2px 2px 6px color-mix(in srgb, var(--grad-violet-to) 40%, transparent),
+    inset 1px 1px 1px rgb(255 255 255 / 0.3);
+}
+.rux-dice:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.rux-dice:disabled { opacity: 0.4; cursor: default; }

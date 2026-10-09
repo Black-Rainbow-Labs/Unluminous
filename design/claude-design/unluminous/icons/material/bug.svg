@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+<!-- unluminous theme::icon, material set: bug -->
+<circle cx="12.000" cy="7.600" r="1.900" fill="#1e2530" stroke="none" stroke-width="0.000"/>
+<rect x="8.800" y="8.600" width="6.400" height="9.200" rx="3.000" fill="#1e2530" stroke="none" stroke-width="0.000"/>
+<line x1="8.800" y1="10.200" x2="6.800" y2="9.100" stroke="#1e2530" stroke-width="1.400" stroke-linecap="round"/>
+<line x1="15.200" y1="10.200" x2="17.200" y2="9.100" stroke="#1e2530" stroke-width="1.400" stroke-linecap="round"/>
+<line x1="8.800" y1="12.800" x2="6.800" y2="12.800" stroke="#1e2530" stroke-width="1.400" stroke-linecap="round"/>
+<line x1="15.200" y1="12.800" x2="17.200" y2="12.800" stroke="#1e2530" stroke-width="1.400" stroke-linecap="round"/>
+<line x1="8.800" y1="15.400" x2="6.800" y2="16.500" stroke="#1e2530" stroke-width="1.400" stroke-linecap="round"/>
+<line x1="15.200" y1="15.400" x2="17.200" y2="16.500" stroke="#1e2530" stroke-width="1.400" stroke-linecap="round"/>
+<line x1="10.800" y1="6.300" x2="9.400" y2="5.100" stroke="#1e2530" stroke-width="1.400" stroke-linecap="round"/>
+<line x1="13.200" y1="6.300" x2="14.600" y2="5.100" stroke="#1e2530" stroke-width="1.400" stroke-linecap="round"/>
+</svg>

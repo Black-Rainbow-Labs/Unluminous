@@ -1,0 +1,30 @@
+/* controls::search_field. 24 points tall; the words are a fraction of the field's own height
+   (controls::field_font_size), which at 24 is the 12.5 the rows are set in. */
+.ul-field {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px 0 6px;
+  gap: 2px;
+  background: var(--ul-field);
+  border: 1px solid var(--ul-divider);
+  border-radius: var(--ul-control-corner);
+  color: var(--ul-text-dim);
+  cursor: text;
+}
+.ul-field--plain { padding-left: 8px; }
+.ul-field:focus-within { border-color: var(--ul-accent); }
+.ul-field__mark { margin-left: -2px; color: var(--ul-text-dim); }
+.ul-field__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ul-text-control);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+}
+.ul-field__input::placeholder { color: var(--ul-text-faint); }

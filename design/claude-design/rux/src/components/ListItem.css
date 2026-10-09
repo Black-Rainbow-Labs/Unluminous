@@ -1,0 +1,26 @@
+.rux-list-item {
+  display: flex; align-items: center; gap: 10px; box-sizing: border-box; width: 100%;
+  padding: 10px 14px; border-radius: var(--r-md); cursor: pointer;
+  font: 400 13px / 1.4 var(--font-sans); color: var(--ink-700);
+}
+.rux-list-item:hover { background: var(--hover); color: var(--ink-900); }
+.rux-list-item:active { transform: translateY(0.5px); }
+.rux-list-item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.rux-list-item.is-selected { color: var(--accent-blue); font-weight: 500; }
+.rux-list-item--pressed.is-selected,
+.rux-list-item--pressed.is-selected:hover {
+  background: var(--surface-1); box-shadow: var(--e-pressed-sm); color: var(--ink-900);
+}
+.rux-list-item__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rux-list-item__dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-300); }
+.rux-list-item.is-selected .rux-list-item__dot { background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+.rux-list-item__trail { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; color: var(--accent-blue); }
+.rux-list-item__action {
+  display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; padding: 0;
+  border: none; background: transparent; cursor: pointer; opacity: 0;
+  color: color-mix(in srgb, var(--accent-mint) 75%, transparent);
+}
+.rux-list-item:hover .rux-list-item__action,
+.rux-list-item.is-selected .rux-list-item__action { opacity: 1; }
+.rux-list-item__action:hover { color: var(--accent-mint); }
+.rux-list-item__action:focus-visible { opacity: 1; outline: 2px solid var(--focus-ring); outline-offset: 2px; }

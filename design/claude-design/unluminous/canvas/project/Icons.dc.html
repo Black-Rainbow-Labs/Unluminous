@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Window marks</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div data-theme="unluminous-dark" style="width: 1180px; height: 900px; box-sizing: border-box; padding: 24px 28px; display: flex; flex-direction: column; gap: 14px; overflow: hidden; border-radius: 12px; background: var(--ul-explorer); color: var(--ul-text); font-family: var(--font-ui);">
+<div style="display: flex; align-items: baseline; gap: 14px;">
+<h1 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--ul-text-strong);">Unluminous window marks</h1>
+<span style="font-size: 12px; color: var(--ul-text-dim);">The material set, as theme::icon paints it. Each mark at the size a person sees it, and twice that.</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px;">
+<sc-for list="{{marks}}" as="mark" hint-placeholder-count="73">
+<div style="display: flex; align-items: center; gap: 6px; height: 54px; padding: 0 10px; border-radius: 8px; background: var(--ul-editor);">
+<x-import component-from-global-scope="Rux.UlIcon" name="{{mark.name}}" size="{{small}}" style="color: var(--ul-icon);"></x-import>
+<x-import component-from-global-scope="Rux.UlIcon" name="{{mark.name}}" size="{{large}}" style="color: var(--ul-text-control);"></x-import>
+<span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 10.5px; color: var(--ul-text-dim);">{{mark.name}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1180,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const names = (window.Rux && window.Rux.UL_ICON_NAMES) || [];
+    return { small: 24, large: 48, marks: names.map((name) => ({ name })) };
+  }
+}
+</script>
+</body>
+</html>

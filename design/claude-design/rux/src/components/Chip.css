@@ -1,0 +1,69 @@
+.rux-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 7px 14px;
+  border-radius: var(--r-pill);
+  background: var(--surface-1);
+  color: var(--ink-700);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.rux-chip--mono { font-family: var(--font-mono); letter-spacing: 0.02em; }
+.rux-chip__text { display: inline-flex; align-items: baseline; }
+
+/* .meta-chip b */
+.rux-chip__value { margin-left: 4px; color: var(--ink-900); font-weight: 600; }
+
+/* sunken: .meta-chip, .volume-chip, .scene__badge, .ic-saveto */
+.rux-chip--sunken { box-shadow: var(--e-pressed-sm); }
+/* raised: .ic-elapsed */
+.rux-chip--raised { box-shadow: var(--e-raised-sm); }
+
+/* accent: .ic-preset-chip, padding 6 8 6 12, glow of the gradient end at 30% */
+.rux-chip--accent {
+  padding: 6px 8px 6px 12px;
+  color: var(--on-accent);
+  --rux-chip-to: var(--grad-mint-to);
+  box-shadow:
+    -2px -2px 4px var(--shadow-light),
+    2px 2px 6px color-mix(in srgb, var(--rux-chip-to) 30%, transparent),
+    inset 1px 1px 1px rgb(255 255 255 / 0.25);
+}
+.rux-chip--mint   { background: linear-gradient(160deg, var(--grad-mint-from), var(--grad-mint-to)); }
+.rux-chip--violet { --rux-chip-to: var(--grad-violet-to); background: linear-gradient(160deg, var(--grad-violet-from), var(--grad-violet-to)); }
+.rux-chip--primary { --rux-chip-to: var(--grad-primary-diagonal-to); background: linear-gradient(160deg, var(--grad-primary-diagonal-from), var(--grad-primary-diagonal-to)); }
+.rux-chip--danger { --rux-chip-to: var(--grad-danger-diagonal-to); background: linear-gradient(160deg, var(--grad-danger-diagonal-from), var(--grad-danger-diagonal-to)); }
+
+/* .volume-chip__dot: 7px disc glowing in its own colour */
+.rux-chip__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--rux-chip-dot);
+  box-shadow: 0 0 6px var(--rux-chip-dot);
+}
+
+/* .ic-preset-chip__x: 18px round dismiss */
+.rux-chip__x {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.25);
+  color: var(--on-accent);
+  cursor: pointer;
+}
+.rux-chip__x:hover { background: rgb(255 255 255 / 0.4); }
+.rux-chip__x:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

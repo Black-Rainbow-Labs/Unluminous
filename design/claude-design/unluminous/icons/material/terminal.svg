@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+<!-- unluminous theme::icon, material set: terminal -->
+<rect x="6.500" y="6.500" width="11.000" height="11.000" rx="2.000" fill="none" stroke="#1e2530" stroke-width="1.500"/>
+<polyline points="8.900,8.900 10.200,10.200 8.900,11.500" fill="none" stroke="#1e2530" stroke-width="1.500" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="11.400" y1="13.000" x2="14.400" y2="13.000" stroke="#1e2530" stroke-width="1.500" stroke-linecap="round"/>
+</svg>

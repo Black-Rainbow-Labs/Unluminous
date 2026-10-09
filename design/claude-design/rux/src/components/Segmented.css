@@ -1,0 +1,45 @@
+/* .view-toggle (regular) and .ic-modal-tabs (compact) */
+.rux-segmented {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  box-sizing: border-box;
+  padding: 5px;
+  border-radius: var(--r-pill);
+  background: var(--surface-1);
+  box-shadow: var(--e-pressed-sm);
+}
+.rux-segmented__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--ink-500);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.rux-segmented__item:hover { color: var(--ink-900); }
+.rux-segmented__item.is-active {
+  background: var(--surface-1);
+  color: var(--ink-900);
+  box-shadow: var(--e-raised-sm);
+}
+.rux-segmented__item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+.rux-segmented--compact { padding: 4px; }
+.rux-segmented--compact .rux-segmented__item {
+  gap: 5px;
+  padding: 6px 10px;
+  font-size: 11px;
+  letter-spacing: 0;
+}

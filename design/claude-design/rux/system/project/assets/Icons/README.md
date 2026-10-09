@@ -1,0 +1,1 @@
+The 37 rux marks (`SbIcon`), one SVG each, drawn in `#1E2530` (`ink-900` of the light theme) because an `<img>` cannot take the colour of the words round it. In a page, draw them with the `Icon` component instead, which uses the current text colour. 24 unit viewBox, stroke 1.8, round caps and joins.

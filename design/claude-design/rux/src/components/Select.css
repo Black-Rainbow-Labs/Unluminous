@@ -1,0 +1,40 @@
+.rux-select { position: relative; display: block; --z: 1; }
+.rux-select__trigger {
+  display: flex; align-items: center; gap: calc(8px * var(--z)); width: 100%; box-sizing: border-box;
+  min-height: calc(34px * var(--z)); padding: calc(9px * var(--z)) calc(12px * var(--z));
+  border: none; border-radius: calc(var(--r-md) * var(--z)); background: var(--surface-1);
+  box-shadow: var(--e-raised-sm); cursor: pointer; text-align: left;
+  font: 500 calc(12px * var(--z)) / 1.4 var(--font-sans); letter-spacing: -0.005em; color: var(--ink-900);
+}
+.rux-select--mono .rux-select__trigger {
+  font-family: var(--font-mono); font-size: calc(11px * var(--z)); font-weight: 500; letter-spacing: 0.01em;
+}
+.rux-select__trigger:hover:not(:disabled) { box-shadow: var(--e-raised); }
+.rux-select__trigger:active:not(:disabled) { transform: translateY(0.5px); }
+.rux-select.is-open .rux-select__trigger { box-shadow: var(--e-pressed-sm); }
+.rux-select__trigger:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.rux-select__trigger:disabled { opacity: 0.4; cursor: default; }
+.rux-select__value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-900); }
+.rux-select__value--empty { color: var(--ink-400); }
+.rux-select__chev { display: inline-flex; flex: none; color: var(--ink-500); transition: transform 0.2s; }
+.rux-select.is-open .rux-select__chev { transform: rotate(180deg); }
+
+.rux-select__menu {
+  position: absolute; left: 0; right: 0; top: calc(100% + 6px * var(--z)); z-index: 20;
+  box-sizing: border-box; max-height: calc(280px * var(--z)); overflow-y: auto;
+  padding: calc(6px * var(--z)); background: var(--surface-1);
+  border-radius: calc(var(--r-md) * var(--z)); box-shadow: var(--e-raised-lg);
+}
+.rux-select--up .rux-select__menu { top: auto; bottom: calc(100% + 6px * var(--z)); }
+.rux-select--quiet .rux-select__menu { box-shadow: var(--e-raised-sm); }
+.rux-select__item {
+  display: flex; align-items: center; justify-content: space-between; gap: calc(6px * var(--z));
+  width: 100%; box-sizing: border-box; padding: calc(8px * var(--z)) calc(12px * var(--z));
+  border: none; background: transparent; border-radius: calc(var(--r-sm) * var(--z)); cursor: pointer; text-align: left;
+  font: 400 calc(12px * var(--z)) / 1.4 var(--font-sans); letter-spacing: -0.005em; color: var(--ink-700);
+}
+.rux-select--mono .rux-select__item { font-family: var(--font-mono); font-size: calc(11px * var(--z)); letter-spacing: 0.01em; }
+.rux-select__item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rux-select__item.is-selected { background: var(--accent-wash-soft); color: var(--accent-blue); font-weight: 500; }
+.rux-select__item:hover { background: var(--accent-wash); color: var(--accent-blue); }
+.rux-select__item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

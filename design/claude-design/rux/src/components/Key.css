@@ -1,0 +1,81 @@
+.rux-key {
+  --rux-lit-r: 9px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--inst-plate);
+  box-shadow: var(--e-raised-sm);
+  color: var(--ink-700);
+  font: 500 12px/1 var(--font-sans);
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform var(--inst-t-press) ease, box-shadow var(--inst-t-press) ease, background-color var(--inst-t-press) ease;
+}
+.rux-key::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: calc(var(--rux-lit-r) * 0.8);
+  right: calc(var(--rux-lit-r) * 0.8);
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--inst-edge) 35%, transparent 100%);
+  pointer-events: none;
+  transition: opacity var(--inst-t-press) ease;
+}
+.rux-key--compact {
+  --rux-lit-r: 7px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+
+/* An LED takes 14px: its own diameter, then the gap to the words. */
+.rux-key__led {
+  margin-right: 8px;
+}
+.rux-key--compact .rux-key__led {
+  margin-right: 9px;
+}
+.rux-key__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Lit, or held down: the words are the strongest ink. */
+.rux-key.is-lit {
+  color: var(--ink-900);
+}
+
+/* Under the pointer a key is a shade lighter, which is all a hover is on hardware. */
+.rux-key:hover:not(:disabled):not(.is-down):not(:active) {
+  background: var(--surface-3);
+}
+
+/* Sunk: one point down, the outer shadows traded for the inner ones, the lit edge gone. */
+.rux-key:active:not(:disabled),
+.rux-key.is-down {
+  transform: translateY(1px);
+  box-shadow: var(--e-pressed-sm);
+}
+.rux-key:active:not(:disabled)::before,
+.rux-key.is-down::before {
+  opacity: 0;
+}
+
+.rux-key:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.rux-key:disabled,
+.rux-key.is-disabled {
+  color: var(--ink-300);
+  cursor: default;
+}

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Menus and the terminal tile</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div data-theme="unluminous-dark" style="position: relative; width: 1180px; height: 740px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; background: var(--ul-editor); color: var(--ul-text); font-family: var(--font-ui);">
+<x-import component-from-global-scope="Rux.UlTitleBar" project="unluminous" open-menu="File" text-tools="{{no}}" running="{{yes}}"></x-import>
+<div style="display: flex; flex: 1; min-height: 0;">
+<x-import component-from-global-scope="Rux.UlActivityBar" bottom="{{bottomRail}}" style="display: flex;"></x-import>
+<x-import component-from-global-scope="Rux.UlExplorer" project="unluminous" rows="{{rows}}" keyboard="{{yes}}" style="display: flex;"></x-import>
+<div style="display: flex; flex-direction: column; flex: 1; min-width: 0;">
+<x-import component-from-global-scope="Rux.UlTabStrip" tabs="{{tabs}}"></x-import>
+<x-import component-from-global-scope="Rux.UlEditor" style="display: flex; flex: 1; min-height: 0;"></x-import>
+<div style="display: flex; height: 250px; flex-shrink: 0;"><x-import component-from-global-scope="Rux.UlTile" title="Terminal"></x-import></div>
+</div>
+</div>
+<x-import component-from-global-scope="Rux.UlStatusBar"></x-import>
+<div style="position: absolute; left: 98px; top: 34px; z-index: 10;"><x-import component-from-global-scope="Rux.UlMenu"></x-import></div>
+<div style="position: absolute; left: 196px; top: 236px; z-index: 10;"><x-import component-from-global-scope="Rux.UlMenu" items="{{explorerMenu}}" width="{{menuWidth}}"></x-import></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1180,"height":740}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const rust = { letter: 'R', colour: '#b7410e' };
+    return {
+      no: false,
+      yes: true,
+      menuWidth: 260,
+      bottomRail: [
+        { id: 'debug', icon: 'bug', label: 'Debug tile' },
+        { id: 'run', icon: 'run', label: 'Run tile' },
+        { id: 'terminal', icon: 'terminal', label: 'Terminal tile', on: true }
+      ],
+      rows: [
+        { name: 'crates', folder: true, open: true },
+        { name: 'unluminous-app', folder: true, depth: 1 },
+        { name: 'unluminous-core', folder: true, depth: 1, open: true },
+        { name: 'src', folder: true, depth: 2 },
+        { name: 'Cargo.toml', depth: 2, mark: 'page', cursor: true },
+        { name: 'design', folder: true },
+        { name: 'CLAUDE.md', mark: 'prose' },
+        { name: 'README.md', mark: 'prose', chosen: true }
+      ],
+      tabs: [{ name: 'README.md', active: true }, { name: 'lib.rs', badge: rust }],
+      explorerMenu: [
+        { label: 'New', submenu: true },
+        { separator: true },
+        { label: 'Cut', shortcut: 'Ctrl+X' },
+        { label: 'Copy', shortcut: 'Ctrl+C' },
+        { label: 'Copy Path' },
+        { label: 'Paste', shortcut: 'Ctrl+V', disabled: true },
+        { separator: true },
+        { label: 'Rename...', shortcut: 'Shift+F6', chosen: true },
+        { label: 'Delete', shortcut: 'Delete' },
+        { separator: true },
+        { label: 'Reveal in File Explorer' },
+        { label: 'Git', submenu: true }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

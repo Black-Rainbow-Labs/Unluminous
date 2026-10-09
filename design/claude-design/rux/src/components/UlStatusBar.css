@@ -1,0 +1,41 @@
+/* components::status_bar: 32 points (theme::size::STATUS_BAR), filled status_bar, items at 11.5 in
+   text_dim with a divider between them. */
+.ul-status {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 16px;
+  background: var(--ul-status-bar);
+  color: var(--ul-text-dim);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ul-status__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  border-left: 1px solid var(--ul-divider);
+}
+.ul-status__item.is-file {
+  padding-left: 0;
+  border-left: 0;
+  color: var(--ul-text-strong);
+}
+.ul-status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ul-unsaved);
+}
+.ul-status__message {
+  padding-left: 16px;
+  border-left: 1px solid var(--ul-divider);
+  color: var(--ul-text-control);
+}
+.ul-status__spacer { flex: 1; }
+.ul-status__right { color: var(--ul-text-dim); }

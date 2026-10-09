@@ -1,0 +1,33 @@
+.rux-progress {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 200px;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface-sunken);
+  box-shadow: var(--e-pressed-sm);
+}
+.rux-progress__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--grad-progress-from), var(--grad-progress-to));
+}
+/* no known fraction: a band a fifth of the track wide sweeping back and forth (sin(t * 0.6) in the Rust) */
+.rux-progress--indeterminate .rux-progress__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 20%;
+  animation: rux-progress-sweep 5.236s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+}
+/* the band travels 80% of the track, which is four band widths */
+@keyframes rux-progress-sweep {
+  from { transform: translateX(0); }
+  to { transform: translateX(400%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rux-progress--indeterminate .rux-progress__fill { animation-duration: 12s; }
+}

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent-Chat pane</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div data-theme="unluminous-dark" style="width: 1180px; height: 740px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; background: var(--ul-editor); color: var(--ul-text); font-family: var(--font-ui);">
+<x-import component-from-global-scope="Rux.UlTitleBar" project="unluminous" text-tools="{{no}}"></x-import>
+<div style="display: flex; flex: 1; min-height: 0;">
+<x-import component-from-global-scope="Rux.UlActivityBar" top="{{rail}}" style="display: flex;"></x-import>
+<x-import component-from-global-scope="Rux.UlExplorer" project="unluminous" rows="{{rows}}" footer="1,216 files · 775 can be opened" style="display: flex;"></x-import>
+<div style="display: flex; flex-direction: column; flex: 1; min-width: 0;">
+<x-import component-from-global-scope="Rux.UlTabStrip" tabs="{{tabs}}"></x-import>
+<x-import component-from-global-scope="Rux.UlEditor" code="{{code}}" caret-line="{{caret}}" style="display: flex; flex: 1; min-height: 0;"></x-import>
+</div>
+<section aria-label="Agent-Chat" style="width: 440px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--ul-divider); background: var(--surface-0);">
+<div style="height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; background: var(--ul-toolbar); font-size: 12px; color: var(--ul-text-control);">
+<span>Agent-Chat</span>
+<x-import component-from-global-scope="Rux.UlIcon" name="cross" size="{{twenty}}"></x-import>
+</div>
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; margin: 8px; padding: 12px; border-radius: 18px; background: var(--surface-1); box-shadow: var(--e-raised-sm); overflow: hidden;">
+<div style="display: flex; align-items: center; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--hairline);">
+<span style="flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--ink-900); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Why did the release build get slower?</span>
+<div style="width: 120px; flex-shrink: 0;"><x-import component-from-global-scope="Rux.Select" label="Model" options="{{models}}" value="{{zero}}" menu-elevation="quiet"></x-import></div>
+<x-import component-from-global-scope="Rux.IconButton" icon="docs" label="History" size="sm"></x-import>
+<x-import component-from-global-scope="Rux.IconButton" icon="plus" label="New conversation" size="sm"></x-import>
+</div>
+<div style="align-self: flex-end; max-width: 300px; padding: 10px 12px; border-radius: 12px 12px 4px 12px; background: var(--surface-3); box-shadow: var(--e-raised-sm); font-size: 13px; line-height: 1.55; color: var(--ink-900);">Why did the release build get slower this week?</div>
+<div style="max-width: 380px; padding: 10px 12px; border-radius: 4px 12px 12px 12px; background: var(--surface-2); box-shadow: var(--e-raised-sm); font-size: 13px; line-height: 1.55; color: var(--ink-700);">Three crates got slower, and <b style="color: var(--ink-900);">unluminous-app</b> is most of it: the new <span style="font-family: var(--font-code); padding: 1px 5px; border-radius: 4px; background: var(--surface-sunken); color: var(--accent-blue);">rux</span> dependency pulled in a second copy of <span style="font-family: var(--font-code); padding: 1px 5px; border-radius: 4px; background: var(--surface-sunken); color: var(--accent-blue);">kurbo</span>.</div>
+<x-import component-from-global-scope="Rux.Plate" padding="{{ten}}">
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;">
+<x-import component-from-global-scope="Rux.Screen" style="padding: 10px 12px;"><div style="font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.14em; color: var(--ink-400);">TOTAL</div><div style="font-family: var(--font-mono); font-size: 22px; color: var(--ink-900);">178 s</div><div style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--accent-coral);"><x-import component-from-global-scope="Rux.Led" colour="var(--accent-coral)"></x-import>+42%</div></x-import>
+<x-import component-from-global-scope="Rux.Screen" style="padding: 10px 12px;"><div style="font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.14em; color: var(--ink-400);">APP</div><div style="font-family: var(--font-mono); font-size: 22px; color: var(--ink-900);">131 s</div><div style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--accent-coral);"><x-import component-from-global-scope="Rux.Led" colour="var(--accent-coral)"></x-import>+61%</div></x-import>
+<x-import component-from-global-scope="Rux.Screen" style="padding: 10px 12px;"><div style="font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.14em; color: var(--ink-400);">CORE</div><div style="font-family: var(--font-mono); font-size: 22px; color: var(--ink-900);">38 s</div><div style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--accent-mint);"><x-import component-from-global-scope="Rux.Led" colour="var(--accent-mint)"></x-import>-7%</div></x-import>
+</div>
+</x-import>
+<x-import component-from-global-scope="Rux.Chart" kind="bar" labels="{{crates}}" series="{{builds}}" animate="{{no}}" style="display: block;"></x-import>
+<div style="flex: 1;"></div>
+<div style="display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px; border-radius: 999px; background: var(--surface-sunken); box-shadow: var(--e-pressed-sm);">
+<label for="ask" style="position: absolute; left: -9999px;">Ask the agent</label>
+<input id="ask" placeholder="Ask anything… or drop or paste a picture" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink-900); font-family: var(--font-ui); font-size: 13px;">
+<x-import component-from-global-scope="Rux.IconButton" icon="arrowRight" label="Send" size="sm" tint="var(--ink-700)" turn="{{up}}"></x-import>
+</div>
+</div>
+</section>
+</div>
+<x-import component-from-global-scope="Rux.UlStatusBar" items="{{status}}" message="the component gallery" right="Consolas · 14 pt"></x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1180,"height":740}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const rust = { letter: 'R', colour: '#b7410e' };
+    return {
+      no: false,
+      zero: 0,
+      ten: 10,
+      twenty: 20,
+      up: -1.5708,
+      caret: 3,
+      rail: [
+        { id: 'explorer', icon: 'folder', label: 'Project', on: true },
+        { id: 'editor', icon: 'file', label: 'Editing Area', on: true },
+        { id: 'git', icon: 'branch', label: 'Git' },
+        { id: 'realm', icon: 'realm', label: 'Realm' },
+        { id: 'chat', icon: 'chat', label: 'Agent-Chat', on: true },
+        { id: 'tasks', icon: 'board', label: 'Agent-Tasks' },
+        { id: 'database', icon: 'database', label: 'Database' }
+      ],
+      rows: [
+        { name: 'crates', folder: true, open: true },
+        { name: 'unluminous-app', folder: true, depth: 1 },
+        { name: 'unluminous-chat', folder: true, depth: 1 },
+        { name: 'unluminous-core', folder: true, depth: 1 },
+        { name: 'design', folder: true },
+        { name: 'tools', folder: true },
+        { name: 'Cargo.toml', mark: 'page', chosen: true },
+        { name: 'CLAUDE.md', mark: 'prose' }
+      ],
+      tabs: [{ name: 'Cargo.toml', active: true }],
+      code: [
+        '[workspace.dependencies]',
+        'egui = "0.36"',
+        'rux = { git = "https://github.com/Black-Rainbow-Labs/black-rainbow-labs-rux.git", rev = "50b693f" }',
+        'vello_cpu = "0.1"',
+        'ureq = { version = "3", features = ["native-tls"] }'
+      ].join('\n'),
+      models: ['claude', 'codex', 'local qwen 27B'],
+      crates: ['core', 'app', 'cli'],
+      builds: [
+        { name: 'last week', values: [41, 81, 6], colour: 'var(--ink-400)' },
+        { name: 'this week', values: [38, 131, 9], colour: 'var(--accent-blue)' }
+      ],
+      status: ['Cargo.toml', 'TOML', 'LF', 'Ln 3, Col 1']
+    };
+  }
+}
+</script>
+</body>
+</html>

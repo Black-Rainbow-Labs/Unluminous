@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+<!-- unluminous theme::icon, classic set: color-wheel -->
+<polygon points="15.400,12.000 20.000,12.000 16.000,18.928 13.700,14.944" fill="#ff0000" stroke="none" stroke-width="0.000" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="13.700,14.944 16.000,18.928 8.000,18.928 10.300,14.944" fill="#ffff00" stroke="none" stroke-width="0.000" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="10.300,14.944 8.000,18.928 4.000,12.000 8.600,12.000" fill="#00ff00" stroke="none" stroke-width="0.000" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="8.600,12.000 4.000,12.000 8.000,5.072 10.300,9.056" fill="#00ffff" stroke="none" stroke-width="0.000" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="10.300,9.056 8.000,5.072 16.000,5.072 13.700,9.056" fill="#0000ff" stroke="none" stroke-width="0.000" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="13.700,9.056 16.000,5.072 20.000,12.000 15.400,12.000" fill="#ff00ff" stroke="none" stroke-width="0.000" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="12.000" cy="12.000" r="8.000" fill="none" stroke="#1e2530" stroke-width="1.000"/>
+<circle cx="12.000" cy="12.000" r="3.400" fill="#262c36" stroke="none" stroke-width="0.000"/>
+</svg>
