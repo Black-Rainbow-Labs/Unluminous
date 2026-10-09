@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Claude Design starting point for Unluminous: the rux design system and a canvas of the window (`task-2230`)
+- A Rust kernel is stopped with its whole process tree when the bridge shuts down (`task-2229`)
+
 ## 0.69.0 — 2026-10-09
 
 - Rust notebooks, completion from the kernel, and the kernel picker fix (`task-2229`)
