@@ -61,6 +61,13 @@ pub struct Rendered {
     source: String,
     /// The width it was laid out at, for the same reason.
     width: f32,
+    /// The colours it was coloured with. A change of theme changes these and nothing else, so a cache that
+    /// asked only about the source and the width went on drawing the old theme's words until something
+    /// changed the width, which is `task-2219`'s "the font colours don't update unless I resize".
+    colors: Colors,
+    /// The point size and family it was set in, for the same reason.
+    size: f32,
+    family: String,
 }
 
 impl std::fmt::Debug for Rendered {
@@ -80,6 +87,11 @@ impl Rendered {
     /// width wobbles by a fraction of a point while a divider settles must not re-lay a description every frame.
     pub fn stale(&self, source: &str, width: f32) -> bool {
         self.source != source || (self.width - width).abs() >= 0.5
+    }
+
+    /// Whether it was set in different colours, a different size or a different family from these.
+    fn set_differently(&self, colors: Colors, size: f32, family: &str) -> bool {
+        self.colors != colors || (self.size - size).abs() > f32::EPSILON || self.family != family
     }
 
     /// How tall it is, which is what a caller scrolling it needs to know.
@@ -121,7 +133,7 @@ impl Rendered {
 ///
 /// A struct rather than five arguments because the list had reached the length at which a caller starts passing
 /// them in the wrong order, which is the reason `explorer::View` is one too.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Colors {
     /// Ordinary text.
     pub text: egui::Color32,
@@ -190,7 +202,16 @@ pub fn render(
         panels: preview.panels.iter().map(|panel| panel.paragraphs.clone()).collect(),
         spans: preview.code_spans.clone(),
     };
-    Rendered { text: preview.text, layout: laid, code, source: source.to_owned(), width }
+    Rendered {
+        text: preview.text,
+        layout: laid,
+        code,
+        source: source.to_owned(),
+        width,
+        colors,
+        size,
+        family: family.to_owned(),
+    }
 }
 
 /// Paint `rendered` into `area`, scrolled down by `scroll`, and answer how tall it is.
@@ -337,7 +358,9 @@ impl Cache {
         width: f32,
         highlighter: Option<&dyn unluminous_core::CodeHighlighter>,
     ) -> &Rendered {
-        let stale = self.made.get(key).is_none_or(|made| made.stale(source, width));
+        let stale = self.made.get(key).is_none_or(|made| {
+            made.stale(source, width) || made.set_differently(colors, size, family)
+        });
         if stale {
             let made = render(source, renderer, family, size, colors, width, highlighter);
             self.made.insert(key.to_owned(), made);

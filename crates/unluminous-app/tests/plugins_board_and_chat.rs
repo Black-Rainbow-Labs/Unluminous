@@ -2412,6 +2412,94 @@ fn a_question_and_an_answer_are_two_bubbles_on_opposite_sides() {
     harness.snapshot(shot("agent_chat_conversation").as_str());
 }
 
+/// The history list: two lines a row, the open conversation a card with an accent bar, and no cross on a
+/// row the pointer is not on (`task-2219`).
+#[test]
+fn the_history_lists_each_conversation_on_two_lines() {
+    use unluminous_app::services::agent_chat::store::Summary;
+    let mut harness =
+        a_chat(&[(unluminous_chat::Role::User, "How do I cut a release on each machine?")]);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("a clock after 1970")
+        .as_secs();
+    with_the_chat(&mut harness, move |chat| {
+        let open = chat.chat().id.clone();
+        chat.show_this_history(vec![
+            Summary {
+                id: open,
+                name: "How do I cut a release on each machine?".into(),
+                provider: "claude".into(),
+                changed: now - 120,
+                messages: 6,
+            },
+            Summary {
+                id: "older-1".into(),
+                name: "Why is relayout keeping a paragraph?".into(),
+                provider: "claude".into(),
+                changed: now - 3 * 3_600,
+                messages: 14,
+            },
+            Summary {
+                id: "older-2".into(),
+                name: "Savings calculator".into(),
+                provider: "codex".into(),
+                changed: now - 2 * 86_400,
+                messages: 1,
+            },
+        ]);
+        chat.ui.history_open = true;
+    });
+    steady(&mut harness);
+    assert!(
+        harness.query_by_label("Remove conversation: Savings calculator").is_none(),
+        "a row the pointer is not on offers no cross"
+    );
+    harness.snapshot(shot("agent_chat_history").as_str());
+}
+
+/// Switching the theme recolours what is already said, on the next frame, with no resize.
+///
+/// `task-2219`: *"When I switch themes, the font colours sometimes don't immediately update unless I
+/// resize."* The rendered markdown was cached by its source and its width, so the words kept the colours
+/// they were first set in until a resize changed the width. Measured on the pixels inside the person's
+/// bubble: light words on the dark theme, dark words once the light theme is chosen.
+#[test]
+fn a_change_of_theme_recolours_the_words_already_on_the_screen() {
+    let mut harness =
+        a_chat(&[(unluminous_chat::Role::User, "Why is the release build slower this week?")]);
+    steady(&mut harness);
+    let band = egui::Rect::from_min_max(egui::pos2(850.0, 128.0), egui::pos2(1160.0, 175.0));
+    let darkest = |harness: &mut Harness<'static, UnluminousApp>| -> (u32, u32) {
+        let scale = harness.ctx.pixels_per_point();
+        let image = harness.render().expect("the window renders");
+        let (mut dark, mut light) = (0, 0);
+        for y in (band.top() * scale) as u32..(band.bottom() * scale) as u32 {
+            for x in (band.left() * scale) as u32..(band.right() * scale) as u32 {
+                let pixel = image.get_pixel(x, y);
+                let luma =
+                    (u32::from(pixel[0]) * 3 + u32::from(pixel[1]) * 6 + u32::from(pixel[2])) / 10;
+                if luma < 80 {
+                    dark += 1;
+                }
+                if luma > 200 {
+                    light += 1;
+                }
+            }
+        }
+        (dark, light)
+    };
+    let (_, bright_words) = darkest(&mut harness);
+    assert!(bright_words > 40, "the dark theme draws the words light: {bright_words}");
+    did(&mut harness, "theme set \"Unluminous Light\"");
+    steady(&mut harness);
+    let (dark_words, _) = darkest(&mut harness);
+    assert!(
+        dark_words > 40,
+        "after choosing the light theme the words already said are dark, with no resize: {dark_words}"
+    );
+}
+
 /// An answer arriving: what has come so far, with the state dot showing that it is still coming.
 #[test]
 fn an_answer_that_is_still_arriving_shows_what_has_come_so_far() {

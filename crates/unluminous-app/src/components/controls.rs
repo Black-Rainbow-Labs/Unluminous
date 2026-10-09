@@ -601,6 +601,19 @@ pub fn pill_with_stroke(painter: &egui::Painter, rect: Rect, radius: u8, stroke:
     );
 }
 
+/// What a small control is filled with while the pointer is on it: the hover wash, faint. Darker on a
+/// light ground and lighter on a dark one, because the hover wash is black in one and white in the other.
+pub fn hover_fill() -> Color32 {
+    color::hover_wash().gamma_multiply(0.07)
+}
+
+/// What a small control that is on, or a panel it opened, is filled with: a soft wash of the accent, with
+/// the mark drawn in the accent over it. Quiet enough that something being on is never the loudest thing
+/// in the window.
+pub fn accent_wash() -> Color32 {
+    color::accent().gamma_multiply(0.15)
+}
+
 /// A colour part of the way between two others, linear per channel.
 ///
 /// The gutter's blame column uses it to fade an entry's tint by how old the commit is; the
@@ -827,13 +840,20 @@ pub fn flyout<T>(
     let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&response))
         != response.clicked();
     let painter = ui.painter();
+    // Open is a soft wash of the accent with the mark in the accent, and a hover is the hover wash
+    // (`task-2219`). An open flyout used to be a solid accent square with a white mark, which made a
+    // panel being open the most saturated thing in the window.
     if open {
-        painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::accent());
+        painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), accent_wash());
     } else if response.hovered() {
-        painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::control());
+        painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), hover_fill());
     }
-    let tint = if open { color::on_accent() } else { color::text_control() };
-    draw(painter, area.center(), tint);
+    let tint = match (open, response.hovered()) {
+        (true, _) => color::accent(),
+        (false, true) => color::text_strong(),
+        (false, false) => color::text_control(),
+    };
+    icon::crisp(painter, area.center(), tint, 1.0, draw);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), open, name)
     });
@@ -897,14 +917,24 @@ pub fn labelled_flyout_with_icon<T>(
     let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&response))
         != response.clicked();
     let painter = ui.painter();
-    if open || response.hovered() {
-        painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::control());
-    }
-    let tint = if open { color::text_strong() } else { color::text_control() };
+    // A chip with a hairline round it, so a word in the title bar that opens a list reads as a control
+    // rather than as a label (`task-2219`), and the hover wash inside it while the pointer is on it.
+    painter.rect(
+        area,
+        CornerRadius::same(size::CONTROL_CORNER),
+        match open || response.hovered() {
+            true => hover_fill(),
+            false => Color32::TRANSPARENT,
+        },
+        Stroke::new(1.0, color::divider()),
+        egui::StrokeKind::Inside,
+    );
+    let tint =
+        if open || response.hovered() { color::text_strong() } else { color::text_control() };
     // The word starts after the mark when there is one, and where it always did when there is not.
     let words_from = match mark {
         Some(draw) => {
-            draw(painter, Pos2::new(area.left() + 11.0, area.center().y), tint);
+            icon::crisp(painter, Pos2::new(area.left() + 11.0, area.center().y), tint, 1.0, draw);
             area.left() + 22.0
         }
         None => area.left() + 9.0,
@@ -916,7 +946,19 @@ pub fn labelled_flyout_with_icon<T>(
         galley,
         tint,
     );
-    icon::chevron_down(painter, Pos2::new(area.right() - 10.0, area.center().y), color::text_dim());
+    // A stroked chevron rather than a solid triangle three pixels tall, which is what a select carries
+    // everywhere else in the window, `rux`'s model selector among them.
+    let chevron = Pos2::new(area.right() - 11.0, area.center().y + 0.5);
+    icon::on_the_pixel_grid(painter, |painter| {
+        painter.add(egui::Shape::line(
+            vec![
+                chevron + Vec2::new(-3.0, -1.5),
+                chevron + Vec2::new(0.0, 1.5),
+                chevron + Vec2::new(3.0, -1.5),
+            ],
+            Stroke::new(1.3, color::text_dim()),
+        ));
+    });
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), open, name)
     });

@@ -891,7 +891,9 @@ mod tests {
         );
         assert!(look.chrome.take().is_empty());
 
-        // And the same look drawing into a real one records.
+        // And the same look drawing into a real one records. On the dark ground, because the light one
+        // adds a hairline and the theme is per thread.
+        crate::theme::activate(crate::theme::Theme::unluminous_dark());
         let chrome = crate::services::vello_canvas::Chrome::recording();
         let drawing = Look::of(&settings, &renderer).drawing_into(&chrome);
         assert!(drawing.chrome.is_recording());
@@ -901,8 +903,9 @@ mod tests {
             crate::services::vello_canvas::Fill::Solid(Color32::RED),
             crate::services::vello_canvas::Lift::Small,
         );
-        // A band to draw the shadows in, the two shadows, the unclip and the surface — `Chrome::raised`.
-        assert_eq!(chrome.take().len(), 5);
+        // A band to draw the shadows in, the three shadows, the unclip, the surface, and the lit edge
+        // clipped to it — `Chrome::raised` on a dark ground, which has no hairline.
+        assert_eq!(chrome.take().len(), 9);
     }
 
     #[test]

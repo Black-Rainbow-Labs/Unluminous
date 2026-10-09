@@ -81,7 +81,6 @@ pub enum Act {
     Open(String),
     Remove(String),
     Choose(String),
-    ToggleTools,
     /// A picture dropped on the pane.
     Dropped(std::path::PathBuf),
     /// Ctrl/Cmd+V in the composer: ask the window for whatever picture is on the clipboard.
@@ -332,11 +331,17 @@ fn header(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
 
     // The two buttons first, from the right, then the select to their left, so the title knows how much
     // room is left for it.
-    let button = 22.0 * scale;
-    let new =
-        Rect::from_center_size(Pos2::new(area.right() - 12.0 * scale, middle), Vec2::splat(button));
-    let history =
-        Rect::from_center_size(Pos2::new(area.right() - 38.0 * scale, middle), Vec2::splat(button));
+    // Two round keys the height of the model selector, so the three controls share one middle and one
+    // height and read as one row of instrument keys (`task-2219`).
+    let button = MODEL_SELECT_HEIGHT * scale;
+    let new = Rect::from_center_size(
+        Pos2::new(area.right() - 2.0 * scale - button / 2.0, middle),
+        Vec2::splat(button),
+    );
+    let history = Rect::from_center_size(
+        Pos2::new(new.center().x - button - 8.0 * scale, middle),
+        Vec2::splat(button),
+    );
     let names: Vec<String> =
         parts.configuration.providers.iter().map(|one| one.name.clone()).collect();
     let chip_width = model_select_width(&painter, &names, scale);
@@ -409,12 +414,14 @@ fn header(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
         }
     }
 
-    // Two ghost buttons, which is `ChatHeader.module.css`'s `.toolBtn`: no surface until the pointer
-    // is on them.
-    if controls::icon_button_at(ui, history, "Conversations", icon::clock, scale) {
-        acts.push(Act::ShowHistory(!parts.state.history_open));
+    // **Two round raised keys**, `task-2219`, where there were two ghost buttons with no surface until the
+    // pointer was on them: beside a raised model selector they read as two loose marks. The history key
+    // stays pressed in, with its mark in the accent, while the history is open.
+    let open = parts.state.history_open;
+    if header_key(ui, look, history, "Conversations", icon::clock, open) {
+        acts.push(Act::ShowHistory(!open));
     }
-    if controls::icon_button_at(ui, new, "New Conversation", icon::plus, scale) {
+    if header_key(ui, look, new, "New Conversation", icon::plus, false) {
         acts.push(Act::New);
     }
 
@@ -627,6 +634,49 @@ fn rows_of<'a>(
 }
 
 /// The conversations kept, drawn over the conversation area.
+/// A round key in the header: raised, or pressed in while what it opens is open.
+///
+/// The hover changes the mark and not the decoration, so moving the pointer across the header rasterises
+/// nothing, which is the rule `services::vello_canvas` records about a hover.
+fn header_key(
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    rect: Rect,
+    name: &str,
+    draw: fn(&egui::Painter, Pos2, egui::Color32),
+    down: bool,
+) -> bool {
+    let scale = look.scale();
+    let response = ui.interact(rect, ui.id().with(("agent-chat-key", name)), egui::Sense::click());
+    let response = controls::WithHint::with_hint(response, name);
+    let radius = rect.height() / 2.0;
+    if look.chrome.is_recording() {
+        match down {
+            true => look.chrome.sunken(rect, radius, look.palette.board_well, Lift::Small),
+            false => {
+                look.chrome.raised(rect, radius, Fill::Solid(look.palette.board_card), Lift::Small)
+            }
+        }
+    } else {
+        ui.painter().circle(
+            rect.center(),
+            radius,
+            look.ground(look.palette.board_card),
+            Stroke::new(1.0, look.palette.control_border),
+        );
+    }
+    let held = response.is_pointer_button_down_on();
+    let tint = match (down, response.hovered() || held) {
+        (true, _) => look.palette.accent,
+        (false, true) => look.palette.text_strong,
+        (false, false) => look.palette.text_dim,
+    };
+    let nudge = if held { Vec2::new(0.0, 0.5 * scale) } else { Vec2::ZERO };
+    icon::scaled(ui.painter(), rect.center() + nudge, tint, scale * 0.95, draw);
+    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, down, name));
+    response.clicked()
+}
+
 fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
     let session: &unluminous_chat::Session = parts.session;
     let history = parts.history;
@@ -646,7 +696,17 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
             look.palette.text_dim,
         );
     }
-    let row = look.row_height * scale;
+    // **Two lines a row**, `task-2219`: the name, and under it the agent, how many messages and how long
+    // ago, which is what tells two conversations with similar names apart. The chosen row is a card, a
+    // hovered row is a wash, and the cross that removes a conversation is drawn only on the row under the
+    // pointer, because a column of crosses is a column of invitations to delete something.
+    let title_size = look.font_size * 0.85;
+    let detail_size = look.font_size * 0.72;
+    let row = (title_size * 1.3 + detail_size * 1.35 + 16.0 * scale).max(look.row_height * scale);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or_default();
     let mut body = ui.new_child(egui::UiBuilder::new().max_rect(area));
     body.set_clip_rect(area.intersect(ui.clip_rect()));
     let mut scroller =
@@ -661,12 +721,17 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
                 egui::style::ScrollAnimation::none(),
             );
         }
+        ui.add_space(4.0 * scale);
         for one in history {
-            let (rect, _) =
-                ui.allocate_exact_size(Vec2::new(area.width(), row), egui::Sense::hover());
-            if !rect.intersects(ui.clip_rect()) {
+            let (slot, _) = ui.allocate_exact_size(
+                Vec2::new(area.width(), row + 4.0 * scale),
+                egui::Sense::hover(),
+            );
+            if !slot.intersects(ui.clip_rect()) {
                 continue;
             }
+            let rect = Rect::from_min_size(slot.min, Vec2::new(slot.width(), row))
+                .shrink2(Vec2::new(4.0 * scale, 0.0));
             let chosen = one.id == session.chat.id;
             let response = ui.interact(
                 rect,
@@ -680,43 +745,86 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
                     format!("Conversation: {}", one.name),
                 )
             });
-            let painter = ui.painter_at(rect);
-            if chosen || response.hovered() {
+            if response.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            let painter = ui.painter_at(rect.expand(1.0));
+            let corner = CornerRadius::same((8.0 * scale).round().clamp(0.0, 255.0) as u8);
+            if chosen {
+                painter.rect(
+                    rect,
+                    corner,
+                    look.ground(look.palette.board_card),
+                    Stroke::new(1.0, look.palette.divider),
+                    egui::StrokeKind::Inside,
+                );
+                // A short bar of the accent against the card's left edge says which one is open.
+                let bar = Rect::from_center_size(
+                    Pos2::new(rect.left() + 1.5 * scale, rect.center().y),
+                    Vec2::new(3.0 * scale, rect.height() * 0.46),
+                );
+                painter.rect_filled(bar, CornerRadius::same(2), look.palette.accent);
+            } else if response.hovered() {
                 painter.rect_filled(
-                    rect.shrink2(Vec2::new(2.0, 1.0)),
-                    CornerRadius::same(6),
-                    match chosen {
-                        true => look.palette.selected_row,
-                        false => look.palette.control.gamma_multiply(0.5),
-                    },
+                    rect,
+                    corner,
+                    crate::theme::color::hover_wash().gamma_multiply(0.05),
                 );
             }
+            let hovered = response.hovered()
+                || ui.rect_contains_pointer(rect) && ui.ctx().pointer_hover_pos().is_some();
             let cross = Rect::from_center_size(
-                Pos2::new(rect.right() - 12.0 * scale, rect.center().y),
-                Vec2::splat(18.0 * scale),
+                Pos2::new(rect.right() - 14.0 * scale, rect.center().y),
+                Vec2::splat(20.0 * scale),
             );
-            painter
-                .with_clip_rect(Rect::from_min_max(
-                    rect.min,
-                    Pos2::new(cross.left() - 4.0, rect.max.y),
-                ))
-                .text(
-                    Pos2::new(rect.left() + 8.0 * scale, rect.center().y - look.font_size * 0.42),
-                    egui::Align2::LEFT_TOP,
-                    &one.name,
-                    egui::FontId::proportional(look.font_size * 0.85),
-                    look.palette.text_control,
-                );
+            let text_right = match hovered {
+                true => cross.left() - 4.0 * scale,
+                false => rect.right() - 10.0 * scale,
+            };
+            let left = rect.left() + 12.0 * scale;
+            let clipped = painter
+                .with_clip_rect(Rect::from_min_max(rect.min, Pos2::new(text_right, rect.max.y)));
+            let block = title_size * 1.3 + detail_size * 1.35;
+            let top = rect.center().y - block / 2.0;
+            clipped.text(
+                Pos2::new(left, top),
+                egui::Align2::LEFT_TOP,
+                &one.name,
+                egui::FontId::proportional(title_size),
+                match chosen {
+                    true => look.palette.text_strong,
+                    false => look.palette.text,
+                },
+            );
+            let messages = match one.messages {
+                1 => "1 message".to_owned(),
+                count => format!("{count} messages"),
+            };
+            let detail = format!(
+                "{}  \u{00B7}  {}  \u{00B7}  {}",
+                one.provider,
+                messages,
+                welcome::ago(one.changed, now)
+            );
+            clipped.text(
+                Pos2::new(left, top + title_size * 1.3),
+                egui::Align2::LEFT_TOP,
+                detail,
+                egui::FontId::proportional(detail_size),
+                look.palette.text_faint,
+            );
             if response.clicked() {
                 acts.push(Act::Open(one.id.clone()));
             }
-            if crate::components::controls::icon_button_at(
-                ui,
-                cross,
-                &format!("Remove conversation: {}", one.name),
-                icon::cross,
-                scale,
-            ) {
+            if hovered
+                && crate::components::controls::icon_button_at(
+                    ui,
+                    cross,
+                    &format!("Remove conversation: {}", one.name),
+                    icon::cross,
+                    scale,
+                )
+            {
                 acts.push(Act::Remove(one.id.clone()));
             }
         }
@@ -783,17 +891,6 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
                 if let Err(problem) = chat.save_the_configuration() {
                     requests.push(Request::Message(problem));
                 }
-            }
-            Act::ToggleTools => {
-                let now = !chat.configuration().tools;
-                chat.configuration_mut().tools = now;
-                if let Err(problem) = chat.save_the_configuration() {
-                    requests.push(Request::Message(problem));
-                }
-                requests.push(Request::Message(match now {
-                    true => "Unluminous's own commands are offered to the model.".to_owned(),
-                    false => "No tools are offered.".to_owned(),
-                }));
             }
             Act::Detach(id) => chat.remove_attachment(id),
             Act::Copy(text) if !text.is_empty() => requests.push(Request::Copy(text)),

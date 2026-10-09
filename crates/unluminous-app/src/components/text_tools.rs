@@ -155,6 +155,20 @@ pub fn show(
     // tools rather than one at each end of a bar.
     if file_kind::preview_applies(path) {
         let kind = file_kind::preview_kind(path);
+        // **One segmented control rather than three loose buttons**, `task-2219`. The three are one choice,
+        // so they sit in one recessed track, and the chosen one is a raised segment with its mark in the
+        // accent rather than a solid accent square with a white mark, which was the most saturated thing
+        // in the window for a setting that is nearly always on.
+        let count = crate::app::ViewMode::ALL.len() as f32;
+        let track = Rect::from_min_size(
+            Pos2::new(pen, middle - BUTTON / 2.0),
+            Vec2::new(count * STEP - (STEP - BUTTON), BUTTON),
+        );
+        ui.painter().rect_filled(
+            track,
+            CornerRadius::same(size::CONTROL_CORNER + 2),
+            color::segment_track(),
+        );
         for mode in crate::app::ViewMode::ALL {
             let button =
                 Rect::from_min_size(Pos2::new(pen, middle - BUTTON / 2.0), Vec2::splat(BUTTON));
@@ -347,13 +361,41 @@ fn view_mode_button(
         .interact(area, ui.id().with(("view-mode", name)), Sense::click())
         .with_hint(mode.description_for(kind));
     let painter = ui.painter();
+    let segment = area.shrink(2.0);
     if active {
-        painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::accent());
+        // The raised segment: the control colour over a small soft shadow, which is how a segmented
+        // control's chosen segment is drawn everywhere.
+        painter.add(egui::Shape::Rect(
+            egui::epaint::RectShape::filled(
+                segment.translate(Vec2::new(0.0, 1.0)),
+                CornerRadius::same(size::CONTROL_CORNER),
+                // any ground: a shadow is dark on a light title bar and on a dark one
+                egui::Color32::from_black_alpha(38),
+            )
+            .with_blur_width(3.0),
+        ));
+        painter.rect(
+            segment,
+            CornerRadius::same(size::CONTROL_CORNER),
+            color::segment_chosen(),
+            Stroke::new(1.0, color::divider().gamma_multiply(0.6)),
+            egui::StrokeKind::Inside,
+        );
     } else if response.hovered() {
-        painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::control());
+        painter.rect_filled(
+            segment,
+            CornerRadius::same(size::CONTROL_CORNER),
+            controls::hover_fill(),
+        );
     }
-    let tint = if active { color::on_accent() } else { color::text_control() };
-    icon::view_mode(painter, area.shrink(6.0), mode, tint);
+    let tint = match (active, response.hovered()) {
+        (true, _) => color::accent(),
+        (false, true) => color::text_strong(),
+        (false, false) => color::text_control(),
+    };
+    icon::on_the_pixel_grid(painter, |painter| {
+        icon::view_mode(painter, area.shrink(7.0), mode, tint);
+    });
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), active, name)
     });

@@ -178,6 +178,30 @@ one thing: *a key press now is about this row*. `task-1681` added it for the exp
 it for a row that is merely chosen — that is the pill on its own — and never draw it on a panel that
 does not have the keyboard.
 
+**Something that is on, in a bar.** A rail button whose pane is open, an icon button whose flyout is
+open: a soft wash of the accent, `controls::accent_wash()`, with the mark in `ACCENT`. A rail button
+adds a 2.5 by 14 point accent bar against the rail's left edge. Never a solid `ACCENT` square with a
+white mark: something being on is a state, and in a bar it is nearly always the state, so it must not
+be the loudest thing in the window (`task-2219`). A hover is `controls::hover_fill()`, the hover wash
+at 7%, which is darker on a light ground and lighter on a dark one.
+
+**A segmented control.** Choices that exclude each other sit in one track, `segment_track()`, and the
+chosen one is a raised segment in `segment_chosen()` with a small soft shadow and its mark in `ACCENT`.
+The chosen segment is lighter than its track on both grounds, which is why the two are roles rather
+than `CONTROL` over a wash: on a dark ground the control colour is darker than the bar and read as
+pressed in. The three view modes in the title bar are the one there is.
+
+**A word beside a button carries no dot.** `task-2219`: "the little dots next to the button labels
+need to go". A key that matters most has its word in the accent colour (`rux::components::Key::tinted`),
+a chosen key stays down with its word in the accent (`Key::chosen`), and a badge's tone is the colour of
+its words. A lamp is kept where it is the thing itself rather than a mark beside a word: a status row, a
+callout's tone, a readout's trend.
+
+**Depth.** A raised surface is three shadows and a lit edge, from `Chrome::raised`: a tight contact
+shadow, a faint ambient one, the light from the top left, and one point of light inside the top and the
+left. On a light ground a hairline goes round it as well. Nothing draws its own shadow, and a column of
+things of one kind, such as chat bubbles, uses one elevation for all of them.
+
 **A button.** `CONTROL` with a one point `CONTROL_BORDER` stroke, corner radius `CONTROL_CORNER`,
 label `TEXT_STRONG` centred. Hovered it fills `ACCENT`. An icon button is a 22 point square with no
 fill until it is hovered, when it fills `CONTROL` at corner radius 4.
@@ -396,6 +420,12 @@ rail's own pill, a menu row and a flyout — so a shape knocked out of a fill by
 one colour is how a window, a title bar and a prompt are told apart instead.
 
 An icon is drawn inside about a 10 point square around its centre, at a 1.3 to 1.6 point stroke.
+**In a bar it is drawn on the pixel grid**, through `icon::crisp` or `icon::on_the_pixel_grid`, which
+make every stroke a whole number of pixels and move every point of a stroke to the middle of a pixel.
+At one pixel a point, a 1.3 point stroke at a fractional position covers three pixels at partial
+strength and the mark has no edges; `task-2219` reported the rail and the title bar for exactly that.
+A small mark whose legs or rays would rise by one pixel draws them straight instead, because a one
+pixel rise is a staircase.
 
 **And a new mark is looked at twice, at two sizes.** `crates/unluminous-app/tests/icons.rs` draws every
 mark on one sheet at eight pixels a point, one sheet per set, accepted like every other picture here —

@@ -816,6 +816,12 @@ impl AgentChat {
         &self.history
     }
 
+    /// Show `history` in the list as though it had been read from the folder the conversations are kept
+    /// in. A window a test builds has no such folder, and the list's drawing is still worth a picture.
+    pub fn show_this_history(&mut self, history: Vec<Summary>) {
+        self.history = history;
+    }
+
     pub fn project(&self) -> Option<&Path> {
         self.project.as_deref()
     }

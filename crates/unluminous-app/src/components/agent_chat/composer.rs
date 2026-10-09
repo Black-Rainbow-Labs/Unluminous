@@ -37,13 +37,6 @@ use crate::services::plugin_ui::Look;
 use crate::services::vello_canvas::{Fill, Lift};
 use crate::theme::icon;
 
-/// One button in the tool pill: its name, its icon, whether it is switched on, the accent it wears
-/// while it is on, and the act pressing it performs.
-type ToolButtonRow = (&'static str, fn(&egui::Painter, Pos2, Color32), bool, Color32, Act);
-
-/// The pill of tools, and one round button in it.
-const PILL: f32 = 28.0;
-const TOOL: f32 = 22.0;
 /// A thumbnail of an attached picture, and the row it sits in.
 const THUMB: f32 = 38.0;
 /// The prompt well when there is one line in it, and the most it grows to.
@@ -65,7 +58,7 @@ const GAP: f32 = 8.0;
 /// How tall the composer is, which the pane measures back from its own bottom.
 pub fn height(parts: &Parts<'_>, look: &Look<'_>, width: f32) -> f32 {
     let scale = look.scale();
-    let mut total = PILL + GAP + prompt_height(parts, look, width);
+    let mut total = prompt_height(parts, look, width);
     if !parts.attachments.is_empty() {
         total += THUMB + GAP * 0.5;
     }
@@ -145,13 +138,11 @@ pub fn show(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect
     let mut acts = Vec::new();
     let mut pen = area.top();
 
-    acts.extend(pill(
-        &parts,
-        ui,
-        look,
-        Rect::from_min_size(Pos2::new(area.left(), pen), Vec2::new(area.width(), PILL * scale)),
-    ));
-    pen += (PILL + GAP) * scale;
+    // **There is no pill of round buttons above the prompt any more.** It held the switch that offers
+    // Unluminous's own commands to a model behind an address, and a lit picture icon while one was
+    // attached. `task-2219` reported it as vestigial: the switch is on `Settings -> Agent-Chat`, which is
+    // where every other setting of the pane is, and an attached picture already shows as a thumbnail with
+    // its own cross on the strip below.
 
     if !parts.attachments.is_empty() {
         acts.extend(thumbnails(
@@ -168,105 +159,6 @@ pub fn show(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect
 
     let well = Rect::from_min_max(Pos2::new(area.left(), pen), area.max);
     acts.extend(prompt(parts, ui, look, well));
-    acts
-}
-
-/// The pressed pill of round buttons.
-fn pill(parts: &Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
-    let scale = look.scale();
-    let mut acts = Vec::new();
-    // Two, and each is a **state** rather than a command: whether the model may drive the window, and a
-    // picture waiting to go up with the next message. There was a third, whether the answer arrives a
-    // token at a time, drawn as a play triangle; `task-2193` asked what it was for and asked for the
-    // answer always to stream, so it is gone. That is `ChatTool`'s own design — a pill of states reads at a glance where a pill of
-    // buttons does not. Anything that is not a state is elsewhere: new and the history are in the
-    // header, and stop is the send button. The history had a second button here and it was taken
-    // away, because two controls doing one thing in one pane is one too many.
-    //
-    // **The tools switch is absent when the row is a command-line agent**, which is the absent-control
-    // rule rather than tidiness: `claude` and `codex` bring their own tools, so handing them Unluminous's
-    // would be offering a switch that does nothing. What is left is the attachment, which means the same
-    // thing either way.
-    let an_agent = parts.configuration.provider().is_some_and(|one| one.is_a_program());
-    let mut tools: Vec<ToolButtonRow> = Vec::new();
-    if !an_agent {
-        tools.push((
-            "Unluminous tools",
-            icon::terminal,
-            parts.configuration.tools,
-            crate::theme::color::agent(),
-            Act::ToggleTools,
-        ));
-    }
-    // **No button that opens a file dialog.** `task-1848`: "get rid of the file picker icon, just allow
-    // drag and drop or paste". Both of those already work and neither needs a control drawn for it, and
-    // the placeholder below says so, which is what stops a removed button being a lost feature.
-    //
-    // A picture that *is* attached still lights the pill, so there is something on the screen saying one
-    // is waiting to go — that is what the button's lit state used to say and it has to survive it.
-    if !parts.attachments.is_empty() {
-        tools.push((
-            "Attached picture",
-            icon::image,
-            true,
-            look.palette.board_accent,
-            // Pressing it takes the newest attachment away, which is the only thing left for it to do
-            // now that it is not how one is chosen. Each attachment also has its own cross on the strip
-            // above the composer; this is the quick way to undo the one just dropped.
-            Act::Detach(parts.attachments.last().map(|one| one.id).unwrap_or_default()),
-        ));
-    }
-    let buttons = tools.len();
-    if buttons == 0 {
-        return acts;
-    }
-    let width = (TOOL * buttons as f32 + 4.0 * (buttons as f32 + 1.0)) * scale;
-    let pill = Rect::from_center_size(
-        Pos2::new(area.center().x, area.center().y),
-        Vec2::new(width, PILL * scale),
-    );
-    if look.chrome.is_recording() {
-        look.chrome.sunken(pill, PILL * scale / 2.0, look.palette.board_well, Lift::Small);
-    } else {
-        ui.painter().rect(
-            pill,
-            CornerRadius::same((PILL * scale / 2.0) as u8),
-            look.ground(look.palette.board_well),
-            Stroke::new(1.0, look.palette.control_border),
-            egui::StrokeKind::Inside,
-        );
-    }
-    let mut centre = Pos2::new(pill.left() + (4.0 + TOOL / 2.0) * scale, pill.center().y);
-    for (name, drawing, on, accent, act) in tools {
-        let at = Rect::from_center_size(centre, Vec2::splat(TOOL * scale));
-        let response =
-            ui.interact(at, ui.id().with(("agent-chat-tool-button", name)), Sense::click());
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.to_owned())
-        });
-        if on {
-            if look.chrome.is_recording() {
-                look.chrome.raised(
-                    at,
-                    TOOL * scale / 2.0,
-                    Fill::Solid(look.palette.board_card),
-                    Lift::Small,
-                );
-            } else {
-                ui.painter().circle_filled(centre, TOOL * scale / 2.0, look.palette.board_card);
-            }
-        }
-        let tint = match (on, response.hovered()) {
-            (true, _) => accent,
-            (false, true) => look.palette.text_strong,
-            (false, false) => look.palette.text_dim,
-        };
-        icon::scaled(&ui.painter_at(area), centre, tint, scale, drawing);
-        if response.clicked() {
-            acts.push(act);
-        }
-        centre.x += (TOOL + 4.0) * scale;
-    }
     acts
 }
 

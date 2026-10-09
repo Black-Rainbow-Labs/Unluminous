@@ -408,6 +408,27 @@ pub mod derived {
         }
     }
 
+    /// The track of a segmented control, and the chosen segment raised out of it (`task-2219`).
+    ///
+    /// The chosen segment has to be **lighter than its track on both grounds**, or it reads as pressed in
+    /// rather than raised. On a light ground that is a white segment in a track a little darker than the
+    /// bar; on a dark one the control colour is darker than the bar, so the track is pressed down and the
+    /// segment is the control lifted.
+    pub fn segment_track() -> Color32 {
+        match super::is_dark() {
+            true => Color32::from_black_alpha(70),
+            false => Color32::from_black_alpha(14),
+        }
+    }
+
+    /// See [`segment_track`].
+    pub fn segment_chosen() -> Color32 {
+        match super::is_dark() {
+            true => control_hover().gamma_multiply(1.1),
+            false => color::control(),
+        }
+    }
+
     /// The words of a piece of code in the Markdown preview, inline or in a block nothing colours.
     ///
     /// The mint the preview has always set code in on a dark ground, which was a literal in
@@ -697,11 +718,74 @@ pub fn is_dark() -> bool {
 }
 
 /// The `rux` theme that matches the active one, so a `rux` control sits on a ground it was designed for.
+///
+/// **Built from the active palette rather than chosen from `rux`'s two.** `rux` ships a light and a dark
+/// theme of its own, and answering one of them meant every component plate in a chat answer was `rux`'s
+/// grey while the bubbles beside it were the theme's: in a plugin theme with a purple ground the two did
+/// not match at all, which is what `task-2219` reported. The surfaces, the ink ladder and the accent are
+/// the palette's; the recipes, the radii and the other accents are `rux`'s.
+///
+/// A theme is made once per palette and kept for the life of the process, because `RuxState` holds a
+/// `&'static Theme` and `in_step` compares by address. A person switches theme a handful of times in a
+/// session, so the few that are kept cost nothing worth counting.
 pub fn rux_theme() -> &'static rux::Theme {
-    match is_dark() {
+    thread_local! {
+        static MADE: RefCell<Vec<(Palette, bool, &'static rux::Theme)>> = const { RefCell::new(Vec::new()) };
+    }
+    let palette = palette();
+    let dark = is_dark();
+    MADE.with_borrow_mut(|made| {
+        if let Some((_, _, theme)) = made.iter().find(|(p, d, _)| *p == palette && *d == dark) {
+            return *theme;
+        }
+        let theme: &'static rux::Theme = Box::leak(Box::new(retoned_rux(&palette, dark)));
+        made.push((palette, dark, theme));
+        theme
+    })
+}
+
+/// `rux`'s own theme of the same darkness, with the surfaces, ink and accent of `palette`.
+fn retoned_rux(palette: &Palette, dark: bool) -> rux::Theme {
+    let base = match dark {
         true => rux::Theme::named("dark-neumorphic").unwrap_or_else(rux::theme::dark),
         false => rux::Theme::named("light-neumorphic").unwrap_or_else(rux::theme::light),
-    }
+    };
+    let [page, lane, card, well] = derived::board_surfaces();
+    let toward = |from: Color32, to: Color32, amount: f32| {
+        let mix =
+            |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
+        Color32::from_rgb(mix(from.r(), to.r()), mix(from.g(), to.g()), mix(from.b(), to.b()))
+    };
+    let (raised, shadow) = match dark {
+        // A surface one step up is the card lifted a little towards white, and the shadow pair is the
+        // card's own lifted grey and a near black, which is how `rux`'s dark theme is made.
+        true => (
+            toward(card, Color32::WHITE, 0.04),
+            rux::theme::ShadowTones {
+                light: toward(card, Color32::WHITE, 0.06),
+                dark: toward(page, Color32::BLACK, 0.45),
+                darker: toward(page, Color32::BLACK, 0.65),
+            },
+        ),
+        false => (card, base.shadow),
+    };
+    base.retoned(
+        match dark {
+            true => "unluminous-dark",
+            false => "unluminous-light",
+        },
+        rux::theme::Surfaces { s0: page, s1: lane, s2: card, s3: raised, sunken: well },
+        shadow,
+        rux::theme::Ink {
+            i900: palette.text_strong,
+            i700: palette.text,
+            i500: palette.text_control,
+            i400: palette.text_dim,
+            i300: palette.text_faint,
+            i200: toward(palette.text_faint, lane, 0.5),
+        },
+        palette.accent,
+    )
 }
 
 /// Put a `rux` state on the theme that matches the active one, before it is drawn with.
@@ -1139,7 +1223,8 @@ mod tests {
     fn the_light_theme_changes_the_recipes_that_depend_on_the_ground() {
         activate(Theme::unluminous_dark());
         assert!(is_dark());
-        assert_eq!(rux_theme().name, "dark-neumorphic");
+        assert_eq!(rux_theme().name, "unluminous-dark");
+        assert!(rux_theme().dark);
         assert_eq!(
             color::control_hover(),
             color::control().gamma_multiply(1.25),
@@ -1154,7 +1239,8 @@ mod tests {
 
         activate(Theme::unluminous_light());
         assert!(!is_dark());
-        assert_eq!(rux_theme().name, "light-neumorphic");
+        assert_eq!(rux_theme().name, "unluminous-light");
+        assert!(!rux_theme().dark);
         assert!(
             luminance(color::control_hover()) < luminance(color::control()),
             "a hover on a light control darkens it"

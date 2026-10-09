@@ -382,23 +382,17 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
                         instrument::sinking(theme_elevation, rux::Elevation::NONE, 1.0 - lift);
                     rux.chrome.surface(rect, z(10.0), rux::Fill::Solid(colours.plate), faded);
                 }
+                // No lamp beside the name (`task-2219`): the row rising under the pointer is the whole of
+                // the hover, and the name starts where the heading above it does.
                 let painter = rux.painter().clone();
-                instrument::led(
-                    &painter,
-                    Pos2::new(rect.left() + z(14.0), rect.center().y),
-                    z(2.5),
-                    theme.accent.blue,
-                    colours.led_off,
-                    lift,
-                );
                 let age = ago(*changed, now);
                 let age_galley = rux::text::layout(&painter, detail_style, &age, theme.ink.i300);
-                let room = rect.width() - z(28.0) - age_galley.size().x - z(24.0);
+                let room = rect.width() - z(12.0) - age_galley.size().x - z(24.0);
                 let ink = if lift > 0.5 { theme.ink.i900 } else { theme.ink.i700 };
                 let words = rux::text::elided(&painter, row_style, name, ink, room);
                 rux::text::draw_left_capitals(
                     &painter,
-                    Pos2::new(rect.left() + z(28.0), rect.center().y),
+                    Pos2::new(rect.left() + z(12.0), rect.center().y),
                     words,
                     row_style,
                     ink,

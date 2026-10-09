@@ -24,10 +24,11 @@
 //! What the rail did gain is a **right click**: it opens the panel's own menu, which is the only way
 //! to move a panel that has been put away, since a panel that is not showing has no header to grab.
 //!
-//! A button that is on is the pill every list in Unluminous draws for its chosen row — `SELECTED_ROW`, the row
-//! inset and rounded — rather than a filled `ACCENT` square. Three bright blue squares in a rail that is
-//! nearly always in that state would be the loudest thing in the window, and the pane being open is a
-//! state rather than a press.
+//! A button that is on is a soft wash of the accent with its mark in the accent and a short accent bar
+//! against the rail's left edge (`task-2219`). It used to be the pill every list draws for its chosen
+//! row, at the full size of the button with the mark in near black, and three of those down a rail that
+//! is nearly always in that state read as a highlighter. A filled `ACCENT` square would be louder still;
+//! the pane being open is a state rather than a press.
 //!
 //! The rail is also the only way back once a pane has been put away. There used to be a small
 //! disclosure button floating over the top left of the editing area for exactly that, and it is gone:
@@ -40,7 +41,6 @@
 use egui::{CornerRadius, Pos2, Rect, Sense, Vec2};
 
 use crate::app::actions::{Action, GitAction};
-use crate::components::controls;
 use crate::components::controls::WithHint as _;
 use crate::theme::{color, icon, size};
 
@@ -49,6 +49,11 @@ const BUTTON: f32 = 24.0;
 const STEP: f32 = 30.0;
 /// Space between the top or bottom edge of the rail and the first button.
 const MARGIN: f32 = 8.0;
+/// The wash drawn behind an open or hovered button, and how round it is. Twenty six points against the
+/// twenty four of the button's hit area, centred on it, which leaves the wash two points from the rail's
+/// right edge.
+const WELL: f32 = 26.0;
+const WELL_CORNER: u8 = 7;
 
 /// The icon a rail button draws: paint it at a point, in a colour.
 type IconDrawer = fn(&egui::Painter, Pos2, egui::Color32);
@@ -367,23 +372,36 @@ fn rail_button(
     let sense = if enabled { Sense::click() } else { Sense::hover() };
     let response = ui.interact(hit, ui.id().with(("activity", name)), sense).with_hint(name);
     let painter = ui.painter();
+    // **A pane that is open is a soft wash of the accent with its mark in the accent, and a short bar of
+    // the accent against the rail's edge**, `task-2219`. It was the list's chosen-row pill at the full size
+    // of the button with the mark in near black: three pale blue squares down a rail that is nearly always
+    // in that state, which read as a highlighter rather than as a control. The bar and the wash are what
+    // the reference editors draw for an open tool window; together they say "open" at a glance without being the loudest thing in
+    // the window. A hover is the same shape in the hover wash.
+    let well = Rect::from_center_size(centre, Vec2::splat(WELL));
+    let corner = CornerRadius::same(WELL_CORNER);
     if on {
-        controls::pill(painter, hit, size::CONTROL_CORNER);
+        painter.rect_filled(well, corner, color::accent().gamma_multiply(0.15));
+        let bar = Rect::from_min_size(
+            Pos2::new(ui.clip_rect().left().max(hit.left() - 6.0), centre.y - 7.0),
+            Vec2::new(2.5, 14.0),
+        );
+        painter.rect_filled(bar, CornerRadius { nw: 0, sw: 0, ne: 2, se: 2 }, color::accent());
     } else if response.hovered() && enabled {
-        painter.rect_filled(hit, CornerRadius::same(size::CONTROL_CORNER), color::control());
+        painter.rect_filled(well, corner, color::hover_wash().gamma_multiply(0.07));
     }
-    // The rail's three states, through the palette's icon roles rather than through the text ladder they
-    // used to borrow. Each role defaults to exactly the colour that was passed before `task-1776`, so
-    // nothing moved when they arrived — what they buy is that a theme can tint the rail without also
-    // moving every heading and every placeholder in the window.
+    // The rail's three states, through the palette's icon roles. A pane that is open takes the accent
+    // rather than `icon_active`, so the mark and the wash behind it are one colour family.
     let tint = if !enabled {
         color::icon_disabled().gamma_multiply(0.6)
     } else if on {
+        color::accent()
+    } else if response.hovered() {
         color::icon_active()
     } else {
         color::icon()
     };
-    draw(painter, centre, tint);
+    icon::crisp(painter, centre, tint, 1.08, draw);
     response
         .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, enabled, on, name));
     Pressed {

@@ -109,6 +109,107 @@ pub fn scaled(
     });
 }
 
+/// Draw a mark `scale` times as large and then put every edge of it on the pixel grid.
+///
+/// **The marks are drawn from fractional numbers at a 1.3 to 1.6 point stroke**, so at one pixel a point a
+/// stroke covers two or three pixels at partial strength and nothing in the mark has an edge. `task-2219`
+/// reported the rail and the title bar's marks as looking bad, and most of what was wrong was this. Redrawing
+/// fifty marks on whole numbers would be fifty chances to make one worse, so the shapes a mark added are
+/// moved instead: every stroke becomes a whole number of pixels, the same for every mark so they share one
+/// weight, and every point of a stroke moves to the middle of a pixel (or to its edge, for an even width)
+/// so a straight line is one solid row of pixels. A filled shape's points move to pixel edges.
+pub fn crisp(
+    painter: &egui::Painter,
+    centre: Pos2,
+    color: Color32,
+    scale: f32,
+    draw: fn(&egui::Painter, Pos2, Color32),
+) {
+    let ppp = painter.ctx().pixels_per_point();
+    let to_pixel = |v: f32| (v * ppp).round() / ppp;
+    let centre = Pos2::new(to_pixel(centre.x), to_pixel(centre.y));
+    on_the_pixel_grid(painter, |painter| scaled(painter, centre, color, scale, draw));
+}
+
+/// Run `draw` and then move every shape it added onto the pixel grid, for a mark drawn from a rectangle
+/// rather than a centre. See [`crisp`].
+pub fn on_the_pixel_grid(painter: &egui::Painter, draw: impl FnOnce(&egui::Painter)) {
+    let ppp = painter.ctx().pixels_per_point();
+    let first = painter.add(egui::Shape::Noop);
+    draw(painter);
+    let end = painter.add(egui::Shape::Noop);
+    painter.ctx().graphics_mut(|layers| {
+        let list = layers.entry(painter.layer_id());
+        for index in first.0 + 1..end.0 {
+            list.mutate_shape(egui::layers::ShapeIdx(index), |clipped| {
+                snap_shape(&mut clipped.shape, ppp)
+            });
+        }
+    });
+}
+
+/// One shape of a mark moved onto the pixel grid. See [`crisp`].
+fn snap_shape(shape: &mut egui::Shape, ppp: f32) {
+    // A stroke is a whole number of pixels: a little heavier than its nominal width rounds down, so the
+    // marks drawn at 1.3 and the ones drawn at 1.6 come out the same weight.
+    let pixels = |width: f32| ((width * ppp + 0.25).floor()).max(1.0);
+    let along = |v: f32, offset: f32| ((v * ppp - offset).round() + offset) / ppp;
+    let offset_for = |pixels: f32| if (pixels as i32) % 2 == 1 { 0.5 } else { 0.0 };
+    match shape {
+        egui::Shape::Vec(shapes) => {
+            for one in shapes {
+                snap_shape(one, ppp);
+            }
+        }
+        egui::Shape::LineSegment { points, stroke } => {
+            let px = pixels(stroke.width);
+            stroke.width = px / ppp;
+            let offset = offset_for(px);
+            for point in points.iter_mut() {
+                *point = Pos2::new(along(point.x, offset), along(point.y, offset));
+            }
+        }
+        egui::Shape::Path(path) => {
+            let stroked = path.stroke.width > 0.0;
+            let offset = match stroked {
+                true => {
+                    let px = pixels(path.stroke.width);
+                    path.stroke.width = px / ppp;
+                    offset_for(px)
+                }
+                false => 0.0,
+            };
+            for point in path.points.iter_mut() {
+                *point = Pos2::new(along(point.x, offset), along(point.y, offset));
+            }
+        }
+        egui::Shape::Rect(rect) => {
+            let offset = match rect.stroke.width > 0.0 {
+                true => {
+                    let px = pixels(rect.stroke.width);
+                    rect.stroke.width = px / ppp;
+                    offset_for(px)
+                }
+                false => 0.0,
+            };
+            rect.rect = egui::Rect::from_min_max(
+                Pos2::new(along(rect.rect.min.x, offset), along(rect.rect.min.y, offset)),
+                Pos2::new(along(rect.rect.max.x, offset), along(rect.rect.max.y, offset)),
+            );
+        }
+        // A filled disc is left where it is: rounding its centre moves it without sharpening anything.
+        egui::Shape::Circle(circle) if circle.stroke.width > 0.0 => {
+            let px = pixels(circle.stroke.width);
+            circle.stroke.width = px / ppp;
+            let offset = offset_for(px);
+            circle.center =
+                Pos2::new(along(circle.center.x, offset), along(circle.center.y, offset));
+            circle.radius = (circle.radius * ppp).round() / ppp;
+        }
+        _ => {}
+    }
+}
+
 pub fn disclosure(painter: &egui::Painter, centre: Pos2, open: bool, color: Color32) {
     disclosure_at(painter, centre, open, color, 1.0);
 }
@@ -1264,7 +1365,10 @@ fn bug_at(painter: &egui::Painter, centre: Pos2, color: Color32, scale: f32) {
     // because long legs at a wide fan are six rays round a disc and read as a sun rather than as an
     // animal. The shell has to stay the largest thing in the mark.
     let reach = 2.0_f32.max(2.0 * scale);
-    for (y, rise) in [(-1.8_f32, -1.1_f32), (0.8, 0.0), (3.4, 1.1)] {
+    // A small beetle's legs go straight out: at fourteen pixels a leg that rises by one pixel is a
+    // staircase, and three of them each side read as noise rather than as legs (`task-2219`).
+    let fan = if scale < 1.0 { 0.0 } else { 1.0 };
+    for (y, rise) in [(-1.8_f32, -1.1_f32 * fan), (0.8, 0.0), (3.4, 1.1 * fan)] {
         painter.line_segment([at(-3.2, y), at(-3.2, y) + egui::vec2(-reach, rise * scale)], stroke);
         painter.line_segment([at(3.2, y), at(3.2, y) + egui::vec2(reach, rise * scale)], stroke);
     }

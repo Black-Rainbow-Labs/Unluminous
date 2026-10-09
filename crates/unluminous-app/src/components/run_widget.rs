@@ -226,10 +226,20 @@ fn square_button(
     let response =
         ui.interact(area, ui.id().with(("run-widget", name)), Sense::click()).with_hint(name);
     if response.hovered() {
-        ui.painter().rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::control());
+        ui.painter().rect_filled(
+            area,
+            CornerRadius::same(size::CONTROL_CORNER),
+            controls::hover_fill(),
+        );
     }
-    let tint = if green { color::git_added() } else { color::text_control() };
-    draw(ui.painter(), area.center(), tint);
+    let tint = match (green, response.hovered()) {
+        (true, _) => color::git_added(),
+        (false, true) => color::text_strong(),
+        (false, false) => color::text_control(),
+    };
+    // On the pixel grid, so the triangle, the bug and the square share one weight and have edges
+    // (`task-2219`).
+    icon::crisp(ui.painter(), area.center(), tint, 1.0, draw);
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
     response.clicked()

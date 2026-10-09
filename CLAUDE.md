@@ -572,6 +572,14 @@ object with a `type`: `card`, `columns`, `tabs`, `stack`, `callout`, `steps`, `t
 use. The four starter chips are gone: `components/agent_chat/welcome.rs` shows which agent is answering,
 a status screen of what it can see, and the last three conversations.
 
+### The words of an answer follow the theme on the frame it changes (`task-2219`)
+
+`markdown_text::Rendered` bakes its colours into the layout, and the cache used to make it again only
+when the source or the width changed. So choosing a theme left every message in the old theme's colours
+until a resize moved the width. A `Rendered` now remembers its colours, size and family and is made
+again when any of them differs. `a_change_of_theme_recolours_the_words_already_on_the_screen` reads the
+pixels inside a bubble before and after `theme set`.
+
 ### A settings page that scrolls must not clip to the rectangle it measures from (`task-2003`)
 
 *"the settings configurations look like crap"*, with a screenshot of the Agent-Chat page whose
@@ -731,6 +739,12 @@ caller's, so it lives in `PaneState::model_select` and each chat, a pane or a ca
 egui panics on a family nobody bound. `rux::text::install` binds them by replacing every font in the
 context, which would change the whole window's typeface, so `theme::install_fonts` binds the seven names
 to the interface's own faces instead. A `rux` control drawn anywhere in Unluminous needs nothing more.
+
+**Its colours are Unluminous's too** (`task-2219`). `theme::rux_theme` builds a `rux::Theme` from the
+active palette with `rux::Theme::retoned`: the board surfaces, the text ladder and the accent replace
+`rux`'s own, and the elevations are worked out again from them. Before, a component plate in a chat
+answer was `rux`'s grey beside bubbles in the theme's colour, which in a plugin theme did not match at
+all. One theme is made per palette and kept, so `theme::in_step` still compares two addresses.
 
 **And a pane does not follow the editor's font.** A plugin's `Look` is built from
 `appearance.font.size`, which is the setting zooming a file walks, so zooming a file resized the chat, and

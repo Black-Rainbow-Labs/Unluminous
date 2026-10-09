@@ -1,7 +1,8 @@
 //! One row of the conversation: a bubble, its pictures, its tool blocks and its failure.
 //!
 //! `ChatMessage.module.css` is what this is measured against. A message from the person is right
-//! aligned and **raised**; one from the model is left aligned and **pressed**; each has the corner
+//! aligned and one from the model is left aligned, and both are **raised** (`task-2219`), the person's
+//! with a little of the accent in its colour; each has the corner
 //! nearest its own side squared off to six points, which is the detail that makes a column of
 //! bubbles read as a conversation rather than as a list.
 //!
@@ -492,7 +493,7 @@ fn painter_in(ui: &egui::Ui, rect: Rect) -> egui::Painter {
     ui.painter_at(rect.intersect(ui.clip_rect()))
 }
 
-/// The bubble itself: raised for the person, pressed for the model.
+/// The bubble itself, raised, with the person's tinted.
 fn bubble(ui: &mut egui::Ui, look: &Look<'_>, rect: Rect, mine: bool, first: bool) {
     let scale = look.scale();
     let radius = RADIUS * scale;
@@ -514,27 +515,31 @@ fn bubble(ui: &mut egui::Ui, look: &Look<'_>, rect: Rect, mine: bool, first: boo
         // down to `vello_cpu` now and the corner is drawn once, in the same pass as the shadows, which is
         // the only way the two can agree.
         let corners = crate::services::vello_canvas::Corners::from(corners);
-        match mine {
-            // **Raised for the person, pressed for the model**, at `Lift::Medium` rather than
-            // `Lift::Small`: the reference's shadow pairs are broad and soft, and at `Small` a bubble
-            // came out with a one point dark edge and almost no light side — dark and rounded rather
-            // than neumorphic.
-            true => look.chrome.raised(
-                rect,
-                corners,
-                Fill::Solid(look.palette.board_card),
-                Lift::Medium,
-            ),
-            false => look.chrome.sunken(rect, corners, look.palette.board_card, Lift::Medium),
-        }
+        // **Both raised, at `Lift::Small`**, `task-2219`. A conversation is a column of objects of one
+        // kind, and which side a bubble is on and its tint say who spoke. An answer used to be pressed in
+        // at `Lift::Medium`, which on a light ground drew a grey band inside its top and left edges that
+        // read as dirt, and a question raised at `Medium` cast a shadow so wide that two bubbles shared one
+        // grey band. The elevation is three layers now, with a lit edge, so `Small` is enough to stand up.
+        look.chrome.raised(rect, corners, Fill::Solid(bubble_fill(look, mine)), Lift::Small);
     } else {
         ui.painter().rect(
             rect,
             corners,
-            look.ground(look.palette.board_card),
+            look.ground(bubble_fill(look, mine)),
             Stroke::new(1.0, look.palette.control_border),
             egui::StrokeKind::Inside,
         );
+    }
+}
+
+/// The colour of a bubble: the card for an answer, and the card with a little of the accent in it for
+/// something the person said, so the two sides differ by more than which edge they hug.
+pub(super) fn bubble_fill(look: &Look<'_>, mine: bool) -> egui::Color32 {
+    match mine {
+        true => {
+            crate::components::controls::mix(look.palette.board_card, look.palette.accent, 0.07)
+        }
+        false => look.palette.board_card,
     }
 }
 

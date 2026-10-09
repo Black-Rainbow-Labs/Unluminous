@@ -579,40 +579,38 @@ fn card(
     pen - at.y
 }
 
-/// How wide a pill with an LED and a silkscreen label is.
+/// How wide a pill with a silkscreen label is.
 fn pill_width(kit: &Kit<'_, '_>, label: &str) -> f32 {
-    kit.rux.measure(kit.style(SILK), label).x + kit.z(26.0)
+    kit.rux.measure(kit.style(SILK), label).x + kit.z(18.0)
 }
 
-/// A small recessed pill with an LED and a silkscreen label, centred on `left_centre.y`.
+/// A small recessed pill with a silkscreen label in its tone's colour, centred on `left_centre.y`.
+///
+/// **No lamp beside the word**, `task-2219`: "the little dots next to the button labels need to go". The
+/// tone is the colour of the words, which says the same thing with one mark rather than two; a neutral
+/// pill keeps the quiet ink.
 fn pill(kit: &mut Kit<'_, '_>, label: &str, tone: Tone, left_centre: Pos2) {
     if !kit.draw {
         return;
     }
     let theme = kit.rux.theme();
-    let colours = Instrument::of(theme);
     let rect = Rect::from_min_size(
         Pos2::new(left_centre.x, left_centre.y - kit.z(10.0)),
         Vec2::new(pill_width(kit, label), kit.z(20.0)),
     );
     instrument::screen(kit.rux, rect, kit.z(10.0), false);
-    let (colour, lit) = tone_light(theme, tone);
-    instrument::led(
-        kit.rux.painter(),
-        Pos2::new(rect.left() + kit.z(10.0), rect.center().y),
-        kit.z(2.5),
-        colour,
-        colours.led_off,
-        lit,
-    );
+    let ink = match tone {
+        Tone::Neutral => theme.ink.i500,
+        _ => tinted_words(theme, tone_light(theme, tone).0),
+    };
     let style = kit.style(SILK);
-    let galley = rux::text::layout(kit.rux.painter(), style, label, theme.ink.i700);
+    let galley = rux::text::layout(kit.rux.painter(), style, label, ink);
     rux::text::draw_left_capitals(
         kit.rux.painter(),
-        Pos2::new(rect.left() + kit.z(18.0), rect.center().y),
+        Pos2::new(rect.left() + kit.z(9.0), rect.center().y),
         galley,
         style,
-        theme.ink.i700,
+        ink,
     );
 }
 
@@ -715,9 +713,9 @@ fn tabs_at(
     let mut x = at.x;
     let mut row_height: f32 = 0.0;
     for (index, tab) in tabs.iter().enumerate() {
-        // Measured with its lamp, which is what it is drawn with; measured without, the label was cut.
-        let size =
-            Key::new(&tab.label).compact().led(theme.accent.blue, index == chosen).measure(kit.rux);
+        // **No lamp beside the word.** `task-2219`: "the little dots next to the button labels need to go".
+        // The chosen tab is the key that stays down with its word in the accent colour.
+        let size = Key::new(&tab.label).compact().measure(kit.rux);
         if x > at.x && x + size.x > at.x + width {
             x = at.x;
             pen += row_height + kit.z(8.0);
@@ -726,8 +724,7 @@ fn tabs_at(
             let rect = Rect::from_min_size(Pos2::new(x, pen), size);
             let pressed = Key::new(&tab.label)
                 .compact()
-                .led(theme.accent.blue, index == chosen)
-                .down(index == chosen)
+                .chosen(theme.accent.blue, index == chosen)
                 .id(kit.id(key, ("tab", index)))
                 .show(kit.rux, rect)
                 .clicked();
@@ -1590,14 +1587,17 @@ fn keys(
     let mut row: f32 = 0.0;
     for (index, (label, action, primary)) in buttons.iter().enumerate() {
         let was = pressed.as_deref() == Some(label.as_str());
-        let lamp = match (was, primary) {
+        // The key that matters most is told apart by its word in the accent colour, and one that has been
+        // pressed stays down with its word in the mint. Neither carries a lamp beside the word any more
+        // (`task-2219`).
+        let tint = match (was, primary) {
             (true, _) => Some(theme.accent.mint),
             (false, true) => Some(theme.accent.blue),
             _ => None,
         };
         let mut button = Key::new(label).id(kit.id(key, ("key", index))).down(was);
-        if let Some(colour) = lamp {
-            button = button.led(colour, true);
+        if let Some(colour) = tint {
+            button = button.tinted(colour);
         }
         let mut size = button.measure(kit.rux);
         size.x = size.x.min(width);
@@ -1859,7 +1859,7 @@ fn form(
     let sent = kit.states.get(key).and_then(|state| state.pressed.clone()).is_some();
     let label = if sent { "Sent" } else { submit };
     let button = Key::new(label)
-        .led(if sent { theme.accent.mint } else { theme.accent.blue }, true)
+        .tinted(if sent { theme.accent.mint } else { theme.accent.blue })
         .down(sent)
         .id(kit.id(key, "submit"));
     let size = button.measure(kit.rux);

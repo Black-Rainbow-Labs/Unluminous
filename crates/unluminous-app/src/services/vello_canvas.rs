@@ -142,44 +142,50 @@ impl From<egui::CornerRadius> for Corners {
 }
 
 impl Lift {
-    /// How far outside its own edge a raised surface's shadow reaches.
+    /// How far round a raised surface its shadows can reach, which is the room a caller leaves for them.
     ///
-    /// Public because a caller has to leave room for it: the canvas is cut to the pane, so a surface
-    /// closer to the edge than this has its shadow clipped and reads as stuck to the side rather than as
-    /// floating. The board's rail asks.
+    /// **Kept at what it was before `task-2219` tightened the shadows**, although the shadows now reach a
+    /// good deal less far: the board lays its lanes and its rail out from this number, and room left for a
+    /// shadow that is not there costs nothing, where moving every lane by a few points would move every
+    /// accepted picture of the board for no gain.
     pub fn reach(self) -> f32 {
-        let (offset, blur) = self.raised();
-        offset + blur * 2.5 + 2.0
-    }
-
-    /// The offset and the standard deviation a raised surface's pair of shadows use.
-    fn raised(self) -> (f32, f32) {
-        match self {
+        let (offset, blur) = match self {
             Self::Small => (4.0, 4.0),
             Self::Medium => (6.0, 7.0),
             Self::Large => (10.0, 12.0),
+        };
+        offset + blur * 2.5 + 2.0
+    }
+
+    /// How high a raised surface stands, in points: what its ambient shadow and its highlight are measured
+    /// from.
+    ///
+    /// `task-2219` reported the old pair, offset six and blurred seven at `Medium`, as blur with no
+    /// clarity: two bubbles twelve points apart shared one grey band and nothing had an edge. A surface is
+    /// now three layers (see [`Chrome::raised`]) and the soft one is less than half as wide.
+    fn height(self) -> f32 {
+        match self {
+            Self::Small => 2.0,
+            Self::Medium => 3.0,
+            Self::Large => 5.0,
         }
     }
 
-    /// The same for a surface pressed into the one behind it: `--e-pressed-sm` and `--e-pressed`.
+    /// The inset shadow's offset and blur for a surface pressed in by this much.
     fn sunken(self) -> (f32, f32) {
         match self {
-            Self::Small => (2.0, 2.0),
-            Self::Medium => (4.0, 4.0),
-            Self::Large => (6.0, 6.0),
+            Self::Small => (1.0, 2.0),
+            Self::Medium => (1.5, 3.0),
+            Self::Large => (2.5, 5.0),
         }
     }
 
-    /// How dark the shadow under a raised surface is. Deeper things cast darker shadows.
-    ///
-    /// Tuned against the picture rather than chosen: the reference's page is `#181D24` and the darkest point
-    /// of a lane's shadow on it is `#0C1014`, which is about half an alpha of black once the Gaussian's peak
-    /// is taken into account.
-    fn shadow_alpha(self) -> u8 {
+    /// How much darker each step is, as a fraction of the `Small` strength.
+    fn weight(self) -> f32 {
         match self {
-            Self::Small => 78,
-            Self::Medium => 100,
-            Self::Large => 122,
+            Self::Small => 1.0,
+            Self::Medium => 1.15,
+            Self::Large => 1.3,
         }
     }
 }
@@ -445,28 +451,68 @@ impl Chrome {
     pub fn raised(&self, rect: Rect, radius: impl Into<Corners>, fill: Fill, lift: Lift) {
         let corners = radius.into();
         let radius = corners.representative();
-        let (offset, blur) = lift.raised();
-        // **The pair is cut to the band around the shape**, which is the whole of what makes elevation
-        // affordable. The surface is opaque and is painted over its own shadows, so every pixel of blur
-        // inside it is computed and then thrown away; on a lane 328 by 812 that is a third of a million
-        // pixels of Gaussian, twice, and it measured 3.3 ms a lane. Clipped, only the band is evaluated.
+        let height = lift.height();
+        let weight = lift.weight();
+        let tones = Tones::of(fill.representative());
+        // **The shadows are cut to the band around the shape**, which is what makes elevation affordable.
+        // The surface is opaque and is painted over its own shadows, so every pixel of blur inside it is
+        // computed and then thrown away; on a lane 328 by 812 that was a third of a million pixels of
+        // Gaussian, twice, and it measured 3.3 ms a lane. Clipped, only the band is evaluated.
         self.push(Decor::Clip { rect, corners, outside: true, bound: rect.expand(lift.reach()) });
+        // **Three layers rather than two**, `task-2219`. A contact shadow, tight and fairly dark, says where
+        // the surface meets the ground; an ambient one, wide and faint, says how high it stands; and the pale
+        // one up and to the left is the light. The old pair had only the soft half, at the strength the
+        // contact half should have, so every surface was a blur with no edge.
         self.push(Decor::Shadow {
-            rect: rect.translate(Vec2::splat(offset)),
+            rect: rect.translate(Vec2::new(0.0, 1.0)),
             radius,
-            blur,
-            colour: shade(lift.shadow_alpha()),
+            blur: 1.5,
+            colour: tones.contact.gamma_multiply(weight.min(1.2)),
             inset: false,
         });
         self.push(Decor::Shadow {
-            rect: rect.translate(Vec2::splat(-offset)),
+            rect: rect.translate(Vec2::new(height * 0.5, height)),
             radius,
-            blur,
-            colour: highlight(fill.representative(), 0.10, 0.22),
+            blur: height * 2.0,
+            colour: tones.ambient.gamma_multiply(weight),
+            inset: false,
+        });
+        self.push(Decor::Shadow {
+            rect: rect.translate(Vec2::splat(-height * 0.6)),
+            radius,
+            blur: height * 1.5,
+            colour: tones.light,
             inset: false,
         });
         self.push(Decor::Unclip);
+        // A hairline round the surface on a light ground, where a white card on a pale grey ground has
+        // too little contrast to be found otherwise: WCAG 2.2's 1.4.11 asks for 3 to 1 on the edge of a
+        // thing that has to be identified, and the neumorphic literature names exactly this as the fix.
+        if let Some(hairline) = tones.hairline {
+            self.push(Decor::Rect {
+                rect: rect.expand(0.75),
+                corners: Corners {
+                    nw: corners.nw + 0.75,
+                    ne: corners.ne + 0.75,
+                    se: corners.se + 0.75,
+                    sw: corners.sw + 0.75,
+                },
+                fill: Fill::Solid(hairline),
+            });
+        }
         self.push(Decor::Rect { rect, corners, fill });
+        // The lit edge: one point of light inside the top and the left, fading round the corners, which
+        // is what gives a raised surface a sharp outline. It is CSS's `inset 1px 1px 0 white`, drawn the
+        // way every inset shadow here is drawn, clipped to the shape.
+        self.push(Decor::Clip { rect, corners, outside: false, bound: rect });
+        self.push(Decor::Shadow {
+            rect: rect.translate(Vec2::splat(1.0)),
+            radius,
+            blur: 0.6,
+            colour: tones.edge,
+            inset: true,
+        });
+        self.push(Decor::Unclip);
     }
 
     /// A surface pressed into the one behind it: a well, a field, a count chip, the round `K` button.
@@ -482,13 +528,16 @@ impl Chrome {
         let corners = radius.into();
         let radius = corners.representative();
         let (offset, blur) = depth.sunken();
+        let tones = Tones::of(fill);
         self.push(Decor::Rect { rect, corners, fill: Fill::Solid(fill) });
         self.push(Decor::Clip { rect, corners, outside: false, bound: rect });
+        // A dent rather than a band. At four points of offset the shadow inside a light well was a grey
+        // stripe along the top and left that read as dirt; at one and a half it reads as an edge.
         self.push(Decor::Shadow {
             rect: rect.translate(Vec2::splat(offset)),
             radius,
             blur,
-            colour: shade(depth.shadow_alpha()),
+            colour: tones.inset.gamma_multiply(depth.weight()),
             inset: true,
         });
         self.push(Decor::Shadow {
@@ -538,17 +587,40 @@ impl Chrome {
     }
 }
 
-/// The dark half of an elevation: black at `alpha` on a dark ground, which is what the board is measured
-/// against, and a cool grey at a little over half of it on a light one.
+/// The colours one elevation is drawn in, worked out from the surface it is under.
 ///
-/// `task-2215`. Black on a light surface reads as dirt rather than as depth, and at the dark theme's
-/// strength it was a smudge round every card. Light neumorphism shadows with the surface's own hue taken
-/// darker, which is what `rux`'s light theme does with `#B8BFCC`; this is that grey, a step deeper so a
-/// Gaussian of it is still visible at its edge.
-fn shade(alpha: u8) -> Color32 {
-    match crate::theme::is_dark() {
-        true => Color32::from_black_alpha(alpha),
-        false => Color32::from_rgba_unmultiplied(0x5E, 0x6A, 0x80, (f32::from(alpha) * 0.55) as u8),
+/// The darkness of the theme is the one thing that changes the recipe, and it is read here and nowhere a
+/// component can reach for it: a black shadow and a lifted grey highlight on a dark ground, a cool grey
+/// shadow under a white highlight and a hairline on a light one.
+struct Tones {
+    contact: Color32,
+    ambient: Color32,
+    light: Color32,
+    edge: Color32,
+    inset: Color32,
+    hairline: Option<Color32>,
+}
+
+impl Tones {
+    fn of(surface: Color32) -> Self {
+        match crate::theme::is_dark() {
+            true => Self {
+                contact: Color32::from_black_alpha(120),
+                ambient: Color32::from_black_alpha(80),
+                light: lifted(surface, 0.08).gamma_multiply(0.30),
+                edge: lifted(surface, 0.16).gamma_multiply(0.55),
+                inset: Color32::from_black_alpha(110),
+                hairline: None,
+            },
+            false => Self {
+                contact: Color32::from_rgba_unmultiplied(0x34, 0x3E, 0x52, 52),
+                ambient: Color32::from_rgba_unmultiplied(0x46, 0x52, 0x6A, 30),
+                light: Color32::from_white_alpha(235),
+                edge: Color32::from_white_alpha(215),
+                inset: Color32::from_rgba_unmultiplied(0x46, 0x52, 0x6A, 56),
+                hairline: Some(Color32::from_rgba_unmultiplied(0x46, 0x52, 0x6A, 30)),
+            },
+        }
     }
 }
 
@@ -1030,7 +1102,8 @@ mod tests {
     }
 
     #[test]
-    fn a_raised_surface_is_two_shadows_and_the_surface_over_them() {
+    fn a_raised_surface_is_three_shadows_the_surface_and_a_lit_edge() {
+        crate::theme::activate(crate::theme::Theme::unluminous_dark());
         let chrome = Chrome::recording();
         chrome.raised(
             rect(10.0, 10.0, 100.0, 40.0),
@@ -1039,22 +1112,56 @@ mod tests {
             Lift::Medium,
         );
         let items = chrome.take();
-        assert_eq!(items.len(), 5, "a band to draw in, two shadows, the unclip, and the surface");
-        // The band first, so the two shadows are only evaluated where they can be seen.
+        assert_eq!(
+            items.len(),
+            9,
+            "a band, three shadows, the unclip, the surface, and the lit edge clipped to it"
+        );
+        // The band first, so the shadows are only evaluated where they can be seen.
         assert!(matches!(items[0], Decor::Clip { outside: true, .. }));
-        // The dark one is down and right, the pale one up and left: the light comes from the same corner
-        // everywhere on the board, which is what neumorphism is.
-        let (dark, pale) = match (items[1], items[2]) {
+        // The contact shadow, tight and just below; the ambient one, wider and further down and right;
+        // and the pale one up and left: the light comes from the same corner everywhere, which is what
+        // neumorphism is (`task-2219`).
+        let (contact, ambient, pale) = match (items[1], items[2], items[3]) {
             (
-                Decor::Shadow { rect: dark, inset: false, .. },
+                Decor::Shadow { rect: contact, blur: tight, inset: false, .. },
+                Decor::Shadow { rect: ambient, blur: wide, inset: false, .. },
                 Decor::Shadow { rect: pale, inset: false, .. },
-            ) => (dark, pale),
-            other => panic!("expected two outer shadows, got {other:?}"),
+            ) => {
+                assert!(tight < wide, "the contact shadow is the tighter of the two");
+                (contact, ambient, pale)
+            }
+            other => panic!("expected three outer shadows, got {other:?}"),
         };
-        assert!(dark.min.x > pale.min.x && dark.min.y > pale.min.y);
-        assert!(matches!(items[3], Decor::Unclip));
-        // And the surface last and unclipped, or the thing the shadows belong to would not be drawn at all.
-        assert!(matches!(items[4], Decor::Rect { corners, .. } if corners == Corners::all(14.0)));
+        assert!(contact.min.y > pale.min.y && ambient.min.x > pale.min.x);
+        assert!(matches!(items[4], Decor::Unclip));
+        // The surface, unclipped, or the thing the shadows belong to would not be drawn at all.
+        assert!(matches!(items[5], Decor::Rect { corners, .. } if corners == Corners::all(14.0)));
+        // And the lit edge, an inset shadow clipped to the surface so it cannot wash across the pane.
+        assert!(matches!(items[6], Decor::Clip { outside: false, .. }));
+        assert!(matches!(items[7], Decor::Shadow { inset: true, .. }));
+        assert!(matches!(items[8], Decor::Unclip));
+    }
+
+    #[test]
+    fn a_raised_surface_on_a_light_ground_has_a_hairline_under_it() {
+        crate::theme::activate(crate::theme::Theme::unluminous_light());
+        let chrome = Chrome::recording();
+        chrome.raised(rect(0.0, 0.0, 50.0, 20.0), 6.0, Fill::Solid(Color32::WHITE), Lift::Small);
+        let items = chrome.take();
+        crate::theme::activate(crate::theme::Theme::unluminous_dark());
+        let rects: Vec<Rect> = items
+            .iter()
+            .filter_map(|item| match item {
+                Decor::Rect { rect, .. } => Some(*rect),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(rects.len(), 2, "the hairline and the surface");
+        assert!(
+            rects[0].contains_rect(rects[1]),
+            "the hairline is a little larger than the surface"
+        );
     }
 
     #[test]
