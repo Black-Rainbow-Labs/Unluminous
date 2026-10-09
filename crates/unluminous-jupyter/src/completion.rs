@@ -136,10 +136,16 @@ mod tests {
 
     #[test]
     fn a_match_with_arguments_inserts_only_its_name() {
-        assert_eq!(split("checked_add(rhs)"), ("checked_add".to_owned(), Some("rhs".to_owned()), false));
+        assert_eq!(
+            split("checked_add(rhs)"),
+            ("checked_add".to_owned(), Some("rhs".to_owned()), false)
+        );
         assert_eq!(split("iter()"), ("iter".to_owned(), None, false));
         assert_eq!(split("println!()"), ("println!".to_owned(), None, true));
-        assert_eq!(split("clamp(min, max)"), ("clamp".to_owned(), Some("min, max".to_owned()), false));
+        assert_eq!(
+            split("clamp(min, max)"),
+            ("clamp".to_owned(), Some("min, max".to_owned()), false)
+        );
     }
 
     #[test]

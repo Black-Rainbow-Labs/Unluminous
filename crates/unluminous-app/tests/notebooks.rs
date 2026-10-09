@@ -641,7 +641,9 @@ fn rust_kernel_python() -> Option<std::path::PathBuf> {
     let python = kernel_python()?;
     let specs = unluminous_jupyter::kernel::list_kernelspecs(&python).unwrap_or_default();
     if !specs.iter().any(|spec| spec.name == "rust") {
-        println!("No Rust kernel (evcxr) is registered with Jupyter, so no Rust kernel was started.");
+        println!(
+            "No Rust kernel (evcxr) is registered with Jupyter, so no Rust kernel was started."
+        );
         return None;
     }
     Some(python)
@@ -728,9 +730,8 @@ fn a_magic_completed_from_the_kernel_is_not_given_a_second_percent() {
         return;
     };
     did(&mut harness, "notebook kernel start");
-    let started = wait_for(&mut harness, |harness| {
-        did(harness, "notebook kernel status")["state"] == "idle"
-    });
+    let started =
+        wait_for(&mut harness, |harness| did(harness, "notebook kernel status")["state"] == "idle");
     assert!(started, "{}", did(&mut harness, "notebook kernel status"));
     let offered = names(&completed(&mut harness, "notebook complete --cell 1 --json"));
     assert!(offered.contains(&"timeit".to_owned()), "{offered:?}");

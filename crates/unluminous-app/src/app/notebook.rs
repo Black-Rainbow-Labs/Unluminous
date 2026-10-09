@@ -692,7 +692,10 @@ mod asked_tests {
         let question = asked("v.it", 2, "it");
         assert!(question.is_about(2, "v.", "it"));
         assert!(question.is_about(2, "v.", "ite"), "typing on narrows the same answer");
-        assert!(!question.is_about(2, "v.", ""), "`v.` wants every method, not those matching `it`");
+        assert!(
+            !question.is_about(2, "v.", ""),
+            "`v.` wants every method, not those matching `it`"
+        );
         assert!(!question.is_about(2, "s.", "it"), "the value in front changed");
         assert!(!question.is_about(3, "v.i", "t"), "another word");
     }

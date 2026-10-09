@@ -600,9 +600,10 @@ fn take_an_answer_event(tab: &mut NotebookTab, event: Event) -> Heard {
 /// The events about the kernel itself rather than about a cell.
 fn take_a_lifecycle_event(tab: &mut NotebookTab, event: Event) -> Heard {
     match event {
-        Event::Started { info, .. } => {
-            Heard { changed: adopt_the_kernels_language(&mut tab.model.metadata, &info), ..Heard::default() }
-        }
+        Event::Started { info, .. } => Heard {
+            changed: adopt_the_kernels_language(&mut tab.model.metadata, &info),
+            ..Heard::default()
+        },
         Event::Restarted { info, .. } => {
             adopt_the_kernels_language(&mut tab.model.metadata, &info);
             stop_the_run(tab);

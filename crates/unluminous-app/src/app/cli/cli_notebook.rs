@@ -546,7 +546,10 @@ impl UnluminousApp {
             .or_else(|| self.notebook_python(index))
             .or_else(|| {
                 let found = self.pythons.found();
-                found.iter().find(|python| python.has_jupyter_client).map(|python| python.path.clone())
+                found
+                    .iter()
+                    .find(|python| python.has_jupyter_client)
+                    .map(|python| python.path.clone())
             });
         let Some(python) = python else {
             return no(
@@ -593,7 +596,11 @@ impl UnluminousApp {
         };
         let lines: Vec<&str> = body.split('\n').collect();
         if line == 0 || line > lines.len() {
-            return Err(format!("Cell {} has {} line(s), so there is no line {line}.", cell + 1, lines.len()));
+            return Err(format!(
+                "Cell {} has {} line(s), so there is no line {line}.",
+                cell + 1,
+                lines.len()
+            ));
         }
         let start: usize = lines[..line - 1].iter().map(|text| text.len() + 1).sum();
         let text = lines[line - 1];

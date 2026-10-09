@@ -679,7 +679,9 @@ fn a_rust_kernel_keeps_its_variables_between_cells() {
     assert!(six, "{events:?}");
     let printed = session.run("println!(\"x is {}\", x);");
     assert!(
-        printed.iter().any(|event| matches!(event, Event::Stream { text, .. } if text == "x is 5\n")),
+        printed
+            .iter()
+            .any(|event| matches!(event, Event::Stream { text, .. } if text == "x is 5\n")),
         "{printed:?}"
     );
 }

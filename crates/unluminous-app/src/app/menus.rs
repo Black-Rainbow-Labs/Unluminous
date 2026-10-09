@@ -262,7 +262,8 @@ impl UnluminousApp {
                 }
             }
             Action::NewRustNotebook => {
-                let made = self.make_a_new_notebook_for(None, unluminous_jupyter::nbformat::Language::Rust);
+                let made = self
+                    .make_a_new_notebook_for(None, unluminous_jupyter::nbformat::Language::Rust);
                 if let Err(problem) = made {
                     self.message = Some(problem);
                 }

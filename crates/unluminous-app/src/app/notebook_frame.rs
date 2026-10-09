@@ -420,9 +420,7 @@ impl UnluminousApp {
     /// Jupyter's own rule: in a code cell, with nothing selected, straight after a letter, a digit, an
     /// `_`, a `.` or a `:`. Anywhere else Tab still indents. Answers whether one was taken. `task-2229`.
     fn take_a_tab_that_completes(&mut self, ui: &mut egui::Ui) -> bool {
-        let bare_tab = |event: &egui::Event| {
-            matches!(event, egui::Event::Key { key: egui::Key::Tab, pressed: true, modifiers, .. } if modifiers.is_none())
-        };
+        let bare_tab = |event: &egui::Event| matches!(event, egui::Event::Key { key: egui::Key::Tab, pressed: true, modifiers, .. } if modifiers.is_none());
         if !ui.input(|input| input.events.iter().any(bare_tab)) {
             return false;
         }
@@ -1012,7 +1010,8 @@ fn paint_the_cell_buttons(
     let corner = Pos2::new(frame.area.right() - 14.0, frame.origin.y + drawing.place.top - 14.0);
     let rendered = drawing.shape == Shape::Rendered;
     let salt = format!("cell {}", cell + 1);
-    let Some(button) = notebook_view::cell_buttons(ui, corner, drawing.kind, rendered, debuggable, &salt)
+    let Some(button) =
+        notebook_view::cell_buttons(ui, corner, drawing.kind, rendered, debuggable, &salt)
     else {
         return;
     };

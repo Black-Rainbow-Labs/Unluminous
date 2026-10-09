@@ -1171,7 +1171,9 @@ mod tests {
         let mut notebook = notebook_of(&[(CellKind::Code, "let x = 1;")]);
         notebook.metadata = nbformat::empty_for(nbformat::Language::Rust).metadata;
         assert_eq!(language_of(&notebook), "rust");
-        assert!(to_markdown(&notebook, &mut Vec::new(), "n").starts_with("```rust\nlet x = 1;\n```"));
+        assert!(
+            to_markdown(&notebook, &mut Vec::new(), "n").starts_with("```rust\nlet x = 1;\n```")
+        );
     }
 
     #[test]
