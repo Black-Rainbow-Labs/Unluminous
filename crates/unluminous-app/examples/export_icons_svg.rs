@@ -87,7 +87,13 @@ fn marks() -> Vec<Mark> {
     ];
     let mut all: Vec<Mark> = simple
         .into_iter()
-        .map(|(name, draw)| (name, Box::new(move |p: &egui::Painter, c: Pos2| draw(p, c, INK)) as Box<dyn Fn(&egui::Painter, Pos2)>))
+        .map(|(name, draw)| {
+            (
+                name,
+                Box::new(move |p: &egui::Painter, c: Pos2| draw(p, c, INK))
+                    as Box<dyn Fn(&egui::Painter, Pos2)>,
+            )
+        })
         .collect();
     let with: Vec<Mark> = vec![
         ("disclosure-closed", Box::new(|p, c| icon::disclosure(p, c, false, INK))),
@@ -107,13 +113,68 @@ fn marks() -> Vec<Mark> {
         ("symbol-constant", Box::new(|p, c| icon::symbol_kind(p, c, SymbolKind::Constant, INK))),
         ("symbol-variable", Box::new(|p, c| icon::symbol_kind(p, c, SymbolKind::Variable, INK))),
         ("symbol-module", Box::new(|p, c| icon::symbol_kind(p, c, SymbolKind::Module, INK))),
-        ("align-left", Box::new(|p, c| icon::alignment(p, Rect::from_center_size(c, Vec2::splat(12.0)), Align::Left, INK))),
-        ("align-centre", Box::new(|p, c| icon::alignment(p, Rect::from_center_size(c, Vec2::splat(12.0)), Align::Center, INK))),
-        ("align-right", Box::new(|p, c| icon::alignment(p, Rect::from_center_size(c, Vec2::splat(12.0)), Align::Right, INK))),
-        ("align-justify", Box::new(|p, c| icon::alignment(p, Rect::from_center_size(c, Vec2::splat(12.0)), Align::Justify, INK))),
-        ("view-raw", Box::new(|p, c| icon::view_mode(p, Rect::from_center_size(c, Vec2::splat(18.0)), unluminous_app::ViewMode::Raw, INK))),
-        ("view-side-by-side", Box::new(|p, c| icon::view_mode(p, Rect::from_center_size(c, Vec2::splat(18.0)), unluminous_app::ViewMode::SideBySide, INK))),
-        ("view-preview", Box::new(|p, c| icon::view_mode(p, Rect::from_center_size(c, Vec2::splat(18.0)), unluminous_app::ViewMode::Preview, INK))),
+        (
+            "align-left",
+            Box::new(|p, c| {
+                icon::alignment(p, Rect::from_center_size(c, Vec2::splat(12.0)), Align::Left, INK)
+            }),
+        ),
+        (
+            "align-centre",
+            Box::new(|p, c| {
+                icon::alignment(p, Rect::from_center_size(c, Vec2::splat(12.0)), Align::Center, INK)
+            }),
+        ),
+        (
+            "align-right",
+            Box::new(|p, c| {
+                icon::alignment(p, Rect::from_center_size(c, Vec2::splat(12.0)), Align::Right, INK)
+            }),
+        ),
+        (
+            "align-justify",
+            Box::new(|p, c| {
+                icon::alignment(
+                    p,
+                    Rect::from_center_size(c, Vec2::splat(12.0)),
+                    Align::Justify,
+                    INK,
+                )
+            }),
+        ),
+        (
+            "view-raw",
+            Box::new(|p, c| {
+                icon::view_mode(
+                    p,
+                    Rect::from_center_size(c, Vec2::splat(18.0)),
+                    unluminous_app::ViewMode::Raw,
+                    INK,
+                )
+            }),
+        ),
+        (
+            "view-side-by-side",
+            Box::new(|p, c| {
+                icon::view_mode(
+                    p,
+                    Rect::from_center_size(c, Vec2::splat(18.0)),
+                    unluminous_app::ViewMode::SideBySide,
+                    INK,
+                )
+            }),
+        ),
+        (
+            "view-preview",
+            Box::new(|p, c| {
+                icon::view_mode(
+                    p,
+                    Rect::from_center_size(c, Vec2::splat(18.0)),
+                    unluminous_app::ViewMode::Preview,
+                    INK,
+                )
+            }),
+        ),
     ];
     all.extend(with);
     all
@@ -166,7 +227,12 @@ fn svg_of(shape: &Shape, out: &mut String) {
             let _ = writeln!(
                 out,
                 "<circle cx=\"{:.3}\" cy=\"{:.3}\" r=\"{:.3}\"{}{} stroke-width=\"{:.3}\"/>",
-                c.center.x, c.center.y, c.radius, paint("fill", c.fill), paint("stroke", c.stroke.color), c.stroke.width
+                c.center.x,
+                c.center.y,
+                c.radius,
+                paint("fill", c.fill),
+                paint("stroke", c.stroke.color),
+                c.stroke.width
             );
         }
         Shape::Ellipse(e) => {
@@ -208,7 +274,8 @@ fn svg_of(shape: &Shape, out: &mut String) {
         }
         Shape::Mesh(mesh) => {
             for triangle in mesh.indices.chunks(3) {
-                let [a, b, c] = [triangle[0], triangle[1], triangle[2]].map(|i| &mesh.vertices[i as usize]);
+                let [a, b, c] =
+                    [triangle[0], triangle[1], triangle[2]].map(|i| &mesh.vertices[i as usize]);
                 let _ = writeln!(
                     out,
                     "<polygon points=\"{}\"{}/>",
@@ -258,7 +325,10 @@ fn write_set(ctx: &egui::Context, set: IconSet, folder: &Path) -> std::io::Resul
 }
 
 fn main() -> std::io::Result<()> {
-    let folder = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("_agent_output/icons-svg"));
+    let folder = std::env::args()
+        .nth(1)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("_agent_output/icons-svg"));
     let ctx = egui::Context::default();
     ctx.set_pixels_per_point(DENSITY);
     for set in [IconSet::Material, IconSet::Classic] {
