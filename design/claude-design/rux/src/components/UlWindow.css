@@ -1,0 +1,56 @@
+/* The window. Unluminous has no operating system frame: the rounded corner is WINDOW_CORNER (12), and the
+   editor's colour is what the opacity setting lets the desktop show through. */
+.ul-window {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--ul-window-corner);
+  background: var(--ul-editor);
+  color: var(--ul-text);
+  font-family: var(--font-ui);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+}
+.ul-window__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.ul-window__centre {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.ul-window__row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.ul-window__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.ul-window__right {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 0;
+  border-left: 1px solid var(--ul-divider);
+  background: var(--ul-explorer);
+}
+.ul-window__bottom {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 0;
+}
+.ul-window__bottom > *,
+.ul-window__right > * { flex: 1; }
+
+/* The desktop or a background picture showing through: the editor at the default 86% opacity. */
+.ul-window.is-transparent { background: color-mix(in srgb, var(--ul-editor) 86%, transparent); }
+.ul-window.is-transparent .ul-editor { background: transparent; }

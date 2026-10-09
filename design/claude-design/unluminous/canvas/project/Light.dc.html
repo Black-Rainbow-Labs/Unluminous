@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown side by side</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div data-theme="unluminous-light" style="width: 1180px; height: 740px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; background: var(--ul-editor); color: var(--ul-text); font-family: var(--font-ui);">
+<x-import component-from-global-scope="Rux.UlTitleBar" project="unluminous" view-mode="side-by-side"></x-import>
+<div style="display: flex; flex: 1; min-height: 0;">
+<x-import component-from-global-scope="Rux.UlActivityBar" style="display: flex;"></x-import>
+<x-import component-from-global-scope="Rux.UlExplorer" project="unluminous" rows="{{rows}}" footer="1,216 files · 775 can be opened · 1 unsaved" style="display: flex;"></x-import>
+<div style="display: flex; flex-direction: column; flex: 1; min-width: 0;">
+<x-import component-from-global-scope="Rux.UlTabStrip" tabs="{{tabs}}"></x-import>
+<div style="display: flex; flex: 1; min-height: 0;">
+<x-import component-from-global-scope="Rux.UlEditor" prose="{{yes}}" code="{{source}}" caret-line="{{caret}}" font-size="{{size}}" style="display: flex; flex: 1; min-width: 0; border-right: 1px solid var(--ul-divider);"></x-import>
+<article style="flex: 1; min-width: 0; box-sizing: border-box; padding: 36px 32px; overflow: hidden; background: var(--ul-editor); color: var(--ul-text); font-family: var(--font-ui); font-size: 15px; line-height: 1.6;">
+<h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.25; color: var(--ul-text-strong);">Working on Unluminous</h1>
+<p style="margin: 0 0 14px;">Read this before changing anything. It records the conventions the code already follows, so that a later change looks like the rest of the code.</p>
+<h2 style="margin: 22px 0 12px; font-size: 21px; line-height: 1.3; color: var(--ul-text-strong);">What the crates are for</h2>
+<div style="border-radius: 6px; background: var(--ul-code-panel); padding: 10px 12px; font-family: var(--font-code); font-size: 13px; line-height: 1.5; white-space: pre; color: var(--ul-text);">Crate             What is in it
+unluminous-core   The editor: buffer, layout, undo
+unluminous-app    The window: drawing, input, fonts
+unluminous-cli    The command line and its catalogue</div>
+<p style="margin: 14px 0 0;">A change is installed and launched before it is reported. Run <span style="font-family: var(--font-code); font-size: 13px; padding: 1px 5px; border-radius: 4px; background: var(--ul-code-chip); color: var(--ul-git-added);">pwsh tools/release.ps1</span> when the work is done.</p>
+</article>
+</div>
+</div>
+</div>
+<x-import component-from-global-scope="Rux.UlStatusBar" items="{{status}}" right="Segoe UI · 16 pt"></x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1180,"height":740}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      yes: true,
+      caret: 3,
+      size: 15,
+      rows: [
+        { name: 'crates', folder: true },
+        { name: 'design', folder: true, open: true },
+        { name: 'background-images', folder: true, depth: 1 },
+        { name: 'components', folder: true, depth: 1 },
+        { name: 'accessibility.md', depth: 1, mark: 'prose' },
+        { name: 'icons.md', depth: 1, mark: 'prose' },
+        { name: 'style-guide.md', depth: 1, mark: 'prose' },
+        { name: 'installer', folder: true },
+        { name: 'tasks', folder: true },
+        { name: 'tools', folder: true },
+        { name: 'Cargo.toml', mark: 'page' },
+        { name: 'CHANGELOG.md', mark: 'prose' },
+        { name: 'CLAUDE.md', mark: 'prose', chosen: true, unsaved: true },
+        { name: 'README.md', mark: 'prose', git: 'added' }
+      ],
+      tabs: [
+        { name: 'CLAUDE.md', active: true, unsaved: true },
+        { name: 'README.md' }
+      ],
+      source: [
+        '# Working on Unluminous',
+        '',
+        'Read this before changing anything. It records the conventions the code already follows, so that a later change looks like the rest of the code.',
+        '',
+        '## What the crates are for',
+        '',
+        '| Crate | What is in it |',
+        '|---|---|',
+        '| `unluminous-core` | The editor: buffer, layout, undo |',
+        '| `unluminous-app` | The window: drawing, input, fonts |',
+        '| `unluminous-cli` | The command line and its catalogue |',
+        '',
+        'A change is installed and launched before it is reported. Run `pwsh tools/release.ps1` when the work is done.'
+      ].join('\n'),
+      status: ['CLAUDE.md', { text: 'Unsaved', unsaved: true }, 'Markdown', 'Ln 3, Col 82']
+    };
+  }
+}
+</script>
+</body>
+</html>

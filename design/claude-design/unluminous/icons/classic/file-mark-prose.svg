@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+<!-- unluminous theme::icon, classic set: file-mark-prose -->
+<polygon points="9.365,7.325 12.680,7.325 15.570,10.215 15.570,15.740 14.635,16.675 9.365,16.675 8.430,15.740 8.430,8.260" fill="none" stroke="#1e2530" stroke-width="1.020" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="12.680,7.325 12.680,10.215 15.570,10.215" fill="none" stroke="#1e2530" stroke-width="1.020" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="10.215" y1="11.490" x2="13.785" y2="11.490" stroke="#1e2530" stroke-width="0.935" stroke-linecap="round"/>
+<line x1="10.215" y1="13.275" x2="13.785" y2="13.275" stroke="#1e2530" stroke-width="0.935" stroke-linecap="round"/>
+<line x1="10.215" y1="15.060" x2="12.340" y2="15.060" stroke="#1e2530" stroke-width="0.935" stroke-linecap="round"/>
+</svg>

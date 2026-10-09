@@ -1,0 +1,87 @@
+.rux-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: var(--r-pill);
+  font-family: var(--font-sans);
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--surface-1);
+  color: var(--ink-700);
+  box-shadow: var(--e-raised-sm);
+}
+.rux-button__label { display: inline-block; }
+.rux-button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: transparent;
+  pointer-events: none;
+}
+.rux-button--stretch { display: flex; flex: 1; width: 100%; }
+
+/* sizes: padding block inline, gap, type, min height */
+.rux-button--mini { padding: 9px 12px; gap: 6px; min-height: 34px; font-size: 12px; font-weight: 500; letter-spacing: -0.005em; }
+.rux-button--sm   { padding: 9px 14px; gap: 6px; min-height: 34px; font-size: 12px; font-weight: 500; letter-spacing: -0.005em; }
+.rux-button--md   { padding: 10px 20px; gap: 10px; min-height: 40px; font-size: 13px; font-weight: 500; letter-spacing: -0.01em; }
+.rux-button--lg   { padding: 14px 20px; gap: 8px; min-height: 48px; font-size: 14px; font-weight: 600; letter-spacing: -0.005em; }
+
+/* secondary: .ic-mini-btn, .ic-fbtn, .ic-clear */
+.rux-button--secondary:not(:disabled):hover { color: var(--accent-blue); }
+.rux-button--secondary:not(:disabled):active { box-shadow: var(--e-pressed-sm); }
+
+/* raised: .add-scene */
+.rux-button--raised { color: var(--ink-900); box-shadow: var(--e-raised); }
+.rux-button--raised:not(:disabled):hover { color: var(--accent-blue); }
+.rux-button--raised:not(:disabled):active { box-shadow: var(--e-pressed-sm); }
+
+/* primary: .ic-create, .render-btn */
+.rux-button--primary {
+  background: linear-gradient(180deg, var(--grad-primary-from), var(--grad-primary-to));
+  color: var(--on-accent);
+  box-shadow: var(--e-primary-sm);
+}
+.rux-button--primary.rux-button--lg { box-shadow: var(--e-primary); }
+.rux-button--primary:not(:disabled):active { box-shadow: var(--e-primary-pressed); }
+
+/* mint: .ic-fbtn--primary, Theme::glowing(mint.to at 0.35, 3) */
+.rux-button--mint {
+  background: linear-gradient(160deg, var(--grad-mint-from), var(--grad-mint-to));
+  color: var(--on-accent);
+  box-shadow:
+    -3px -3px 6px var(--shadow-light),
+    3px 3px 9px color-mix(in srgb, var(--grad-mint-to) 35%, transparent),
+    inset 1px 1px 1px rgb(255 255 255 / 0.25);
+}
+
+/* danger: .ic-fbtn--danger, coral ink on the ordinary surface */
+.rux-button--danger { color: var(--accent-coral); }
+.rux-button--danger:not(:disabled):active { box-shadow: var(--e-pressed-sm); }
+
+/* dashed: .ic-add-person, no depth, not a pill */
+.rux-button--dashed {
+  background: transparent;
+  color: var(--ink-500);
+  box-shadow: none;
+  border-radius: var(--r-md);
+  border: 1px dashed var(--ink-300);
+}
+.rux-button--dashed:not(:disabled):hover { color: var(--accent-blue); }
+.rux-button--dashed:not(:disabled):hover::after { background: var(--accent-wash); }
+
+/* ghost: .scene__menu-btn, .proj__new */
+.rux-button--ghost { background: transparent; color: var(--ink-500); box-shadow: none; }
+.rux-button--ghost:not(:disabled):hover,
+.rux-button--ghost:not(:disabled):active { color: var(--ink-900); }
+.rux-button--ghost:not(:disabled):hover::after { background: var(--hover); }
+.rux-button--ghost:not(:disabled):active::after { background: var(--pressed); }
+
+/* press moves the whole control */
+.rux-button:not(:disabled):active { transform: translateY(0.5px); }
+.rux-button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.rux-button:disabled { opacity: 0.4; cursor: default; }

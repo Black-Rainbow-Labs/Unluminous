@@ -1,0 +1,101 @@
+.rux-chart {
+  position: relative;
+  width: 100%;
+}
+
+/* The plot is a recessed screen 160px tall with a graticule; the SVG draws on it. */
+.rux-chart__screen {
+  overflow: hidden;
+}
+.rux-chart__svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+/* The numbers on the axes: mono 9.5. */
+.rux-chart__axis {
+  font: 400 9.5px var(--font-mono);
+}
+
+/* The reading in the screen's top right corner: mono 10.5, medium, an LED 5.5px to its left. */
+.rux-chart__readout {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5.5px;
+  font: 500 10.5px/1.4 var(--font-mono);
+  color: var(--ink-900);
+  pointer-events: none;
+}
+
+/* The legend under the screen: 10px below, 16px rows, sans 11. */
+.rux-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-left: 4px;
+}
+.rux-chart__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 16px;
+  margin-right: 16px;
+  font: 400 11px/1 var(--font-sans);
+  color: var(--ink-500);
+}
+
+/* The donut: a round screen with the legend beside it. */
+.rux-chart__donut {
+  position: relative;
+}
+.rux-chart__dial {
+  position: relative;
+}
+.rux-chart__dial svg {
+  position: absolute;
+  inset: 0;
+}
+.rux-chart__centre {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.rux-chart__percent {
+  font: 500 16px/1.2 var(--font-mono);
+  color: var(--ink-900);
+}
+.rux-chart__centre-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-400);
+}
+.rux-chart__donut-legend {
+  position: absolute;
+}
+.rux-chart__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 400 11px/1 var(--font-sans);
+  color: var(--ink-700);
+  white-space: nowrap;
+}
+.rux-chart__row.is-lit {
+  color: var(--ink-900);
+}
+.rux-chart__row-share {
+  margin-left: 2px;
+  font: 400 9.5px/1 var(--font-mono);
+  color: var(--ink-400);
+}

@@ -1,0 +1,29 @@
+/* .ic-spinner: 56px well, ring inset 8px, viewBox 44, r 18, stroke 3 */
+.rux-spinner {
+  --d: 56px;
+  --k: 1;
+  position: relative;
+  display: inline-block;
+  box-sizing: border-box;
+  flex: none;
+  width: var(--d);
+  height: var(--d);
+  border-radius: 50%;
+  background: var(--surface-1);
+  box-shadow: var(--e-pressed);
+}
+.rux-spinner--bare { background: transparent; box-shadow: none; }
+.rux-spinner__ring {
+  position: absolute;
+  inset: calc(8px * var(--k));
+  width: calc(100% - 16px * var(--k));
+  height: calc(100% - 16px * var(--k));
+  /* @keyframes ic-spin 1.4s linear infinite */
+  animation: rux-spin 1.4s linear infinite;
+}
+/* the track is the ink at an eighth, right in both themes */
+.rux-spinner__track { stroke: color-mix(in srgb, var(--ink-900) 8%, transparent); }
+@keyframes rux-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .rux-spinner__ring { animation-duration: 4s; }
+}

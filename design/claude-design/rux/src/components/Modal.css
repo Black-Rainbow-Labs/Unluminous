@@ -1,0 +1,58 @@
+.rux-modal {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center;
+}
+.rux-modal__scrim {
+  position: absolute; inset: 0; background: var(--scrim); backdrop-filter: blur(8px);
+}
+.rux-modal__frame {
+  position: relative; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden;
+  width: min(var(--modal-w), calc(100vw - 48px)); height: min(var(--modal-h), calc(100vh - 64px));
+  background: var(--surface-1); border-radius: var(--r-xl); box-shadow: var(--e-modal);
+}
+.rux-modal--raised .rux-modal__frame { box-shadow: var(--e-raised-lg), 0 30px 80px rgb(20 25 36 / 0.4); }
+
+/* Inline: the scrim and the dialog fill a box of their own rather than the page. */
+.rux-modal--inline { position: relative; inset: auto; z-index: 0; height: var(--modal-box-h); overflow: hidden; border-radius: var(--r-md); }
+.rux-modal--inline .rux-modal__frame {
+  width: min(var(--modal-w), calc(100% - 48px)); height: min(var(--modal-h), calc(var(--modal-box-h) - 64px));
+}
+
+/* Sheet: up from the bottom edge, 12px either side, top corners only. */
+.rux-modal--sheet { place-items: end center; }
+.rux-modal--sheet .rux-modal__frame {
+  width: calc(100% - 24px); max-width: none; height: min(var(--modal-h), calc(100vh - 48px));
+  border-radius: var(--r-xl) var(--r-xl) 0 0; padding-top: 20px; padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.rux-modal--sheet.rux-modal--inline .rux-modal__frame { height: min(var(--modal-h), calc(var(--modal-box-h) - 48px)); }
+.rux-modal__grab {
+  position: absolute; top: 8px; left: 50%; width: 36px; height: 4px; margin-left: -18px;
+  border-radius: 2px; background: var(--surface-sunken);
+}
+
+.rux-modal__head {
+  flex: none; display: flex; align-items: center; gap: 10px; box-sizing: border-box;
+  padding: 18px 22px; border-bottom: 1px solid var(--surface-sunken);
+}
+.rux-modal__title-icon {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border-radius: var(--r-sm); background: var(--surface-1); box-shadow: var(--e-raised-sm); color: var(--accent-amber);
+}
+.rux-modal__title { flex: 1; min-width: 0; margin: 0; font: 600 15px / 1.4 var(--font-sans); color: var(--ink-900); }
+.rux-modal__close {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0;
+  border: none; border-radius: 50%; background: var(--surface-1); box-shadow: var(--e-raised-sm);
+  color: var(--ink-500); cursor: pointer;
+}
+.rux-modal__close:hover { color: var(--accent-coral); }
+.rux-modal__close:active { box-shadow: var(--e-pressed-sm); transform: translateY(0.5px); }
+.rux-modal__close:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+.rux-modal__body { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr; overflow: hidden; }
+.rux-modal__left { min-height: 0; overflow: hidden; border-right: 1px solid var(--surface-sunken); }
+.rux-modal__main { min-width: 0; min-height: 0; overflow: auto; }
+
+.rux-modal__foot {
+  flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 10px; box-sizing: border-box;
+  min-height: 62px; padding: 14px 22px; background: var(--surface-0); border-top: 1px solid var(--surface-sunken);
+}
+.rux-modal--sheet .rux-modal__foot { border-radius: 0; }

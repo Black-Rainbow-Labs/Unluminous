@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+<!-- unluminous theme::icon, material set: step-over -->
+<line x1="6.000" y1="17.000" x2="18.000" y2="17.000" stroke="#1e2530" stroke-width="1.500" stroke-linecap="round"/>
+<line x1="7.000" y1="16.000" x2="9.500" y2="11.500" stroke="#1e2530" stroke-width="1.500" stroke-linecap="round"/>
+<line x1="9.500" y1="11.500" x2="14.500" y2="11.500" stroke="#1e2530" stroke-width="1.500" stroke-linecap="round"/>
+<line x1="14.500" y1="11.500" x2="17.000" y2="16.000" stroke="#1e2530" stroke-width="1.500" stroke-linecap="round"/>
+<circle cx="12.000" cy="15.500" r="1.800" fill="#1e2530" stroke="none" stroke-width="0.000"/>
+</svg>

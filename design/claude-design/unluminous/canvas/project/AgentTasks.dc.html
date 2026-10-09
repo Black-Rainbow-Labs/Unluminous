@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent-Tasks board</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div data-theme="unluminous-dark" style="width: 1180px; height: 740px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; background: var(--ul-editor); color: var(--ul-text); font-family: var(--font-ui);">
+<x-import component-from-global-scope="Rux.UlTitleBar" project="unluminous" text-tools="{{no}}"></x-import>
+<div style="display: flex; flex: 1; min-height: 0;">
+<x-import component-from-global-scope="Rux.UlActivityBar" top="{{rail}}" style="display: flex;"></x-import>
+<div style="display: flex; flex-direction: column; flex: 1; min-width: 0;">
+<div style="display: flex; height: 220px; flex-shrink: 0;">
+<x-import component-from-global-scope="Rux.UlExplorer" project="unluminous" rows="{{rows}}" footer="1,216 files · 775 can be opened" style="display: flex;"></x-import>
+<div style="display: flex; flex-direction: column; flex: 1; min-width: 0;">
+<x-import component-from-global-scope="Rux.UlTabStrip" tabs="{{tabs}}"></x-import>
+<x-import component-from-global-scope="Rux.UlEditor" prose="{{yes}}" code="{{note}}" caret-line="{{one}}" style="display: flex; flex: 1; min-height: 0;"></x-import>
+</div>
+</div>
+<section aria-label="Agent-Tasks" style="flex: 1; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--ul-divider); background: var(--surface-0);">
+<div style="height: 32px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; background: var(--ul-toolbar); font-size: 12px; color: var(--ul-text-control);">
+<span>Agent-Tasks</span><span style="color: var(--ul-text-dim);">4</span>
+<span style="flex: 1;"></span>
+<x-import component-from-global-scope="Rux.UlIcon" name="cross" size="{{twenty}}"></x-import>
+</div>
+<div style="flex: 1; min-height: 0; display: flex; gap: 18px; padding: 16px 18px 16px 16px;">
+<nav aria-label="Views" style="display: flex; flex-direction: column; gap: 14px; padding: 12px 8px; border-radius: 999px; background: var(--surface-1); box-shadow: var(--e-raised-sm); align-self: flex-start;">
+<x-import component-from-global-scope="Rux.IconButton" icon="storyboard" label="Board" variant="sunken" size="sm" tint="var(--accent-blue)"></x-import>
+<x-import component-from-global-scope="Rux.IconButton" icon="layers" label="Backlog" variant="ghost" size="sm"></x-import>
+<x-import component-from-global-scope="Rux.IconButton" icon="check" label="Completed" variant="ghost" size="sm"></x-import>
+<x-import component-from-global-scope="Rux.IconButton" icon="cube" label="Epics" variant="ghost" size="sm"></x-import>
+</nav>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: center; gap: 14px;">
+<h2 style="margin: 0; white-space: nowrap; font-family: var(--font-sans); font-size: 24px; font-weight: 600; letter-spacing: -0.015em; color: var(--ink-900);">Current Sprint</h2>
+<span style="font-size: 12px; color: var(--ink-500); white-space: nowrap;">· 4 tasks</span>
+<span style="flex: 1;"></span>
+<div style="width: 300px;"><x-import component-from-global-scope="Rux.TextInput" search="{{yes}}" hint="Search tasks" label="Search tasks"></x-import></div>
+<x-import component-from-global-scope="Rux.Button" variant="primary" size="md" icon="plus" label="Add Task"></x-import>
+</div>
+<div style="flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px;">
+<sc-for list="{{lanes}}" as="lane" hint-placeholder-count="4">
+<div style="display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; border-radius: 18px; background: var(--surface-1); box-shadow: var(--e-raised-sm);">
+<div style="display: flex; align-items: center; gap: 8px;">
+<x-import component-from-global-scope="Rux.Led" colour="{{lane.colour}}"></x-import>
+<span style="flex: 1; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.16em; color: var(--ink-500);">{{lane.name}}</span>
+<span style="min-width: 22px; padding: 2px 8px; border-radius: 999px; background: var(--surface-sunken); box-shadow: var(--e-pressed-sm); text-align: center; font-family: var(--font-mono); font-size: 11px; color: var(--ink-700);">{{lane.count}}</span>
+</div>
+<sc-for list="{{lane.cards}}" as="card" hint-placeholder-count="1">
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: var(--surface-2); box-shadow: var(--e-raised-sm);">
+<span style="font-size: 13px; font-weight: 600; line-height: 1.35; color: var(--ink-900);">{{card.title}}</span>
+<div style="display: flex; align-items: center; gap: 8px;">
+<span style="font-family: var(--font-mono); font-size: 11px; color: var(--ink-500);">{{card.key}}</span>
+<span style="font-size: 11px; color: var(--ink-500);">{{card.todos}}</span>
+<span style="flex: 1;"></span>
+<x-import component-from-global-scope="Rux.IconButton" icon="play" label="Start Work" size="tiny" tint="var(--accent-blue)"></x-import>
+<x-import component-from-global-scope="Rux.Avatar" initials="{{card.who}}" diameter="{{avatar}}" name="{{card.assignee}}"></x-import>
+</div>
+</div>
+</sc-for>
+<sc-if value="{{lane.empty}}" hint-placeholder-val="{{false}}">
+<div style="padding: 18px 12px; border-radius: 12px; background: var(--surface-sunken); box-shadow: var(--e-pressed-sm); text-align: center; font-size: 12px; color: var(--ink-400);">Nothing here</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>
+<x-import component-from-global-scope="Rux.UlStatusBar" items="{{status}}" message="task-2230 moved to IN PROGRESS" right="Segoe UI · 16 pt"></x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1180,"height":740}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      no: false,
+      yes: true,
+      one: 1,
+      twenty: 20,
+      avatar: 26,
+      rail: [
+        { id: 'explorer', icon: 'folder', label: 'Project', on: true },
+        { id: 'editor', icon: 'file', label: 'Editing Area', on: true },
+        { id: 'git', icon: 'branch', label: 'Git' },
+        { id: 'realm', icon: 'realm', label: 'Realm' },
+        { id: 'chat', icon: 'chat', label: 'Agent-Chat' },
+        { id: 'tasks', icon: 'board', label: 'Agent-Tasks', on: true },
+        { id: 'database', icon: 'database', label: 'Database' }
+      ],
+      rows: [
+        { name: 'design', folder: true, open: true },
+        { name: 'claude-design', folder: true, depth: 1 },
+        { name: 'style-guide.md', depth: 1, mark: 'prose', chosen: true },
+        { name: 'tasks', folder: true }
+      ],
+      tabs: [{ name: 'style-guide.md', active: true }],
+      note: 'Read this before drawing anything new. It says how a control in Unluminous is built.',
+      lanes: [
+        { name: 'NEW', colour: 'var(--ink-400)', count: 1, cards: [{ title: 'Unluminous: icons for the realm nodes', key: 'task-2231', todos: '0/0', who: 'C', assignee: 'claude' }] },
+        { name: 'QA FAILED', colour: 'var(--accent-coral)', count: 0, cards: [], empty: true },
+        { name: 'IN PROGRESS', colour: 'var(--accent-blue)', count: 1, cards: [{ title: 'Unluminous Design Updates Prep', key: 'task-2230', todos: '6/7', who: 'C', assignee: 'claude' }] },
+        { name: 'AGENT DONE', colour: 'var(--accent-violet)', count: 2, cards: [{ title: 'Jupyter notebooks', key: 'task-2220', todos: '9/9', who: 'C', assignee: 'claude' }, { title: 'Light theme', key: 'task-2215', todos: '5/5', who: 'C', assignee: 'claude' }] }
+      ],
+      status: ['style-guide.md', 'Markdown', 'LF', 'Ln 1, Col 1']
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+.rux-well {
+  box-sizing: border-box; padding: var(--well-pad, 0); border-radius: var(--well-radius, var(--r-md));
+  background: var(--well-fill, var(--surface-1)); box-shadow: var(--e-pressed);
+}
+.rux-well--shallow { box-shadow: var(--e-pressed-sm); }

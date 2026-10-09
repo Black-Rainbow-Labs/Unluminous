@@ -1,0 +1,56 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Black Rainbow Labs Rux — cover</title>
+<style>
+  html, body { margin: 0; background: var(--surface-1); }
+  .cover { position: relative; width: 960px; height: 288px; overflow: hidden; background: var(--surface-1); }
+  .cover svg { position: absolute; left: 0; top: 0; }
+  .ink { fill: var(--ink-900); }
+  .blue { fill: var(--accent-blue); }
+  .mint { fill: var(--accent-mint); }
+  .coral { fill: var(--accent-coral); }
+  .violet { fill: var(--accent-violet); }
+  .knob { fill: var(--surface-1); }
+  .lift { filter: drop-shadow(-3px -3px 6px var(--shadow-light)) drop-shadow(3px 3px 6px var(--shadow-dark)); }
+  .name {
+    position: absolute; left: 48px; top: 160px; margin: 0; max-width: 880px;
+    font-family: var(--font-sans); font-weight: 600; font-size: 64px; line-height: 0.95;
+    letter-spacing: -0.03em; color: var(--ink-900); white-space: nowrap;
+  }
+  .tagline {
+    position: absolute; left: 50px; top: 236px; margin: 0; max-width: 440px;
+    font-family: var(--font-sans); font-size: 14px; line-height: 1.4; color: var(--ink-500);
+  }
+</style>
+</head>
+<body>
+<div class="cover">
+  <!--
+    blocks: ink-900 slab 336x110 r-pill; accent-blue 232x52 and accent-mint 152x52 pills; accent-coral disc r26; accent-violet slab 248x110 r-pill
+    arrangement: the top band skeleton, the name being too wide for its zone at 64px; one tall slab with satellite pills, a second slab at the right
+    pattern: pills and discs, because rux is soft and round: every control is an r-pill and the depth is e-raised-sm, so the blocks are lifted pills and the pattern is a row of knobs cut from the slab
+    steps and radii: r-pill on every block, knob radius 8 at a 24px pitch, 24px gaps, the e-raised-sm pair as the lift
+  -->
+  <svg width="960" height="140" viewBox="0 0 960 140" aria-hidden="true">
+    <g class="lift">
+      <rect class="ink" x="48" y="24" width="336" height="110" rx="55"/>
+      <rect class="blue" x="408" y="24" width="232" height="52" rx="26"/>
+      <rect class="mint" x="408" y="82" width="152" height="52" rx="26"/>
+      <circle class="coral" cx="610" cy="108" r="26"/>
+      <rect class="violet" x="664" y="24" width="248" height="110" rx="55"/>
+    </g>
+    <g class="knob">
+      <circle cx="104" cy="79" r="8"/><circle cx="128" cy="79" r="8"/><circle cx="152" cy="79" r="8"/>
+      <circle cx="176" cy="79" r="8"/><circle cx="200" cy="79" r="8"/><circle cx="224" cy="79" r="8"/>
+      <circle cx="248" cy="79" r="8"/><circle cx="272" cy="79" r="8"/><circle cx="296" cy="79" r="8"/>
+      <circle cx="320" cy="79" r="8"/>
+    </g>
+  </svg>
+  <h1 class="name">Black Rainbow Labs Rux</h1>
+  <p class="tagline">Neumorphic components for Rust and the web.</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,114 @@
+.rux-table {
+  width: 100%;
+  box-sizing: border-box;
+}
+.rux-table__inner {
+  min-width: 0;
+}
+
+/* Headers: 28px, silkscreen type, each a press target; the grid starts 6px in. */
+.rux-table__head {
+  display: grid;
+  height: 28px;
+  padding: 0 6px;
+}
+.rux-table__th {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  color: var(--ink-400);
+  cursor: pointer;
+}
+.rux-table__th:hover,
+.rux-table__th.is-sorted {
+  color: var(--ink-700);
+}
+.rux-table__th .rux-silk {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rux-table__th.is-right {
+  justify-content: flex-end;
+}
+.rux-table__th.is-centre {
+  justify-content: center;
+}
+/* The sorted column's LED sits 1px in from its cell's left edge. */
+.rux-table__th .rux-table__sort-led {
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  margin-top: -2px;
+}
+.rux-table__th:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+/* A row: at least 27px, inset 3px, a hairline across its top from 6px in, a wash under the pointer. */
+.rux-table__row {
+  position: relative;
+  display: grid;
+  margin: 0 3px;
+  padding: 0 3px;
+  min-height: 27px;
+  border-radius: 4px;
+}
+.rux-table__row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 6px;
+  right: 6px;
+  height: 1px;
+  background: var(--inst-rule);
+}
+.rux-table__row:hover {
+  background: var(--hover);
+}
+
+.rux-table__cell {
+  display: block;
+  align-self: center;
+  min-width: 0;
+  padding: 6px;
+  font: 400 12px/1.25 var(--font-sans);
+  color: var(--ink-500);
+}
+.rux-table__cell.is-first {
+  color: var(--ink-900);
+}
+/* Words wrap to at most three lines, then an ellipsis. */
+.rux-table__cell.is-words {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+/* A figure is one line in tabular mono. */
+.rux-table__cell.is-figure {
+  font: 400 11.5px/1.25 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-700);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rux-table__cell.is-first.is-figure {
+  color: var(--ink-900);
+}
+.rux-table__cell.is-right {
+  text-align: right;
+}
+.rux-table__cell.is-centre {
+  text-align: center;
+}
+
+.rux-table__foot {
+  height: 4px;
+}

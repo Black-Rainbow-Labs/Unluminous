@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Realm canvas</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div data-theme="unluminous-dark" style="position: relative; width: 1180px; height: 740px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; background: var(--ul-editor); color: var(--ul-text); font-family: var(--font-ui);">
+<x-import component-from-global-scope="Rux.UlTitleBar" project="unluminous" text-tools="{{no}}"></x-import>
+<div style="display: flex; flex: 1; min-height: 0;">
+<x-import component-from-global-scope="Rux.UlActivityBar" top="{{rail}}" style="display: flex;"></x-import>
+<section aria-label="Realm" style="flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--ul-editor);">
+<div style="height: 32px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; background: var(--ul-toolbar); font-size: 12px;">
+<span style="color: var(--ul-text-control);">Realm</span><span style="color: var(--ul-text-dim);">4</span>
+<span style="flex: 1;"></span>
+<x-import component-from-global-scope="Rux.UlIcon" name="cross" size="{{twenty}}"></x-import>
+</div>
+<div style="height: 30px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-bottom: 1px solid var(--ul-divider); font-size: 12.5px;">
+<span style="color: var(--ul-text-strong); font-weight: 600; padding-bottom: 2px; border-bottom: 2px solid var(--ul-accent);">main</span>
+<span style="color: var(--ul-text-dim);">release</span>
+<x-import component-from-global-scope="Rux.UlIcon" name="plus" size="{{twenty}}"></x-import>
+<span style="flex: 1;"></span>
+<x-import component-from-global-scope="Rux.UlIcon" name="zoom-in" size="{{twentytwo}}"></x-import>
+<span style="font-size: 11.5px; color: var(--ul-text-control);">72%</span>
+<x-import component-from-global-scope="Rux.UlIcon" name="zoom-out" size="{{twentytwo}}"></x-import>
+</div>
+<div style="position: relative; flex: 1; min-height: 0; overflow: hidden;">
+<svg width="1144" height="600" viewBox="0 0 1144 600" aria-hidden="true" style="position: absolute; left: 0; top: 0;">
+<path d="M 470 130 C 540 130 520 150 590 150" fill="none" stroke="var(--ul-text-dim)" stroke-width="1.5"></path>
+<path d="M 300 270 C 320 330 330 360 370 380" fill="none" stroke="var(--ul-text-dim)" stroke-width="1.5"></path>
+<path d="M 470 440 C 520 440 540 300 590 300" fill="none" stroke="var(--ul-accent)" stroke-width="1.5"></path>
+</svg>
+<sc-for list="{{nodes}}" as="node" hint-placeholder-count="4">
+<div style="position: absolute; left: {{node.x}}; top: {{node.y}}; width: {{node.w}}; height: {{node.h}}; display: flex; flex-direction: column; overflow: hidden; border-radius: 8px; background: var(--ul-explorer); border: 1px solid {{node.edge}}; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);">
+<div style="height: 26px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 6px; background: var(--ul-title-bar); font-size: 11px; color: var(--ul-text-strong);">
+<x-import component-from-global-scope="Rux.UlIcon" name="{{node.icon}}" size="{{eighteen}}"></x-import>
+<span style="flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{node.title}}</span>
+<x-import component-from-global-scope="Rux.UlIcon" name="cross" size="{{sixteen}}"></x-import>
+</div>
+<div style="flex: 1; min-height: 0; box-sizing: border-box; padding: 8px 10px; font-family: {{node.font}}; font-size: 11.5px; line-height: 1.45; white-space: pre; color: var(--ul-text-control); background: {{node.ground}};">{{node.body}}</div>
+</div>
+</sc-for>
+<sc-for list="{{ports}}" as="port" hint-placeholder-count="6">
+<span style="position: absolute; left: {{port.x}}; top: {{port.y}}; width: 12px; height: 12px; border-radius: 50%; background: {{port.colour}}; box-shadow: 0 0 0 2px var(--ul-editor);"></span>
+</sc-for>
+</div>
+</section>
+</div>
+<x-import component-from-global-scope="Rux.UlStatusBar" items="{{status}}"></x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1180,"height":740}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const node = (title, icon, x, y, w, h, body, code, chosen) => ({
+      title, icon, body,
+      x: `${x}px`, y: `${y}px`, w: `${w}px`, h: `${h}px`,
+      font: code ? 'var(--font-code)' : 'var(--font-ui)',
+      ground: code ? 'var(--ul-editor)' : 'var(--ul-explorer)',
+      edge: chosen ? 'var(--ul-accent)' : 'var(--ul-control-border)'
+    });
+    const port = (x, y, on) => ({ x: `${x - 6}px`, y: `${y - 6}px`, colour: on ? 'var(--ul-accent)' : 'var(--ul-icon)' });
+    return {
+      no: false,
+      twenty: 20,
+      twentytwo: 22,
+      eighteen: 18,
+      sixteen: 16,
+      rail: [
+        { id: 'explorer', icon: 'folder', label: 'Project' },
+        { id: 'editor', icon: 'file', label: 'Editing Area' },
+        { id: 'git', icon: 'branch', label: 'Git' },
+        { id: 'realm', icon: 'realm', label: 'Realm', on: true },
+        { id: 'chat', icon: 'chat', label: 'Agent-Chat' },
+        { id: 'tasks', icon: 'board', label: 'Agent-Tasks' },
+        { id: 'database', icon: 'database', label: 'Database' }
+      ],
+      nodes: [
+        node('claude', 'terminal', 170, 40, 300, 230, '$ claude\n\n> Read the design canvas and\n  list the rux components it uses.\n\n● Fourteen components, eleven of\n  them rux and three Ul parts.', true, false),
+        node('Web Browser', 'realm', 590, 40, 420, 300, 'https://claude.ai/artifact/…\n\nThe Unluminous design canvas.', false, false),
+        node('unluminous', 'folder', 170, 330, 300, 230, 'crates\ndesign\n  claude-design\n  style-guide.md\ntools\nCLAUDE.md', false, false),
+        node('style-guide.md', 'file', 590, 380, 420, 180, '# Unluminous style guide\n\nA row is 28 points.\nA menu row is 24.', true, true)
+      ],
+      ports: [port(470, 130, true), port(590, 150, false), port(300, 270, false), port(470, 440, true), port(590, 300, true), port(1010, 190, false)],
+      status: ['style-guide.md', 'Markdown', 'LF', 'Ln 1, Col 1']
+    };
+  }
+}
+</script>
+</body>
+</html>

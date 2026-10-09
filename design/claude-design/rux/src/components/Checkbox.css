@@ -1,0 +1,53 @@
+.rux-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  color: var(--ink-700);
+  font: 400 12.5px/1.45 var(--font-sans);
+  cursor: pointer;
+}
+.rux-checkbox.is-settled.is-on {
+  color: var(--ink-400);
+}
+
+/* A recessed well in the screen colour, ticked or not (task-2219). */
+.rux-checkbox__cap {
+  position: relative;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: var(--inst-screen);
+  box-shadow: var(--e-pressed-sm);
+  transition: background-color var(--inst-t-press) ease;
+}
+.rux-checkbox:hover:not(.is-on) .rux-checkbox__cap {
+  background: color-mix(in srgb, var(--inst-screen) 80%, transparent);
+}
+
+.rux-checkbox__tick {
+  position: absolute;
+  inset: 0;
+  width: 20px;
+  height: 20px;
+  stroke: var(--rux-check-colour, var(--accent-mint));
+  opacity: 0;
+  transition: opacity var(--inst-t-light) ease, transform var(--inst-t-press) ease;
+}
+.rux-checkbox.is-on .rux-checkbox__tick {
+  opacity: 1;
+}
+/* The tick goes down with the well while a press is held. */
+.rux-checkbox:active .rux-checkbox__tick {
+  transform: translateY(1px);
+}
+
+.rux-checkbox:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

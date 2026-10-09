@@ -1,0 +1,36 @@
+/* .avatar: 40px (--d), everything inside scales with --k = d / 40 */
+.rux-avatar {
+  --d: 40px;
+  --k: 1;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: none;
+  width: var(--d);
+  height: var(--d);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: linear-gradient(160deg, var(--grad-avatar-from), var(--grad-avatar-to));
+  color: var(--on-accent);
+  box-shadow: var(--e-raised-sm);
+  font-family: var(--font-sans);
+  font-size: calc(13px * var(--k));
+  font-weight: 600;
+  cursor: pointer;
+}
+/* .avatar__status: 10px dot, 1px from the corner, 2px ring of the page */
+.rux-avatar__status {
+  position: absolute;
+  right: calc(-1px * var(--k));
+  bottom: calc(-1px * var(--k));
+  box-sizing: content-box;
+  width: calc(10px * var(--k));
+  height: calc(10px * var(--k));
+  border-radius: 50%;
+  background: var(--rux-status, var(--accent-mint));
+  border: calc(2px * var(--k)) solid var(--surface-1);
+}
+.rux-avatar:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

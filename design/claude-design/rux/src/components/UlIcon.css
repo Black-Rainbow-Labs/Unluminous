@@ -1,0 +1,5 @@
+.ul-icon {
+  display: block;
+  flex-shrink: 0;
+}
+/* A mark takes the colour of what it sits in; the parts that hold one say which role. */

@@ -1,0 +1,41 @@
+{
+ "v": 3,
+ "createdOnFiles": { "v": 1, "at": "2026-10-09T22:05:00Z" },
+ "title": "Unluminous",
+ "launch": { "view": "canvas" },
+ "pages": [],
+ "boards": {
+  "Main.dc.html": { "x": 0, "y": 0, "w": 1180, "h": 740, "title": "Editing code · Unluminous Dark" },
+  "Light.dc.html": { "x": 1260, "y": 0, "w": 1180, "h": 740, "title": "Markdown side by side · Unluminous Light" },
+  "AgentChat.dc.html": { "x": 0, "y": 1083, "w": 1180, "h": 740, "title": "Agent-Chat pane" },
+  "AgentTasks.dc.html": { "x": 1260, "y": 1083, "w": 1180, "h": 740, "title": "Agent-Tasks board" },
+  "TicketModal.dc.html": { "x": 0, "y": 1943, "w": 1180, "h": 740, "title": "Ticket modal" },
+  "Settings.dc.html": { "x": 1260, "y": 1943, "w": 1180, "h": 740, "title": "Settings modal" },
+  "Menus.dc.html": { "x": 0, "y": 3126, "w": 1180, "h": 740, "title": "Menus and the terminal tile" },
+  "Realm.dc.html": { "x": 1260, "y": 3126, "w": 1180, "h": 740, "title": "Realm canvas" },
+  "Icons.dc.html": { "x": 0, "y": 4209, "w": 1180, "h": 900, "title": "Window marks at two sizes" },
+  "Library.dc.html": { "x": 1260, "y": 4209, "w": 1180, "h": 740, "title": "rux controls in the Unluminous themes" }
+ },
+ "order": [
+  "Main.dc.html",
+  "Light.dc.html",
+  "AgentChat.dc.html",
+  "AgentTasks.dc.html",
+  "TicketModal.dc.html",
+  "Settings.dc.html",
+  "Menus.dc.html",
+  "Realm.dc.html",
+  "Icons.dc.html",
+  "Library.dc.html"
+ ],
+ "notes": {
+  "window": { "x": 0, "y": -300, "text": "The window as it is today", "kind": "title1", "maxW": 2440 },
+  "plugins": { "x": 0, "y": 783, "text": "Panes and plugins built on rux", "kind": "title1", "maxW": 2440 },
+  "chrome": { "x": 0, "y": 2826, "text": "Menus, tiles and the canvas", "kind": "title1", "maxW": 2440 },
+  "parts": { "x": 0, "y": 3909, "text": "Parts to redesign", "kind": "title1", "maxW": 2440 },
+  "how": { "x": 2520, "y": 0, "w": 420, "maxH": 560, "fill": "blue", "size": "m", "text": "Every artboard is built from the Black Rainbow Labs Rux design system (Rux.*), so changing a component there changes it everywhere here.\n\nThe Ul* components are Unluminous's own window as it is drawn today; the rest are rux. Colours are the ul-* and rux tokens, which follow the theme set on each artboard's root (unluminous-dark or unluminous-light).\n\nTo carry a design back to Rust: a token change goes into crates/unluminous-app/src/theme/mod.rs, a rux component change into black-rainbow-labs-rux, and an icon into theme::icon. design/claude-design/README.md in the repository says where each piece lives." }
+ },
+ "designSystems": [
+  { "title": "Black Rainbow Labs Rux", "namespace": "rux", "artifact": "https://claude.ai/artifact/8UiZBtSJ1Q5vbv8cCUq7ez", "version": "1791582089-aeba", "copiedAt": "2026-10-09T22:20:00Z" }
+ ]
+}

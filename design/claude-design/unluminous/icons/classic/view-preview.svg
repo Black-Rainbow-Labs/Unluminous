@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+<!-- unluminous theme::icon, classic set: view-preview -->
+<rect x="3.000" y="3.000" width="18.000" height="18.000" rx="2.000" fill="none" stroke="#1e2530" stroke-width="1.200"/>
+<rect x="6.500" y="6.500" width="6.820" height="2.600" rx="1.000" fill="#1e2530" stroke="none" stroke-width="0.000"/>
+<line x1="6.500" y1="13.000" x2="17.500" y2="13.000" stroke="#1e2530" stroke-width="1.100" stroke-linecap="round"/>
+<line x1="6.500" y1="18.500" x2="14.750" y2="18.500" stroke="#1e2530" stroke-width="1.100" stroke-linecap="round"/>
+</svg>

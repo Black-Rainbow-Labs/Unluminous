@@ -1,0 +1,17 @@
+.rux-text-input {
+  display: flex; align-items: center; gap: 10px; box-sizing: border-box; width: 100%; min-width: 240px;
+  padding: 12px 16px; border-radius: var(--r-md); background: var(--surface-1);
+  box-shadow: var(--e-pressed-sm); cursor: text;
+}
+.rux-text-input:focus-within { box-shadow: var(--e-pressed); }
+.rux-text-input--search { padding: 10px 18px; border-radius: var(--r-pill); }
+.rux-text-input__mark { flex: none; display: inline-flex; color: var(--ink-500); }
+.rux-text-input__field {
+  flex: 1; min-width: 0; padding: 0; border: none; outline: none; background: transparent; cursor: text;
+  font: 400 13px / 1.4 var(--font-sans); color: var(--ink-900); caret-color: var(--accent-blue);
+}
+.rux-text-input--mono .rux-text-input__field { font-family: var(--font-mono); }
+.rux-text-input__field::placeholder { color: var(--ink-400); opacity: 1; }
+.rux-text-input__field::selection { background: color-mix(in srgb, var(--accent-blue) 25%, transparent); color: var(--ink-900); }
+.rux-text-input.is-disabled { opacity: 0.4; cursor: default; }
+.rux-text-input.is-disabled .rux-text-input__field { cursor: default; }

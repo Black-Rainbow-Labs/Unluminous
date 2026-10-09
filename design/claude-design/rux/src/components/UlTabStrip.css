@@ -1,0 +1,77 @@
+/* components::file_tabs: HEIGHT 32, PADDING 10, GAP 2, UNDERLINE 2. */
+.ul-tabs {
+  box-sizing: border-box;
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  height: 32px;
+  gap: 2px;
+  background: var(--ul-toolbar);
+  border-bottom: 1px solid var(--ul-divider);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  overflow: hidden;
+}
+.ul-tabs__tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  color: var(--ul-text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ul-tabs__tab:hover { color: var(--ul-text-control); }
+.ul-tabs__tab.is-active {
+  background: var(--ul-editor);
+  color: var(--ul-text-strong);
+  font-weight: 600;
+}
+.ul-tabs__tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--ul-accent);
+}
+/* A tab opened by a single click is transient and shown in italics until it is kept. */
+.ul-tabs__tab.is-transient .ul-tabs__name { font-style: italic; }
+.ul-tabs__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--ul-file-text);
+}
+.ul-tabs__badge {
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 700;
+  color: #ffffff;
+}
+.ul-tabs__unsaved {
+  width: 7px;
+  height: 7px;
+  margin: 0 5px;
+  border-radius: 50%;
+  background: var(--ul-unsaved);
+}
+.ul-tabs__close {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ul-text-dim);
+  cursor: pointer;
+}
+.ul-tabs__close:hover { background: var(--ul-control); color: var(--ul-text-strong); }

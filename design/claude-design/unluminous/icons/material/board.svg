@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+<!-- unluminous theme::icon, material set: board -->
+<polyline points="9.700,7.600 8.400,7.600 7.400,8.600 7.400,16.600 8.400,17.600 15.600,17.600 16.600,16.600 16.600,8.600 15.600,7.600 14.300,7.600" fill="none" stroke="#1e2530" stroke-width="1.400" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="9.700" y="6.100" width="4.600" height="2.500" rx="1.000" fill="none" stroke="#1e2530" stroke-width="1.400"/>
+<circle cx="9.500" cy="11.200" r="0.800" fill="#1e2530" stroke="none" stroke-width="0.000"/>
+<line x1="11.300" y1="11.200" x2="15.000" y2="11.200" stroke="#1e2530" stroke-width="1.300" stroke-linecap="round"/>
+<circle cx="9.500" cy="14.300" r="0.800" fill="#1e2530" stroke="none" stroke-width="0.000"/>
+<line x1="11.300" y1="14.300" x2="15.000" y2="14.300" stroke="#1e2530" stroke-width="1.300" stroke-linecap="round"/>
+</svg>

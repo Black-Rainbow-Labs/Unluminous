@@ -1,0 +1,74 @@
+/* components::editor_view and components::gutter. The editing area is filled editor, which is the one
+   colour the window's opacity setting applies its alpha to. Text starts EDITOR_PADDING_X (43) in from
+   the gutter and EDITOR_PADDING_Y (36) down from the top. */
+.ul-editor {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--ul-editor);
+  color: var(--ul-syntax-text);
+  font-family: var(--font-code);
+  font-size: var(--ul-editor-size, 14px);
+  line-height: 1.45;
+}
+.ul-editor--prose {
+  font-family: var(--font-ui);
+  color: var(--ul-text);
+  line-height: 1.6;
+}
+.ul-editor__page { padding: 36px 24px 36px 0; }
+/* Prose wraps at the pane's edge, as a Markdown file does; code keeps its lines. */
+.ul-editor--prose .ul-editor__line { white-space: pre-wrap; }
+.ul-editor__line {
+  display: flex;
+  align-items: baseline;
+  white-space: pre;
+}
+.ul-editor__line.is-execution {
+  background: color-mix(in srgb, var(--ul-accent) 30%, transparent);
+}
+/* The gutter: numbers right aligned at 11.5 in text_faint, the caret's line in text_strong. The 12
+   points between the numbers and the text is where a fold arrow sits. */
+.ul-editor__number {
+  position: relative;
+  flex-shrink: 0;
+  width: 32px;
+  margin-right: 23px;
+  padding-left: 8px;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--ul-text-faint);
+  user-select: none;
+}
+.ul-editor__number.is-caret { color: var(--ul-text-strong); }
+/* A breakpoint is drawn over the number, in the close button's red (derived::breakpoint). */
+.ul-editor__breakpoint {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ul-close);
+  vertical-align: middle;
+}
+.ul-editor__text { position: relative; }
+.ul-editor__caret {
+  position: absolute;
+  left: -1px;
+  top: 0.1em;
+  bottom: 0.1em;
+  width: 2px;
+  background: var(--ul-accent);
+}
+
+/* The nine token colours a theme or a language plugin names. */
+.ul-syn--keyword { color: var(--ul-syntax-keyword); }
+.ul-syn--builtin { color: var(--ul-syntax-builtin); }
+.ul-syn--function { color: var(--ul-syntax-function); }
+.ul-syn--type { color: var(--ul-syntax-type); }
+.ul-syn--string { color: var(--ul-syntax-string); }
+.ul-syn--number { color: var(--ul-syntax-number); }
+.ul-syn--comment { color: var(--ul-syntax-comment); }
+.ul-syn--operator { color: var(--ul-syntax-operator); }
+.ul-syn--text { color: var(--ul-syntax-text); }
