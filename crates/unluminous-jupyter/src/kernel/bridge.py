@@ -235,7 +235,9 @@ def start(cmd):
         kc = km.client()
         kc.start_channels()
         note("waiting for the kernel to answer")
-        kc.wait_for_ready(timeout=60)
+        # A kernel that dies stops this wait at once, so the limit only ever applies to one that is
+        # alive and slow. On a busy machine a first start took 90 seconds, so the limit is generous.
+        kc.wait_for_ready(timeout=180)
         info = fetch_info()
     except BaseException as problem:
         emit(event="failed", message="%s: %s" % (type(problem).__name__, problem), missing=None)

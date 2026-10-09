@@ -19,8 +19,9 @@ use super::KernelSpec;
 /// How long a question to a Python may take before the Python is given up on.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// How long listing the kernelspecs may take. It imports `jupyter_client`, which is slow on a cold disk.
-const SPECS_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long listing the kernelspecs may take. It imports `jupyter_client`, which is slow on a cold disk
+/// and slower still on a busy machine, where 30 seconds was measured not to be enough.
+const SPECS_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// The script that reports a Python's version and which of the two packages it can import.
 const PROBE_SCRIPT: &str = "import sys,json,importlib.util as u;print(json.dumps({'version':sys.version.split()[0],'ipykernel':u.find_spec('ipykernel') is not None,'jupyter_client':u.find_spec('jupyter_client') is not None}))";

@@ -15,7 +15,8 @@ use unluminous_jupyter::kernel::{
     find_pythons, install_command, list_kernelspecs, Event, Kernel, KernelState, Waker,
 };
 
-const START_LIMIT: Duration = Duration::from_secs(90);
+/// Longer than the bridge's own 180 seconds, so a slow start is reported by the bridge.
+const START_LIMIT: Duration = Duration::from_secs(200);
 const RUN_LIMIT: Duration = Duration::from_secs(60);
 
 /// The Python the tests run kernels with, or `None` when the machine has no suitable one.
@@ -573,7 +574,7 @@ fn finding_pythons_probes_each_candidate_once() {
 
 /// How many kernels run at once. Some machines start a kernel slowly, and thirty starting together
 /// can each take longer than the time a test allows.
-const KERNELS_AT_ONCE: usize = 3;
+const KERNELS_AT_ONCE: usize = 2;
 
 /// One of the places for a running kernel. Given back when dropped.
 struct Place;
