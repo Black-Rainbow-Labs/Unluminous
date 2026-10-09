@@ -141,6 +141,12 @@ impl UnluminousApp {
         self.show_the_resize_grips(ui, &places);
         crate::services::frame_trace::phase("notices");
 
+        // What a notebook's keys, toolbar or cell buttons asked for, when nothing else asked first.
+        if action.is_none() {
+            action = self.notebook_wanted.take();
+        }
+        self.notebook_wanted = None;
+        self.send_the_notebook_input();
         if let Some(chosen) = action {
             self.run_action(chosen, ui.ctx());
         }
@@ -218,6 +224,10 @@ impl UnluminousApp {
         // because it is the same kind of thing: a thread has answered and the window has to draw it.
         self.take_the_debug_replies(ui.ctx());
         crate::services::frame_trace::phase("debug");
+        // What every notebook's kernel has said, and the next queued cell sent. `task-2220`.
+        self.hear_from_the_kernels();
+        self.take_the_kernelspecs();
+        crate::services::frame_trace::phase("kernels");
         self.colour_the_open_file();
         crate::services::frame_trace::phase("colour");
         // The project's definitions, read on a thread. Beside the colouring because it is the same
@@ -1001,6 +1011,18 @@ impl UnluminousApp {
             }
             if outcome.close {
                 self.tab_menu = None;
+            }
+        }
+
+        // A notebook cell's own menu, from the three dots on the cell. `task-2220`.
+        if let Some(at) = self.notebook_menu {
+            let entries = crate::app::notebook_actions::cell_menu();
+            let outcome = context_menu::show(ui, "notebook-cell", at, &entries);
+            if let Some(chosen) = outcome.chosen {
+                *action = Some(chosen);
+            }
+            if outcome.close {
+                self.notebook_menu = None;
             }
         }
 

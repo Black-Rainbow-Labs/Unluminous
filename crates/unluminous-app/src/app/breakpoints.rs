@@ -217,6 +217,14 @@ impl UnluminousApp {
     /// field for it, so switching one off means taking it out of the set the adapter holds. The dot
     /// stays, drawn hollow.
     pub(crate) fn send_the_breakpoints_of(&mut self, path: &Path) {
+        // A notebook's breakpoints are its cells', each sent against the file the cell runs under.
+        // `task-2220`.
+        if let Some(index) =
+            self.files.index_of(path).filter(|index| self.files.at(*index).notebook.is_some())
+        {
+            self.send_a_notebooks_breakpoints(index, None);
+            return;
+        }
         let breakpoints = self.breakpoints_of(path);
         let (conditions, logs) = match self.debug.as_ref() {
             Some(debug) => {

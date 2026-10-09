@@ -682,11 +682,34 @@ pub struct ParagraphStyle {
     /// rather than teaching layout about images is what keeps this crate free of any user interface
     /// dependency.
     pub min_height: f32,
+    /// Room left empty above the paragraph's first line, in points.
+    ///
+    /// It exists for a notebook, where the cell header and the gap between two cells are drawn by
+    /// the window in room the layout leaves, and `space_below` is where a cell's outputs go. The
+    /// letters sit at the bottom of the room above and at the top of the room below, so a caret, a
+    /// selection and a line number are drawn against the letters as they always were. `task-2220`.
+    pub space_above: f32,
+    /// Room left empty below the paragraph's last line, in points. See [`Self::space_above`].
+    pub space_below: f32,
+    /// True when the paragraph is laid out as one empty line, `min_height` tall, whatever text it holds.
+    ///
+    /// A notebook draws a rendered Markdown cell, or a cell whose source is collapsed, in the place
+    /// of its source. The source is still the document's and is still what is saved, so the lines are
+    /// kept and only their drawing is taken over: the cell's first paragraph stands for the whole cell
+    /// and the others are hidden. `task-2220`.
+    pub replaced: bool,
 }
 
 impl Default for ParagraphStyle {
     fn default() -> Self {
-        Self { align: Align::Left, line_spacing: 1.0, min_height: 0.0 }
+        Self {
+            align: Align::Left,
+            line_spacing: 1.0,
+            min_height: 0.0,
+            space_above: 0.0,
+            space_below: 0.0,
+            replaced: false,
+        }
     }
 }
 

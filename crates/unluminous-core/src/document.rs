@@ -586,6 +586,31 @@ impl Document {
         Ok(())
     }
 
+    /// Write `bytes` to `path` in place of the text, and make this history revision the saved point.
+    ///
+    /// For a file whose text is not what is on disk: a notebook tab holds its cells as text, and what
+    /// it writes is the `.ipynb` JSON built from that text and the outputs beside it. The write goes
+    /// through the same temporary and rename [`Self::save_as`] uses, so a failed write leaves the
+    /// file as it was. `task-2220`.
+    pub fn save_bytes_as(&mut self, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+        Self::write_through_a_temporary(path, bytes)?;
+        self.path = Some(path.to_owned());
+        self.saved_history_revision = self.history_revision;
+        self.last_edit = EditKind::Other;
+        Ok(())
+    }
+
+    /// Note that what saving this document would write has changed, although its text has not.
+    ///
+    /// A notebook's outputs are saved with it and are not text, so a cell that has just run leaves
+    /// the file unsaved the way an edit would. It is the step [`Self::set_line_ending`] already takes,
+    /// for the same reason. It is not an edit and goes nowhere near the undo history. `task-2220`.
+    pub fn note_a_change_outside_the_text(&mut self) {
+        self.history_revision = self.next_history_revision;
+        self.next_history_revision += 1;
+        self.revision += 1;
+    }
+
     pub fn text(&self) -> &Rope {
         &self.text
     }

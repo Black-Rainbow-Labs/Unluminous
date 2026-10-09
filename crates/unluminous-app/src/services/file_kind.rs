@@ -384,6 +384,7 @@ pub fn kind_name(path: Option<&Path>) -> &'static str {
     }
     match extension(path).as_deref() {
         Some("md" | "markdown" | "mdx") => "Markdown",
+        Some("ipynb") => "Jupyter Notebook",
         Some("mmd" | "mermaid") => "Mermaid",
         Some("txt" | "text") => "Plain text",
         Some("rs") => "Rust",

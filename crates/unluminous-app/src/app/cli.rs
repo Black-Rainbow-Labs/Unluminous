@@ -81,6 +81,7 @@ mod cli_explorer;
 mod cli_git;
 mod cli_highlight;
 mod cli_modal;
+mod cli_notebook;
 mod cli_panel;
 mod cli_plugins;
 mod cli_realm;
@@ -176,6 +177,11 @@ pub enum Waiting {
     DebugHover { id: u64, expand: Option<String>, until: Instant },
     /// `update check` waiting for the releases endpoint, which is on a thread. `task-1984` L1.
     UpdateCheck { until: Instant },
+    /// `notebook run --wait` waiting for every cell it ran to finish or be skipped. The notebook is
+    /// named by its path, so a tab switched away from still answers. `task-2220`.
+    NotebookRun { path: Option<PathBuf>, cells: Vec<String>, until: Instant },
+    /// `notebook variables` waiting for the kernel's answer.
+    NotebookVariables { path: Option<PathBuf>, until: Instant },
 }
 
 /// Who asked for a tool call to be run, which is who its answer goes back to.
@@ -220,6 +226,8 @@ impl Waiting {
             | Waiting::References { until, .. }
             | Waiting::Git { until, .. }
             | Waiting::UpdateCheck { until }
+            | Waiting::NotebookRun { until, .. }
+            | Waiting::NotebookVariables { until, .. }
             | Waiting::DebugPause { until, .. }
             | Waiting::DebugEvaluate { until, .. }
             | Waiting::DebugHover { until, .. } => *until,
@@ -510,6 +518,14 @@ impl UnluminousApp {
                 let find = self.find_in_files.as_ref()?;
                 (!find.is_searching()).then(|| self.modal_results_reply(request, *limit))
             }
+            Waiting::NotebookRun { path, cells, .. } => {
+                let (path, cells) = (path.clone(), cells.clone());
+                self.notebook_run_answer(request, path.as_deref(), &cells)
+            }
+            Waiting::NotebookVariables { path, .. } => {
+                let path = path.clone();
+                self.notebook_variables_answer(request, path.as_deref())
+            }
             Waiting::UpdateCheck { .. } => {
                 let check = self.update.as_ref()?;
                 // `take_the_update_answer` is what reads the channel, once a frame, beside the git
@@ -657,6 +673,14 @@ impl UnluminousApp {
             Waiting::UpdateCheck { .. } => (
                 "update.check",
                 "The releases page had not answered when the time ran out.".to_owned(),
+            ),
+            Waiting::NotebookRun { .. } => (
+                "notebook.run",
+                "The cells were still running when the time ran out. `notebook status` says how far they got.".to_owned(),
+            ),
+            Waiting::NotebookVariables { .. } => (
+                "notebook.variables",
+                "The kernel had not answered when the time ran out; it may be busy running a cell.".to_owned(),
             ),
             Waiting::References { rename, .. } => (
                 if rename.is_some() { "editor.rename" } else { "editor.references" },
@@ -819,6 +843,7 @@ impl UnluminousApp {
             "editor" => self.cli_editor(request, verb, ctx),
             "highlight" => self.cli_highlight(request, verb),
             "fold" => self.cli_fold(request, verb),
+            "notebook" => self.cli_notebook(request, verb),
             "panel" => self.cli_panel(request, verb),
             "realm" => self.cli_realm(request, verb, ctx),
             "terminal" => self.cli_terminal(request, verb),

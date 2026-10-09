@@ -525,8 +525,8 @@ fn paint_execution_point(
         }
         ui.painter().rect_filled(
             Rect::from_min_size(
-                Pos2::new(clip.left(), text_origin.y + line.y),
-                Vec2::new(clip.width(), line.height),
+                Pos2::new(clip.left(), text_origin.y + line.text_top()),
+                Vec2::new(clip.width(), line.text_height()),
             ),
             0.0,
             crate::theme::color::execution_point(),

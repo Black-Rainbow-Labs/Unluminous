@@ -148,6 +148,10 @@ impl UnluminousApp {
             }
             return Ok(());
         }
+        // A notebook is text in a tab, with its outputs beside the text. `task-2220`.
+        if crate::app::notebook_files::is_notebook(path) {
+            return self.open_a_notebook(path, permanent);
+        }
         // A picture is a tab of its own kind. It is read here rather than in `files`, so that the one
         // place a file is opened stays the one place a file is opened.
         if file_kind::is_image(path) {
@@ -460,6 +464,19 @@ impl UnluminousApp {
                 Some(format!("{} has unsaved changes, so it was not reloaded", path.display()));
             return false;
         }
+        if self.files.get(index).is_some_and(|file| file.notebook.is_some()) {
+            let read = self.reread_a_notebook(index, path);
+            if index == self.files.active_index() {
+                self.forget_layout();
+            }
+            self.message = Some(match &read {
+                Ok(()) => format!("Reloaded {}", path.display()),
+                Err(problem) => {
+                    format!("Unluminous could not reload {}: {problem}", path.display())
+                }
+            });
+            return read.is_ok();
+        }
         match Document::open(path) {
             Ok(mut document) => {
                 document.apply(Command::MoveDocumentStart { extend: false });
@@ -608,7 +625,7 @@ impl UnluminousApp {
         let name = file.name();
         // The same trim a save from the menu does, because closing a modified tab **is** a save.
         self.trim_before_writing(index);
-        match self.files.at_mut(index).document.save() {
+        match self.write_a_tab(index, None) {
             Ok(()) => {
                 self.files.at_mut(index).note_what_is_on_disk();
                 self.message = Some(format!("Saved {name}"));
@@ -693,7 +710,7 @@ impl UnluminousApp {
         // A file Unluminous reads and does not write refuses here rather than silently doing nothing,
         // which is the same rule `tab open` is held to in §7.2: a command that could not do what it
         // was asked says so.
-        if let Err(refusal) = self.document_mut().save() {
+        if let Err(refusal) = self.write_a_tab(index, None) {
             self.message = Some(refusal.to_string());
             return;
         }

@@ -51,6 +51,13 @@ pub mod git;
 pub mod hover_value;
 mod menus;
 mod modals;
+pub mod notebook;
+pub mod notebook_actions;
+pub mod notebook_chrome;
+pub mod notebook_debug;
+pub mod notebook_files;
+pub mod notebook_frame;
+pub mod notebook_kernel;
 mod opening;
 mod panels;
 // The window's side of the UI plugins: which providers are open, and which of their panes are showing.
@@ -1315,6 +1322,23 @@ pub struct UnluminousApp {
     /// menu shows the tab it was opened on first. The editing area's own menu already sets that
     /// precedent: a right click outside the selection puts the caret there before opening.
     pub tab_menu: Option<(Pos2, usize)>,
+    /// The Pythons on this machine, looked for once on a thread the first time a notebook needs a
+    /// kernel. See `app::notebook_kernel`. `task-2220`.
+    pub(crate) pythons: notebook_kernel::Pythons,
+    /// What a notebook's keys, its toolbar or a button on a cell asked for, run at the end of the
+    /// frame with whatever else was asked, so it goes down `run_action` like a menu entry.
+    pub(crate) notebook_wanted: Option<actions::Action>,
+    /// A cell's own menu, open at this point.
+    pub(crate) notebook_menu: Option<Pos2>,
+    /// What was typed into a cell's `input()` field and sent with Enter, sent to the kernel once the
+    /// tab is no longer borrowed.
+    pub(crate) notebook_input: Option<String>,
+    /// The kernels each Python has, once asked, by the Python's path. `None` while being asked.
+    pub(crate) kernelspecs: HashMap<PathBuf, Option<Vec<unluminous_jupyter::kernel::KernelSpec>>>,
+    /// The threads still asking a Python which kernels it has. See `app::notebook_chrome`.
+    #[allow(clippy::type_complexity)]
+    pub(crate) kernelspec_answers:
+        Vec<Arc<std::sync::Mutex<Option<(PathBuf, Vec<unluminous_jupyter::kernel::KernelSpec>)>>>>,
     /// Where a terminal tab's own menu is open, and which tab it was opened on. Held here for the
     /// same reason the other three are: a screenshot test cannot press the right mouse button.
     pub terminal_menu: Option<(Pos2, usize)>,
@@ -1560,6 +1584,12 @@ impl UnluminousApp {
             run_to: None,
             text_menu: None,
             tab_menu: None,
+            pythons: notebook_kernel::Pythons::default(),
+            notebook_wanted: None,
+            notebook_menu: None,
+            notebook_input: None,
+            kernelspecs: HashMap::new(),
+            kernelspec_answers: Vec::new(),
             terminal_menu: None,
             tab_drag: Drag::Nothing,
             tab_strips: Vec::new(),

@@ -1626,6 +1626,11 @@ const CANNOT_BE_MADE_TO_SUCCEED: &[(&str, &str)] = &[
     ("browser.back", "it needs a rendered page with somewhere behind it, and a test window renders none"),
     ("browser.forward", "it needs a rendered page with somewhere ahead of it, and a test window renders none"),
     ("browser.reload", "it drives the one native view, which a test window has not got: `Browser::showing` is None, so the tab is never the one being rendered"),
+    // Two that need a live Jupyter kernel, which needs a Python with ipykernel on the machine. This walk
+    // depends on nothing it did not make; `notebooks.rs` drives both against a real kernel when there
+    // is one. `task-2220`.
+    ("notebook.variables", "it reads a live kernel's namespace, and this walk starts no kernel"),
+    ("notebook.input", "it answers an input() a running cell is waiting on, and this walk runs no cell"),
 ];
 
 /// Every command in the catalogue is driven to a success and to a refusal.
@@ -1644,6 +1649,7 @@ fn every_catalogue_command_is_driven_both_ways() {
     drive_a_repository(&mut coverage);
     drive_a_contributed_tab(&mut coverage);
     drive_the_project(&mut coverage);
+    drive_a_notebook(&mut coverage);
 
     let driven = commands_driven();
     let mut missing = Vec::new();
@@ -2431,6 +2437,84 @@ fn drive_a_contributed_tab(coverage: &mut Coverage) {
 /// Opening another project, which takes the window away from the one it was on.
 ///
 /// Last, and in a window of its own, for that reason.
+/// A notebook with a Markdown cell and two code cells, one of which has saved outputs, written once.
+fn notebook_folder() -> std::path::PathBuf {
+    fixture(
+        "unluminous-dispatch-notebook",
+        &[
+            (
+                "cells.ipynb",
+                r##"{
+ "cells": [
+  {"cell_type": "markdown", "id": "aa000001", "metadata": {}, "source": ["# Title"]},
+  {"cell_type": "code", "execution_count": 1, "id": "aa000002", "metadata": {}, "outputs": [{"name": "stdout", "output_type": "stream", "text": ["2\n"]}], "source": ["print(1 + 1)"]},
+  {"cell_type": "code", "execution_count": null, "id": "aa000003", "metadata": {}, "outputs": [], "source": ["x = 3\n", "x"]}
+ ],
+ "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"}},
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
+"##,
+            ),
+            (
+                "script.py",
+                "# %%
+x = 1
+
+# %%
+print(x)
+",
+            ),
+            (
+                "readme.md",
+                "# Readme
+",
+            ),
+        ],
+    )
+}
+
+/// The `notebook` area: what a notebook holds, its cells as a whole, and the files it is made from and
+/// written to. Running is driven on the Markdown cell only, which runs nothing and so starts no kernel.
+fn drive_a_notebook(coverage: &mut Coverage) {
+    let folder = notebook_folder();
+    let mut harness = harness_in(&folder);
+    let c = coverage;
+    // Every verb that needs a notebook showing refuses while a Markdown file is.
+    c.works(&mut harness, "tab open readme.md");
+    for verb in [
+        "status",
+        "cell",
+        "run",
+        "add",
+        "source x",
+        "edit delete",
+        "select 1",
+        "kernel",
+        "variables",
+        "input yes",
+        "export html",
+    ] {
+        c.refuses(&mut harness, &format!("notebook {verb}"));
+    }
+    c.works(&mut harness, "tab open cells.ipynb");
+    c.works(&mut harness, "notebook status");
+    c.works(&mut harness, "notebook cell 2");
+    c.refuses(&mut harness, "notebook cell 9");
+    c.works(&mut harness, "notebook select 1");
+    c.works(&mut harness, "notebook run 1");
+    c.works(&mut harness, "notebook add --at 4 y = 1");
+    c.works(&mut harness, "notebook source --cell 4 y = 2");
+    c.works(&mut harness, "notebook edit kind --cell 4 --kind markdown");
+    c.works(&mut harness, "notebook edit delete --cell 4");
+    c.works(&mut harness, "notebook kernel status");
+    c.works(&mut harness, "notebook export py --to exported.py");
+    c.works(&mut harness, "notebook convert script.py");
+    c.refuses(&mut harness, "notebook convert no-such-file.py");
+    c.works(&mut harness, "notebook new fresh.ipynb");
+    c.refuses(&mut harness, "notebook new fresh.ipynb");
+}
+
 fn drive_the_project(coverage: &mut Coverage) {
     let mut harness = harness_in(&dispatch_folder());
     coverage.refuses(&mut harness, "project open no-such-folder-anywhere");

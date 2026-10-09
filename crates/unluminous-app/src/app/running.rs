@@ -189,7 +189,7 @@ impl UnluminousApp {
     ///
     /// Running a suggestion or a file makes a **temporary**, which is what puts it in the list so
     /// it can be run again and kept. Running something that is already permanent adds nothing.
-    fn start_a_run(&mut self, configuration: Configuration) -> Result<(), String> {
+    pub(crate) fn start_a_run(&mut self, configuration: Configuration) -> Result<(), String> {
         let root = self.tree.root().to_path_buf();
         let size = self.run_grid_size();
         let waker = self.waker();
@@ -924,6 +924,17 @@ impl UnluminousApp {
         // Written down before the early return below, so a frame in a library with no source is not
         // asked about again on every frame either.
         self.followed_stop = Some((debug.stops(), path.clone(), line));
+        // A stop in a notebook cell is shown in the notebook, at the cell's own line. `task-2220`.
+        if let Some((index, paragraph)) = self.notebook_stop(&path, line) {
+            self.show_tab(index);
+            let offset = self.document().text().line_to_byte(paragraph);
+            self.document_mut().apply(Command::PlaceCaret { offset, extend: false });
+            if let Some(tab) = self.files.active_mut().notebook.as_deref_mut() {
+                tab.mode = crate::app::notebook::Mode::Edit;
+            }
+            self.reveal_caret = true;
+            return;
+        }
         if !path.exists() {
             // A frame in a library Unluminous has no source for. The tile still lists it; there is simply
             // nowhere to jump to, and saying nothing is better than saying something wrong.
@@ -990,6 +1001,10 @@ impl UnluminousApp {
     /// none of them can disagree about whether a file can be debugged — `Plugins::debugger_for`, one
     /// reading, exactly as `file_kind::definitions_apply` is one reading.
     pub(crate) fn debug_applies_to(&self, path: Option<&Path>) -> bool {
+        // A notebook's cells are debugged in its kernel, so its gutter takes breakpoints. `task-2220`.
+        if path.is_some_and(crate::app::notebook_files::is_notebook) {
+            return true;
+        }
         path.is_some_and(|path| self.plugins.debugger_for(path).is_some())
     }
 

@@ -5819,3 +5819,73 @@ trade that away to be a shade nearer a screenshot.
   from.
 
 Each document stands on its own. If a fact from another one is needed, state the fact.
+
+## A notebook is one document of percent cells, and the kernel is spoken to through Python
+
+Opening a `.ipynb` file opens a notebook tab: code, Markdown and raw cells, run against a Jupyter
+kernel, with the outputs drawn under each cell. `task-2220` is the work, and its PRD and TDD are
+`tasks/task-2220-jupyter-notebooks-prd.md` and `tasks/task-2220-jupyter-notebooks-tdd.md`.
+`crates/unluminous-jupyter` holds everything that is not drawing: the file format, the cell text,
+the kernel, the output parsing and the exports.
+
+**The tab's document is the cells written as percent text.** Each cell is a marker line followed by
+its source: `# %% id=X` for code, `# %% [markdown] id=X` and `# %% [raw] id=X` for the others. Cells
+are joined by `\n` and the last one has no line break after it. So the caret, the selection, undo,
+find, multiple carets, completion, colouring and the gutter all work on a notebook without knowing
+it is one, because they work on a document. `unluminous_jupyter::text` converts between the two:
+`to_text` writes the document from a `Notebook`, `spans` finds the cells in the document, and
+`merge_owned` builds the `Notebook` back from the document, keeping each cell's outputs, metadata
+and execution count by its id. A notebook saved without changes comes back byte for byte,
+including Windows line breaks (`NotebookTab::line_ending`). The `.gitattributes` beside the
+fixtures keeps git from changing that.
+
+**What is drawn between the cells is room in the layout, not text.** `ParagraphStyle` has
+`space_above` and `space_below`, which `unluminous-core`'s layout adds to a paragraph's height, and
+`replaced`, which lays a paragraph out as one empty line of a given height. The outputs and the
+status line of a code cell sit in the `space_below` of its last line. A rendered Markdown cell and a
+collapsed cell are `replaced` paragraphs. Marker lines are hidden through the same `Hidden` set that
+folding uses. `PlacedLine::text_top` and `text_height` give the band the letters are in, so a
+selection, the gutter's marks and the execution band are drawn against the letters and not across
+the room. The notebook's `bands_revision` is a third key on the cached layout
+(`Cached::laid_out_bands`), so a new output lays the tab out again when the text has not changed.
+
+**Keys.** A notebook has the reference editor's two modes. Command mode works on whole cells
+(`A`, `B`, `D D`, `Z`, `M`, `Y`, `C`, `V`, `Shift+Up` and so on) and edit mode is ordinary typing.
+`take_the_notebooks_keys` reads them before the editor does. `keep_a_key_from_joining_a_cell_to_its_marker`
+stops Backspace at the start of a cell and Delete at the end of one, and `keep_the_caret_in_a_cell`
+keeps the caret off the hidden marker lines.
+
+**The kernel is reached through a Python program, and there is no ZeroMQ in Rust.**
+`kernel/bridge.py` is compiled into the binary with `include_str!`. Unluminous starts it with the
+Python the notebook uses, and it speaks JSON lines on standard input and output. The bridge uses
+`jupyter_client` to start and talk to the kernel, so any installed kernel spec works. A Python
+without `ipykernel` gets a banner with an Install button, which runs `pip install ipykernel` in the
+run tile. Pythons are looked for on a thread (`find_pythons`): the project's `.venv`, `venv`, `env`
+and `.env` folders, `$VIRTUAL_ENV`, `$CONDA_PREFIX`, `python3` and `python` on `PATH`, the `py`
+launcher, and `miniconda3` and `anaconda3` in the home folder. One cell runs at a time from the tab's run queue, and a cell that
+fails skips the cells still queued, as Jupyter does. Interrupting a single long `time.sleep` does not
+work on Windows; that is a limit of ipykernel there.
+
+**Debugging a cell uses the debugger Unluminous already has.** The kernel already contains debugpy.
+`debug_the_chosen_cell` runs `debugpy.listen` in the kernel and attaches the existing debug session
+to that port. The DAP client sends `attach` when the session body says `"request":"attach"`. Each
+cell is debugged as its own file. The file name comes from `ipykernel.compiler.get_file_name`, run
+with `execute_quietly` because a silent execute sends no output back. The cell's source is written to
+that file, as the reference editor's `dumpCell` does, or debugpy cannot match the breakpoints to it.
+Breakpoints are sent for each cell's file with lines counted from the top of the cell. Every cell
+with a breakpoint is probed for its file name, not only the cell being debugged. The run waits for
+the breakpoint answers before it sends the cell (`DebugState::breakpoint_answers`), with a 3 second
+fallback. A stop in a cell's file is mapped back to the notebook's line.
+
+**The command line.** `notebook` is its own area in the catalogue: `status`, `cell`, `run`, `add`,
+`source`, `edit`, `select`, `kernel`, `variables`, `input`, `export`, `new` and `convert`. The MCP
+tools come from the catalogue, so there is nothing else to register. `notebook run --wait` answers
+when the cells finish, up to `NOTEBOOK_WAIT_MS`. `notebook status --json` reports the mode, the
+chosen cells, whether line numbers and the variables panel are showing, and each cell's state,
+outputs and folding.
+
+**Tests.** `crates/unluminous-jupyter/tests/kernel.rs` and `crates/unluminous-app/tests/notebooks.rs`
+start real kernels. They need a Python with `ipykernel` and `jupyter_client`. They use
+`UNLUMINOUS_TEST_PYTHON` when it is set, and otherwise the first such Python `find_pythons` finds.
+When there is none, each kernel test prints that it did nothing and passes. The pictures are
+`notebook_top`, `notebook_bottom` and `notebook_traceback`.

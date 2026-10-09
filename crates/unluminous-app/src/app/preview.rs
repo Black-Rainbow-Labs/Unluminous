@@ -92,33 +92,20 @@ impl UnluminousApp {
         &self.files.active().cached.preview_pictures
     }
 
-    /// Work the preview out again if the source or the width changed.
+    /// Render Markdown the way the preview does, at `width` and with `size` as the body's size.
     ///
-    /// The preview is produced by `unluminous_core::markdown`, which turns the source into the same three
-    /// things a document holds, so the ordinary layout engine and the ordinary painter draw it. Nothing
-    /// here knows how to render Markdown.
-    ///
-    /// Pictures are the one thing that takes two passes. `markdown` says which paragraph stands in
-    /// for a picture and what file it names, but how tall that paragraph has to be depends on how
-    /// wide the pane is and on how large the picture turns out to be — neither of which that crate
-    /// can know, because it has no window and cannot decode an image. So the pictures are read here,
-    /// each one asks its paragraph to be at least as tall as it is drawn, and only then is the
-    /// preview laid out.
-    pub(crate) fn refresh_preview(&mut self, ctx: &egui::Context, width: f32) {
-        // The text revision, for the reason `refresh_layout` records: the preview is built from the
-        // source, and moving the caret does not change the source.
-        let revision = self.document().text_revision();
-        let cached = &self.files.active().cached;
-        if cached.preview.is_some()
-            && !cached.stale
-            && revision == cached.preview_revision
-            && (width - cached.preview_width).abs() < 0.5
-        {
-            return;
-        }
+    /// **One renderer for the preview and for a notebook's Markdown cells** (`task-2220`), so a cell
+    /// reads exactly as the same text would in a `.md` file's preview. Pictures and diagrams are the
+    /// caller's second pass, because only the preview reads pictures off the disk.
+    pub(crate) fn render_markdown(
+        &self,
+        source: &str,
+        width: f32,
+        size: f32,
+    ) -> unluminous_core::Preview {
         let base = unluminous_core::CharStyle {
             family: self.settings.font_family.as_str().into(),
-            size: self.document().active_style().size,
+            size,
             color: unluminous_core::Color::rgb(
                 color::text().r(),
                 color::text().g(),
@@ -157,7 +144,7 @@ impl UnluminousApp {
         // How many characters of the code font fit across the pane, which is the one measurement a
         // table takes. Everything else about a table is integer arithmetic over characters, which is
         // what `markdown::table` is for and why it is testable with no fonts.
-        let mut preview = {
+        {
             let highlighter = PluginHighlighter { plugins: &self.plugins };
             let code = unluminous_core::CharStyle {
                 family: mono
@@ -176,8 +163,37 @@ impl UnluminousApp {
                 columns: (width / advance).floor().max(16.0) as usize,
                 highlighter: Some(&highlighter),
             };
-            unluminous_core::markdown::render(&self.document().text().to_string(), &options)
-        };
+            unluminous_core::markdown::render(source, &options)
+        }
+    }
+
+    /// Work the preview out again if the source or the width changed.
+    ///
+    /// The preview is produced by `unluminous_core::markdown`, which turns the source into the same three
+    /// things a document holds, so the ordinary layout engine and the ordinary painter draw it. Nothing
+    /// here knows how to render Markdown.
+    ///
+    /// Pictures are the one thing that takes two passes. `markdown` says which paragraph stands in
+    /// for a picture and what file it names, but how tall that paragraph has to be depends on how
+    /// wide the pane is and on how large the picture turns out to be — neither of which that crate
+    /// can know, because it has no window and cannot decode an image. So the pictures are read here,
+    /// each one asks its paragraph to be at least as tall as it is drawn, and only then is the
+    /// preview laid out.
+    pub(crate) fn refresh_preview(&mut self, ctx: &egui::Context, width: f32) {
+        // The text revision, for the reason `refresh_layout` records: the preview is built from the
+        // source, and moving the caret does not change the source.
+        let revision = self.document().text_revision();
+        let cached = &self.files.active().cached;
+        if cached.preview.is_some()
+            && !cached.stale
+            && revision == cached.preview_revision
+            && (width - cached.preview_width).abs() < 0.5
+        {
+            return;
+        }
+        let source = self.document().text().to_string();
+        let size = self.document().active_style().size;
+        let mut preview = self.render_markdown(&source, width, size);
         let pictures = self.read_the_pictures(ctx, &mut preview, width);
         let diagrams = self.lay_the_diagrams_out(ctx, &mut preview, width);
         let laid =

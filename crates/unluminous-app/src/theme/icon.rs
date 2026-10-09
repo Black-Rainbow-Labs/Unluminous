@@ -673,6 +673,15 @@ fn classic_branch(painter: &egui::Painter, centre: Pos2, color: Color32) {
 }
 
 /// Two crossed lines.
+/// Three dots one above another: "more", which opens a menu of everything else that can be done.
+///
+/// The reference editor's own mark for the same button on a notebook cell. `task-2220`.
+pub fn more(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    for step in [-4.5, 0.0, 4.5] {
+        painter.circle_filled(Pos2::new(centre.x, centre.y + step), 1.4, color);
+    }
+}
+
 pub fn plus(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let stroke = Stroke::new(1.5, color);
     painter.line_segment(

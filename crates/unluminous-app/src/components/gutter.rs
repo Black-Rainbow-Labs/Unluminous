@@ -153,6 +153,10 @@ impl Change {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Gutter<'a> {
     pub numbers: bool,
+    /// The number to draw beside each paragraph, counting from nought, when it is not the paragraph's
+    /// own. A notebook counts each cell's lines from one and draws nothing beside a marker line, which
+    /// is `None` there. `None` as a whole is every ordinary file. `task-2220`.
+    pub renumber: Option<&'a [Option<usize>]>,
     /// One row per paragraph, when the file has been annotated.
     pub blame: Option<&'a [BlameRow]>,
     /// Which paragraphs differ from the version git has, in order.
@@ -541,12 +545,17 @@ pub fn show(
         // the thing that gives way, because a line with a breakpoint on it is being pointed at by
         // its dot and can be counted from the lines above.
         let covered = numbers_rect.is_some() && (mark.is_some() || stopped);
-        if let (Some(rect), true, false) = (numbers_rect, first_row, covered) {
+        let number = match gutter.renumber {
+            Some(numbers) => numbers.get(line.paragraph).copied().flatten(),
+            None => Some(line.paragraph),
+        };
+        if let (Some(rect), true, false, Some(number)) = (numbers_rect, first_row, covered, number)
+        {
             draw_number(
                 &inner,
                 rect,
                 band,
-                line.paragraph + 1,
+                number + 1,
                 line.paragraph == caret_line,
                 number_size(gutter.font_size),
             );
@@ -817,6 +826,8 @@ mod tests {
             runs: Vec::new(),
             clusters: Vec::new(),
             empty_style: std::sync::Arc::new(unluminous_core::CharStyle::default()),
+            above: 0.0,
+            below: 0.0,
         }
     }
 

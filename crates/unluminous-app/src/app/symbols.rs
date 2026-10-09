@@ -227,7 +227,9 @@ impl UnluminousApp {
 
     /// The grammar that reads a file, if a plugin that is switched on claims it.
     pub(crate) fn grammar_for(&self, path: Option<&Path>) -> Option<&Grammar> {
-        self.plugins.for_path(path?).map(|plugin| &plugin.grammar)
+        // Through the grammars rather than the plugin, so a notebook is read as the Python its cells
+        // are. See `Grammars::for_path`.
+        self.plugins.grammars().for_path(path?)
     }
 
     /// What the tab at `index` defines, read from its live text and kept until that text changes.

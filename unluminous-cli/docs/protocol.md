@@ -151,8 +151,8 @@ to decide, so the answer belongs to whichever frame it arrives on. They are: `st
 screenshot`, `input move`, `input click`, `input drag`, `input key`, `input text`, `input wheel`,
 `realm browser`, `editor references`, `editor rename`, `update check`, `terminal read`, `run output`,
 `debug start`, `debug continue`, `debug step-over`, `debug step-into`, `debug step-out`, `debug
-run-to`, `debug hover`, `debug evaluate`, `debug status`, `modal results`, `git status`, `git action`
-and `git switch`. Each has a timeout, so nothing waits for ever.
+run-to`, `debug hover`, `debug evaluate`, `debug status`, `modal results`, `notebook run`, `notebook
+variables`, `git status`, `git action` and `git switch`. Each has a timeout, so nothing waits for ever.
 
 **An idle window is woken until it answers.** The window has to draw a frame to drain the queue, and
 one request for a repaint can be lost — the graphics layer discards one it believes it has already

@@ -21,6 +21,8 @@ path = "src/main.rs"
 [dependencies]
 unluminous-core.workspace = true
 unluminous-dap.workspace = true
+# Jupyter notebooks: the .ipynb file, the text a notebook tab edits, and the kernel. `task-2220`.
+unluminous-jupyter.workspace = true
 unluminous-git.workspace = true
 unluminous-terminal.workspace = true
 # The Agent-Chat plugin's half with no window in it: the endpoints, the two wire shapes, the
@@ -146,5 +148,7 @@ path = "examples/layout_memory.rs"
 [dev-dependencies]
 egui_kittest.workspace = true
 unluminous-dap.workspace = true
+# Jupyter notebooks: the .ipynb file, the text a notebook tab edits, and the kernel. `task-2220`.
+unluminous-jupyter.workspace = true
 unluminous-git.workspace = true
 image.workspace = true

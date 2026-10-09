@@ -6031,6 +6031,7 @@ dependencies = [
  "unluminous-dap",
  "unluminous-db",
  "unluminous-git",
+ "unluminous-jupyter",
  "unluminous-terminal",
  "ureq",
  "url",
@@ -6097,6 +6098,13 @@ version = "0.66.4"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "unluminous-jupyter"
+version = "0.66.4"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]

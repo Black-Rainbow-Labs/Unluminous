@@ -99,6 +99,11 @@ impl Action {
             Action::Realm(what) => format!("realm-{}", what.name()),
             Action::Run(what) => format!("run-{}", what.name()),
             Action::Debug(what) => format!("debug-{}", what.name()),
+            Action::Notebook(what) => format!("notebook-{}", what.name()),
+            Action::NewNotebook => "new-notebook".to_owned(),
+            Action::NewNotebookIn(_) => "new-notebook-in".to_owned(),
+            Action::ConvertToNotebook(_) => "convert-to-notebook".to_owned(),
+            Action::ConvertToPython(_) => "convert-to-python".to_owned(),
             Action::CloseTab => "close-tab".to_owned(),
             Action::NextTab => "next-tab".to_owned(),
             Action::PreviousTab => "previous-tab".to_owned(),
@@ -158,6 +163,10 @@ impl Action {
         if let Some(rest) = name.strip_prefix("realm-") {
             return crate::app::actions::RealmAction::from_name(rest).map(Action::Realm);
         }
+        if let Some(rest) = name.strip_prefix("notebook-") {
+            return crate::app::notebook_actions::NotebookAction::from_name(rest)
+                .map(Action::Notebook);
+        }
         if let Some(rest) = name.strip_prefix("debug-") {
             // The argument names a **configuration** here rather than a file, exactly as it does for
             // the `run-` family and for the same reason: `debug start <name>` is what anybody would
@@ -199,6 +208,10 @@ impl Action {
             "open-file" => Action::OpenFile,
             "open-web-address" => Action::OpenWebAddress,
             "open-in-browser" => Action::OpenInBrowser(with_path()),
+            "new-notebook" => Action::NewNotebook,
+            "new-notebook-in" => Action::NewNotebookIn(with_path()),
+            "convert-to-notebook" => Action::ConvertToNotebook(with_path()),
+            "convert-to-python" => Action::ConvertToPython(with_path()),
             "go-to-file" => Action::GoToFile,
             "find-in-files" => Action::FindInFiles,
             "check-for-updates" => Action::CheckForUpdates,

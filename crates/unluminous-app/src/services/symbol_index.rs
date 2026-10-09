@@ -176,7 +176,10 @@ impl Index {
             if cancelled() {
                 return None;
             }
-            if !grammars.defines_symbols(path) || !file_kind::is_openable(path) {
+            // A notebook on the disk is JSON; its cells are read from its tab when it is open.
+            let notebook =
+                path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("ipynb"));
+            if notebook || !grammars.defines_symbols(path) || !file_kind::is_openable(path) {
                 continue;
             }
             let Some(grammar) = grammars.for_path(path) else {

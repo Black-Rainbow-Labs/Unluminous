@@ -368,6 +368,10 @@ impl UnluminousApp {
                 }
             }
         }
+        // A notebook's live kernel, which knows what the cells that ran have made. `task-2220`.
+        if self.files.active().notebook.is_some() {
+            pool.extend(self.kernel_candidates(stem, offset));
+        }
         pool
     }
 
@@ -683,6 +687,78 @@ impl UnluminousApp {
 
     /// Work out the rows and open the popup on them. False when there was nothing to offer, in
     /// which case nothing opens: a list that lingers empty is a list that says nothing.
+    /// The kernel has answered a completion for a notebook cell: work the popup out again with its
+    /// names in it, or open it with them when nothing local matched and the caret is still on the word
+    /// that was asked about. `task-2220`.
+    pub(crate) fn kernel_completions_arrived(&mut self) {
+        if self.focus != Focus::Editor {
+            return;
+        }
+        if let Some(state) = self.completion.as_mut() {
+            // A revision no edit produces, so the next refresh works the rows out rather than
+            // deciding nothing moved.
+            state.revision = u64::MAX;
+            self.refresh_the_completion();
+            return;
+        }
+        let head = self.document().selection().head;
+        let asked_here = self
+            .files
+            .active()
+            .notebook
+            .as_deref()
+            .and_then(|tab| tab.asked.as_ref())
+            .is_some_and(|asked| asked.word_start <= head);
+        if asked_here {
+            self.open_the_completion(head, true);
+        }
+    }
+
+    /// What the kernel offers for the word at `offset` in a notebook's code cell.
+    ///
+    /// **Asked once for each place a word starts.** The first call sends the question and offers
+    /// nothing; the answer arrives a round trip later and calls [`Self::kernel_completions_arrived`];
+    /// every call after that, while the same word is being typed, filters that one answer. So a word
+    /// typed a letter at a time is one question to the kernel rather than one a keystroke.
+    fn kernel_candidates(&mut self, stem: &str, offset: usize) -> Vec<Candidate> {
+        let index = self.files.active_index();
+        let file = self.files.at_mut(index);
+        let Some(tab) = file.notebook.as_deref_mut() else { return Vec::new() };
+        let Some(cell) = tab.cell_at_offset(offset) else { return Vec::new() };
+        let span = tab.spans[cell].clone();
+        if span.kind != unluminous_jupyter::nbformat::CellKind::Code
+            || offset < span.body_bytes.start
+            || offset > span.body_bytes.end
+        {
+            return Vec::new();
+        }
+        let word_start = offset.saturating_sub(stem.len());
+        match &tab.asked {
+            Some(asked) if asked.word_start == word_start && asked.answered => asked
+                .matches
+                .iter()
+                .filter(|name| completion::could_match(stem, name))
+                .map(|name| Candidate::described(name.clone(), Source::Kernel, None, "kernel"))
+                .collect(),
+            Some(asked) if asked.word_start == word_start => Vec::new(),
+            _ => {
+                let text = file.document.text().to_string();
+                let source = text[span.body_bytes.clone()].to_owned();
+                let cursor = text[span.body_bytes.start..offset].chars().count();
+                if let Some(kernel) = tab.kernel() {
+                    let request = kernel.complete(&source, cursor);
+                    tab.asked = Some(crate::app::notebook::Asked {
+                        request,
+                        word_start,
+                        matches: Vec::new(),
+                        answered: false,
+                    });
+                }
+                Vec::new()
+            }
+        }
+    }
+
     fn open_the_completion(&mut self, offset: usize, manual: bool) -> bool {
         let Some(path) = self.files.active().path().map(Path::to_path_buf) else {
             return false;

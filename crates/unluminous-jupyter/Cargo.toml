@@ -1,0 +1,13 @@
+[package]
+name = "unluminous-jupyter"
+description = "Jupyter notebooks: the .ipynb file, the text a notebook tab edits, and the kernel a cell runs in. No user interface dependency."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# An .ipynb file is JSON, and the bridge to the kernel speaks JSON one object a line. Read and written
+# as values rather than through derive macros, the rule `unluminous-dap` and `unluminous-cli` keep: these
+# are open formats other people's programs write, so what crosses the boundary is a value.
+serde_json.workspace = true

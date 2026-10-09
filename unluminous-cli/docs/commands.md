@@ -2661,6 +2661,247 @@ unluminous-cli run status --json
 unluminous-cli run status "Dev server" --json
 ```
 
+## notebook — Jupyter notebooks: run cells in a live kernel and read what they output
+
+Use this for any .ipynb file instead of editing its JSON or running Python in a shell. A notebook tab's text is its cells, one after another behind marker lines, so `editor text` reads every cell and `editor replace` edits one exactly as it does a file; these commands are for what text cannot do. `notebook run --wait` runs cells in a real Jupyter kernel started from the project's own Python and answers with what they printed, returned, raised and drew, and `notebook cell` reads one cell's outputs back, writing a plot to a PNG you can look at. Cells are numbered from 1 or named by `--id`. Saving writes the .ipynb, outputs included, which Jupyter, VS Code and PyCharm open.
+
+### notebook status
+
+```
+unluminous-cli notebook status [--path <file>]
+```
+
+The notebook that is showing: its kernel and whether it is idle or busy, the chosen cells, and every cell's number, id, kind, execution count, run state, first line and outputs.
+
+- `--path <file>` — A notebook to open first, rather than the tab that is showing.
+
+```sh
+unluminous-cli notebook status
+unluminous-cli notebook status --path analysis.ipynb --json
+```
+
+### notebook cell
+
+```
+unluminous-cli notebook cell [cell] [--id <id>] [--path <file>] [--pictures <folder>]
+```
+
+One cell's source and its outputs as text: streams, results, the traceback, tables as rows. A picture is written to a PNG file and its path given.
+
+- `cell` (optional) — The cell's number, counting from 1. The chosen cell when it is left out.
+
+- `--id <id>` — The cell's id instead of its number.
+- `--path <file>` — A notebook to open first.
+- `--pictures <folder>` — Where to write picture outputs. The temporary folder when it is left out.
+
+```sh
+unluminous-cli notebook cell 3
+unluminous-cli notebook cell --id 4f2a9c01 --json
+```
+
+### notebook run
+
+```
+unluminous-cli notebook run [cell] [--id <id>] [--to <cell>] [--all] [--above] [--below] [--wait] [--timeout <ms>] [--path <file>]
+```
+
+Run cells in a live kernel started from the project's Python: one cell, a range, above, below or all. A run stops at the first cell that raises. --wait answers when it has finished, with every cell's outputs.
+
+- `cell` (optional) — The cell to run, counting from 1. The chosen cell when it is left out.
+
+- `--id <id>` — The cell's id instead of its number.
+- `--to <cell>` — Run from the cell through this one.
+- `--all` — Run every cell, from the top.
+- `--above` — Run every cell above the cell, not the cell itself.
+- `--below` — Run the cell and every cell below it.
+- `--wait` — Answer when the run has finished, with the outputs.
+- `--timeout <ms>` — How long --wait waits, in milliseconds. Ten minutes when it is left out.
+- `--path <file>` — A notebook to open first.
+
+```sh
+unluminous-cli notebook run 2 --wait
+unluminous-cli notebook run --all --wait --timeout 120000
+unluminous-cli notebook run 4 --below
+```
+
+### notebook add
+
+```
+unluminous-cli notebook add [source] [--kind <kind>] [--at <position>] [--path <file>]
+```
+
+Add a cell, with its source if one is given, and choose it. Below the chosen cell when no position is given. One undo step.
+
+- `source` (optional) — The new cell's source. Use \n for a line break inside it. Everything after it on the line belongs to it.
+
+- `--kind <kind>` — code, markdown or raw. Code when it is left out.
+- `--at <position>` — Where the new cell goes, counting from 1: 1 puts it first, one more than the number of cells puts it last.
+- `--path <file>` — A notebook to open first.
+
+```sh
+unluminous-cli notebook add print(42)
+unluminous-cli notebook add --kind markdown --at 1 "# Results"
+```
+
+### notebook source
+
+```
+unluminous-cli notebook source <source> [--cell <number>] [--id <id>] [--path <file>]
+```
+
+Replace a cell's source, keeping its id and kind. Its outputs stay until it is run again. One undo step.
+
+- `source` — The cell's new source. Use \n for a line break inside it. Everything after it on the line belongs to it.
+
+- `--cell <number>` — The cell, counting from 1. The chosen cell when it is left out.
+- `--id <id>` — The cell's id instead of its number.
+- `--path <file>` — A notebook to open first.
+
+```sh
+unluminous-cli notebook source --cell 2 df.describe()
+```
+
+### notebook edit
+
+```
+unluminous-cli notebook edit <delete|move|kind|merge|split|copy|cut|paste|clear|clear-all> [--cell <number>] [--id <id>] [--to <number>] [--kind <kind>] [--above] [--path <file>]
+```
+
+Change cells as a whole: delete, move, change kind, merge, split at a line, copy, cut, paste, clear outputs. Each is one undo step, as from the Notebook menu.
+
+- `operation` — delete, move, kind, merge, split, copy, cut, paste, clear or clear-all.
+
+- `--cell <number>` — The cell, counting from 1. The chosen cell when it is left out.
+- `--id <id>` — The cell's id instead of its number.
+- `--to <number>` — For move, the position it goes to. For merge, the last cell merged. For split, the line of the cell that starts the new cell, counting from 1.
+- `--kind <kind>` — For kind: code, markdown or raw.
+- `--above` — For paste, paste above the cell rather than below it.
+- `--path <file>` — A notebook to open first.
+
+```sh
+unluminous-cli notebook edit delete --cell 3
+unluminous-cli notebook edit move --cell 5 --to 1
+unluminous-cli notebook edit kind --cell 2 --kind markdown
+unluminous-cli notebook edit split --cell 4 --to 3
+```
+
+### notebook select
+
+```
+unluminous-cli notebook select <cell> [--to <cell>] [--edit] [--path <file>]
+```
+
+Choose cells, which is what every Notebook menu entry and `action run notebook-...` acts on. In command mode unless --edit puts the caret in the cell.
+
+- `cell` — The first cell to choose, counting from 1.
+
+- `--to <cell>` — Choose every cell from the first through this one.
+- `--edit` — Put the caret at the start of the cell, in edit mode.
+- `--path <file>` — A notebook to open first.
+
+```sh
+unluminous-cli notebook select 3
+unluminous-cli notebook select 2 --to 4
+```
+
+### notebook kernel
+
+```
+unluminous-cli notebook kernel [status|start|interrupt|restart|shut-down|pythons|kernels|choose|install] [--python <path>] [--name <kernelspec>] [--path <file>]
+```
+
+The kernel: start, interrupt, restart, shut down; list this machine's Pythons and whether each has ipykernel, or a Python's kernels; choose the Python or kernelspec; install ipykernel. No Jupyter server is needed.
+
+- `operation` (optional) — status, start, interrupt, restart, shut-down, pythons, kernels, choose or install. status when it is left out.
+
+- `--python <path>` — For choose and kernels, the Python's path.
+- `--name <kernelspec>` — For choose, the kernelspec to run, as `kernels` lists it.
+- `--path <file>` — A notebook to open first.
+
+```sh
+unluminous-cli notebook kernel pythons
+unluminous-cli notebook kernel choose --python C:/work/.venv/Scripts/python.exe
+unluminous-cli notebook kernel restart
+```
+
+### notebook variables
+
+```
+unluminous-cli notebook variables [--path <file>]
+```
+
+The variables the kernel holds: name, type, the start of the value, and shape or length. Python kernels only.
+
+- `--path <file>` — A notebook to open first.
+
+```sh
+unluminous-cli notebook variables --json
+```
+
+### notebook input
+
+```
+unluminous-cli notebook input <value> [--path <file>]
+```
+
+Answer the input() a running cell is waiting on. `notebook status` says when one is waiting and what it asked.
+
+- `value` — What to answer with. Everything after it on the line belongs to it.
+
+- `--path <file>` — A notebook to open first.
+
+```sh
+unluminous-cli notebook input yes
+```
+
+### notebook export
+
+```
+unluminous-cli notebook export <html|md|py> [--to <file>] [--path <file>]
+```
+
+Write the notebook as HTML with its outputs, Markdown with pictures beside it, or Python with # %% cells. Beside the notebook unless --to says where.
+
+- `format` — html, md or py.
+
+- `--to <file>` — Where to write it.
+- `--path <file>` — A notebook to open first.
+
+```sh
+unluminous-cli notebook export html
+unluminous-cli notebook export py --to analysis.py
+```
+
+### notebook new
+
+```
+unluminous-cli notebook new [path]
+```
+
+Make a new notebook with one empty code cell and open it. Untitled.ipynb in the project folder when no path is given.
+
+- `path` (optional) — Where to make it, relative to the project folder.
+
+```sh
+unluminous-cli notebook new
+unluminous-cli notebook new analysis/explore.ipynb
+```
+
+### notebook convert
+
+```
+unluminous-cli notebook convert <path>
+```
+
+Write a .py file's # %% cells into a notebook beside it, or a notebook into a .py file, and open it. Nothing is written over.
+
+- `path` — The .py or .ipynb file to convert.
+
+```sh
+unluminous-cli notebook convert script.py
+unluminous-cli notebook convert analysis.ipynb
+```
+
 ## debug
 
 

@@ -113,6 +113,10 @@ pub struct Command {
     pub local: bool,
 }
 
+/// How long `notebook run --wait` waits for a run to finish when `--timeout` was not given: ten
+/// minutes, because a cell runs for as long as the code in it takes. `task-2220`.
+pub const NOTEBOOK_WAIT_MS: u64 = 600_000;
+
 /// How long the window waits for a debugger to stop, when `--wait-for-pause` was given and
 /// `--timeout` was not.
 ///
@@ -180,6 +184,9 @@ impl Command {
                 "debug",
                 "start" | "continue" | "step-over" | "step-into" | "step-out" | "run-to" | "status",
             ) => Some(BUILD_WAIT_MS),
+            // A cell can run for as long as the code in it takes; ten minutes, which `--timeout`
+            // lengthens. `task-2220`.
+            ("notebook", "run") => Some(NOTEBOOK_WAIT_MS),
             _ => None,
         }
     }
@@ -223,6 +230,7 @@ impl Command {
                         | "evaluate"
                 )
                 | ("realm", "browser")
+                | ("notebook", "run" | "variables")
         )
     }
 
@@ -549,6 +557,7 @@ pub fn area_title(area: &'static str) -> &'static str {
         "update" => "update — whether a newer Unluminous has been released, and installing it",
         "highlight" => "highlight — the passages marked in the project's files",
         "fold" => "fold — the blocks collapsed in the tab that is showing",
+        "notebook" => "notebook — Jupyter notebooks: run cells in a live kernel and read what they output",
         "panel" => "panel — which edge of the window each panel is docked to",
         "realm" => "realm — the Realm: canvases of terminals, web pages, folder trees, file editors, notes, pictures, sounds and videos, wired together and kept as .realm files in the project",
         "terminal" => "terminal — the shells along the bottom",
@@ -581,6 +590,7 @@ pub fn area_note(area: &'static str) -> &'static str {
         "editor" => "Use this tool first for project-symbol work. If asked to find every place a name is used, call `references` with `name`; if asked where a name is defined, call `definition`; if asked to rename it everywhere, call `rename` with `name`, `new-name` and `apply: true`. Do not begin those jobs with grep, file search, reads or file edits. Unluminous's native answers combine unsaved live open tabs with the project index, distinguish code from comments and strings, and apply a role-aware project rename as one undo step per open file while safely rewriting closed files. Lines and columns count from 1.",
         "update" => "One request to unluminous.com, which is where the installer is, and to the public GitHub releases only if the site does not answer. The window asks once a day on its own unless the `update.check` setting is `off`, and offers a newer version in a notice with Install & Restart and Don't Ask Again. `update install` is that button: the installer is checked against the size and SHA-256 unluminous.com publishes before anything is run.",
         "fold" => "A block that can be collapsed is a function, an `if`, a bracket that spans lines, a run of comments, an indented section, or a Markdown heading — worked out from the file itself, so nothing has to be written into it. Collapsing one hides its lines; the line numbers of everything still showing are unchanged, so `fold list` and `editor caret --line` speak the same language whatever is folded. `fold others` is the one to notice: it collapses everything that does not hold a marked passage, which is how to leave only the four places you care about on the screen.",
+        "notebook" => "Use this for any .ipynb file instead of editing its JSON or running Python in a shell. A notebook tab's text is its cells, one after another behind marker lines, so `editor text` reads every cell and `editor replace` edits one exactly as it does a file; these commands are for what text cannot do. `notebook run --wait` runs cells in a real Jupyter kernel started from the project's own Python and answers with what they printed, returned, raised and drew, and `notebook cell` reads one cell's outputs back, writing a plot to a PNG you can look at. Cells are numbered from 1 or named by `--id`. Saving writes the .ipynb, outputs included, which Jupyter, VS Code and PyCharm open.",
         "realm" => "If `UNLUMINOUS_REALM_NODE` is set in your environment you are running inside a node on this canvas, and `realm here` is the first thing to run: it says which node you are, which nodes you are wired to, and the command that drives each of them. `unluminous-cli` is on your PATH inside a node and already knows which window to drive, so `unluminous-cli realm here` is the whole command - no path and no `--instance`. (`$UNLUMINOUS_CLI` and `$UNLUMINOUS_INSTANCE` are set too, for a program that wants them.) You may act on the nodes you are wired to and no others, so every command you send carries `--from <your node>`. The Realm is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `realm browser`, `realm folder`, `realm editor` and `realm send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `realm view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.",
         "panel" => "Unluminous has four panels — the explorer, the terminal, the run tile and the debug tile — and each of them can be docked to any edge of the window, which is what dragging its header does. A side holds an ordered row of panels laid out left to right, so `panel dock terminal left --position 1` puts the terminal beside the explorer rather than in place of it. The terminal, run and debug tiles all draw a character grid and two grids in one strip would be two half-sized grids, so showing one puts away the other tiles **on its own side** — move one somewhere else and they are both showing at once. `panel list` says where everything is, including the rectangle each occupies, which is what to read before working out where a click lands. By default the top and the bottom run the whole width of the window and the columns stop at them; `panel fill <side>` makes a side run the whole length of its edge instead.",
         "highlight" => "A highlight is a colour behind a passage of text. It stays there until it is cleared, in this file and next time the project is opened, and it moves with the text as the file is edited. These work on a file whether it is open or not, so `highlight apply` can mark twenty passages across twenty files in one call.",
@@ -2416,6 +2426,179 @@ pub const COMMANDS: &[Command] = &[
         examples: &["unluminous-cli run status --json", "unluminous-cli run status \"Dev server\" --json"],
         local: false,
     },
+    // ---------------------------------------------------------------------- Jupyter notebooks
+    //
+    // `task-2220`. Every command acts on the notebook tab that is showing, or on the one `--path`
+    // names, which is opened first. Cells count from 1, as Jupyter numbers them, and can be named by
+    // their `--id` instead, which survives cells being added and moved. The notebook's text is the
+    // tab's document, so `editor text` reads every cell and `editor replace` edits one; these are the
+    // things a file tool cannot do: run a cell in a live kernel and read back what it printed.
+    Command {
+        area: "notebook",
+        verb: "status",
+        summary: "The notebook that is showing: its kernel and whether it is idle or busy, the chosen cells, and every cell's number, id, kind, execution count, run state, first line and outputs.",
+        arguments: NO_ARGUMENTS,
+        flags: &[option("path", "file", "A notebook to open first, rather than the tab that is showing.")],
+        examples: &["unluminous-cli notebook status", "unluminous-cli notebook status --path analysis.ipynb --json"],
+        local: false,
+    },
+    Command {
+        area: "notebook",
+        verb: "cell",
+        summary: "One cell's source and its outputs as text: streams, results, the traceback, tables as rows. A picture is written to a PNG file and its path given.",
+        arguments: &[whole("cell", false, "The cell's number, counting from 1. The chosen cell when it is left out.")],
+        flags: &[
+            option("id", "id", "The cell's id instead of its number."),
+            option("path", "file", "A notebook to open first."),
+            option("pictures", "folder", "Where to write picture outputs. The temporary folder when it is left out."),
+        ],
+        examples: &["unluminous-cli notebook cell 3", "unluminous-cli notebook cell --id 4f2a9c01 --json"],
+        local: false,
+    },
+    Command {
+        area: "notebook",
+        verb: "run",
+        summary: "Run cells in a live kernel started from the project's Python: one cell, a range, above, below or all. A run stops at the first cell that raises. --wait answers when it has finished, with every cell's outputs.",
+        arguments: &[whole("cell", false, "The cell to run, counting from 1. The chosen cell when it is left out.")],
+        flags: &[
+            option("id", "id", "The cell's id instead of its number."),
+            whole_option("to", "cell", "Run from the cell through this one."),
+            switch("all", "Run every cell, from the top."),
+            switch("above", "Run every cell above the cell, not the cell itself."),
+            switch("below", "Run the cell and every cell below it."),
+            switch("wait", "Answer when the run has finished, with the outputs."),
+            whole_option("timeout", "ms", "How long --wait waits, in milliseconds. Ten minutes when it is left out."),
+            option("path", "file", "A notebook to open first."),
+        ],
+        examples: &["unluminous-cli notebook run 2 --wait", "unluminous-cli notebook run --all --wait --timeout 120000", "unluminous-cli notebook run 4 --below"],
+        local: false,
+    },
+    Command {
+        area: "notebook",
+        verb: "add",
+        summary: "Add a cell, with its source if one is given, and choose it. Below the chosen cell when no position is given. One undo step.",
+        arguments: &[rest("source", false, "The new cell's source. Use \\n for a line break inside it.")],
+        flags: &[
+            option("kind", "kind", "code, markdown or raw. Code when it is left out."),
+            whole_option("at", "position", "Where the new cell goes, counting from 1: 1 puts it first, one more than the number of cells puts it last."),
+            option("path", "file", "A notebook to open first."),
+        ],
+        examples: &["unluminous-cli notebook add print(42)", "unluminous-cli notebook add --kind markdown --at 1 \"# Results\""],
+        local: false,
+    },
+    Command {
+        area: "notebook",
+        verb: "source",
+        summary: "Replace a cell's source, keeping its id and kind. Its outputs stay until it is run again. One undo step.",
+        arguments: &[rest("source", true, "The cell's new source. Use \\n for a line break inside it.")],
+        flags: &[
+            whole_option("cell", "number", "The cell, counting from 1. The chosen cell when it is left out."),
+            option("id", "id", "The cell's id instead of its number."),
+            option("path", "file", "A notebook to open first."),
+        ],
+        examples: &["unluminous-cli notebook source --cell 2 df.describe()"],
+        local: false,
+    },
+    Command {
+        area: "notebook",
+        verb: "edit",
+        summary: "Change cells as a whole: delete, move, change kind, merge, split at a line, copy, cut, paste, clear outputs. Each is one undo step, as from the Notebook menu.",
+        arguments: &[closed(
+            "operation",
+            true,
+            "delete, move, kind, merge, split, copy, cut, paste, clear or clear-all.",
+            &["delete", "move", "kind", "merge", "split", "copy", "cut", "paste", "clear", "clear-all"],
+        )],
+        flags: &[
+            whole_option("cell", "number", "The cell, counting from 1. The chosen cell when it is left out."),
+            option("id", "id", "The cell's id instead of its number."),
+            whole_option("to", "number", "For move, the position it goes to. For merge, the last cell merged. For split, the line of the cell that starts the new cell, counting from 1."),
+            option("kind", "kind", "For kind: code, markdown or raw."),
+            switch("above", "For paste, paste above the cell rather than below it."),
+            option("path", "file", "A notebook to open first."),
+        ],
+        examples: &["unluminous-cli notebook edit delete --cell 3", "unluminous-cli notebook edit move --cell 5 --to 1", "unluminous-cli notebook edit kind --cell 2 --kind markdown", "unluminous-cli notebook edit split --cell 4 --to 3"],
+        local: false,
+    },
+    Command {
+        area: "notebook",
+        verb: "select",
+        summary: "Choose cells, which is what every Notebook menu entry and `action run notebook-...` acts on. In command mode unless --edit puts the caret in the cell.",
+        arguments: &[whole("cell", true, "The first cell to choose, counting from 1.")],
+        flags: &[
+            whole_option("to", "cell", "Choose every cell from the first through this one."),
+            switch("edit", "Put the caret at the start of the cell, in edit mode."),
+            option("path", "file", "A notebook to open first."),
+        ],
+        examples: &["unluminous-cli notebook select 3", "unluminous-cli notebook select 2 --to 4"],
+        local: false,
+    },
+    Command {
+        area: "notebook",
+        verb: "kernel",
+        summary: "The kernel: start, interrupt, restart, shut down; list this machine's Pythons and whether each has ipykernel, or a Python's kernels; choose the Python or kernelspec; install ipykernel. No Jupyter server is needed.",
+        arguments: &[closed(
+            "operation",
+            false,
+            "status, start, interrupt, restart, shut-down, pythons, kernels, choose or install. status when it is left out.",
+            &["status", "start", "interrupt", "restart", "shut-down", "pythons", "kernels", "choose", "install"],
+        )],
+        flags: &[
+            option("python", "path", "For choose and kernels, the Python's path."),
+            option("name", "kernelspec", "For choose, the kernelspec to run, as `kernels` lists it."),
+            option("path", "file", "A notebook to open first."),
+        ],
+        examples: &["unluminous-cli notebook kernel pythons", "unluminous-cli notebook kernel choose --python C:/work/.venv/Scripts/python.exe", "unluminous-cli notebook kernel restart"],
+        local: false,
+    },
+    Command {
+        area: "notebook",
+        verb: "variables",
+        summary: "The variables the kernel holds: name, type, the start of the value, and shape or length. Python kernels only.",
+        arguments: NO_ARGUMENTS,
+        flags: &[option("path", "file", "A notebook to open first.")],
+        examples: &["unluminous-cli notebook variables --json"],
+        local: false,
+    },
+    Command {
+        area: "notebook",
+        verb: "input",
+        summary: "Answer the input() a running cell is waiting on. `notebook status` says when one is waiting and what it asked.",
+        arguments: &[rest("value", true, "What to answer with.")],
+        flags: &[option("path", "file", "A notebook to open first.")],
+        examples: &["unluminous-cli notebook input yes"],
+        local: false,
+    },
+    Command {
+        area: "notebook",
+        verb: "export",
+        summary: "Write the notebook as HTML with its outputs, Markdown with pictures beside it, or Python with # %% cells. Beside the notebook unless --to says where.",
+        arguments: &[closed("format", true, "html, md or py.", &["html", "md", "py"])],
+        flags: &[
+            option("to", "file", "Where to write it."),
+            option("path", "file", "A notebook to open first."),
+        ],
+        examples: &["unluminous-cli notebook export html", "unluminous-cli notebook export py --to analysis.py"],
+        local: false,
+    },
+    Command {
+        area: "notebook",
+        verb: "new",
+        summary: "Make a new notebook with one empty code cell and open it. Untitled.ipynb in the project folder when no path is given.",
+        arguments: &[argument("path", false, "Where to make it, relative to the project folder.")],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli notebook new", "unluminous-cli notebook new analysis/explore.ipynb"],
+        local: false,
+    },
+    Command {
+        area: "notebook",
+        verb: "convert",
+        summary: "Write a .py file's # %% cells into a notebook beside it, or a notebook into a .py file, and open it. Nothing is written over.",
+        arguments: &[argument("path", true, "The .py or .ipynb file to convert.")],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli notebook convert script.py", "unluminous-cli notebook convert analysis.ipynb"],
+        local: false,
+    },
     // ---------------------------------------------------------------------------- the debugger
     Command {
         area: "debug",
@@ -3581,8 +3764,11 @@ mod tests {
     fn every_command_that_waits_for_a_pause_says_how_long_the_window_waits() {
         for command in COMMANDS {
             let pauses = command.flag("wait-for-pause").is_some();
+            // `notebook run --wait` is the one long wait that is not a pause: a cell runs for as long
+            // as its code takes, so it says how long the window waits too. `task-2220`.
+            let runs = command.wire() == "notebook.run" && command.flag("wait").is_some();
             assert_eq!(
-                pauses,
+                pauses || runs,
                 command.waits_for().is_some(),
                 "{} has --wait-for-pause = {pauses} and waits_for() = {:?}",
                 command.typed(),

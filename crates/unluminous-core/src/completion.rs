@@ -84,6 +84,9 @@ pub enum Source {
     /// A file or a module, offered inside an import. `task-1680`'s one new source: the rows a
     /// specifier or a module path could become, which are not names inside a file but files.
     Module,
+    /// What a running Jupyter kernel answered for a notebook cell: the names that really exist in
+    /// it now, which is how `df.` offers a DataFrame's columns. `task-2220`.
+    Kernel,
 }
 
 impl Source {
@@ -100,10 +103,11 @@ impl Source {
         match self {
             Source::Module => 0,
             Source::ThisFile => 1,
-            Source::Word => 2,
-            Source::OpenTab => 3,
-            Source::Index => 4,
-            Source::Language => 5,
+            Source::Kernel => 2,
+            Source::Word => 3,
+            Source::OpenTab => 4,
+            Source::Index => 5,
+            Source::Language => 6,
         }
     }
 
@@ -117,10 +121,11 @@ impl Source {
         match self {
             Source::Module => 0,
             Source::ThisFile => 1,
-            Source::OpenTab => 2,
-            Source::Index => 3,
-            Source::Language => 4,
-            Source::Word => 5,
+            Source::Kernel => 2,
+            Source::OpenTab => 3,
+            Source::Index => 4,
+            Source::Language => 5,
+            Source::Word => 6,
         }
     }
 
@@ -133,6 +138,7 @@ impl Source {
             Source::Index => "project",
             Source::Language => "language",
             Source::Module => "module",
+            Source::Kernel => "kernel",
         }
     }
 }

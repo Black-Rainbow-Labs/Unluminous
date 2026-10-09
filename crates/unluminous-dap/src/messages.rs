@@ -114,6 +114,15 @@ impl Request {
             Request::SetBreakpoints { .. } => "setBreakpoints",
             Request::SetExceptionBreakpoints { .. } => "setExceptionBreakpoints",
             Request::ConfigurationDone => "configurationDone",
+            // A body that asks to attach is sent as `attach`, which is what debugpy listening inside a
+            // Jupyter kernel needs: there is no program to launch, the program is already running.
+            // Every registry entry's body says nothing of the kind and is a `launch`, as it was.
+            // `task-2220`.
+            Request::Launch(body)
+                if body.get("request").and_then(Value::as_str) == Some("attach") =>
+            {
+                "attach"
+            }
             Request::Launch(_) => "launch",
             Request::Disconnect { .. } => "disconnect",
             Request::Terminate => "terminate",
@@ -782,6 +791,16 @@ fn file_name(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_body_that_asks_to_attach_is_sent_as_attach_and_every_other_as_launch() {
+        assert_eq!(
+            Request::Launch(json!({ "request": "attach", "justMyCode": false })).command(),
+            "attach"
+        );
+        assert_eq!(Request::Launch(json!({ "program": "a.out" })).command(), "launch");
+        assert_eq!(Request::Launch(json!({ "request": "launch" })).command(), "launch");
+    }
 
     #[test]
     fn a_request_with_no_arguments_sends_none() {

@@ -414,6 +414,11 @@ impl UnluminousApp {
             return;
         };
         self.files.active_mut().git_asked = true;
+        // A notebook's text is its cells, and git holds its JSON, so which lines differ from git's
+        // copy would be every line and would mean nothing. `task-2220`.
+        if self.files.active().notebook.is_some() {
+            return;
+        }
         if let Some(git) = self.git.as_mut() {
             if git.relative(&path).is_some() {
                 git.send(unluminous_git::worker::Request::ChangedLines(path));

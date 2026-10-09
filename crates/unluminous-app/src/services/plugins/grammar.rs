@@ -30,8 +30,16 @@ impl Grammars {
     }
 
     /// The grammar that reads this file, if a plugin that is switched on claims it.
+    ///
+    /// **A notebook is read as Python**, because its tab's text is its cells and nearly every notebook
+    /// is Python: that is what gives a cell completion, go to definition across cells and `#` as its
+    /// comment. The project's index never reads a notebook through this, because on the disk a
+    /// notebook is JSON — `services::symbol_index` leaves `.ipynb` files out. `task-2220`.
     pub fn for_path(&self, path: &Path) -> Option<&Grammar> {
-        let extension = path.extension().and_then(|name| name.to_str())?.to_lowercase();
+        let mut extension = path.extension().and_then(|name| name.to_str())?.to_lowercase();
+        if extension == "ipynb" {
+            extension = "py".to_owned();
+        }
         self.by_extension.iter().find(|(known, _)| *known == extension).map(|(_, grammar)| grammar)
     }
 

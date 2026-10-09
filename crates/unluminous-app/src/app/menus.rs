@@ -135,6 +135,25 @@ impl UnluminousApp {
             breakpoint_enabled: self
                 .breakpoint_in_question()
                 .is_none_or(|breakpoint| breakpoint.enabled),
+            notebook_showing: self.files.active().notebook.is_some(),
+            notebook_kernel_running: self
+                .files
+                .active()
+                .notebook
+                .as_deref()
+                .is_some_and(|tab| matches!(tab.kernel, crate::app::notebook::KernelSlot::Live(_))),
+            notebook_line_numbers: self
+                .files
+                .active()
+                .notebook
+                .as_deref()
+                .is_some_and(|tab| tab.line_numbers),
+            notebook_variables: self
+                .files
+                .active()
+                .notebook
+                .as_deref()
+                .is_some_and(|tab| tab.variables_showing),
         }
     }
 
@@ -230,6 +249,30 @@ impl UnluminousApp {
             | Action::ResetPanelLayout
             | Action::Realm(_) => self.a_view_entry(action),
             Action::Run(_) | Action::Debug(_) => self.a_run_entry(action),
+            // A notebook's own, which go down the same function the command line's `notebook`
+            // commands and the cell buttons go down. `task-2220`.
+            Action::Notebook(what) => {
+                if let Err(problem) = self.run_a_notebook_action(what) {
+                    self.message = Some(problem);
+                }
+            }
+            Action::NewNotebook => {
+                if let Err(problem) = self.make_a_new_notebook(None) {
+                    self.message = Some(problem);
+                }
+            }
+            Action::NewNotebookIn(folder) => {
+                let path = crate::app::notebook_files::free_name(&folder, "Untitled", "ipynb");
+                if let Err(problem) = self.make_a_new_notebook(Some(&path)) {
+                    self.message = Some(problem);
+                }
+            }
+            Action::ConvertToNotebook(path) => {
+                self.convert_between_a_notebook_and_python(&path, true)
+            }
+            Action::ConvertToPython(path) => {
+                self.convert_between_a_notebook_and_python(&path, false)
+            }
             Action::NewFile(_)
             | Action::NewFolder(_)
             | Action::CutPath(_)
@@ -402,7 +445,8 @@ impl UnluminousApp {
                 if let Some(target) =
                     rfd::FileDialog::new().set_title("Save As").set_directory(&start).save_file()
                 {
-                    if self.document_mut().save_as(&target).is_ok() {
+                    let index = self.files.active_index();
+                    if self.write_a_tab(index, Some(&target)).is_ok() {
                         self.tree.reload();
                     }
                 }

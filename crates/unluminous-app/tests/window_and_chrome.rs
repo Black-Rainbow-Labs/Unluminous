@@ -3908,7 +3908,9 @@ use unluminous_app::app::actions::{
     DebugAction, FoldAction, GitAction, HighlightColor, RealmAction, RunAction,
 };
 use unluminous_app::app::dock::{Panel, Side};
+use unluminous_app::app::notebook_actions::NotebookAction;
 use unluminous_app::services::realm::Kind;
+use unluminous_jupyter::nbformat::CellKind;
 
 /// Every variant of [`Action`], by the name [`variant_name`] answers with.
 ///
@@ -3917,6 +3919,11 @@ use unluminous_app::services::realm::Kind;
 /// while a name here is neither driven nor excluded.
 const EVERY_VARIANT: &[&str] = &[
     "NewWindow",
+    "Notebook",
+    "NewNotebook",
+    "NewNotebookIn",
+    "ConvertToNotebook",
+    "ConvertToPython",
     "OpenFolder",
     "OpenFile",
     "OpenWebAddress",
@@ -4074,6 +4081,11 @@ fn variant_name(action: &Action) -> &'static str {
         Action::ResetPanelLayout => "ResetPanelLayout",
         Action::Realm(_) => "Realm",
         Action::Run(_) => "Run",
+        Action::Notebook(_) => "Notebook",
+        Action::NewNotebook => "NewNotebook",
+        Action::NewNotebookIn(_) => "NewNotebookIn",
+        Action::ConvertToNotebook(_) => "ConvertToNotebook",
+        Action::ConvertToPython(_) => "ConvertToPython",
         Action::Debug(_) => "Debug",
         Action::CloseTab => "CloseTab",
         Action::NextTab => "NextTab",
@@ -4389,9 +4401,26 @@ fn walk_folder() -> PathBuf {
             ),
             ("src/other.rs", "pub fn other() {}\n"),
             ("docs/one.md", "# One\n"),
+            ("tool.py", "# %%\nanswer = 42\n\n# %%\nprint(answer)\n"),
+            ("book.ipynb", WALK_NOTEBOOK),
         ],
     )
 }
+
+/// A notebook of two code cells and a Markdown one, with nothing run, for the notebook's own
+/// actions. None of them needs a kernel: the ones that do are run in `notebooks.rs`, which starts a
+/// real one.
+const WALK_NOTEBOOK: &str = r##"{
+ "cells": [
+  {"cell_type": "code", "execution_count": null, "id": "one", "metadata": {}, "outputs": [], "source": ["answer = 42"]},
+  {"cell_type": "markdown", "id": "two", "metadata": {}, "source": ["# A heading"]},
+  {"cell_type": "code", "execution_count": null, "id": "three", "metadata": {}, "outputs": [], "source": ["print(answer)"]}
+ ],
+ "metadata": {},
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
+"##;
 
 /// A real repository for the Git menu, built once rather than once an action.
 ///
@@ -4584,6 +4613,9 @@ fn signature(harness: &mut Harness<'static, UnluminousApp>) -> String {
         // narrows to a branch and a count -- so staging a file, which leaves the count where it
         // was, is a change only this one can see.
         "git status --json",
+        // Which cells are folded, whether line numbers and the variables panel are showing, and
+        // which mode a notebook is in, none of which changes the text.
+        "notebook status --json",
         "editor text",
     ] {
         parts.push(format!("{line} -> {}", ask(harness, line)));
@@ -4873,6 +4905,31 @@ fn every_step() -> Vec<Step> {
         "run add other cmd /c echo other",
         "run select other",
     ]));
+
+    // Notebooks. Making one and converting one each write a file of a name nobody has used, so
+    // every window gets its own and none of them finds the file the one before it wrote.
+    steps.push(Step::new(Action::NewNotebook));
+    steps.push(Step::new(Action::NewNotebookIn(folder.join("docs"))));
+    steps.push(Step::new(Action::ConvertToNotebook(folder.join("tool.py"))));
+    steps.push(Step::new(Action::ConvertToPython(folder.join("book.ipynb"))));
+    // The notebook's own actions that change the cells or what is drawn without a kernel, on the
+    // notebook open in command mode on its first cell.
+    for action in [
+        NotebookAction::AddBelow(CellKind::Code),
+        NotebookAction::AddAbove(CellKind::Markdown),
+        NotebookAction::Delete,
+        NotebookAction::Duplicate,
+        NotebookAction::MoveDown,
+        NotebookAction::Convert(CellKind::Markdown),
+        NotebookAction::SelectBelow,
+        NotebookAction::ExtendBelow,
+        NotebookAction::EditMode,
+        NotebookAction::CollapseCell,
+        NotebookAction::ToggleLineNumbers,
+        NotebookAction::ToggleVariables,
+    ] {
+        steps.push(Step::new(Action::Notebook(action)).after(&["tab open book.ipynb --permanent"]));
+    }
 
     // The Git menu, against a real repository.
     for action in GitAction::ALL {

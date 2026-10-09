@@ -95,6 +95,9 @@ pub struct Cached {
     /// layout and nothing else: keyed on `text_revision` a fold would re-colour the file and rebuild
     /// the Markdown preview. See `tasks/task-1686-folding-tdd.md` section 5.1.
     pub laid_out_folds: u64,
+    /// The notebook's bands revision the layout was built at, a third key beside the text and the
+    /// folds: an output arriving changes the room round a cell and nothing else. `task-2220`.
+    pub laid_out_bands: u64,
 }
 
 impl Cached {
@@ -238,6 +241,9 @@ pub struct OpenFile {
     pub git_asked: bool,
     /// The picture, when this tab holds one rather than text.
     pub picture: Option<Picture>,
+    /// The notebook, when this tab is a Jupyter notebook. Its document holds the cells as text; this
+    /// holds what is not text — outputs, what has run, the kernel. See `app::notebook`. `task-2220`.
+    pub notebook: Option<Box<crate::app::notebook::NotebookTab>>,
     /// The plugin, when this tab is a plugin's own rather than a file.
     ///
     /// The picture precedent, followed exactly. A tab is a `Document`, and a tab that holds something
@@ -315,6 +321,7 @@ impl OpenFile {
             transient: false,
             git_asked: false,
             picture: None,
+            notebook: None,
             plugin: None,
             marked_revision: None,
             breakpoints_at: None,
@@ -1242,6 +1249,8 @@ impl OpenFiles {
                 file.transient = !permanent;
                 file.picture = None;
                 file.browser = None;
+                // A notebook's kernel goes with its tab: dropping it shuts the kernel down.
+                file.notebook = None;
                 file.forget_git();
                 file.forget_what_was_worked_out();
                 file.forget_where_it_was_being_read();

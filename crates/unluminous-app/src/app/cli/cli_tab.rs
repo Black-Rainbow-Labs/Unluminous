@@ -398,7 +398,8 @@ impl UnluminousApp {
                 "A browser tab has no editable source to save.",
             );
         }
-        match self.files.active_mut().document.save_as(&path) {
+        let index = self.files.active_index();
+        match self.write_a_tab(index, Some(&path)) {
             Ok(()) => {
                 self.tree.reload();
                 ok(

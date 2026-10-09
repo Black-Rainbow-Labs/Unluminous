@@ -49,6 +49,7 @@ pub mod mcp_page;
 pub mod menu_bar;
 pub mod modal;
 pub mod new_project_dialog;
+pub mod notebook_view;
 pub mod picture_view;
 pub mod plugins_page;
 pub mod prompt_dialog;

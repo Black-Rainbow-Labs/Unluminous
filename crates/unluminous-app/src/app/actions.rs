@@ -193,6 +193,17 @@ pub enum Action {
     Run(RunAction),
     /// Anything on the Run menu's debug half, the debug tile or the gutter's own menu.
     Debug(DebugAction),
+    /// Anything about the notebook tab that is showing: the `Notebook` menu, the notebook's toolbar,
+    /// the buttons on a cell and the keys of its two modes. `task-2220`.
+    Notebook(crate::app::notebook_actions::NotebookAction),
+    /// `File -> New Jupyter Notebook`: a notebook with one empty code cell, in the project's folder.
+    NewNotebook,
+    /// The explorer's `New -> Jupyter Notebook`: the same, in the folder that was clicked.
+    NewNotebookIn(PathBuf),
+    /// Write a `.py` file's `# %%` cells into a notebook beside it, and open it.
+    ConvertToNotebook(PathBuf),
+    /// Write a notebook's cells into a `.py` file beside it, and open it.
+    ConvertToPython(PathBuf),
     /// Close the file tab that is showing.
     CloseTab,
     /// Show the next file tab in this pane, wrapping round at the end.
@@ -995,7 +1006,7 @@ pub enum Entry {
 }
 
 impl Entry {
-    fn item(name: &str, action: Action) -> Self {
+    pub(crate) fn item(name: &str, action: Action) -> Self {
         Entry::Item {
             name: name.to_owned(),
             action,
@@ -1006,7 +1017,7 @@ impl Entry {
         }
     }
 
-    fn with_shortcut(name: &str, action: Action, shortcut: Shortcut) -> Self {
+    pub(crate) fn with_shortcut(name: &str, action: Action, shortcut: Shortcut) -> Self {
         match Entry::item(name, action) {
             Entry::Item { name, action, enabled, checked, keyboard, .. } => {
                 Entry::Item { name, action, shortcut: Some(shortcut), enabled, checked, keyboard }
@@ -1015,7 +1026,7 @@ impl Entry {
         }
     }
 
-    fn enabled(self, yes: bool) -> Self {
+    pub(crate) fn enabled(self, yes: bool) -> Self {
         match self {
             Entry::Item { name, action, shortcut, checked, keyboard, .. } => {
                 Entry::Item { name, action, shortcut, enabled: yes, checked, keyboard }
@@ -1024,7 +1035,7 @@ impl Entry {
         }
     }
 
-    fn checked(self, yes: bool) -> Self {
+    pub(crate) fn checked(self, yes: bool) -> Self {
         match self {
             Entry::Item { name, action, shortcut, enabled, keyboard, .. } => {
                 Entry::Item { name, action, shortcut, enabled, checked: yes, keyboard }
@@ -1034,7 +1045,7 @@ impl Entry {
     }
 
     /// Mark an entry whose shortcut is delivered another way, so the keyboard watcher leaves it alone.
-    fn not_from_the_keyboard(self) -> Self {
+    pub(crate) fn not_from_the_keyboard(self) -> Self {
         match self {
             Entry::Item { name, action, shortcut, enabled, checked, .. } => {
                 Entry::Item { name, action, shortcut, enabled, checked, keyboard: false }
@@ -1202,6 +1213,14 @@ pub struct MenuState {
     pub on_a_breakpoint: bool,
     /// True when that breakpoint is switched on, which is what `Disable Breakpoint` says.
     pub breakpoint_enabled: bool,
+    /// True while the tab that is showing is a notebook, which is what puts the `Notebook` menu in the
+    /// bar. **Absent** rather than dimmed otherwise, the rule every menu here keeps. `task-2220`.
+    pub notebook_showing: bool,
+    /// True while that notebook has a kernel running, which un-dims `Interrupt` and `Shut Down`.
+    pub notebook_kernel_running: bool,
+    /// Whether the notebook numbers lines within its cells, and whether its variables are showing.
+    pub notebook_line_numbers: bool,
+    pub notebook_variables: bool,
 }
 
 /// The whole menu bar: `Unluminous`, `File`, `Edit` and `View`, in that order.
@@ -1214,6 +1233,9 @@ pub fn menus(state: &MenuState) -> Vec<Menu> {
     // `Code` is absent for a file that holds no lines, so it is pushed rather than listed.
     found.extend(code_menu(state));
     found.extend([find_menu(state), view_menu(state), run_menu(state), git_menu(state)]);
+    // `Notebook` after `Git`, so the seven that are always there never move, and only while a notebook
+    // is showing. `task-2220`.
+    found.extend(crate::app::notebook_actions::notebook_menu(state));
     // Then **one** `Plugins` menu holding a submenu per plugin, in the order the plugins are listed.
     // `task-1848`: "Plugins menu items at the top should be moved to a Plugins menu item, which lists
     // each plugin, and has sub menus for their options."
@@ -1633,6 +1655,7 @@ fn file_menu(state: &MenuState) -> Menu {
         ),
         Entry::Separator,
         Entry::with_shortcut("Open File", Action::OpenFile, Shortcut::command(egui::Key::O)),
+        Entry::item("New Jupyter Notebook", Action::NewNotebook),
         Entry::item("Open Web Address...", Action::OpenWebAddress),
         // Searching the project rather than the disk, which is what `task-1659` asks for and what
         // The reference editor puts on this key. It took the shortcut `Open Folder` used to have, because two
@@ -2398,6 +2421,7 @@ pub fn explorer_menu(
             entries: vec![
                 Entry::item("File", Action::NewFile(folder.clone())),
                 Entry::item("Folder", Action::NewFolder(folder.clone())),
+                Entry::item("Jupyter Notebook", Action::NewNotebookIn(folder.clone())),
             ],
         },
         Entry::Separator,
@@ -2435,6 +2459,24 @@ pub fn explorer_menu(
         ),
         Entry::item("Reload from Disk", Action::ReloadPath(path.to_path_buf())),
     ];
+    // A `.py` file with `# %%` cells and a notebook are the same cells in two shapes, and the reference editor
+    // converts either way from the project view. `task-2220`.
+    let extension = path.extension().map(|extension| extension.to_string_lossy().to_lowercase());
+    if on_a_row && !directory && extension.as_deref() == Some("py") {
+        entries.insert(
+            1,
+            Entry::item(
+                "Convert to Jupyter Notebook",
+                Action::ConvertToNotebook(path.to_path_buf()),
+            ),
+        );
+    }
+    if on_a_row && !directory && extension.as_deref() == Some("ipynb") {
+        entries.insert(
+            1,
+            Entry::item("Convert to Python File", Action::ConvertToPython(path.to_path_buf())),
+        );
+    }
     if on_a_row && !directory && crate::services::file_kind::is_html(path) {
         entries.insert(
             1,

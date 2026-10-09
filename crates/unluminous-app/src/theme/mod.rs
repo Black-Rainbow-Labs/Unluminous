@@ -240,6 +240,10 @@ palette! {
     /// on a blue button. White in both of Unluminous's own themes; a theme whose accent is pale can name a
     /// dark one.
     on_accent = Color32::WHITE;
+
+    /// A notebook cell that raised: its mark on the status line, the last line of its traceback, and
+    /// what it wrote to stderr, which is drawn on this at a low strength. `task-2220`.
+    failure = Color32::from_rgb(0xF0, 0x71, 0x78);
 }
 
 impl Palette {
@@ -294,6 +298,7 @@ impl Palette {
         board_accent: Color32::from_rgb(0x4C, 0x6E, 0xF5),
         agent: Color32::from_rgb(0x7C, 0x5C, 0xE6),
 
+        failure: Color32::from_rgb(0xC4, 0x2B, 0x35),
         close: Color32::from_rgb(0xFF, 0x5F, 0x57),
         minimise: Color32::from_rgb(0xFE, 0xBC, 0x2E),
         maximise: Color32::from_rgb(0x28, 0xC8, 0x40),

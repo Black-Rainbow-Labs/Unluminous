@@ -176,6 +176,11 @@ impl UnluminousApp {
         if self.files.at(index).coloured_revision == Some(revision) {
             return;
         }
+        // A notebook is coloured a cell at a time, each in its own language. `task-2220`.
+        if self.files.at(index).notebook.is_some() {
+            self.colour_the_notebook(index);
+            return;
+        }
         let Some(path) = self.files.at(index).path().map(Path::to_path_buf) else {
             self.files.at_mut(index).coloured_revision = Some(revision);
             return;
@@ -357,10 +362,14 @@ impl UnluminousApp {
         // changing a byte of the text. It is a counter of its own so that a fold does not re-colour
         // the file or rebuild the preview — `tasks/task-1686-folding-tdd.md` section 5.1.
         let folded = self.document().fold_revision();
+        // A notebook's third key: the room round its cells, which moves when an output arrives without
+        // a byte of the text changing. See `app::notebook_frame`. `task-2220`.
+        let bands = self.notebook_bands(self.files.active_index()).unwrap_or(0);
         let cached = &self.files.active().cached;
         if !cached.stale
             && revision == cached.laid_out_revision
             && folded == cached.laid_out_folds
+            && bands == cached.laid_out_bands
             && (width - cached.laid_out_width).abs() < 0.5
         {
             return;
@@ -371,6 +380,10 @@ impl UnluminousApp {
         self.layouts_built += 1;
         let index = self.files.active_index();
         let hidden = self.hidden_paragraphs(index);
+        if self.files.at(index).notebook.is_some() {
+            self.refresh_the_notebook(index);
+        }
+        let notebook = self.notebook_layout_inputs(index, &hidden);
         // What was laid out last time is handed over rather than thrown away: `relayout` keeps every
         // paragraph whose text and formatting are unchanged, so typing a letter costs the paragraph
         // it was typed into instead of the file.
@@ -385,15 +398,30 @@ impl UnluminousApp {
         // The hint is only about the **text**. A fold or a change of width alters the layout without
         // any edit having happened, so both say `whole` and read the document, which is what every
         // relayout did before this.
-        let touched = match folded == cached_folds && (width - cached_width).abs() < 0.5 {
+        let touched = match folded == cached_folds
+            && (width - cached_width).abs() < 0.5
+            && notebook.is_none()
+        {
             true => self.document().touched_since(cached_revision),
             false => Touched::whole(),
         };
+        // A notebook is laid out against its own copy of the paragraph styles, carrying the room round
+        // each cell, and hides its marker lines as well as what the folds hide. `task-2220`.
+        let (styles, hidden) = match notebook {
+            Some((styles, hidden, numbers)) => {
+                if let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() {
+                    tab.numbers = numbers;
+                }
+                (Some(styles), hidden)
+            }
+            None => (None, hidden),
+        };
+        let paragraphs = styles.as_ref().unwrap_or(self.document().paragraphs());
         let mut laid = relayout_touching(
             previous,
             self.document().text(),
             self.document().chars(),
-            self.document().paragraphs(),
+            paragraphs,
             &self.renderer,
             width,
             &hidden,
@@ -402,11 +430,13 @@ impl UnluminousApp {
         if first_layout {
             laid.compact_capacity();
         }
+        let bands = self.notebook_bands(index).unwrap_or(0);
         let cached = &mut self.files.active_mut().cached;
         cached.stale = false;
         cached.layout = laid;
         cached.laid_out_revision = revision;
         cached.laid_out_folds = folded;
+        cached.laid_out_bands = bands;
         cached.laid_out_width = width;
     }
 
@@ -601,6 +631,10 @@ impl UnluminousApp {
             }
             return self.show_picture(ui, area);
         }
+        // A notebook is a document with a toolbar over it and its variables beside it. `task-2220`.
+        if self.files.active().notebook.is_some() {
+            return self.show_a_notebook(ui, area, focused);
+        }
         self.show_a_document_in(ui, area, focused, "preview")
     }
 
@@ -665,8 +699,11 @@ impl UnluminousApp {
         breakpoints: &'a [(usize, gutter::BreakpointMark)],
     ) -> Gutter<'a> {
         let file = self.files.active();
+        let notebook = file.notebook.as_deref();
         Gutter {
-            numbers: self.settings.line_numbers,
+            numbers: self.settings.line_numbers && notebook.is_none_or(|tab| tab.line_numbers),
+            // A notebook numbers each cell's lines from one, and draws nothing beside a marker.
+            renumber: notebook.map(|tab| tab.numbers.as_slice()),
             blame: file.blame.as_deref(),
             changes: &file.line_changes,
             // Worked out before this is called rather than here, because reading a file for what it
@@ -695,6 +732,10 @@ impl UnluminousApp {
     fn execution_paragraph(&self, path: Option<&Path>) -> Option<usize> {
         let (stopped_in, line) = self.debug.as_ref()?.location()?;
         let path = path?;
+        // A stop in the file a notebook cell runs under is drawn in the notebook. `task-2220`.
+        if let Some((index, paragraph)) = self.notebook_stop(&stopped_in, line) {
+            return (self.files.at(index).path() == Some(path)).then_some(paragraph);
+        }
         (same_file(path, &stopped_in)).then(|| line.saturating_sub(1))
     }
 
@@ -984,6 +1025,13 @@ impl UnluminousApp {
                 Focus::Realm => self.files.focus().node().is_some(),
                 _ => false,
             };
+        // A notebook reads its own keys first, and in command mode all of them, so a letter there is
+        // a command and never typed into a cell. `task-2220`.
+        let notebook = self.files.active().notebook.is_some();
+        let has_keyboard = match notebook {
+            true => self.take_the_notebooks_keys(ui, has_keyboard),
+            false => has_keyboard,
+        };
         let text_width = (area.width() - padding - size::EDITOR_PADDING_X).max(50.0);
         // A caret is never inside a hidden paragraph. `reveal_caret` is set by everything that puts
         // the caret somewhere without a click — a jump to a definition, a search hit, `unluminous-cli
@@ -994,6 +1042,9 @@ impl UnluminousApp {
             self.reveal_the_caret_from_a_fold();
         }
         crate::services::frame_trace::phase("editor-gutter-width");
+        if notebook {
+            self.measure_the_notebook(ui.ctx(), text_width);
+        }
         self.refresh_layout(text_width);
         crate::services::frame_trace::phase("editor-layout");
         let view_height = area.height() - size::EDITOR_PADDING_Y * 2.0;
@@ -1021,6 +1072,7 @@ impl UnluminousApp {
             // A hand rather than the writing bar, which is what says the word is a link.
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
+        let before = self.document().selection().head;
         let taken = self.take_the_editors_input(
             ui,
             &response,
@@ -1028,6 +1080,10 @@ impl UnluminousApp {
             &symbol,
             EditorInput { has_keyboard, focused, text_width },
         );
+        if notebook {
+            let pressed = response.clicked() || response.drag_started();
+            self.keep_the_caret_in_a_cell(before, pressed);
+        }
         crate::services::frame_trace::phase("editor-input");
         if taken.jumped {
             return true;
@@ -1102,6 +1158,7 @@ impl UnluminousApp {
                 view_height,
                 bar_name: &bar_name,
                 bar_active: grab.active,
+                gutter: gutter_rect,
             },
         ) {
             folded = Some(line);
@@ -1325,6 +1382,10 @@ impl UnluminousApp {
         let mut folded = None;
         let mut painter_ui = ui.new_child(egui::UiBuilder::new().max_rect(area));
         painter_ui.set_clip_rect(ui.painter().clip_rect().intersect(area));
+        let notebook = self.files.active().notebook.is_some();
+        if notebook {
+            self.paint_the_cells_behind(&painter_ui, origin, area);
+        }
         editor_view::paint(
             &painter_ui,
             &self.renderer,
@@ -1361,6 +1422,14 @@ impl UnluminousApp {
             visible,
         ) {
             folded = Some(line);
+        }
+        // A notebook's status lines, outputs, rendered Markdown and buttons, over the text and after
+        // it, so the buttons are the last widgets to ask for the points they cover. `task-2220`.
+        if notebook {
+            let mut cells_ui =
+                ui.new_child(egui::UiBuilder::new().max_rect(area.union(painting.gutter)));
+            cells_ui.set_clip_rect(ui.painter().clip_rect().intersect(area.union(painting.gutter)));
+            self.paint_the_cells_over(&mut cells_ui, origin, area, painting.gutter);
         }
         // Drawn last, at the position the frame settled on rather than the one it opened with, or
         // the thumb is a frame behind the writing — which on a fast scroll can be seen.
@@ -1429,4 +1498,6 @@ struct EditorPainting<'a> {
     bar_name: &'a str,
     /// Whether the bar is being used, which is what it fades in for.
     bar_active: bool,
+    /// Where the gutter is, which a notebook draws each cell's run button in.
+    gutter: Rect,
 }

@@ -161,11 +161,30 @@ pub struct PlacedLine {
     pub clusters: Vec<PlacedCluster>,
     /// The style to use for a caret sitting on an otherwise empty line.
     pub empty_style: Arc<CharStyle>,
+    /// Room the paragraph asked for above its first line and below its last, which this line carries
+    /// when it is that line. Both are inside `height`, and `baseline` already counts `above`.
+    ///
+    /// Recorded rather than read back from the paragraph style, because everything that draws against
+    /// the letters — the selection, the current line band, the line numbers — has only the line in
+    /// hand. See `ParagraphStyle::space_above`. `task-2220`.
+    pub above: f32,
+    pub below: f32,
 }
 
 impl PlacedLine {
     pub fn bottom(&self) -> f32 {
         self.y + self.height
+    }
+
+    /// Where the line's own band starts, below any room left above it.
+    pub fn text_top(&self) -> f32 {
+        self.y + self.above
+    }
+
+    /// How tall the line is without the room left above and below it, which is the band its letters,
+    /// its selection and its line number are drawn in.
+    pub fn text_height(&self) -> f32 {
+        (self.height - self.above - self.below).max(0.0)
     }
 
     /// Move a line that did not itself change to where it now sits.
@@ -674,6 +693,9 @@ fn fingerprint(
     hash.number(paragraph_style.align as u64);
     hash.float(paragraph_style.line_spacing);
     hash.float(paragraph_style.min_height);
+    hash.float(paragraph_style.space_above);
+    hash.float(paragraph_style.space_below);
+    hash.number(u64::from(paragraph_style.replaced));
     // Whether it is folded away, because a paragraph that has just been hidden has to fingerprint
     // differently or `relayout` would keep it, complete with the lines it is no longer supposed to
     // have.
@@ -767,22 +789,30 @@ fn lay_out_paragraph<'a>(
         return mark;
     }
 
-    flatten_into_clusters(&bytes, metrics, buffers);
-
     let empty_style = match buffers.runs.first() {
         Some((_, style)) => retained_style(&mut buffers.styles, style),
         None => retained_style(&mut buffers.styles, &style_at(spans, bytes.start)),
     };
+
+    // A paragraph something else draws in place of its text is one empty line, and its letters are
+    // never measured. `ParagraphStyle::replaced`.
+    if paragraph_style.replaced {
+        buffers.clusters.clear();
+        buffers.cluster_runs.clear();
+    } else {
+        flatten_into_clusters(&bytes, metrics, buffers);
+    }
 
     if buffers.clusters.is_empty() {
         // An empty paragraph is still a line, so the caret has somewhere to sit.
         let line_metrics = metrics.line_metrics(&empty_style);
         let height =
             (line_metrics.height() * paragraph_style.line_spacing).max(paragraph_style.min_height);
+        let (above, below) = (paragraph_style.space_above, paragraph_style.space_below);
         work.lines.push(PlacedLine {
             y: work.y,
-            height,
-            baseline: line_metrics.ascent + (height - line_metrics.height()) / 2.0,
+            height: above + height + below,
+            baseline: above + line_metrics.ascent + (height - line_metrics.height()) / 2.0,
             ascent: line_metrics.ascent,
             descent: line_metrics.descent,
             bytes: bytes.clone(),
@@ -791,8 +821,10 @@ fn lay_out_paragraph<'a>(
             runs: Vec::new(),
             clusters: Vec::new(),
             empty_style,
+            above,
+            below,
         });
-        work.y += height;
+        work.y += above + height + below;
         return mark;
     }
 
@@ -803,7 +835,7 @@ fn lay_out_paragraph<'a>(
     for (index, span) in breaks.iter().enumerate() {
         place_one_line(
             span.clone(),
-            index + 1 == break_count,
+            (index == 0, index + 1 == break_count),
             &bytes,
             paragraph,
             paragraph_style,
@@ -924,10 +956,13 @@ fn break_into_lines(breaks: &mut Vec<Range<usize>>, buffers: &Buffers, width: f3
 /// Place one line's clusters, group them into runs, and append the line to `work`.
 ///
 /// The last of [`lay_out_paragraph`]'s four phases, and the only one that knows about alignment.
+///
+/// `ends` says whether this is the paragraph's first line and whether it is its last, which is where
+/// the paragraph's room above and room below go.
 #[allow(clippy::too_many_arguments)]
 fn place_one_line<'a>(
     span: Range<usize>,
-    last_in_paragraph: bool,
+    ends: (bool, bool),
     bytes: &Range<usize>,
     paragraph: usize,
     paragraph_style: ParagraphStyle,
@@ -937,6 +972,7 @@ fn place_one_line<'a>(
     buffers: &mut Buffers<'a>,
     work: &mut Work,
 ) {
+    let (first_in_paragraph, last_in_paragraph) = ends;
     // One copy of the line's clusters out of the paragraph's, placed where they are rather than pushed one
     // at a time (`task-2218`).
     let mut placed_clusters: Vec<PlacedCluster> = buffers.clusters[span.clone()].to_vec();
@@ -1017,16 +1053,20 @@ fn place_one_line<'a>(
     // for a picture. It is a floor and never a ceiling: a line of large letters is as tall as its
     // letters whatever it asked for.
     let height = (natural * paragraph_style.line_spacing).max(paragraph_style.min_height);
+    // The paragraph's own room goes on its first line and its last, and nowhere between, so a cell's
+    // outputs sit under the cell's last line however many lines it wrapped to. `task-2220`.
+    let above = if first_in_paragraph { paragraph_style.space_above } else { 0.0 };
+    let below = if last_in_paragraph { paragraph_style.space_below } else { 0.0 };
 
     let start = placed_clusters.first().map(|c| c.start as usize).unwrap_or(bytes.start);
     let end = placed_clusters.last().map(|c| c.end as usize).unwrap_or(bytes.start);
 
     work.lines.push(PlacedLine {
         y: work.y,
-        height,
+        height: above + height + below,
         // Extra line spacing is added below the text rather than above it, so single and double
         // spaced paragraphs start at the same place.
-        baseline: ascent,
+        baseline: above + ascent,
         ascent,
         descent,
         bytes: start..end,
@@ -1035,8 +1075,10 @@ fn place_one_line<'a>(
         runs: placed_runs,
         clusters: placed_clusters,
         empty_style: empty_style.clone(),
+        above,
+        below,
     });
-    work.y += height;
+    work.y += above + height + below;
 }
 
 /// True when a cluster is whitespace, which is where a line may be broken.
@@ -1301,12 +1343,15 @@ impl Layout {
                 right = left;
             }
             if covers_break {
-                right = right.max(left) + line.height * 0.25;
+                right = right.max(left) + line.text_height() * 0.25;
             }
             if right > left {
+                // The line's own band, without the room a notebook leaves above a cell or below its
+                // outputs, or a selection would be painted over the outputs. `task-2220`.
+                let band = line.text_height();
                 let letters = line.baseline - line.ascent + (line.ascent + line.descent) / 2.0;
-                let y = line.y + letters - line.height / 2.0;
-                rects.push(Rect { x: left, y, width: right - left, height: line.height });
+                let y = line.y + letters - band / 2.0;
+                rects.push(Rect { x: left, y, width: right - left, height: band });
             }
         }
         rects
@@ -2476,6 +2521,79 @@ mod tests {
         assert_eq!(laid.lines[1].height, 240.0, "the empty line holding the picture");
         assert!(laid.lines[0].height < 240.0, "and no other line moved");
         assert_eq!(laid.lines[2].y, laid.lines[1].y + 240.0, "what is under it is pushed down");
+    }
+
+    #[test]
+    fn room_above_and_below_a_paragraph_moves_its_letters_and_what_follows_but_not_its_selection() {
+        // Each line is 20 tall by FixedMetrics. The middle paragraph asks for 30 above and 100 below,
+        // which is a notebook cell's header gap and its outputs.
+        let (rope, spans, mut paragraphs) = fixture("one\ntwo\nthree");
+        paragraphs.set(1..2, |style| {
+            style.space_above = 30.0;
+            style.space_below = 100.0;
+        });
+        let laid = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 400.0);
+        let middle = &laid.lines[1];
+        assert_eq!(middle.y, 20.0);
+        assert_eq!(middle.height, 150.0, "the room is part of the line");
+        assert_eq!((middle.above, middle.below), (30.0, 100.0));
+        assert_eq!(middle.text_top(), 50.0);
+        assert_eq!(middle.text_height(), 20.0);
+        assert_eq!(laid.lines[2].y, 170.0, "what is under it is pushed down by both");
+        let caret = laid.caret_at(5);
+        assert_eq!(caret.y, 50.0, "the caret is drawn against the letters, below the room above");
+        let rects = laid.selection_rects(4..7);
+        assert_eq!(rects.len(), 1);
+        assert_eq!((rects[0].y, rects[0].height), (50.0, 20.0), "nothing is painted over the room");
+    }
+
+    #[test]
+    fn a_wrapped_paragraph_puts_its_room_above_the_first_line_and_below_the_last() {
+        // Ten letters a line at 100 wide, so twenty five letters wrap to three lines.
+        let (rope, spans, mut paragraphs) = fixture(&"a".repeat(25));
+        paragraphs.set(0..1, |style| {
+            style.space_above = 8.0;
+            style.space_below = 40.0;
+        });
+        let laid = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 100.0);
+        let heights: Vec<f32> = laid.lines.iter().map(|line| line.height).collect();
+        assert_eq!(heights, vec![28.0, 20.0, 60.0]);
+        assert_eq!(laid.height, 108.0);
+    }
+
+    #[test]
+    fn a_replaced_paragraph_is_one_empty_line_as_tall_as_it_asked_whatever_it_holds() {
+        // A rendered Markdown cell: its first paragraph stands for the whole cell.
+        let (rope, spans, mut paragraphs) =
+            fixture("# A heading that is long enough to wrap\nnext");
+        paragraphs.set(0..1, |style| {
+            style.replaced = true;
+            style.min_height = 90.0;
+        });
+        let laid = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 100.0);
+        assert_eq!(laid.lines.len(), 2, "the long first paragraph did not wrap");
+        assert!(laid.lines[0].clusters.is_empty());
+        assert_eq!(laid.lines[0].height, 90.0);
+        assert_eq!(laid.lines[0].bytes, 0..39, "it still covers its own bytes");
+        assert_eq!(laid.lines[1].y, 90.0);
+    }
+
+    #[test]
+    fn changing_the_room_round_a_paragraph_lays_it_out_again() {
+        let (rope, spans, mut paragraphs) = fixture("one\ntwo");
+        let before = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 400.0);
+        paragraphs.set(0..1, |style| style.space_below = 50.0);
+        let after = relayout(
+            before,
+            &rope,
+            &spans,
+            &paragraphs,
+            &FixedMetrics::default(),
+            400.0,
+            &Hidden::default(),
+        );
+        assert_eq!(after.lines[0].height, 70.0, "a cached paragraph was not kept");
+        assert_eq!(after.lines[1].y, 70.0);
     }
 
     #[test]

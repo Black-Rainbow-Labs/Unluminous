@@ -259,6 +259,10 @@ pub struct DebugState {
     /// the caret back on the stopped line sixty times a second — which is a caret nobody can move
     /// while a program is paused, and it is why `Debug -> Show Value` could never find a word.
     stops: u64,
+    /// How many `setBreakpoints` answers have come back. A notebook cell is run under the debugger
+    /// only once its breakpoints have been answered, or the cell could start before they bind.
+    /// `task-2220`.
+    breakpoint_answers: u64,
 }
 
 impl DebugState {
@@ -311,6 +315,7 @@ impl DebugState {
             stopping: false,
             reads: 0,
             stops: 0,
+            breakpoint_answers: 0,
         })
     }
 
@@ -352,6 +357,7 @@ impl DebugState {
             stopping: false,
             reads: 0,
             stops: 0,
+            breakpoint_answers: 0,
         }
     }
 
@@ -387,6 +393,11 @@ impl DebugState {
     /// `debug status` all use.
     pub fn where_it_is(&self) -> String {
         self.session.where_it_is()
+    }
+
+    /// How many breakpoint answers the adapter has given. See the field.
+    pub fn breakpoint_answers(&self) -> u64 {
+        self.breakpoint_answers
     }
 
     /// How many times the program has stopped. See the field.
@@ -1226,6 +1237,7 @@ impl DebugState {
 
     /// `Event::Breakpoints { path, answered }`. Split out of [`Self::absorb`] by `task-1984` §3.6.
     fn note_what_the_adapter_bound(&mut self, path: String, answered: Vec<VerifiedBreakpoint>) {
+        self.breakpoint_answers += 1;
         // Normalised the way `set_breakpoints` normalises what it sends, so the two maps
         // `verified` reads together are keyed the same way. The adapter echoes back whatever
         // spelling its debug information holds, which is why `same_file` exists at all; this
