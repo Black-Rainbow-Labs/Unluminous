@@ -3401,6 +3401,41 @@ Unluminous that gets that back. Zed benchmarks at about 222 MB. Do not go lookin
 the order they would be done. The scripts that produced every number are in
 `_agent_output/task-1805-performance/`.
 
+## Using the window is measured by driving it, and a gesture writes nothing to disk until it stops
+
+`task-2218` measured what typing, scrolling, zooming, switching tabs and moving a canvas cost in a
+release build. `node tools/perf-bench.mjs --bin <folder> --label <name> --out <folder> --corpus <folder>`
+starts the build with `--background` on a fresh copy of a corpus, with its own `APPDATA` and its own git
+repository, drives it through `unluminous-cli input`, and writes one JSON row a case: the process's own
+processor time, its memory, and every frame the frame trace wrote during the case, with its phases.
+Compare two builds by running them **interleaved** (base, candidate, base, candidate), never one after
+the other, and only while the machine is quiet. `tasks/task-2218-performance-tdd.md` has the cases and
+the numbers.
+
+Four rules came out of it, and each was the largest cost in the window when it was found.
+
+**Nothing that moves on every frame of a gesture is written the frame it moves.** The caret, the
+scroll, the window's position and which tab is showing are part of what a project remembers, and each
+write is three files flushed to the disk: it was 13 of 15 ms of a typing frame and 17 of 18 ms of a
+scrolling frame. `ProjectState::differs_only_in_what_a_gesture_moves` is what waits for
+`WINDOW_SETTLE`, and the same rule holds the settings during a zoom (`zoom_stepped_at`) and the realm
+file while the camera moves. Anything that is one press, such as a tab opened or a pane split, is still
+written the frame it happens, and `on_exit` writes whatever is outstanding.
+
+**Showing a tab keeps what was laid out for it.** The layout, the preview and the colouring live on each
+tab, keyed on its own revisions, so nothing about a switch makes them stale. `show_tab`,
+`Ctrl`+`Tab` and `tab next` each threw them away until this ticket, which cost a full colouring and a
+full layout on every switch.
+
+**A cost the frame trace cannot name gets a phase before it gets a fix.** `frame_trace::phase` is one
+relaxed atomic load when the trace is off, so a new phase costs nothing to leave in, and `egui-cpu`
+says how much of a frame's processor time was egui's own layout and tessellation rather than
+`UnluminousApp::ui`.
+
+**The graphics device asks for `MemoryHints::MemoryUsage`** (`services::graphics_memory`). eframe's
+default takes host memory in 64 MB blocks, and that alone was 37 MB of a fresh window's working set and
+139 MB of its private bytes.
+
 ## A cluster holds no copy of its text, and the document is the one owner
 
 `task-1805` measured an idle window. `task-1813` measured what a window is *holding*, and found the

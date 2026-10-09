@@ -956,6 +956,35 @@ fn showing_a_tab_that_was_already_laid_out_does_not_lay_it_out_again() {
     assert!(!harness.state().layout().lines.is_empty(), "with its lines still in place");
 }
 
+/// Switching tabs the way a click, `Ctrl`+`Tab` and `tab show` do lays nothing out again.
+///
+/// `task-2218`: the test above calls `files.show`, and the path a person takes is `show_tab`, which threw
+/// the tab's layout and colours away on every switch: 15 to 28 ms a switch on a 200 KB file. This one goes
+/// through `show_tab`, back and forth.
+#[test]
+fn switching_tabs_the_way_a_click_does_lays_nothing_out_again() {
+    let folder = sample_folder();
+    let mut harness = harness("");
+    harness.state_mut().open_path_permanently(&folder.join("readme.md")).expect("the file opens");
+    steady(&mut harness);
+    let first = harness.state().files.active_index();
+    harness.state_mut().open_path_permanently(&folder.join("notes.txt")).expect("the file opens");
+    steady(&mut harness);
+    let second = harness.state().files.active_index();
+    let laid_out = harness.state().layouts_built();
+    for _ in 0..3 {
+        harness.state_mut().show_tab(first);
+        steady(&mut harness);
+        harness.state_mut().show_tab(second);
+        steady(&mut harness);
+    }
+    assert_eq!(
+        harness.state().layouts_built(),
+        laid_out,
+        "switching between two tabs that were laid out reuses both layouts"
+    );
+}
+
 // -------------------------------------------------------------------------------------- task-1984
 //
 // Test Connection is on a thread, and the window goes on drawing while it waits.

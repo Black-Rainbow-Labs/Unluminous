@@ -5509,6 +5509,39 @@ fn the_window_moving_writes_where_it_is_once_it_has_stopped() {
     assert!(!project_state::load(&folder).explorer_visible, "everything else is written at once");
 }
 
+/// Typing writes where the caret is into the project's files once the typing stops, not on every frame.
+///
+/// `task-2218`: the caret and the scroll are part of what a project remembers (`task-1693`), and they were
+/// written the frame they moved. That is three files flushed to the disk on every frame of typing or of a
+/// wheel, which was 13 ms of a 15 ms typing frame on Windows. They now wait for the gesture to stop, which
+/// is the rule the window's position already kept (the test above).
+#[test]
+fn typing_writes_where_the_caret_is_once_the_typing_stops() {
+    use unluminous_app::services::project_state;
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-2218-typing");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().restore_project();
+    harness.state_mut().open_path_permanently(&folder.join("readme.md")).expect("the file opens");
+    harness.run_steps(4);
+    let written = |folder: &std::path::Path| project_state::load(folder).file_carets;
+    let before = written(&folder);
+
+    // Three letters, one a frame, which is what typing is.
+    for letter in ["a", "b", "c"] {
+        harness.state_mut().document_mut().apply(Command::Insert(letter.to_owned()));
+        harness.step();
+        assert_eq!(
+            written(&folder),
+            before,
+            "a frame of typing must not write the project's files"
+        );
+    }
+
+    // A harness frame is a quarter of a second, so four of them is the typing having stopped.
+    harness.run_steps(4);
+    assert_ne!(written(&folder), before, "where the caret stopped is what is kept");
+}
+
 /// Every text field has a right click menu, and choosing a row reaches the box that holds the words.
 ///
 /// `task-2009`: *"Urls when i open an html file should be selectable and copy pasteable. e.g. right
