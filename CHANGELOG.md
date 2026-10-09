@@ -6,7 +6,7 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.68.0 — 2026-10-09
 
 - Review fixes: # %% lines stay in their cell, the debugger lets the kernel go, Restart and Run All runs, undo keeps outputs, nothing waits on Python in a frame (`task-2220`)
 - The notebook rows the review found missing: sections, tags, dragging a cell, the outline, ?name, and the output scroll setting (`task-2220`)
@@ -18,6 +18,7 @@ bumps the release script makes are left out, because they are the boundaries rat
 - A restart waits for both kernel channels, and notebook status reports tags, hidden cells and the kernel's process (`task-2220`)
 - The changelog lists the review fixes as unreleased (`task-2220`)
 - The debug tests wait for the stack to be read before asking where the debugger stopped (`task-2220`)
+- The changelog lists the debug test fix as unreleased (`task-2220`)
 
 ## 0.67.0 — 2026-10-09
 
