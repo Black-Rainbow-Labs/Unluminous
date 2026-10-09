@@ -39,7 +39,7 @@ impl Rect {
 }
 
 /// One grapheme cluster, placed.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PlacedCluster {
     /// Compact document byte bounds; an editor document is deliberately far below four gigabytes.
     start: u32,
@@ -565,7 +565,10 @@ impl Work {
 struct Buffers<'a> {
     source: String,
     runs: Vec<(Range<usize>, &'a CharStyle)>,
-    clusters: Vec<(usize, PlacedCluster)>,
+    /// The paragraph's clusters, and beside them the run each came from. Two lists rather than one list of
+    /// pairs, so a line's clusters are one contiguous copy out of the first (`task-2218`).
+    clusters: Vec<PlacedCluster>,
+    cluster_runs: Vec<usize>,
     breaks: Vec<Range<usize>>,
     styles: Vec<Arc<CharStyle>>,
 }
@@ -821,6 +824,7 @@ fn lay_out_paragraph<'a>(
 /// grapheme is, which is the expensive part of laying anything out.
 fn flatten_into_clusters(bytes: &Range<usize>, metrics: &dyn FontMetrics, buffers: &mut Buffers) {
     buffers.clusters.clear();
+    buffers.cluster_runs.clear();
     for (run_index, (run_bytes, style)) in buffers.runs.iter().enumerate() {
         let local = (run_bytes.start - bytes.start)..(run_bytes.end - bytes.start);
         let run_text = &buffers.source[local];
@@ -831,29 +835,34 @@ fn flatten_into_clusters(bytes: &Range<usize>, metrics: &dyn FontMetrics, buffer
         // change of width pays. `ascii_clusters_are_the_grapheme_clusters` holds the two to the same
         // answer.
         if run_text.is_ascii() {
+            let table = metrics.ascii_advances(style);
             for (offset, cluster) in ascii_clusters(run_text) {
                 let start = run_bytes.start + offset;
-                buffers.clusters.push((
-                    run_index,
-                    PlacedCluster::new(
-                        cluster,
-                        start..start + cluster.len(),
-                        metrics.advance(cluster, style),
-                    ),
+                let known = match (&table, cluster.as_bytes()) {
+                    (Some(table), [byte]) => table[usize::from(*byte)],
+                    _ => f32::NAN,
+                };
+                let advance = match known.is_nan() {
+                    true => metrics.advance(cluster, style),
+                    false => known,
+                };
+                buffers.clusters.push(PlacedCluster::new(
+                    cluster,
+                    start..start + cluster.len(),
+                    advance,
                 ));
+                buffers.cluster_runs.push(run_index);
             }
             continue;
         }
         for (offset, cluster) in run_text.grapheme_indices(true) {
             let start = run_bytes.start + offset;
-            buffers.clusters.push((
-                run_index,
-                PlacedCluster::new(
-                    cluster,
-                    start..start + cluster.len(),
-                    metrics.advance(cluster, style),
-                ),
+            buffers.clusters.push(PlacedCluster::new(
+                cluster,
+                start..start + cluster.len(),
+                metrics.advance(cluster, style),
             ));
+            buffers.cluster_runs.push(run_index);
         }
     }
 }
@@ -889,8 +898,8 @@ fn break_into_lines(breaks: &mut Vec<Range<usize>>, buffers: &Buffers, width: f3
     let mut pen = 0.0_f32;
     let mut last_space: Option<usize> = None;
     for index in 0..buffers.clusters.len() {
-        let advance = buffers.clusters[index].1.advance;
-        let is_space = is_blank(&buffers.clusters[index].1);
+        let advance = buffers.clusters[index].advance;
+        let is_space = is_blank(&buffers.clusters[index]);
         if pen + advance > width && index > line_start {
             // Break after the last space if there was one, otherwise break a word that is on its own
             // wider than the line, because the alternative is text running off the edge.
@@ -900,7 +909,7 @@ fn break_into_lines(breaks: &mut Vec<Range<usize>>, buffers: &Buffers, width: f3
             };
             breaks.push(line_start..at);
             line_start = at;
-            pen = buffers.clusters[line_start..index + 1].iter().map(|(_, c)| c.advance).sum();
+            pen = buffers.clusters[line_start..index + 1].iter().map(|c| c.advance).sum();
             last_space = if is_space { Some(index) } else { None };
             continue;
         }
@@ -928,12 +937,16 @@ fn place_one_line<'a>(
     buffers: &mut Buffers<'a>,
     work: &mut Work,
 ) {
-    let slice = &mut buffers.clusters[span];
+    // One copy of the line's clusters out of the paragraph's, placed where they are rather than pushed one
+    // at a time (`task-2218`).
+    let mut placed_clusters: Vec<PlacedCluster> = buffers.clusters[span.clone()].to_vec();
+    let runs_of = &buffers.cluster_runs[span];
+    let slice = &placed_clusters[..];
 
     // Trailing spaces do not count towards the width used for alignment, because a centred line
     // should look centred on its visible text.
-    let visible = slice.iter().rposition(|(_, c)| !is_blank(c)).map(|last| last + 1).unwrap_or(0);
-    let visible_width: f32 = slice[..visible].iter().map(|(_, c)| c.advance).sum();
+    let visible = slice.iter().rposition(|c| !is_blank(c)).map(|last| last + 1).unwrap_or(0);
+    let visible_width: f32 = slice[..visible].iter().map(|c| c.advance).sum();
 
     let mut extra_per_gap = 0.0;
     let offset = match paragraph_style.align {
@@ -944,7 +957,7 @@ fn place_one_line<'a>(
             // The last line of a paragraph is left aligned. Stretching a short last line to the
             // full width looks broken, so no typesetter does it.
             if !last_in_paragraph {
-                let gaps = slice[..visible].iter().filter(|(_, c)| is_blank(c)).count();
+                let gaps = slice[..visible].iter().filter(|c| is_blank(c)).count();
                 if gaps > 0 {
                     extra_per_gap = ((width - visible_width) / gaps as f32).max(0.0);
                 }
@@ -955,33 +968,29 @@ fn place_one_line<'a>(
 
     // Place the clusters, grouping neighbouring clusters that share a run into one PlacedRun.
     let mut placed_runs: Vec<PlacedRun> = Vec::new();
-    let mut placed_clusters: Vec<PlacedCluster> = Vec::with_capacity(slice.len());
     let mut pen = offset;
     // The run the previous cluster came from. A cluster from the same run is in the same style without
     // the style being compared, which is nearly every cluster on a line (`task-2218`).
     let mut previous_run: Option<usize> = None;
-    for (run_index, cluster) in slice.iter_mut() {
+    for (at, (cluster, &run_index)) in placed_clusters.iter_mut().zip(runs_of).enumerate() {
         cluster.x = pen;
         if is_blank(cluster) {
             cluster.advance += extra_per_gap;
         }
         pen += cluster.advance;
-        let style = buffers.runs[*run_index].1;
+        let style = buffers.runs[run_index].1;
         // Compared by looking at the style rather than by cloning it first. Cloning allocated a
         // family name for every cluster in the document purely to throw it away again.
-        let same_run = previous_run == Some(*run_index)
+        let same_run = previous_run == Some(run_index)
             || placed_runs.last().is_some_and(|last| last.style.as_ref() == style);
-        previous_run = Some(*run_index);
+        previous_run = Some(run_index);
+        let at = u32::try_from(at).expect("a line's clusters fit in 32 bits");
         if same_run {
-            placed_clusters.push(cluster.clone());
-            placed_runs.last_mut().expect("checked").clusters.end += 1;
+            placed_runs.last_mut().expect("checked").clusters.end = at + 1;
         } else {
-            let start =
-                u32::try_from(placed_clusters.len()).expect("a line's clusters fit in 32 bits");
-            placed_clusters.push(cluster.clone());
             placed_runs.push(PlacedRun {
                 style: retained_style(&mut buffers.styles, style),
-                clusters: start..start + 1,
+                clusters: at..at + 1,
             });
         }
     }
@@ -1009,8 +1018,8 @@ fn place_one_line<'a>(
     // letters whatever it asked for.
     let height = (natural * paragraph_style.line_spacing).max(paragraph_style.min_height);
 
-    let start = slice.first().map(|(_, c)| c.start as usize).unwrap_or(bytes.start);
-    let end = slice.last().map(|(_, c)| c.end as usize).unwrap_or(bytes.start);
+    let start = placed_clusters.first().map(|c| c.start as usize).unwrap_or(bytes.start);
+    let end = placed_clusters.last().map(|c| c.end as usize).unwrap_or(bytes.start);
 
     work.lines.push(PlacedLine {
         y: work.y,

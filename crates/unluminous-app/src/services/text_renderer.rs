@@ -336,11 +336,16 @@ type AsciiAdvances = [f32; 128];
 /// the advance. The answer for a character never changes for a face at a size, and source code is almost
 /// all ASCII, so the answer is kept. A zoom walks a dozen sizes, so the tables are few; `ADVANCE_TABLES`
 /// bounds them anyway.
+///
+/// A table is measured whole when it is made, for the printable characters and the tab, so layout can be
+/// handed it once for a run ([`FontMetrics::ascii_advances`]). The control characters stay `NaN` and are
+/// measured one at a time when asked, because measuring one can mean searching the fallback families,
+/// which reads fonts from the disk for characters a file almost never holds.
 #[derive(Default)]
 struct AdvanceTables {
     /// The face and the size bits of each table, in the order they were made.
     keys: Vec<(FaceId, u32)>,
-    tables: Vec<Box<AsciiAdvances>>,
+    tables: Vec<Arc<AsciiAdvances>>,
     /// Which table answered last, because a layout walks a run of one style at a time.
     last: usize,
 }
@@ -349,24 +354,24 @@ struct AdvanceTables {
 const ADVANCE_TABLES: usize = 64;
 
 impl AdvanceTables {
-    /// The table for a face at a size, made empty the first time it is asked for.
-    fn table(&mut self, face: FaceId, size: f32) -> &mut AsciiAdvances {
+    /// The table for a face at a size, if one has been made.
+    fn find(&mut self, face: FaceId, size: f32) -> Option<Arc<AsciiAdvances>> {
         let key = (face, size.to_bits());
         if self.keys.get(self.last) != Some(&key) {
-            self.last = match self.keys.iter().position(|known| *known == key) {
-                Some(at) => at,
-                None => {
-                    if self.keys.len() >= ADVANCE_TABLES {
-                        self.keys.clear();
-                        self.tables.clear();
-                    }
-                    self.keys.push(key);
-                    self.tables.push(Box::new([f32::NAN; 128]));
-                    self.keys.len() - 1
-                }
-            };
+            self.last = self.keys.iter().position(|known| *known == key)?;
         }
-        &mut self.tables[self.last]
+        Some(Arc::clone(&self.tables[self.last]))
+    }
+
+    /// Keep a table that has just been measured.
+    fn keep(&mut self, face: FaceId, size: f32, table: Arc<AsciiAdvances>) {
+        if self.keys.len() >= ADVANCE_TABLES {
+            self.keys.clear();
+            self.tables.clear();
+        }
+        self.keys.push((face, size.to_bits()));
+        self.tables.push(table);
+        self.last = self.keys.len() - 1;
     }
 }
 
@@ -907,20 +912,20 @@ impl Rasterised {
 
 impl FontMetrics for TextRenderer {
     fn advance(&self, cluster: &str, style: &CharStyle) -> f32 {
-        // One ASCII character is answered out of a table once it has been measured. See `AdvanceTables`.
+        // One ASCII character is answered out of the table for its face and size. See `AdvanceTables`.
         if let [byte] = cluster.as_bytes() {
             if byte.is_ascii() {
-                let face = self.resolve_id(style);
-                let known = self.advances.borrow_mut().table(face, style.size)[usize::from(*byte)];
+                let known = self.ascii_table(style)[usize::from(*byte)];
                 if !known.is_nan() {
                     return known;
                 }
-                let measured = self.measure_advance(cluster, style);
-                self.advances.borrow_mut().table(face, style.size)[usize::from(*byte)] = measured;
-                return measured;
             }
         }
         self.measure_advance(cluster, style)
+    }
+
+    fn ascii_advances(&self, style: &CharStyle) -> Option<Arc<[f32; 128]>> {
+        Some(self.ascii_table(style))
     }
 
     fn line_metrics(&self, style: &CharStyle) -> LineMetrics {
@@ -949,6 +954,25 @@ impl TextRenderer {
             descent: -scaled.descent(),
             line_gap: scaled.line_gap() + style.size * READING_LEADING,
         }
+    }
+
+    /// The ASCII advances of `style`'s face at its size, measured the first time they are asked for.
+    fn ascii_table(&self, style: &CharStyle) -> Arc<AsciiAdvances> {
+        let face = self.resolve_id(style);
+        if let Some(table) = self.advances.borrow_mut().find(face, style.size) {
+            return table;
+        }
+        let mut table = [f32::NAN; 128];
+        // The printable characters and the tab, which is byte nine.
+        const TAB: u8 = 9;
+        let mut letter = [0u8; 4];
+        for byte in (0x20u8..0x7F).chain([TAB]) {
+            table[usize::from(byte)] =
+                self.measure_advance(char::from(byte).encode_utf8(&mut letter), style);
+        }
+        let table = Arc::new(table);
+        self.advances.borrow_mut().keep(face, style.size, Arc::clone(&table));
+        table
     }
 
     /// The number of the face a style resolves to, without cloning the face itself.

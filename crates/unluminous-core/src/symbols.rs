@@ -489,10 +489,17 @@ impl FileSymbols {
     /// Sorted so that a caller can say two files hold the same words by comparing the lists, and so
     /// that the order a stem is scored in is the file's spelling rather than its layout.
     pub fn distinct_words(&self, text: &str) -> Vec<String> {
-        let mut spellings: Vec<&str> =
-            self.words.iter().filter_map(|word| text.get(word.clone())).collect();
+        // Repeats are dropped **before** the sort rather than after it (`task-2218`): a 200 KB file has
+        // about fifteen thousand words and seven hundred spellings, so sorting every word to find the
+        // spellings was most of the 0.86 ms this cost on every keystroke the completion popup was open.
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        let mut spellings: Vec<&str> = self
+            .words
+            .iter()
+            .filter_map(|word| text.get(word.clone()))
+            .filter(|spelling| seen.insert(spelling))
+            .collect();
         spellings.sort_unstable();
-        spellings.dedup();
         spellings.into_iter().map(str::to_owned).collect()
     }
 }

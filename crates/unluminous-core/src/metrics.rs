@@ -37,6 +37,17 @@ pub trait FontMetrics {
     /// The vertical metrics of `style`.
     fn line_metrics(&self, style: &CharStyle) -> LineMetrics;
 
+    /// The advance of every ASCII character in `style`, indexed by its byte, with `NaN` for a character
+    /// this measurer would rather be asked about one at a time.
+    ///
+    /// **One question for a run rather than one for each character** (`task-2218`). Layout asks this once
+    /// for each run of ASCII text and reads the answers out of the table, which is what keeps a 200 KB file
+    /// from being two hundred thousand calls through a trait object. `None`, the default, means ask
+    /// [`Self::advance`] for each cluster, and the answers must be the same either way.
+    fn ascii_advances(&self, _style: &CharStyle) -> Option<std::sync::Arc<[f32; 128]>> {
+        None
+    }
+
     /// Where an underline sits relative to the baseline, as a positive distance below it.
     fn underline_offset(&self, style: &CharStyle) -> f32 {
         style.size * 0.12
