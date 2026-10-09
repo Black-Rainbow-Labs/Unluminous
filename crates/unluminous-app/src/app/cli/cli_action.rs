@@ -159,11 +159,15 @@ impl UnluminousApp {
                 format!("There is no menu entry called {name}. `action list` names them all."),
             );
         };
+        // Only a message this action put in the status bar is its answer. One left there by something
+        // earlier, such as a debug session that ended, says nothing about this action.
+        let before = self.message.clone();
         self.run_action(action, ctx);
+        let said = self.message.clone().filter(|now| Some(now) != before.as_ref());
         ok(
             request,
-            self.message.clone().unwrap_or_else(|| format!("Ran {name}")),
-            json!({ "ran": name, "message": self.message }),
+            said.clone().unwrap_or_else(|| format!("Ran {name}")),
+            json!({ "ran": name, "message": said }),
         )
     }
 
