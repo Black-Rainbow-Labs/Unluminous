@@ -82,6 +82,7 @@ mod cli_git;
 mod cli_highlight;
 mod cli_modal;
 mod cli_notebook;
+mod cli_notebook_view;
 mod cli_panel;
 mod cli_plugins;
 mod cli_realm;

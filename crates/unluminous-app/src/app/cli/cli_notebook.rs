@@ -52,12 +52,20 @@ impl UnluminousApp {
             "variables" => self.cli_notebook_variables(request, index),
             "input" => self.cli_notebook_input(request, index),
             "export" => self.cli_notebook_export(request),
+            "view" => self.cli_notebook_view(request, index),
+            "output" => self.cli_notebook_output(request, index),
+            "outline" => self.cli_notebook_outline(request, index),
             other => no(request, code::UNKNOWN_COMMAND, format!("notebook has no {other}.")),
         }
     }
 
     /// The cell a command names: `--id`, then the number in `field`, then the chosen cell.
-    fn cli_cell(&self, request: &Request, index: usize, field: &str) -> Result<usize, String> {
+    pub(super) fn cli_cell(
+        &self,
+        request: &Request,
+        index: usize,
+        field: &str,
+    ) -> Result<usize, String> {
         let tab = self.files.at(index).notebook.as_deref().ok_or("not a notebook")?;
         if let Some(id) = request.text("id") {
             return tab
@@ -234,6 +242,9 @@ impl UnluminousApp {
     }
 
     fn cli_notebook_run(&mut self, request: &Request, index: usize) -> Outcome {
+        if request.switch("debug") {
+            return self.cli_debug_a_cell(request, index);
+        }
         let count = self.files.at(index).notebook.as_deref().map(|tab| tab.len()).unwrap_or(0);
         let cells = if request.switch("all") {
             0..count
@@ -393,6 +404,17 @@ impl UnluminousApp {
     }
 
     fn cli_notebook_select(&mut self, request: &Request, index: usize) -> Outcome {
+        if let Some(section) = request.text("section") {
+            let what = match section.as_str() {
+                "next" => NotebookAction::NextSection,
+                "previous" => NotebookAction::PreviousSection,
+                _ => return no(request, code::USAGE, "--section is next or previous."),
+            };
+            return self.cli_notebook_action(request, what);
+        }
+        if request.whole("cell").is_none() {
+            return no(request, code::USAGE, "Say which cell to choose, or --section next or previous.");
+        }
         let cell = match self.cli_cell(request, index, "cell") {
             Ok(cell) => cell,
             Err(problem) => return no(request, code::USAGE, problem),
@@ -435,6 +457,9 @@ impl UnluminousApp {
                     return no(request, code::USAGE, "kind needs --kind code, markdown or raw.")
                 }
             },
+            "duplicate" => NotebookAction::Duplicate,
+            "comment" => NotebookAction::CommentCells,
+            "tags" => return self.cli_set_the_tags(request, index, cell),
             "move" => return self.cli_move_a_cell(request, index, cell),
             "merge" => return self.cli_merge_cells(request, index, cell),
             "split" => return self.cli_split_a_cell(request, index, cell),
@@ -447,6 +472,37 @@ impl UnluminousApp {
             }
         };
         self.cli_notebook_action(request, what)
+    }
+
+    /// Set a cell's tags to `--tags`, separated by commas. No `--tags` takes them all away.
+    fn cli_set_the_tags(&mut self, request: &Request, index: usize, cell: usize) -> Outcome {
+        let tags = crate::app::notebook::tags_typed(&request.text("tags").unwrap_or_default());
+        let file = self.files.at_mut(index);
+        let Some(found) = file.notebook.as_deref_mut().and_then(|tab| tab.model.cells.get_mut(cell))
+        else {
+            return no(request, code::FAILED, "not a notebook");
+        };
+        found.set_tags(&tags);
+        file.document.note_a_change_outside_the_text();
+        let said = match tags.is_empty() {
+            true => format!("Cell {} has no tags now.", cell + 1),
+            false => format!("Cell {} is tagged {}.", cell + 1, tags.join(", ")),
+        };
+        ok(request, said, json!({ "tags": tags }))
+    }
+
+    /// Debug one cell, as Debug Cell does: under the debugger, stopping at its breakpoints or on its
+    /// first line when it has none. `debug status` and the other `debug` commands carry on from there.
+    fn cli_debug_a_cell(&mut self, request: &Request, index: usize) -> Outcome {
+        let cell = match self.cli_cell(request, index, "cell") {
+            Ok(cell) => cell,
+            Err(problem) => return no(request, code::USAGE, problem),
+        };
+        self.choose_a_cell(index, cell, false);
+        match self.debug_the_chosen_cell(index) {
+            Ok(said) => ok(request, said, json!({ "cell": cell + 1 })),
+            Err(problem) => no(request, code::NOT_APPLICABLE, problem),
+        }
     }
 
     /// Run one notebook action and answer with what it said.

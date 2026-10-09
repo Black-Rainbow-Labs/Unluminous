@@ -1248,7 +1248,7 @@ impl UnluminousApp {
     }
 
     /// Open some HTML a cell produced in a browser tab, written to a file in the temporary folder.
-    fn open_an_output_in_a_browser_tab(&mut self, html: &str) {
+    pub(crate) fn open_an_output_in_a_browser_tab(&mut self, html: &str) {
         let page = match html.trim_start().starts_with("<svg") {
             true => format!(
                 "<!doctype html><meta charset=\"utf-8\"><body style=\"margin:0\">{html}</body>"

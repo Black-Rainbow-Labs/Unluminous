@@ -2448,7 +2448,9 @@ fn notebook_folder() -> std::path::PathBuf {
  "cells": [
   {"cell_type": "markdown", "id": "aa000001", "metadata": {}, "source": ["# Title"]},
   {"cell_type": "code", "execution_count": 1, "id": "aa000002", "metadata": {}, "outputs": [{"name": "stdout", "output_type": "stream", "text": ["2\n"]}], "source": ["print(1 + 1)"]},
-  {"cell_type": "code", "execution_count": null, "id": "aa000003", "metadata": {}, "outputs": [], "source": ["x = 3\n", "x"]}
+  {"cell_type": "code", "execution_count": null, "id": "aa000003", "metadata": {}, "outputs": [], "source": ["x = 3\n", "x"]},
+  {"cell_type": "code", "execution_count": 2, "id": "aa000004", "metadata": {}, "outputs": [{"data": {"text/html": ["<table><thead><tr><th></th><th>a</th><th>b</th></tr></thead><tbody><tr><th>0</th><td>2</td><td>x</td></tr><tr><th>1</th><td>1</td><td>y</td></tr></tbody></table>"], "text/plain": ["   a  b\n0  2  x\n1  1  y"]}, "metadata": {}, "output_type": "display_data"}], "source": ["frame"]},
+  {"cell_type": "code", "execution_count": 3, "id": "aa000005", "metadata": {}, "outputs": [{"ename": "ZeroDivisionError", "evalue": "division by zero", "output_type": "error", "traceback": ["Traceback (most recent call last)", "ZeroDivisionError: division by zero"]}], "source": ["1/0"]}
  ],
  "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"}},
  "nbformat": 4,
@@ -2456,20 +2458,8 @@ fn notebook_folder() -> std::path::PathBuf {
 }
 "##,
             ),
-            (
-                "script.py",
-                "# %%
-x = 1
-
-# %%
-print(x)
-",
-            ),
-            (
-                "readme.md",
-                "# Readme
-",
-            ),
+            ("script.py", "# %%\nx = 1\n\n# %%\nprint(x)\n"),
+            ("readme.md", "# Readme\n"),
         ],
     )
 }
@@ -2494,6 +2484,9 @@ fn drive_a_notebook(coverage: &mut Coverage) {
         "variables",
         "input yes",
         "export html",
+        "view line-numbers",
+        "output traceback --cell 1",
+        "outline",
     ] {
         c.refuses(&mut harness, &format!("notebook {verb}"));
     }
@@ -2508,6 +2501,21 @@ fn drive_a_notebook(coverage: &mut Coverage) {
     c.works(&mut harness, "notebook edit kind --cell 4 --kind markdown");
     c.works(&mut harness, "notebook edit delete --cell 4");
     c.works(&mut harness, "notebook kernel status");
+    c.works(&mut harness, "notebook view collapse-section --cell 1");
+    c.works(&mut harness, "notebook view collapse-section --cell 1");
+    c.refuses(&mut harness, "notebook view sideways");
+    c.works(&mut harness, "notebook output sort --cell 4 --column 1 --descending");
+    c.refuses(&mut harness, "notebook output sort --cell 4 --column 9");
+    c.works(&mut harness, "notebook output traceback --cell 5");
+    c.refuses(&mut harness, "notebook output traceback --cell 2");
+    c.works(&mut harness, "notebook outline");
+    c.works(&mut harness, "notebook outline --go 1");
+    c.refuses(&mut harness, "notebook outline --go 99");
+    c.works(&mut harness, "notebook select --section next");
+    c.refuses(&mut harness, "notebook select --section sideways");
+    c.works(&mut harness, "notebook edit tags --cell 2 --tags slow,parameters");
+    c.works(&mut harness, "notebook edit duplicate --cell 2");
+    c.works(&mut harness, "notebook edit delete --cell 3");
     c.works(&mut harness, "notebook export py --to exported.py");
     c.works(&mut harness, "notebook convert script.py");
     c.refuses(&mut harness, "notebook convert no-such-file.py");

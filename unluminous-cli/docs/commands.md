@@ -2702,7 +2702,7 @@ unluminous-cli notebook cell --id 4f2a9c01 --json
 ### notebook run
 
 ```
-unluminous-cli notebook run [cell] [--id <id>] [--to <cell>] [--all] [--above] [--below] [--wait] [--timeout <ms>] [--path <file>]
+unluminous-cli notebook run [cell] [--id <id>] [--to <cell>] [--all] [--above] [--below] [--wait] [--debug] [--timeout <ms>] [--path <file>]
 ```
 
 Run cells in a live kernel started from the project's Python: one cell, a range, above, below or all. A run stops at the first cell that raises. --wait answers when it has finished, with every cell's outputs.
@@ -2715,6 +2715,7 @@ Run cells in a live kernel started from the project's Python: one cell, a range,
 - `--above` — Run every cell above the cell, not the cell itself.
 - `--below` — Run the cell and every cell below it.
 - `--wait` — Answer when the run has finished, with the outputs.
+- `--debug` — Debug the cell instead: it stops at its breakpoints, or on its first line when it has none, and the debug commands carry on from there.
 - `--timeout <ms>` — How long --wait waits, in milliseconds. Ten minutes when it is left out.
 - `--path <file>` — A notebook to open first.
 
@@ -2764,22 +2765,24 @@ unluminous-cli notebook source --cell 2 df.describe()
 ### notebook edit
 
 ```
-unluminous-cli notebook edit <delete|move|kind|merge|split|copy|cut|paste|clear|clear-all> [--cell <number>] [--id <id>] [--to <number>] [--kind <kind>] [--above] [--path <file>]
+unluminous-cli notebook edit <delete|move|kind|merge|split|copy|cut|paste|duplicate|comment|tags|clear|clear-all> [--cell <number>] [--id <id>] [--to <number>] [--kind <kind>] [--above] [--tags <words>] [--path <file>]
 ```
 
-Change cells as a whole: delete, move, change kind, merge, split at a line, copy, cut, paste, clear outputs. Each is one undo step, as from the Notebook menu.
+Change cells as a whole: delete, move, change kind, merge, split at a line, copy, cut, paste, duplicate, comment out, tag, clear outputs. Each is one undo step, as from the Notebook menu.
 
-- `operation` — delete, move, kind, merge, split, copy, cut, paste, clear or clear-all.
+- `operation` — delete, move, kind, merge, split, copy, cut, paste, duplicate, comment, tags, clear or clear-all.
 
 - `--cell <number>` — The cell, counting from 1. The chosen cell when it is left out.
 - `--id <id>` — The cell's id instead of its number.
 - `--to <number>` — For move, the position it goes to. For merge, the last cell merged. For split, the line of the cell that starts the new cell, counting from 1.
 - `--kind <kind>` — For kind: code, markdown or raw.
 - `--above` — For paste, paste above the cell rather than below it.
+- `--tags <words>` — For tags, the cell's tags separated by commas. Left out, the cell's tags are taken away.
 - `--path <file>` — A notebook to open first.
 
 ```sh
 unluminous-cli notebook edit delete --cell 3
+unluminous-cli notebook edit tags --cell 2 --tags parameters,slow
 unluminous-cli notebook edit move --cell 5 --to 1
 unluminous-cli notebook edit kind --cell 2 --kind markdown
 unluminous-cli notebook edit split --cell 4 --to 3
@@ -2788,20 +2791,79 @@ unluminous-cli notebook edit split --cell 4 --to 3
 ### notebook select
 
 ```
-unluminous-cli notebook select <cell> [--to <cell>] [--edit] [--path <file>]
+unluminous-cli notebook select [cell] [--to <cell>] [--edit] [--section <direction>] [--path <file>]
 ```
 
-Choose cells, which is what every Notebook menu entry and `action run notebook-...` acts on. In command mode unless --edit puts the caret in the cell.
+Choose cells, which is what every Notebook menu entry and `action run notebook-...` acts on. In command mode unless --edit puts the caret in the cell. --section goes to the next or previous Markdown heading.
 
-- `cell` — The first cell to choose, counting from 1.
+- `cell` (optional) — The first cell to choose, counting from 1. Needed unless --section is given.
 
 - `--to <cell>` — Choose every cell from the first through this one.
 - `--edit` — Put the caret at the start of the cell, in edit mode.
+- `--section <direction>` — next or previous: choose the next or previous cell that starts with a heading.
 - `--path <file>` — A notebook to open first.
 
 ```sh
 unluminous-cli notebook select 3
 unluminous-cli notebook select 2 --to 4
+```
+
+### notebook view
+
+```
+unluminous-cli notebook view <collapse|collapse-output|collapse-section|render|line-numbers|variables> [--cell <number>] [--id <id>] [--path <file>]
+```
+
+Show or hide part of a notebook: collapse a cell, its outputs, or the section under a heading, render or edit a Markdown cell, and switch line numbers and the Variables panel. Each one switches back when it is given again.
+
+- `operation` — collapse, collapse-output, collapse-section, render, line-numbers or variables.
+
+- `--cell <number>` — The cell, counting from 1. The chosen cell when it is left out.
+- `--id <id>` — The cell's id instead of its number.
+- `--path <file>` — A notebook to open first.
+
+```sh
+unluminous-cli notebook view collapse-section --cell 1
+unluminous-cli notebook view line-numbers
+```
+
+### notebook output
+
+```
+unluminous-cli notebook output <sort|traceback|scroll|open> [--cell <number>] [--id <id>] [--column <number>] [--descending] [--line <number>] [--output <number>] [--path <file>]
+```
+
+Do what a person does to an output with the pointer: sort a table by a column, open or close a traceback, scroll a tall output to a line, or open an HTML or SVG output in a browser tab.
+
+- `operation` — sort, traceback, scroll or open.
+
+- `--cell <number>` — The cell, counting from 1. The chosen cell when it is left out.
+- `--id <id>` — The cell's id instead of its number.
+- `--column <number>` — For sort, the column, counting from 1. Left out, the table goes back to its own order.
+- `--descending` — For sort, largest first.
+- `--line <number>` — For scroll, the line to put at the top, counting from 1.
+- `--output <number>` — For open, which output, counting from 1. The first when it is left out.
+- `--path <file>` — A notebook to open first.
+
+```sh
+unluminous-cli notebook output sort --cell 4 --column 2 --descending
+unluminous-cli notebook output traceback --cell 6
+```
+
+### notebook outline
+
+```
+unluminous-cli notebook outline [--go <number>] [--path <file>]
+```
+
+The notebook's outline: every Markdown heading, set in by its level, and every code cell by its first line. --go goes to one of them.
+
+- `--go <number>` — Go to this entry of the outline, counting from 1.
+- `--path <file>` — A notebook to open first.
+
+```sh
+unluminous-cli notebook outline
+unluminous-cli notebook outline --go 3
 ```
 
 ### notebook kernel
