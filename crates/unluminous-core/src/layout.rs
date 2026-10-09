@@ -2597,6 +2597,39 @@ mod tests {
     }
 
     #[test]
+    fn a_relayout_after_only_the_room_or_a_replacement_changed_is_the_full_layout() {
+        // A notebook relays out on every new output, changing nothing but these three things on a
+        // few paragraphs, so the kept paragraphs must come out where a full layout puts them.
+        let text = "first line\nsecond\n# a heading that wraps at this width\nfourth\nfifth line";
+        let (rope, spans, mut paragraphs) = fixture(text);
+        let metrics = FixedMetrics::default();
+        let hidden = Hidden::default();
+        let changes: [&dyn Fn(&mut ParagraphStyles); 4] = [
+            &|styles| styles.set(1..2, |style| style.space_above = 24.0),
+            &|styles| styles.set(3..4, |style| style.space_below = 140.0),
+            &|styles| {
+                styles.set(2..3, |style| {
+                    style.replaced = true;
+                    style.min_height = 64.0;
+                })
+            },
+            &|styles| {
+                styles.set(2..3, |style| style.replaced = false);
+                styles.set(1..2, |style| style.space_above = 0.0);
+            },
+        ];
+        let mut previous = layout(&rope, &spans, &paragraphs, &metrics, 120.0);
+        for (step, change) in changes.iter().enumerate() {
+            change(&mut paragraphs);
+            let full = layout_with(&rope, &spans, &paragraphs, &metrics, 120.0, &hidden);
+            let incremental =
+                relayout(previous, &rope, &spans, &paragraphs, &metrics, 120.0, &hidden);
+            assert_eq!(incremental, full, "change {step}");
+            previous = incremental;
+        }
+    }
+
+    #[test]
     fn asking_for_a_height_shorter_than_the_letters_changes_nothing() {
         let (rope, spans, mut paragraphs) = fixture("words");
         let natural =

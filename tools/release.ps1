@@ -390,8 +390,17 @@ if (-not $SkipTests) {
         Invoke-Checked 'node tools\contrast.mjs --check' {
             & node (Join-Path $Repo 'tools\contrast.mjs') --check
         }
-        Invoke-Checked 'cargo test --workspace --exclude unluminous-app' {
-            & cargo test --manifest-path $Manifest --workspace --exclude unluminous-app
+        # The notebook kernel tests skip on a machine with no Python that has ipykernel, which would
+        # let a release pass without starting a kernel at all. A release must prove the kernel code,
+        # so here a missing Python fails them (task-2220).
+        $requiredBefore = $env:UNLUMINOUS_REQUIRE_KERNEL
+        $env:UNLUMINOUS_REQUIRE_KERNEL = '1'
+        try {
+            Invoke-Checked 'cargo test --workspace --exclude unluminous-app' {
+                & cargo test --manifest-path $Manifest --workspace --exclude unluminous-app
+            }
+        } finally {
+            $env:UNLUMINOUS_REQUIRE_KERNEL = $requiredBefore
         }
         Invoke-Checked 'cargo test -p unluminous-app --lib --bins' {
             & cargo test --manifest-path $Manifest -p unluminous-app --lib --bins

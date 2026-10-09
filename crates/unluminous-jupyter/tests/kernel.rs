@@ -20,9 +20,17 @@ const START_LIMIT: Duration = Duration::from_secs(200);
 const RUN_LIMIT: Duration = Duration::from_secs(60);
 
 /// The Python the tests run kernels with, or `None` when the machine has no suitable one.
+///
+/// A run that has to prove the kernel code, such as a release, sets `UNLUMINOUS_REQUIRE_KERNEL=1`,
+/// and then a machine with no such Python fails the test rather than passing without starting
+/// anything.
 fn test_python() -> Option<PathBuf> {
     static CHOSEN: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
-    CHOSEN.get_or_init(choose_python).clone()
+    let chosen = CHOSEN.get_or_init(choose_python).clone();
+    if chosen.is_none() && std::env::var("UNLUMINOUS_REQUIRE_KERNEL").is_ok_and(|value| value == "1") {
+        panic!("UNLUMINOUS_REQUIRE_KERNEL is 1 and no Python with ipykernel and jupyter_client was found");
+    }
+    chosen
 }
 
 /// Choose the Python once for the whole run, so tests that run side by side do not each search.
