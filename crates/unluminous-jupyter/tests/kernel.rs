@@ -664,6 +664,14 @@ impl Session {
         );
         Some(session)
     }
+
+    /// Shut the kernel down and wait for the bridge to say it has. evcxr does not stop by itself when
+    /// the program that started it ends, so a Rust test does not leave that to the kernel being dropped.
+    fn stop(mut self) {
+        self.kernel.shutdown();
+        let stopped = self.wait_for(START_LIMIT, |event| matches!(event, Event::Stopped));
+        assert!(stopped.is_some(), "the kernel did not stop: {:?}", self.log);
+    }
 }
 
 #[test]
@@ -684,6 +692,7 @@ fn a_rust_kernel_keeps_its_variables_between_cells() {
             .any(|event| matches!(event, Event::Stream { text, .. } if text == "x is 5\n")),
         "{printed:?}"
     );
+    session.stop();
 }
 
 #[test]
@@ -699,6 +708,7 @@ fn a_rust_kernel_lists_its_variables_with_their_types() {
     // A variables question is not a cell: nothing it did is reported as the output of one.
     session.kernel.events();
     assert_eq!(session.kernel.state(), &KernelState::Idle);
+    session.stop();
 }
 
 #[test]
@@ -722,4 +732,19 @@ fn a_rust_kernel_completes_after_a_dot_with_the_type_of_each_match() {
     };
     assert_eq!((cursor_start, cursor_end), (2, 2));
     assert!(matches.len() > 20, "{matches:?}");
+    session.stop();
+}
+
+#[test]
+fn a_dropped_rust_kernel_leaves_no_process_behind() {
+    let Some(session) = Session::start_rust() else { return };
+    let pids = [session.kernel.kernel_pid().expect("kernel pid"), session.kernel.bridge_pid()];
+    assert!(pids.iter().all(|pid| process_exists(*pid)));
+    // The way a closed tab and a closing window let a kernel go: dropped, then waited for.
+    drop(session);
+    unluminous_jupyter::kernel::wait_for_kernels_to_stop();
+    assert!(
+        wait_until_gone(&pids, Duration::from_secs(10)),
+        "the bridge or evcxr is still running: {pids:?}"
+    );
 }

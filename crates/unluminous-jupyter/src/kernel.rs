@@ -45,7 +45,12 @@ const BRIDGE: &str = include_str!("kernel/bridge.py");
 const STDERR_LINES: usize = 50;
 
 /// How long dropping a [`Kernel`] waits for the bridge to shut the kernel down before it stops both.
-const SHUTDOWN_GRACE: Duration = Duration::from_secs(4);
+///
+/// Longer than the five seconds jupyter_client gives a kernel to exit before it kills it, so the bridge
+/// finishes its own shutdown, which ends with the kernel's whole process tree stopped, rather than being
+/// cut off half way through it. evcxr, the Rust kernel, is slow to exit and does not watch its parent,
+/// so a bridge cut off there left it running. `task-2229`.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(8);
 
 /// A function the reader thread calls to have the window drawn again.
 pub type Waker = Arc<dyn Fn() + Send + Sync>;
@@ -411,7 +416,7 @@ impl Kernel {
 }
 
 impl Drop for Kernel {
-    /// Ask the bridge to shut the kernel down, and leave the waiting to a thread: up to four seconds
+    /// Ask the bridge to shut the kernel down, and leave the waiting to a thread: up to eight seconds
     /// for the bridge to go, then the bridge and the kernel are stopped. Dropping a kernel happens on
     /// the window's frame, which must not wait that long. [`wait_for_kernels_to_stop`] waits for
     /// every such thread, for a program that is about to exit.
@@ -432,7 +437,7 @@ impl Drop for Kernel {
 /// The threads stopping kernels that were dropped, for [`wait_for_kernels_to_stop`].
 static STOPPING: Mutex<Vec<std::thread::JoinHandle<()>>> = Mutex::new(Vec::new());
 
-/// Wait up to four seconds for the bridge to end by itself, then stop it and the kernel.
+/// Wait up to eight seconds for the bridge to end by itself, then stop it and the kernel.
 fn stop_the_bridge(mut child: Child, kernel_pid: Option<u32>) {
     let deadline = Instant::now() + SHUTDOWN_GRACE;
     while Instant::now() < deadline {

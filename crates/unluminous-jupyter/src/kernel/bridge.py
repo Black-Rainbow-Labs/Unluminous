@@ -375,6 +375,7 @@ def shutdown(cmd):
     global expected_end
     expected_end = True
     stopping.set()
+    pid = kernel_pid()
     try:
         kc.stop_channels()
     except Exception:
@@ -386,8 +387,27 @@ def shutdown(cmd):
             km.shutdown_kernel(now=True)
         except Exception:
             pass
+    kill_tree(pid)
     emit(event="stopped", request=cmd.get("id"))
     os._exit(0)
+
+
+def kill_tree(pid):
+    """Stop whatever is left of the kernel and the processes it started. ipykernel exits by itself once
+    it has been asked to, but evcxr, the Rust kernel, runs each cell in a child process and does not
+    watch for its parent going, so a kernel jupyter_client gave up waiting for could be left running
+    with nobody to stop it."""
+    if not pid:
+        return
+    try:
+        if os.name == "nt":
+            import subprocess
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, creationflags=0x08000000)
+        else:
+            import signal
+            os.kill(pid, signal.SIGKILL)
+    except Exception:
+        pass
 
 
 def handle(cmd):
