@@ -6,7 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.66.3 — 2026-10-09
+## Unreleased
+
+- Stop writing to disk on every frame, keep tab layouts, and shrink the graphics device (`task-2218`)
+- Lay a line out with one copy, and hand layout a run's ASCII advances at once (`task-2218`)
+- The TDD with the measurements, two window tests, and the rules in CLAUDE.md (`task-2218`)
+
+## 0.66.3 — 2026-10-08
 
 - Crisper depth, calmer chosen states, and the chat that follows the theme (`task-2219`)
 - Accept the pictures of the new depth, rail, title bar and chat (`task-2219`)
