@@ -16,6 +16,8 @@ bumps the release script makes are left out, because they are the boundaries rat
 - Accept the pictures with the notebook icon, the drag handle and the Notebooks settings section (`task-2220`)
 - Split the long notebook functions, keep the tab in its file while painting, and share the cell lookup (`task-2220`)
 - A restart waits for both kernel channels, and notebook status reports tags, hidden cells and the kernel's process (`task-2220`)
+- The changelog lists the review fixes as unreleased (`task-2220`)
+- The debug tests wait for the stack to be read before asking where the debugger stopped (`task-2220`)
 
 ## 0.67.0 — 2026-10-09
 
