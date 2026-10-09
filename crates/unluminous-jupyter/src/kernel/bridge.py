@@ -76,6 +76,14 @@ pending_lock = threading.Lock()
 expected_end = False  # true while a restart or shutdown is requested, so the watchdog stays quiet
 stopping = threading.Event()
 waiting_ready = threading.Event()
+# After a restart the kernel is ready only once both channels have answered one of our kernel_info
+# requests: the shell with its reply, and IOPub with the status messages around it. The IOPub
+# subscription reconnects on its own, and a status published before it has reconnected is lost, so
+# a kernel declared ready on the shell reply alone could run the next cell with nobody hearing it
+# finish. jupyter_client's own wait_for_ready waits for both for the same reason.
+restart_shell = threading.Event()
+restart_iopub = threading.Event()
+restart_info = {}
 died_sent = False
 
 
@@ -125,6 +133,8 @@ def relay_iopub(msg):
     if kind == "status":
         if origin in (None, "execute"):
             emit(event="status", state=c.get("execution_state"), request=request)
+        elif origin == "restart":
+            restart_iopub.set()
     elif kind == "execute_input":
         emit(event="execute_input", request=request, execution_count=c.get("execution_count"))
     elif kind == "stream":
@@ -181,8 +191,8 @@ def relay_shell(msg):
         emit(event=kind, request=request, status=c.get("status"), indent=c.get("indent", ""))
     elif kind == "kernel_info_reply":
         if origin == "restart" and waiting_ready.is_set():
-            waiting_ready.clear()
-            emit(event="restarted", info=c, pid=kernel_pid())
+            restart_info["content"] = c
+            restart_shell.set()
 
 
 def relay_stdin(msg):
@@ -279,7 +289,7 @@ def start(cmd):
 
 
 def restart(cmd):
-    """Restart the kernel and report when it answers kernel_info."""
+    """Restart the kernel and report when both its channels answer kernel_info."""
     global expected_end, died_sent
     expected_end = True
     try:
@@ -289,16 +299,20 @@ def restart(cmd):
         emit(event="failed", message="restart failed: %s" % problem, missing=None)
         return
     died_sent = False
+    restart_shell.clear()
+    restart_iopub.clear()
     waiting_ready.set()
     deadline = time.time() + 60
-    while waiting_ready.is_set() and time.time() < deadline:
+    while not (restart_shell.is_set() and restart_iopub.is_set()) and time.time() < deadline:
         send_shell(cmd.get("id"), "restart", "kernel_info_request", {})
         for _ in range(20):
-            if not waiting_ready.is_set():
+            if restart_shell.is_set() and restart_iopub.is_set():
                 break
             time.sleep(0.1)
-    if waiting_ready.is_set():
-        waiting_ready.clear()
+    waiting_ready.clear()
+    if restart_shell.is_set() and restart_iopub.is_set():
+        emit(event="restarted", info=restart_info.get("content", {}), pid=kernel_pid())
+    else:
         emit(event="died", reason="the kernel did not answer after a restart")
     expected_end = False
 

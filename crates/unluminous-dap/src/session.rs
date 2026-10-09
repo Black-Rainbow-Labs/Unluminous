@@ -1466,7 +1466,8 @@ mod tests {
         let mut session = Session::new(json!({ "request": "attach", "connect": { "port": 5678 } }));
         let opening = session.begin();
         let initialize = seq_of(&opening, "initialize");
-        let configured = session.on_message(response(initialize, "initialize", full_capabilities()));
+        let configured =
+            session.on_message(response(initialize, "initialize", full_capabilities()));
         let mut sent = commands(&opening);
         sent.extend(commands(&configured));
         assert!(sent.iter().any(|name| name == "attach"), "sent {sent:?}");

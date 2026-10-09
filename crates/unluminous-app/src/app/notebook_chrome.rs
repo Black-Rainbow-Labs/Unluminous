@@ -593,19 +593,8 @@ mod tests {
     fn the_outline_lists_each_heading_by_its_level_and_each_code_cell_under_it() {
         use unluminous_jupyter::nbformat::Cell;
         let cells = vec![
-            Cell::new(
-                CellKind::Markdown,
-                "a",
-                "# Load
-some words
-## Clean",
-            ),
-            Cell::new(
-                CellKind::Code,
-                "b",
-                "
-import pandas as pd",
-            ),
+            Cell::new(CellKind::Markdown, "a", "# Load\nsome words\n## Clean"),
+            Cell::new(CellKind::Code, "b", "\nimport pandas as pd"),
             Cell::new(CellKind::Raw, "c", "raw"),
         ];
         let rows = outline_rows(&cells);

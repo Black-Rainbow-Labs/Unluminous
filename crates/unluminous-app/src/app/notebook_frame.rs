@@ -106,7 +106,6 @@ struct Place {
 fn place_of(
     layout: &Layout,
     span: &CellSpan,
-    room: &Room,
     shape: Shape,
     metrics: Metrics,
     last: bool,
@@ -127,7 +126,6 @@ fn place_of(
     let tail = if last { metrics.tail() } else { 0.0 };
     let first_text = first.text_top();
     let text_bottom = last_line.text_top() + last_line.text_height();
-    let _ = room;
     Some(Place {
         top: first_text - pad,
         text_bottom,
@@ -512,8 +510,7 @@ impl UnluminousApp {
             let shape = tab.shape(cell);
             let room =
                 tab.id_of(cell).and_then(|id| tab.rooms.get(&id).copied()).unwrap_or_default();
-            let Some(place) = place_of(layout, span, &room, shape, metrics, cell + 1 == count)
-            else {
+            let Some(place) = place_of(layout, span, shape, metrics, cell + 1 == count) else {
                 continue;
             };
             let block = Rect::from_min_max(
@@ -921,7 +918,7 @@ fn locate_a_cell(
     let id = tab.id_of(cell)?;
     let room = tab.rooms.get(&id).copied().unwrap_or_default();
     let last = cell + 1 == tab.len();
-    let place = place_of(layout, span, &room, shape, frame.metrics, last)?;
+    let place = place_of(layout, span, shape, frame.metrics, last)?;
     let top = frame.origin.y + place.top - room.above + frame.metrics.pad();
     let bottom = frame.origin.y + place.bottom;
     if bottom < frame.area.top() || top > frame.area.bottom() {

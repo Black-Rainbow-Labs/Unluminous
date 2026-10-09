@@ -306,7 +306,10 @@ fn outputs_go_with_their_cell_when_it_is_moved_merged_or_split() {
     did(&mut harness, "notebook edit move --cell 2 --to 5");
     let moved = did(&mut harness, "notebook cell 5");
     assert!(moved["outputText"].as_str().unwrap().contains("quarters: 4"), "{moved}");
-    assert!(did(&mut harness, "notebook cell 2")["source"].as_str().unwrap().contains("sys.stderr"));
+    assert!(did(&mut harness, "notebook cell 2")["source"]
+        .as_str()
+        .unwrap()
+        .contains("sys.stderr"));
     // Cells 3 and 4 are now the error and the plot: merged, the first one's outputs are kept.
     did(&mut harness, "notebook edit merge --cell 3 --to 4");
     let merged = did(&mut harness, "notebook cell 3");
@@ -327,7 +330,13 @@ fn outputs_go_with_their_cell_when_it_is_moved_merged_or_split() {
 fn a_collapsed_section_hides_its_cells_until_it_is_opened_again() {
     let (_, mut harness) = a_window_on(
         "unluminous-notebook-section",
-        &[("markdown", "# One"), ("code", "1"), ("code", "2"), ("markdown", "# Two"), ("code", "3")],
+        &[
+            ("markdown", "# One"),
+            ("code", "1"),
+            ("code", "2"),
+            ("markdown", "# Two"),
+            ("code", "3"),
+        ],
     );
     did(&mut harness, "notebook view collapse-section --cell 2");
     steady(&mut harness);
@@ -344,21 +353,26 @@ fn a_collapsed_section_hides_its_cells_until_it_is_opened_again() {
     did(&mut harness, "notebook view collapse-section --cell 1");
     steady(&mut harness);
     let status = did(&mut harness, "notebook status");
-    assert!(status["cells"].as_array().unwrap().iter().all(|cell| cell["hidden"] == false), "{status}");
+    assert!(
+        status["cells"].as_array().unwrap().iter().all(|cell| cell["hidden"] == false),
+        "{status}"
+    );
 }
 
 #[test]
 fn tags_are_shown_saved_and_read_back() {
     let (folder, mut harness) =
         a_window_on("unluminous-notebook-tags", &[("code", "x = 1"), ("code", "x")]);
-    did(&mut harness, "notebook edit tags --cell 1 --tags parameters, slow");
+    did(&mut harness, "notebook edit tags --cell 1 --tags parameters,slow");
     did(&mut harness, "tab save");
-    let written: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(folder.join("book.ipynb")).expect("read it"),
-    )
-    .expect("JSON");
+    let written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(folder.join("book.ipynb")).expect("read it"))
+            .expect("JSON");
     assert_eq!(written["cells"][0]["metadata"]["tags"], serde_json::json!(["parameters", "slow"]));
-    assert_eq!(did(&mut harness, "notebook status")["cells"][0]["tags"], serde_json::json!(["parameters", "slow"]));
+    assert_eq!(
+        did(&mut harness, "notebook status")["cells"][0]["tags"],
+        serde_json::json!(["parameters", "slow"])
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -369,7 +383,8 @@ fn tags_are_shown_saved_and_read_back() {
 /// prove the kernel code cannot pass by skipping it.
 fn kernel_python() -> Option<std::path::PathBuf> {
     let found = a_python_with_ipykernel();
-    if found.is_none() && std::env::var("UNLUMINOUS_REQUIRE_KERNEL").is_ok_and(|value| value == "1") {
+    if found.is_none() && std::env::var("UNLUMINOUS_REQUIRE_KERNEL").is_ok_and(|value| value == "1")
+    {
         panic!("UNLUMINOUS_REQUIRE_KERNEL is 1 and no Python with ipykernel and jupyter_client was found");
     }
     if found.is_none() {
@@ -397,13 +412,17 @@ fn state_of(harness: &mut Harness<'static, UnluminousApp>, number: usize) -> Str
 
 #[test]
 fn restart_and_run_all_runs_every_cell_again_in_a_new_kernel() {
-    let Some((_, mut harness)) =
-        a_kernel_window_on("unluminous-notebook-restart-run-all", &[("code", "x = 20"), ("code", "x + 1")])
-    else {
+    let Some((_, mut harness)) = a_kernel_window_on(
+        "unluminous-notebook-restart-run-all",
+        &[("code", "x = 20"), ("code", "x + 1")],
+    ) else {
         return;
     };
     did(&mut harness, "notebook run --all");
-    assert!(wait_for(&mut harness, |harness| state_of(harness, 2) == "ok"), "the first run finished");
+    assert!(
+        wait_for(&mut harness, |harness| state_of(harness, 2) == "ok"),
+        "the first run finished"
+    );
     did(&mut harness, "action run notebook-restart-run-all");
     let again = wait_for(&mut harness, |harness| {
         let status = did(harness, "notebook status");
@@ -417,7 +436,10 @@ fn restart_and_run_all_runs_every_cell_again_in_a_new_kernel() {
 
 #[test]
 fn interrupting_a_cell_skips_the_cells_queued_behind_it() {
-    let slow = "import time\nfor _ in range(1200):\n    time.sleep(0.05)";
+    // It says when it has started, because an interrupt that reaches the kernel before the cell is
+    // executing has nothing to stop, in Jupyter as here.
+    let slow =
+        "import time\nprint('started', flush=True)\nfor _ in range(1200):\n    time.sleep(0.05)";
     let Some((_, mut harness)) = a_kernel_window_on(
         "unluminous-notebook-interrupt",
         &[("code", slow), ("code", "print('after')")],
@@ -425,7 +447,17 @@ fn interrupting_a_cell_skips_the_cells_queued_behind_it() {
         return;
     };
     did(&mut harness, "notebook run --all");
-    assert!(wait_for(&mut harness, |harness| state_of(harness, 1) == "running"), "cell 1 started");
+    let started = wait_for(&mut harness, |harness| {
+        did(harness, "notebook cell 1")["outputText"]
+            .as_str()
+            .is_some_and(|text| text.contains("started"))
+    });
+    assert!(
+        started,
+        "cell 1 started: {}\n{}",
+        did(&mut harness, "notebook cell 1"),
+        did(&mut harness, "notebook status")
+    );
     did(&mut harness, "notebook kernel interrupt");
     let stopped = wait_for(&mut harness, |harness| state_of(harness, 1) == "error");
     let cell = did(&mut harness, "notebook cell 1");
@@ -445,9 +477,12 @@ fn a_kernel_killed_from_outside_fails_the_running_cell_and_says_so_in_it() {
     };
     did(&mut harness, "notebook run 1");
     assert!(wait_for(&mut harness, |harness| state_of(harness, 1) == "running"), "cell 1 started");
-    let pid = did(&mut harness, "notebook kernel status")["pid"].as_u64().expect("the kernel's pid");
+    let pid =
+        did(&mut harness, "notebook kernel status")["pid"].as_u64().expect("the kernel's pid");
     let killed = match cfg!(windows) {
-        true => std::process::Command::new("taskkill").args(["/PID", &pid.to_string(), "/F"]).output(),
+        true => {
+            std::process::Command::new("taskkill").args(["/PID", &pid.to_string(), "/F"]).output()
+        }
         false => std::process::Command::new("kill").args(["-9", &pid.to_string()]).output(),
     };
     assert!(killed.is_ok_and(|output| output.status.success()), "the kernel was killed");
@@ -479,8 +514,12 @@ fn a_python_without_ipykernel_is_reported_with_what_is_missing() {
     });
     let kernel = did(&mut harness, "notebook kernel status");
     assert!(reported, "{kernel}");
-    assert!(kernel["problem"].as_str().unwrap_or_default().contains("ipykernel"), "{kernel}");
-    assert!(kernel["missing"] == "ipykernel", "the install button is offered: {kernel}");
+    // A Python with neither package lacks jupyter_client first, because the bridge imports it
+    // before it starts a kernel. Installing ipykernel installs jupyter_client with it.
+    let missing = kernel["missing"].as_str().unwrap_or_default().to_owned();
+    assert!(missing == "ipykernel" || missing == "jupyter_client", "{kernel}");
+    assert!(kernel["problem"].as_str().unwrap_or_default().contains(&missing), "{kernel}");
+    std::fs::remove_dir_all(&bare).ok();
 }
 
 #[test]
@@ -499,15 +538,22 @@ fn the_first_debug_cell_on_a_kernel_stops_in_the_cell_and_stopping_leaves_the_ke
     assert!(paused, "the debugger stopped: {debug}");
     assert_eq!(debug["line"], 1, "on the cell's first line: {debug}");
     did(&mut harness, "debug stop");
-    let ended = wait_for(&mut harness, |harness| did(harness, "debug status")["running"] != true
-        || did(harness, "debug status")["state"] == "ended");
+    let ended = wait_for(&mut harness, |harness| {
+        did(harness, "debug status")["running"] != true
+            || did(harness, "debug status")["state"] == "ended"
+    });
     assert!(ended, "{}", did(&mut harness, "debug status"));
     // The kernel and its variables are still there: cell 2 runs and reads `a`.
     let kernel = did(&mut harness, "notebook kernel status");
-    assert!(kernel["state"] == "idle" || kernel["state"] == "busy", "the kernel is alive: {kernel}");
+    assert!(
+        kernel["state"] == "idle" || kernel["state"] == "busy",
+        "the kernel is alive: {kernel}"
+    );
     did(&mut harness, "notebook run 2");
     let ran = wait_for(&mut harness, |harness| {
-        did(harness, "notebook cell 2")["outputText"].as_str().is_some_and(|text| text.contains("10"))
+        did(harness, "notebook cell 2")["outputText"]
+            .as_str()
+            .is_some_and(|text| text.contains("10"))
     });
     assert!(ran, "{}", did(&mut harness, "notebook cell 2"));
     did(&mut harness, "notebook kernel shut-down");

@@ -27,7 +27,9 @@ const RUN_LIMIT: Duration = Duration::from_secs(60);
 fn test_python() -> Option<PathBuf> {
     static CHOSEN: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     let chosen = CHOSEN.get_or_init(choose_python).clone();
-    if chosen.is_none() && std::env::var("UNLUMINOUS_REQUIRE_KERNEL").is_ok_and(|value| value == "1") {
+    if chosen.is_none()
+        && std::env::var("UNLUMINOUS_REQUIRE_KERNEL").is_ok_and(|value| value == "1")
+    {
         panic!("UNLUMINOUS_REQUIRE_KERNEL is 1 and no Python with ipykernel and jupyter_client was found");
     }
     chosen

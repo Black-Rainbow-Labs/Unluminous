@@ -869,10 +869,7 @@ mod tests {
 
     #[test]
     fn a_byte_belongs_to_the_cell_it_is_in_and_none_past_the_last_cell() {
-        let text = "# %% id=a
-one
-# %% id=b
-two";
+        let text = "# %% id=a\none\n# %% id=b\ntwo";
         let spans = spans(text);
         assert_eq!(cell_at_byte(&spans, 0), Some(0));
         assert_eq!(cell_at_byte(&spans, text.find("# %% id=b").unwrap()), Some(1));

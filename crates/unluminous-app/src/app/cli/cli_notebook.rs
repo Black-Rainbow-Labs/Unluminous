@@ -125,41 +125,21 @@ impl UnluminousApp {
         )
     }
 
-    /// What `status` and `kernel status` say about the kernel.
+    /// What `status` and `kernel status` say about the kernel: its state, why it failed or died,
+    /// the Python and kernelspec, the kernel's process id, what it lacks when it could not start,
+    /// and what is queued and running.
     fn cli_kernel_json(&self, index: usize) -> Value {
         let Some(tab) = self.files.at(index).notebook.as_deref() else { return Value::Null };
-        let (state, problem) = match &tab.kernel {
-            KernelSlot::NotStarted => ("not started", None),
-            KernelSlot::Failed { reason, .. } => ("failed", Some(reason.clone())),
+        let (state, problem) = kernel_state(&tab.kernel);
+        let (language, pid) = match &tab.kernel {
             KernelSlot::Live(kernel) => (
-                match kernel.state() {
-                    unluminous_jupyter::kernel::KernelState::Starting => "starting",
-                    unluminous_jupyter::kernel::KernelState::Idle => "idle",
-                    unluminous_jupyter::kernel::KernelState::Busy => "busy",
-                    unluminous_jupyter::kernel::KernelState::Restarting => "restarting",
-                    unluminous_jupyter::kernel::KernelState::Stopped => "shut down",
-                    unluminous_jupyter::kernel::KernelState::Dead(_) => "dead",
-                },
-                match kernel.state() {
-                    // What the bridge wrote to its error output is what says why, so it is part of
-                    // the answer rather than something to go looking for.
-                    unluminous_jupyter::kernel::KernelState::Dead(why) => Some(
-                        format!(
-                            "{why}
-{}",
-                            kernel.stderr_tail()
-                        )
-                        .trim()
-                        .to_owned(),
-                    ),
-                    _ => None,
-                },
+                kernel.language().map(|info| format!("{} {}", info.name, info.version)),
+                kernel.kernel_pid(),
             ),
+            _ => (None, None),
         };
-        let language = match &tab.kernel {
-            KernelSlot::Live(kernel) => {
-                kernel.language().map(|info| format!("{} {}", info.name, info.version))
-            }
+        let missing = match &tab.kernel {
+            KernelSlot::Failed { missing, .. } => missing.clone(),
             _ => None,
         };
         json!({
@@ -168,6 +148,8 @@ impl UnluminousApp {
             "python": tab.python.as_ref().map(|path| path.to_string_lossy().to_string()),
             "kernelspec": tab.kernel_name.clone().or_else(|| tab.model.metadata.get("kernelspec").and_then(|spec| spec.get("name")).and_then(Value::as_str).map(str::to_owned)),
             "language": language,
+            "pid": pid,
+            "missing": missing,
             "queued": tab.queue.len(),
             "running": tab.running.as_ref().and_then(|running| tab.index_of(&running.cell)).map(|at| at + 1),
         })
@@ -204,6 +186,7 @@ impl UnluminousApp {
                 "executionCount": found.execution_count,
                 "state": state,
                 "source": found.source,
+                "tags": found.tags(),
                 "outputs": outputs,
                 "outputText": text,
             }),
@@ -816,8 +799,31 @@ fn status_of_a_cell(tab: &NotebookTab, at: usize, cell: &Cell, chosen: bool) -> 
         "finishedAt": finished.as_ref().map(|(_, clock)| clock.clone()),
         "collapsed": tab.collapsed.contains(&cell.id),
         "outputCollapsed": tab.outputs_collapsed.contains(&cell.id),
+        "tags": cell.tags(),
+        "hidden": tab.in_a_collapsed_section(at),
+        "sectionCollapsed": tab.sections_collapsed.contains(&cell.id),
     });
     (row, data)
+}
+
+/// A kernel's state in one or two words, and why it failed or died when it did. For a kernel that
+/// died, what the bridge wrote to its error output is part of the answer, because it says why.
+fn kernel_state(slot: &KernelSlot) -> (&'static str, Option<String>) {
+    use unluminous_jupyter::kernel::KernelState;
+    match slot {
+        KernelSlot::NotStarted => ("not started", None),
+        KernelSlot::Failed { reason, .. } => ("failed", Some(reason.clone())),
+        KernelSlot::Live(kernel) => match kernel.state() {
+            KernelState::Starting => ("starting", None),
+            KernelState::Idle => ("idle", None),
+            KernelState::Busy => ("busy", None),
+            KernelState::Restarting => ("restarting", None),
+            KernelState::Stopped => ("shut down", None),
+            KernelState::Dead(why) => {
+                ("dead", Some(format!("{why}\n{}", kernel.stderr_tail()).trim().to_owned()))
+            }
+        },
+    }
 }
 
 /// The ids of the code cells among the cells `cells` of `tab`, which are the ones a run sends.

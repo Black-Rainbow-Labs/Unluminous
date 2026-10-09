@@ -26,7 +26,9 @@ impl UnluminousApp {
                 return no(
                     request,
                     code::USAGE,
-                    format!("{other} is not something to show or hide. See `notebook view --help`."),
+                    format!(
+                        "{other} is not something to show or hide. See `notebook view --help`."
+                    ),
                 )
             }
         };
@@ -62,7 +64,9 @@ impl UnluminousApp {
             "traceback" => self.toggle_a_traceback(index, cell),
             "scroll" => self.scroll_an_output(request, index, cell),
             "open" => self.open_an_output(request, index, cell),
-            other => Err(format!("{other} is not something to do to an output. See `notebook output --help`.")),
+            other => Err(format!(
+                "{other} is not something to do to an output. See `notebook output --help`."
+            )),
         };
         match done {
             Ok(said) => ok(request, said, json!({ "cell": cell + 1 })),
@@ -72,7 +76,12 @@ impl UnluminousApp {
 
     /// Sort the table output of cell `cell` by `--column`, counting from 1, or put it back in its
     /// own order when no column is given.
-    fn sort_an_output(&mut self, request: &Request, index: usize, cell: usize) -> Result<String, String> {
+    fn sort_an_output(
+        &mut self,
+        request: &Request,
+        index: usize,
+        cell: usize,
+    ) -> Result<String, String> {
         let tab = self.files.at_mut(index).notebook.as_deref_mut().ok_or("not a notebook")?;
         let found = tab.model.cells.get(cell).ok_or("There is no such cell.")?;
         let columns = found
@@ -119,12 +128,21 @@ impl UnluminousApp {
     }
 
     /// Scroll cell `cell`'s outputs so `--line`, counting from 1, is at their top.
-    fn scroll_an_output(&mut self, request: &Request, index: usize, cell: usize) -> Result<String, String> {
-        let line = request.whole("line").filter(|line| *line >= 1).ok_or("scroll needs --line, counting from 1.")?;
+    fn scroll_an_output(
+        &mut self,
+        request: &Request,
+        index: usize,
+        cell: usize,
+    ) -> Result<String, String> {
+        let line = request
+            .whole("line")
+            .filter(|line| *line >= 1)
+            .ok_or("scroll needs --line, counting from 1.")?;
         let size = self.files.at(index).sized_at.unwrap_or(self.settings.font_size);
         let tab = self.files.at_mut(index).notebook.as_deref_mut().ok_or("not a notebook")?;
         let id = tab.id_of(cell).ok_or("There is no such cell.")?;
-        let drawn = tab.drawn.get(&id).ok_or(format!("Cell {} has no outputs drawn yet.", cell + 1))?;
+        let drawn =
+            tab.drawn.get(&id).ok_or(format!("Cell {} has no outputs drawn yet.", cell + 1))?;
         let metrics = crate::components::notebook_view::Metrics { size, scroll: true };
         let shown = crate::components::notebook_view::shown_height(drawn, metrics);
         let furthest = (drawn.height - shown).max(0.0);
@@ -132,20 +150,28 @@ impl UnluminousApp {
         tab.output_scroll.insert(id, wanted.min(furthest));
         Ok(match furthest > 0.0 {
             true => format!("The outputs of cell {} are scrolled to line {line}.", cell + 1),
-            false => format!("The outputs of cell {} all fit, so there is nothing to scroll.", cell + 1),
+            false => {
+                format!("The outputs of cell {} all fit, so there is nothing to scroll.", cell + 1)
+            }
         })
     }
 
     /// Open output `--output` of cell `cell`, counting from 1, in a browser tab. Only an HTML or SVG
     /// output has a page to open.
-    fn open_an_output(&mut self, request: &Request, index: usize, cell: usize) -> Result<String, String> {
+    fn open_an_output(
+        &mut self,
+        request: &Request,
+        index: usize,
+        cell: usize,
+    ) -> Result<String, String> {
         let at = request.whole("output").unwrap_or(1);
         let tab = self.files.at(index).notebook.as_deref().ok_or("not a notebook")?;
         let found = tab.model.cells.get(cell).ok_or("There is no such cell.")?;
-        let output = found
-            .outputs
-            .get(at.saturating_sub(1))
-            .ok_or(format!("Cell {} has {} outputs.", cell + 1, found.outputs.len()))?;
+        let output = found.outputs.get(at.saturating_sub(1)).ok_or(format!(
+            "Cell {} has {} outputs.",
+            cell + 1,
+            found.outputs.len()
+        ))?;
         let page = output
             .mime_text("text/html")
             .or_else(|| output.mime_text("image/svg+xml"))
@@ -163,17 +189,28 @@ impl UnluminousApp {
         };
         let lines: Vec<String> = rows
             .iter()
-            .map(|(cell, depth, words)| format!("{}cell {}: {words}", "  ".repeat(*depth), cell + 1))
+            .map(|(cell, depth, words)| {
+                format!("{}cell {}: {words}", "  ".repeat(*depth), cell + 1)
+            })
             .collect();
         let data: Vec<Value> = rows
             .iter()
             .map(|(cell, depth, words)| json!({ "cell": cell + 1, "depth": depth, "text": words }))
             .collect();
         let Some(go) = request.whole("go") else {
-            return super::lines(request, format!("{} entries", rows.len()), lines, json!({ "outline": data }));
+            return super::lines(
+                request,
+                format!("{} entries", rows.len()),
+                lines,
+                json!({ "outline": data }),
+            );
         };
         let Some((cell, _, words)) = go.checked_sub(1).and_then(|at| rows.get(at)) else {
-            return no(request, code::USAGE, format!("The outline has {} entries, counting from 1.", rows.len()));
+            return no(
+                request,
+                code::USAGE,
+                format!("The outline has {} entries, counting from 1.", rows.len()),
+            );
         };
         self.choose_a_cell(index, *cell, false);
         ok(request, format!("Went to cell {}: {words}.", cell + 1), json!({ "cell": cell + 1 }))
