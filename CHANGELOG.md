@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Rust notebooks, completion from the kernel, and the kernel picker fix (`task-2229`)
+- Rustfmt the notebook completion and Rust kernel changes (`task-2229`)
+
 ## 0.68.1 — 2026-10-09
 
 - Action run answers with a message only when the action set one (`task-2220`)
