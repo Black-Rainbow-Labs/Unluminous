@@ -6,7 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.66.2 — 2026-10-09
+## Unreleased
+
+- Crisper depth, calmer chosen states, and the chat that follows the theme (`task-2219`)
+- Accept the pictures of the new depth, rail, title bar and chat (`task-2219`)
+
+## 0.66.2 — 2026-10-08
 
 - Text in a zoomed node or modal is drawn one texel to one pixel (`task-2216`)
 - Format the window pixel test (`task-2216`)
