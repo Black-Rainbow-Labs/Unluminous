@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Text in a zoomed node or modal is drawn one texel to one pixel (`task-2216`)
+- Format the window pixel test (`task-2216`)
+
 ## 0.66.1 — 2026-10-08
 
 - The light theme's comments are a step darker, so they read over a picture (`task-2215`)
