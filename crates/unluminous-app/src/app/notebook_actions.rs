@@ -68,6 +68,14 @@ pub enum NotebookAction {
     PreviousSection,
     NextSection,
     CommentCells,
+    /// Open the toolbar's outline of headings and cells.
+    ShowOutline,
+    /// Collapse the section the chosen cell is in, under its heading, or open it again.
+    CollapseSection,
+    /// Run every code cell of the section the chosen cell is in.
+    RunSection,
+    /// Edit the chosen cell's tags, in a field on the cell.
+    EditTags,
 }
 
 /// Every action, in the order the menu and `action list` give them. Used by the names' test.
@@ -126,6 +134,10 @@ pub const ALL: &[NotebookAction] = &[
     NotebookAction::PreviousSection,
     NotebookAction::NextSection,
     NotebookAction::CommentCells,
+    NotebookAction::ShowOutline,
+    NotebookAction::CollapseSection,
+    NotebookAction::RunSection,
+    NotebookAction::EditTags,
 ];
 
 impl NotebookAction {
@@ -181,6 +193,10 @@ impl NotebookAction {
             NotebookAction::PreviousSection => "previous-section".into(),
             NotebookAction::NextSection => "next-section".into(),
             NotebookAction::CommentCells => "comment-cells".into(),
+            NotebookAction::ShowOutline => "show-outline".into(),
+            NotebookAction::CollapseSection => "collapse-section".into(),
+            NotebookAction::RunSection => "run-section".into(),
+            NotebookAction::EditTags => "edit-tags".into(),
         }
     }
 
@@ -226,6 +242,8 @@ pub fn notebook_menu(state: &MenuState) -> Option<Menu> {
     };
     let running = state.notebook_kernel_running;
     let entries = vec![
+        item("Notebook Outline", NotebookAction::ShowOutline),
+        Entry::Separator,
         keyed("Run Cell", NotebookAction::RunCell, enter(true, false, false)),
         keyed(
             "Run Cell and Select Below",
@@ -240,6 +258,7 @@ pub fn notebook_menu(state: &MenuState) -> Option<Menu> {
         keyed("Run All", NotebookAction::RunAll, enter(true, true, true)),
         item("Run All Above", NotebookAction::RunAbove),
         item("Run Cell and Below", NotebookAction::RunCellAndBelow),
+        item("Run Section", NotebookAction::RunSection),
         keyed(
             "Debug Cell",
             NotebookAction::DebugCell,
@@ -321,7 +340,9 @@ fn cell_entries() -> Vec<Entry> {
         Entry::Separator,
         item("Collapse Cell", NotebookAction::CollapseCell),
         item("Collapse Output", NotebookAction::CollapseOutput),
+        item("Collapse Section", NotebookAction::CollapseSection),
         item("Comment Out Cells", NotebookAction::CommentCells),
+        item("Edit Tags", NotebookAction::EditTags),
     ]
 }
 
@@ -359,6 +380,11 @@ impl UnluminousApp {
             | NotebookAction::NextSection => self.move_the_choice(index, what),
             NotebookAction::SelectCell | NotebookAction::CellStart | NotebookAction::CellEnd => {
                 self.move_within_the_cell(index, what)
+            }
+            NotebookAction::ShowOutline => self.open_the_outline(index),
+            NotebookAction::EditTags => self.start_editing_the_tags(index),
+            NotebookAction::CollapseSection | NotebookAction::RunSection => {
+                self.act_on_a_section(index, what)
             }
             NotebookAction::ClearOutput
             | NotebookAction::ClearAllOutputs
@@ -537,6 +563,64 @@ impl UnluminousApp {
             self.ask_for_the_variables(index);
         }
         Ok(format!("{} on {}.", what.label(), cells_words(&chosen)))
+    }
+
+    /// Open the field the chosen cell's tags are edited in, holding the tags it has.
+    fn start_editing_the_tags(&mut self, index: usize) -> Result<String, String> {
+        let chosen = self.chosen_cells(index);
+        let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() else {
+            return Err(String::new());
+        };
+        let Some(cell) = tab.model.cells.get(chosen.start) else {
+            return Err("No cell is chosen.".to_owned());
+        };
+        tab.editing_tags = Some((cell.id.clone(), cell.tags().join(", ")));
+        Ok(format!("Editing the tags of cell {}.", chosen.start + 1))
+    }
+
+    /// Collapse or open the section the chosen cell is in, or run its code cells.
+    fn act_on_a_section(&mut self, index: usize, what: NotebookAction) -> Result<String, String> {
+        let chosen = self.chosen_cells(index);
+        let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() else {
+            return Err(String::new());
+        };
+        let Some(heading) = tab.heading_above(chosen.start) else {
+            return Err("The chosen cell is not under a Markdown heading.".to_owned());
+        };
+        let section = tab.section_of(heading);
+        if what == NotebookAction::RunSection {
+            self.run_notebook_cells(index, section.clone());
+            return Ok(format!("Running cells {} to {}.", section.start + 1, section.end));
+        }
+        let id = tab.id_of(heading).unwrap_or_default();
+        let collapsed = !tab.sections_collapsed.remove(&id);
+        if collapsed {
+            tab.sections_collapsed.insert(id);
+        }
+        tab.bands_revision += 1;
+        if collapsed {
+            self.choose_a_cell(index, heading, false);
+        }
+        let hidden = section.len() - 1;
+        Ok(match collapsed {
+            true => format!("Collapsed the section under cell {}, {hidden} cells.", heading + 1),
+            false => format!("Opened the section under cell {}.", heading + 1),
+        })
+    }
+
+    /// Open the toolbar's outline, and answer it as text, one heading or cell to a line, set in by
+    /// level, for whoever asked from the command line.
+    fn open_the_outline(&mut self, index: usize) -> Result<String, String> {
+        let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() else {
+            return Err(String::new());
+        };
+        tab.outline_wanted = true;
+        let rows = crate::app::notebook_chrome::outline_rows(&tab.model.cells);
+        let lines: Vec<String> = rows
+            .iter()
+            .map(|(cell, depth, words)| format!("{}cell {}: {words}", "  ".repeat(*depth), cell + 1))
+            .collect();
+        Ok(lines.join("\n"))
     }
 
     /// Select the caret's cell's text, or move the caret to its start or end. In command mode,
@@ -731,14 +815,28 @@ impl UnluminousApp {
 
     /// Move cells `cells` one place up or down, keeping them chosen.
     fn move_cells(&mut self, index: usize, cells: std::ops::Range<usize>, by: i32) {
+        let to = match by {
+            -1 => cells.start.checked_sub(1),
+            _ => Some(cells.end + 1),
+        };
+        if let Some(to) = to {
+            self.move_cells_into(index, cells, to);
+        }
+    }
+
+    /// Move cells `cells` into the gap before cell `to`, as one undo step, keeping them chosen. The
+    /// edit Move Up, Move Down, dragging a cell by its handle and `notebook edit move` all make.
+    pub(crate) fn move_cells_into(&mut self, index: usize, cells: std::ops::Range<usize>, to: usize) {
         let file = self.files.at_mut(index);
         let Some(tab) = file.notebook.as_deref_mut() else { return };
         let text = file.document.text().to_string();
-        let Some(edit) = notebook::move_cells(&text, &tab.spans, cells.clone(), by) else { return };
+        let Some(edit) = notebook::move_cells_to(&text, &tab.spans, cells.clone(), to) else {
+            return;
+        };
         let edit_mode = tab.mode == Mode::Edit;
         notebook::apply_edits(&mut file.document, vec![edit], None);
         self.refresh_the_notebook(index);
-        let start = (cells.start as i64 + i64::from(by)).max(0) as usize;
+        let start = notebook::moved_to(cells.clone(), to);
         self.choose_a_cell(index, start, edit_mode);
         if let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() {
             if !edit_mode {

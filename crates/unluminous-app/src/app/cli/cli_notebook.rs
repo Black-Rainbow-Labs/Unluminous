@@ -457,7 +457,7 @@ impl UnluminousApp {
         }
     }
 
-    /// Move a cell to a position, one place at a time, so it is the same edit `Move Cell Up` makes.
+    /// Move a cell to a position, with the edit `Move Cell Up` and dragging a cell make.
     fn cli_move_a_cell(&mut self, request: &Request, index: usize, cell: usize) -> Outcome {
         let count = self.files.at(index).notebook.as_deref().map(|tab| tab.len()).unwrap_or(0);
         let Some(to) = request.whole("to").filter(|to| *to >= 1 && *to <= count) else {
@@ -467,14 +467,9 @@ impl UnluminousApp {
                 format!("move needs --to, a position from 1 to {count}."),
             );
         };
-        let mut at = cell;
-        while at != to - 1 {
-            let what = if at > to - 1 { NotebookAction::MoveUp } else { NotebookAction::MoveDown };
-            if self.run_a_notebook_action(what).is_err() {
-                break;
-            }
-            at = if at > to - 1 { at - 1 } else { at + 1 };
-        }
+        // `to` is where the cell ends up; the gap it goes into is counted before it is taken out.
+        let gap = if to - 1 > cell { to } else { to - 1 };
+        self.move_cells_into(index, cell..cell + 1, gap);
         ok(request, format!("Cell {} is now cell {to}.", cell + 1), json!({ "number": to }))
     }
 
@@ -796,7 +791,7 @@ fn outputs_as_text(cell: &Cell, pictures: &Path, number: usize) -> (String, Vec<
 fn output_as_text(shown: Shown, pictures: &Path, name: &str) -> (String, Value) {
     match shown {
         Shown::Stream { stderr, text } => (
-            outputs::collapse_carriage_returns(&text),
+            outputs::strip_ansi(&outputs::collapse_carriage_returns(&text)),
             json!({ "type": if stderr { "stderr" } else { "stdout" }, "text": text }),
         ),
         Shown::Error { ename, evalue, traceback } => {
@@ -820,11 +815,13 @@ fn output_as_text(shown: Shown, pictures: &Path, name: &str) -> (String, Value) 
         Shown::Png(bytes) => picture_as_text(&pictures.join(format!("{name}.png")), &bytes),
         Shown::Jpeg(bytes) => picture_as_text(&pictures.join(format!("{name}.jpg")), &bytes),
         Shown::Svg(svg) => ("[an SVG picture]".to_owned(), json!({ "type": "svg", "svg": svg })),
-        Shown::Html(words)
-        | Shown::Text(words)
-        | Shown::Markdown(words)
-        | Shown::Latex(words)
-        | Shown::Json(words) => (words.clone(), json!({ "type": "text", "text": words })),
+        Shown::Text(words) => {
+            let words = outputs::strip_ansi(&words);
+            (words.clone(), json!({ "type": "text", "text": words }))
+        }
+        Shown::Html(words) | Shown::Markdown(words) | Shown::Latex(words) | Shown::Json(words) => {
+            (words.clone(), json!({ "type": "text", "text": words }))
+        }
     }
 }
 

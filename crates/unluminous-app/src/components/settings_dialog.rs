@@ -1067,6 +1067,17 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn 
         "A number against each line of the file. Unluminous wraps, so a paragraph that runs over several rows is numbered once, against its first row. Right clicking the gutter puts the numbers away and annotates with git blame.",
     );
     pen += 44.0;
+    pen = section(ui, area, pen, "Notebooks");
+    let row = row_at(area, pen);
+    changed |= checkbox(ui, row, "Scroll long outputs", &mut settings.notebook_scroll_outputs);
+    pen += 32.0;
+    note(
+        ui,
+        area,
+        pen,
+        "An output taller than thirty lines scrolls inside its cell. Off, every output is drawn at its full height.",
+    );
+    pen += 44.0;
     pen = section(ui, area, pen, "Suggestions");
     // A tick box over a two-value setting: `automatic` is ticked and `manual` is not, which is what
     // the wording says. The value itself is a named pair rather than a flag because the settings

@@ -247,6 +247,18 @@ fn an_expression_gives_an_execute_result_and_an_ok_reply_numbered_one() {
 }
 
 #[test]
+fn a_question_mark_shows_the_documentation_as_an_output_of_the_cell() {
+    let Some(mut session) = Session::start() else { return };
+    let events = session.run("?len");
+    let page = events.iter().find_map(|event| match event {
+        Event::DisplayData { data, .. } => Some(plain(data)),
+        _ => None,
+    });
+    let page = page.unwrap_or_else(|| panic!("no page was shown: {events:?}"));
+    assert!(page.contains("Return the number of items"), "{page}");
+}
+
+#[test]
 fn print_gives_a_stdout_stream() {
     let Some(mut session) = Session::start() else { return };
     let events = session.run("print('hello')");

@@ -944,6 +944,10 @@ settings! {
         /// for. It never runs on a Markdown file whatever this says — two trailing spaces there are a
         /// line break — which `services::file_kind::trimming_applies` is what decides.
         trim_on_save = false => "editor.trim";
+        /// Whether a notebook cell's outputs that are taller than thirty lines scroll inside the cell.
+        /// Off, every output is drawn at its full height, which is the reference editor's setting of
+        /// the same name.
+        notebook_scroll_outputs = true => "notebook.scroll_outputs";
     }
 
     coded {
@@ -1532,6 +1536,7 @@ mod tests {
             "mcp.enabled",
             "editor.auto_indent",
             "editor.trim",
+            "notebook.scroll_outputs",
             "editor.suggestions",
             "editor.indent",
             "editor.line_ending",
@@ -1595,6 +1600,7 @@ mod tests {
             indent: Indent::Spaces(4),
             auto_indent: false,
             trim_on_save: true,
+            notebook_scroll_outputs: false,
             suggestions: Suggestions::Manual,
             line_endings: LineEndings::Crlf,
             update_check: UpdateCheck::Start,

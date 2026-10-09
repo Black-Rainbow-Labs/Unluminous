@@ -41,6 +41,9 @@ pub const TALLEST: f32 = 30.0;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Metrics {
     pub size: f32,
+    /// Whether outputs taller than [`TALLEST`] lines scroll inside the cell, which is the
+    /// `notebook.scroll_outputs` setting. Off, they are drawn at their full height.
+    pub scroll: bool,
 }
 
 impl Metrics {
@@ -244,7 +247,15 @@ fn text_block(
     width: f32,
     ground: Option<Color32>,
 ) -> Block {
-    let galley = ctx.fonts_mut(|fonts| fonts.layout(text.to_owned(), font, tint, width));
+    // Text with ANSI colour codes in it, which a page from `?name` and many programs' output have,
+    // is drawn in those colours rather than showing the codes.
+    let galley = match text.contains('\u{1b}') {
+        true => {
+            let lines: Vec<Vec<Span>> = text.lines().map(outputs::ansi_spans).collect();
+            ctx.fonts_mut(|fonts| fonts.layout_job(coloured_job(&lines, font, tint, width)))
+        }
+        false => ctx.fonts_mut(|fonts| fonts.layout(text.to_owned(), font, tint, width)),
+    };
     let height = galley.size().y;
     Block { y: 0.0, height, body: Body::Text(galley), ground, html: None, traceback_toggle: false }
 }
@@ -358,7 +369,7 @@ fn error_blocks(
         return blocks;
     }
     if open {
-        let job = traceback_job(traceback, font.clone(), width);
+        let job = coloured_job(traceback, font.clone(), color::text(), width);
         let galley = ctx.fonts_mut(|fonts| fonts.layout_job(job));
         let height = galley.size().y;
         blocks.push(Block {
@@ -380,16 +391,16 @@ fn error_blocks(
     blocks
 }
 
-/// The traceback's lines in their own colours.
-fn traceback_job(traceback: &[Vec<Span>], font: FontId, width: f32) -> LayoutJob {
+/// Lines of ANSI coloured spans in their own colours, and `tint` where a span names none.
+fn coloured_job(lines: &[Vec<Span>], font: FontId, tint: Color32, width: f32) -> LayoutJob {
     let mut job = LayoutJob::default();
     job.wrap.max_width = width;
-    for (at, line) in traceback.iter().enumerate() {
+    for (at, line) in lines.iter().enumerate() {
         if at > 0 {
-            job.append("\n", 0.0, TextFormat::simple(font.clone(), color::text()));
+            job.append("\n", 0.0, TextFormat::simple(font.clone(), tint));
         }
         for span in line {
-            let tint = span.colour.as_ref().map(ansi_colour).unwrap_or(color::text());
+            let tint = span.colour.as_ref().map(ansi_colour).unwrap_or(tint);
             let mut format = TextFormat::simple(font.clone(), tint);
             if let Some(background) = &span.background {
                 format.background = ansi_colour(background).gamma_multiply(0.35);
@@ -404,7 +415,10 @@ fn traceback_job(traceback: &[Vec<Span>], font: FontId, width: f32) -> LayoutJob
 /// scroll.
 pub fn shown_height(drawn: &Drawn, metrics: Metrics) -> f32 {
     let line = metrics.output_font().size * 1.35;
-    drawn.height.min(line * TALLEST)
+    match metrics.scroll {
+        true => drawn.height.min(line * TALLEST),
+        false => drawn.height,
+    }
 }
 
 /// Paint a cell's outputs with their top left at `at`, scrolled by `scroll`, and answer what was

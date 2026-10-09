@@ -173,6 +173,15 @@ pub struct NotebookTab {
     /// The number the gutter draws beside each paragraph: counted within its cell, and none beside a
     /// marker or a rendered cell. Worked out with the layout.
     pub numbers: Vec<Option<usize>>,
+    /// The Markdown headings whose sections are collapsed, by cell id. Every cell after one of them, up
+    /// to the next heading of the same level or above, is hidden.
+    pub sections_collapsed: HashSet<String>,
+    /// The cell being dragged by its handle, by id.
+    pub dragging: Option<String>,
+    /// The cell whose tags are being edited, by id, and the words typed so far.
+    pub editing_tags: Option<(String, String)>,
+    /// Set by Notebook Outline: the toolbar opens its outline on the next frame.
+    pub outline_wanted: bool,
     /// Set by Restart and Run All: the cells are queued when the new kernel says it is ready.
     pub run_all_after_restart: bool,
     /// The line breaks the file was written with, which it is written back with. Jupyter on Windows
@@ -232,6 +241,10 @@ impl NotebookTab {
             asked: None,
             debugging: None,
             numbers: Vec::new(),
+            sections_collapsed: HashSet::new(),
+            dragging: None,
+            editing_tags: None,
+            outline_wanted: false,
             run_all_after_restart: false,
             line_ending: unluminous_core::LineEnding::Lf,
         };
@@ -276,6 +289,59 @@ impl NotebookTab {
             .map(|cell| cell.id.as_str())
             .collect();
         self.editing.retain(|id| markdown.contains(id.as_str()));
+    }
+
+    /// The level of the heading cell `cell` starts with: 1 for `#`, up to 6. `None` for a cell that is
+    /// not a Markdown cell whose first line is a heading.
+    pub fn heading_level(&self, cell: usize) -> Option<usize> {
+        let found = self.model.cells.get(cell)?;
+        if found.kind != CellKind::Markdown {
+            return None;
+        }
+        let line = found.source.lines().find(|line| !line.trim().is_empty())?.trim_start();
+        let level = line.chars().take_while(|letter| *letter == '#').count();
+        ((1..=6).contains(&level) && line[level..].starts_with(' ')).then_some(level)
+    }
+
+    /// The cells of the section the heading cell `heading` starts: the heading and every cell after
+    /// it up to the next heading of the same level or above. Just the heading for a cell that is not
+    /// one.
+    pub fn section_of(&self, heading: usize) -> std::ops::Range<usize> {
+        let Some(level) = self.heading_level(heading) else { return heading..heading + 1 };
+        let end = (heading + 1..self.len())
+            .find(|cell| self.heading_level(*cell).is_some_and(|other| other <= level))
+            .unwrap_or(self.len());
+        heading..end
+    }
+
+    /// The heading whose section holds `cell`: the cell itself when it is a heading, or the nearest
+    /// heading above it. `None` when no heading comes before it.
+    pub fn heading_above(&self, cell: usize) -> Option<usize> {
+        (0..=cell.min(self.len().saturating_sub(1)))
+            .rev()
+            .find(|above| self.heading_level(*above).is_some())
+    }
+
+    /// Whether `cell` is inside a collapsed section, and so is not drawn.
+    pub fn in_a_collapsed_section(&self, cell: usize) -> bool {
+        // Only a heading of a higher level than every heading met on the way up can hold the cell.
+        let mut enclosing = self.heading_level(cell).unwrap_or(usize::MAX);
+        for above in (0..cell).rev() {
+            let Some(level) = self.heading_level(above) else { continue };
+            if level >= enclosing {
+                continue;
+            }
+            if self.model.cells.get(above).is_some_and(|c| self.sections_collapsed.contains(&c.id)) {
+                return true;
+            }
+            enclosing = level;
+        }
+        false
+    }
+
+    /// How many cells a collapsed heading at `cell` is hiding.
+    pub fn hidden_by(&self, cell: usize) -> usize {
+        self.section_of(cell).len().saturating_sub(1)
     }
 
     /// How many cells there are.
@@ -407,6 +473,17 @@ pub fn cells_text(text: &str, spans: &[CellSpan], range: Range<usize>) -> String
     range.map(|cell| cell_text(text, &spans[cell])).collect::<Vec<_>>().join("\n")
 }
 
+/// Tags as a person types them: separated by commas or spaces, with blanks and repeats left out.
+pub fn tags_typed(typed: &str) -> Vec<String> {
+    let mut tags: Vec<String> = Vec::new();
+    for tag in typed.split([',', ' ']).map(str::trim).filter(|tag| !tag.is_empty()) {
+        if !tags.iter().any(|kept| kept == tag) {
+            tags.push(tag.to_owned());
+        }
+    }
+    tags
+}
+
 /// One cell's marker and source as they are in the text.
 pub fn cell_text(text: &str, span: &CellSpan) -> String {
     text[span_start(span)..span_end(span)].to_owned()
@@ -474,21 +551,41 @@ pub fn move_cells(
     range: Range<usize>,
     by: i32,
 ) -> Option<(Range<usize>, String)> {
-    let (outer, order): (Range<usize>, Vec<Range<usize>>) = match by {
-        -1 if range.start > 0 => {
-            let outer = range.start - 1..range.end;
-            (outer, vec![range.clone(), range.start - 1..range.start])
-        }
-        1 if range.end < spans.len() => {
-            let outer = range.start..range.end + 1;
-            (outer, vec![range.end..range.end + 1, range.clone()])
-        }
-        _ => return None,
+    match by {
+        -1 if range.start > 0 => move_cells_to(text, spans, range.clone(), range.start - 1),
+        1 => move_cells_to(text, spans, range.clone(), range.end + 1),
+        _ => None,
+    }
+}
+
+/// The edit that moves cells `range` into the gap before cell `to`, counted in the cells as they are
+/// now, from 0 for the top to the number of cells for the bottom. `None` when that gap is inside or
+/// next to the range, which would leave the cells where they are.
+pub fn move_cells_to(
+    text: &str,
+    spans: &[CellSpan],
+    range: Range<usize>,
+    to: usize,
+) -> Option<(Range<usize>, String)> {
+    if range.is_empty() || to > spans.len() || (range.start..=range.end).contains(&to) {
+        return None;
+    }
+    let (outer, order) = match to < range.start {
+        true => (to..range.end, [range.clone(), to..range.start]),
+        false => (range.start..to, [range.end..to, range.clone()]),
     };
     let replaced = span_start(&spans[outer.start])..span_end(&spans[outer.end - 1]);
     let rebuilt: Vec<String> =
         order.into_iter().map(|part| cells_text(text, spans, part)).collect();
     Some((replaced, rebuilt.join("\n")))
+}
+
+/// Where the first of `moved` cells ends up when they are moved into the gap before cell `to`.
+pub fn moved_to(moved: Range<usize>, to: usize) -> usize {
+    match to < moved.start {
+        true => to,
+        false => to - moved.len(),
+    }
 }
 
 /// Apply a set of edits to a document as one undo step, then put the caret at `caret`.
@@ -514,10 +611,49 @@ pub fn apply_edits(
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_section_runs_to_the_next_heading_of_its_level_or_above_and_collapsing_hides_it() {
+        let mut model = nbformat::empty();
+        model.cells = vec![
+            nbformat::Cell::new(CellKind::Markdown, "a", "# A"),
+            nbformat::Cell::new(CellKind::Code, "a1", "1"),
+            nbformat::Cell::new(CellKind::Markdown, "b", "## B"),
+            nbformat::Cell::new(CellKind::Code, "b1", "2"),
+            nbformat::Cell::new(CellKind::Markdown, "c", "# C"),
+            nbformat::Cell::new(CellKind::Code, "c1", "3"),
+            nbformat::Cell::new(CellKind::Markdown, "note", "not a #heading"),
+        ];
+        let (mut tab, text) = NotebookTab::new(model);
+        tab.spans = text::spans(&text);
+        assert_eq!((tab.section_of(0), tab.section_of(2), tab.section_of(4)), (0..4, 2..4, 4..7));
+        assert_eq!((tab.heading_above(3), tab.heading_above(1), tab.heading_level(6)), (Some(2), Some(0), None));
+        tab.sections_collapsed.insert("b".to_owned());
+        let hidden: Vec<usize> = (0..7).filter(|cell| tab.in_a_collapsed_section(*cell)).collect();
+        assert_eq!(hidden, vec![3]);
+        tab.sections_collapsed.insert("a".to_owned());
+        let hidden: Vec<usize> = (0..7).filter(|cell| tab.in_a_collapsed_section(*cell)).collect();
+        assert_eq!(hidden, vec![1, 2, 3], "a heading inside a collapsed section is hidden with it");
+        assert_eq!(tab.hidden_by(0), 3);
+    }
+
     fn three() -> (String, Vec<CellSpan>) {
         let text = "# %% id=a\none\n# %% [markdown] id=b\n# Two\n# %% id=c\nthree".to_owned();
         let spans = text::spans(&text);
         (text, spans)
+    }
+
+    #[test]
+    fn a_cell_moves_into_any_gap_and_lands_where_moved_to_says() {
+        let (text, spans) = three();
+        let last = applied(&text, vec![move_cells_to(&text, &spans, 0..1, 3).unwrap()]);
+        assert_eq!(last, "# %% [markdown] id=b\n# Two\n# %% id=c\nthree\n# %% id=a\none");
+        assert_eq!(moved_to(0..1, 3), 2);
+        let first = applied(&text, vec![move_cells_to(&text, &spans, 2..3, 0).unwrap()]);
+        assert_eq!(first, "# %% id=c\nthree\n# %% id=a\none\n# %% [markdown] id=b\n# Two");
+        assert_eq!(moved_to(2..3, 0), 0);
+        assert!(move_cells_to(&text, &spans, 1..2, 1).is_none(), "the gap before itself");
+        assert!(move_cells_to(&text, &spans, 1..2, 2).is_none(), "the gap after itself");
+        assert!(move_cells_to(&text, &spans, 1..2, 4).is_none(), "past the end");
     }
 
     fn applied(text: &str, edits: Vec<(Range<usize>, String)>) -> String {

@@ -321,6 +321,26 @@ pub struct Cell {
 }
 
 impl Cell {
+    /// The cell's tags, from `metadata.tags`, in the order the file has them.
+    pub fn tags(&self) -> Vec<String> {
+        self.metadata["tags"]
+            .as_array()
+            .map(|tags| tags.iter().filter_map(Value::as_str).map(str::to_owned).collect())
+            .unwrap_or_default()
+    }
+
+    /// Set the cell's tags. An empty list takes `metadata.tags` away, as Jupyter does.
+    pub fn set_tags(&mut self, tags: &[String]) {
+        if !self.metadata.is_object() {
+            self.metadata = json!({});
+        }
+        let Some(map) = self.metadata.as_object_mut() else { return };
+        match tags.is_empty() {
+            true => map.remove("tags"),
+            false => map.insert("tags".to_owned(), json!(tags)),
+        };
+    }
+
     /// A new cell with the given kind, id and source, and nothing else. It is written with an `id`
     /// only into a notebook whose minor version is 5 or more, because older versions do not allow one.
     pub fn new(kind: CellKind, id: &str, source: &str) -> Cell {
@@ -586,6 +606,17 @@ pub fn new_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tags_are_read_from_and_written_to_the_cells_metadata() {
+        let mut cell = Cell::new(CellKind::Code, "a", "1");
+        assert!(cell.tags().is_empty());
+        cell.set_tags(&["parameters".to_owned(), "slow".to_owned()]);
+        assert_eq!(cell.tags(), vec!["parameters", "slow"]);
+        assert_eq!(cell.metadata, json!({ "tags": ["parameters", "slow"] }));
+        cell.set_tags(&[]);
+        assert_eq!(cell.metadata, json!({}));
+    }
 
     const ALL_OUTPUTS: &str = include_str!("../tests/fixtures/all_outputs.ipynb");
     const ALL_OUTPUTS_CHANGED: &str = include_str!("../tests/fixtures/all_outputs_changed.ipynb");

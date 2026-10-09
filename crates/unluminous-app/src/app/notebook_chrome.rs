@@ -162,9 +162,15 @@ impl UnluminousApp {
     /// The notebook's outline: every Markdown heading, set in by its level, and every code cell by its
     /// first line. Choosing one goes to it. The reference editor's Structure view of a notebook.
     fn show_the_outline(&mut self, ui: &mut egui::Ui, area: Rect, index: usize) {
-        let Some(tab) = self.files.at(index).notebook.as_deref() else { return };
+        let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() else { return };
+        if std::mem::take(&mut tab.outline_wanted) {
+            // `Notebook Outline` opens the dropdown's own popup, which `controls::dropdown` keeps
+            // under its button's id with "popup" joined on.
+            let button = ui.id().with(("dropdown", OUTLINE_NAME));
+            egui::Popup::open_id(ui.ctx(), button.with("popup"));
+        }
         let rows = outline_rows(&tab.model.cells);
-        let picked = controls::dropdown(ui, area, "Outline", "Notebook outline", None, |ui| {
+        let picked = controls::dropdown(ui, area, "Outline", OUTLINE_NAME, None, |ui| {
             let mut picked = None;
             for (cell, depth, words) in &rows {
                 let indent = 12.0 * *depth as f32;
@@ -513,6 +519,9 @@ fn kernel_rows(
     }
     picked
 }
+
+/// What the outline dropdown is called, which is also how its popup is found to open it.
+const OUTLINE_NAME: &str = "Notebook outline";
 
 /// The outline's rows: the cell, how deep to set it in, and its words. A Markdown cell gives one row
 /// for each heading in it; a code cell gives one row, its first line that is not blank.

@@ -153,6 +153,15 @@ def relay_variables(request, c):
         emit(event="error", request=request, ename="VariablesUnavailable", evalue=str(problem), traceback=[])
 
 
+def relay_pages(request, c):
+    """Turn the pages an execute reply carries into outputs of the cell. `?name` and `name??` answer
+    with a page rather than printing, because Jupyter shows a page in a pager; a notebook shows it
+    under the cell, as the reference editor does."""
+    for payload in c.get("payload") or []:
+        if payload.get("source") == "page" and payload.get("data"):
+            emit(event="display_data", request=request, data=payload["data"], metadata={}, display_id=None)
+
+
 def relay_shell(msg):
     """Turn one shell reply into an event."""
     kind = msg["header"]["msg_type"]
@@ -162,6 +171,7 @@ def relay_shell(msg):
         if origin == "variables":
             relay_variables(request, c)
         else:
+            relay_pages(request, c)
             emit(event=kind, request=request, status=c.get("status"), execution_count=c.get("execution_count"))
     elif kind == "complete_reply":
         emit(event=kind, request=request, matches=c.get("matches", []), cursor_start=c.get("cursor_start", 0), cursor_end=c.get("cursor_end", 0), metadata=c.get("metadata", {}))
