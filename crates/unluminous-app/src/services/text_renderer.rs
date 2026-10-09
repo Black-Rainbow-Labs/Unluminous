@@ -1245,7 +1245,10 @@ mod crispness_tests {
                     && (on_screen.y - on_screen.y.round()).abs() < 0.001,
                 "{at:?} landed at {on_screen:?}"
             );
-            assert!((on_screen - transform * at).length() <= 0.71, "and it moved less than a pixel");
+            assert!(
+                (on_screen - transform * at).length() <= 0.71,
+                "and it moved less than a pixel"
+            );
         }
     }
 
