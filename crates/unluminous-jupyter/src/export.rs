@@ -32,16 +32,25 @@ use serde_json::Value;
 /// such a line in its source comes back from [`from_python`] as two cells. The notebook itself keeps
 /// it, because the notebook tab only treats its own marker lines as cell boundaries.
 pub fn to_python(nb: &Notebook) -> String {
-    nb.cells.iter().map(python_cell).collect::<Vec<String>>().join("\n")
+    nb.cells.iter().map(|cell| script_cell(cell, "#")).collect::<Vec<String>>().join("\n")
 }
 
-/// One cell of the Python file: its marker line and its source, each ending in a newline.
-fn python_cell(cell: &Cell) -> String {
+/// Writes a notebook as a Rust file in the percent format, which is [`to_python`] with `//` where
+/// Python has `#`: `// %%` before a code cell, `// %% [markdown]` before a Markdown cell, and `// `
+/// in front of each line of a Markdown or raw cell. `task-2229`.
+pub fn to_rust(nb: &Notebook) -> String {
+    nb.cells.iter().map(|cell| script_cell(cell, "//")).collect::<Vec<String>>().join("\n")
+}
+
+/// One cell of a script: its marker line and its source, each ending in a newline. `comment` is the
+/// language's line comment, which starts the marker and every line of a Markdown or raw cell.
+fn script_cell(cell: &Cell, comment: &str) -> String {
     let source = cell.source.trim_end_matches(['\n', '\r']);
-    let marker = percent_head(cell.kind);
+    let head = percent_head(cell.kind);
+    let marker = format!("{comment}{}", head.strip_prefix('#').unwrap_or(head));
     let body = match cell.kind {
         CellKind::Code => source.to_string(),
-        CellKind::Markdown | CellKind::Raw => comment_lines(source),
+        CellKind::Markdown | CellKind::Raw => comment_lines(source, comment),
     };
     if body.is_empty() {
         format!("{marker}\n")
@@ -50,10 +59,13 @@ fn python_cell(cell: &Cell) -> String {
     }
 }
 
-/// Puts `# ` in front of every line, and `#` in place of an empty line.
-fn comment_lines(text: &str) -> String {
+/// Puts `comment` and a space in front of every line, and `comment` alone in place of an empty line.
+fn comment_lines(text: &str, comment: &str) -> String {
     text.lines()
-        .map(|line| if line.is_empty() { "#".to_string() } else { format!("# {line}") })
+        .map(|line| match line.is_empty() {
+            true => comment.to_string(),
+            false => format!("{comment} {line}"),
+        })
         .collect::<Vec<String>>()
         .join("\n")
 }
@@ -114,8 +126,9 @@ fn uncomment(line: &str) -> &str {
 // ---------------------------------------------------------------------------------------------
 
 /// The programming language of the notebook, from `language_info`, then the kernel spec, then
-/// `python`.
-fn language_of(nb: &Notebook) -> String {
+/// `python`, in lower case, because evcxr names its language `Rust` and a fence is read by its lower
+/// case name.
+pub fn language_of(nb: &Notebook) -> String {
     let name = |path: [&str; 2]| {
         nb.metadata
             .get(path[0])
@@ -125,6 +138,7 @@ fn language_of(nb: &Notebook) -> String {
     };
     name(["language_info", "name"])
         .or_else(|| name(["kernelspec", "language"]))
+        .map(|language| language.to_lowercase())
         .unwrap_or_else(|| "python".to_string())
 }
 
@@ -1138,6 +1152,26 @@ mod tests {
             to_python(&notebook),
             "# %% [markdown]\n# # Title\n#\n# text\n\n# %%\nx = 1\n\ny = 2\n\n# %% [raw]\n# raw\n"
         );
+    }
+
+    #[test]
+    fn the_rust_file_has_slash_markers_and_slash_commented_markdown() {
+        let notebook = notebook_of(&[
+            (CellKind::Markdown, "# Title\n\ntext"),
+            (CellKind::Code, "let x = 1;\nx + 1"),
+        ]);
+        assert_eq!(
+            to_rust(&notebook),
+            "// %% [markdown]\n// # Title\n//\n// text\n\n// %%\nlet x = 1;\nx + 1\n"
+        );
+    }
+
+    #[test]
+    fn a_rust_notebook_fences_its_code_as_rust_in_lower_case() {
+        let mut notebook = notebook_of(&[(CellKind::Code, "let x = 1;")]);
+        notebook.metadata = nbformat::empty_for(nbformat::Language::Rust).metadata;
+        assert_eq!(language_of(&notebook), "rust");
+        assert!(to_markdown(&notebook, &mut Vec::new(), "n").starts_with("```rust\nlet x = 1;\n```"));
     }
 
     #[test]

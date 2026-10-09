@@ -23,6 +23,10 @@ use super::*;
 /// without counting.
 const COMPLETIONS_SHOWN: usize = 50;
 
+/// How long a completion in a notebook waits for the kernel's answer before the rows are given without
+/// it. A kernel that is running a cell answers when the cell finishes, so this is generous. `task-2229`.
+const KERNEL_COMPLETION_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
 impl UnluminousApp {
     /// The refusal every editor command answers with while a rendered page is the tab that is showing.
     ///
@@ -1033,10 +1037,70 @@ impl UnluminousApp {
             Ok(offset) => offset,
             Err(problem) => return no(request, code::USAGE, problem),
         };
+        self.cli_complete_at(request, offset, hypothetical.as_deref())
+    }
+
+    /// What `editor complete` and `notebook complete` answer at `offset`, once the position is known.
+    ///
+    /// In a notebook's code cell the kernel is asked as well, and its answer arrives a round trip
+    /// later, so the reply is held until it has: what a person sees in the popup a moment after typing
+    /// is what a caller is told. `task-2229`.
+    pub(crate) fn cli_complete_at(
+        &mut self,
+        request: &Request,
+        offset: usize,
+        hypothetical: Option<&str>,
+    ) -> Outcome {
+        if hypothetical.is_none() {
+            // Worked out once to ask the kernel, which is what the popup does.
+            let start = self.completion_offer(offset).range.start;
+            if self.kernel_is_being_asked(start, offset) {
+                let choose = request.text("choose").map(|name| name.trim().to_owned());
+                let now = Instant::now();
+                return Outcome::Hold(Waiting::Completion {
+                    offset,
+                    choose,
+                    answer_by: now + KERNEL_COMPLETION_WAIT,
+                    until: now + KERNEL_COMPLETION_WAIT + std::time::Duration::from_secs(5),
+                });
+            }
+        }
+        self.cli_complete_now(request, offset, hypothetical)
+    }
+
+    /// The answer to a held completion: once the kernel has answered, or once `answer_by` has passed.
+    pub(crate) fn completion_answer(
+        &mut self,
+        request: &Request,
+        offset: usize,
+        choose: Option<&str>,
+        answer_by: Instant,
+    ) -> Option<Reply> {
+        let start = self.completion_offer(offset).range.start;
+        if self.kernel_is_being_asked(start, offset) && Instant::now() < answer_by {
+            return None;
+        }
+        let outcome = match choose {
+            Some(name) => self.cli_editor_complete_choose(request, offset, name),
+            None => self.cli_complete_now(request, offset, None),
+        };
+        match outcome {
+            Outcome::Reply(reply) => Some(reply),
+            _ => None,
+        }
+    }
+
+    /// The rows at `offset`, or the row `--choose` names applied, with nothing left to wait for.
+    fn cli_complete_now(
+        &mut self,
+        request: &Request,
+        offset: usize,
+        hypothetical: Option<&str>,
+    ) -> Outcome {
         if let Some(name) = request.text("choose") {
             return self.cli_editor_complete_choose(request, offset, name.trim());
         }
-        let offer = match hypothetical.as_deref() {
+        let offer = match hypothetical {
             Some(stem) => self.hypothetical_completion_offer(offset, stem),
             None => self.completion_offer(offset),
         };

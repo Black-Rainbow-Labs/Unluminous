@@ -71,6 +71,12 @@ pub enum DebugStep {
     Failed(String),
 }
 
+/// Whether a notebook's cells can be debugged: only a Python notebook's, because debugging a cell is
+/// debugpy inside ipykernel. A Rust notebook's Debug button is not drawn. `task-2229`.
+pub fn can_be_debugged(metadata: &serde_json::Value) -> bool {
+    crate::app::notebook_frame::notebook_extension(metadata) == ".py"
+}
+
 /// The Python that asks debugpy to listen on `port`, leaving nothing behind in the person's namespace.
 fn listen_code(port: u16) -> String {
     format!("import debugpy as _unluminous_debugpy\n_unluminous_debugpy.listen((\"127.0.0.1\", {port}))\ndel _unluminous_debugpy")
@@ -139,6 +145,12 @@ impl UnluminousApp {
         let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() else {
             return Err("not a notebook".to_owned());
         };
+        if !can_be_debugged(&tab.model.metadata) {
+            return Err(
+                "Debugging a cell needs a Python kernel, because it uses debugpy inside ipykernel. This notebook runs another language."
+                    .to_owned(),
+            );
+        }
         let Some(cell) = tab.model.cells.get(chosen.start) else {
             return Err("No cell is chosen.".to_owned());
         };

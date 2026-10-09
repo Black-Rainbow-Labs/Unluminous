@@ -11,12 +11,15 @@
 //!   speaks to it on a thread, arranged the way `unluminous_dap::Client` is.
 //! - [`outputs`] chooses what to draw for a cell output and reads colour codes, HTML tables and
 //!   progress lines into data a window can lay out.
-//! - [`export`] writes a notebook as a Python file, Markdown or a web page, and reads a Python file
-//!   back as a notebook.
+//! - [`export`] writes a notebook as a Python file, a Rust file, Markdown or a web page, and reads a
+//!   Python file back as a notebook.
+//! - [`completion`] turns a kernel's completion answer into text an editor can insert over its own
+//!   word.
 //!
 //! **No user interface dependency**, for the reason `unluminous-core` and `unluminous-dap` have none:
 //! the tests run with no window, no graphics card and no fonts.
 
+pub mod completion;
 pub mod export;
 pub mod kernel;
 pub mod nbformat;

@@ -2869,12 +2869,12 @@ unluminous-cli notebook outline --go 3
 ### notebook kernel
 
 ```
-unluminous-cli notebook kernel [status|start|interrupt|restart|shut-down|pythons|kernels|choose|install] [--python <path>] [--name <kernelspec>] [--path <file>]
+unluminous-cli notebook kernel [status|start|interrupt|restart|shut-down|pythons|kernels|choose|install|install-rust] [--python <path>] [--name <kernelspec>] [--path <file>]
 ```
 
-The kernel: start, interrupt, restart, shut down; list this machine's Pythons and whether each has ipykernel, or a Python's kernels; choose the Python or kernelspec; install ipykernel. No Jupyter server is needed.
+The kernel: start, interrupt, restart, shut down; list this machine's Pythons and whether each has ipykernel, or a Python's kernels; choose the Python or kernelspec (`--name rust` runs the cells as Rust); install ipykernel, or install-rust to build and register evcxr, the Rust kernel, in the run tile. No Jupyter server is needed.
 
-- `operation` (optional) — status, start, interrupt, restart, shut-down, pythons, kernels, choose or install. status when it is left out.
+- `operation` (optional) — status, start, interrupt, restart, shut-down, pythons, kernels, choose, install or install-rust. status when it is left out.
 
 - `--python <path>` — For choose and kernels, the Python's path.
 - `--name <kernelspec>` — For choose, the kernelspec to run, as `kernels` lists it.
@@ -2883,7 +2883,30 @@ The kernel: start, interrupt, restart, shut down; list this machine's Pythons an
 ```sh
 unluminous-cli notebook kernel pythons
 unluminous-cli notebook kernel choose --python C:/work/.venv/Scripts/python.exe
+unluminous-cli notebook kernel choose --name rust
+unluminous-cli notebook kernel install-rust
 unluminous-cli notebook kernel restart
+```
+
+### notebook complete
+
+```
+unluminous-cli notebook complete [--cell <number>] [--id <id>] [--line <number>] [--column <number>] [--limit <number>] [--choose <name>] [--path <file>]
+```
+
+What the completion popup offers at a place in a code cell: the names the live kernel knows, such as a DataFrame's columns after `df.` or a Vec's methods after `v.`, beside the notebook's own words, best first. Waits for the kernel's answer. --choose applies a row as Enter would.
+
+- `--cell <number>` — The cell, counting from 1. The caret's place when neither --cell nor --line is given.
+- `--id <id>` — The cell's id instead of its number.
+- `--line <number>` — The line within the cell, counting from 1. The end of the cell when it is left out.
+- `--column <number>` — The column on that line, counting from 1. The end of the line when it is left out.
+- `--limit <number>` — Print at most this many rows. 50 when it is left out, and 0 means all of them.
+- `--choose <name>` — Apply this row, by its name, as Enter would.
+- `--path <file>` — A notebook to open first.
+
+```sh
+unluminous-cli notebook complete --cell 2 --line 1
+unluminous-cli notebook complete --cell 3 --choose describe --json
 ```
 
 ### notebook variables
@@ -2892,7 +2915,7 @@ unluminous-cli notebook kernel restart
 unluminous-cli notebook variables [--path <file>]
 ```
 
-The variables the kernel holds: name, type, the start of the value, and shape or length. Python kernels only.
+The variables the kernel holds: name, type, the start of the value, and shape or length. A Rust kernel gives names and types only.
 
 - `--path <file>` — A notebook to open first.
 
@@ -2919,12 +2942,12 @@ unluminous-cli notebook input yes
 ### notebook export
 
 ```
-unluminous-cli notebook export <html|md|py> [--to <file>] [--path <file>]
+unluminous-cli notebook export <html|md|py|rs> [--to <file>] [--path <file>]
 ```
 
-Write the notebook as HTML with its outputs, Markdown with pictures beside it, or Python with # %% cells. Beside the notebook unless --to says where.
+Write the notebook as HTML with its outputs, Markdown with pictures beside it, Python with # %% cells, or Rust with // %% cells. Beside the notebook unless --to says where.
 
-- `format` — html, md or py.
+- `format` — html, md, py or rs.
 
 - `--to <file>` — Where to write it.
 - `--path <file>` — A notebook to open first.
@@ -2937,16 +2960,19 @@ unluminous-cli notebook export py --to analysis.py
 ### notebook new
 
 ```
-unluminous-cli notebook new [path]
+unluminous-cli notebook new [path] [--language <language>]
 ```
 
-Make a new notebook with one empty code cell and open it. Untitled.ipynb in the project folder when no path is given.
+Make a new notebook with one empty code cell and open it. Untitled.ipynb in the project folder when no path is given. --language rust makes a Rust notebook, run by evcxr.
 
 - `path` (optional) — Where to make it, relative to the project folder.
+
+- `--language <language>` — python or rust. python when it is left out.
 
 ```sh
 unluminous-cli notebook new
 unluminous-cli notebook new analysis/explore.ipynb
+unluminous-cli notebook new scratch.ipynb --language rust
 ```
 
 ### notebook convert

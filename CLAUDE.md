@@ -5903,9 +5903,28 @@ when the cells finish, up to `NOTEBOOK_WAIT_MS`. `notebook status --json` report
 chosen cells, whether line numbers and the variables panel are showing, and each cell's state,
 outputs and folding.
 
+**Rust notebooks run on evcxr, through the same bridge** (`task-2229`, design in
+`tasks/task-2229-notebooks-rust-and-completion-tdd.md`). `evcxr_jupyter` registers a kernelspec named
+`rust`, and the bridge starts it like any other, so state between cells is evcxr's own. The notebook's
+language is its metadata: `UnluminousApp::language_path` reads an open notebook as `cell.<extension>`,
+so completion, the comment toggle and the symbol reading use the cells' grammar, and a kernel that
+starts writes its `language_info` into the metadata (`adopt_the_kernels_language`). The bridge asks a
+Rust kernel for its variables with `:vars`, which gives names and types and no values. Debug Cell is
+Python only and its button is absent elsewhere (`notebook_debug::can_be_debugged`). The kernel picker
+offers `Install the Rust kernel (evcxr)`, which runs `kernel::rust_install_command` in the run tile.
+
+**Completion in a notebook asks the kernel.** After `.` or `::` in a code cell the kernel is asked with
+nothing typed, and only its rows are offered there. Its matches are fitted to the editor's stem by
+`unluminous_jupyter::completion::fit`, because a kernel's range is its own (`%ti` is answered from the
+`%`), and a match such as `checked_add(rhs)` inserts only its name. Tab after a word, a `.` or a `:`
+asks for completions in a code cell, which is Jupyter's own key. `editor complete` and
+`notebook complete` hold their answer until the kernel has answered (`Waiting::Completion`).
+
 **Tests.** `crates/unluminous-jupyter/tests/kernel.rs` and `crates/unluminous-app/tests/notebooks.rs`
 start real kernels. `UNLUMINOUS_REQUIRE_KERNEL=1` turns a test that would skip for want of a
 Python into a failure, and `tools/release.ps1` sets it for the workspace tests. They need a Python with `ipykernel` and `jupyter_client`. They use
 `UNLUMINOUS_TEST_PYTHON` when it is set, and otherwise the first such Python `find_pythons` finds.
-When there is none, each kernel test prints that it did nothing and passes. The pictures are
-`notebook_top`, `notebook_bottom` and `notebook_traceback`.
+When there is none, each kernel test prints that it did nothing and passes. The Rust tests need
+evcxr registered as well (`cargo install --locked evcxr_jupyter`, then `evcxr_jupyter --install`) and
+skip with a printed line without it. The pictures are `notebook_top`, `notebook_bottom`,
+`notebook_traceback` and `notebook_kernel_picker`.

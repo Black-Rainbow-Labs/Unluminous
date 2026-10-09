@@ -60,12 +60,14 @@ impl UnluminousApp {
     /// One question asked in one place, which is what keeps the menu entry, the key chord and
     /// `editor comment --toggle` from disagreeing about a file.
     pub(crate) fn line_comment_marker(&self) -> Option<String> {
-        file_kind::line_comment(self.document().path(), self.plugins.grammars())
+        let path = self.document().path().map(|path| self.language_path(path));
+        file_kind::line_comment(path.as_deref(), self.plugins.grammars())
     }
 
     /// The pair this file's language opens and closes a block comment with, or nothing.
     pub(crate) fn block_comment_markers(&self) -> Option<(String, String)> {
-        file_kind::block_comment(self.document().path(), self.plugins.grammars())
+        let path = self.document().path().map(|path| self.language_path(path));
+        file_kind::block_comment(path.as_deref(), self.plugins.grammars())
     }
 
     /// True when the tab that is showing holds text that can be edited a line at a time.

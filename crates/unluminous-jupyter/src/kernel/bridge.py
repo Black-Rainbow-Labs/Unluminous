@@ -85,6 +85,13 @@ restart_shell = threading.Event()
 restart_iopub = threading.Event()
 restart_info = {}
 died_sent = False
+# The language the kernel runs, lower case, from its kernel_info_reply: what decides how its variables
+# are asked for. A Python kernel answers a user expression; a Rust kernel (evcxr) answers `:vars`.
+kernel_language = "python"
+# What the `:vars` answer of each variables request held, by our request id, until the kernel says it
+# is idle for that request. IOPub is ordered, so idle comes after every output the request made, which
+# the shell reply does not promise.
+rust_variables = {}
 
 
 def kernel_pid():
@@ -125,11 +132,40 @@ def lookup(msg):
         return pending.get(parent, (None, None))
 
 
+def parse_rust_variables(text):
+    """The rows of evcxr's `:vars` answer, whose plain text is one `name: type` line per variable."""
+    rows = []
+    for line in (text or "").splitlines():
+        name, sep, type_name = line.partition(":")
+        if not sep or not name.strip():
+            continue
+        rows.append({"name": name.strip(), "type": type_name.strip(), "value": "", "shape": None, "size": None})
+    return rows
+
+
+def relay_rust_variables(request, kind, c):
+    """Collect what a `:vars` request printed, and answer once the kernel is idle for it."""
+    held = rust_variables.setdefault(request, {"rows": [], "error": None})
+    if kind == "execute_result":
+        held["rows"] = parse_rust_variables((c.get("data") or {}).get("text/plain", ""))
+    elif kind == "error":
+        held["error"] = c.get("evalue") or c.get("ename") or "the kernel could not list its variables"
+    elif kind == "status" and c.get("execution_state") == "idle":
+        rust_variables.pop(request, None)
+        if held["error"]:
+            emit(event="error", request=request, ename="VariablesUnavailable", evalue=held["error"], traceback=[])
+        else:
+            emit(event="variables", request=request, rows=held["rows"])
+
+
 def relay_iopub(msg):
     """Turn one iopub message into an event."""
     kind = msg["header"]["msg_type"]
     c = msg["content"]
     request, origin = lookup(msg)
+    if origin == "rust_variables":
+        relay_rust_variables(request, kind, c)
+        return
     if kind == "status":
         if origin in (None, "execute"):
             emit(event="status", state=c.get("execution_state"), request=request)
@@ -178,6 +214,8 @@ def relay_shell(msg):
     c = msg["content"]
     request, origin = lookup(msg)
     if kind == "execute_reply":
+        if origin == "rust_variables":
+            return
         if origin == "variables":
             relay_variables(request, c)
         else:
@@ -249,6 +287,15 @@ def fetch_info():
     return {}
 
 
+def remember_the_language(info):
+    """Keep the kernel's language, lower case, from its kernel_info_reply."""
+    global kernel_language
+    try:
+        kernel_language = ((info or {}).get("language_info") or {}).get("name", "python").lower() or "python"
+    except Exception:
+        kernel_language = "python"
+
+
 def note(text):
     """Write a progress line to standard error, which the editor keeps for diagnostics."""
     print("bridge: " + text, file=sys.stderr, flush=True)
@@ -276,12 +323,17 @@ def start(cmd):
         kc.wait_for_ready(timeout=180)
         info = fetch_info()
     except BaseException as problem:
-        emit(event="failed", message="%s: %s" % (type(problem).__name__, problem), missing=None)
+        missing = None
+        if type(problem).__name__ == "NoSuchKernel" and name == "rust":
+            # The notebook asks for evcxr's kernelspec, and it is not installed for this Python's Jupyter.
+            missing = "evcxr"
+        emit(event="failed", message="%s: %s" % (type(problem).__name__, problem), missing=missing)
         try:
             km.shutdown_kernel(now=True)
         except Exception:
             pass
         os._exit(1)
+    remember_the_language(info)
     emit(event="started", info=info, pid=kernel_pid())
     for getter, relay in ((kc.get_iopub_msg, relay_iopub), (kc.get_shell_msg, relay_shell), (kc.get_stdin_msg, relay_stdin)):
         threading.Thread(target=reader, args=(getter, relay), daemon=True).start()
@@ -311,6 +363,7 @@ def restart(cmd):
             time.sleep(0.1)
     waiting_ready.clear()
     if restart_shell.is_set() and restart_iopub.is_set():
+        remember_the_language(restart_info.get("content", {}))
         emit(event="restarted", info=restart_info.get("content", {}), pid=kernel_pid())
     else:
         emit(event="died", reason="the kernel did not answer after a restart")
@@ -372,6 +425,15 @@ def handle(cmd):
         restart(cmd)
     elif name == "shutdown":
         shutdown(cmd)
+    elif name == "variables" and kernel_language == "rust":
+        send_shell(rid, "rust_variables", "execute_request", {
+            "code": ":vars",
+            "silent": False,
+            "store_history": False,
+            "user_expressions": {},
+            "allow_stdin": False,
+            "stop_on_error": False,
+        })
     elif name == "variables":
         send_shell(rid, "variables", "execute_request", {
             "code": "",

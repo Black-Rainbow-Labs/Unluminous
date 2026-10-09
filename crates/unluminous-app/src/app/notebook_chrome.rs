@@ -24,12 +24,22 @@ use crate::theme::{color, icon};
 const TOOLBAR: f32 = 34.0;
 const BANNER: f32 = 30.0;
 
+/// How wide the kernel picker's list is at the least, so a Python's name, version and the quiet
+/// column beside it fit. `task-2229`.
+const KERNEL_LIST: f32 = 360.0;
+
+/// How long a Python's list of kernels is believed before opening the picker asks for it again, so a
+/// kernel installed while the window was open, such as the Rust one, appears. `task-2229`.
+pub const KERNELSPECS_FRESH: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// What the kernel picker chose.
 #[derive(Debug, Clone, PartialEq)]
 enum KernelChoice {
     Python(PathBuf),
     Spec(String),
     Install(PathBuf),
+    /// Install evcxr, the Rust kernel, with the chosen Python's help. `task-2229`.
+    InstallRust(PathBuf),
     LookAgain,
 }
 
@@ -232,13 +242,22 @@ impl UnluminousApp {
         let pythons: Vec<Python> = self.pythons.found().to_vec();
         let python = self.notebook_python(index);
         if let Some(path) = &python {
+            // `controls::dropdown` keeps its popup under its button's id with "popup" joined on.
+            let popup = ui.id().with(("dropdown", "Kernel")).with("popup");
+            let stale = self
+                .kernelspecs_asked
+                .get(path)
+                .is_some_and(|asked| asked.elapsed() > KERNELSPECS_FRESH);
+            if stale && egui::Popup::is_id_open(ui.ctx(), popup) {
+                self.kernelspecs.remove(path);
+            }
             self.ask_for_the_kernelspecs(path);
         }
         let specs = python
             .as_ref()
             .and_then(|path| self.kernelspecs.get(path).cloned().flatten().and_then(Result::ok))
             .unwrap_or_default();
-        let choice = controls::dropdown(ui, area, &words, "Kernel", None, |ui| {
+        let choice = controls::dropdown_wide(ui, area, &words, "Kernel", KERNEL_LIST, |ui| {
             kernel_rows(ui, &pythons, python.as_deref(), &specs)
         });
         if let Some(choice) = choice {
@@ -263,7 +282,17 @@ impl UnluminousApp {
                 KernelState::Dead(_) => "died".to_owned(),
             },
         };
-        format!("{python} \u{00B7} {state}")
+        // A kernel that is not the Python's own is named too, so a Rust notebook says it runs Rust.
+        // `task-2229`.
+        let spec = &tab.model.metadata["kernelspec"];
+        let name = tab.kernel_name.as_deref().or_else(|| spec["name"].as_str());
+        match name.filter(|name| !matches!(*name, "python3" | "python")) {
+            Some(name) => {
+                let shown = spec["display_name"].as_str().filter(|_| spec["name"] == name);
+                format!("{python} \u{00B7} {} \u{00B7} {state}", shown.unwrap_or(name))
+            }
+            None => format!("{python} \u{00B7} {state}"),
+        }
     }
 
     /// Ask, on a thread, which kernels the Python at `python` has, once.
@@ -272,6 +301,7 @@ impl UnluminousApp {
             return;
         }
         self.kernelspecs.insert(python.to_path_buf(), None);
+        self.kernelspecs_asked.insert(python.to_path_buf(), std::time::Instant::now());
         let found = std::sync::Arc::new(std::sync::Mutex::new(None));
         let (path, wake) = (python.to_path_buf(), self.thread_waker());
         let into = found.clone();
@@ -304,6 +334,7 @@ impl UnluminousApp {
             KernelChoice::Python(path) => self.choose_a_python(index, &path),
             KernelChoice::Spec(name) => self.choose_a_kernelspec(index, &name),
             KernelChoice::Install(path) => self.install_ipykernel(index, &path),
+            KernelChoice::InstallRust(path) => self.install_the_rust_kernel(index, &path),
             KernelChoice::LookAgain => {
                 self.pythons = crate::app::notebook_kernel::Pythons::NotLooked;
                 self.kernelspecs.clear();
@@ -326,14 +357,41 @@ impl UnluminousApp {
     /// Run the notebook at `index` on the kernelspec `name` from now on, and write it into the
     /// notebook's metadata so the file says what it was run with, as Jupyter does.
     pub(crate) fn choose_a_kernelspec(&mut self, index: usize, name: &str) {
+        // The kernelspec's own display name and language, from the listing the picker was drawn from,
+        // so the file says what it runs before the kernel has even started. `task-2229`.
+        let listed = self.notebook_python(index).and_then(|python| {
+            let specs = self.kernelspecs.get(&python).cloned().flatten()?.ok()?;
+            specs.into_iter().find(|spec| spec.name == name)
+        });
         let file = self.files.at_mut(index);
         let Some(tab) = file.notebook.as_deref_mut() else { return };
         tab.kernel_name = Some(name.to_owned());
+        let before = crate::app::notebook_frame::notebook_extension(&tab.model.metadata);
         if let Some(metadata) = tab.model.metadata.as_object_mut() {
             let spec = metadata.entry("kernelspec").or_insert_with(|| serde_json::json!({}));
             if let Some(spec) = spec.as_object_mut() {
                 spec.insert("name".to_owned(), serde_json::Value::String(name.to_owned()));
+                if let Some(listed) = &listed {
+                    spec.insert("display_name".to_owned(), listed.display_name.clone().into());
+                    spec.insert("language".to_owned(), listed.language.clone().into());
+                }
             }
+            // A `language_info` from another language would go on colouring the cells as that one
+            // until the new kernel answered, so it goes, and the kernelspec's language decides.
+            let other = listed.as_ref().is_some_and(|listed| {
+                let said = metadata
+                    .get("language_info")
+                    .and_then(|info| info.get("name"))
+                    .and_then(serde_json::Value::as_str);
+                said.is_some_and(|said| !said.eq_ignore_ascii_case(&listed.language))
+            });
+            if other {
+                metadata.remove("language_info");
+            }
+        }
+        if crate::app::notebook_frame::notebook_extension(&tab.model.metadata) != before {
+            file.coloured_revision = None;
+            file.cached.symbols = None;
         }
         file.document.note_a_change_outside_the_text();
         let python = tab.python.clone();
@@ -368,6 +426,39 @@ impl UnluminousApp {
         }
     }
 
+    /// Install evcxr, the Rust kernel, in the run tile with the Python at `python`, so the build can be
+    /// watched. It takes a few minutes the first time. Opening the kernel picker afterwards lists the
+    /// Rust kernel, because a listing older than [`KERNELSPECS_FRESH`] is asked for again. `task-2229`.
+    pub(crate) fn install_the_rust_kernel(&mut self, index: usize, python: &Path) {
+        let command = unluminous_jupyter::kernel::rust_install_command(python)
+            .into_iter()
+            .map(|part| if part.contains(' ') { format!("\"{part}\"") } else { part })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let was_selected = self.run_selected.clone();
+        let configuration = crate::services::run_configurations::Configuration::new(
+            "Install the Rust kernel".to_owned(),
+            &command,
+        );
+        match self.start_a_run(configuration) {
+            Ok(()) => {
+                self.message = Some(
+                    "Installing the Rust kernel (evcxr) in the run tile. The first build takes a few minutes."
+                        .to_owned(),
+                )
+            }
+            Err(problem) => self.message = Some(problem),
+        }
+        self.run_selected = was_selected;
+        self.kernelspecs.remove(python);
+        if let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() {
+            if matches!(tab.kernel, KernelSlot::Failed { .. }) {
+                tab.kernel = KernelSlot::NotStarted;
+            }
+            tab.python = Some(python.to_path_buf());
+        }
+    }
+
     /// The line under the toolbar saying why there is no kernel, with the way out.
     fn show_the_kernel_problem(
         &mut self,
@@ -387,6 +478,16 @@ impl UnluminousApp {
             );
             if controls::choice_button(ui, button, "Install ipykernel", false) {
                 self.install_ipykernel(index, python);
+            }
+            right = button.left() - 8.0;
+        }
+        if let (Some(python), Some("evcxr")) = (python.as_ref(), missing) {
+            let button = Rect::from_min_max(
+                Pos2::new(right - 170.0, area.top() + 4.0),
+                Pos2::new(right, area.bottom() - 4.0),
+            );
+            if controls::choice_button(ui, button, "Install the Rust kernel", false) {
+                self.install_the_rust_kernel(index, python);
             }
             right = button.left() - 8.0;
         }
@@ -508,18 +609,22 @@ fn kernel_rows(
         controls::menu_row(ui, "Looking for Pythons on this machine...", "", false, false, 0.0);
     }
     for python in pythons {
-        let mut name = format!("{} ({})", python_name(&python.path), python.version);
-        if !python.has_ipykernel {
-            name.push_str(" - no ipykernel");
-        }
-        if controls::menu_row(ui, &name, "", true, chosen == Some(python.path.as_path()), 0.0) {
+        let name = format!("{} ({})", python_name(&python.path), python.version);
+        // What the Python lacks goes in the row's quiet column, not on the end of its name, so the
+        // name keeps the room and the rows line up. `task-2229`.
+        let lacks = match (python.has_ipykernel, python.has_jupyter_client) {
+            (true, _) => "",
+            (false, true) => "no ipykernel",
+            (false, false) => "no Jupyter",
+        };
+        if controls::menu_row(ui, &name, lacks, true, chosen == Some(python.path.as_path()), 0.0) {
             picked = Some(KernelChoice::Python(python.path.clone()));
         }
     }
     if !specs.is_empty() {
         controls::menu_heading(ui, "Kernel", 0.0);
         for spec in specs {
-            if controls::menu_row(ui, &spec.display_name, "", true, false, 0.0) {
+            if controls::menu_row(ui, &spec.display_name, &spec.language, true, false, 0.0) {
                 picked = Some(KernelChoice::Spec(spec.name.clone()));
             }
         }
@@ -529,11 +634,23 @@ fn kernel_rows(
         if controls::menu_row(ui, "Install ipykernel into this Python", "", true, false, 0.0) {
             picked = Some(KernelChoice::Install(chosen.to_path_buf()));
         }
+        if offers_the_rust_kernel(specs)
+            && controls::menu_row(ui, "Install the Rust kernel (evcxr)", "", true, false, 0.0)
+        {
+            picked = Some(KernelChoice::InstallRust(chosen.to_path_buf()));
+        }
     }
     if controls::menu_row(ui, "Look for Pythons again", "", true, false, 0.0) {
         picked = Some(KernelChoice::LookAgain);
     }
     picked
+}
+
+/// Whether the picker offers to install the Rust kernel: when the chosen Python's Jupyter has listed
+/// its kernels and none of them runs Rust. Not while the list is still being asked for, which would
+/// offer it for a moment on every machine. `task-2229`.
+pub fn offers_the_rust_kernel(specs: &[unluminous_jupyter::kernel::KernelSpec]) -> bool {
+    !specs.is_empty() && !specs.iter().any(|spec| spec.language.eq_ignore_ascii_case("rust"))
 }
 
 /// What the outline dropdown is called, which is also how its popup is found to open it.
@@ -606,6 +723,19 @@ mod tests {
                 (1, 2, "[2] import pandas as pd".to_owned()),
             ]
         );
+    }
+
+    #[test]
+    fn the_rust_kernel_is_offered_only_when_the_listed_kernels_have_none() {
+        use unluminous_jupyter::kernel::KernelSpec;
+        let spec = |name: &str, language: &str| KernelSpec {
+            name: name.to_owned(),
+            display_name: name.to_owned(),
+            language: language.to_owned(),
+        };
+        assert!(offers_the_rust_kernel(&[spec("python3", "python")]));
+        assert!(!offers_the_rust_kernel(&[spec("python3", "python"), spec("rust", "rust")]));
+        assert!(!offers_the_rust_kernel(&[]), "not while the list is still being asked for");
     }
 
     #[test]

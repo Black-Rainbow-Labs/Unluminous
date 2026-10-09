@@ -239,6 +239,20 @@ pub fn install_command(python: &Path) -> Vec<String> {
     ]
 }
 
+/// The script [`rust_install_command`] runs: find `cargo`, install `evcxr_jupyter` with it, and have
+/// that register its kernelspec. One line with single quotes only, because the run tile splits a
+/// command line the way a shell splits a double-quoted word and runs no shell.
+const RUST_INSTALL_SCRIPT: &str = "import os,shutil,subprocess,sys;e='.exe' if os.name=='nt' else '';b=os.path.join(os.path.expanduser('~'),'.cargo','bin');c=shutil.which('cargo') or os.path.join(b,'cargo'+e);os.path.isfile(c) or print('Rust is not installed. Install it from https://rustup.rs, then try again.') or sys.exit(1);print('Building evcxr_jupyter with '+c+'. The first build takes a few minutes.',flush=True);subprocess.check_call([c,'install','--locked','evcxr_jupyter']);k=shutil.which('evcxr_jupyter') or os.path.join(b,'evcxr_jupyter'+e);subprocess.check_call([k,'--install']);print('The Rust kernel is installed. Choose Rust under Kernel in the kernel picker.')";
+
+/// The command that installs evcxr, the Rust kernel, and registers it with Jupyter, run by `python`.
+///
+/// Through Python rather than as two commands because the run tile runs one program and no shell, and
+/// the job is two programs one after the other: `cargo install --locked evcxr_jupyter` and then
+/// `evcxr_jupyter --install`, which writes the kernelspec `jupyter_client` finds. `task-2229`.
+pub fn rust_install_command(python: &Path) -> Vec<String> {
+    vec![python.to_string_lossy().into_owned(), "-c".to_owned(), RUST_INSTALL_SCRIPT.to_owned()]
+}
+
 /// The kernels installed for `python`, without starting a bridge. The reason is the Python's own
 /// error text when it has no `jupyter_client` or does not answer within thirty seconds.
 pub fn list_kernelspecs(python: &Path) -> Result<Vec<KernelSpec>, String> {

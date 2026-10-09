@@ -3921,6 +3921,7 @@ const EVERY_VARIANT: &[&str] = &[
     "NewWindow",
     "Notebook",
     "NewNotebook",
+    "NewRustNotebook",
     "NewNotebookIn",
     "ConvertToNotebook",
     "ConvertToPython",
@@ -4083,6 +4084,7 @@ fn variant_name(action: &Action) -> &'static str {
         Action::Run(_) => "Run",
         Action::Notebook(_) => "Notebook",
         Action::NewNotebook => "NewNotebook",
+        Action::NewRustNotebook => "NewRustNotebook",
         Action::NewNotebookIn(_) => "NewNotebookIn",
         Action::ConvertToNotebook(_) => "ConvertToNotebook",
         Action::ConvertToPython(_) => "ConvertToPython",
@@ -4909,6 +4911,7 @@ fn every_step() -> Vec<Step> {
     // Notebooks. Making one and converting one each write a file of a name nobody has used, so
     // every window gets its own and none of them finds the file the one before it wrote.
     steps.push(Step::new(Action::NewNotebook));
+    steps.push(Step::new(Action::NewRustNotebook));
     steps.push(Step::new(Action::NewNotebookIn(folder.join("docs"))));
     steps.push(Step::new(Action::ConvertToNotebook(folder.join("tool.py"))));
     steps.push(Step::new(Action::ConvertToPython(folder.join("book.ipynb"))));

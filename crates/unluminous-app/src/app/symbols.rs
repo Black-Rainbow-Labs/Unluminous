@@ -227,9 +227,34 @@ impl UnluminousApp {
 
     /// The grammar that reads a file, if a plugin that is switched on claims it.
     pub(crate) fn grammar_for(&self, path: Option<&Path>) -> Option<&Grammar> {
-        // Through the grammars rather than the plugin, so a notebook is read as the Python its cells
-        // are. See `Grammars::for_path`.
-        self.plugins.grammars().for_path(path?)
+        // Through the grammars rather than the plugin, so a notebook is read as the language its
+        // cells are. See `Self::language_path` and `Grammars::for_path`.
+        let path = path?;
+        match self.notebook_language_path(path) {
+            Some(cells) => self.plugins.grammars().for_path(&cells),
+            None => self.plugins.grammars().for_path(path),
+        }
+    }
+
+    /// The path a file's code is read as: for an open notebook, a cell of the notebook's own language
+    /// (`cell.rs` for a Rust notebook), and otherwise the path itself. `task-2229`.
+    ///
+    /// The language is the notebook's metadata, which is what colours its cells, so the grammar that
+    /// completes a word, finds a definition and toggles a comment is the grammar the cells are drawn
+    /// in. A notebook that is not open is read as Python by `Grammars::for_path`, since on the disk it
+    /// is JSON and nothing reads its code.
+    pub(crate) fn language_path(&self, path: &Path) -> PathBuf {
+        self.notebook_language_path(path).unwrap_or_else(|| path.to_path_buf())
+    }
+
+    /// `cell.<extension>` for the open notebook at `path`, or `None` when `path` is not one.
+    fn notebook_language_path(&self, path: &Path) -> Option<PathBuf> {
+        if !crate::app::notebook_files::is_notebook(path) {
+            return None;
+        }
+        let tab = self.files.iter().find(|file| file.path() == Some(path))?.notebook.as_deref()?;
+        let extension = crate::app::notebook_frame::notebook_extension(&tab.model.metadata);
+        Some(PathBuf::from(format!("cell{extension}")))
     }
 
     /// What the tab at `index` defines, read from its live text and kept until that text changes.
@@ -243,13 +268,7 @@ impl UnluminousApp {
             .as_ref()
             .is_some_and(|read| read.revision == revision);
         if !fresh {
-            let grammar = self
-                .files
-                .at(index)
-                .path()
-                .and_then(|path| self.plugins.for_path(path))
-                .map(|plugin| plugin.grammar.clone())
-                .unwrap_or_default();
+            let grammar = self.grammar_for(self.files.at(index).path()).cloned().unwrap_or_default();
             let text = self.files.at(index).document.text().to_string();
             // Off the colouring's own tokens when they describe this revision, which is the tab that
             // is showing on every frame after it was coloured: one pass over the rules per keystroke

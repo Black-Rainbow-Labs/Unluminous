@@ -261,7 +261,15 @@ impl UnluminousApp {
         let file = self.files.at_mut(index);
         let Some(tab) = file.notebook.as_deref_mut() else { return };
         let Some(events) = tab.kernel().map(|kernel| kernel.events()) else { return };
+        let spoken = crate::app::notebook_frame::notebook_extension(&tab.model.metadata);
         let mut gathered = take_the_events(tab, events);
+        // A kernel that started in another language than the notebook said, such as the Rust kernel
+        // chosen for a notebook made as Python, has just written its language into the metadata. The
+        // cells are coloured and read in that language from now on. `task-2229`.
+        if crate::app::notebook_frame::notebook_extension(&tab.model.metadata) != spoken {
+            file.coloured_revision = None;
+            file.cached.symbols = None;
+        }
         if let Some(note) = notice_a_long_run(tab) {
             gathered.said = Some(note);
         }
@@ -431,6 +439,35 @@ fn kernel_is_free(tab: &NotebookTab) -> bool {
     }
 }
 
+/// Write the language a kernel says it runs into a notebook's metadata, as Jupyter does when it saves:
+/// `language_info` from the kernel's `kernel_info_reply`, and `kernelspec.language` beside it.
+/// Answers whether anything changed, which leaves the notebook unsaved. `task-2229`.
+///
+/// This is what makes choosing the Rust kernel for a notebook that was Python colour and complete its
+/// cells as Rust: the metadata is the one place every reader of a notebook's language looks.
+pub fn adopt_the_kernels_language(metadata: &mut Value, info: &Value) -> bool {
+    let Some(language) = info.get("language_info").filter(|value| {
+        value.as_object().is_some_and(|fields| fields.get("name").is_some_and(Value::is_string))
+    }) else {
+        return false;
+    };
+    let Some(fields) = metadata.as_object_mut() else { return false };
+    let mut changed = false;
+    if fields.get("language_info") != Some(language) {
+        fields.insert("language_info".to_owned(), language.clone());
+        changed = true;
+    }
+    let name = language["name"].as_str().unwrap_or_default().to_lowercase();
+    let spec = fields.entry("kernelspec").or_insert_with(|| serde_json::json!({}));
+    if let Some(spec) = spec.as_object_mut() {
+        if spec.get("language").and_then(Value::as_str) != Some(name.as_str()) {
+            spec.insert("language".to_owned(), Value::String(name));
+            changed = true;
+        }
+    }
+    changed
+}
+
 /// The kernelspec a notebook's own metadata names, which is the kernel it was last run with.
 fn kernel_name_in(metadata: &Value) -> Option<String> {
     metadata.get("kernelspec")?.get("name")?.as_str().map(str::to_owned)
@@ -535,7 +572,7 @@ fn take_an_answer_event(tab: &mut NotebookTab, event: Event) -> Heard {
             tab.bands_revision += 1;
             Heard::default()
         }
-        Event::CompleteReply { request, matches, .. } => {
+        Event::CompleteReply { request, matches, cursor_start, metadata, .. } => {
             let Some(asked) = tab
                 .asked
                 .as_mut()
@@ -543,7 +580,9 @@ fn take_an_answer_event(tab: &mut NotebookTab, event: Event) -> Heard {
             else {
                 return Heard::default();
             };
-            asked.matches = matches;
+            asked.matches = unluminous_jupyter::completion::matches_of(&matches, &metadata);
+            asked.kernel_start = asked.body_start
+                + unluminous_jupyter::completion::byte_of(&asked.source, cursor_start);
             asked.answered = true;
             Heard { completions: true, ..Heard::default() }
         }
@@ -561,7 +600,11 @@ fn take_an_answer_event(tab: &mut NotebookTab, event: Event) -> Heard {
 /// The events about the kernel itself rather than about a cell.
 fn take_a_lifecycle_event(tab: &mut NotebookTab, event: Event) -> Heard {
     match event {
-        Event::Restarted { .. } => {
+        Event::Started { info, .. } => {
+            Heard { changed: adopt_the_kernels_language(&mut tab.model.metadata, &info), ..Heard::default() }
+        }
+        Event::Restarted { info, .. } => {
+            adopt_the_kernels_language(&mut tab.model.metadata, &info);
             stop_the_run(tab);
             let run_all = std::mem::take(&mut tab.run_all_after_restart);
             if run_all {

@@ -212,7 +212,7 @@ impl Command {
                 | ("git", "status" | "action" | "switch")
                 | ("window", "screenshot")
                 | ("input", _)
-                | ("editor", "references" | "rename")
+                | ("editor", "references" | "rename" | "complete")
                 | ("modal", "results")
                 | ("terminal", "read")
                 | ("run", "output")
@@ -230,7 +230,9 @@ impl Command {
                         | "evaluate"
                 )
                 | ("realm", "browser")
-                | ("notebook", "run" | "variables")
+                // `complete` waits for a notebook kernel's completions, and `kernel` for the search
+                // for Pythons and a Python's list of kernels, each on a thread. `task-2229`.
+                | ("notebook", "run" | "variables" | "complete" | "kernel")
         )
     }
 
@@ -2586,25 +2588,42 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "notebook",
         verb: "kernel",
-        summary: "The kernel: start, interrupt, restart, shut down; list this machine's Pythons and whether each has ipykernel, or a Python's kernels; choose the Python or kernelspec; install ipykernel. No Jupyter server is needed.",
+        summary: "The kernel: start, interrupt, restart, shut down; list this machine's Pythons and whether each has ipykernel, or a Python's kernels; choose the Python or kernelspec (`--name rust` runs the cells as Rust); install ipykernel, or install-rust to build and register evcxr, the Rust kernel, in the run tile. No Jupyter server is needed.",
         arguments: &[closed(
             "operation",
             false,
-            "status, start, interrupt, restart, shut-down, pythons, kernels, choose or install. status when it is left out.",
-            &["status", "start", "interrupt", "restart", "shut-down", "pythons", "kernels", "choose", "install"],
+            "status, start, interrupt, restart, shut-down, pythons, kernels, choose, install or install-rust. status when it is left out.",
+            &["status", "start", "interrupt", "restart", "shut-down", "pythons", "kernels", "choose", "install", "install-rust"],
         )],
         flags: &[
             option("python", "path", "For choose and kernels, the Python's path."),
             option("name", "kernelspec", "For choose, the kernelspec to run, as `kernels` lists it."),
             option("path", "file", "A notebook to open first."),
         ],
-        examples: &["unluminous-cli notebook kernel pythons", "unluminous-cli notebook kernel choose --python C:/work/.venv/Scripts/python.exe", "unluminous-cli notebook kernel restart"],
+        examples: &["unluminous-cli notebook kernel pythons", "unluminous-cli notebook kernel choose --python C:/work/.venv/Scripts/python.exe", "unluminous-cli notebook kernel choose --name rust", "unluminous-cli notebook kernel install-rust", "unluminous-cli notebook kernel restart"],
+        local: false,
+    },
+    Command {
+        area: "notebook",
+        verb: "complete",
+        summary: "What the completion popup offers at a place in a code cell: the names the live kernel knows, such as a DataFrame's columns after `df.` or a Vec's methods after `v.`, beside the notebook's own words, best first. Waits for the kernel's answer. --choose applies a row as Enter would.",
+        arguments: NO_ARGUMENTS,
+        flags: &[
+            whole_option("cell", "number", "The cell, counting from 1. The caret's place when neither --cell nor --line is given."),
+            option("id", "id", "The cell's id instead of its number."),
+            whole_option("line", "number", "The line within the cell, counting from 1. The end of the cell when it is left out."),
+            whole_option("column", "number", "The column on that line, counting from 1. The end of the line when it is left out."),
+            whole_option("limit", "number", "Print at most this many rows. 50 when it is left out, and 0 means all of them."),
+            option("choose", "name", "Apply this row, by its name, as Enter would."),
+            option("path", "file", "A notebook to open first."),
+        ],
+        examples: &["unluminous-cli notebook complete --cell 2 --line 1", "unluminous-cli notebook complete --cell 3 --choose describe --json"],
         local: false,
     },
     Command {
         area: "notebook",
         verb: "variables",
-        summary: "The variables the kernel holds: name, type, the start of the value, and shape or length. Python kernels only.",
+        summary: "The variables the kernel holds: name, type, the start of the value, and shape or length. A Rust kernel gives names and types only.",
         arguments: NO_ARGUMENTS,
         flags: &[option("path", "file", "A notebook to open first.")],
         examples: &["unluminous-cli notebook variables --json"],
@@ -2622,8 +2641,8 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "notebook",
         verb: "export",
-        summary: "Write the notebook as HTML with its outputs, Markdown with pictures beside it, or Python with # %% cells. Beside the notebook unless --to says where.",
-        arguments: &[closed("format", true, "html, md or py.", &["html", "md", "py"])],
+        summary: "Write the notebook as HTML with its outputs, Markdown with pictures beside it, Python with # %% cells, or Rust with // %% cells. Beside the notebook unless --to says where.",
+        arguments: &[closed("format", true, "html, md, py or rs.", &["html", "md", "py", "rs"])],
         flags: &[
             option("to", "file", "Where to write it."),
             option("path", "file", "A notebook to open first."),
@@ -2634,10 +2653,10 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "notebook",
         verb: "new",
-        summary: "Make a new notebook with one empty code cell and open it. Untitled.ipynb in the project folder when no path is given.",
+        summary: "Make a new notebook with one empty code cell and open it. Untitled.ipynb in the project folder when no path is given. --language rust makes a Rust notebook, run by evcxr.",
         arguments: &[argument("path", false, "Where to make it, relative to the project folder.")],
-        flags: NO_FLAGS,
-        examples: &["unluminous-cli notebook new", "unluminous-cli notebook new analysis/explore.ipynb"],
+        flags: &[option("language", "language", "python or rust. python when it is left out.")],
+        examples: &["unluminous-cli notebook new", "unluminous-cli notebook new analysis/explore.ipynb", "unluminous-cli notebook new scratch.ipynb --language rust"],
         local: false,
     },
     Command {

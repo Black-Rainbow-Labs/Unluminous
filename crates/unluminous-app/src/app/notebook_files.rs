@@ -131,6 +131,16 @@ impl UnluminousApp {
     /// Make a new notebook with one empty code cell, open it, and answer where it is. `path` is where
     /// to put it; with none it is `Untitled.ipynb` in the project folder, numbered when that is taken.
     pub(crate) fn make_a_new_notebook(&mut self, path: Option<&Path>) -> Result<PathBuf, String> {
+        self.make_a_new_notebook_for(path, nbformat::Language::Python)
+    }
+
+    /// A new notebook for `language`, which decides the kernel it names: `python3`, or `rust` for
+    /// evcxr. See [`Self::make_a_new_notebook`]. `task-2229`.
+    pub(crate) fn make_a_new_notebook_for(
+        &mut self,
+        path: Option<&Path>,
+        language: nbformat::Language,
+    ) -> Result<PathBuf, String> {
         let path = match path {
             Some(path) if path.is_absolute() => path.to_path_buf(),
             Some(path) => self.tree.root().join(path),
@@ -139,7 +149,7 @@ impl UnluminousApp {
         if path.exists() {
             return Err(format!("{} already exists.", path.display()));
         }
-        let json = nbformat::serialize(&nbformat::empty());
+        let json = nbformat::serialize(&nbformat::empty_for(language));
         crate::services::store::write_a_source_file(&path, json.as_bytes()).map_err(|problem| {
             format!("Unluminous could not write {}: {problem}", path.display())
         })?;
@@ -208,9 +218,10 @@ impl UnluminousApp {
                 ("md", text, pictures)
             }
             "py" | "python" => ("py", export::to_python(&model), Vec::new()),
+            "rs" | "rust" => ("rs", export::to_rust(&model), Vec::new()),
             other => {
                 return Err(format!(
-                    "{other} is not a format Unluminous exports to. Use html, md or py."
+                    "{other} is not a format Unluminous exports to. Use html, md, py or rs."
                 ))
             }
         };

@@ -401,6 +401,10 @@ impl UnluminousApp {
         let now = ui.input(|input| input.time);
         if mode == Mode::Edit {
             self.keep_a_key_from_joining_a_cell_to_its_marker(ui);
+            if self.take_a_tab_that_completes(ui) {
+                self.complete_word();
+                return has_keyboard;
+            }
         }
         let presses = take_notebook_presses(ui, mode, self.find.is_some());
         for press in presses {
@@ -410,6 +414,39 @@ impl UnluminousApp {
         }
         let mode = self.files.active().notebook.as_deref().map(|tab| tab.mode).unwrap_or_default();
         mode == Mode::Edit && self.notebook_wanted.is_none()
+    }
+
+    /// Take a bare Tab out of the frame's input when it means *complete* rather than *indent*, which is
+    /// Jupyter's own rule: in a code cell, with nothing selected, straight after a letter, a digit, an
+    /// `_`, a `.` or a `:`. Anywhere else Tab still indents. Answers whether one was taken. `task-2229`.
+    fn take_a_tab_that_completes(&mut self, ui: &mut egui::Ui) -> bool {
+        let bare_tab = |event: &egui::Event| {
+            matches!(event, egui::Event::Key { key: egui::Key::Tab, pressed: true, modifiers, .. } if modifiers.is_none())
+        };
+        if !ui.input(|input| input.events.iter().any(bare_tab)) {
+            return false;
+        }
+        let file = self.files.active();
+        let Some(tab) = file.notebook.as_deref() else { return false };
+        let selection = file.document.selection();
+        let Some(cell) = tab.cell_at_offset(selection.head) else { return false };
+        let span = &tab.spans[cell];
+        let in_code = span.kind == CellKind::Code
+            && selection.head > span.body_bytes.start
+            && selection.head <= span.body_bytes.end;
+        if !selection.is_empty() || !in_code {
+            return false;
+        }
+        // From the cell's start, which is always a character boundary, where four bytes back might not be.
+        let before =
+            file.document.text().byte_slice(span.body_bytes.start..selection.head).to_string();
+        let completes = before.chars().last().is_some_and(|last| {
+            last.is_alphanumeric() || matches!(last, '_' | '.' | ':' | '%' | '!')
+        });
+        if completes {
+            ui.input_mut(|input| input.events.retain(|event| !bare_tab(event)));
+        }
+        completes
     }
 
     /// Take Backspace at a cell's first character and Delete at its last out of the frame's input.
@@ -953,7 +990,8 @@ fn paint_a_cell(
     }
     let painted = paint_one_cell(ui, renderer, tab, drawing, frame);
     pass.asked.take_in(painted, cell);
-    paint_the_cell_buttons(ui, drawing, frame, pass);
+    let debuggable = crate::app::notebook_debug::can_be_debugged(&tab.model.metadata);
+    paint_the_cell_buttons(ui, drawing, frame, debuggable, pass);
     paint_the_run_button(ui, drawing, frame, pass);
     paint_the_add_buttons(ui, drawing, frame, &mut pass.asked);
 }
@@ -963,6 +1001,7 @@ fn paint_the_cell_buttons(
     ui: &mut egui::Ui,
     drawing: &CellDrawing,
     frame: &Frame,
+    debuggable: bool,
     pass: &mut Pass,
 ) {
     let cell = drawing.cell;
@@ -973,7 +1012,7 @@ fn paint_the_cell_buttons(
     let corner = Pos2::new(frame.area.right() - 14.0, frame.origin.y + drawing.place.top - 14.0);
     let rendered = drawing.shape == Shape::Rendered;
     let salt = format!("cell {}", cell + 1);
-    let Some(button) = notebook_view::cell_buttons(ui, corner, drawing.kind, rendered, &salt)
+    let Some(button) = notebook_view::cell_buttons(ui, corner, drawing.kind, rendered, debuggable, &salt)
     else {
         return;
     };

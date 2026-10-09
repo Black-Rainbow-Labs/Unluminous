@@ -2487,6 +2487,7 @@ fn drive_a_notebook(coverage: &mut Coverage) {
         "view line-numbers",
         "output traceback --cell 1",
         "outline",
+        "complete",
     ] {
         c.refuses(&mut harness, &format!("notebook {verb}"));
     }
@@ -2511,16 +2512,21 @@ fn drive_a_notebook(coverage: &mut Coverage) {
     c.works(&mut harness, "notebook outline");
     c.works(&mut harness, "notebook outline --go 1");
     c.refuses(&mut harness, "notebook outline --go 99");
+    c.works(&mut harness, "notebook complete --cell 2 --line 1 --column 2");
+    c.refuses(&mut harness, "notebook complete --cell 99");
     c.works(&mut harness, "notebook select --section next");
     c.refuses(&mut harness, "notebook select --section sideways");
     c.works(&mut harness, "notebook edit tags --cell 2 --tags slow,parameters");
     c.works(&mut harness, "notebook edit duplicate --cell 2");
     c.works(&mut harness, "notebook edit delete --cell 3");
     c.works(&mut harness, "notebook export py --to exported.py");
+    c.works(&mut harness, "notebook export rs --to exported.rs");
     c.works(&mut harness, "notebook convert script.py");
     c.refuses(&mut harness, "notebook convert no-such-file.py");
     c.works(&mut harness, "notebook new fresh.ipynb");
     c.refuses(&mut harness, "notebook new fresh.ipynb");
+    c.works(&mut harness, "notebook new rusty.ipynb --language rust");
+    c.refuses(&mut harness, "notebook new other.ipynb --language cobol");
 }
 
 fn drive_the_project(coverage: &mut Coverage) {

@@ -244,6 +244,16 @@ impl UnluminousApp {
         if stem.is_empty() {
             return pool;
         }
+        // After a dot in a notebook the kernel knows what the value has, and a keyword, a word of the
+        // file or a definition elsewhere is not a member of it: `df.de` offering `def` and `del` is a
+        // list nobody can use. Until the kernel answers, the ordinary sources stand in. `task-2229`.
+        let word_start = offset.saturating_sub(stem.len());
+        if self.at_a_member_access(word_start) {
+            let from_the_kernel = self.kernel_candidates(stem, offset);
+            if !from_the_kernel.is_empty() || self.kernel_is_being_asked(word_start, offset) {
+                return from_the_kernel;
+            }
+        }
         let here = self.files.active_index();
         let open: Vec<PathBuf> =
             self.files.iter().filter_map(|file| file.path().map(Path::to_path_buf)).collect();
@@ -543,11 +553,35 @@ impl UnluminousApp {
         }
         let range = completion::stem_at(&text, offset, &grammar);
         if range.is_empty() {
-            return Offer { range, typed: String::new(), rows: Vec::new(), import: None };
+            // Straight after `.` or `::` in a notebook's code cell, the kernel says what the value in
+            // front has, which is the answer a notebook is for. `task-2229`.
+            let rows = match self.at_a_member_access(offset) {
+                true => completion::rank_all("", self.kernel_candidates("", offset)),
+                false => Vec::new(),
+            };
+            return Offer { range, typed: String::new(), rows, import: None };
         }
         let typed = text[range.clone()].to_owned();
         let rows = self.completion_rows(&typed, offset);
         Offer { range, typed, rows, import: None }
+    }
+
+    /// Whether `offset` is straight after `.` or `::` in a notebook's code cell, with something in
+    /// front of the dot to be a member of: `df.`, `v.`, `std::`, `f().`, `a[0].`. A dot after a
+    /// space or at the start of a line is not one, and neither is a decimal point (`3.`). `task-2229`.
+    pub(crate) fn at_a_member_access(&self, offset: usize) -> bool {
+        let file = self.files.active();
+        let Some(tab) = file.notebook.as_deref() else { return false };
+        let Some(cell) = tab.cell_at_offset(offset) else { return false };
+        let span = &tab.spans[cell];
+        let in_code = span.kind == unluminous_jupyter::nbformat::CellKind::Code
+            && offset > span.body_bytes.start
+            && offset <= span.body_bytes.end;
+        // The cell's own text up to the point, which is all the question needs to read.
+        in_code
+            && is_a_member_access(
+                &file.document.text().byte_slice(span.body_bytes.start..offset).to_string(),
+            )
     }
 
     /// What a hypothetical stem would offer at a point, without putting that stem in the document.
@@ -634,6 +668,13 @@ impl UnluminousApp {
             }
             None => {
                 let stem = completion::stem_at(&text, head, &grammar);
+                // In a notebook, `.` and `::` ask the kernel at once, with nothing typed after them.
+                if stem.is_empty() && self.at_a_member_access(head) {
+                    if self.point_is_code(head - 1) {
+                        self.open_the_completion(head, false);
+                    }
+                    return;
+                }
                 if text[stem.clone()].chars().count() < AUTOMATIC_STEM {
                     return;
                 }
@@ -671,13 +712,19 @@ impl UnluminousApp {
         let grammar = self.completion_grammar();
         let inside_an_import = core_imports::context_at(&text, head, &grammar).is_some();
         let stem = completion::stem_at(&text, head, &grammar);
-        if stem.is_empty() && !inside_an_import {
+        let member = stem.is_empty() && self.at_a_member_access(head);
+        if stem.is_empty() && !inside_an_import && !member {
             self.completion = None;
             self.message = Some("There is nothing to complete here.".to_owned());
             return;
         }
         let word = text[stem.clone()].to_owned();
         if !self.open_the_completion(head, true) {
+            // A notebook's kernel answers a round trip later, and the popup opens when it does.
+            if self.kernel_is_being_asked(stem.start, head) {
+                self.message = Some("Asking the kernel...".to_owned());
+                return;
+            }
             self.message = match word.is_empty() {
                 true => Some("There is nothing to import here.".to_owned()),
                 false => Some(format!("Nothing completes '{word}'.")),
@@ -733,14 +780,46 @@ impl UnluminousApp {
             return Vec::new();
         }
         let word_start = offset.saturating_sub(stem.len());
+        let about = tab.asked.as_ref().is_some_and(|asked| {
+            let before = file.document.text().byte_slice(span.body_bytes.start..word_start);
+            asked.is_about(word_start, &before.to_string(), stem)
+        });
         match &tab.asked {
-            Some(asked) if asked.word_start == word_start && asked.answered => asked
-                .matches
-                .iter()
-                .filter(|name| completion::could_match(stem, name))
-                .map(|name| Candidate::described(name.clone(), Source::Kernel, None, "kernel"))
-                .collect(),
-            Some(asked) if asked.word_start == word_start => Vec::new(),
+            Some(asked) if about && asked.answered => {
+                // What lies between the kernel's start and the editor's, which fits each match to the
+                // editor's stem. See `unluminous_jupyter::completion::fit`.
+                let (low, high) = match asked.kernel_start <= word_start {
+                    true => (asked.kernel_start, word_start),
+                    false => (word_start, asked.kernel_start),
+                };
+                let between = file.document.text().byte_slice(low..high).to_string();
+                let (kernel_start, stem_start) = match asked.kernel_start <= word_start {
+                    true => (0, between.len()),
+                    false => (between.len(), 0),
+                };
+                asked
+                    .matches
+                    .iter()
+                    .filter_map(|found| {
+                        let name = unluminous_jupyter::completion::fit(
+                            &found.insert,
+                            &between,
+                            kernel_start,
+                            stem_start,
+                        )?;
+                        let offered = stem.is_empty() || completion::could_match(stem, &name);
+                        offered.then(|| {
+                            Candidate::described(
+                                name,
+                                Source::Kernel,
+                                kind_of(found.kind.as_deref()),
+                                found.detail(),
+                            )
+                        })
+                    })
+                    .collect()
+            }
+            Some(_) if about => Vec::new(),
             _ => {
                 let text = file.document.text().to_string();
                 let source = text[span.body_bytes.clone()].to_owned();
@@ -750,6 +829,10 @@ impl UnluminousApp {
                     tab.asked = Some(crate::app::notebook::Asked {
                         request,
                         word_start,
+                        body_start: span.body_bytes.start,
+                        source,
+                        kernel_start: word_start,
+                        typed: stem.to_owned(),
                         matches: Vec::new(),
                         answered: false,
                     });
@@ -757,6 +840,21 @@ impl UnluminousApp {
                 Vec::new()
             }
         }
+    }
+
+    /// Whether the notebook's kernel has been asked about the word from `word_start` to `offset` and
+    /// has not answered yet.
+    pub(crate) fn kernel_is_being_asked(&self, word_start: usize, offset: usize) -> bool {
+        let file = self.files.active();
+        let Some(asked) = file.notebook.as_deref().and_then(|tab| tab.asked.as_ref()) else {
+            return false;
+        };
+        if asked.answered || asked.word_start != word_start || word_start < asked.body_start {
+            return false;
+        }
+        let before = file.document.text().byte_slice(asked.body_start..word_start).to_string();
+        let stem = file.document.text().byte_slice(word_start..offset.max(word_start));
+        asked.is_about(word_start, &before, &stem.to_string())
     }
 
     fn open_the_completion(&mut self, offset: usize, manual: bool) -> bool {
@@ -1053,11 +1151,82 @@ fn take_the_five_keys(input: &mut egui::InputState) -> CompletionKeys {
     keys
 }
 
+/// Whether text ends in a member access: `.` or `::` with a name, a closing bracket or a closing
+/// quote in front of it. `3.` is a number, and a dot after a space or at the start of a line has
+/// nothing in front of it to be a member of. `task-2229`.
+pub fn is_a_member_access(before: &str) -> bool {
+    let rest = match before.strip_suffix("::") {
+        Some(rest) => rest,
+        None => match before.strip_suffix('.') {
+            // `..` is a range, and `...` an ellipsis.
+            Some(rest) if !rest.ends_with('.') => rest,
+            _ => return false,
+        },
+    };
+    let Some(last) = rest.chars().last() else { return false };
+    if matches!(last, ')' | ']' | '"' | '\'' | '>') {
+        return true;
+    }
+    if !(last.is_alphanumeric() || last == '_') {
+        return false;
+    }
+    // A run of digits on its own is a number, and `3.` is the start of `3.5`.
+    let word: String = rest
+        .chars()
+        .rev()
+        .take_while(|character| character.is_alphanumeric() || *character == '_')
+        .collect();
+    !word.chars().all(|character| character.is_ascii_digit())
+}
+
+/// The kind of definition a kernel's type for a match names, for the row's icon and its order.
+fn kind_of(kernel: Option<&str>) -> Option<SymbolKind> {
+    match kernel? {
+        "function" | "method" | "macro" | "magic" => Some(SymbolKind::Function),
+        "class" | "struct" | "enum" | "trait" | "type" | "union" => Some(SymbolKind::Type),
+        "module" | "crate" | "namespace" => Some(SymbolKind::Module),
+        "instance" | "statement" | "variable" | "param" | "local" | "field" | "property" => {
+            Some(SymbolKind::Variable)
+        }
+        "const" | "constant" => Some(SymbolKind::Constant),
+        _ => None,
+    }
+}
+
 /// A path's last part, which is what a row says about where a definition came from.
 fn file_name(path: &Path) -> String {
     path.file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| path.display().to_string())
+}
+
+#[cfg(test)]
+mod member_tests {
+    use super::*;
+
+    #[test]
+    fn a_dot_or_two_colons_after_a_name_or_a_bracket_is_a_member_access() {
+        for before in ["df.", "v.", "std::", "f().", "a[0].", "self.items.", "'text'.", "x2."] {
+            assert!(is_a_member_access(before), "{before}");
+        }
+    }
+
+    #[test]
+    fn a_number_a_range_and_a_lonely_dot_are_not() {
+        for before in ["3.", "12.", "0..", "...", " .", ".", "", "x", "a :", "%"] {
+            assert!(!is_a_member_access(before), "{before}");
+        }
+    }
+
+    #[test]
+    fn a_kernels_type_names_the_kind_of_row() {
+        assert_eq!(kind_of(Some("function")), Some(SymbolKind::Function));
+        assert_eq!(kind_of(Some("module")), Some(SymbolKind::Module));
+        assert_eq!(kind_of(Some("instance")), Some(SymbolKind::Variable));
+        assert_eq!(kind_of(Some("class")), Some(SymbolKind::Type));
+        assert_eq!(kind_of(Some("keyword")), None);
+        assert_eq!(kind_of(None), None);
+    }
 }
 
 #[cfg(test)]

@@ -1338,6 +1338,9 @@ pub struct UnluminousApp {
     pub(crate) notebook_input: Option<String>,
     /// The kernels each Python has, once asked, by the Python's path. `None` while being asked.
     pub(crate) kernelspecs: HashMap<PathBuf, Option<KernelSpecs>>,
+    /// When each Python was last asked for its kernels, so a listing older than
+    /// `notebook_chrome::KERNELSPECS_FRESH` is asked for again when the picker opens. `task-2229`.
+    pub(crate) kernelspecs_asked: HashMap<PathBuf, std::time::Instant>,
     /// The threads still asking a Python which kernels it has. See `app::notebook_chrome`.
     #[allow(clippy::type_complexity)]
     pub(crate) kernelspec_answers: Vec<Arc<std::sync::Mutex<Option<(PathBuf, KernelSpecs)>>>>,
@@ -1591,6 +1594,7 @@ impl UnluminousApp {
             notebook_menu: None,
             notebook_input: None,
             kernelspecs: HashMap::new(),
+            kernelspecs_asked: HashMap::new(),
             kernelspec_answers: Vec::new(),
             terminal_menu: None,
             tab_drag: Drag::Nothing,

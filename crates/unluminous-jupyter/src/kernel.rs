@@ -24,7 +24,9 @@
 
 mod python;
 
-pub use python::{find_pythons, install_command, list_kernelspecs, probe, Python};
+pub use python::{
+    find_pythons, install_command, list_kernelspecs, probe, rust_install_command, Python,
+};
 
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Write};
@@ -148,6 +150,9 @@ pub enum Event {
         matches: Vec<String>,
         cursor_start: usize,
         cursor_end: usize,
+        /// The reply's metadata, where `_jupyter_types_experimental` says what each match is. See
+        /// [`crate::completion::matches_of`].
+        metadata: Value,
     },
     /// Documentation for the name under the cursor sent to [`Kernel::inspect`].
     InspectReply { request: Option<String>, found: bool, data: Value },
@@ -266,7 +271,8 @@ impl Kernel {
         self.request("is_complete", json!({"code": code}))
     }
 
-    /// Ask for the variables in the kernel's namespace. Only Python kernels answer; others send an
+    /// Ask for the variables in the kernel's namespace. A Python kernel and a Rust kernel answer,
+    /// the Rust one through evcxr's `:vars` with names and types but no values; others send an
     /// [`Event::Error`]. Returns the request id.
     pub fn variables(&mut self) -> String {
         self.request("variables", json!({}))
@@ -593,6 +599,7 @@ fn parse_reply_event(value: &Value, request: Option<String>) -> Option<Event> {
             matches: strings(&value["matches"]),
             cursor_start: value["cursor_start"].as_u64().unwrap_or(0) as usize,
             cursor_end: value["cursor_end"].as_u64().unwrap_or(0) as usize,
+            metadata: value["metadata"].clone(),
         },
         "inspect_reply" => Event::InspectReply {
             request,

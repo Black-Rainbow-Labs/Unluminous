@@ -121,8 +121,33 @@ pub struct Asked {
     /// The byte the word starts at in the document, which is what one answer is good for: the
     /// answer is reused while the rest of the word is typed.
     pub word_start: usize,
-    pub matches: Vec<String>,
+    /// The byte the cell's source starts at in the document, and the source as it was sent, which is
+    /// what the kernel's range is counted in. `task-2229`.
+    pub body_start: usize,
+    pub source: String,
+    /// The byte in the document the kernel's matches replace from, once it has answered. It is often
+    /// not `word_start`: ipykernel answers `%ti` from the `%`. See
+    /// `unluminous_jupyter::completion::fit`.
+    pub kernel_start: usize,
+    /// What had been typed of the word when the kernel was asked. Its answer is already narrowed to
+    /// that, so it only stands while the word still starts with it.
+    pub typed: String,
+    pub matches: Vec<unluminous_jupyter::completion::Match>,
     pub answered: bool,
+}
+
+impl Asked {
+    /// Whether this question still answers the word `stem` starting at `word_start`, given `before`,
+    /// the cell's text from its start to that word as it is now. The same place is not enough: the
+    /// text in front may have changed, and the kernel narrowed its answer to what was typed when it
+    /// was asked, so `v.it` changed to `v.` would be offered only the two methods that match `it`.
+    /// `task-2229`.
+    pub fn is_about(&self, word_start: usize, before: &str, stem: &str) -> bool {
+        self.word_start == word_start
+            && word_start >= self.body_start
+            && self.source.get(..word_start - self.body_start) == Some(before)
+            && stem.starts_with(&self.typed)
+    }
 }
 
 /// A cell that was deleted, kept so `Z` in command mode can bring it back.
@@ -642,6 +667,34 @@ pub fn apply_edits(
     if let Some(offset) = caret {
         let offset = offset.min(document.text().len_bytes());
         document.apply(Command::PlaceCaret { offset, extend: false });
+    }
+}
+
+#[cfg(test)]
+mod asked_tests {
+    use super::*;
+
+    fn asked(source: &str, word_start: usize, typed: &str) -> Asked {
+        Asked {
+            request: "k1".to_owned(),
+            word_start,
+            body_start: 0,
+            source: source.to_owned(),
+            kernel_start: word_start,
+            typed: typed.to_owned(),
+            matches: Vec::new(),
+            answered: true,
+        }
+    }
+
+    #[test]
+    fn an_answer_stands_while_the_word_grows_and_not_once_it_shrinks_or_moves() {
+        let question = asked("v.it", 2, "it");
+        assert!(question.is_about(2, "v.", "it"));
+        assert!(question.is_about(2, "v.", "ite"), "typing on narrows the same answer");
+        assert!(!question.is_about(2, "v.", ""), "`v.` wants every method, not those matching `it`");
+        assert!(!question.is_about(2, "s.", "it"), "the value in front changed");
+        assert!(!question.is_about(3, "v.i", "t"), "another word");
     }
 }
 

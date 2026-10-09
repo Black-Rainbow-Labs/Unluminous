@@ -261,6 +261,12 @@ impl UnluminousApp {
                     self.message = Some(problem);
                 }
             }
+            Action::NewRustNotebook => {
+                let made = self.make_a_new_notebook_for(None, unluminous_jupyter::nbformat::Language::Rust);
+                if let Err(problem) = made {
+                    self.message = Some(problem);
+                }
+            }
             Action::NewNotebookIn(folder) => {
                 let path = crate::app::notebook_files::free_name(&folder, "Untitled", "ipynb");
                 if let Err(problem) = self.make_a_new_notebook(Some(&path)) {

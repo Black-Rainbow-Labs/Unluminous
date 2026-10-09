@@ -755,8 +755,86 @@ pub fn dropdown_over<T>(
     ground: bool,
     contents: impl FnOnce(&mut egui::Ui) -> Option<T>,
 ) -> Option<T> {
+    dropdown_with(ui, area, value, name, draw, ground, area.width().max(120.0), contents)
+}
+
+/// The same dropdown with a list at least `list_width` points wide, for one whose rows say more than
+/// its button has room for. The notebook's kernel picker is the one that needed it: its button is the
+/// width of the toolbar's right hand end, and a Python's name and version did not fit in a list that
+/// narrow. `task-2229`.
+pub fn dropdown_wide<T>(
+    ui: &mut egui::Ui,
+    area: Rect,
+    value: &str,
+    name: &str,
+    list_width: f32,
+    contents: impl FnOnce(&mut egui::Ui) -> Option<T>,
+) -> Option<T> {
+    let width = area.width().max(list_width);
+    dropdown_with(ui, area, value, name, None, true, width, contents)
+}
+
+/// Words cut to `width` points with an ellipsis at the end, measured by `measure`, and whether they
+/// were cut. The fewest characters are taken off, found by halving, so a long value costs a handful
+/// of measurements rather than one a character.
+///
+/// `task-2229`: a dropdown's value and a list row's name were drawn at full length, so a value longer
+/// than its button drew over the next control along, and a row longer than its list ran out of it.
+pub fn elide(words: &str, width: f32, measure: impl Fn(&str) -> f32) -> (String, bool) {
+    if measure(words) <= width {
+        return (words.to_owned(), false);
+    }
+    let characters: Vec<char> = words.chars().collect();
+    let cut = |count: usize| {
+        let kept: String = characters[..count].iter().collect();
+        format!("{}\u{2026}", kept.trim_end())
+    };
+    let (mut fits, mut too_many) = (0, characters.len());
+    while too_many - fits > 1 {
+        let middle = (fits + too_many) / 2;
+        match measure(&cut(middle)) <= width {
+            true => fits = middle,
+            false => too_many = middle,
+        }
+    }
+    (cut(fits), true)
+}
+
+/// [`elide`] measured in `font` by egui.
+fn elide_in(ui: &egui::Ui, words: &str, font: &egui::FontId, width: f32) -> (String, bool) {
+    elide(words, width, |text| {
+        ui.fonts_mut(|fonts| {
+            fonts.layout_no_wrap(text.to_owned(), font.clone(), color::text()).size().x
+        })
+    })
+}
+
+/// The dropdown itself, with the list's width given. See [`dropdown_over`].
+#[allow(clippy::too_many_arguments)]
+fn dropdown_with<T>(
+    ui: &mut egui::Ui,
+    area: Rect,
+    value: &str,
+    name: &str,
+    draw: Option<fn(&egui::Painter, Pos2, Color32)>,
+    ground: bool,
+    list_width: f32,
+    contents: impl FnOnce(&mut egui::Ui) -> Option<T>,
+) -> Option<T> {
     let id = ui.id().with(("dropdown", name));
-    let response = ui.interact(area, id, Sense::click()).with_hint(name);
+    let font = egui::FontId::proportional(LIST_SIZE);
+    let mut text_left = area.left() + 10.0;
+    if draw.is_some() {
+        text_left += 16.0;
+    }
+    // Clear of the chevron, which is drawn 11 points in from the right edge and is about 8 wide.
+    let room = (area.right() - 22.0 - text_left).max(0.0);
+    let (shown, cut) = elide_in(ui, value, &font, room);
+    let hint = match cut {
+        true => format!("{name}: {value}"),
+        false => name.to_owned(),
+    };
+    let response = ui.interact(area, id, Sense::click()).with_hint(&hint);
     let painter = ui.painter();
     if ground {
         painter.rect(
@@ -767,16 +845,10 @@ pub fn dropdown_over<T>(
             egui::StrokeKind::Inside,
         );
     }
-    let mut text_left = area.left() + 10.0;
     if let Some(draw) = draw {
-        draw(painter, Pos2::new(text_left + 4.0, area.center().y), color::text_dim());
-        text_left += 16.0;
+        draw(painter, Pos2::new(area.left() + 14.0, area.center().y), color::text_dim());
     }
-    let galley = painter.crisp_layout_no_wrap(
-        value.to_owned(),
-        egui::FontId::proportional(LIST_SIZE),
-        color::text_control(),
-    );
+    let galley = painter.crisp_layout_no_wrap(shown, font, color::text_control());
     painter.crisp_galley(
         Pos2::new(text_left, area.center().y - galley.size().y / 2.0),
         galley,
@@ -800,7 +872,7 @@ pub fn dropdown_over<T>(
                 .fill(color::control())
                 .stroke(Stroke::new(1.0, color::control_border())),
         )
-        .width(area.width().max(120.0))
+        .width(list_width)
         .show(|ui| {
             set_in_the_list_size(ui);
             contents(ui)
@@ -1171,25 +1243,33 @@ pub fn menu_row(
         // Unluminous draws.
         icon::tick(painter, Pos2::new(left + 6.0, rect.center().y), color::accent());
     }
-    let label =
-        painter.crisp_layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), tint);
-    painter.crisp_galley(
-        Pos2::new(left + 18.0, rect.center().y - label.size().y / 2.0),
-        label,
-        tint,
-    );
+    // The quiet column first, because the name is cut to whatever room it leaves. `task-2229`.
+    let mut name_right = rect.right() - 8.0;
     if !shortcut.is_empty() {
         let keys = painter.crisp_layout_no_wrap(
             shortcut.to_owned(),
             egui::FontId::proportional(11.5),
             color::text_faint(),
         );
+        name_right = rect.right() - 8.0 - keys.size().x - 12.0;
         painter.crisp_galley(
             Pos2::new(rect.right() - 8.0 - keys.size().x, rect.center().y - keys.size().y / 2.0),
             keys,
             color::text_faint(),
         );
     }
+    let font = egui::FontId::proportional(12.5);
+    let (shown, cut) = elide_in(ui, name, &font, (name_right - left - 18.0).max(0.0));
+    let label = painter.crisp_layout_no_wrap(shown, font, tint);
+    painter.crisp_galley(
+        Pos2::new(left + 18.0, rect.center().y - label.size().y / 2.0),
+        label,
+        tint,
+    );
+    let response = match cut {
+        true => response.with_hint(name),
+        false => response,
+    };
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name));
     response.clicked()
 }
@@ -1511,5 +1591,21 @@ mod tests {
             field.center().y,
         );
         assert_eq!(real.left(), field.left() + 9.0, "with the caller's own inset in front of it");
+    }
+
+    /// `task-2229`: *"The kernel selection items are escaping the container. the default no kernel
+    /// covers the variables icon."* Every character is ten points wide here, so the arithmetic is the
+    /// reader's to check.
+    #[test]
+    fn words_too_long_for_their_room_are_cut_with_an_ellipsis_and_short_ones_are_left_alone() {
+        let ten_a_character = |text: &str| text.chars().count() as f32 * 10.0;
+        assert_eq!(elide("idle", 100.0, ten_a_character), ("idle".to_owned(), false));
+        let (cut, was_cut) =
+            elide("No kernel yet \u{00B7} starts on the first run", 100.0, ten_a_character);
+        assert!(was_cut);
+        assert!(ten_a_character(&cut) <= 100.0, "{cut}");
+        assert_eq!(cut, "No kernel\u{2026}", "a space is not kept before the ellipsis");
+        let (nothing, _) = elide("anything", 5.0, ten_a_character);
+        assert_eq!(nothing, "\u{2026}", "a room too small for one letter keeps only the ellipsis");
     }
 }

@@ -749,6 +749,7 @@ pub fn cell_buttons(
     top_right: Pos2,
     kind: CellKind,
     rendered: bool,
+    debuggable: bool,
     salt: &str,
 ) -> Option<CellButton> {
     let size = 22.0;
@@ -756,7 +757,11 @@ pub fn cell_buttons(
     match kind {
         CellKind::Code => {
             buttons.push((CellButton::Run, "Run Cell", icon::run));
-            buttons.push((CellButton::Debug, "Debug Cell", icon::bug));
+            // Absent rather than refused in a notebook whose kernel debugpy cannot debug, such as a
+            // Rust one. `task-2229`.
+            if debuggable {
+                buttons.push((CellButton::Debug, "Debug Cell", icon::bug));
+            }
         }
         CellKind::Markdown => match rendered {
             true => buttons.push((CellButton::ToggleMarkdown, "Edit Markdown Cell", icon::font)),

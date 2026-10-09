@@ -582,3 +582,175 @@ fn debug_cell_on_a_notebook_with_no_kernel_starts_one_and_stops_in_the_cell() {
     did(&mut harness, "debug stop");
     did(&mut harness, "notebook kernel shut-down");
 }
+
+// ---------------------------------------------------------------------------------------------
+// Rust notebooks, completion from the kernel, and the kernel picker (`task-2229`).
+
+/// Run a command whose answer may be held for the kernel, such as `notebook complete`, and take the
+/// answer once it comes. Asked again after each pump, which is safe: the kernel is asked once for a
+/// word, and asking again only reads its answer.
+fn completed(harness: &mut Harness<'static, UnluminousApp>, line: &str) -> serde_json::Value {
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    loop {
+        let ctx = harness.ctx.clone();
+        if let Some(reply) = harness.state_mut().run_command_line(line, &ctx) {
+            note_a_driven_line(line, reply.ok);
+            assert!(reply.ok, "`{line}` was refused: {}", reply.message);
+            return reply.result;
+        }
+        assert!(std::time::Instant::now() < until, "`{line}` was never answered");
+        pump(harness);
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+/// The names `notebook complete` or `editor complete` answered with.
+fn names(answer: &serde_json::Value) -> Vec<String> {
+    answer["rows"]
+        .as_array()
+        .map(|rows| rows.iter().filter_map(|row| row["name"].as_str().map(str::to_owned)).collect())
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_rust_notebook_is_read_as_rust_and_offers_no_debugger() {
+    let folder = fixture("unluminous-notebook-rust-reading", &[("readme.md", "# Rust\n")]);
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "notebook new scratch.ipynb --language rust");
+    let written: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(folder.join("scratch.ipynb")).expect("the notebook was written"),
+    )
+    .expect("it is JSON");
+    assert_eq!(written["metadata"]["kernelspec"]["name"], "rust");
+    did(&mut harness, "notebook source --cell 1 let total = 1;");
+    // The language's own words are Rust's, not Python's.
+    let offered = names(&did(&mut harness, "editor complete --stem imp --limit 0 --json"));
+    assert!(offered.contains(&"impl".to_owned()), "{offered:?}");
+    assert!(!offered.contains(&"import".to_owned()), "{offered:?}");
+    // A line comment is Rust's.
+    did(&mut harness, "notebook select 1 --edit");
+    did(&mut harness, "editor comment");
+    let cell = did(&mut harness, "notebook cell 1");
+    assert!(cell["source"].as_str().unwrap_or_default().starts_with("//"), "{cell}");
+    // Debugging a cell is debugpy inside ipykernel, so a Rust notebook refuses it.
+    assert_eq!(refused(&mut harness, "notebook run 1 --debug"), "not-applicable");
+}
+
+/// A Python whose Jupyter has evcxr's kernel registered, or `None` with a line saying so.
+fn rust_kernel_python() -> Option<std::path::PathBuf> {
+    let python = kernel_python()?;
+    let specs = unluminous_jupyter::kernel::list_kernelspecs(&python).unwrap_or_default();
+    if !specs.iter().any(|spec| spec.name == "rust") {
+        println!("No Rust kernel (evcxr) is registered with Jupyter, so no Rust kernel was started.");
+        return None;
+    }
+    Some(python)
+}
+
+#[test]
+fn a_rust_notebook_keeps_its_variables_between_cells_and_completes_after_a_dot() {
+    let Some(python) = rust_kernel_python() else { return };
+    let folder = fixture("unluminous-notebook-rust-kernel", &[("readme.md", "# Rust\n")]);
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "notebook new rusty.ipynb --language rust");
+    did(&mut harness, &format!("notebook kernel choose --python {}", python.display()));
+    did(&mut harness, "notebook source --cell 1 let v = vec![1, 2, 3];");
+    did(&mut harness, "notebook add --at 2 v.len() * 10");
+    did(&mut harness, "notebook run --all");
+    let ran = wait_for(&mut harness, |harness| state_of(harness, 2) == "ok");
+    assert!(ran, "both cells ran: {}", did(&mut harness, "notebook status"));
+    let cell = did(&mut harness, "notebook cell 2");
+    assert!(cell["outputText"].as_str().unwrap_or_default().contains("30"), "{cell}");
+    // The variables, as evcxr's `:vars` lists them. The answer is held for the kernel, so what is
+    // read is the list the Variables panel draws once it has arrived.
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_command_line("notebook variables", &ctx);
+    note_a_driven_line("notebook variables", true);
+    let listed = wait_for(&mut harness, |harness| {
+        let tab = harness.state().files.active().notebook.as_deref().expect("a notebook");
+        tab.variables.iter().any(|row| row.name == "v" && row.type_name == "Vec<i32>")
+    });
+    assert!(listed, "v is listed as a Vec<i32>");
+    // After a dot, the kernel says what the value has.
+    did(&mut harness, "notebook add --at 3 v.it");
+    let answer = completed(&mut harness, "notebook complete --cell 3 --json");
+    let offered = names(&answer);
+    assert!(offered.contains(&"iter".to_owned()), "{offered:?}");
+    let iter = answer["rows"].as_array().unwrap().iter().find(|row| row["name"] == "iter").unwrap();
+    assert_eq!(iter["source"], "kernel", "{iter}");
+    completed(&mut harness, "notebook complete --cell 3 --choose iter");
+    let cell = did(&mut harness, "notebook cell 3");
+    assert_eq!(cell["source"], "v.iter", "the arguments are not inserted: {cell}");
+    // A new word at the same byte is asked about again rather than given the old answer: `v.` after
+    // `v.it` offers every method, not the two that matched `it`.
+    did(&mut harness, "notebook source --cell 3 v.");
+    let offered = names(&completed(&mut harness, "notebook complete --cell 3 --limit 0 --json"));
+    assert!(offered.len() > 2 && offered.contains(&"len".to_owned()), "{offered:?}");
+    did(&mut harness, "notebook kernel shut-down");
+}
+
+#[test]
+fn a_dot_typed_in_a_python_cell_opens_the_kernels_completions() {
+    let Some((_, mut harness)) = a_kernel_window_on(
+        "unluminous-notebook-dot-completion",
+        &[("code", "import os"), ("code", "os")],
+    ) else {
+        return;
+    };
+    did(&mut harness, "notebook run 1");
+    assert!(wait_for(&mut harness, |harness| state_of(harness, 1) == "ok"), "cell 1 ran");
+    did(&mut harness, "notebook select 2 --edit");
+    let end = {
+        let tab = harness.state().files.active().notebook.as_deref().expect("a notebook");
+        tab.spans[1].body_bytes.end
+    };
+    harness
+        .state_mut()
+        .document_mut()
+        .apply(unluminous_core::Command::PlaceCaret { offset: end, extend: false });
+    harness.input_mut().events.push(egui::Event::Text(".".to_owned()));
+    let opened = wait_for(&mut harness, |harness| {
+        harness
+            .state()
+            .completion()
+            .is_some_and(|state| state.rows.iter().any(|row| row.name == "path"))
+    });
+    assert!(opened, "the popup opened with os.path in it: {:?}", harness.state().completion());
+    harness.key_press(egui::Key::Escape);
+    did(&mut harness, "notebook kernel shut-down");
+}
+
+#[test]
+fn a_magic_completed_from_the_kernel_is_not_given_a_second_percent() {
+    let Some((_, mut harness)) =
+        a_kernel_window_on("unluminous-notebook-magic-completion", &[("code", "%timei")])
+    else {
+        return;
+    };
+    did(&mut harness, "notebook kernel start");
+    let started = wait_for(&mut harness, |harness| {
+        did(harness, "notebook kernel status")["state"] == "idle"
+    });
+    assert!(started, "{}", did(&mut harness, "notebook kernel status"));
+    let offered = names(&completed(&mut harness, "notebook complete --cell 1 --json"));
+    assert!(offered.contains(&"timeit".to_owned()), "{offered:?}");
+    completed(&mut harness, "notebook complete --cell 1 --choose timeit");
+    assert_eq!(did(&mut harness, "notebook cell 1")["source"], "%timeit");
+    did(&mut harness, "notebook kernel shut-down");
+}
+
+#[test]
+fn the_kernel_picker_keeps_its_words_inside_itself() {
+    let (_, mut harness) = a_notebook_window("unluminous-notebook-picker");
+    // A window narrow enough that `No kernel yet · starts on the first run` cannot fit in the
+    // button, which is the report: the words ran on over the Variables button beside it. They are
+    // cut short with an ellipsis now, and the picture shows it. The list itself is not opened here,
+    // because which Pythons it lists depends on the machine.
+    harness.set_size(egui::vec2(900.0, 640.0));
+    steady(&mut harness);
+    let kernel = harness.get_by_label("Kernel").rect();
+    let variables = harness.get_by_label("Variables").rect();
+    assert!(kernel.max.x <= variables.min.x, "{kernel:?} {variables:?}");
+    assert!(kernel.width() < 260.0, "the button is too narrow for its words: {kernel:?}");
+    harness.snapshot(shot("notebook_kernel_picker"));
+}

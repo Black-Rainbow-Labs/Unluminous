@@ -497,13 +497,55 @@ fn detect_indent(json: &str) -> usize {
 
 /// A new notebook as Jupyter creates one: format 4.5, a Python 3 kernel, and one empty code cell.
 pub fn empty() -> Notebook {
-    Notebook {
-        nbformat: 4,
-        nbformat_minor: 5,
-        metadata: json!({
+    empty_for(Language::Python)
+}
+
+/// A language a new notebook can be made for, which decides the kernel it names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Language {
+    /// Python, run by ipykernel's `python3` kernel.
+    Python,
+    /// Rust, run by evcxr, whose kernelspec `evcxr_jupyter --install` registers as `rust`. `task-2229`.
+    Rust,
+}
+
+impl Language {
+    /// The language a word names, such as `rust` or `python`, in any case. `None` for one Unluminous
+    /// cannot make a notebook for.
+    pub fn parse(word: &str) -> Option<Language> {
+        match word.trim().to_ascii_lowercase().as_str() {
+            "python" | "py" | "python3" => Some(Language::Python),
+            "rust" | "rs" => Some(Language::Rust),
+            _ => None,
+        }
+    }
+}
+
+/// A new notebook for `language`: format 4.5, the kernel that runs the language, and one empty code
+/// cell. The metadata is what Jupyter itself writes for that kernel, so the notebook opens with the
+/// right kernel in Jupyter, VS Code and PyCharm as well.
+pub fn empty_for(language: Language) -> Notebook {
+    let metadata = match language {
+        Language::Python => json!({
             "kernelspec": { "display_name": "Python 3 (ipykernel)", "language": "python", "name": "python3" },
             "language_info": { "name": "python" }
         }),
+        Language::Rust => json!({
+            "kernelspec": { "display_name": "Rust", "language": "rust", "name": "rust" },
+            "language_info": {
+                "codemirror_mode": "rust",
+                "file_extension": ".rs",
+                "mimetype": "text/rust",
+                "name": "Rust",
+                "pygment_lexer": "rust",
+                "version": ""
+            }
+        }),
+    };
+    Notebook {
+        nbformat: 4,
+        nbformat_minor: 5,
+        metadata,
         cells: vec![Cell::new(CellKind::Code, &new_id(), "")],
         original: Map::new(),
         indent: 1,
@@ -754,6 +796,18 @@ mod tests {
         assert!(parse("not json").is_err());
         assert!(parse("[1]").is_err());
         assert!(parse("{}").is_err());
+    }
+
+    #[test]
+    fn a_new_rust_notebook_names_the_kernel_evcxr_registers() {
+        let written = serialize(&empty_for(Language::Rust));
+        let reread = parse(&written).unwrap();
+        assert_eq!(reread.metadata["kernelspec"]["name"], "rust");
+        assert_eq!(reread.metadata["kernelspec"]["language"], "rust");
+        assert_eq!(reread.metadata["language_info"]["file_extension"], ".rs");
+        assert_eq!(Language::parse(" Rust "), Some(Language::Rust));
+        assert_eq!(Language::parse("python3"), Some(Language::Python));
+        assert_eq!(Language::parse("julia"), None);
     }
 
     #[test]

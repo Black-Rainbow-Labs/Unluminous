@@ -187,6 +187,11 @@ pub enum Waiting {
     NotebookPythons { until: Instant },
     /// `notebook kernel kernels` waiting for a Python to list its kernels, which is on a thread.
     NotebookKernels { python: PathBuf, until: Instant },
+    /// `editor complete` and `notebook complete` in a notebook's code cell, waiting for the kernel's
+    /// completions, which arrive a round trip after it is asked. At `answer_by` the rows are given
+    /// without the kernel's, so a busy kernel costs a caller a few seconds and not a failure.
+    /// `task-2229`.
+    Completion { offset: usize, choose: Option<String>, answer_by: Instant, until: Instant },
 }
 
 /// Who asked for a tool call to be run, which is who its answer goes back to.
@@ -235,6 +240,7 @@ impl Waiting {
             | Waiting::NotebookVariables { until, .. }
             | Waiting::NotebookPythons { until }
             | Waiting::NotebookKernels { until, .. }
+            | Waiting::Completion { until, .. }
             | Waiting::DebugPause { until, .. }
             | Waiting::DebugEvaluate { until, .. }
             | Waiting::DebugHover { until, .. } => *until,
@@ -544,6 +550,10 @@ impl UnluminousApp {
                 self.notebook_variables_answer(request, path.as_deref())
             }
             Waiting::NotebookPythons { .. } => self.notebook_pythons_answer(request),
+            Waiting::Completion { offset, choose, answer_by, .. } => {
+                let (offset, choose, answer_by) = (*offset, choose.clone(), *answer_by);
+                self.completion_answer(request, offset, choose.as_deref(), answer_by)
+            }
             Waiting::NotebookKernels { python, .. } => {
                 let python = python.clone();
                 self.notebook_kernels_answer(request, &python)
@@ -711,6 +721,10 @@ impl UnluminousApp {
             Waiting::NotebookKernels { .. } => (
                 "notebook.kernel",
                 "The Python had not listed its kernels when the time ran out.".to_owned(),
+            ),
+            Waiting::Completion { .. } => (
+                "editor.complete",
+                "The kernel had not answered the completion when the time ran out.".to_owned(),
             ),
             Waiting::References { rename, .. } => (
                 if rename.is_some() { "editor.rename" } else { "editor.references" },

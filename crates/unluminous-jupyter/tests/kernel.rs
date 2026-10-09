@@ -637,3 +637,87 @@ fn idle_after_busy(events: &[Event]) -> bool {
         events[at..].iter().any(|event| matches!(event, Event::Status { state } if state == "idle"))
     })
 }
+
+// ------------------------------------------------------------------------------- the Rust kernel
+//
+// `task-2229`. These start evcxr, the Rust kernel, through the same bridge. A machine whose Jupyter has
+// no `rust` kernelspec (`cargo install --locked evcxr_jupyter`, then `evcxr_jupyter --install`) says so
+// and passes, as a machine with no Python does above.
+
+impl Session {
+    /// Start the Rust kernel and wait for it to be ready. `None` when there is no Python, or no Rust
+    /// kernel registered with its Jupyter.
+    fn start_rust() -> Option<Session> {
+        let python = test_python()?;
+        let specs = list_kernelspecs(&python).unwrap_or_default();
+        if !specs.iter().any(|spec| spec.name == "rust") {
+            println!("no Rust kernel (evcxr) is registered with Jupyter, so this test did nothing");
+            return None;
+        }
+        let mut session = Session::unstarted(&python, Some("rust"));
+        let started = session.wait_for(START_LIMIT, |event| matches!(event, Event::Started { .. }));
+        assert!(
+            started.is_some(),
+            "the Rust kernel did not start: {:?}\n{}",
+            session.log,
+            session.kernel.stderr_tail()
+        );
+        Some(session)
+    }
+}
+
+#[test]
+fn a_rust_kernel_keeps_its_variables_between_cells() {
+    let Some(mut session) = Session::start_rust() else { return };
+    let language = session.kernel.language().expect("language is known once started");
+    assert_eq!((language.name.as_str(), language.file_extension.as_str()), ("Rust", ".rs"));
+    session.run("let x: i32 = 5;");
+    let events = session.run("x + 1");
+    let six = events
+        .iter()
+        .any(|event| matches!(event, Event::ExecuteResult { data, .. } if plain(data) == "6"));
+    assert!(six, "{events:?}");
+    let printed = session.run("println!(\"x is {}\", x);");
+    assert!(
+        printed.iter().any(|event| matches!(event, Event::Stream { text, .. } if text == "x is 5\n")),
+        "{printed:?}"
+    );
+}
+
+#[test]
+fn a_rust_kernel_lists_its_variables_with_their_types() {
+    let Some(mut session) = Session::start_rust() else { return };
+    session.run("let x: i32 = 5;\nlet v = vec![1u8, 2, 3];");
+    let id = session.kernel.variables();
+    let Event::Variables { rows, .. } = session.answer(&id) else { panic!("not variables") };
+    let types: Vec<(String, String)> =
+        rows.iter().map(|row| (row.name.clone(), row.type_name.clone())).collect();
+    assert!(types.contains(&("x".to_owned(), "i32".to_owned())), "{types:?}");
+    assert!(types.contains(&("v".to_owned(), "Vec<u8>".to_owned())), "{types:?}");
+    // A variables question is not a cell: nothing it did is reported as the output of one.
+    session.kernel.events();
+    assert_eq!(session.kernel.state(), &KernelState::Idle);
+}
+
+#[test]
+fn a_rust_kernel_completes_after_a_dot_with_the_type_of_each_match() {
+    let Some(mut session) = Session::start_rust() else { return };
+    session.run("let v = vec![1, 2, 3];");
+    let id = session.kernel.complete("v.it", 4);
+    let Event::CompleteReply { matches, cursor_start, cursor_end, metadata, .. } =
+        session.answer(&id)
+    else {
+        panic!("not a completion")
+    };
+    assert_eq!((cursor_start, cursor_end), (2, 4));
+    let found = unluminous_jupyter::completion::matches_of(&matches, &metadata);
+    let iter = found.iter().find(|found| found.insert == "iter").expect("iter is offered");
+    assert_eq!(iter.detail(), "function");
+    // After a dot with nothing typed, the kernel offers the whole of the value's methods.
+    let id = session.kernel.complete("v.", 2);
+    let Event::CompleteReply { matches, cursor_start, cursor_end, .. } = session.answer(&id) else {
+        panic!("not a completion")
+    };
+    assert_eq!((cursor_start, cursor_end), (2, 2));
+    assert!(matches.len() > 20, "{matches:?}");
+}

@@ -57,6 +57,7 @@ impl UnluminousApp {
             "view" => self.cli_notebook_view(request, index),
             "output" => self.cli_notebook_output(request, index),
             "outline" => self.cli_notebook_outline(request, index),
+            "complete" => self.cli_notebook_complete(request, index),
             other => no(request, code::UNKNOWN_COMMAND, format!("notebook has no {other}.")),
         }
     }
@@ -530,8 +531,75 @@ impl UnluminousApp {
             "kernels" => self.cli_notebook_kernels(request, index),
             "choose" => self.cli_notebook_choose(request, index),
             "install" => self.cli_notebook_install(request, index),
+            "install-rust" => self.cli_notebook_install_rust(request, index),
             other => no(request, code::USAGE, format!("{other} is not something the kernel does.")),
         }
+    }
+
+    /// `notebook kernel install-rust`: build and register evcxr, the Rust kernel, in the run tile, with
+    /// `--python` or the Python the notebook uses. The picker's own row. `task-2229`.
+    fn cli_notebook_install_rust(&mut self, request: &Request, index: usize) -> Outcome {
+        self.look_for_pythons();
+        let python = request
+            .text("python")
+            .map(PathBuf::from)
+            .or_else(|| self.notebook_python(index))
+            .or_else(|| {
+                let found = self.pythons.found();
+                found.iter().find(|python| python.has_jupyter_client).map(|python| python.path.clone())
+            });
+        let Some(python) = python else {
+            return no(
+                request,
+                code::USAGE,
+                "Say which Python with --python. It needs jupyter_client, which `notebook kernel pythons` shows.",
+            );
+        };
+        self.install_the_rust_kernel(index, &python);
+        ok(
+            request,
+            self.message.clone().unwrap_or_default(),
+            json!({ "python": python.to_string_lossy() }),
+        )
+    }
+
+    /// `notebook complete`: what the completion popup would offer at a place in a code cell, waiting
+    /// for the kernel. `--cell` and `--line` are counted within the notebook the way a person counts,
+    /// from 1, and the place is where the next letter would be typed. `task-2229`.
+    fn cli_notebook_complete(&mut self, request: &Request, index: usize) -> Outcome {
+        let offset = match self.cli_notebook_place(request, index) {
+            Ok(offset) => offset,
+            Err(problem) => return no(request, code::USAGE, problem),
+        };
+        if !self.completion_applies_here() {
+            return no(request, code::NOT_APPLICABLE, "No plugin reads this notebook's language.");
+        }
+        self.cli_complete_at(request, offset, None)
+    }
+
+    /// The byte a `notebook complete` names: the end of `--line`'s `--column` in `--cell`, the end of
+    /// the cell when no line is given, and the caret when no cell is given either.
+    fn cli_notebook_place(&mut self, request: &Request, index: usize) -> Result<usize, String> {
+        if !request.has("cell") && !request.has("id") && !request.has("line") {
+            return Ok(self.caret_offset());
+        }
+        let cell = self.cli_cell(request, index, "cell")?;
+        let file = self.files.at(index);
+        let tab = file.notebook.as_deref().ok_or("not a notebook")?;
+        let span = tab.spans.get(cell).ok_or("There is no such cell.")?;
+        let body = file.document.text().byte_slice(span.body_bytes.clone()).to_string();
+        let Some(line) = request.whole("line") else {
+            return Ok(span.body_bytes.end);
+        };
+        let lines: Vec<&str> = body.split('\n').collect();
+        if line == 0 || line > lines.len() {
+            return Err(format!("Cell {} has {} line(s), so there is no line {line}.", cell + 1, lines.len()));
+        }
+        let start: usize = lines[..line - 1].iter().map(|text| text.len() + 1).sum();
+        let text = lines[line - 1];
+        let column = request.whole("column").unwrap_or(text.chars().count() + 1).max(1);
+        let within = text.char_indices().nth(column - 1).map(|(at, _)| at).unwrap_or(text.len());
+        Ok(span.body_bytes.start + start + within)
     }
 
     /// `notebook kernel install`: install ipykernel into `--python`, or the Python the notebook uses.
@@ -694,13 +762,16 @@ impl UnluminousApp {
             .variables
             .iter()
             .map(|row| {
-                format!(
-                    "{} : {} {} = {}",
-                    row.name,
-                    row.type_name,
-                    row.shape.clone().unwrap_or_default(),
-                    row.value
-                )
+                // A Rust kernel gives no values and most rows have no shape, so neither is printed
+                // when it is empty. `task-2229`.
+                let mut line = format!("{} : {}", row.name, row.type_name);
+                if let Some(shape) = &row.shape {
+                    line.push_str(&format!(" {shape}"));
+                }
+                if !row.value.is_empty() {
+                    line.push_str(&format!(" = {}", row.value));
+                }
+                line
             })
             .collect();
         let data: Vec<Value> = tab.variables.iter().map(|row| json!({ "name": row.name, "type": row.type_name, "value": row.value, "shape": row.shape, "size": row.size })).collect();
@@ -739,7 +810,20 @@ impl UnluminousApp {
     /// open it.
     fn cli_notebook_new(&mut self, request: &Request) -> Outcome {
         let path = request.text("path").map(PathBuf::from);
-        match self.make_a_new_notebook(path.as_deref()) {
+        let language = match request.text("language") {
+            None => unluminous_jupyter::nbformat::Language::Python,
+            Some(word) => match unluminous_jupyter::nbformat::Language::parse(&word) {
+                Some(language) => language,
+                None => {
+                    return no(
+                        request,
+                        code::USAGE,
+                        format!("{word} is not a language Unluminous makes notebooks for. Use python or rust."),
+                    )
+                }
+            },
+        };
+        match self.make_a_new_notebook_for(path.as_deref(), language) {
             Ok(made) => ok(
                 request,
                 format!("Made {}", made.display()),

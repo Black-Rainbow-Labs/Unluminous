@@ -389,9 +389,14 @@ fn everything(candidates: Vec<Candidate>) -> Vec<Row> {
         });
     }
     rows.sort_by(|left, right| {
-        left.source
-            .order()
-            .cmp(&right.source.order())
+        let by_source = left.source.order().cmp(&right.source.order());
+        // A kernel's rows keep the kernel's own order, which the sort being stable preserves: with
+        // nothing typed after `v.`, rust-analyzer and Jedi put the value's own members first, and
+        // shortest first would put `eq` and `ge` from a trait ahead of them. `task-2229`.
+        if left.source == Source::Kernel && right.source == Source::Kernel {
+            return by_source;
+        }
+        by_source
             .then(left.name.chars().count().cmp(&right.name.chars().count()))
             .then(left.name.as_bytes().cmp(right.name.as_bytes()))
     });
@@ -579,6 +584,17 @@ fn lower(character: char) -> char {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn with_nothing_typed_a_kernels_rows_keep_the_kernels_order() {
+        let pool = vec![
+            Candidate::new("into_raw_parts", Source::Kernel),
+            Candidate::new("len", Source::Kernel),
+            Candidate::new("eq", Source::Kernel),
+        ];
+        let names: Vec<String> = rank_all("", pool).into_iter().map(|row| row.name).collect();
+        assert_eq!(names, vec!["into_raw_parts", "len", "eq"]);
+    }
 
     /// Rust as the bundled plugin describes it, cut down to what these tests need.
     fn rust() -> Grammar {

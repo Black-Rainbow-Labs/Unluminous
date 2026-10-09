@@ -198,6 +198,8 @@ pub enum Action {
     Notebook(crate::app::notebook_actions::NotebookAction),
     /// `File -> New Jupyter Notebook`: a notebook with one empty code cell, in the project's folder.
     NewNotebook,
+    /// `File -> New Rust Notebook`: the same, naming the Rust kernel, evcxr. `task-2229`.
+    NewRustNotebook,
     /// The explorer's `New -> Jupyter Notebook`: the same, in the folder that was clicked.
     NewNotebookIn(PathBuf),
     /// Write a `.py` file's `# %%` cells into a notebook beside it, and open it.
@@ -1656,6 +1658,7 @@ fn file_menu(state: &MenuState) -> Menu {
         Entry::Separator,
         Entry::with_shortcut("Open File", Action::OpenFile, Shortcut::command(egui::Key::O)),
         Entry::item("New Jupyter Notebook", Action::NewNotebook),
+        Entry::item("New Rust Notebook", Action::NewRustNotebook),
         Entry::item("Open Web Address...", Action::OpenWebAddress),
         // Searching the project rather than the disk, which is what `task-1659` asks for and what
         // The reference editor puts on this key. It took the shortcut `Open Folder` used to have, because two
