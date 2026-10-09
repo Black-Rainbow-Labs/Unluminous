@@ -74,6 +74,17 @@ const MAX_SIDE: u16 = 4096;
 /// again.
 pub const MAX_SCALE: f32 = 1.5;
 
+/// How much coarser a canvas is rasterised while what it decorates is moving, as a fraction of its usual
+/// pixels per point.
+///
+/// `task-2218` measured the Realm's canvas at about 5 ms a frame for every frame of a pan or a zoom, all of it
+/// `vello_cpu` rasterising the ground and every node's shadows again because the camera had moved them. The
+/// decoration is Gaussians and gradients, which have nothing in them that half the resolution can lose while
+/// they are moving, and the cost is per pixel, so half in each direction is a quarter of the work. The frame
+/// the camera stops on is drawn at the full resolution again, because the scale is part of what a canvas
+/// compares to decide whether it has to rasterise.
+pub const DRAFT_SCALE: f32 = 0.5;
+
 /// How far off the surface behind it a thing stands, and how deeply a well is pressed into it.
 ///
 /// Three, because the stylesheet the reference is drawn from has three: `--e-raised-sm`, `--e-raised` and
@@ -738,6 +749,19 @@ impl Canvas {
         pixels_per_point: f32,
         items: &[Decor],
     ) -> Option<(egui::TextureId, Rect)> {
+        self.texture_at(ctx, id, rect, pixels_per_point, items, false)
+    }
+
+    /// [`Self::texture_for`], rasterised at [`DRAFT_SCALE`] of the resolution when `moving` is true.
+    pub fn texture_at(
+        &mut self,
+        ctx: &egui::Context,
+        id: egui::Id,
+        rect: Rect,
+        pixels_per_point: f32,
+        items: &[Decor],
+        moving: bool,
+    ) -> Option<(egui::TextureId, Rect)> {
         if items.is_empty() {
             return None;
         }
@@ -750,7 +774,10 @@ impl Canvas {
         if rect.width() < 1.0 || rect.height() < 1.0 {
             return None;
         }
-        let scale = pixels_per_point.min(MAX_SCALE);
+        let scale = match moving {
+            true => pixels_per_point.min(MAX_SCALE) * DRAFT_SCALE,
+            false => pixels_per_point.min(MAX_SCALE),
+        };
         let width = (rect.width() * scale).round();
         let height = (rect.height() * scale).round();
         if !(width.is_finite() && height.is_finite()) || width < 1.0 || height < 1.0 {
@@ -1067,6 +1094,19 @@ impl Canvases {
         rect: Rect,
         items: &[Decor],
     ) -> Option<(egui::TextureId, Rect)> {
+        self.texture_while(ctx, id, rect, items, false)
+    }
+
+    /// [`Self::texture_for`] for a surface that says whether what it decorates is moving this frame, which
+    /// is drawn coarser while it is. See [`DRAFT_SCALE`].
+    pub fn texture_while(
+        &mut self,
+        ctx: &egui::Context,
+        id: egui::Id,
+        rect: Rect,
+        items: &[Decor],
+        moving: bool,
+    ) -> Option<(egui::TextureId, Rect)> {
         let deterministic = self.deterministic;
         let frame = self.frame;
         let canvas = self.by_id.entry(id).or_insert_with(|| {
@@ -1077,7 +1117,7 @@ impl Canvases {
             }
         });
         canvas.last_used = frame;
-        canvas.texture_for(ctx, id, rect, ctx.pixels_per_point(), items)
+        canvas.texture_at(ctx, id, rect, ctx.pixels_per_point(), items, moving)
     }
 
     /// Forget the canvases of surfaces that were not drawn this frame. Called once, at the end of the frame.
@@ -1280,6 +1320,35 @@ mod tests {
         assert_eq!(bytes, &[10, 20, 30, 40]);
         let colour = Color32::from_rgba_premultiplied(bytes[0], bytes[1], bytes[2], bytes[3]);
         assert_eq!(colour.to_array(), [10, 20, 30, 40]);
+    }
+
+    /// `task-2218`: a canvas whose surface is moving is rasterised at a quarter of the pixels, and the frame
+    /// it stops on is rasterised again at the full resolution with the same shapes.
+    #[test]
+    fn a_moving_canvas_is_drawn_coarser_and_sharp_again_once_it_stops() {
+        let ctx = egui::Context::default();
+        let id = egui::Id::new("canvas");
+        let mut canvas = Canvas::for_tests();
+        let area = rect(0.0, 0.0, 200.0, 100.0);
+        let chrome = Chrome::recording();
+        chrome.raised(
+            rect(10.0, 10.0, 180.0, 80.0),
+            8.0,
+            Fill::Solid(Color32::from_rgb(0x20, 0x25, 0x2E)),
+            Lift::Small,
+        );
+        let items = chrome.take();
+
+        assert!(canvas.texture_at(&ctx, id, area, 1.0, &items, true).is_some());
+        let moving = (canvas.pixmap.width(), canvas.pixmap.height());
+        assert!(canvas.texture_at(&ctx, id, area, 1.0, &items, false).is_some());
+        let still = (canvas.pixmap.width(), canvas.pixmap.height());
+        assert_eq!(canvas.rasterisations(), 2, "stopping draws the same shapes again, sharp");
+        assert_eq!(u32::from(moving.0) * 2, u32::from(still.0));
+        assert_eq!(u32::from(moving.1) * 2, u32::from(still.1));
+        // And a canvas left still is not drawn again.
+        assert!(canvas.texture_at(&ctx, id, area, 1.0, &items, false).is_some());
+        assert_eq!(canvas.rasterisations(), 2);
     }
 
     /// The one thing the whole cost of this feature rests on, driven through the real entry point.

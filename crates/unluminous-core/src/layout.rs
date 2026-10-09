@@ -824,6 +824,26 @@ fn flatten_into_clusters(bytes: &Range<usize>, metrics: &dyn FontMetrics, buffer
     for (run_index, (run_bytes, style)) in buffers.runs.iter().enumerate() {
         let local = (run_bytes.start - bytes.start)..(run_bytes.end - bytes.start);
         let run_text = &buffers.source[local];
+        // **ASCII is split without the grapheme rules** (`task-2218`). Every ASCII character is a
+        // grapheme cluster of its own except a carriage return followed by a line feed, which UAX #29
+        // keeps together, and source code is nearly all ASCII. Walking `grapheme_indices` over it was
+        // most of the 20 ms a 200 KB file took to lay out, which is what every zoom step and every
+        // change of width pays. `ascii_clusters_are_the_grapheme_clusters` holds the two to the same
+        // answer.
+        if run_text.is_ascii() {
+            for (offset, cluster) in ascii_clusters(run_text) {
+                let start = run_bytes.start + offset;
+                buffers.clusters.push((
+                    run_index,
+                    PlacedCluster::new(
+                        cluster,
+                        start..start + cluster.len(),
+                        metrics.advance(cluster, style),
+                    ),
+                ));
+            }
+            continue;
+        }
         for (offset, cluster) in run_text.grapheme_indices(true) {
             let start = run_bytes.start + offset;
             buffers.clusters.push((
@@ -836,6 +856,26 @@ fn flatten_into_clusters(bytes: &Range<usize>, metrics: &dyn FontMetrics, buffer
             ));
         }
     }
+}
+
+/// The grapheme clusters of an ASCII string with their byte offsets: one byte each, except a carriage
+/// return followed by a line feed, which is one cluster of two. What `grapheme_indices(true)` gives for
+/// ASCII, without the tables it reads.
+fn ascii_clusters(text: &str) -> impl Iterator<Item = (usize, &str)> {
+    let bytes = text.as_bytes();
+    let mut at = 0;
+    std::iter::from_fn(move || {
+        if at >= bytes.len() {
+            return None;
+        }
+        let length = match (bytes[at], bytes.get(at + 1)) {
+            (b'\r', Some(b'\n')) => 2,
+            _ => 1,
+        };
+        let cluster = (at, &text[at..at + length]);
+        at += length;
+        Some(cluster)
+    })
 }
 
 /// Break the clusters into lines that fit `width`, preferring to break after a space.
@@ -917,6 +957,9 @@ fn place_one_line<'a>(
     let mut placed_runs: Vec<PlacedRun> = Vec::new();
     let mut placed_clusters: Vec<PlacedCluster> = Vec::with_capacity(slice.len());
     let mut pen = offset;
+    // The run the previous cluster came from. A cluster from the same run is in the same style without
+    // the style being compared, which is nearly every cluster on a line (`task-2218`).
+    let mut previous_run: Option<usize> = None;
     for (run_index, cluster) in slice.iter_mut() {
         cluster.x = pen;
         if is_blank(cluster) {
@@ -926,7 +969,9 @@ fn place_one_line<'a>(
         let style = buffers.runs[*run_index].1;
         // Compared by looking at the style rather than by cloning it first. Cloning allocated a
         // family name for every cluster in the document purely to throw it away again.
-        let same_run = placed_runs.last().is_some_and(|last| last.style.as_ref() == style);
+        let same_run = previous_run == Some(*run_index)
+            || placed_runs.last().is_some_and(|last| last.style.as_ref() == style);
+        previous_run = Some(*run_index);
         if same_run {
             placed_clusters.push(cluster.clone());
             placed_runs.last_mut().expect("checked").clusters.end += 1;
@@ -1376,6 +1421,30 @@ mod tests {
         paragraphs.set(1..2, |style| style.align = Align::Center);
         paragraphs.set(3..4, |style| style.line_spacing = 2.0);
         (rope, spans, paragraphs)
+    }
+
+    /// `task-2218`: the ASCII walk `flatten_into_clusters` takes splits exactly where the grapheme rules do.
+    #[test]
+    fn ascii_clusters_are_the_grapheme_clusters() {
+        let mut every = String::new();
+        for byte in 0u8..128 {
+            every.push(byte as char);
+        }
+        // Built from codes so the carriage returns and line feeds are plain to read.
+        let (cr, lf) = (char::from(13u8), char::from(10u8));
+        let shapes = [
+            every,
+            format!("a{cr}{lf}b{cr}{cr}{lf}{lf}{cr}"),
+            format!("{cr}"),
+            format!("{lf}{cr}"),
+            String::new(),
+            format!("fn main() {{{cr}{lf}    let x = 1;{cr}{lf}}}"),
+        ];
+        for text in shapes.iter().map(String::as_str) {
+            let fast: Vec<(usize, &str)> = ascii_clusters(text).collect();
+            let rules: Vec<(usize, &str)> = text.grapheme_indices(true).collect();
+            assert_eq!(fast, rules, "{text:?}");
+        }
     }
 
     /// The whole of the incremental layout rests on this: **laying out again after an edit gives

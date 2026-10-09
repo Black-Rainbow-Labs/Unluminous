@@ -1311,11 +1311,27 @@ impl UnluminousApp {
         area: Rect,
         chrome: &crate::services::vello_canvas::Chrome,
     ) {
+        self.paint_the_chrome_while(ui, slot, id, area, chrome, false);
+    }
+
+    /// [`Self::paint_the_chrome`] for a surface that is moving this frame, which is rasterised coarser
+    /// while it moves. See `vello_canvas::DRAFT_SCALE`.
+    pub(crate) fn paint_the_chrome_while(
+        &mut self,
+        ui: &egui::Ui,
+        slot: egui::layers::ShapeIdx,
+        id: egui::Id,
+        area: Rect,
+        chrome: &crate::services::vello_canvas::Chrome,
+        moving: bool,
+    ) {
         let items = chrome.take();
         if items.is_empty() {
             return;
         }
-        if let Some((texture, drawn)) = self.canvases.texture_for(ui.ctx(), id, area, &items) {
+        if let Some((texture, drawn)) =
+            self.canvases.texture_while(ui.ctx(), id, area, &items, moving)
+        {
             let uv = Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0));
             ui.painter().set(slot, egui::Shape::image(texture, drawn, uv, egui::Color32::WHITE));
         }

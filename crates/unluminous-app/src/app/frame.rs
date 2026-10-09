@@ -99,7 +99,9 @@ impl UnluminousApp {
         self.show_the_menus_over_the_panes(ui, &mut action);
 
         self.show_the_contributed_panes(ui);
+        crate::services::frame_trace::phase("contributed");
         self.show_the_canvas(ui, &mut action);
+        crate::services::frame_trace::phase("canvas");
         // After the canvas as well as after the panes, because since `task-1905` a File Editor node
         // can hold a tab and a Folder node can report a file being carried out of it.
         self.settle_the_drags(ui, &pane_rects);
@@ -109,6 +111,7 @@ impl UnluminousApp {
         self.show_the_panel_furniture(ui, &places, &mut action);
         self.read_what_the_programs_said(ui, &mut action);
         self.show_the_status_bar(ui, &places);
+        crate::services::frame_trace::phase("status");
 
         self.take_what_the_workers_answered(ui);
         // The one confirmation, drawn over whatever asked it and before every other modal.
@@ -132,9 +135,11 @@ impl UnluminousApp {
         self.show_the_debug_modals(ui.ctx());
         self.show_the_run_dialog(ui);
         self.show_the_settings_window(ui);
+        crate::services::frame_trace::phase("modals");
 
         self.show_the_notices(ui, &places);
         self.show_the_resize_grips(ui, &places);
+        crate::services::frame_trace::phase("notices");
 
         if let Some(chosen) = action {
             self.run_action(chosen, ui.ctx());
@@ -144,6 +149,7 @@ impl UnluminousApp {
             let occluders = self.occluding_rects(ui.ctx());
             self.browser.follow(&self.browser_placements, &occluders);
         }
+        crate::services::frame_trace::phase("action");
         self.end_the_frame(ui);
     }
 
@@ -2063,19 +2069,30 @@ impl UnluminousApp {
         // window is has settled. See `UnluminousApp::window_still_since`.
         let now = ui.input(|input| input.time);
         self.remember_the_project(Some(now));
+        crate::services::frame_trace::phase("remember");
         // And the canvas, which says for itself whether anything on it changed - `task-1904`. Written
         // at the end of a frame on which something moved rather than on every frame, or dragging a
         // node would write a file sixty times a second.
-        self.write_the_realm_if_it_changed(now);
-        // And what is marked in its files, on exactly the same terms.
+        //
+        // **And not while the canvas is still moving** (`task-2218`). Panning and zooming change the
+        // camera on every frame of the gesture, and the camera is in the realm's sidecar, so a drag
+        // across the canvas wrote the sidecar on every frame: 5.8 ms of an 11 ms frame. The camera is
+        // written once the pointer is up and the zoom has finished gliding.
         let settled = !ui.input(|input| input.pointer.any_down());
+        if settled && self.realm.glide.is_none() {
+            self.write_the_realm_if_it_changed(now);
+        }
+        // And what is marked in its files, on exactly the same terms.
         self.remember_the_marks(settled);
         // And where it stops, on the same terms again.
         self.remember_the_breakpoints(settled);
+        crate::services::frame_trace::phase("marks");
 
         // Settings are written once the pointer is up, so that dragging a divider or a slider writes the
         // file once at the end rather than on every frame of the drag.
-        if self.unsaved_settings && !ui.input(|input| input.pointer.any_down()) {
+        // And not while a zoom gesture is still taking steps, which changes the font size on every notch
+        // of the wheel with the pointer up - `task-2218`.
+        if self.unsaved_settings && settled && !self.a_zoom_is_still_arriving(now) {
             self.write_settings();
         }
         // And the project's run configurations, on exactly the same terms: typing into a field in

@@ -260,6 +260,56 @@ impl ProjectState {
     pub fn differs_only_in_the_window(&self, other: &Self) -> bool {
         self.window != other.window && Self { window: other.window, ..self.clone() } == *other
     }
+
+    /// Whether the only things that changed between these two are the ones a gesture moves: where
+    /// the window is, how far each tab is scrolled, where each tab's caret is, and which tab and pane
+    /// are showing.
+    ///
+    /// **`task-2218` measured the cost of writing these the frame they change.** Typing a line into a
+    /// 200 KB file spent 13 ms of every 15 ms frame in `remember_the_project`, and scrolling it 17 ms of
+    /// every 18: the caret moves on every key and the scroll on every frame of a wheel, and each move
+    /// was three file writes on Windows, each read again by the virus scanner. So these three wait for
+    /// the gesture to stop, exactly as [`Self::differs_only_in_the_window`] made the geometry wait in
+    /// `task-2009`. Switching tabs is the same: holding `Ctrl`+`Tab` walks the tabs a frame at a time, and
+    /// each switch wrote `workspace.conf` again. A tab opened, a folder opened out or a pane split is still
+    /// written at once.
+    pub fn differs_only_in_what_a_gesture_moves(&self, other: &Self) -> bool {
+        self != other && self.with_the_gesture_of(other) == *other
+    }
+
+    /// The fields a gesture moves, which is what has to stand still before they are written.
+    pub fn what_a_gesture_moves(&self) -> GestureFields {
+        GestureFields {
+            window: self.window,
+            scrolls: self.file_scrolls.clone(),
+            carets: self.file_carets.clone(),
+            active_file: self.active_file,
+            active_pane: self.active_pane,
+        }
+    }
+
+    /// This state with `other`'s window, scrolls and carets.
+    fn with_the_gesture_of(&self, other: &Self) -> Self {
+        Self {
+            window: other.window,
+            file_scrolls: other.file_scrolls.clone(),
+            file_carets: other.file_carets.clone(),
+            active_file: other.active_file,
+            active_pane: other.active_pane,
+            ..self.clone()
+        }
+    }
+}
+
+/// The fields of a [`ProjectState`] that move on every frame of a gesture, compared to tell whether the
+/// gesture has stopped. See [`ProjectState::differs_only_in_what_a_gesture_moves`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct GestureFields {
+    pub window: Option<WindowPlace>,
+    pub scrolls: Vec<f32>,
+    pub carets: Vec<usize>,
+    pub active_file: usize,
+    pub active_pane: usize,
 }
 
 /// Where the state folder for `root` is.
@@ -651,7 +701,16 @@ fn flag(on: bool) -> &'static str {
     }
 }
 
+/// Write one of the project's files, saying so on standard error when it cannot be written.
+///
+/// **A file already holding `text` is left alone** (`task-2218`). `save` writes every file whenever any
+/// field changed, and `write_atomically` makes a temporary, flushes it to the disk and renames it, so
+/// switching tabs, which changes one number in `workspace.conf`, cost four synchronous flushes: 10 ms of
+/// a tab switch on Windows. Reading a few hundred bytes back is a small fraction of that.
 fn write(path: &Path, text: &str) {
+    if std::fs::read(path).is_ok_and(|bytes| bytes == text.as_bytes()) {
+        return;
+    }
     if let Err(problem) = crate::services::store::write_atomically(path, text.as_bytes()) {
         eprintln!("Unluminous could not write {}: {problem}", path.display());
     }
@@ -761,6 +820,35 @@ mod tests {
         let a_folder_alone =
             ProjectState { expanded_folders: vec![PathBuf::from("chapters")], ..one.clone() };
         assert!(!one.differs_only_in_the_window(&a_folder_alone));
+    }
+
+    /// `task-2218`: a scroll and a caret move on every frame of typing and of a wheel, so they wait
+    /// with the geometry. A tab opened beside them is written at once.
+    #[test]
+    fn a_scroll_or_a_caret_is_told_apart_from_a_tab_being_opened() {
+        let one = ProjectState {
+            open_files: vec![PathBuf::from("readme.md")],
+            file_panes: vec![0],
+            file_scrolls: vec![0.0],
+            file_carets: vec![0],
+            ..ProjectState::new()
+        };
+        let scrolled =
+            ProjectState { file_scrolls: vec![480.0], file_carets: vec![12], ..one.clone() };
+        assert!(one.differs_only_in_what_a_gesture_moves(&scrolled));
+        assert!(!one.differs_only_in_what_a_gesture_moves(&one.clone()), "nothing changed at all");
+
+        let another_tab = ProjectState {
+            open_files: vec![PathBuf::from("readme.md"), PathBuf::from("notes.md")],
+            file_panes: vec![0, 0],
+            file_scrolls: vec![480.0, 0.0],
+            file_carets: vec![12, 0],
+            ..one.clone()
+        };
+        assert!(
+            !one.differs_only_in_what_a_gesture_moves(&another_tab),
+            "a tab opened is written at once, whatever was scrolled beside it"
+        );
     }
 
     fn project(name: &str) -> PathBuf {

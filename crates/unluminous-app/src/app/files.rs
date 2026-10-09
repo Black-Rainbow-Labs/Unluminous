@@ -265,6 +265,12 @@ pub struct OpenFile {
     /// the second pane is coloured too, and a shared cache would have the two overwriting each
     /// other's reading every frame. See `unluminous_core::incremental`. `task-1804` §5.2.
     pub syntax_tokens: unluminous_core::IncrementalTokens,
+    /// The text revision [`Self::syntax_tokens`] describes, when it describes the whole file as it is.
+    ///
+    /// `None` for a file the incremental reading does not cover: a markup grammar, a file too large to
+    /// colour, a file no plugin claims. `UnluminousApp::tab_symbols` reads the file's symbols off these
+    /// tokens when the number matches, rather than scanning the file a second time (`task-2218`).
+    pub syntax_tokens_revision: Option<u64>,
     /// Where the diagram has been moved and scaled to, for a tab holding a Mermaid file.
     ///
     /// Beside `preview_scroll` rather than instead of it, because they are two different ways of
@@ -314,6 +320,7 @@ impl OpenFile {
             breakpoints_at: None,
             coloured_revision: None,
             syntax_tokens: unluminous_core::IncrementalTokens::default(),
+            syntax_tokens_revision: None,
             diagram: crate::components::diagram_view::View::default(),
             home: Home::Pane(0),
             shown_at: 0,
@@ -446,6 +453,7 @@ impl OpenFile {
     pub fn forget_what_was_worked_out(&mut self) {
         self.cached = Cached::fresh();
         self.coloured_revision = None;
+        self.syntax_tokens_revision = None;
     }
 
     /// A different document has taken this tab, so where the last one was being read means nothing.

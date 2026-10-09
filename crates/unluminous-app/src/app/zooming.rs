@@ -148,7 +148,17 @@ impl UnluminousApp {
             self.zoom_pending *= ZOOM_STEP;
             steps -= 1;
         }
+        if steps != 0 {
+            self.zoom_stepped_at = Some(ui.input(|input| input.time));
+        }
         steps
+    }
+
+    /// Whether a zoom gesture took a step within the last [`crate::app::WINDOW_SETTLE`] seconds, so the
+    /// settings it changed are still moving and are not worth writing yet. See
+    /// [`UnluminousApp::zoom_stepped_at`].
+    pub(crate) fn a_zoom_is_still_arriving(&self, now: f64) -> bool {
+        self.zoom_stepped_at.is_some_and(|at| now - at < crate::app::WINDOW_SETTLE)
     }
 
     /// A pinch, or the wheel with the zoom modifier held, over a panel that is not the editing area.

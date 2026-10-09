@@ -291,6 +291,8 @@ fn main() -> eframe::Result {
     // also needs a swapchain that can carry alpha, which is a wgpu setting rather than a window one.
     #[cfg(windows)]
     let options = unluminous_app::services::windows_transparency::with_direct_composition(options);
+    // A graphics device that allocates in blocks the size of what is drawn - `task-2218`.
+    let options = unluminous_app::services::graphics_memory::frugal(options);
 
     eframe::run_native(
         "Unluminous",

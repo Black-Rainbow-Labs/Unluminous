@@ -30,6 +30,7 @@ pub mod file_search;
 pub mod file_tree;
 pub mod find;
 pub mod frame_trace;
+pub mod graphics_memory;
 pub mod icons;
 pub mod ignore;
 pub mod imports;

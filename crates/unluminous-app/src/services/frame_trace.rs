@@ -58,6 +58,8 @@ thread_local! {
     static FRAME: RefCell<Option<Recording>> = const { RefCell::new(None) };
     /// When the last frame ended, so the next one can say how long the gap was.
     static ENDED: RefCell<Option<Instant>> = const { RefCell::new(None) };
+    /// Numbers noted between two frames, written on the line of the next one. See [`value`].
+    static BETWEEN: RefCell<Vec<(&'static str, f64)>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Open the file the switch names, or answer that there is no trace to write.
@@ -100,7 +102,16 @@ pub fn begin() {
         *frame.borrow_mut() = Some(Recording {
             began: now,
             since: now,
-            phases: Vec::with_capacity(24),
+            phases: BETWEEN.with(|between| {
+                let mut phases = Vec::with_capacity(32);
+                phases.extend(
+                    between
+                        .borrow_mut()
+                        .drain(..)
+                        .map(|(name, took)| (name, took, Default::default())),
+                );
+                phases
+            }),
             allocations: crate::services::allocation_trace::snapshot(),
             outside,
         });
@@ -131,6 +142,16 @@ pub fn phase(name: &'static str) {
 }
 
 /// Finish the frame and write its line.
+/// Record a number that is not a span of this frame's time, under `name`, such as what eframe says the
+/// previous frame cost. Noted between two frames, it is written on the line of the next one, with the
+/// phases, so the reader adds it up the same way.
+pub fn value(name: &'static str, milliseconds: f64) {
+    if !WATCHING.load(Ordering::Relaxed) {
+        return;
+    }
+    BETWEEN.with(|between| between.borrow_mut().push((name, milliseconds)));
+}
+
 pub fn end() {
     if !WATCHING.load(Ordering::Relaxed) {
         return;

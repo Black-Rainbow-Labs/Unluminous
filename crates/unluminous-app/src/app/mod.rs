@@ -545,6 +545,9 @@ pub const HEARTBEAT: std::time::Duration = std::time::Duration::from_millis(500)
 /// [`UnluminousApp::window_still_since`] for what the every-frame write cost.
 pub const WINDOW_SETTLE: f64 = 0.35;
 
+/// What a gesture moves in a project's remembered state. See [`UnluminousApp::window_still_since`].
+type GestureState = project_state::GestureFields;
+
 /// How often an open plugin is given a turn on the clock.
 ///
 /// Two minutes, which is what the board being replaced runs its watchdog on, and it is the number that
@@ -982,7 +985,10 @@ pub struct UnluminousApp {
     /// [`WINDOW_SETTLE`], which is the rule the canvas already keeps about a node being dragged and the
     /// rule the settings keep about a divider. Everything else is still written the frame it changes,
     /// and `on_exit` writes whatever is outstanding whether it has settled or not.
-    window_still_since: Option<(Option<project_state::WindowPlace>, f64)>,
+    ///
+    /// `task-2218` widened it to the scrolls and the carets, which move on every frame of typing and of a
+    /// wheel: see [`project_state::ProjectState::differs_only_in_what_a_gesture_moves`].
+    window_still_since: Option<(GestureState, f64)>,
     /// The shells this project was left with, waiting to be started once a frame has been drawn.
     ///
     /// One entry per tab, holding the name a person gave it or an empty string. See
@@ -1024,6 +1030,13 @@ pub struct UnluminousApp {
     /// move, so what the gesture has asked for is kept here between frames and the setting changes
     /// only when it has asked for a whole point.
     zoom_pending: f32,
+    /// When a zoom gesture last took a step, in egui's seconds.
+    ///
+    /// `task-2218`: every notch of `Ctrl`+wheel changes `appearance.font.size`, and the settings file was
+    /// written on the frame after each one, because a wheel leaves the pointer up. So the write waits until
+    /// no step has been taken for [`WINDOW_SETTLE`], which is the rule a dragged divider already keeps by
+    /// waiting for the pointer. `on_exit` writes whatever is outstanding either way.
+    zoom_stepped_at: Option<f64>,
     /// Who has this frame's zoom gesture. See [`ZoomClaim`].
     zoom: ZoomClaim,
     /// How far down its rows the explorer was left, and where to put it back on the next frame.
@@ -1491,6 +1504,7 @@ impl UnluminousApp {
             reveal_in_explorer: 0,
             editor_area: Rect::ZERO,
             zoom_pending: 1.0,
+            zoom_stepped_at: None,
             zoom: ZoomClaim::Nobody,
             explorer_scroll: 0.0,
             explorer_scroll_to: None,
@@ -2023,11 +2037,13 @@ impl UnluminousApp {
             return;
         }
         if let Some(at) = at {
-            let only_the_window_moved = self
+            let only_a_gesture_moved = self
                 .written_project
                 .as_ref()
-                .is_some_and(|written| written.differs_only_in_the_window(&state));
-            if only_the_window_moved && !self.the_window_has_stopped_moving(state.window, at) {
+                .is_some_and(|written| written.differs_only_in_what_a_gesture_moves(&state));
+            if only_a_gesture_moved
+                && !self.the_gesture_has_stopped(state.what_a_gesture_moves(), at)
+            {
                 return;
             }
         }
@@ -2035,21 +2051,18 @@ impl UnluminousApp {
         self.written_project = Some(state);
     }
 
-    /// Whether the window has been where it is for long enough to be worth writing down.
+    /// Whether the window, the scrolls and the carets have been where they are for long enough to be
+    /// worth writing down.
     ///
-    /// A drag of the window is a run of frames each reporting a different geometry, so the answer is
-    /// no until one of them repeats for [`WINDOW_SETTLE`]. The place is remembered rather than the
-    /// number of frames, because a window that is dragged, let go, and dragged again has to be written
-    /// in between.
-    fn the_window_has_stopped_moving(
-        &mut self,
-        place: Option<project_state::WindowPlace>,
-        at: f64,
-    ) -> bool {
-        match self.window_still_since {
-            Some((was, since)) if was == place => at - since >= WINDOW_SETTLE,
+    /// A drag of the window, a turn of the wheel and a run of typing are each a run of frames reporting
+    /// a different place, so the answer is no until one of them repeats for [`WINDOW_SETTLE`]. The
+    /// places are remembered rather than the number of frames, because a window that is dragged, let
+    /// go, and dragged again has to be written in between.
+    fn the_gesture_has_stopped(&mut self, moved: GestureState, at: f64) -> bool {
+        match &self.window_still_since {
+            Some((was, since)) if *was == moved => at - since >= WINDOW_SETTLE,
             _ => {
-                self.window_still_since = Some((place, at));
+                self.window_still_since = Some((moved, at));
                 false
             }
         }
@@ -2444,6 +2457,11 @@ impl eframe::App for UnluminousApp {
         // The one thing reconciling needs from the frame, taken while there is a frame to ask.
         self.browser.remember_window(_frame);
         UnluminousApp::ui(self, ui);
+        // What eframe says the **previous** frame cost on this thread, egui's own layout and tessellation
+        // included and the graphics card's painting not: the half of `outside` that is processor time.
+        if let Some(seconds) = _frame.info().cpu_usage {
+            crate::services::frame_trace::value("egui-cpu", f64::from(seconds) * 1000.0);
+        }
     }
 
     /// Write the settings, the pane sizes and what was open in the project before the window goes,

@@ -779,14 +779,9 @@ impl UnluminousApp {
                 let index = self.files.active_index();
                 self.close_tab(index);
             }
-            Action::NextTab => {
-                self.files.next();
-                self.forget_layout();
-            }
-            Action::PreviousTab => {
-                self.files.previous();
-                self.forget_layout();
-            }
+            // A tab keeps what was laid out for it while it is hidden; see `show_tab`.
+            Action::NextTab => self.files.next(),
+            Action::PreviousTab => self.files.previous(),
             // The panes. Each is one call on `OpenFiles`, which is where the rules about panes live,
             // so a split made from a menu and a split made from the command line are the same split.
             Action::SplitRight => {

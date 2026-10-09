@@ -249,7 +249,14 @@ impl UnluminousApp {
                 .map(|plugin| plugin.grammar.clone())
                 .unwrap_or_default();
             let text = self.files.at(index).document.text().to_string();
-            let read = FileSymbols::read(&text, &grammar);
+            // Off the colouring's own tokens when they describe this revision, which is the tab that
+            // is showing on every frame after it was coloured: one pass over the rules per keystroke
+            // rather than two. See `FileSymbols::read_tokens`.
+            let file = self.files.at(index);
+            let read = match file.syntax_tokens_revision == Some(revision) {
+                true => FileSymbols::read_tokens(&text, &grammar, file.syntax_tokens.all()),
+                false => FileSymbols::read(&text, &grammar),
+            };
             let named = read
                 .definitions()
                 .iter()

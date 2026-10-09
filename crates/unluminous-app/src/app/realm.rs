@@ -262,6 +262,7 @@ impl UnluminousApp {
         }
         self.make_sure_the_open_realm_is_on_disk();
         self.keep_the_realm_list_current();
+        crate::services::frame_trace::phase("realm-files");
         let bar = Rect::from_min_size(rect.min, Vec2::new(rect.width(), realm_view::VIEW_BAR));
         let body = Rect::from_min_max(Pos2::new(rect.left(), bar.bottom()), rect.max);
         self.realm.body = body;
@@ -314,12 +315,19 @@ impl UnluminousApp {
             self.realm.in_hand.wire = Some(edge);
             self.realm.menu = Some((at, Menu::Wire));
         }
+        crate::services::frame_trace::phase("realm-ground");
         self.show_the_realm_nodes(ui, &mut body_ui, body, look);
+        crate::services::frame_trace::phase("realm-nodes");
         self.settle_the_wire_in_the_air(&body_ui, body);
         if self.realm.realm.nodes.is_empty() {
             realm_view::nothing_here_yet(&body_ui, body);
         }
-        self.paint_the_chrome(ui, slot, egui::Id::new("realm-canvas"), body, &chrome);
+        crate::services::frame_trace::phase("realm-wires");
+        // Coarser while the camera is moving, which is every frame of a pan or of a zoom gliding to where
+        // it is going - `task-2218`. The frame it stops on is drawn at the full resolution.
+        let moving = self.realm.glide.is_some() || self.realm.gesture == Gesture::Panning;
+        self.paint_the_chrome_while(ui, slot, egui::Id::new("realm-canvas"), body, &chrome, moving);
+        crate::services::frame_trace::phase("realm-chrome");
         self.zoom_over_a_panel(ui, dock::Panel::Realm, body);
     }
 

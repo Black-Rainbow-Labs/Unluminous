@@ -58,14 +58,13 @@ impl UnluminousApp {
                 }
                 Err(problem) => no(request, code::NOT_APPLICABLE, problem),
             },
+            // A tab keeps what was laid out for it while it is hidden; see `show_tab`.
             "next" => {
                 self.files.next();
-                self.forget_layout();
                 done(request, format!("Showing {}", self.files.active().name()))
             }
             "previous" => {
                 self.files.previous();
-                self.forget_layout();
                 done(request, format!("Showing {}", self.files.active().name()))
             }
             "move" => self.cli_tab_move(request),

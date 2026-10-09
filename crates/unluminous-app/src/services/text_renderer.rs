@@ -325,6 +325,51 @@ struct FaceId(u32);
 /// the system has one.
 type FaceMemo = Option<(FaceKey, FaceId, Option<Arc<FontVec>>)>;
 
+/// How wide each of the 128 ASCII characters is, for one face at one size. `NaN` is not measured yet.
+type AsciiAdvances = [f32; 128];
+
+/// The ASCII advances measured so far, one table for each face and size that has been laid out.
+///
+/// **`task-2218`.** Laying a 200 KB file out cost about 20 ms, and nearly all of it was
+/// [`FontMetrics::advance`] being asked one character at a time: resolve the face, look the character up
+/// in the font's `cmap` twice (once to see whether a fallback is needed, once for the advance), and scale
+/// the advance. The answer for a character never changes for a face at a size, and source code is almost
+/// all ASCII, so the answer is kept. A zoom walks a dozen sizes, so the tables are few; `ADVANCE_TABLES`
+/// bounds them anyway.
+#[derive(Default)]
+struct AdvanceTables {
+    /// The face and the size bits of each table, in the order they were made.
+    keys: Vec<(FaceId, u32)>,
+    tables: Vec<Box<AsciiAdvances>>,
+    /// Which table answered last, because a layout walks a run of one style at a time.
+    last: usize,
+}
+
+/// How many face and size pairs keep an ASCII table before they are all forgotten and measured again.
+const ADVANCE_TABLES: usize = 64;
+
+impl AdvanceTables {
+    /// The table for a face at a size, made empty the first time it is asked for.
+    fn table(&mut self, face: FaceId, size: f32) -> &mut AsciiAdvances {
+        let key = (face, size.to_bits());
+        if self.keys.get(self.last) != Some(&key) {
+            self.last = match self.keys.iter().position(|known| *known == key) {
+                Some(at) => at,
+                None => {
+                    if self.keys.len() >= ADVANCE_TABLES {
+                        self.keys.clear();
+                        self.tables.clear();
+                    }
+                    self.keys.push(key);
+                    self.tables.push(Box::new([f32::NAN; 128]));
+                    self.keys.len() - 1
+                }
+            };
+        }
+        &mut self.tables[self.last]
+    }
+}
+
 struct Atlas {
     image: ColorImage,
     texture: Option<TextureHandle>,
@@ -333,8 +378,15 @@ struct Atlas {
     pen_x: usize,
     pen_y: usize,
     row_height: usize,
-    /// True when the texture needs uploading again.
+    /// True when the whole texture needs uploading again: it has never been, or the atlas was cleared.
     changed: bool,
+    /// The part of the image written since the texture was last uploaded, as left, top, right and bottom
+    /// in pixels, when only a part was.
+    ///
+    /// **Uploaded on its own rather than with the rest of the atlas** (`task-2218`). Every new glyph used
+    /// to clone the whole four megabyte image and send all of it to the graphics card, and a zoom on the
+    /// canvas adds glyphs at a new size on nearly every frame of the glide.
+    dirty: Option<[usize; 4]>,
     /// Bumped whenever the atlas is cleared, so a caller holding positions from it can tell they are
     /// no longer valid.
     generation: u64,
@@ -350,8 +402,23 @@ impl Atlas {
             pen_y: 0,
             row_height: 0,
             changed: true,
+            dirty: None,
             generation: 0,
         }
+    }
+
+    /// Note that a rectangle of the image has been written, for the next upload to send.
+    fn mark(&mut self, x: usize, y: usize, width: usize, height: usize) {
+        if self.changed {
+            return;
+        }
+        let (right, bottom) = ((x + width).min(ATLAS_SIDE), (y + height).min(ATLAS_SIDE));
+        self.dirty = Some(match self.dirty {
+            Some([left, top, was_right, was_bottom]) => {
+                [left.min(x), top.min(y), was_right.max(right), was_bottom.max(bottom)]
+            }
+            None => [x, y, right, bottom],
+        });
     }
 
     /// Reserve a rectangle of the atlas, moving to a new row when the current one is full.
@@ -383,6 +450,7 @@ impl Atlas {
         self.pen_y = 0;
         self.row_height = 0;
         self.changed = true;
+        self.dirty = None;
         self.generation += 1;
     }
 }
@@ -407,6 +475,11 @@ pub struct TextRenderer {
     /// one entry answers nearly every question. It is compared with [`FaceKey::is`], which looks at
     /// the family name rather than copying it.
     memo: RefCell<FaceMemo>,
+    /// What each ASCII character measures, kept per face and size. See [`AdvanceTables`].
+    advances: RefCell<AdvanceTables>,
+    /// The last line metrics asked for, and the face and size they belong to. A layout asks once for
+    /// every run of every line, and nearly every run in a file is in the same face at the same size.
+    last_metrics: std::cell::Cell<Option<(FaceId, u32, LineMetrics)>>,
     atlas: RefCell<Atlas>,
     /// How many pixels a point is worth where whatever is being drawn right now will be composited.
     ///
@@ -449,6 +522,8 @@ impl TextRenderer {
             fallbacks: RefCell::new(HashMap::new()),
             ids: RefCell::new(HashMap::new()),
             memo: RefCell::new(None),
+            advances: RefCell::new(AdvanceTables::default()),
+            last_metrics: std::cell::Cell::new(None),
             atlas: RefCell::new(Atlas::new()),
             compositing: RefCell::new(Compositing::DIRECT),
             pixels_per_point: std::cell::Cell::new(1.0),
@@ -690,7 +765,7 @@ impl TextRenderer {
                 atlas.image[(px, py)] = Color32::from_white_alpha(alpha);
             }
         });
-        atlas.changed = true;
+        atlas.mark(x, y, width, height);
         let side = ATLAS_SIDE as f32;
         Rasterised::Glyph(AtlasGlyph {
             uv: egui::Rect::from_min_max(
@@ -782,10 +857,19 @@ impl TextRenderer {
             atlas.texture =
                 Some(ctx.load_texture("unluminous-glyphs", image, TextureOptions::LINEAR));
             atlas.changed = false;
+            atlas.dirty = None;
         } else if atlas.changed {
             let image = atlas.image.clone();
             atlas.texture.as_mut().expect("just checked").set(image, TextureOptions::LINEAR);
             atlas.changed = false;
+            atlas.dirty = None;
+        } else if let Some([left, top, right, bottom]) = atlas.dirty.take() {
+            let part = atlas.image.region_by_pixels([left, top], [right - left, bottom - top]);
+            atlas.texture.as_mut().expect("just checked").set_partial(
+                [left, top],
+                part,
+                TextureOptions::LINEAR,
+            );
         }
         atlas.texture.as_ref().expect("set above").id()
     }
@@ -823,6 +907,66 @@ impl Rasterised {
 
 impl FontMetrics for TextRenderer {
     fn advance(&self, cluster: &str, style: &CharStyle) -> f32 {
+        // One ASCII character is answered out of a table once it has been measured. See `AdvanceTables`.
+        if let [byte] = cluster.as_bytes() {
+            if byte.is_ascii() {
+                let face = self.resolve_id(style);
+                let known = self.advances.borrow_mut().table(face, style.size)[usize::from(*byte)];
+                if !known.is_nan() {
+                    return known;
+                }
+                let measured = self.measure_advance(cluster, style);
+                self.advances.borrow_mut().table(face, style.size)[usize::from(*byte)] = measured;
+                return measured;
+            }
+        }
+        self.measure_advance(cluster, style)
+    }
+
+    fn line_metrics(&self, style: &CharStyle) -> LineMetrics {
+        let id = self.resolve_id(style);
+        if let Some((face, size, metrics)) = self.last_metrics.get() {
+            if face == id && size == style.size.to_bits() {
+                return metrics;
+            }
+        }
+        let metrics = self.measure_line_metrics(style);
+        self.last_metrics.set(Some((id, style.size.to_bits(), metrics)));
+        metrics
+    }
+}
+
+impl TextRenderer {
+    /// What [`FontMetrics::line_metrics`] answers, asking the font.
+    fn measure_line_metrics(&self, style: &CharStyle) -> LineMetrics {
+        let Some(face) = self.face_for(style) else {
+            return LineMetrics { ascent: style.size, descent: style.size * 0.25, line_gap: 0.0 };
+        };
+        let scaled = face.as_scaled(PxScale::from(style.size));
+        LineMetrics {
+            ascent: scaled.ascent(),
+            // ab_glyph reports the descent as a negative number, below the baseline.
+            descent: -scaled.descent(),
+            line_gap: scaled.line_gap() + style.size * READING_LEADING,
+        }
+    }
+
+    /// The number of the face a style resolves to, without cloning the face itself.
+    ///
+    /// [`Self::resolve`] hands back an `Arc` of the face, which is a reference count up and down for every
+    /// character measured; the ASCII table only needs the number.
+    fn resolve_id(&self, style: &CharStyle) -> FaceId {
+        if let Some((key, id, _)) = self.memo.borrow().as_ref() {
+            if key.is(style) {
+                return *id;
+            }
+        }
+        self.resolve(style).0
+    }
+
+    /// Measure how far `cluster` advances the pen, asking the font. [`FontMetrics::advance`] keeps the
+    /// answers for ASCII.
+    fn measure_advance(&self, cluster: &str, style: &CharStyle) -> f32 {
         // A cluster of several code points, such as a letter and a combining accent, takes the width of
         // its base character: the accent is drawn over the letter rather than after it.
         let Some(base) = cluster.chars().next() else {
@@ -841,19 +985,6 @@ impl FontMetrics for TextRenderer {
         }
         scaled.h_advance(face.glyph_id(base))
     }
-
-    fn line_metrics(&self, style: &CharStyle) -> LineMetrics {
-        let Some(face) = self.face_for(style) else {
-            return LineMetrics { ascent: style.size, descent: style.size * 0.25, line_gap: 0.0 };
-        };
-        let scaled = face.as_scaled(PxScale::from(style.size));
-        LineMetrics {
-            ascent: scaled.ascent(),
-            // ab_glyph reports the descent as a negative number, below the baseline.
-            descent: -scaled.descent(),
-            line_gap: scaled.line_gap() + style.size * READING_LEADING,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -867,6 +998,62 @@ mod tests {
             !renderer.families().is_empty(),
             "none of {CANDIDATE_FAMILIES:?} is installed, so no text could be drawn"
         );
+    }
+
+    /// `task-2218`: a glyph added after the atlas has been uploaded sends only the rectangle it was drawn
+    /// into, and the upload that follows sends nothing more.
+    #[test]
+    fn a_new_glyph_uploads_only_the_part_of_the_atlas_it_was_drawn_into() {
+        let ctx = egui::Context::default();
+        let renderer = TextRenderer::new();
+        let style = CharStyle {
+            family: renderer.default_family().as_str().into(),
+            size: 40.0,
+            ..CharStyle::default()
+        };
+        let _ = renderer.glyph('A', &style);
+        let _ = renderer.texture(&ctx);
+        assert!(!renderer.atlas.borrow().changed && renderer.atlas.borrow().dirty.is_none());
+
+        let glyph = renderer.glyph('W', &style).expect("a letter has a glyph");
+        let dirty = renderer.atlas.borrow().dirty.expect("the new glyph's rectangle is pending");
+        let [left, top, right, bottom] = dirty;
+        assert!(
+            right - left < ATLAS_SIDE && bottom - top < ATLAS_SIDE,
+            "only a part, not the atlas"
+        );
+        assert_eq!((right - left) as f32, glyph.size.x);
+        let _ = renderer.texture(&ctx);
+        assert!(renderer.atlas.borrow().dirty.is_none(), "and it has been sent");
+    }
+
+    /// `task-2218`: an ASCII advance answered out of the table is exactly what the font answers, at every
+    /// size and in every style it was measured in, and a size change is measured afresh.
+    #[test]
+    fn a_remembered_advance_is_exactly_what_the_font_measures() {
+        let renderer = TextRenderer::new();
+        let family: std::sync::Arc<str> = renderer.default_family().as_str().into();
+        for size in [11.0, 16.0, 17.5, 24.0] {
+            for (bold, italic) in [(false, false), (true, false), (false, true)] {
+                let style = CharStyle {
+                    family: family.clone(),
+                    size,
+                    bold,
+                    italic,
+                    ..CharStyle::default()
+                };
+                for byte in 0u8..128 {
+                    let letter = (byte as char).to_string();
+                    let measured = renderer.measure_advance(&letter, &style);
+                    assert_eq!(renderer.advance(&letter, &style), measured, "{byte} at {size}");
+                    assert_eq!(
+                        renderer.advance(&letter, &style),
+                        measured,
+                        "asked twice, {byte} at {size}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

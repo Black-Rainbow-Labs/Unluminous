@@ -282,6 +282,9 @@ impl UnluminousApp {
         // number, which is what lets `fold_regions` use them instead of reading the file again.
         let now = file.document.text_revision();
         file.coloured_revision = Some(now);
+        // A markup file is read whole by `scan_with_embedded` and keeps no token list, so its tokens
+        // say nothing about this revision.
+        file.syntax_tokens_revision = (!markup).then_some(now);
         file.cached.fold_tokens = Some((now, tokens));
         file.cached.stale = true;
     }
@@ -919,6 +922,7 @@ impl UnluminousApp {
             inline_values,
             find_matches,
         } = self.what_the_editor_draws_from(index, focused);
+        crate::services::frame_trace::phase("editor-readings");
         // Set by an arrow in the gutter or a badge in the text, and by a click in the gutter's
         // breakpoint column, and both acted on at the **end** of the frame: a fold and a breakpoint
         // each change the layout, and changing it half way through drawing this pane would leave the
@@ -989,7 +993,9 @@ impl UnluminousApp {
         if self.reveal_caret && focused {
             self.reveal_the_caret_from_a_fold();
         }
+        crate::services::frame_trace::phase("editor-gutter-width");
         self.refresh_layout(text_width);
+        crate::services::frame_trace::phase("editor-layout");
         let view_height = area.height() - size::EDITOR_PADDING_Y * 2.0;
         // Straight after the layout, so the rest of the frame — the wheel, the caret, the painter
         // — sees the scroll position the zoom asked for rather than the one it was left at.
@@ -1022,6 +1028,7 @@ impl UnluminousApp {
             &symbol,
             EditorInput { has_keyboard, focused, text_width },
         );
+        crate::services::frame_trace::phase("editor-input");
         if taken.jumped {
             return true;
         }
@@ -1068,6 +1075,7 @@ impl UnluminousApp {
             self.remember_where_the_completion_hangs(origin, area);
         }
 
+        crate::services::frame_trace::phase("editor-scroll");
         if gutter_width > 0.0 {
             let outcome =
                 self.show_the_gutter(ui, gutter_rect, origin.y, &fold_marks, &breakpoint_marks);
@@ -1075,6 +1083,7 @@ impl UnluminousApp {
             toggled_breakpoint = outcome.toggle_breakpoint.or(toggled_breakpoint);
         }
 
+        crate::services::frame_trace::phase("editor-gutter");
         if let Some(line) = self.paint_the_editor(
             ui,
             area,
@@ -1097,6 +1106,7 @@ impl UnluminousApp {
         ) {
             folded = Some(line);
         }
+        crate::services::frame_trace::phase("editor-paint");
         if let Some(line) = folded {
             self.toggle_fold_at_line(line);
         }
@@ -1147,6 +1157,7 @@ impl UnluminousApp {
         let pointer_changed = pointer.changed;
         let outcome =
             editor_view::handle_input(ui, document, laid, has_keyboard, formatting, &typing);
+        crate::services::frame_trace::phase("input-edit");
         // The window decides what a jump means, which is the rule every component follows.
         if let Some(offset) = pointer.jump {
             self.focus = Focus::Editor;
@@ -1166,12 +1177,14 @@ impl UnluminousApp {
         if outcome.changed || pointer_changed {
             self.refresh_layout(text_width);
         }
+        crate::services::frame_trace::phase("input-layout");
         // Open, refilter or close the completion popup, now that the letter just typed is in the
         // file. Only the pane with the keyboard, because there is one popup and it belongs to
         // whichever pane is being typed into.
         if focused {
             self.keep_the_completion_fresh(typed);
         }
+        crate::services::frame_trace::phase("input-completion");
         EditorTyped { jumped: false, scroll_to_caret }
     }
 

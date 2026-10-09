@@ -216,6 +216,30 @@ impl FileSymbols {
     /// Nothing clever is skipped: a token the tokeniser classified `Comment` or `String` can never
     /// hold a definition, because the tokeniser already said what it is.
     pub fn read(text: &str, grammar: &Grammar) -> Self {
+        Self::read_with(text, grammar, |visit| syntax::scan(text, grammar, visit))
+    }
+
+    /// The same reading, from tokens somebody has already read out of exactly this `text`.
+    ///
+    /// **`task-2218`.** The window colours the tab that is showing incrementally and keeps every token
+    /// of it, plain words included, in `unluminous_core::IncrementalTokens`. Reading the file's symbols
+    /// scanned the whole file again on every keystroke while the completion popup was open: measured at
+    /// about 2.7 ms a letter on a 200 KB file. `tokens` must be the complete token list of `text` in file
+    /// order, which is what [`crate::incremental::Tokens::all`] is once the colouring has caught up.
+    pub fn read_tokens(text: &str, grammar: &Grammar, tokens: &[(Range<usize>, Token)]) -> Self {
+        Self::read_with(text, grammar, |visit| {
+            for (range, token) in tokens {
+                visit(range.clone(), *token);
+            }
+        })
+    }
+
+    /// The reading itself, given something that hands every token of `text` to a visitor in order.
+    fn read_with(
+        text: &str,
+        grammar: &Grammar,
+        drive: impl FnOnce(&mut dyn FnMut(Range<usize>, Token)),
+    ) -> Self {
         let mut read = FileSymbols::default();
         let defines = grammar.defines_symbols();
         // The kind a definer keyword is waiting to give to the next word, and where that keyword
@@ -252,7 +276,7 @@ impl FileSymbols {
         // in the same breath.
         let mut listing = false;
         let mut listed: Vec<Range<usize>> = Vec::new();
-        syntax::scan(text, grammar, |range, token| {
+        drive(&mut |range, token| {
             // The keyword and the name have to be next to each other. See the note above.
             let adjacent = |after: usize| {
                 after <= range.start
@@ -814,6 +838,33 @@ mod tests {
         assert_eq!(answer(nth("count", 2)), Some(nth("count", 2)));
         // A field goes to the struct.
         assert_eq!(answer(nth("items", 1)), Some(nth("items", 0)));
+    }
+
+    /// `task-2218`: reading a file's symbols off the colouring's incremental token list gives exactly
+    /// what scanning the file gives, after an edit as well as on a fresh reading.
+    #[test]
+    fn reading_off_the_colourings_tokens_is_the_same_as_scanning_the_file() {
+        let grammar = rust();
+        let before = "pub fn draw(layout: &Layout) {
+    // a comment with fn inside
+    let count = \"fn x\";
+}
+struct Layout;
+";
+        let mut tokens = crate::IncrementalTokens::default();
+        tokens.update(before, &grammar, crate::incremental::Dirt::Whole, |_, _| {});
+        assert_eq!(
+            FileSymbols::read_tokens(before, &grammar, tokens.all()),
+            FileSymbols::read(before, &grammar)
+        );
+
+        let after = before.replace("let count", "let counted");
+        let dirt = crate::incremental::Dirt::Clean.note(before.find("count").unwrap() + 5, 0, 2);
+        tokens.update(&after, &grammar, dirt, |_, _| {});
+        assert_eq!(
+            FileSymbols::read_tokens(&after, &grammar, tokens.all()),
+            FileSymbols::read(&after, &grammar)
+        );
     }
 
     /// The Rust grammar as the bundled plugin describes it, cut down to what these tests need.
