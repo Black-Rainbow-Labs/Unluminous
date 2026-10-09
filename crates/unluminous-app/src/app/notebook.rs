@@ -22,7 +22,7 @@ use unluminous_jupyter::kernel::{Kernel, Variable};
 use unluminous_jupyter::nbformat::{self, CellKind, Notebook};
 use unluminous_jupyter::text::{self, CellSpan};
 
-use crate::components::notebook_view::Drawn;
+use crate::components::notebook_view::{Drawn, StatusMark};
 
 /// Whether the keys type into a cell or act on whole cells, which is Jupyter's own pair of modes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -46,6 +46,44 @@ pub enum Run {
     Done { ok: bool, took: Duration, at: SystemTime, clock: crate::services::clock::TimeOfDay },
     /// Not run, because a cell before it in the same run failed or the run was interrupted.
     Skipped,
+}
+
+/// The words on the line under a code cell: its count and how long it took, or what it is waiting
+/// for. The reference editor's own form: `[5] 222ms`.
+pub fn status_words(run: Option<&Run>, count: Option<u64>) -> String {
+    let count = count.map(|count| format!("[{count}]")).unwrap_or_else(|| "[ ]".to_owned());
+    match run {
+        Some(Run::Queued) => "Queued".to_owned(),
+        Some(Run::Running { since }) => format!("[*] {}", duration(since.elapsed())),
+        Some(Run::Done { took, clock, .. }) => format!("{count} {} at {clock}", duration(*took)),
+        Some(Run::Skipped) => {
+            "Not run, because a cell before it failed or the run was stopped".to_owned()
+        }
+        None => count,
+    }
+}
+
+/// The mark at the left of a code cell's status line for how its last run went.
+pub fn status_mark(run: Option<&Run>) -> StatusMark {
+    match run {
+        Some(Run::Done { ok: true, .. }) => StatusMark::Succeeded,
+        Some(Run::Done { ok: false, .. }) => StatusMark::Failed,
+        Some(Run::Queued) => StatusMark::Queued,
+        Some(Run::Running { .. }) => StatusMark::Running,
+        Some(Run::Skipped) => StatusMark::Skipped,
+        None => StatusMark::Nothing,
+    }
+}
+
+/// A duration the way the reference editor writes one: `< 10 ms`, `222ms`, `5s 3ms`, `2m 5s`.
+pub fn duration(took: Duration) -> String {
+    let millis = took.as_millis();
+    match millis {
+        0..10 => "< 10 ms".to_owned(),
+        10..1000 => format!("{millis}ms"),
+        1000..60_000 => format!("{}s {}ms", millis / 1000, millis % 1000),
+        _ => format!("{}m {}s", millis / 60_000, (millis / 1000) % 60),
+    }
 }
 
 /// The kernel behind a notebook, or why there is none.
@@ -331,7 +369,8 @@ impl NotebookTab {
             if level >= enclosing {
                 continue;
             }
-            if self.model.cells.get(above).is_some_and(|c| self.sections_collapsed.contains(&c.id)) {
+            if self.model.cells.get(above).is_some_and(|c| self.sections_collapsed.contains(&c.id))
+            {
                 return true;
             }
             enclosing = level;
@@ -364,13 +403,10 @@ impl NotebookTab {
         self.model.cells.iter().position(|cell| cell.id == id)
     }
 
-    /// Which cell a byte of the text belongs to. A marker belongs to the cell it starts.
+    /// Which cell a byte of the text belongs to, by the same rule as [`text::cell_at`] uses for a line.
+    /// A marker belongs to the cell it starts, and a byte past the last cell belongs to none.
     pub fn cell_at_offset(&self, offset: usize) -> Option<usize> {
-        if self.spans.is_empty() {
-            return None;
-        }
-        let found = self.spans.partition_point(|span| span_start(span) <= offset);
-        Some(found.saturating_sub(1))
+        text::cell_at_byte(&self.spans, offset)
     }
 
     /// The cells the keys act on: the chosen range in command mode, or the caret's cell in edit mode.
@@ -504,7 +540,9 @@ pub fn cells_copied(
     spans: &[CellSpan],
     range: Range<usize>,
 ) -> Vec<(CellKind, String)> {
-    range.map(|cell| (spans[cell].kind, text::cell_source(text, &spans[cell]).into_owned())).collect()
+    range
+        .map(|cell| (spans[cell].kind, text::cell_source(text, &spans[cell]).into_owned()))
+        .collect()
 }
 
 /// The edit that turns cells `range` into one cell: the first cell's marker, then every source
@@ -612,6 +650,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_duration_is_written_the_way_the_reference_editor_writes_one() {
+        assert_eq!(duration(Duration::from_millis(3)), "< 10 ms");
+        assert_eq!(duration(Duration::from_millis(222)), "222ms");
+        assert_eq!(duration(Duration::from_millis(5003)), "5s 3ms");
+        assert_eq!(duration(Duration::from_secs(125)), "2m 5s");
+    }
+
+    #[test]
+    fn the_status_line_names_the_count_and_what_the_cell_is_waiting_for() {
+        let done = Run::Done {
+            ok: true,
+            took: Duration::from_millis(69),
+            at: SystemTime::now(),
+            clock: crate::services::clock::TimeOfDay { hour: 14, minute: 3, second: 22 },
+        };
+        assert_eq!(status_words(Some(&done), Some(3)), "[3] 69ms at 14:03:22");
+        assert_eq!(status_words(Some(&Run::Queued), None), "Queued");
+        assert_eq!(status_words(None, Some(7)), "[7]");
+        assert_eq!(status_words(None, None), "[ ]");
+    }
+
+    #[test]
+    fn the_status_mark_follows_how_the_last_run_went() {
+        assert_eq!(status_mark(None), StatusMark::Nothing);
+        assert_eq!(status_mark(Some(&Run::Skipped)), StatusMark::Skipped);
+        assert_eq!(status_mark(Some(&Run::Queued)), StatusMark::Queued);
+    }
+
+    #[test]
     fn a_section_runs_to_the_next_heading_of_its_level_or_above_and_collapsing_hides_it() {
         let mut model = nbformat::empty();
         model.cells = vec![
@@ -626,7 +693,10 @@ mod tests {
         let (mut tab, text) = NotebookTab::new(model);
         tab.spans = text::spans(&text);
         assert_eq!((tab.section_of(0), tab.section_of(2), tab.section_of(4)), (0..4, 2..4, 4..7));
-        assert_eq!((tab.heading_above(3), tab.heading_above(1), tab.heading_level(6)), (Some(2), Some(0), None));
+        assert_eq!(
+            (tab.heading_above(3), tab.heading_above(1), tab.heading_level(6)),
+            (Some(2), Some(0), None)
+        );
         tab.sections_collapsed.insert("b".to_owned());
         let hidden: Vec<usize> = (0..7).filter(|cell| tab.in_a_collapsed_section(*cell)).collect();
         assert_eq!(hidden, vec![3]);
@@ -747,5 +817,6 @@ mod tests {
         assert_eq!(tab.cell_at_offset(0), Some(0));
         assert_eq!(tab.cell_at_offset(text.find("# %% [markdown]").unwrap()), Some(1));
         assert_eq!(tab.cell_at_offset(text.len()), Some(2));
+        assert_eq!(tab.cell_at_offset(text.len() + 1), None);
     }
 }

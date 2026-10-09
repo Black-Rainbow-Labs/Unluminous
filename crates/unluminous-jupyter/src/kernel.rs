@@ -514,13 +514,35 @@ fn spawn_stderr_reader(stderr: std::process::ChildStderr, tail: Arc<Mutex<VecDeq
 fn parse_event(value: &Value) -> Option<Event> {
     let request = value["request"].as_str().map(str::to_owned);
     let text = |key: &str| value[key].as_str().unwrap_or_default().to_owned();
-    let count = |key: &str| value[key].as_u64();
     let pid = || value["pid"].as_u64().map(|number| number as u32);
-    let display_id = || value["display_id"].as_str().map(str::to_owned);
     let event = match value["event"].as_str()? {
         "started" => Event::Started { info: value["info"].clone(), pid: pid() },
         "restarted" => Event::Restarted { info: value["info"].clone(), pid: pid() },
         "status" => Event::Status { state: text("state") },
+        "input_request" => Event::InputRequest {
+            request,
+            prompt: text("prompt"),
+            password: value["password"].as_bool().unwrap_or(false),
+        },
+        "execute_input"
+        | "stream"
+        | "display_data"
+        | "update_display_data"
+        | "execute_result"
+        | "error"
+        | "clear_output"
+        | "execute_reply" => return parse_output_event(value, request),
+        _ => return parse_reply_event(value, request),
+    };
+    Some(event)
+}
+
+/// The events that describe what a cell's run printed, showed, or ended with.
+fn parse_output_event(value: &Value, request: Option<String>) -> Option<Event> {
+    let text = |key: &str| value[key].as_str().unwrap_or_default().to_owned();
+    let count = |key: &str| value[key].as_u64();
+    let display_id = || value["display_id"].as_str().map(str::to_owned);
+    let event = match value["event"].as_str()? {
         "execute_input" => {
             Event::ExecuteInput { request, execution_count: count("execution_count") }
         }
@@ -557,12 +579,7 @@ fn parse_event(value: &Value) -> Option<Event> {
             status: text("status"),
             execution_count: count("execution_count"),
         },
-        "input_request" => Event::InputRequest {
-            request,
-            prompt: text("prompt"),
-            password: value["password"].as_bool().unwrap_or(false),
-        },
-        _ => return parse_reply_event(value, request),
+        _ => return None,
     };
     Some(event)
 }

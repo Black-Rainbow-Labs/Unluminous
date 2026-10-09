@@ -29,6 +29,7 @@ use crate::app::notebook::{self, Mode, NotebookTab};
 use crate::app::notebook_actions::NotebookAction;
 use crate::app::UnluminousApp;
 use crate::components::notebook_view::{self, CellButton, DrawnKey, Metrics};
+use crate::services::text_renderer::TextRenderer;
 use crate::theme::color;
 
 /// A Markdown cell rendered, at one width and size, kept between frames by cell id.
@@ -151,76 +152,58 @@ impl UnluminousApp {
         let index = self.files.active_index();
         self.refresh_the_notebook(index);
         let metrics = self.notebook_metrics();
-        let Some(mut tab) = self.files.at_mut(index).notebook.take() else { return };
-        let count = tab.len();
-        let mut changed = false;
-        for cell in 0..count {
-            let Some(id) = tab.id_of(cell) else { continue };
-            let shape = tab.shape(cell);
-            let room = match (shape, tab.spans[cell].kind) {
-                (Shape::Hidden, _) => Room::default(),
-                (Shape::Rendered, _) => Room {
-                    section_note: tab.sections_collapsed.contains(&id),
-                    ..self.room_for_markdown(&mut tab, cell, width, metrics)
-                },
-                (Shape::Collapsed, _) => {
-                    Room { replaced: Some(metrics.status()), ..Room::default() }
-                }
-                (Shape::Source, CellKind::Code) => {
-                    room_for_code(ctx, &mut tab, cell, width, metrics)
-                }
-                (Shape::Source, _) => Room::default(),
-            };
-            let room = match shape {
-                Shape::Hidden => room,
-                _ => with_gaps(room, shape, metrics, cell == 0, cell + 1 == count),
-            };
-            if tab.rooms.get(&id) != Some(&room) {
-                tab.rooms.insert(id, room);
-                changed = true;
-            }
-        }
-        if changed {
-            tab.bands_revision += 1;
-        }
-        self.files.at_mut(index).notebook = Some(tab);
+        let stale = self.render_the_stale_markdown(index, width, metrics);
+        let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() else { return };
+        tab.rendered.extend(stale);
+        measure_the_cells(ctx, tab, width, metrics);
     }
 
-    /// The room a rendered Markdown cell needs: its rendered height, laid out now if it has changed.
-    fn room_for_markdown(
+    /// Render the Markdown cells of the tab at `index` whose rendering is missing or was made at
+    /// another source, width or size. Answers each with its cell's id, for the tab to keep.
+    fn render_the_stale_markdown(
         &self,
-        tab: &mut NotebookTab,
-        cell: usize,
+        index: usize,
         width: f32,
         metrics: Metrics,
-    ) -> Room {
-        let found = &tab.model.cells[cell];
-        let source = found.source.clone();
-        let id = found.id.clone();
-        let fresh = tab.rendered.get(&id).is_some_and(|kept| {
-            kept.source == source && (kept.width - width).abs() < 0.5 && kept.size == metrics.size
-        });
-        if !fresh {
-            let shown = if source.trim().is_empty() {
-                "*Empty Markdown cell. Double click to write in it.*"
-            } else {
-                &source
-            };
-            let preview = self.render_markdown(shown, width, metrics.size);
-            let layout = unluminous_core::layout(
-                &preview.text,
-                &preview.chars,
-                &preview.paragraphs,
-                &self.renderer,
-                width,
-            );
-            tab.rendered.insert(
-                id.clone(),
-                Rendered { source, width, size: metrics.size, preview, layout },
-            );
+    ) -> Vec<(String, Rendered)> {
+        let Some(tab) = self.files.at(index).notebook.as_deref() else { return Vec::new() };
+        let mut stale = Vec::new();
+        for cell in 0..tab.len() {
+            let Some(found) = tab.model.cells.get(cell) else { continue };
+            if tab.shape(cell) != Shape::Rendered {
+                continue;
+            }
+            let fresh = tab.rendered.get(&found.id).is_some_and(|kept| {
+                kept.source == found.source
+                    && (kept.width - width).abs() < 0.5
+                    && kept.size == metrics.size
+            });
+            if !fresh {
+                stale.push((
+                    found.id.clone(),
+                    self.render_a_markdown_cell(&found.source, width, metrics),
+                ));
+            }
         }
-        let height = tab.rendered.get(&id).map(|kept| kept.layout.height).unwrap_or(0.0);
-        Room { replaced: Some(height.max(metrics.status())), ..Room::default() }
+        stale
+    }
+
+    /// Render the source of one Markdown cell at `width`, and lay the result out.
+    fn render_a_markdown_cell(&self, source: &str, width: f32, metrics: Metrics) -> Rendered {
+        let shown = if source.trim().is_empty() {
+            "*Empty Markdown cell. Double click to write in it.*"
+        } else {
+            source
+        };
+        let preview = self.render_markdown(shown, width, metrics.size);
+        let layout = unluminous_core::layout(
+            &preview.text,
+            &preview.chars,
+            &preview.paragraphs,
+            &self.renderer,
+            width,
+        );
+        Rendered { source: source.to_owned(), width, size: metrics.size, preview, layout }
     }
 
     /// The paragraph styles and hidden paragraphs a notebook tab is laid out with, or `None` for a tab
@@ -263,6 +246,58 @@ impl UnluminousApp {
     pub(crate) fn notebook_bands(&self, index: usize) -> Option<u64> {
         self.files.at(index).notebook.as_deref().map(|tab| tab.bands_revision)
     }
+}
+
+/// Record the room every cell of `tab` needs at `width`. Bumps the tab's bands revision when any
+/// cell's room changed, which is what lays the text out again.
+fn measure_the_cells(ctx: &egui::Context, tab: &mut NotebookTab, width: f32, metrics: Metrics) {
+    let count = tab.len();
+    let mut changed = false;
+    for cell in 0..count {
+        let Some(id) = tab.id_of(cell) else { continue };
+        let room = room_of_a_cell(ctx, tab, cell, width, metrics);
+        if tab.rooms.get(&id) != Some(&room) {
+            tab.rooms.insert(id, room);
+            changed = true;
+        }
+    }
+    if changed {
+        tab.bands_revision += 1;
+    }
+}
+
+/// The room cell `cell` needs, gaps included, from what it is drawn as.
+fn room_of_a_cell(
+    ctx: &egui::Context,
+    tab: &mut NotebookTab,
+    cell: usize,
+    width: f32,
+    metrics: Metrics,
+) -> Room {
+    let count = tab.len();
+    let shape = tab.shape(cell);
+    let room = match (shape, tab.spans[cell].kind) {
+        (Shape::Hidden, _) => Room::default(),
+        (Shape::Rendered, _) => Room {
+            section_note: tab.id_of(cell).is_some_and(|id| tab.sections_collapsed.contains(&id)),
+            ..room_for_markdown(tab, cell, metrics)
+        },
+        (Shape::Collapsed, _) => Room { replaced: Some(metrics.status()), ..Room::default() },
+        (Shape::Source, CellKind::Code) => room_for_code(ctx, tab, cell, width, metrics),
+        (Shape::Source, _) => Room::default(),
+    };
+    match shape {
+        Shape::Hidden => room,
+        _ => with_gaps(room, shape, metrics, cell == 0, cell + 1 == count),
+    }
+}
+
+/// The room a rendered Markdown cell needs: the height of its rendering, which
+/// [`UnluminousApp::measure_the_notebook`] has already laid out.
+fn room_for_markdown(tab: &NotebookTab, cell: usize, metrics: Metrics) -> Room {
+    let id = tab.model.cells[cell].id.as_str();
+    let height = tab.rendered.get(id).map(|kept| kept.layout.height).unwrap_or(0.0);
+    Room { replaced: Some(height.max(metrics.status())), ..Room::default() }
 }
 
 /// The room a code cell needs: its status line, its outputs at `width`, and an input field when the
@@ -561,6 +596,8 @@ enum Press {
 }
 
 impl Press {
+    /// The action this press stands for when it means the same in both modes, and `None` for a
+    /// press that depends on the mode.
     fn both_modes(&self) -> Option<NotebookAction> {
         match self {
             Press::Both(what) => Some(*what),
@@ -716,6 +753,9 @@ fn command_shift_key(key: egui::Key) -> Option<NotebookAction> {
 impl UnluminousApp {
     /// Draw everything that goes round the cells' text, after the text: status lines, outputs,
     /// rendered Markdown, the buttons on the cell under the pointer, and the add buttons.
+    ///
+    /// The tab stays in its file while this runs. What the painting finds out is gathered in an
+    /// [`Asked`], and acted on once the painting has finished.
     pub(crate) fn paint_the_cells_over(
         &mut self,
         ui: &mut egui::Ui,
@@ -723,151 +763,284 @@ impl UnluminousApp {
         area: Rect,
         gutter: Rect,
     ) {
-        let metrics = self.notebook_metrics();
+        let frame = Frame { origin, area, gutter, metrics: self.notebook_metrics() };
         let caret = self.document().selection().head;
         let index = self.files.active_index();
-        let Some(mut tab) = self.files.active_mut().notebook.take() else { return };
-        let pointer = ui.input(|input| input.pointer.hover_pos());
-        let chosen = tab.chosen(caret);
-        let count = tab.len();
-        let mut hovered = None;
-        let mut wanted: Option<(usize, NotebookAction)> = None;
-        let mut edit_markdown: Option<usize> = None;
-        let mut menu_at: Option<(usize, Pos2)> = None;
-        let mut open_html: Option<String> = None;
-        let mut select: Option<usize> = None;
-        let mut tops: Vec<(usize, f32, f32)> = Vec::new();
-        let mut dragged: Option<(usize, f32, bool)> = None;
-        for cell in 0..count {
-            let shape = tab.shape(cell);
-            let span = tab.spans[cell].clone();
-            let Some(id) = tab.id_of(cell) else { continue };
-            let room = tab.rooms.get(&id).copied().unwrap_or_default();
-            let layout = &self.files.active().cached.layout;
-            let Some(place) = place_of(layout, &span, &room, shape, metrics, cell + 1 == count)
-            else {
-                continue;
-            };
-            let (top, bottom) =
-                (origin.y + place.top - room.above + metrics.pad(), origin.y + place.bottom);
-            if bottom < area.top() || top > area.bottom() {
-                continue;
-            }
-            let whole =
-                Rect::from_min_max(Pos2::new(area.left(), top), Pos2::new(area.right(), bottom));
-            if pointer.is_some_and(|at| whole.contains(at)) {
-                hovered = Some(cell);
-            }
-            tops.push((cell, top, bottom));
-            if hovered == Some(cell) || tab.dragging.as_deref() == Some(id.as_str()) {
-                let handle = Pos2::new(gutter.right() - 6.0, (top + bottom) / 2.0);
-                if let Some((y, released)) = drag_handle(ui, &mut tab, &id, handle, cell) {
-                    dragged = Some((cell, y, released));
-                }
-            }
-            let painted = self
-                .paint_one_cell(ui, &mut tab, cell, &id, place, room, shape, origin, area, metrics);
-            if painted.pressed {
-                select = Some(cell);
-            }
-            if painted.edit_markdown {
-                edit_markdown = Some(cell);
-            }
-            open_html = painted.open_html.or(open_html);
-            if painted.changed {
-                self.files.active_mut().document.note_a_change_outside_the_text();
-            }
-            let shows_buttons =
-                hovered == Some(cell) || (chosen.contains(&cell) && chosen.len() == 1);
-            if shows_buttons {
-                let corner = Pos2::new(area.right() - 14.0, origin.y + place.top - 14.0);
-                let rendered = shape == Shape::Rendered;
-                if let Some(button) = notebook_view::cell_buttons(
-                    ui,
-                    corner,
-                    span.kind,
-                    rendered,
-                    &format!("cell {}", cell + 1),
-                ) {
-                    match button {
-                        CellButton::More => {
-                            menu_at = Some((cell, Pos2::new(corner.x - 160.0, corner.y + 26.0)))
-                        }
-                        other => wanted = button_action(other).map(|what| (cell, what)),
-                    }
-                }
-            }
-            if span.kind == CellKind::Code && (hovered == Some(cell) || chosen.contains(&cell)) {
-                let at = Pos2::new(
-                    gutter.left() + 10.0,
-                    origin.y + place.first_text + metrics.size * 0.6,
-                );
-                let place = Rect::from_center_size(at, Vec2::splat(18.0));
-                if gutter.width() > 12.0
-                    && crate::components::controls::icon_button(
-                        ui,
-                        place,
-                        &format!("Run cell {}", cell + 1),
-                        crate::theme::icon::run,
-                    )
-                {
-                    wanted = Some((cell, NotebookAction::RunCell));
-                }
-            }
-            if cell + 1 == count {
-                let centre =
-                    Pos2::new(area.center().x, origin.y + place.bottom + metrics.tail() / 2.0);
-                if let Some(CellButton::Add(kind)) =
-                    notebook_view::add_buttons(ui, centre, "after the last cell")
-                {
-                    wanted = Some((cell, NotebookAction::AddBelow(kind)));
-                }
-            }
-        }
-        tab.hovered = hovered;
-        let moved = dragged.and_then(|(cell, y, released)| {
-            let gap = gap_at(&tops, y, count);
-            paint_the_drop_line(ui, &tops, gap, area);
-            released.then_some((cell, gap))
-        });
-        self.files.active_mut().notebook = Some(tab);
-        self.act_on_what_the_cells_asked(index, wanted, edit_markdown, select, menu_at, open_html);
-        if let Some((cell, gap)) = moved {
-            self.move_cells_into(index, cell..cell + 1, gap);
-        }
+        let file = self.files.active_mut();
+        let Some(tab) = file.notebook.as_deref_mut() else { return };
+        let asked = paint_the_cells(ui, &self.renderer, &file.cached.layout, tab, &frame, caret);
+        self.act_on_what_the_cells_asked(index, asked);
     }
 
-    /// Act on what a press on the cells asked for, once the tab is back in its place.
-    fn act_on_what_the_cells_asked(
-        &mut self,
-        index: usize,
-        wanted: Option<(usize, NotebookAction)>,
-        edit_markdown: Option<usize>,
-        select: Option<usize>,
-        menu_at: Option<(usize, Pos2)>,
-        open_html: Option<String>,
-    ) {
-        if let Some(cell) = select {
+    /// Act on what a press on the cells asked for, once the painting is done.
+    fn act_on_what_the_cells_asked(&mut self, index: usize, asked: Asked) {
+        if asked.changed {
+            self.files.active_mut().document.note_a_change_outside_the_text();
+        }
+        if let Some(cell) = asked.select {
             self.choose_a_cell(index, cell, false);
             self.focus = crate::app::Focus::Editor;
         }
-        if let Some(cell) = edit_markdown {
+        if let Some(cell) = asked.edit_markdown {
             self.choose_a_cell(index, cell, true);
             self.focus = crate::app::Focus::Editor;
         }
-        if let Some((cell, what)) = wanted {
+        if let Some((cell, what)) = asked.wanted {
             self.choose_a_cell(index, cell, false);
             self.focus = crate::app::Focus::Editor;
             self.notebook_wanted = Some(Action::Notebook(what));
         }
-        if let Some((cell, at)) = menu_at {
+        if let Some((cell, at)) = asked.menu_at {
             self.choose_a_cell(index, cell, false);
             self.notebook_menu = Some(at);
         }
-        if let Some(html) = open_html {
+        if let Some(html) = asked.open_html {
             self.open_an_output_in_a_browser_tab(&html);
         }
+        self.notebook_input = asked.input.or(self.notebook_input.take());
+        if let Some((cell, gap)) = asked.moved {
+            self.move_cells_into(index, cell..cell + 1, gap);
+        }
     }
+}
+
+/// Where a frame of a notebook is drawn: the origin of the text, the area on the screen, the gutter
+/// beside it, and the notebook's measurements at the editor's font size.
+#[derive(Clone, Copy)]
+struct Frame {
+    origin: Pos2,
+    area: Rect,
+    gutter: Rect,
+    metrics: Metrics,
+}
+
+/// What the cells asked for while they were painted, which is acted on afterwards.
+#[derive(Debug, Default)]
+struct Asked {
+    /// An action to run on a cell, from one of its buttons.
+    wanted: Option<(usize, NotebookAction)>,
+    /// A rendered Markdown cell that was double clicked, to be edited.
+    edit_markdown: Option<usize>,
+    /// A cell that was pressed on, to be chosen.
+    select: Option<usize>,
+    /// A cell whose menu was asked for, and where to put the menu.
+    menu_at: Option<(usize, Pos2)>,
+    /// Some HTML an output asked to open in a browser tab.
+    open_html: Option<String>,
+    /// What was typed into an `input()` field and sent.
+    input: Option<String>,
+    /// A cell dropped after being dragged, and the gap it goes into.
+    moved: Option<(usize, usize)>,
+    /// Something saved in the file changed, such as a cell's tags.
+    changed: bool,
+}
+
+impl Asked {
+    /// Note what the painting of cell `cell` found out.
+    fn take_in(&mut self, painted: Painted, cell: usize) {
+        if painted.pressed {
+            self.select = Some(cell);
+        }
+        if painted.edit_markdown {
+            self.edit_markdown = Some(cell);
+        }
+        self.open_html = painted.open_html.or(self.open_html.take());
+        self.changed |= painted.changed;
+        if painted.input.is_some() {
+            self.input = painted.input;
+        }
+    }
+}
+
+/// One cell that is on the screen this frame: what it is, how it is drawn, and where.
+struct CellDrawing {
+    cell: usize,
+    id: String,
+    kind: CellKind,
+    shape: Shape,
+    room: Room,
+    place: Place,
+    /// The top and bottom of everything belonging to the cell, in the window.
+    top: f32,
+    bottom: f32,
+    /// Whether it is the last cell, which has the add buttons after it.
+    last: bool,
+}
+
+/// What is known while the cells of one frame are being painted, one after another.
+struct Pass {
+    /// The cells the keys act on.
+    chosen: Range<usize>,
+    pointer: Option<Pos2>,
+    hovered: Option<usize>,
+    /// Each painted cell's number, top and bottom, for finding where a dragged cell goes.
+    tops: Vec<(usize, f32, f32)>,
+    /// The cell being dragged, the pointer's height, and whether it was let go this frame.
+    dragged: Option<(usize, f32, bool)>,
+    asked: Asked,
+}
+
+/// Paint every cell of `tab` that is on the screen, and answer what they asked for. `caret` is the
+/// editor's caret, which says which cell is chosen in edit mode.
+fn paint_the_cells(
+    ui: &mut egui::Ui,
+    renderer: &TextRenderer,
+    layout: &Layout,
+    tab: &mut NotebookTab,
+    frame: &Frame,
+    caret: usize,
+) -> Asked {
+    let mut pass = Pass {
+        chosen: tab.chosen(caret),
+        pointer: ui.input(|input| input.pointer.hover_pos()),
+        hovered: None,
+        tops: Vec::new(),
+        dragged: None,
+        asked: Asked::default(),
+    };
+    for cell in 0..tab.len() {
+        if let Some(drawing) = locate_a_cell(tab, layout, cell, frame) {
+            paint_a_cell(ui, renderer, tab, &drawing, frame, &mut pass);
+        }
+    }
+    tab.hovered = pass.hovered;
+    pass.asked.moved = drop_a_dragged_cell(ui, &pass, frame.area, tab.len());
+    pass.asked
+}
+
+/// Where cell `cell` is drawn this frame, or `None` when it is hidden, is not in the layout yet, or is
+/// wholly off the screen.
+fn locate_a_cell(
+    tab: &NotebookTab,
+    layout: &Layout,
+    cell: usize,
+    frame: &Frame,
+) -> Option<CellDrawing> {
+    let shape = tab.shape(cell);
+    let span = &tab.spans[cell];
+    let id = tab.id_of(cell)?;
+    let room = tab.rooms.get(&id).copied().unwrap_or_default();
+    let last = cell + 1 == tab.len();
+    let place = place_of(layout, span, &room, shape, frame.metrics, last)?;
+    let top = frame.origin.y + place.top - room.above + frame.metrics.pad();
+    let bottom = frame.origin.y + place.bottom;
+    if bottom < frame.area.top() || top > frame.area.bottom() {
+        return None;
+    }
+    Some(CellDrawing { cell, id, kind: span.kind, shape, room, place, top, bottom, last })
+}
+
+/// Paint one cell and the controls that belong to it, and note in `pass` what they asked for.
+fn paint_a_cell(
+    ui: &mut egui::Ui,
+    renderer: &TextRenderer,
+    tab: &mut NotebookTab,
+    drawing: &CellDrawing,
+    frame: &Frame,
+    pass: &mut Pass,
+) {
+    let cell = drawing.cell;
+    let whole = Rect::from_min_max(
+        Pos2::new(frame.area.left(), drawing.top),
+        Pos2::new(frame.area.right(), drawing.bottom),
+    );
+    if pass.pointer.is_some_and(|at| whole.contains(at)) {
+        pass.hovered = Some(cell);
+    }
+    pass.tops.push((cell, drawing.top, drawing.bottom));
+    if pass.hovered == Some(cell) || tab.dragging.as_deref() == Some(drawing.id.as_str()) {
+        let handle = Pos2::new(frame.gutter.right() - 6.0, (drawing.top + drawing.bottom) / 2.0);
+        if let Some((y, released)) = drag_handle(ui, tab, &drawing.id, handle, cell) {
+            pass.dragged = Some((cell, y, released));
+        }
+    }
+    let painted = paint_one_cell(ui, renderer, tab, drawing, frame);
+    pass.asked.take_in(painted, cell);
+    paint_the_cell_buttons(ui, drawing, frame, pass);
+    paint_the_run_button(ui, drawing, frame, pass);
+    paint_the_add_buttons(ui, drawing, frame, &mut pass.asked);
+}
+
+/// The buttons over a cell's top right corner, on the cell under the pointer and on the one chosen cell.
+fn paint_the_cell_buttons(
+    ui: &mut egui::Ui,
+    drawing: &CellDrawing,
+    frame: &Frame,
+    pass: &mut Pass,
+) {
+    let cell = drawing.cell;
+    let alone = pass.chosen.contains(&cell) && pass.chosen.len() == 1;
+    if pass.hovered != Some(cell) && !alone {
+        return;
+    }
+    let corner = Pos2::new(frame.area.right() - 14.0, frame.origin.y + drawing.place.top - 14.0);
+    let rendered = drawing.shape == Shape::Rendered;
+    let salt = format!("cell {}", cell + 1);
+    let Some(button) = notebook_view::cell_buttons(ui, corner, drawing.kind, rendered, &salt)
+    else {
+        return;
+    };
+    match button {
+        CellButton::More => {
+            pass.asked.menu_at = Some((cell, Pos2::new(corner.x - 160.0, corner.y + 26.0)))
+        }
+        other => pass.asked.wanted = button_action(other).map(|what| (cell, what)),
+    }
+}
+
+/// The run button in the gutter beside a code cell that is under the pointer or chosen.
+fn paint_the_run_button(ui: &mut egui::Ui, drawing: &CellDrawing, frame: &Frame, pass: &mut Pass) {
+    let cell = drawing.cell;
+    if drawing.kind != CellKind::Code
+        || !(pass.hovered == Some(cell) || pass.chosen.contains(&cell))
+    {
+        return;
+    }
+    let at = Pos2::new(
+        frame.gutter.left() + 10.0,
+        frame.origin.y + drawing.place.first_text + frame.metrics.size * 0.6,
+    );
+    let place = Rect::from_center_size(at, Vec2::splat(18.0));
+    let name = format!("Run cell {}", cell + 1);
+    if frame.gutter.width() > 12.0
+        && crate::components::controls::icon_button(ui, place, &name, crate::theme::icon::run)
+    {
+        pass.asked.wanted = Some((cell, NotebookAction::RunCell));
+    }
+}
+
+/// The buttons that add a cell, under the last cell.
+fn paint_the_add_buttons(
+    ui: &mut egui::Ui,
+    drawing: &CellDrawing,
+    frame: &Frame,
+    asked: &mut Asked,
+) {
+    if !drawing.last {
+        return;
+    }
+    let centre = Pos2::new(
+        frame.area.center().x,
+        frame.origin.y + drawing.place.bottom + frame.metrics.tail() / 2.0,
+    );
+    if let Some(CellButton::Add(kind)) =
+        notebook_view::add_buttons(ui, centre, "after the last cell")
+    {
+        asked.wanted = Some((drawing.cell, NotebookAction::AddBelow(kind)));
+    }
+}
+
+/// The line where a dragged cell would drop, and the cell and gap when it was let go this frame.
+fn drop_a_dragged_cell(
+    ui: &egui::Ui,
+    pass: &Pass,
+    area: Rect,
+    count: usize,
+) -> Option<(usize, usize)> {
+    let (cell, y, released) = pass.dragged?;
+    let gap = gap_at(&pass.tops, y, count);
+    paint_the_drop_line(ui, &pass.tops, gap, area);
+    released.then_some((cell, gap))
 }
 
 /// The handle a cell is dragged by: six dots at `centre`, in the gutter beside the cell. Answers the
@@ -886,7 +1059,8 @@ fn drag_handle(
     response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Drag cell {}", cell + 1))
     });
-    let tint = if response.hovered() || response.dragged() { color::text() } else { color::text_faint() };
+    let tint =
+        if response.hovered() || response.dragged() { color::text() } else { color::text_faint() };
     for row in [-5.0, 0.0, 5.0] {
         for column in [-2.0, 2.0] {
             ui.painter().circle_filled(centre + Vec2::new(column, row), 1.2, tint);
@@ -1007,7 +1181,8 @@ fn paint_a_section_note(
 ) {
     let hidden = tab.hidden_by(cell);
     let rect = Rect::from_min_size(at, Vec2::new(width, metrics.status()));
-    let words = format!("\u{25B8} {hidden} cells in this section are collapsed. Click to show them.");
+    let words =
+        format!("\u{25B8} {hidden} cells in this section are collapsed. Click to show them.");
     ui.painter().text(
         rect.left_center(),
         egui::Align2::LEFT_CENTER,
@@ -1030,6 +1205,8 @@ struct Painted {
     open_html: Option<String>,
     /// Something saved in the file changed, such as the cell's tags.
     changed: bool,
+    /// What was typed into the cell's `input()` field and sent.
+    input: Option<String>,
 }
 
 /// What a button on a cell does.
@@ -1046,207 +1223,259 @@ fn button_action(button: CellButton) -> Option<NotebookAction> {
     })
 }
 
-impl UnluminousApp {
-    /// Draw one cell's own parts: its rendered Markdown or collapsed line, its status line, its
-    /// outputs, and the field an `input()` is typed into.
-    #[allow(clippy::too_many_arguments)]
-    fn paint_one_cell(
-        &mut self,
-        ui: &mut egui::Ui,
-        tab: &mut NotebookTab,
-        cell: usize,
-        id: &str,
-        place: Place,
-        room: Room,
-        shape: Shape,
-        origin: Pos2,
-        area: Rect,
-        metrics: Metrics,
-    ) -> Painted {
-        let mut painted = Painted::default();
-        let left = origin.x;
-        let width = (area.right() - 16.0 - left).max(40.0);
-        match shape {
-            Shape::Rendered => {
-                let at = Pos2::new(left, origin.y + place.first_text);
-                if let Some(rendered) = tab.rendered.get(id) {
-                    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area));
-                    child.set_clip_rect(ui.clip_rect());
-                    crate::components::editor_view::paint_text(
-                        &child,
-                        &self.renderer,
-                        &rendered.preview.text,
-                        &rendered.layout,
-                        at,
-                    );
-                    let hit = Rect::from_min_size(
-                        at,
-                        Vec2::new(width, rendered.layout.height.max(metrics.status())),
-                    );
-                    let response = ui.interact(
-                        hit,
-                        ui.id().with(("rendered-markdown", id)),
-                        egui::Sense::click(),
-                    );
-                    painted.pressed = response.clicked();
-                    painted.edit_markdown = response.double_clicked();
-                }
-            }
-            Shape::Collapsed => {
-                let lines = tab.spans[cell].body.len();
-                let at = Pos2::new(left, origin.y + place.first_text);
-                let words = format!("\u{22EF} {lines} lines collapsed. Click to show them.");
-                let rect = Rect::from_min_size(at, Vec2::new(width, metrics.status()));
-                ui.painter().text(
-                    rect.left_center(),
-                    egui::Align2::LEFT_CENTER,
-                    words,
-                    notebook_view::Metrics::output_font(&metrics),
-                    color::text_dim(),
-                );
-                if ui
-                    .interact(rect, ui.id().with(("collapsed", id)), egui::Sense::click())
-                    .clicked()
-                {
-                    tab.collapsed.remove(id);
-                    tab.bands_revision += 1;
-                }
-            }
-            Shape::Source | Shape::Hidden => {}
+/// Draw one cell's own parts: its rendered Markdown or collapsed line, its status line, its
+/// outputs, and the field an `input()` is typed into.
+fn paint_one_cell(
+    ui: &mut egui::Ui,
+    renderer: &TextRenderer,
+    tab: &mut NotebookTab,
+    drawing: &CellDrawing,
+    frame: &Frame,
+) -> Painted {
+    let mut painted = Painted::default();
+    let left = frame.origin.x;
+    let width = (frame.area.right() - 16.0 - left).max(40.0);
+    match drawing.shape {
+        Shape::Rendered => {
+            paint_rendered_markdown(ui, renderer, tab, drawing, frame, width, &mut painted)
         }
-        if room.section_note {
-            let at = Pos2::new(left, origin.y + place.text_bottom);
-            paint_a_section_note(ui, tab, cell, id, at, width, metrics);
-        }
-        let first_line = Rect::from_min_size(
-            Pos2::new(left, origin.y + place.first_text),
-            Vec2::new(width, metrics.status()),
+        Shape::Collapsed => paint_the_collapsed_line(ui, tab, drawing, frame, width),
+        Shape::Source | Shape::Hidden => {}
+    }
+    if drawing.room.section_note {
+        let at = Pos2::new(left, frame.origin.y + drawing.place.text_bottom);
+        paint_a_section_note(ui, tab, drawing.cell, &drawing.id, at, width, frame.metrics);
+    }
+    let first_line = Rect::from_min_size(
+        Pos2::new(left, frame.origin.y + drawing.place.first_text),
+        Vec2::new(width, frame.metrics.status()),
+    );
+    painted.changed |=
+        paint_the_tags(ui, tab, drawing.cell, &drawing.id, first_line, frame.metrics);
+    paint_the_status_and_outputs(ui, tab, drawing, frame, width, &mut painted);
+    painted
+}
+
+/// A Markdown cell that is not being edited, drawn from its rendering in place of its source. A click
+/// on it chooses the cell and a double click edits it.
+fn paint_rendered_markdown(
+    ui: &mut egui::Ui,
+    renderer: &TextRenderer,
+    tab: &NotebookTab,
+    drawing: &CellDrawing,
+    frame: &Frame,
+    width: f32,
+    painted: &mut Painted,
+) {
+    let at = Pos2::new(frame.origin.x, frame.origin.y + drawing.place.first_text);
+    let Some(rendered) = tab.rendered.get(&drawing.id) else { return };
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(frame.area));
+    child.set_clip_rect(ui.clip_rect());
+    crate::components::editor_view::paint_text(
+        &child,
+        renderer,
+        &rendered.preview.text,
+        &rendered.layout,
+        at,
+    );
+    let hit = Rect::from_min_size(
+        at,
+        Vec2::new(width, rendered.layout.height.max(frame.metrics.status())),
+    );
+    let response =
+        ui.interact(hit, ui.id().with(("rendered-markdown", &drawing.id)), egui::Sense::click());
+    painted.pressed = response.clicked();
+    painted.edit_markdown = response.double_clicked();
+}
+
+/// The one line standing in for a cell whose source is collapsed. Clicking it shows the source.
+fn paint_the_collapsed_line(
+    ui: &mut egui::Ui,
+    tab: &mut NotebookTab,
+    drawing: &CellDrawing,
+    frame: &Frame,
+    width: f32,
+) {
+    let lines = tab.spans[drawing.cell].body.len();
+    let at = Pos2::new(frame.origin.x, frame.origin.y + drawing.place.first_text);
+    let words = format!("\u{22EF} {lines} lines collapsed. Click to show them.");
+    let rect = Rect::from_min_size(at, Vec2::new(width, frame.metrics.status()));
+    ui.painter().text(
+        rect.left_center(),
+        egui::Align2::LEFT_CENTER,
+        words,
+        frame.metrics.output_font(),
+        color::text_dim(),
+    );
+    if ui.interact(rect, ui.id().with(("collapsed", &drawing.id)), egui::Sense::click()).clicked() {
+        tab.collapsed.remove(&drawing.id);
+        tab.bands_revision += 1;
+    }
+}
+
+/// The status line under a code cell, and the outputs under that.
+fn paint_the_status_and_outputs(
+    ui: &mut egui::Ui,
+    tab: &mut NotebookTab,
+    drawing: &CellDrawing,
+    frame: &Frame,
+    width: f32,
+    painted: &mut Painted,
+) {
+    let (metrics, left, id) = (frame.metrics, frame.origin.x, drawing.id.as_str());
+    let mut y = frame.origin.y + drawing.place.text_bottom + metrics.pad();
+    if drawing.room.status {
+        let rect =
+            Rect::from_min_size(Pos2::new(left - 4.0, y), Vec2::new(width, metrics.status()));
+        let count = tab.model.cells.get(drawing.cell).and_then(|found| found.execution_count);
+        let run = tab.runs.get(id);
+        let words = notebook::status_words(run, count);
+        notebook_view::paint_status(
+            ui.painter(),
+            rect,
+            notebook::status_mark(run),
+            &words,
+            metrics.size,
         );
-        painted.changed |= paint_the_tags(ui, tab, cell, id, first_line, metrics);
-        let mut y = origin.y + place.text_bottom + metrics.pad();
-        if room.status {
-            let rect =
-                Rect::from_min_size(Pos2::new(left - 4.0, y), Vec2::new(width, metrics.status()));
-            let count = tab.model.cells.get(cell).and_then(|found| found.execution_count);
-            notebook_view::paint_status(ui.painter(), rect, tab.runs.get(id), count, metrics.size);
-            y += metrics.status();
-        }
-        if room.outputs > 0.0 {
-            y += metrics.pad();
-            self.paint_a_cells_outputs(
-                ui,
-                tab,
-                id,
-                Pos2::new(left + metrics.indent(), y),
-                width - metrics.indent(),
-                metrics,
-                &mut painted,
-            );
-        }
-        painted
+        y += metrics.status();
     }
-
-    /// The outputs of one cell, collapsed or in full, and the field for an `input()`.
-    #[allow(clippy::too_many_arguments)]
-    fn paint_a_cells_outputs(
-        &mut self,
-        ui: &mut egui::Ui,
-        tab: &mut NotebookTab,
-        id: &str,
-        at: Pos2,
-        width: f32,
-        metrics: Metrics,
-        painted: &mut Painted,
-    ) {
-        let mut y = at.y;
-        if tab.outputs_collapsed.contains(id) {
-            let rect = Rect::from_min_size(at, Vec2::new(width, metrics.status()));
-            let count = tab
-                .index_of(id)
-                .and_then(|cell| tab.model.cells.get(cell))
-                .map(|cell| cell.outputs.len())
-                .unwrap_or(0);
-            ui.painter().text(
-                rect.left_center(),
-                egui::Align2::LEFT_CENTER,
-                format!("\u{22EF} {count} outputs collapsed. Click to show them."),
-                metrics.output_font(),
-                color::text_dim(),
-            );
-            if ui
-                .interact(rect, ui.id().with(("outputs-collapsed", id)), egui::Sense::click())
-                .clicked()
-            {
-                tab.outputs_collapsed.remove(id);
-                tab.bands_revision += 1;
-            }
-            y += metrics.status();
-        } else if let Some(drawn) = tab.drawn.get(id) {
-            let mut scroll = tab.output_scroll.get(id).copied().unwrap_or(0.0);
-            let outcome =
-                notebook_view::paint_outputs(ui, drawn, at, width, metrics, &mut scroll, id);
-            y += notebook_view::shown_height(drawn, metrics);
-            tab.output_scroll.insert(id.to_owned(), scroll);
-            painted.pressed |= outcome.pressed;
-            painted.open_html = outcome.open_html;
-            if outcome.toggle_traceback {
-                if !tab.tracebacks_open.remove(id) {
-                    tab.tracebacks_open.insert(id.to_owned());
-                }
-                tab.bands_revision += 1;
-            }
-            if let Some(column) = outcome.sort_by {
-                let next = match tab.sorts.get(id) {
-                    Some((sorted, false)) if *sorted == column => Some((column, true)),
-                    Some((sorted, true)) if *sorted == column => None,
-                    _ => Some((column, false)),
-                };
-                match next {
-                    Some(sort) => tab.sorts.insert(id.to_owned(), sort),
-                    None => tab.sorts.remove(id),
-                };
-                tab.bands_revision += 1;
-            }
-        }
-        if tab.waiting.as_ref().is_some_and(|waiting| waiting.cell == id) {
-            self.paint_the_input_field(ui, tab, Pos2::new(at.x, y + 4.0), width, metrics);
-        }
+    if drawing.room.outputs > 0.0 {
+        y += metrics.pad();
+        let at = Pos2::new(left + metrics.indent(), y);
+        paint_a_cells_outputs(ui, tab, id, at, width - metrics.indent(), metrics, painted);
     }
+}
 
-    /// The field under a cell whose code is waiting on `input()`. Enter sends what was typed.
-    fn paint_the_input_field(
-        &mut self,
-        ui: &mut egui::Ui,
-        tab: &mut NotebookTab,
-        at: Pos2,
-        width: f32,
-        metrics: Metrics,
-    ) {
-        let Some(waiting) = tab.waiting.as_mut() else { return };
-        let rect = Rect::from_min_size(at, Vec2::new(width.min(520.0), metrics.status()));
-        let prompt =
-            if waiting.prompt.is_empty() { "Input".to_owned() } else { waiting.prompt.clone() };
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
-        let edit = egui::TextEdit::singleline(&mut waiting.typed)
-            .hint_text(crate::components::controls::placeholder(
-                prompt,
-                &metrics.output_font(),
-                color::text_faint(),
-            ))
-            .password(waiting.password)
-            .desired_width(rect.width())
-            .font(metrics.output_font());
-        let response = child.add(edit);
-        if !response.has_focus() && !response.lost_focus() {
-            response.request_focus();
-        }
-        let sent = response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
-        if sent {
-            let value = waiting.typed.clone();
-            self.notebook_input = Some(value);
-        }
+/// The outputs of one cell, collapsed or in full, and the field for an `input()`.
+fn paint_a_cells_outputs(
+    ui: &mut egui::Ui,
+    tab: &mut NotebookTab,
+    id: &str,
+    at: Pos2,
+    width: f32,
+    metrics: Metrics,
+    painted: &mut Painted,
+) {
+    let used = match tab.outputs_collapsed.contains(id) {
+        true => paint_the_collapsed_outputs(ui, tab, id, at, width, metrics),
+        false => paint_the_shown_outputs(ui, tab, id, at, width, metrics, painted),
+    };
+    if tab.waiting.as_ref().is_some_and(|waiting| waiting.cell == id) {
+        paint_the_input_field(ui, tab, Pos2::new(at.x, at.y + used + 4.0), width, metrics, painted);
     }
+}
 
+/// The line standing in for outputs that are collapsed. Clicking it shows them. Answers its height.
+fn paint_the_collapsed_outputs(
+    ui: &mut egui::Ui,
+    tab: &mut NotebookTab,
+    id: &str,
+    at: Pos2,
+    width: f32,
+    metrics: Metrics,
+) -> f32 {
+    let rect = Rect::from_min_size(at, Vec2::new(width, metrics.status()));
+    let count = tab
+        .index_of(id)
+        .and_then(|cell| tab.model.cells.get(cell))
+        .map(|cell| cell.outputs.len())
+        .unwrap_or(0);
+    ui.painter().text(
+        rect.left_center(),
+        egui::Align2::LEFT_CENTER,
+        format!("\u{22EF} {count} outputs collapsed. Click to show them."),
+        metrics.output_font(),
+        color::text_dim(),
+    );
+    if ui.interact(rect, ui.id().with(("outputs-collapsed", id)), egui::Sense::click()).clicked() {
+        tab.outputs_collapsed.remove(id);
+        tab.bands_revision += 1;
+    }
+    metrics.status()
+}
+
+/// The outputs of a cell drawn in full, scrolled where they were left. Answers how tall they are.
+fn paint_the_shown_outputs(
+    ui: &mut egui::Ui,
+    tab: &mut NotebookTab,
+    id: &str,
+    at: Pos2,
+    width: f32,
+    metrics: Metrics,
+    painted: &mut Painted,
+) -> f32 {
+    let Some(drawn) = tab.drawn.get(id) else { return 0.0 };
+    let mut scroll = tab.output_scroll.get(id).copied().unwrap_or(0.0);
+    let outcome = notebook_view::paint_outputs(ui, drawn, at, width, metrics, &mut scroll, id);
+    let height = notebook_view::shown_height(drawn, metrics);
+    tab.output_scroll.insert(id.to_owned(), scroll);
+    painted.pressed |= outcome.pressed;
+    painted.open_html = outcome.open_html.clone();
+    apply_the_output_outcome(tab, id, &outcome);
+    height
+}
+
+/// Act on a press in a cell's outputs: open or close a traceback, or sort a table by a column. Each
+/// changes how tall the outputs are, so the layout is made again.
+fn apply_the_output_outcome(
+    tab: &mut NotebookTab,
+    id: &str,
+    outcome: &notebook_view::OutputOutcome,
+) {
+    if outcome.toggle_traceback {
+        if !tab.tracebacks_open.remove(id) {
+            tab.tracebacks_open.insert(id.to_owned());
+        }
+        tab.bands_revision += 1;
+    }
+    if let Some(column) = outcome.sort_by {
+        let next = match tab.sorts.get(id) {
+            Some((sorted, false)) if *sorted == column => Some((column, true)),
+            Some((sorted, true)) if *sorted == column => None,
+            _ => Some((column, false)),
+        };
+        match next {
+            Some(sort) => tab.sorts.insert(id.to_owned(), sort),
+            None => tab.sorts.remove(id),
+        };
+        tab.bands_revision += 1;
+    }
+}
+
+/// The field under a cell whose code is waiting on `input()`. Enter sends what was typed.
+fn paint_the_input_field(
+    ui: &mut egui::Ui,
+    tab: &mut NotebookTab,
+    at: Pos2,
+    width: f32,
+    metrics: Metrics,
+    painted: &mut Painted,
+) {
+    let Some(waiting) = tab.waiting.as_mut() else { return };
+    let rect = Rect::from_min_size(at, Vec2::new(width.min(520.0), metrics.status()));
+    let prompt =
+        if waiting.prompt.is_empty() { "Input".to_owned() } else { waiting.prompt.clone() };
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    let edit = egui::TextEdit::singleline(&mut waiting.typed)
+        .hint_text(crate::components::controls::placeholder(
+            prompt,
+            &metrics.output_font(),
+            color::text_faint(),
+        ))
+        .password(waiting.password)
+        .desired_width(rect.width())
+        .font(metrics.output_font());
+    let response = child.add(edit);
+    if !response.has_focus() && !response.lost_focus() {
+        response.request_focus();
+    }
+    let sent = response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+    if sent {
+        painted.input = Some(waiting.typed.clone());
+    }
+}
+
+impl UnluminousApp {
     /// Open some HTML a cell produced in a browser tab, written to a file in the temporary folder.
     pub(crate) fn open_an_output_in_a_browser_tab(&mut self, html: &str) {
         let page = match html.trim_start().starts_with("<svg") {

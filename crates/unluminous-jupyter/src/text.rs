@@ -441,14 +441,39 @@ pub fn repairs(text: &str) -> Vec<(Range<usize>, String)> {
     edits
 }
 
+/// The index in `spans` of the cell that holds `position`, where `start` gives the first position a
+/// cell holds and `end` the first position after it. Lines and bytes both use this, so the two ask
+/// the same question the same way. It returns `None` for a position before the first cell or after
+/// the last.
+fn cell_holding(
+    spans: &[CellSpan],
+    position: usize,
+    start: impl Fn(&CellSpan) -> usize,
+    end: impl Fn(&CellSpan) -> usize,
+) -> Option<usize> {
+    let index = spans.partition_point(|span| start(span) <= position).checked_sub(1)?;
+    (position < end(&spans[index])).then_some(index)
+}
+
 /// The index in `spans` of the cell a line belongs to. A marker line belongs to its own cell. It
 /// returns `None` for a line past the end of the text.
 pub fn cell_at(spans: &[CellSpan], line: usize) -> Option<usize> {
     let first_line = |span: &CellSpan| span.marker.unwrap_or(span.body.start);
-    let index = spans.partition_point(|span| first_line(span) <= line).checked_sub(1)?;
-    let span = &spans[index];
-    let last_line = span.body.end.max(span.marker.map_or(0, |number| number + 1));
-    (line < last_line).then_some(index)
+    let after_last_line =
+        |span: &CellSpan| span.body.end.max(span.marker.map_or(0, |number| number + 1));
+    cell_holding(spans, line, first_line, after_last_line)
+}
+
+/// The index in `spans` of the cell a byte of the text belongs to. A marker belongs to the cell it
+/// starts, and the byte just after a cell's last character, where a caret can sit, belongs to that
+/// cell. It returns `None` for a byte past the end of the last cell.
+pub fn cell_at_byte(spans: &[CellSpan], offset: usize) -> Option<usize> {
+    let first_byte = |span: &CellSpan| match span.marker {
+        Some(_) => span.marker_bytes.start,
+        None => span.body_bytes.start,
+    };
+    let after_last_byte = |span: &CellSpan| span.body_bytes.end.max(span.marker_bytes.end) + 1;
+    cell_holding(spans, offset, first_byte, after_last_byte)
 }
 
 #[cfg(test)]
@@ -548,7 +573,10 @@ mod tests {
             (CellKind::Markdown, "b", "text"),
         ]);
         let text = to_text(&notebook);
-        assert_eq!(text, "# %% id=a\na = 1\n# %% a comment\n#%%\nb = 2\n# %% [markdown] id=b\ntext");
+        assert_eq!(
+            text,
+            "# %% id=a\na = 1\n# %% a comment\n#%%\nb = 2\n# %% [markdown] id=b\ntext"
+        );
         assert_eq!(spans(&text).len(), 2);
         assert!(repairs(&text).is_empty());
         assert_round_trip(&notebook);
@@ -837,5 +865,18 @@ mod tests {
             assert_eq!(to_text(&merged), text);
             assert!(repairs(&text).is_empty(), "text was {text:?}");
         }
+    }
+
+    #[test]
+    fn a_byte_belongs_to_the_cell_it_is_in_and_none_past_the_last_cell() {
+        let text = "# %% id=a
+one
+# %% id=b
+two";
+        let spans = spans(text);
+        assert_eq!(cell_at_byte(&spans, 0), Some(0));
+        assert_eq!(cell_at_byte(&spans, text.find("# %% id=b").unwrap()), Some(1));
+        assert_eq!(cell_at_byte(&spans, text.len()), Some(1));
+        assert_eq!(cell_at_byte(&spans, text.len() + 1), None);
     }
 }

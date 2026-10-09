@@ -46,6 +46,42 @@ impl Pythons {
     }
 }
 
+/// What the events of one frame added up to for one notebook.
+struct Gathered {
+    /// A cell's outputs or execution count changed, so the file is now unsaved.
+    changed: bool,
+    /// The last thing to say in the status bar.
+    said: Option<String>,
+    /// The kernel answered a completion.
+    completions: bool,
+    /// A cell finished running.
+    finished: bool,
+    /// The debugger steps the events completed, in order.
+    steps: Vec<crate::app::notebook_debug::DebugStep>,
+}
+
+/// Take each of `events` into `tab`, and add up what they changed.
+fn take_the_events(tab: &mut NotebookTab, events: Vec<Event>) -> Gathered {
+    let mut gathered = Gathered {
+        changed: false,
+        said: None,
+        completions: false,
+        finished: false,
+        steps: Vec::new(),
+    };
+    for event in events {
+        if let Some(step) = crate::app::notebook_debug::take_a_debug_event(tab, &event) {
+            gathered.steps.push(step);
+        }
+        let heard = take_event(tab, event);
+        gathered.changed |= heard.changed;
+        gathered.completions |= heard.completions;
+        gathered.finished |= heard.finished;
+        gathered.said = heard.message.or(gathered.said.take());
+    }
+    gathered
+}
+
 /// What taking one kernel event changed, which the window acts on once the tab is no longer borrowed.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Heard {
@@ -99,12 +135,17 @@ impl UnluminousApp {
         self.start_the_kernel(index, &python);
     }
 
+    /// The Python chosen for the notebook at `index`, if one has been: by the person, by the
+    /// notebook's last run, or by [`UnluminousApp::python_for_the_notebook`] choosing one. This is the
+    /// one place the window reads it, whether for the kernel picker, the command line or a run.
+    pub(crate) fn notebook_python(&self, index: usize) -> Option<PathBuf> {
+        self.files.at(index).notebook.as_ref().and_then(|tab| tab.python.clone())
+    }
+
     /// The Python a notebook's kernel is started with: the one chosen for it, or the best one found
     /// that has `ipykernel`. `None` while the machine is still being looked over.
     fn python_for_the_notebook(&mut self, index: usize) -> Option<PathBuf> {
-        if let Some(chosen) =
-            self.files.at(index).notebook.as_ref().and_then(|tab| tab.python.clone())
-        {
+        if let Some(chosen) = self.notebook_python(index) {
             return Some(chosen);
         }
         self.look_for_pythons();
@@ -115,8 +156,7 @@ impl UnluminousApp {
             }
             return None;
         }
-        let best = found.iter().find(|python| python.has_ipykernel).unwrap_or(&found[0]);
-        let path = best.path.clone();
+        let path = best_python(found)?.path.clone();
         if let Some(tab) = self.files.at_mut(index).notebook.as_deref_mut() {
             tab.python = Some(path.clone());
         }
@@ -220,44 +260,29 @@ impl UnluminousApp {
     fn hear_from_one_kernel(&mut self, index: usize) {
         let file = self.files.at_mut(index);
         let Some(tab) = file.notebook.as_deref_mut() else { return };
-        let events = match tab.kernel() {
-            Some(kernel) => kernel.events(),
-            None => return,
-        };
-        let mut changed = false;
-        let mut said = None;
-        let mut completions = false;
-        let mut finished = false;
-        let mut steps = Vec::new();
-        for event in events {
-            if let Some(step) = crate::app::notebook_debug::take_a_debug_event(tab, &event) {
-                steps.push(step);
-            }
-            let heard = take_event(tab, event);
-            changed |= heard.changed;
-            completions |= heard.completions;
-            finished |= heard.finished;
-            said = heard.message.or(said);
-        }
+        let Some(events) = tab.kernel().map(|kernel| kernel.events()) else { return };
+        let mut gathered = take_the_events(tab, events);
         if let Some(note) = notice_a_long_run(tab) {
-            said = Some(note);
+            gathered.said = Some(note);
         }
-        if changed {
+        if gathered.changed {
             file.document.note_a_change_outside_the_text();
         }
-        let name = file.path().and_then(Path::file_name).map(|name| name.to_string_lossy().into_owned());
+        self.act_on_what_the_kernel_said(index, gathered);
+    }
+
+    /// Do what the events of one frame call for, once the tab is no longer borrowed: say what the
+    /// kernel said, work out completions and variables again, and take the debugger's steps.
+    fn act_on_what_the_kernel_said(&mut self, index: usize, gathered: Gathered) {
+        let Gathered { said, completions, finished, steps, .. } = gathered;
         if let Some(message) = said {
-            // A notebook that is not showing names itself, or its kernel's news reads as being about
-            // the tab that is.
-            self.message = Some(match (index == self.files.active_index(), name) {
-                (false, Some(name)) => format!("{name}: {message}"),
-                _ => message,
-            });
+            self.say_what_a_kernel_said(index, message);
         }
         if completions && index == self.files.active_index() {
             self.kernel_completions_arrived();
         }
-        let showing = self.files.at(index).notebook.as_deref().is_some_and(|tab| tab.variables_showing);
+        let showing =
+            self.files.at(index).notebook.as_deref().is_some_and(|tab| tab.variables_showing);
         if finished && showing {
             self.ask_for_the_variables(index);
         }
@@ -276,6 +301,18 @@ impl UnluminousApp {
         if waiting {
             self.carry_on_debugging(index);
         }
+    }
+
+    /// Show `message` in the status bar. A notebook that is not showing names itself, or its kernel's
+    /// news reads as being about the tab that is.
+    fn say_what_a_kernel_said(&mut self, index: usize, message: String) {
+        let file = self.files.at(index);
+        let name =
+            file.path().and_then(Path::file_name).map(|name| name.to_string_lossy().into_owned());
+        self.message = Some(match (index == self.files.active_index(), name) {
+            (false, Some(name)) => format!("{name}: {message}"),
+            _ => message,
+        });
     }
 
     /// Send the tab's next queued cell, when the kernel is ready and nothing of ours is running.
@@ -371,6 +408,12 @@ impl UnluminousApp {
     }
 }
 
+/// The Python to start a kernel with when none was chosen: the first that has `ipykernel`, or else
+/// the first found. `find_pythons` lists the best first.
+fn best_python(found: &[Python]) -> Option<&Python> {
+    found.iter().find(|python| python.has_ipykernel).or_else(|| found.first())
+}
+
 /// The request a cell is running as, which is what its output is filed under.
 fn waiting_request(tab: &NotebookTab, cell: &str) -> String {
     tab.requests
@@ -438,6 +481,23 @@ pub fn take_event(tab: &mut NotebookTab, event: Event) -> Heard {
             set_count(tab, &id, execution_count);
             Heard { changed: true, message: None, completions: false, finished: false }
         }
+        event @ (Event::Stream { .. }
+        | Event::DisplayData { .. }
+        | Event::UpdateDisplayData { .. }
+        | Event::ExecuteResult { .. }
+        | Event::Error { .. }
+        | Event::ClearOutput { .. }
+        | Event::ExecuteReply { .. }) => take_an_output_event(tab, event),
+        event @ (Event::InputRequest { .. }
+        | Event::CompleteReply { .. }
+        | Event::Variables { .. }) => take_an_answer_event(tab, event),
+        other => take_a_lifecycle_event(tab, other),
+    }
+}
+
+/// The events that add to a cell's outputs, change them, clear them, or end the cell's run.
+fn take_an_output_event(tab: &mut NotebookTab, event: Event) -> Heard {
+    match event {
         Event::Stream { request, name, text } => add_stream(tab, request.as_deref(), &name, &text),
         Event::DisplayData { request, data, metadata, display_id } => {
             let mut output = Output::display_data(data, metadata);
@@ -461,6 +521,14 @@ pub fn take_event(tab: &mut NotebookTab, event: Event) -> Heard {
         Event::ExecuteReply { request, status, execution_count } => {
             finish_a_run(tab, request.as_deref(), &status, execution_count)
         }
+        _ => Heard::default(),
+    }
+}
+
+/// The events that answer something asked of the kernel: a prompt for `input()`, a completion
+/// request, or the list of variables.
+fn take_an_answer_event(tab: &mut NotebookTab, event: Event) -> Heard {
+    match event {
         Event::InputRequest { request, prompt, password } => {
             let Some(cell) = cell_for(tab, request.as_deref()) else { return Heard::default() };
             tab.waiting = Some(Waiting { cell, prompt, password, typed: String::new() });
@@ -486,7 +554,7 @@ pub fn take_event(tab: &mut NotebookTab, event: Event) -> Heard {
             }
             Heard::default()
         }
-        other => take_a_lifecycle_event(tab, other),
+        _ => Heard::default(),
     }
 }
 
@@ -512,7 +580,12 @@ fn take_a_lifecycle_event(tab: &mut NotebookTab, event: Event) -> Heard {
         Event::Died { reason } => {
             let changed = say_the_kernel_died_in_the_running_cell(tab, &reason);
             stop_the_run(tab);
-            Heard { changed, message: Some(format!("The kernel died: {reason}")), completions: false, finished: false }
+            Heard {
+                changed,
+                message: Some(format!("The kernel died: {reason}")),
+                completions: false,
+                finished: false,
+            }
         }
         Event::Failed { message, missing } => {
             stop_the_run(tab);
@@ -558,12 +631,15 @@ fn say_the_kernel_died_in_the_running_cell(tab: &mut NotebookTab, reason: &str) 
         Some(Run::Running { since }) => since.elapsed(),
         _ => std::time::Duration::ZERO,
     };
-    tab.runs.insert(running.cell.clone(), Run::Done {
+    tab.runs.insert(
+        running.cell.clone(),
+        Run::Done {
             ok: false,
             took,
             at: SystemTime::now(),
             clock: crate::services::clock::time_of_day(),
-        });
+        },
+    );
     if let Some(cell) = tab.index_of(&running.cell).and_then(|at| tab.model.cells.get_mut(at)) {
         let text = format!("The kernel died while this cell was running: {reason}\n");
         cell.outputs.push(unluminous_jupyter::nbformat::Output::stream("stderr", &text));
@@ -685,12 +761,10 @@ fn finish_a_run(
         _ => std::time::Duration::ZERO,
     };
     let ok = status == "ok";
-    tab.runs.insert(running.cell.clone(), Run::Done {
-            ok,
-            took,
-            at: SystemTime::now(),
-            clock: crate::services::clock::time_of_day(),
-        });
+    tab.runs.insert(
+        running.cell.clone(),
+        Run::Done { ok, took, at: SystemTime::now(), clock: crate::services::clock::time_of_day() },
+    );
     if count.is_some() {
         set_count(tab, &running.cell, count);
     }

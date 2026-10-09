@@ -18,8 +18,8 @@ use egui::{Color32, CornerRadius, FontId, Galley, Pos2, Rect, Sense, Stroke, Vec
 use unluminous_jupyter::nbformat::{Cell, CellKind};
 use unluminous_jupyter::outputs::{self, Ansi, Shown, Span, Table};
 
-use crate::app::notebook::Run;
 use crate::components::controls::WithHint;
+use crate::components::scrollbar;
 use crate::theme::{color, icon};
 
 /// The most lines an output is laid out with. A cell that prints a hundred thousand lines keeps all of
@@ -47,6 +47,7 @@ pub struct Metrics {
 }
 
 impl Metrics {
+    /// How much larger or smaller than the default size the editor's font is, never below half.
     fn scale(&self) -> f32 {
         (self.size / 16.0).max(0.5)
     }
@@ -439,12 +440,11 @@ pub fn paint_outputs(
     let response = ui.interact(area, ui.id().with(("notebook-outputs", salt)), Sense::click());
     outcome.pressed = response.clicked();
     let overflow = (drawn.height - shown).max(0.0);
-    if overflow > 0.0 && response.hovered() {
-        let wheel = ui.input(|input| input.smooth_scroll_delta.y);
-        if wheel != 0.0 {
-            *scroll = (*scroll - wheel).clamp(0.0, overflow);
-            ui.input_mut(|input| input.smooth_scroll_delta.y = 0.0);
-        }
+    let wheeled = scroll_with_the_wheel(ui, &response, scroll, overflow);
+    let bar = scrollbar::Bar::new(area, *scroll, drawn.height, shown);
+    let grabbed = bar.map(|bar| scrollbar::grab(ui, &bar, &bar_name(salt))).unwrap_or_default();
+    if let Some(dragged_to) = grabbed.scroll {
+        *scroll = dragged_to;
     }
     *scroll = scroll.clamp(0.0, overflow);
     let painter = ui.painter().with_clip_rect(clip);
@@ -456,10 +456,36 @@ pub fn paint_outputs(
         }
         paint_block(ui, &painter, block, rect, salt, index, &mut outcome);
     }
-    if overflow > 0.0 {
-        paint_output_scrollbar(&painter, area, *scroll, drawn.height);
+    if let Some(bar) = scrollbar::Bar::new(area, *scroll, drawn.height, shown) {
+        scrollbar::paint(ui, &bar, &bar_name(salt), grabbed.active || wheeled);
     }
     outcome
+}
+
+/// The name the scrollbar of the outputs of the cell `salt` goes by, which is unique in the window.
+fn bar_name(salt: &str) -> String {
+    format!("notebook output {salt}")
+}
+
+/// Move `scroll` by the mouse wheel while the pointer is over a cell's outputs and they overflow, and
+/// take the wheel's movement out of the frame's input so the page does not also scroll. Answers
+/// whether the wheel moved the outputs.
+fn scroll_with_the_wheel(
+    ui: &mut egui::Ui,
+    response: &egui::Response,
+    scroll: &mut f32,
+    overflow: f32,
+) -> bool {
+    if overflow <= 0.0 || !response.hovered() {
+        return false;
+    }
+    let wheel = ui.input(|input| input.smooth_scroll_delta.y);
+    if wheel == 0.0 {
+        return false;
+    }
+    *scroll = (*scroll - wheel).clamp(0.0, overflow);
+    ui.input_mut(|input| input.smooth_scroll_delta.y = 0.0);
+    true
 }
 
 /// One block, and the one control it may carry.
@@ -475,7 +501,27 @@ fn paint_block(
     if let Some(ground) = block.ground {
         painter.rect_filled(rect.expand2(Vec2::new(4.0, 1.0)), CornerRadius::same(3), ground);
     }
-    match &block.body {
+    paint_block_body(ui, painter, &block.body, rect, salt, outcome);
+    if block.traceback_toggle {
+        outcome.toggle_traceback |= traceback_toggle_pressed(ui, &block.body, rect, salt, index);
+    }
+    if let Some(html) = &block.html {
+        if open_in_browser_pressed(ui, rect) {
+            outcome.open_html = Some(html.clone());
+        }
+    }
+}
+
+/// What a block is made of, drawn into `rect`. A table may report the column its header was pressed on.
+fn paint_block_body(
+    ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    body: &Body,
+    rect: Rect,
+    salt: &str,
+    outcome: &mut OutputOutcome,
+) {
+    match body {
         Body::Text(galley) => painter.galley(rect.min, galley.clone(), color::text()),
         Body::Picture { texture, size } => {
             let place = Rect::from_min_size(rect.min, *size);
@@ -490,31 +536,40 @@ fn paint_block(
             }
         }
     }
-    if block.traceback_toggle {
-        let response = ui.interact(rect, ui.id().with(("traceback", salt, index)), Sense::click());
-        if response.hovered() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
-        // Named by its words, so a screen reader and a test can find the control by what it says.
-        let words = match &block.body {
-            Body::Text(galley) => galley.text().to_owned(),
-            _ => String::new(),
-        };
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &words));
-        outcome.toggle_traceback |= response.clicked();
+}
+
+/// The line that opens or closes an error's traceback, as a control over `rect`. Answers whether it
+/// was clicked this frame.
+fn traceback_toggle_pressed(
+    ui: &mut egui::Ui,
+    body: &Body,
+    rect: Rect,
+    salt: &str,
+    index: usize,
+) -> bool {
+    let response = ui.interact(rect, ui.id().with(("traceback", salt, index)), Sense::click());
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    if let Some(html) = &block.html {
-        let button =
-            Rect::from_min_size(Pos2::new(rect.right() - 22.0, rect.top()), Vec2::splat(20.0));
-        if crate::components::controls::icon_button(
-            ui,
-            button,
-            "Open the output in a browser tab",
-            icon::whole_page,
-        ) {
-            outcome.open_html = Some(html.clone());
-        }
-    }
+    // Named by its words, so a screen reader and a test can find the control by what it says.
+    let words = match body {
+        Body::Text(galley) => galley.text().to_owned(),
+        _ => String::new(),
+    };
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &words));
+    response.clicked()
+}
+
+/// The small button at the top right of a block whose output can be opened in a browser tab. Answers
+/// whether it was pressed.
+fn open_in_browser_pressed(ui: &mut egui::Ui, rect: Rect) -> bool {
+    let button = Rect::from_min_size(Pos2::new(rect.right() - 22.0, rect.top()), Vec2::splat(20.0));
+    crate::components::controls::icon_button(
+        ui,
+        button,
+        "Open the output in a browser tab",
+        icon::whole_page,
+    )
 }
 
 /// A table, with its header rows over a rule and its index columns dimmed, as pandas draws one.
@@ -614,62 +669,38 @@ fn paint_table_row(
     pressed
 }
 
-/// A thin bar down the right of outputs that scroll inside their cell.
-fn paint_output_scrollbar(painter: &egui::Painter, area: Rect, scroll: f32, height: f32) {
-    let share = (area.height() / height).clamp(0.05, 1.0);
-    let thumb = area.height() * share;
-    let travel = area.height() - thumb;
-    let top = area.top() + travel * (scroll / (height - area.height()).max(1.0));
-    let bar = Rect::from_min_size(Pos2::new(area.right() - 4.0, top), Vec2::new(3.0, thumb));
-    painter.rect_filled(bar, CornerRadius::same(2), color::text_faint());
+/// How a code cell's last run went, as the mark at the left of its status line. The application works
+/// this out from the cell's run, so this file does not need to know what a run is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusMark {
+    /// No run to show a mark for.
+    Nothing,
+    /// The last run finished without an error.
+    Succeeded,
+    /// The last run raised an error.
+    Failed,
+    /// Waiting behind another cell.
+    Queued,
+    /// Running now.
+    Running,
+    /// Not run, because an earlier cell failed or the run was stopped.
+    Skipped,
 }
 
-/// The words on the line under a code cell: its count and how long it took, or what it is waiting
-/// for. The reference editor's own form: `[5] 222ms`.
-pub fn status_words(run: Option<&Run>, count: Option<u64>) -> String {
-    let count = count.map(|count| format!("[{count}]")).unwrap_or_else(|| "[ ]".to_owned());
-    match run {
-        Some(Run::Queued) => "Queued".to_owned(),
-        Some(Run::Running { since }) => format!("[*] {}", duration(since.elapsed())),
-        Some(Run::Done { took, clock, .. }) => format!("{count} {} at {clock}", duration(*took)),
-        Some(Run::Skipped) => {
-            "Not run, because a cell before it failed or the run was stopped".to_owned()
-        }
-        None => count,
-    }
-}
-
-/// A duration the way the reference editor writes one: `< 10 ms`, `222ms`, `5s 3ms`, `2m 5s`.
-pub fn duration(took: std::time::Duration) -> String {
-    let millis = took.as_millis();
-    match millis {
-        0..10 => "< 10 ms".to_owned(),
-        10..1000 => format!("{millis}ms"),
-        1000..60_000 => format!("{}s {}ms", millis / 1000, millis % 1000),
-        _ => format!("{}m {}s", millis / 60_000, (millis / 1000) % 60),
-    }
-}
-
-/// The line under a code cell: a mark for how its last run went, and [`status_words`].
-pub fn paint_status(
-    painter: &egui::Painter,
-    rect: Rect,
-    run: Option<&Run>,
-    count: Option<u64>,
-    size: f32,
-) {
+/// The line under a code cell: `mark` for how its last run went, then `words`, set at the notebook's
+/// font `size`.
+pub fn paint_status(painter: &egui::Painter, rect: Rect, mark: StatusMark, words: &str, size: f32) {
     let centre = Pos2::new(rect.left() + 8.0, rect.center().y);
-    match run {
-        Some(Run::Done { ok: true, .. }) => icon::tick(painter, centre, color::git_added()),
-        Some(Run::Done { ok: false, .. }) => icon::cross_at(painter, centre, color::failure(), 0.8),
-        Some(Run::Queued) => icon::clock(painter, centre, color::text_dim()),
-        Some(Run::Running { .. }) => {
+    match mark {
+        StatusMark::Succeeded => icon::tick(painter, centre, color::git_added()),
+        StatusMark::Failed => icon::cross_at(painter, centre, color::failure(), 0.8),
+        StatusMark::Queued => icon::clock(painter, centre, color::text_dim()),
+        StatusMark::Running => {
             paint_spinner(painter, centre, painter.ctx().input(|input| input.time))
         }
-        Some(Run::Skipped) => icon::stop(painter, centre, color::text_faint()),
-        None => {}
+        StatusMark::Skipped => icon::stop(painter, centre, color::text_faint()),
+        StatusMark::Nothing => {}
     }
-    let words = status_words(run, count);
     let font = FontId::monospace((size * 0.72).max(9.0));
     painter.text(
         Pos2::new(rect.left() + 20.0, rect.center().y),
@@ -805,29 +836,6 @@ pub fn add_buttons(ui: &mut egui::Ui, centre: Pos2, salt: &str) -> Option<CellBu
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_duration_is_written_the_way_the_reference_editor_writes_one() {
-        use std::time::Duration;
-        assert_eq!(duration(Duration::from_millis(3)), "< 10 ms");
-        assert_eq!(duration(Duration::from_millis(222)), "222ms");
-        assert_eq!(duration(Duration::from_millis(5003)), "5s 3ms");
-        assert_eq!(duration(Duration::from_secs(125)), "2m 5s");
-    }
-
-    #[test]
-    fn the_status_line_names_the_count_and_what_the_cell_is_waiting_for() {
-        let done = Run::Done {
-            ok: true,
-            took: std::time::Duration::from_millis(69),
-            at: std::time::SystemTime::now(),
-            clock: crate::services::clock::TimeOfDay { hour: 14, minute: 3, second: 22 },
-        };
-        assert_eq!(status_words(Some(&done), Some(3)), "[3] 69ms at 14:03:22");
-        assert_eq!(status_words(Some(&Run::Queued), None), "Queued");
-        assert_eq!(status_words(None, Some(7)), "[7]");
-        assert_eq!(status_words(None, None), "[ ]");
-    }
 
     #[test]
     fn a_long_output_is_cut_and_says_how_much_was_left_out() {

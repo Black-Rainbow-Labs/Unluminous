@@ -156,10 +156,13 @@ impl UnluminousApp {
     /// attach a session, then ask for the cells' file names. Does nothing while a request of ours is
     /// still outstanding, so it is safe to call again whenever the kernel says anything.
     pub(crate) fn carry_on_debugging(&mut self, index: usize) {
-        let started = self.files.at(index).notebook.as_deref().is_some_and(|tab| match &tab.kernel {
-            KernelSlot::Live(kernel) => matches!(kernel.state(), KernelState::Idle | KernelState::Busy),
-            _ => false,
-        });
+        let started =
+            self.files.at(index).notebook.as_deref().is_some_and(|tab| match &tab.kernel {
+                KernelSlot::Live(kernel) => {
+                    matches!(kernel.state(), KernelState::Idle | KernelState::Busy)
+                }
+                _ => false,
+            });
         if !started {
             self.start_a_kernel_if_needed(index);
             return;
@@ -385,42 +388,11 @@ impl UnluminousApp {
         let file = self.files.at(index);
         let Some(tab) = file.notebook.as_deref() else { return 0 };
         let Some(debugging) = tab.debugging.as_ref() else { return 0 };
-        let document = &file.document;
         let mut sends: Vec<(PathBuf, Vec<(usize, unluminous_dap::SourceBreakpoint)>)> = Vec::new();
         for (id, path) in &debugging.files {
             let Some(at) = tab.index_of(id) else { continue };
-            let span = &tab.spans[at];
-            let mut lines: Vec<(usize, unluminous_dap::SourceBreakpoint)> = document
-                .breakpoints()
-                .iter()
-                .filter(|breakpoint| {
-                    breakpoint.enabled
-                        && breakpoint.offset >= span.body_bytes.start
-                        && breakpoint.offset <= span.body_bytes.end
-                })
-                .map(|breakpoint| {
-                    let line =
-                        document.text().byte_to_line(breakpoint.offset) - span.body.start + 1;
-                    (
-                        breakpoint.offset,
-                        unluminous_dap::SourceBreakpoint {
-                            line,
-                            condition: breakpoint.condition.clone(),
-                            log_message: breakpoint.log_message.clone(),
-                        },
-                    )
-                })
-                .collect();
-            if lines.is_empty() && first_line_for == Some(id.as_str()) {
-                lines.push((
-                    span.body_bytes.start,
-                    unluminous_dap::SourceBreakpoint {
-                        line: 1,
-                        condition: None,
-                        log_message: None,
-                    },
-                ));
-            }
+            let add_first = first_line_for == Some(id.as_str());
+            let lines = breakpoints_of_a_cell(&file.document, &tab.spans[at], add_first);
             sends.push((path.clone(), lines));
         }
         let count = sends.len();
@@ -457,6 +429,39 @@ impl UnluminousApp {
         }
         None
     }
+}
+
+/// The enabled breakpoints inside one cell, each with its offset in the text and its line counted
+/// from one within the cell. A cell with none gets one on its first line when `add_first` is set.
+fn breakpoints_of_a_cell(
+    document: &unluminous_core::Document,
+    span: &unluminous_jupyter::text::CellSpan,
+    add_first: bool,
+) -> Vec<(usize, unluminous_dap::SourceBreakpoint)> {
+    let mut lines: Vec<(usize, unluminous_dap::SourceBreakpoint)> = document
+        .breakpoints()
+        .iter()
+        .filter(|breakpoint| {
+            breakpoint.enabled
+                && breakpoint.offset >= span.body_bytes.start
+                && breakpoint.offset <= span.body_bytes.end
+        })
+        .map(|breakpoint| {
+            let line = document.text().byte_to_line(breakpoint.offset) - span.body.start + 1;
+            let wanted = unluminous_dap::SourceBreakpoint {
+                line,
+                condition: breakpoint.condition.clone(),
+                log_message: breakpoint.log_message.clone(),
+            };
+            (breakpoint.offset, wanted)
+        })
+        .collect();
+    if lines.is_empty() && add_first {
+        let first =
+            unluminous_dap::SourceBreakpoint { line: 1, condition: None, log_message: None };
+        lines.push((span.body_bytes.start, first));
+    }
+    lines
 }
 
 #[cfg(test)]

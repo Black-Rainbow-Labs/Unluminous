@@ -145,59 +145,86 @@ impl NotebookAction {
     pub fn name(&self) -> String {
         let kind = |kind: &CellKind| kind.name().to_owned();
         match self {
-            NotebookAction::RunCell => "run-cell".into(),
-            NotebookAction::RunCellSelectBelow => "run-cell-select-below".into(),
-            NotebookAction::RunCellInsertBelow => "run-cell-insert-below".into(),
-            NotebookAction::RunAll => "run-all".into(),
-            NotebookAction::RunAbove => "run-above".into(),
-            NotebookAction::RunCellAndBelow => "run-cell-and-below".into(),
-            NotebookAction::DebugCell => "debug-cell".into(),
-            NotebookAction::Interrupt => "interrupt".into(),
-            NotebookAction::Restart => "restart".into(),
-            NotebookAction::RestartRunAll => "restart-run-all".into(),
-            NotebookAction::ShutDown => "shut-down".into(),
             NotebookAction::AddAbove(what) => format!("add-{}-above", kind(what)),
             NotebookAction::AddBelow(what) => format!("add-{}-below", kind(what)),
-            NotebookAction::Delete => "delete-cell".into(),
-            NotebookAction::UndoDelete => "undo-delete-cell".into(),
-            NotebookAction::Copy => "copy-cell".into(),
-            NotebookAction::Cut => "cut-cell".into(),
-            NotebookAction::PasteBelow => "paste-cell-below".into(),
-            NotebookAction::PasteAbove => "paste-cell-above".into(),
-            NotebookAction::Duplicate => "duplicate-cell".into(),
-            NotebookAction::MoveUp => "move-cell-up".into(),
-            NotebookAction::MoveDown => "move-cell-down".into(),
-            NotebookAction::MergeAbove => "merge-cell-above".into(),
-            NotebookAction::MergeBelow => "merge-cell-below".into(),
-            NotebookAction::MergeSelected => "merge-selected-cells".into(),
-            NotebookAction::Split => "split-cell".into(),
             NotebookAction::Convert(what) => format!("convert-to-{}", kind(what)),
-            NotebookAction::ClearOutput => "clear-output".into(),
-            NotebookAction::ClearAllOutputs => "clear-all-outputs".into(),
-            NotebookAction::CollapseCell => "collapse-cell".into(),
-            NotebookAction::CollapseOutput => "collapse-output".into(),
-            NotebookAction::ToggleLineNumbers => "toggle-line-numbers".into(),
-            NotebookAction::ToggleVariables => "toggle-variables".into(),
-            NotebookAction::CommandMode => "command-mode".into(),
-            NotebookAction::EditMode => "edit-mode".into(),
-            NotebookAction::SelectAbove => "select-cell-above".into(),
-            NotebookAction::SelectBelow => "select-cell-below".into(),
-            NotebookAction::ExtendAbove => "extend-selection-above".into(),
-            NotebookAction::ExtendBelow => "extend-selection-below".into(),
-            NotebookAction::SelectFirst => "select-first-cell".into(),
-            NotebookAction::SelectLast => "select-last-cell".into(),
-            NotebookAction::SelectCell => "select-cell".into(),
-            NotebookAction::CellStart => "cell-start".into(),
-            NotebookAction::CellEnd => "cell-end".into(),
-            NotebookAction::RenderMarkdown => "render-markdown".into(),
-            NotebookAction::PreviousSection => "previous-section".into(),
-            NotebookAction::NextSection => "next-section".into(),
-            NotebookAction::CommentCells => "comment-cells".into(),
-            NotebookAction::ShowOutline => "show-outline".into(),
-            NotebookAction::CollapseSection => "collapse-section".into(),
-            NotebookAction::RunSection => "run-section".into(),
-            NotebookAction::EditTags => "edit-tags".into(),
+            other => other
+                .name_of_a_run_action()
+                .or_else(|| other.name_of_a_cell_action())
+                .or_else(|| other.name_of_a_movement())
+                .unwrap_or_default()
+                .to_owned(),
         }
+    }
+
+    /// The name of an action that runs cells or controls the kernel, or `None` for any other.
+    fn name_of_a_run_action(&self) -> Option<&'static str> {
+        Some(match self {
+            NotebookAction::RunCell => "run-cell",
+            NotebookAction::RunCellSelectBelow => "run-cell-select-below",
+            NotebookAction::RunCellInsertBelow => "run-cell-insert-below",
+            NotebookAction::RunAll => "run-all",
+            NotebookAction::RunAbove => "run-above",
+            NotebookAction::RunCellAndBelow => "run-cell-and-below",
+            NotebookAction::RunSection => "run-section",
+            NotebookAction::DebugCell => "debug-cell",
+            NotebookAction::Interrupt => "interrupt",
+            NotebookAction::Restart => "restart",
+            NotebookAction::RestartRunAll => "restart-run-all",
+            NotebookAction::ShutDown => "shut-down",
+            _ => return None,
+        })
+    }
+
+    /// The name of an action that changes cells or what is shown of them, or `None` for any other.
+    fn name_of_a_cell_action(&self) -> Option<&'static str> {
+        Some(match self {
+            NotebookAction::Delete => "delete-cell",
+            NotebookAction::UndoDelete => "undo-delete-cell",
+            NotebookAction::Copy => "copy-cell",
+            NotebookAction::Cut => "cut-cell",
+            NotebookAction::PasteBelow => "paste-cell-below",
+            NotebookAction::PasteAbove => "paste-cell-above",
+            NotebookAction::Duplicate => "duplicate-cell",
+            NotebookAction::MoveUp => "move-cell-up",
+            NotebookAction::MoveDown => "move-cell-down",
+            NotebookAction::MergeAbove => "merge-cell-above",
+            NotebookAction::MergeBelow => "merge-cell-below",
+            NotebookAction::MergeSelected => "merge-selected-cells",
+            NotebookAction::Split => "split-cell",
+            NotebookAction::ClearOutput => "clear-output",
+            NotebookAction::ClearAllOutputs => "clear-all-outputs",
+            NotebookAction::CollapseCell => "collapse-cell",
+            NotebookAction::CollapseOutput => "collapse-output",
+            NotebookAction::CollapseSection => "collapse-section",
+            NotebookAction::RenderMarkdown => "render-markdown",
+            NotebookAction::CommentCells => "comment-cells",
+            NotebookAction::EditTags => "edit-tags",
+            NotebookAction::ToggleLineNumbers => "toggle-line-numbers",
+            NotebookAction::ToggleVariables => "toggle-variables",
+            _ => return None,
+        })
+    }
+
+    /// The name of an action that changes the mode or moves the choice, or `None` for any other.
+    fn name_of_a_movement(&self) -> Option<&'static str> {
+        Some(match self {
+            NotebookAction::CommandMode => "command-mode",
+            NotebookAction::EditMode => "edit-mode",
+            NotebookAction::SelectAbove => "select-cell-above",
+            NotebookAction::SelectBelow => "select-cell-below",
+            NotebookAction::ExtendAbove => "extend-selection-above",
+            NotebookAction::ExtendBelow => "extend-selection-below",
+            NotebookAction::SelectFirst => "select-first-cell",
+            NotebookAction::SelectLast => "select-last-cell",
+            NotebookAction::SelectCell => "select-cell",
+            NotebookAction::CellStart => "cell-start",
+            NotebookAction::CellEnd => "cell-end",
+            NotebookAction::PreviousSection => "previous-section",
+            NotebookAction::NextSection => "next-section",
+            NotebookAction::ShowOutline => "show-outline",
+            _ => return None,
+        })
     }
 
     /// The action of this name.
@@ -226,24 +253,43 @@ pub fn notebook_menu(state: &MenuState) -> Option<Menu> {
     if !state.notebook_showing {
         return None;
     }
-    let item = |name: &str, what: NotebookAction| {
-        Entry::item(name, crate::app::actions::Action::Notebook(what))
-    };
-    let keyed = |name: &str, what: NotebookAction, shortcut: Shortcut| {
-        Entry::with_shortcut(name, crate::app::actions::Action::Notebook(what), shortcut)
-            .not_from_the_keyboard()
-    };
-    let enter = |command: bool, shift: bool, alt: bool| Shortcut {
-        key: egui::Key::Enter,
-        command,
-        shift,
-        alt,
-        ctrl: false,
-    };
-    let running = state.notebook_kernel_running;
-    let entries = vec![
-        item("Notebook Outline", NotebookAction::ShowOutline),
-        Entry::Separator,
+    let mut entries = vec![item("Notebook Outline", NotebookAction::ShowOutline), Entry::Separator];
+    entries.extend(run_entries());
+    entries.push(Entry::Separator);
+    entries.extend(kernel_entries(state.notebook_kernel_running));
+    entries.push(Entry::Separator);
+    entries.extend(add_entries());
+    entries.push(Entry::Submenu { name: "Cell".to_owned(), entries: cell_entries() });
+    entries.push(Entry::Separator);
+    entries.extend(view_entries(state));
+    Some(Menu { name: "Notebook".to_owned(), entries })
+}
+
+/// A menu entry that runs `what`, with no shortcut of its own.
+fn item(name: &str, what: NotebookAction) -> Entry {
+    Entry::item(name, crate::app::actions::Action::Notebook(what))
+}
+
+/// A menu entry that runs `what` and shows `shortcut` beside it. The menu bar does not watch the
+/// shortcut; the notebook reads its own keys while it has the keyboard.
+fn keyed(name: &str, what: NotebookAction, shortcut: Shortcut) -> Entry {
+    Entry::with_shortcut(name, crate::app::actions::Action::Notebook(what), shortcut)
+        .not_from_the_keyboard()
+}
+
+/// The shortcut of the Enter key with the modifiers `command`, `shift` and `alt`.
+fn enter(command: bool, shift: bool, alt: bool) -> Shortcut {
+    Shortcut { key: egui::Key::Enter, command, shift, alt, ctrl: false }
+}
+
+/// The shortcut of `key` with Shift and Alt held.
+fn shift_alt(key: egui::Key) -> Shortcut {
+    Shortcut { key, command: false, shift: true, alt: true, ctrl: false }
+}
+
+/// The `Notebook` menu entries that run cells.
+fn run_entries() -> Vec<Entry> {
+    vec![
         keyed("Run Cell", NotebookAction::RunCell, enter(true, false, false)),
         keyed(
             "Run Cell and Select Below",
@@ -259,45 +305,43 @@ pub fn notebook_menu(state: &MenuState) -> Option<Menu> {
         item("Run All Above", NotebookAction::RunAbove),
         item("Run Cell and Below", NotebookAction::RunCellAndBelow),
         item("Run Section", NotebookAction::RunSection),
-        keyed(
-            "Debug Cell",
-            NotebookAction::DebugCell,
-            Shortcut { key: egui::Key::Enter, command: false, shift: true, alt: true, ctrl: false },
-        ),
-        Entry::Separator,
+        keyed("Debug Cell", NotebookAction::DebugCell, shift_alt(egui::Key::Enter)),
+    ]
+}
+
+/// The `Notebook` menu entries for the kernel. Interrupt and Shut Down are on only while `running`.
+fn kernel_entries(running: bool) -> Vec<Entry> {
+    vec![
         item("Interrupt Kernel", NotebookAction::Interrupt).enabled(running),
         item("Restart Kernel", NotebookAction::Restart),
         item("Restart Kernel and Run All", NotebookAction::RestartRunAll),
         item("Shut Down Kernel", NotebookAction::ShutDown).enabled(running),
-        Entry::Separator,
-        keyed(
-            "Code Cell Above",
-            NotebookAction::AddAbove(CellKind::Code),
-            Shortcut { key: egui::Key::A, command: false, shift: true, alt: true, ctrl: false },
-        ),
-        keyed(
-            "Code Cell Below",
-            NotebookAction::AddBelow(CellKind::Code),
-            Shortcut { key: egui::Key::B, command: false, shift: true, alt: true, ctrl: false },
-        ),
+    ]
+}
+
+/// The `Notebook` menu entries that add a cell.
+fn add_entries() -> Vec<Entry> {
+    vec![
+        keyed("Code Cell Above", NotebookAction::AddAbove(CellKind::Code), shift_alt(egui::Key::A)),
+        keyed("Code Cell Below", NotebookAction::AddBelow(CellKind::Code), shift_alt(egui::Key::B)),
         item("Markdown Cell Above", NotebookAction::AddAbove(CellKind::Markdown)),
         item("Markdown Cell Below", NotebookAction::AddBelow(CellKind::Markdown)),
-        Entry::Submenu { name: "Cell".to_owned(), entries: cell_entries() },
-        Entry::Separator,
+    ]
+}
+
+/// The `Notebook` menu entries for outputs and for what is shown beside the cells.
+fn view_entries(state: &MenuState) -> Vec<Entry> {
+    vec![
         item("Clear Output", NotebookAction::ClearOutput),
         item("Clear All Outputs", NotebookAction::ClearAllOutputs),
         item("Show Line Numbers in Cells", NotebookAction::ToggleLineNumbers)
             .checked(state.notebook_line_numbers),
         item("Variables", NotebookAction::ToggleVariables).checked(state.notebook_variables),
-    ];
-    Some(Menu { name: "Notebook".to_owned(), entries })
+    ]
 }
 
 /// A cell's own menu, from the three dots on it: the operations on one cell, and its output.
 pub fn cell_menu() -> Vec<Entry> {
-    let item = |name: &str, what: NotebookAction| {
-        Entry::item(name, crate::app::actions::Action::Notebook(what))
-    };
     let mut entries = vec![
         item("Run Cell", NotebookAction::RunCell),
         item("Run All Above", NotebookAction::RunAbove),
@@ -311,9 +355,6 @@ pub fn cell_menu() -> Vec<Entry> {
 
 /// The `Notebook -> Cell` submenu: every operation on the chosen cells.
 fn cell_entries() -> Vec<Entry> {
-    let item = |name: &str, what: NotebookAction| {
-        Entry::item(name, crate::app::actions::Action::Notebook(what))
-    };
     vec![
         item("Delete Cell", NotebookAction::Delete),
         item("Copy Cell", NotebookAction::Copy),
@@ -618,14 +659,20 @@ impl UnluminousApp {
         let rows = crate::app::notebook_chrome::outline_rows(&tab.model.cells);
         let lines: Vec<String> = rows
             .iter()
-            .map(|(cell, depth, words)| format!("{}cell {}: {words}", "  ".repeat(*depth), cell + 1))
+            .map(|(cell, depth, words)| {
+                format!("{}cell {}: {words}", "  ".repeat(*depth), cell + 1)
+            })
             .collect();
         Ok(lines.join("\n"))
     }
 
     /// Select the caret's cell's text, or move the caret to its start or end. In command mode,
     /// Select Cell chooses every cell.
-    fn move_within_the_cell(&mut self, index: usize, what: NotebookAction) -> Result<String, String> {
+    fn move_within_the_cell(
+        &mut self,
+        index: usize,
+        what: NotebookAction,
+    ) -> Result<String, String> {
         let file = self.files.at_mut(index);
         let Some(tab) = file.notebook.as_deref_mut() else { return Err(String::new()) };
         if let (NotebookAction::SelectCell, Mode::Command { .. }) = (what, tab.mode) {
@@ -826,7 +873,12 @@ impl UnluminousApp {
 
     /// Move cells `cells` into the gap before cell `to`, as one undo step, keeping them chosen. The
     /// edit Move Up, Move Down, dragging a cell by its handle and `notebook edit move` all make.
-    pub(crate) fn move_cells_into(&mut self, index: usize, cells: std::ops::Range<usize>, to: usize) {
+    pub(crate) fn move_cells_into(
+        &mut self,
+        index: usize,
+        cells: std::ops::Range<usize>,
+        to: usize,
+    ) {
         let file = self.files.at_mut(index);
         let Some(tab) = file.notebook.as_deref_mut() else { return };
         let text = file.document.text().to_string();

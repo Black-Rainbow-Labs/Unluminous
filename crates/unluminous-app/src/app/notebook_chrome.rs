@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use egui::{Color32, CornerRadius, Pos2, Rect, Stroke, Vec2};
-use unluminous_jupyter::kernel::{KernelState, Python};
+use unluminous_jupyter::kernel::{KernelState, Python, Variable};
 use unluminous_jupyter::nbformat::CellKind;
 
 use crate::app::actions::Action;
@@ -74,31 +74,7 @@ impl UnluminousApp {
     fn show_the_notebook_toolbar(&mut self, ui: &mut egui::Ui, area: Rect, index: usize) {
         ui.painter().rect_filled(area, CornerRadius::ZERO, color::toolbar());
         ui.painter().hline(area.x_range(), area.bottom() - 0.5, Stroke::new(1.0, color::divider()));
-        let buttons: [(NotebookAction, &str, crate::components::notebook_view::Draw); 8] = [
-            (NotebookAction::AddBelow(CellKind::Code), "Code Cell Below", icon::plus),
-            (NotebookAction::MoveUp, "Move Cell Up", icon::chevron_up),
-            (NotebookAction::MoveDown, "Move Cell Down", icon::chevron_down),
-            (
-                NotebookAction::RunCellSelectBelow,
-                "Run Cell and Select Below (Shift+Enter)",
-                icon::run,
-            ),
-            (NotebookAction::RunAll, "Run All (Ctrl+Alt+Shift+Enter)", run_all),
-            (NotebookAction::Interrupt, "Interrupt Kernel", icon::stop),
-            (NotebookAction::Restart, "Restart Kernel", icon::rerun),
-            (NotebookAction::ClearAllOutputs, "Clear All Outputs", icon::clear),
-        ];
-        let mut x = area.left() + 8.0;
-        for (what, name, draw) in buttons {
-            let place =
-                Rect::from_center_size(Pos2::new(x + 12.0, area.center().y), Vec2::splat(24.0));
-            if controls::icon_button(ui, place, name, draw) {
-                self.notebook_wanted = Some(Action::Notebook(what));
-                self.focus = crate::app::Focus::Editor;
-            }
-            x += 28.0;
-        }
-        x += 8.0;
+        let x = self.show_the_toolbar_buttons(ui, area) + 8.0;
         let kind_area = Rect::from_min_size(
             Pos2::new(x, area.top() + 5.0),
             Vec2::new(112.0, area.height() - 10.0),
@@ -127,6 +103,22 @@ impl UnluminousApp {
             Pos2::new(kernel_area.left() - 8.0, area.bottom()),
         );
         self.show_what_is_running(ui, between, index);
+    }
+
+    /// The row of icon buttons at the left of the toolbar. Pressing one asks for its action. Answers
+    /// where the row ends.
+    fn show_the_toolbar_buttons(&mut self, ui: &mut egui::Ui, area: Rect) -> f32 {
+        let mut x = area.left() + 8.0;
+        for (what, name, draw) in toolbar_buttons() {
+            let place =
+                Rect::from_center_size(Pos2::new(x + 12.0, area.center().y), Vec2::splat(24.0));
+            if controls::icon_button(ui, place, name, draw) {
+                self.notebook_wanted = Some(Action::Notebook(what));
+                self.focus = crate::app::Focus::Editor;
+            }
+            x += 28.0;
+        }
+        x
     }
 
     /// The chosen cell's kind, which choosing another converts it to.
@@ -238,7 +230,7 @@ impl UnluminousApp {
         self.look_for_pythons();
         let words = self.kernel_words(index);
         let pythons: Vec<Python> = self.pythons.found().to_vec();
-        let python = self.files.at(index).notebook.as_deref().and_then(|tab| tab.python.clone());
+        let python = self.notebook_python(index);
         if let Some(path) = &python {
             self.ask_for_the_kernelspecs(path);
         }
@@ -386,7 +378,7 @@ impl UnluminousApp {
         missing: Option<&str>,
     ) {
         ui.painter().rect_filled(area, CornerRadius::ZERO, color::failure().gamma_multiply(0.19));
-        let python = self.files.at(index).notebook.as_deref().and_then(|tab| tab.python.clone());
+        let python = self.notebook_python(index);
         let mut right = area.right() - 8.0;
         if let (Some(python), Some("ipykernel" | "jupyter_client")) = (python.as_ref(), missing) {
             let button = Rect::from_min_max(
@@ -433,50 +425,74 @@ impl UnluminousApp {
         let Some(tab) = self.files.at(index).notebook.as_deref() else { return };
         let mut rows = tab.variables.clone();
         rows.sort_by_key(|row| (row.type_name != "DataFrame", row.name.to_lowercase()));
-        let font = egui::FontId::monospace(11.5);
         let painter = ui.painter().with_clip_rect(area);
         let mut y = heading.bottom() + 4.0;
         if rows.is_empty() {
-            let words = match &tab.kernel {
-                KernelSlot::Live(_) => "No variables yet.",
-                _ => "Run a cell to see its variables.",
-            };
-            painter.text(
-                Pos2::new(area.left() + 12.0, y + 10.0),
-                egui::Align2::LEFT_CENTER,
-                words,
-                egui::FontId::proportional(12.0),
-                color::text_dim(),
-            );
+            let live = matches!(tab.kernel, KernelSlot::Live(_));
+            paint_no_variables(&painter, area, y, live);
         }
         for row in rows {
-            let shape = row
-                .shape
-                .clone()
-                .or(row.size.map(|size| format!("len {size}")))
-                .unwrap_or_default();
-            let head = format!("{} : {} {}", row.name, row.type_name, shape);
-            painter.text(
-                Pos2::new(area.left() + 12.0, y + 9.0),
-                egui::Align2::LEFT_CENTER,
-                head,
-                font.clone(),
-                color::text(),
-            );
-            let value = controls::truncate_chars(&row.value.replace('\n', " "), 60, 57);
-            painter.text(
-                Pos2::new(area.left() + 24.0, y + 25.0),
-                egui::Align2::LEFT_CENTER,
-                value,
-                font.clone(),
-                color::text_dim(),
-            );
+            paint_a_variable(&painter, area, y, &row);
             y += 36.0;
             if y > area.bottom() {
                 break;
             }
         }
     }
+}
+
+/// The words in the variables panel when the kernel holds none: that there are none yet, or that a
+/// cell has to run first when `live` is false because there is no kernel.
+fn paint_no_variables(painter: &egui::Painter, area: Rect, y: f32, live: bool) {
+    let words = match live {
+        true => "No variables yet.",
+        false => "Run a cell to see its variables.",
+    };
+    painter.text(
+        Pos2::new(area.left() + 12.0, y + 10.0),
+        egui::Align2::LEFT_CENTER,
+        words,
+        egui::FontId::proportional(12.0),
+        color::text_dim(),
+    );
+}
+
+/// One variable in the panel, at height `y`: its name, type and shape on one line and its value under it.
+fn paint_a_variable(painter: &egui::Painter, area: Rect, y: f32, row: &Variable) {
+    let font = egui::FontId::monospace(11.5);
+    let shape =
+        row.shape.clone().or(row.size.map(|size| format!("len {size}"))).unwrap_or_default();
+    let head = format!("{} : {} {}", row.name, row.type_name, shape);
+    painter.text(
+        Pos2::new(area.left() + 12.0, y + 9.0),
+        egui::Align2::LEFT_CENTER,
+        head,
+        font.clone(),
+        color::text(),
+    );
+    let value = controls::truncate_chars(&row.value.replace('\n', " "), 60, 57);
+    painter.text(
+        Pos2::new(area.left() + 24.0, y + 25.0),
+        egui::Align2::LEFT_CENTER,
+        value,
+        font,
+        color::text_dim(),
+    );
+}
+
+/// The toolbar's icon buttons in order: what each does, its name, and the icon drawn on it.
+fn toolbar_buttons() -> [(NotebookAction, &'static str, crate::components::notebook_view::Draw); 8]
+{
+    [
+        (NotebookAction::AddBelow(CellKind::Code), "Code Cell Below", icon::plus),
+        (NotebookAction::MoveUp, "Move Cell Up", icon::chevron_up),
+        (NotebookAction::MoveDown, "Move Cell Down", icon::chevron_down),
+        (NotebookAction::RunCellSelectBelow, "Run Cell and Select Below (Shift+Enter)", icon::run),
+        (NotebookAction::RunAll, "Run All (Ctrl+Alt+Shift+Enter)", run_all),
+        (NotebookAction::Interrupt, "Interrupt Kernel", icon::stop),
+        (NotebookAction::Restart, "Restart Kernel", icon::rerun),
+        (NotebookAction::ClearAllOutputs, "Clear All Outputs", icon::clear),
+    ]
 }
 
 /// The rows of the kernel picker: each Python found, each kernel the chosen one has, and the ways out.

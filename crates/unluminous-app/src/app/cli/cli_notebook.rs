@@ -12,13 +12,15 @@ use unluminous_jupyter::nbformat::{Cell, CellKind};
 use unluminous_jupyter::outputs::{self, Shown};
 
 use super::*;
-use crate::app::notebook::{KernelSlot, Mode, Run};
+use crate::app::notebook::{KernelSlot, Mode, NotebookTab, Run};
 use crate::app::notebook_actions::NotebookAction;
 
 /// How long `notebook kernel pythons` and `notebook kernel kernels` wait for Python to answer.
 const PYTHONS_WAIT: std::time::Duration = std::time::Duration::from_secs(90);
 
 impl UnluminousApp {
+    /// Run a `notebook` command. `new` and `convert` need no open notebook; every other verb works on
+    /// the notebook in the tab that is showing, after opening `--path` when it is given.
     pub(crate) fn cli_notebook(&mut self, request: &Request, verb: &str) -> Outcome {
         match verb {
             "new" => return self.cli_notebook_new(request),
@@ -82,6 +84,8 @@ impl UnluminousApp {
         }
     }
 
+    /// `notebook status`: one row for every cell with its number, id, kind, run state and a summary of
+    /// its outputs, then the mode, the chosen cells and the kernel.
     fn cli_notebook_status(&mut self, request: &Request, index: usize) -> Outcome {
         let chosen = self.chosen_cells(index);
         let kernel = self.cli_kernel_json(index);
@@ -89,45 +93,9 @@ impl UnluminousApp {
         let Some(tab) = file.notebook.as_deref() else {
             return no(request, code::FAILED, "not a notebook");
         };
-        let mut rows = Vec::new();
-        let mut cells = Vec::new();
-        for (at, cell) in tab.model.cells.iter().enumerate() {
-            let state = run_state(tab.runs.get(&cell.id), cell);
-            let finished = match tab.runs.get(&cell.id) {
-                Some(Run::Done { took, clock, .. }) => {
-                    Some((took.as_millis() as u64, clock.to_string()))
-                }
-                _ => None,
-            };
-            let first =
-                cell.source.lines().next().unwrap_or("").chars().take(70).collect::<String>();
-            let summary = output_summary(cell);
-            let count = cell
-                .execution_count
-                .map(|count| format!("[{count}]"))
-                .unwrap_or_else(|| "[ ]".to_owned());
-            let mark = if chosen.contains(&at) { "*" } else { " " };
-            rows.push(format!(
-                "{mark}{:>3} {:<8} {:<8} {count:<6} {state:<9} {first}{}",
-                at + 1,
-                cell.id,
-                cell.kind.name(),
-                if summary.is_empty() { String::new() } else { format!("  -> {summary}") }
-            ));
-            cells.push(json!({
-                "number": at + 1,
-                "id": cell.id,
-                "kind": cell.kind.name(),
-                "executionCount": cell.execution_count,
-                "state": state,
-                "firstLine": first,
-                "outputs": summary,
-                "tookMs": finished.as_ref().map(|(took, _)| *took),
-                "finishedAt": finished.as_ref().map(|(_, clock)| clock.clone()),
-                "collapsed": tab.collapsed.contains(&cell.id),
-                "outputCollapsed": tab.outputs_collapsed.contains(&cell.id),
-            }));
-        }
+        let (rows, cells): (Vec<String>, Vec<Value>) = (tab.model.cells.iter().enumerate())
+            .map(|(at, cell)| status_of_a_cell(tab, at, cell, chosen.contains(&at)))
+            .unzip();
         let waiting = tab.waiting.as_ref().map(|waiting| json!({ "cell": tab.index_of(&waiting.cell).map(|at| at + 1), "prompt": waiting.prompt }));
         let mode = match tab.mode {
             Mode::Edit => "edit",
@@ -205,6 +173,7 @@ impl UnluminousApp {
         })
     }
 
+    /// `notebook cell`: one cell's source and its outputs as text, and as data.
     fn cli_notebook_cell(&mut self, request: &Request, index: usize) -> Outcome {
         let cell = match self.cli_cell(request, index, "cell") {
             Ok(cell) => cell,
@@ -241,44 +210,21 @@ impl UnluminousApp {
         )
     }
 
+    /// `notebook run`: queue the cells a command names to run, and answer at once, or hold the answer
+    /// until they have all finished when `--wait` is given. `--debug` debugs the one cell instead.
     fn cli_notebook_run(&mut self, request: &Request, index: usize) -> Outcome {
         if request.switch("debug") {
             return self.cli_debug_a_cell(request, index);
         }
-        let count = self.files.at(index).notebook.as_deref().map(|tab| tab.len()).unwrap_or(0);
-        let cells = if request.switch("all") {
-            0..count
-        } else {
-            let first = match self.cli_cell(request, index, "cell") {
-                Ok(cell) => cell,
-                Err(problem) => return no(request, code::USAGE, problem),
-            };
-            match (request.switch("above"), request.switch("below"), request.whole("to")) {
-                (true, _, _) => 0..first,
-                (_, true, _) => first..count,
-                (_, _, Some(to)) if to > first && to <= count => first..to,
-                (_, _, Some(to)) => {
-                    return no(
-                        request,
-                        code::USAGE,
-                        format!("--to {to} is not a cell at or after cell {}.", first + 1),
-                    )
-                }
-                _ => first..first + 1,
-            }
+        let cells = match self.cli_cells_to_run(request, index) {
+            Ok(cells) => cells,
+            Err(problem) => return no(request, code::USAGE, problem),
         };
-        let ids: Vec<String> = {
-            let Some(tab) = self.files.at(index).notebook.as_deref() else {
-                return no(request, code::FAILED, "not a notebook");
-            };
-            cells
-                .clone()
-                .filter_map(|at| tab.model.cells.get(at))
-                .filter(|cell| cell.kind == CellKind::Code)
-                .map(|cell| cell.id.clone())
-                .collect()
+        let Some(tab) = self.files.at(index).notebook.as_deref() else {
+            return no(request, code::FAILED, "not a notebook");
         };
-        self.run_notebook_cells(index, cells.clone());
+        let ids = code_cell_ids(tab, &cells);
+        self.run_notebook_cells(index, cells);
         if !request.switch("wait") {
             return ok(
                 request,
@@ -296,6 +242,29 @@ impl UnluminousApp {
             cells: ids,
             until: Instant::now() + Duration::from_millis(wait),
         })
+    }
+
+    /// The cells `notebook run` is asked to run: all of them, everything above or below a cell, a
+    /// range with `--to`, or the one cell. The error is what to tell the caller about a bad request.
+    fn cli_cells_to_run(
+        &self,
+        request: &Request,
+        index: usize,
+    ) -> Result<std::ops::Range<usize>, String> {
+        let count = self.files.at(index).notebook.as_deref().map(|tab| tab.len()).unwrap_or(0);
+        if request.switch("all") {
+            return Ok(0..count);
+        }
+        let first = self.cli_cell(request, index, "cell")?;
+        match (request.switch("above"), request.switch("below"), request.whole("to")) {
+            (true, _, _) => Ok(0..first),
+            (_, true, _) => Ok(first..count),
+            (_, _, Some(to)) if to > first && to <= count => Ok(first..to),
+            (_, _, Some(to)) => {
+                Err(format!("--to {to} is not a cell at or after cell {}.", first + 1))
+            }
+            _ => Ok(first..first + 1),
+        }
     }
 
     /// The answer to a held `notebook run --wait`, once every cell it ran has finished or been
@@ -325,34 +294,21 @@ impl UnluminousApp {
             return None;
         }
         let pictures = std::env::temp_dir();
-        let mut failed = 0;
-        let mut rows = Vec::new();
-        let mut answered = Vec::new();
-        for id in cells {
-            let Some(at) = tab.index_of(id) else { continue };
-            let cell = &tab.model.cells[at];
-            let state = run_state(tab.runs.get(id), cell);
-            if state == "error" {
-                failed += 1;
-            }
-            let (text, outputs) = outputs_as_text(cell, &pictures, at + 1);
-            rows.push(format!(
-                "--- cell {} [{}] {state} ---",
-                at + 1,
-                cell.execution_count.map(|count| count.to_string()).unwrap_or_default()
-            ));
-            rows.extend(text.lines().map(str::to_owned));
-            answered.push(json!({ "number": at + 1, "id": id, "state": state, "executionCount": cell.execution_count, "outputs": outputs, "outputText": text }));
-        }
+        let answers: Vec<AnsweredCell> =
+            cells.iter().filter_map(|id| answer_for_a_cell(tab, id, &pictures)).collect();
+        let failed = answers.iter().filter(|answer| answer.failed).count();
         let message = match failed {
             0 => format!("Ran {} cell(s).", cells.len()),
             _ => format!("Ran {} cell(s); one raised, and the run stopped there.", cells.len()),
         };
+        let rows: Vec<String> = answers.iter().flat_map(|answer| answer.rows.clone()).collect();
+        let answered: Vec<Value> = answers.into_iter().map(|answer| answer.data).collect();
         let mut result = json!({ "cells": answered, "lines": rows });
         result["failed"] = json!(failed > 0);
         Some(Reply::done(&request.command, message, result))
     }
 
+    /// `notebook add`: add a cell of `--kind` holding `--source` at `--at`, or after the chosen cell.
     fn cli_notebook_add(&mut self, request: &Request, index: usize) -> Outcome {
         let kind = match request.text("kind").as_deref().map(CellKind::from_name) {
             None => CellKind::Code,
@@ -381,6 +337,7 @@ impl UnluminousApp {
         )
     }
 
+    /// `notebook source`: replace a cell's source with `--source`, in one edit that can be undone.
     fn cli_notebook_source(&mut self, request: &Request, index: usize) -> Outcome {
         let cell = match self.cli_cell(request, index, "cell") {
             Ok(cell) => cell,
@@ -403,6 +360,8 @@ impl UnluminousApp {
         )
     }
 
+    /// `notebook select`: choose a cell, or a run of cells with `--to`, or move to the next or
+    /// previous section.
     fn cli_notebook_select(&mut self, request: &Request, index: usize) -> Outcome {
         if let Some(section) = request.text("section") {
             let what = match section.as_str() {
@@ -413,7 +372,11 @@ impl UnluminousApp {
             return self.cli_notebook_action(request, what);
         }
         if request.whole("cell").is_none() {
-            return no(request, code::USAGE, "Say which cell to choose, or --section next or previous.");
+            return no(
+                request,
+                code::USAGE,
+                "Say which cell to choose, or --section next or previous.",
+            );
         }
         let cell = match self.cli_cell(request, index, "cell") {
             Ok(cell) => cell,
@@ -434,6 +397,8 @@ impl UnluminousApp {
         )
     }
 
+    /// `notebook edit`: an operation on a cell, such as delete, copy, move or merge. Each is the
+    /// same function a key or a button runs.
     fn cli_notebook_edit(&mut self, request: &Request, index: usize) -> Outcome {
         let operation = request.text("operation").unwrap_or_default();
         if operation == "clear-all" {
@@ -478,7 +443,8 @@ impl UnluminousApp {
     fn cli_set_the_tags(&mut self, request: &Request, index: usize, cell: usize) -> Outcome {
         let tags = crate::app::notebook::tags_typed(&request.text("tags").unwrap_or_default());
         let file = self.files.at_mut(index);
-        let Some(found) = file.notebook.as_deref_mut().and_then(|tab| tab.model.cells.get_mut(cell))
+        let Some(found) =
+            file.notebook.as_deref_mut().and_then(|tab| tab.model.cells.get_mut(cell))
         else {
             return no(request, code::FAILED, "not a notebook");
         };
@@ -561,6 +527,8 @@ impl UnluminousApp {
         self.cli_notebook_action(request, NotebookAction::Split)
     }
 
+    /// `notebook kernel`: ask about the kernel, start, interrupt, restart or shut it down, list the
+    /// Pythons and kernels, choose one, or install ipykernel.
     fn cli_notebook_kernel(&mut self, request: &Request, index: usize) -> Outcome {
         let operation = request.text("operation").unwrap_or_else(|| "status".to_owned());
         match operation.as_str() {
@@ -578,26 +546,28 @@ impl UnluminousApp {
             "pythons" => self.cli_notebook_pythons(request),
             "kernels" => self.cli_notebook_kernels(request, index),
             "choose" => self.cli_notebook_choose(request, index),
-            "install" => {
-                let python = request.text("python").map(PathBuf::from).or_else(|| {
-                    self.files.at(index).notebook.as_deref().and_then(|tab| tab.python.clone())
-                });
-                let Some(python) = python else {
-                    return no(
-                        request,
-                        code::USAGE,
-                        "Say which Python with --python, or choose one first.",
-                    );
-                };
-                self.install_ipykernel(index, &python);
-                ok(
-                    request,
-                    self.message.clone().unwrap_or_default(),
-                    json!({ "python": python.to_string_lossy() }),
-                )
-            }
+            "install" => self.cli_notebook_install(request, index),
             other => no(request, code::USAGE, format!("{other} is not something the kernel does.")),
         }
+    }
+
+    /// `notebook kernel install`: install ipykernel into `--python`, or the Python the notebook uses.
+    fn cli_notebook_install(&mut self, request: &Request, index: usize) -> Outcome {
+        let python =
+            request.text("python").map(PathBuf::from).or_else(|| self.notebook_python(index));
+        let Some(python) = python else {
+            return no(
+                request,
+                code::USAGE,
+                "Say which Python with --python, or choose one first.",
+            );
+        };
+        self.install_ipykernel(index, &python);
+        ok(
+            request,
+            self.message.clone().unwrap_or_default(),
+            json!({ "python": python.to_string_lossy() }),
+        )
     }
 
     /// Every Python on this machine, and whether each has ipykernel. Looked for now if nobody has.
@@ -606,7 +576,9 @@ impl UnluminousApp {
         self.look_for_pythons();
         match self.notebook_pythons_answer(request) {
             Some(reply) => Outcome::Reply(reply),
-            None => Outcome::Hold(Waiting::NotebookPythons { until: Instant::now() + PYTHONS_WAIT }),
+            None => {
+                Outcome::Hold(Waiting::NotebookPythons { until: Instant::now() + PYTHONS_WAIT })
+            }
         }
     }
 
@@ -630,14 +602,18 @@ impl UnluminousApp {
             })
             .collect();
         let data: Vec<Value> = found.iter().map(|python| json!({ "path": python.path.to_string_lossy(), "version": python.version, "ipykernel": python.has_ipykernel, "foundBy": python.found_by })).collect();
-        Some(lines_reply(request, format!("{} Python(s)", found.len()), rows, json!({ "pythons": data })))
+        Some(lines_reply(
+            request,
+            format!("{} Python(s)", found.len()),
+            rows,
+            json!({ "pythons": data }),
+        ))
     }
 
     /// The kernels a Python has.
     fn cli_notebook_kernels(&mut self, request: &Request, index: usize) -> Outcome {
-        let python = request.text("python").map(PathBuf::from).or_else(|| {
-            self.files.at(index).notebook.as_deref().and_then(|tab| tab.python.clone())
-        });
+        let python =
+            request.text("python").map(PathBuf::from).or_else(|| self.notebook_python(index));
         let Some(python) = python else {
             return no(
                 request,
@@ -652,7 +628,11 @@ impl UnluminousApp {
     }
 
     /// The answer to `notebook kernel kernels`, once the Python has listed them.
-    pub(crate) fn notebook_kernels_answer(&mut self, request: &Request, python: &Path) -> Option<Reply> {
+    pub(crate) fn notebook_kernels_answer(
+        &mut self,
+        request: &Request,
+        python: &Path,
+    ) -> Option<Reply> {
         self.take_the_kernelspecs();
         let listed = self.kernelspecs.get(python)?.as_ref()?;
         Some(match listed {
@@ -662,7 +642,12 @@ impl UnluminousApp {
                     .map(|spec| format!("{}  {} ({})", spec.name, spec.display_name, spec.language))
                     .collect();
                 let data: Vec<Value> = specs.iter().map(|spec| json!({ "name": spec.name, "displayName": spec.display_name, "language": spec.language })).collect();
-                lines_reply(request, format!("{} kernel(s)", rows.len()), rows, json!({ "kernels": data }))
+                lines_reply(
+                    request,
+                    format!("{} kernel(s)", rows.len()),
+                    rows,
+                    json!({ "kernels": data }),
+                )
             }
             Err(problem) => Reply::failed(&request.command, code::FAILED, problem.clone()),
         })
@@ -687,6 +672,8 @@ impl UnluminousApp {
         ok(request, "Chosen. The next run uses it.", self.cli_kernel_json(index))
     }
 
+    /// `notebook variables`: ask the kernel for its variables, and hold the answer until it has
+    /// sent them.
     fn cli_notebook_variables(&mut self, request: &Request, index: usize) -> Outcome {
         let live = self
             .files
@@ -739,6 +726,7 @@ impl UnluminousApp {
         Some(Reply::done(&request.command, format!("{} variable(s)", tab.variables.len()), result))
     }
 
+    /// `notebook input`: send `--value` to the cell that is waiting on `input()`.
     fn cli_notebook_input(&mut self, request: &Request, index: usize) -> Outcome {
         let waiting =
             self.files.at(index).notebook.as_deref().is_some_and(|tab| tab.waiting.is_some());
@@ -750,6 +738,7 @@ impl UnluminousApp {
         ok(request, "Sent.", Value::Null)
     }
 
+    /// `notebook export`: write the notebook as another format, to `--to` or beside the notebook.
     fn cli_notebook_export(&mut self, request: &Request) -> Outcome {
         let format = request.text("format").unwrap_or_default();
         let to = request.text("to").map(|to| self.tree.root().join(to));
@@ -763,6 +752,8 @@ impl UnluminousApp {
         }
     }
 
+    /// `notebook new`: make an empty notebook file, named by `--path` or the next free name, and
+    /// open it.
     fn cli_notebook_new(&mut self, request: &Request) -> Outcome {
         let path = request.text("path").map(PathBuf::from);
         match self.make_a_new_notebook(path.as_deref()) {
@@ -775,6 +766,7 @@ impl UnluminousApp {
         }
     }
 
+    /// `notebook convert`: write a `.py` file as a notebook, or a notebook as a `.py` file.
     fn cli_notebook_convert(&mut self, request: &Request) -> Outcome {
         let Some(path) = request.text("path").map(|path| self.tree.root().join(path)) else {
             return no(request, code::USAGE, "convert needs the file to convert.");
@@ -789,6 +781,77 @@ impl UnluminousApp {
             Err(problem) => no(request, code::FAILED, problem),
         }
     }
+}
+
+/// One cell's row in `notebook status`, as the words printed and as data. `chosen` marks the row of a
+/// cell the keys act on with a star.
+fn status_of_a_cell(tab: &NotebookTab, at: usize, cell: &Cell, chosen: bool) -> (String, Value) {
+    let state = run_state(tab.runs.get(&cell.id), cell);
+    let finished = match tab.runs.get(&cell.id) {
+        Some(Run::Done { took, clock, .. }) => Some((took.as_millis() as u64, clock.to_string())),
+        _ => None,
+    };
+    let first = cell.source.lines().next().unwrap_or("").chars().take(70).collect::<String>();
+    let summary = output_summary(cell);
+    let count = (cell.execution_count)
+        .map(|count| format!("[{count}]"))
+        .unwrap_or_else(|| "[ ]".to_owned());
+    let mark = if chosen { "*" } else { " " };
+    let row = format!(
+        "{mark}{:>3} {:<8} {:<8} {count:<6} {state:<9} {first}{}",
+        at + 1,
+        cell.id,
+        cell.kind.name(),
+        if summary.is_empty() { String::new() } else { format!("  -> {summary}") }
+    );
+    let data = json!({
+        "number": at + 1,
+        "id": cell.id,
+        "kind": cell.kind.name(),
+        "executionCount": cell.execution_count,
+        "state": state,
+        "firstLine": first,
+        "outputs": summary,
+        "tookMs": finished.as_ref().map(|(took, _)| *took),
+        "finishedAt": finished.as_ref().map(|(_, clock)| clock.clone()),
+        "collapsed": tab.collapsed.contains(&cell.id),
+        "outputCollapsed": tab.outputs_collapsed.contains(&cell.id),
+    });
+    (row, data)
+}
+
+/// The ids of the code cells among the cells `cells` of `tab`, which are the ones a run sends.
+fn code_cell_ids(tab: &NotebookTab, cells: &std::ops::Range<usize>) -> Vec<String> {
+    cells
+        .clone()
+        .filter_map(|at| tab.model.cells.get(at))
+        .filter(|cell| cell.kind == CellKind::Code)
+        .map(|cell| cell.id.clone())
+        .collect()
+}
+
+/// What one cell contributes to the answer of `notebook run --wait`.
+struct AnsweredCell {
+    /// Whether the cell raised an error.
+    failed: bool,
+    /// The cell's heading line and its output text, one string a line.
+    rows: Vec<String>,
+    /// The cell's number, id, state, count and outputs as data.
+    data: Value,
+}
+
+/// The answer for the cell `id` of `tab`, or `None` when the tab has no such cell. Pictures are
+/// written into `pictures`.
+fn answer_for_a_cell(tab: &NotebookTab, id: &str, pictures: &Path) -> Option<AnsweredCell> {
+    let at = tab.index_of(id)?;
+    let cell = &tab.model.cells[at];
+    let state = run_state(tab.runs.get(id), cell);
+    let (text, outputs) = outputs_as_text(cell, pictures, at + 1);
+    let count = cell.execution_count.map(|count| count.to_string()).unwrap_or_default();
+    let mut rows = vec![format!("--- cell {} [{count}] {state} ---", at + 1)];
+    rows.extend(text.lines().map(str::to_owned));
+    let data = json!({ "number": at + 1, "id": id, "state": state, "executionCount": cell.execution_count, "outputs": outputs, "outputText": text });
+    Some(AnsweredCell { failed: state == "error", rows, data })
 }
 
 /// How a cell's last run went, in one word: `ok`, `error`, `queued`, `running`, `skipped`, or
@@ -861,12 +924,18 @@ fn output_as_text(shown: Shown, pictures: &Path, name: &str) -> (String, Value) 
                 true => format!("{ename}: {evalue}"),
                 false => lines.join("\n"),
             };
-            (words, json!({ "type": "error", "ename": ename, "evalue": evalue, "traceback": lines }))
+            (
+                words,
+                json!({ "type": "error", "ename": ename, "evalue": evalue, "traceback": lines }),
+            )
         }
         Shown::Table(table) => {
             let rows: Vec<String> =
                 table.header.iter().chain(&table.rows).map(|row| row.join(" | ")).collect();
-            (rows.join("\n"), json!({ "type": "table", "header": table.header, "rows": table.rows }))
+            (
+                rows.join("\n"),
+                json!({ "type": "table", "header": table.header, "rows": table.rows }),
+            )
         }
         Shown::Png(bytes) => picture_as_text(&pictures.join(format!("{name}.png")), &bytes),
         Shown::Jpeg(bytes) => picture_as_text(&pictures.join(format!("{name}.jpg")), &bytes),
@@ -888,8 +957,9 @@ fn picture_as_text(place: &Path, bytes: &[u8]) -> (String, Value) {
             format!("[picture written to {}]", place.display()),
             json!({ "type": "picture", "path": place.to_string_lossy() }),
         ),
-        Err(problem) => {
-            (format!("[a picture that could not be written: {problem}]"), json!({ "type": "picture" }))
-        }
+        Err(problem) => (
+            format!("[a picture that could not be written: {problem}]"),
+            json!({ "type": "picture" }),
+        ),
     }
 }
