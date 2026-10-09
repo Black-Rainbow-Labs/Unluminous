@@ -6,6 +6,17 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Review fixes: # %% lines stay in their cell, the debugger lets the kernel go, Restart and Run All runs, undo keeps outputs, nothing waits on Python in a frame (`task-2220`)
+- The notebook rows the review found missing: sections, tags, dragging a cell, the outline, ?name, and the output scroll setting (`task-2220`)
+- Commands for what only a person could do to a notebook (`task-2220`)
+- Window and kernel tests for each review finding, and a release that must start a kernel (`task-2220`)
+- CLAUDE.md and the PRD say how markers, debugging and the new commands work (`task-2220`)
+- Accept the pictures with the notebook icon, the drag handle and the Notebooks settings section (`task-2220`)
+- Split the long notebook functions, keep the tab in its file while painting, and share the cell lookup (`task-2220`)
+- A restart waits for both kernel channels, and notebook status reports tags, hidden cells and the kernel's process (`task-2220`)
+
 ## 0.67.0 — 2026-10-09
 
 - Jupyter notebooks: cells, outputs, a kernel through Python, debugging a cell, and the notebook commands (`task-2220`)
