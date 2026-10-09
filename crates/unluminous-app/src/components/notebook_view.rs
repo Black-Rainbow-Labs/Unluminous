@@ -465,13 +465,10 @@ fn paint_block(
         Body::Text(galley) => painter.galley(rect.min, galley.clone(), color::text()),
         Body::Picture { texture, size } => {
             let place = Rect::from_min_size(rect.min, *size);
+            let whole = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
             // any ground: a picture is drawn in its own colours, untinted.
-            painter.image(
-                texture.id(),
-                place,
-                Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                Color32::WHITE,
-            );
+            let untinted = Color32::WHITE;
+            painter.image(texture.id(), place, whole, untinted);
         }
         Body::Table(view) => {
             if let Some(column) = paint_table(ui, painter, view, rect, salt) {
