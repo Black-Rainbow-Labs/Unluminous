@@ -1077,7 +1077,8 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn 
         pen,
         "An output taller than thirty lines scrolls inside its cell. Off, every output is drawn at its full height.",
     );
-    pen += 44.0;
+    // One line of note, where the gutter's has two.
+    pen += 30.0;
     pen = section(ui, area, pen, "Suggestions");
     // A tick box over a two-value setting: `automatic` is ticked and `manual` is not, which is what
     // the wording says. The value itself is a named pair rather than a flag because the settings
