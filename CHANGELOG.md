@@ -10,6 +10,8 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 - Jupyter notebooks: cells, outputs, a kernel through Python, debugging a cell, and the notebook commands (`task-2220`)
 - Accept the menus with New Jupyter Notebook, and mark a picture's untinted white (`task-2220`)
+- The changelog lists notebooks as unreleased (`task-2220`)
+- A kernel that is alive and slow to start is waited for up to three minutes (`task-2220`)
 
 ## 0.66.4 — 2026-10-08
 
