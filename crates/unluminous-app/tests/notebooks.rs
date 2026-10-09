@@ -533,7 +533,11 @@ fn the_first_debug_cell_on_a_kernel_stops_in_the_cell_and_stopping_leaves_the_ke
     did(&mut harness, "notebook run 1");
     assert!(wait_for(&mut harness, |harness| state_of(harness, 1) == "ok"), "cell 1 ran");
     did(&mut harness, "notebook run 2 --debug");
-    let paused = wait_for(&mut harness, |harness| did(harness, "debug status")["paused"] == true);
+    // Paused, and with the stack read, which is what says where: the two arrive a moment apart.
+    let paused = wait_for(&mut harness, |harness| {
+        let debug = did(harness, "debug status");
+        debug["paused"] == true && !debug["line"].is_null()
+    });
     let debug = did(&mut harness, "debug status");
     assert!(paused, "the debugger stopped: {debug}");
     assert_eq!(debug["line"], 1, "on the cell's first line: {debug}");
@@ -567,7 +571,11 @@ fn debug_cell_on_a_notebook_with_no_kernel_starts_one_and_stops_in_the_cell() {
         return;
     };
     did(&mut harness, "notebook run 1 --debug");
-    let paused = wait_for(&mut harness, |harness| did(harness, "debug status")["paused"] == true);
+    // Paused, and with the stack read, which is what says where: the two arrive a moment apart.
+    let paused = wait_for(&mut harness, |harness| {
+        let debug = did(harness, "debug status");
+        debug["paused"] == true && !debug["line"].is_null()
+    });
     let debug = did(&mut harness, "debug status");
     assert!(paused, "the debugger stopped: {debug}");
     assert_eq!(debug["line"], 1, "{debug}");
