@@ -31,10 +31,13 @@ const INK: Color32 = Color32::from_rgb(0x1E, 0x25, 0x30);
 /// One mark: its file name and what draws it centred on a point.
 type Mark = (&'static str, Box<dyn Fn(&egui::Painter, Pos2)>);
 
+/// A drawn icon function, as `theme::icon` writes every one: the painter, the centre and the ink.
+type Draw = fn(&egui::Painter, Pos2, Color32);
+
 /// Every mark, in the order `tests/icons.rs` reads them, followed by the ones that take a parameter.
 fn marks() -> Vec<Mark> {
     use unluminous_core::{Align, SymbolKind};
-    let simple: Vec<(&'static str, fn(&egui::Painter, Pos2, Color32))> = vec![
+    let simple: Vec<(&'static str, Draw)> = vec![
         ("folder", icon::folder),
         ("file", icon::editing_area),
         ("file-page", icon::file_page),
