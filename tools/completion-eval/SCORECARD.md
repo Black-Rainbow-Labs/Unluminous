@@ -45,6 +45,22 @@ R@1 by letters typed, this build / the reference with ML on / 0.71.0:
 | G3 the keystroke under 5 ms | worst stem 3.93 ms on `app/realm.rs`; `self.` 1.68 ms; the read at a new revision 2.22 ms | **met** |
 | G4 one ranking for every reader | the popup, `editor complete` and the harness read `completion::order`; `editor complete --explain` shows each row's facts and score | **met** |
 
+### The shipped build, a second read of the held half
+
+After the gate the window suite found one more fault: with `dra` typed, `DRAW_LIMIT` on the line
+below the caret was ranked first. Round 4 added whether the first letter typed and the name's first
+letter share a case (the reference editor matches the first letter's case by default), and the
+shipped build is that model. It was measured on the held half again (`t2237-gate2-on`). The run above
+is the clean, read once number; this one says the shipped build holds it.
+
+| Language | Shipped build R@1 / R@5 / MRR | The gated build | Reference, ML on |
+|---|---|---|---|
+| Rust | **76.0 / 93.4 / 0.837** | 75.8 / 93.4 / 0.836 | 66.6 / 83.6 / 0.745 |
+| TypeScript | **81.8 / 92.6 / 0.865** | 81.7 / 92.3 / 0.864 | 58.1 / 75.9 / 0.663 |
+
+Every class of both languages is still ahead of the reference editor; the closest is Rust `local`,
+80.0 against 79.3.
+
 ### The controls, with no language server
 
 `t2237-gate-off-controls`: `editor.servers = off`, the held control positions. The model was trained on
