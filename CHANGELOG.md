@@ -6,6 +6,16 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- A learned completion ranking, trained on the tune half of the evaluation (`task-2237`)
+- The model's trees are statics, not consts clippy says may be copied at each use (`task-2237`)
+- The trainer's __pycache__ is not part of the repository (`task-2237`)
+- The held gate and the controls in SCORECARD.md, and what was built in the TDD (`task-2237`)
+- The first letter's case is a fact the ranking reads (`task-2237`)
+- The shipped build on the held half beside the gated one in SCORECARD.md (`task-2237`)
+- The changelog lists the learned completion ranking as unreleased (`task-2237`)
+
 ## 0.72.0 — 2026-10-10
 
 - Every Agent-Chat component and message part drawn to the design (`task-2235`)
