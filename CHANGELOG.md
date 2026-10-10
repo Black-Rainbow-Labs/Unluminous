@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Completion with structure and language servers, measured against the reference editor (`task-2232`)
+- The held out gate and its scorecard, with the latency reading for G4 (`task-2232`)
+- Unluminous-lsp takes the workspace version after the rebase onto 0.70.0 (`task-2232`)
+
 ## 0.70.0 — 2026-10-10
 
 - TDD for completion equal to IntelliJ, Rust and TypeScript first (`task-2231`)
