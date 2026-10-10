@@ -15,6 +15,7 @@ bumps the release script makes are left out, because they are the boundaries rat
 - The first letter's case is a fact the ranking reads (`task-2237`)
 - The shipped build on the held half beside the gated one in SCORECARD.md (`task-2237`)
 - The changelog lists the learned completion ranking as unreleased (`task-2237`)
+- A comment names the reference editor as the naming rule asks (`task-2237`)
 
 ## 0.72.0 — 2026-10-10
 

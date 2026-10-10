@@ -802,7 +802,7 @@ pub const EXACT_FIRST_FROM: usize = 4;
 /// How many of the chain's first rows the model scores. A TypeScript server offers fifteen thousand
 /// names with one letter typed, nearly all of them auto imports, and the model costs a few
 /// microseconds a row, so it scores the top of the chain and the names written nearest the caret, as
-/// IntelliJ's model reorders only the top of its list. `task-2237`.
+/// the reference editor's model reorders only the top of its list. `task-2237`.
 pub const SCORED_BY_THE_CHAIN: usize = 100;
 
 /// How many of the rows written nearest the caret the model scores beside the chain's first rows.
