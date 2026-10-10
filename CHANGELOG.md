@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- TDD for completion equal to IntelliJ, Rust and TypeScript first (`task-2231`)
+- Agent-Chat drawn to the approved design, in dark and light (`task-2235`)
+
 ## 0.69.1 — 2026-10-09
 
 - Claude Design starting point for Unluminous: the rux design system and a canvas of the window (`task-2230`)
