@@ -128,7 +128,7 @@ fn another_toolchains(root: &Path) -> Option<PathBuf> {
             .filter(|path| path.is_file())
             .filter_map(|path| Some((path.metadata().ok()?.modified().ok()?, path)))
             .collect();
-    found.sort_by(|a, b| b.0.cmp(&a.0));
+    found.sort_by_key(|(modified, _)| std::cmp::Reverse(*modified));
     found.into_iter().map(|(_, path)| path).find(|path| runs(path, root))
 }
 
