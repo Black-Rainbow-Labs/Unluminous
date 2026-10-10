@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Every Agent-Chat component and message part drawn to the design (`task-2235`)
+
 ## 0.71.0 — 2026-10-10
 
 - Completion with structure and language servers, measured against the reference editor (`task-2232`)
